@@ -32,6 +32,42 @@ export function cherry(base, ref, { cwd } = {}) {
   return { upstream, pending };
 }
 
+/** Stable patch id of an arbitrary diff, or null when the diff is empty. */
+function patchId(diffArgs, { cwd } = {}) {
+  const diff = git(diffArgs, { cwd, allowFail: true });
+  if (!diff) return null;
+  const id = git(['patch-id', '--stable'], { cwd, input: `${diff}\n`, allowFail: true });
+  return id ? id.split(' ')[0] : null;
+}
+
+/**
+ * A squash merge collapses N lane commits into one, so no individual lane commit
+ * is patch-equivalent to anything upstream. Compare the lane's combined diff
+ * against each candidate upstream commit instead.
+ */
+export function squashIdentityProof(base, ref, { cwd, limit = 200 } = {}) {
+  const mergeBase = git(['merge-base', base, ref], { cwd, allowFail: true });
+  if (!mergeBase) return null;
+
+  const combined = patchId(['diff', `${mergeBase}...${ref}`], { cwd });
+  if (!combined) return null;
+
+  const candidates = gitLines(
+    ['rev-list', `--max-count=${limit}`, `${mergeBase}..${base}`],
+    { cwd },
+  );
+  for (const candidate of candidates) {
+    if (patchId(['diff-tree', '-p', candidate], { cwd }) === combined) {
+      return {
+        kind: 'squash-identity',
+        detail: `${base} commit ${candidate} carries this lane's combined diff`,
+        pending: [],
+      };
+    }
+  }
+  return null;
+}
+
 /** Commit on `base` whose message carries a Source-Head trailer for `sha`. */
 export function findSourceHeadCommit(base, sha, { cwd } = {}) {
   if (!sha) return null;
@@ -84,7 +120,7 @@ export function integrationProof(base, ref, { cwd } = {}) {
     };
   }
 
-  return null;
+  return squashIdentityProof(base, ref, { cwd });
 }
 
 /**
