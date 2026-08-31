@@ -1,0 +1,50 @@
+name: CI
+
+# `merge_group` is what makes the merge queue work. Without it, queued batches
+# never report a status and the queue stalls on every entry.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job names are the required check contexts in src/queue.mjs REQUIRED_CHECKS.
+  # Renaming a job here without updating that list stalls the queue.
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Configure identity for git fixtures
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name "ADLC CI"
+          git config --global init.defaultBranch main
+      - run: npm test
+
+  budgets:
+    name: budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run docs:check
+      - run: npm run modules:check

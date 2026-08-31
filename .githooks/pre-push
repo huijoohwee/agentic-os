@@ -1,0 +1,17 @@
+#!/bin/sh
+# ADLC guard: no direct push to the protected branch. The merge queue owns it.
+#
+# Scoped to the destination ref only, so pushing a lane ref from any worktree
+# stays allowed.
+protected="refs/heads/main"
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  [ "$remote_ref" = "$protected" ] || continue
+  [ "$AGENTIC_OS_ALLOW_MAIN_WRITE" = "1" ] && continue
+  printf '\nagentic-os: refusing to push directly to %s.\n\n' "$protected" >&2
+  printf 'Every change lands through the merge queue:\n\n  npm run land\n\n' >&2
+  printf 'Override for a repository-owned operation: AGENTIC_OS_ALLOW_MAIN_WRITE=1\n\n' >&2
+  exit 1
+done
+
+exit 0
