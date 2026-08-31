@@ -1,0 +1,19 @@
+{
+  "schema": "agentic-os-invocation-catalog/v1",
+  "entryCount": 12,
+  "digest": "sha256:e375889f00c8792dd46c478df0c617b738f3542ca10b82dd95b17af63352134f",
+  "entries": [
+    { "token": "/setup", "kind": "command", "action": "setup", "semantic": "mutating", "summary": "Configure local Git and hooks." },
+    { "token": "/doctor", "kind": "command", "action": "doctor", "semantic": "read-only", "summary": "Report local and remote harness drift." },
+    { "token": "/lane", "kind": "command", "action": "start", "semantic": "mutating", "accepts": ["scope"], "requires": ["scope"], "summary": "Open one guarded lane worktree." },
+    { "token": "/land", "kind": "command", "action": "land", "semantic": "mutating", "summary": "Publish and enqueue the current lane." },
+    { "token": "/status", "kind": "command", "action": "status", "semantic": "read-only", "accepts": ["device"], "summary": "Show lanes, WIP, and ordering state." },
+    { "token": "/reap", "kind": "command", "action": "reap", "semantic": "mutating", "summary": "Fetch and survey integrated lanes without deleting them." },
+    { "token": "/queue.show", "kind": "command", "action": "queue", "argv": ["show"], "semantic": "read-only", "summary": "Inspect required provider configuration." },
+    { "token": "/help", "kind": "command", "action": "help", "semantic": "read-only", "summary": "Show the CLI command map." },
+    { "token": "#read-only", "kind": "semantic", "value": "read-only", "summary": "No authored or shared-state mutation is requested." },
+    { "token": "#mutating", "kind": "semantic", "value": "mutating", "summary": "The guarded command may mutate declared state." },
+    { "token": "@scope:", "kind": "binding", "name": "scope", "mode": "positional", "summary": "Bind one lane semantic scope." },
+    { "token": "@device:", "kind": "binding", "name": "device", "mode": "option", "summary": "Bind a normalized device selector." }
+  ]
+}

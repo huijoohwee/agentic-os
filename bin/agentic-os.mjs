@@ -33,6 +33,7 @@ import {
   staleWorktrees,
 } from '../src/worktree.mjs';
 import { surveyLanes, sourceHeadTrailer } from '../src/patch-identity.mjs';
+import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
 import * as report from '../src/report.mjs';
 
 const out = (text) => process.stdout.write(`${text}\n`);
@@ -382,7 +383,8 @@ function cmdHelp() {
 }
 
 function main() {
-  const [command, ...argv] = process.argv.slice(2);
+  const supplied = process.argv.slice(2);
+  let [command, ...argv] = supplied;
   const cwd = process.cwd();
   let root;
   try {
@@ -390,6 +392,17 @@ function main() {
   } catch {
     err('not inside a git repository.');
     return 1;
+  }
+
+  if (isInvocationTuple(supplied)) {
+    const resolution = resolveInvocation(supplied);
+    const dispatch = dispatchInvocation(resolution);
+    if (!dispatch.ok) {
+      err(`invocation ${resolution.code}: ${JSON.stringify(resolution.detail ?? {})}`);
+      return 1;
+    }
+    command = dispatch.command;
+    argv = dispatch.argv;
   }
 
   switch (command) {
