@@ -23,7 +23,7 @@ ADLC supersedes Agentic SDLC: lanes and computed proofs replace phases and appro
 | Open a lane | `npm run lane -- <scope>` |
 | Publish and enqueue a lane | `npm run land` |
 | See lanes, WIP, queue | `npm run status` |
-| Retire integrated lanes | `npm run reap` |
+| Retire integrated lanes | `npm run reap -- --apply` |
 | Prove the repository | `npm run check` |
 
 ## Owner routing

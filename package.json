@@ -13,6 +13,7 @@
   "files": [
     "bin",
     "src",
+    "catalog",
     "docs",
     "__tests__",
     "AGENTS.md"

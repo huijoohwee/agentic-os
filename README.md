@@ -27,7 +27,7 @@ npm run lane -- pricing-table   # worktree + branch agent/<device>/pricing-table
 # ... author, commit ...
 npm run land                     # push, open PR, enqueue
 npm run status                   # lanes, WIP, queue
-npm run reap                     # retire lanes proven integrated
+npm run reap                     # survey lanes proven integrated; add -- --apply to retire
 ```
 
 ## What problem this solves
@@ -62,7 +62,9 @@ AGENTS.md            always-load instruction layer, 4 KB cap
 docs/LANE.md         lane state machine, the scenario SSOT
 docs/MERGE-QUEUE.md  ordering, batching, ejection, stacked lanes
 docs/BUDGETS.md      byte and module budgets
-src/                 12 modules, 25 module cap
+docs/INVOCATION.md   exact slash, semantic, and binding grammar
+src/                 small responsibility-owned modules, 25 module cap
+catalog/             runtime data with count and digest fences
 bin/agentic-os.mjs   single entrypoint
 ```
 
