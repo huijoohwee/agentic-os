@@ -65,7 +65,7 @@ docs/BUDGETS.md      byte and module budgets
 docs/INVOCATION.md   exact slash, semantic, and binding grammar
 docs/MCP.md          backend MCP tool and transport contract
 src/                 small responsibility-owned modules, 25 module cap
-catalog/             runtime data with count and digest fences
+catalog/             invocation and feature data with count and digest fences
 bin/                 CLI and stdio MCP entrypoints
 ```
 
@@ -74,6 +74,16 @@ bin/                 CLI and stdio MCP entrypoints
 ```sh
 npm run check   # tests + doc budget + module budget
 ```
+
+Rank the digest-fenced feature catalog with hard constraints, Pareto dominance, and argumentation:
+
+```sh
+npm run feature:rank   # 0 selected, 2 no grounded selection, 1 rejected input/evidence
+```
+
+The command supplies no buyer-evidence verifier, so the seed remains fail-closed. An embedding may
+pass `rankFeatures` a code-owned `verifyDemandEvidence` adapter returning its verifier identity and
+receipt; self-attested, stale, or candidate-mismatched receipts never satisfy the demand gate.
 
 ## Remote configuration
 
