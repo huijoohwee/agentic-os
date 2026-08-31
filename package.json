@@ -28,10 +28,11 @@
     "git:configure": "node bin/agentic-os.mjs git-configure",
     "guard:install": "node bin/agentic-os.mjs guard-install",
     "guard:main": "node src/guard-main.mjs",
+    "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node src/doc-budget.mjs",
     "modules:check": "node src/module-budget.mjs",
     "test": "node --test __tests__/*.test.mjs",
-    "check": "npm test && npm run docs:check && npm run modules:check"
+    "check": "npm test && npm run readiness:check && npm run docs:check && npm run modules:check"
   },
   "dependencies": {},
   "devDependencies": {}

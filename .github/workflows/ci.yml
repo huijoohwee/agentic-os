@@ -48,3 +48,4 @@ jobs:
           node-version: 22
       - run: npm run docs:check
       - run: npm run modules:check
+      - run: npm run readiness:check
