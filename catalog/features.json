@@ -1,0 +1,142 @@
+{
+  "schema": "agentic-os-feature-catalog/v1",
+  "profile": {
+    "maxCodeDeltaLines": 200,
+    "maxFirstDollarHours": 40,
+    "maxIncrementalSpendUsd": 0,
+    "maxRuntimeDependencies": 0,
+    "deploymentAllowed": false,
+    "browserSurfaceAvailable": false,
+    "fossOnly": true
+  },
+  "entryCount": 5,
+  "digest": "sha256:e6b335bffde1852fa895d05d0c7a7d8d4467b464b455c37df579b312ddfb9849",
+  "candidates": [
+    {
+      "id": "repository-livelock-audit",
+      "offer": "Repository livelock audit",
+      "pain": {
+        "statement": "A team cannot cheaply explain queue drift and already-integrated branch debt.",
+        "namedProspectivePayer": null,
+        "evidenceRefs": ["README.md"],
+        "demandEvidenceRefs": []
+      },
+      "solution": {
+        "statement": "Deliver the existing doctor report and reap survey as a bounded audit.",
+        "evidenceRefs": ["bin/agentic-os.mjs", "src/patch-identity.mjs"]
+      },
+      "estimates": {
+        "codeDeltaLines": 0,
+        "firstDollarHours": 4,
+        "incrementalSpendUsd": 0,
+        "runtimeDependencies": 0
+      },
+      "requirements": {
+        "deployment": false,
+        "browserSurface": false,
+        "dependencies": []
+      }
+    },
+    {
+      "id": "branch-debt-cleanup",
+      "offer": "Branch-debt cleanup",
+      "pain": {
+        "statement": "Integrated branches consume review and CI attention until safely retired.",
+        "namedProspectivePayer": null,
+        "evidenceRefs": ["README.md"],
+        "demandEvidenceRefs": []
+      },
+      "solution": {
+        "statement": "Apply retirement only after the existing patch-identity survey proves integration.",
+        "evidenceRefs": ["src/patch-identity.mjs", "src/worktree.mjs"]
+      },
+      "estimates": {
+        "codeDeltaLines": 0,
+        "firstDollarHours": 8,
+        "incrementalSpendUsd": 0,
+        "runtimeDependencies": 0
+      },
+      "requirements": {
+        "deployment": false,
+        "browserSurface": false,
+        "dependencies": []
+      }
+    },
+    {
+      "id": "mcp-server",
+      "offer": "MCP-native harness distribution",
+      "pain": {
+        "statement": "Coding agents cannot call the harness through their native MCP boundary.",
+        "namedProspectivePayer": null,
+        "evidenceRefs": ["docs/MCP.md"],
+        "demandEvidenceRefs": []
+      },
+      "solution": {
+        "statement": "Use the shipped stdio MCP server for guarded doctor, status, reap, and lane calls.",
+        "evidenceRefs": ["src/mcp-server.mjs", "src/mcp-stdio.mjs"]
+      },
+      "estimates": {
+        "codeDeltaLines": 0,
+        "firstDollarHours": 8,
+        "incrementalSpendUsd": 0,
+        "runtimeDependencies": 0
+      },
+      "requirements": {
+        "deployment": false,
+        "browserSurface": false,
+        "dependencies": []
+      }
+    },
+    {
+      "id": "hosted-multi-repo-dashboard",
+      "offer": "Hosted multi-repository dashboard",
+      "pain": {
+        "statement": "A team lacks one hosted view of ADLC state across repositories.",
+        "namedProspectivePayer": null,
+        "evidenceRefs": ["README.md"],
+        "demandEvidenceRefs": []
+      },
+      "solution": {
+        "statement": "Build a hosted aggregation and authorization surface.",
+        "evidenceRefs": []
+      },
+      "estimates": {
+        "codeDeltaLines": null,
+        "firstDollarHours": null,
+        "incrementalSpendUsd": null,
+        "runtimeDependencies": null
+      },
+      "requirements": {
+        "deployment": true,
+        "browserSurface": false,
+        "dependencies": []
+      }
+    },
+    {
+      "id": "webmcp-in-page-tools",
+      "offer": "WebMCP in-page tools",
+      "pain": {
+        "statement": "A browser agent cannot operate a page-native ADLC interface.",
+        "namedProspectivePayer": null,
+        "evidenceRefs": ["README.md"],
+        "demandEvidenceRefs": []
+      },
+      "solution": {
+        "statement": "Publish tools from a browser surface that this CLI-only repository does not have.",
+        "evidenceRefs": []
+      },
+      "estimates": {
+        "codeDeltaLines": null,
+        "firstDollarHours": null,
+        "incrementalSpendUsd": 0,
+        "runtimeDependencies": null
+      },
+      "requirements": {
+        "deployment": false,
+        "browserSurface": true,
+        "dependencies": []
+      }
+    }
+  ],
+  "arguments": []
+}

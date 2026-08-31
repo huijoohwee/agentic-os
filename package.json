@@ -32,6 +32,7 @@
     "guard:install": "node bin/agentic-os.mjs guard-install",
     "guard:main": "node src/guard-main.mjs",
     "mcp": "node bin/agentic-os-mcp.mjs",
+    "feature:rank": "node src/rank.mjs",
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node src/doc-budget.mjs",
     "modules:check": "node src/module-budget.mjs",
