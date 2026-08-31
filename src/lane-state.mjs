@@ -47,13 +47,33 @@ const GUARDS = Object.freeze({
   clean: (f) => (f.dirtyTracked ? REFUSALS.DIRTY : null),
   hasCommits: (f) => (f.laneCommits > 0 ? null : REFUSALS.NO_COMMITS),
   pushed: (f) => (f.pushed ? null : REFUSALS.NOT_PUSHED),
-  queueEnabled: (f) => (f.queueEnabled ? null : REFUSALS.NO_QUEUE),
+  orderingDelegated: (f) => (isOrderingDelegated(f) ? null : REFUSALS.NO_QUEUE),
   prOpen: (f) => (f.prOpen ? null : REFUSALS.NO_PR),
   checksNotStale: (f) => (f.checksHeadSha === f.laneHeadSha ? null : REFUSALS.STALE_CHECKS),
   ejectedOnce: (f) => (f.ejections === 1 ? null : REFUSALS.RESTACK_EXHAUSTED),
   integratedProof: (f) => (isProof(f.integrationProof) ? null : REFUSALS.NOT_INTEGRATED),
   noOwnedUntracked: (f) => (f.ownedUntracked ? REFUSALS.OWNED_UNTRACKED : null),
 });
+
+/**
+ * The real invariant behind `enqueue` is that the *provider* owns landing order,
+ * not the author. A merge queue is the strong form: it batches and tests ahead
+ * of the protected branch. Auto-merge with require-up-to-date off is the weak
+ * form: no batching, but the author still never restacks for ordering.
+ *
+ * Auto-merge without required checks is not delegation, it is a blind merge, so
+ * it does not qualify. Neither does anything while require-up-to-date is on,
+ * because that setting is what forces the restack treadmill.
+ */
+export function orderingMode(facts) {
+  if (facts.queueEnabled) return 'merge-queue';
+  const delegated = facts.autoMergeAllowed && facts.requiredCheckCount > 0 && facts.strict !== true;
+  return delegated ? 'auto-merge' : 'none';
+}
+
+export function isOrderingDelegated(facts) {
+  return orderingMode(facts) !== 'none';
+}
 
 /** Ordered strongest-first. Squash merges destroy `ancestor`, hence the other two. */
 export const PROOF_KINDS = Object.freeze(['ancestor', 'source-head-trailer', 'patch-identity']);
@@ -81,7 +101,7 @@ export const TRANSITIONS = Object.freeze([
     from: 'published',
     event: 'enqueue',
     to: 'queued',
-    guards: ['queueEnabled', 'prOpen', 'checksNotStale'],
+    guards: ['orderingDelegated', 'prOpen', 'checksNotStale'],
   },
   { from: 'published', event: 'restack', to: 'published', guards: ['ejectedOnce'] },
   { from: 'queued', event: 'eject', to: 'published', guards: [] },
@@ -108,6 +128,9 @@ export const DEFAULT_FACTS = Object.freeze({
   laneCommits: 0,
   pushed: false,
   queueEnabled: false,
+  autoMergeAllowed: false,
+  requiredCheckCount: 0,
+  strict: null,
   prOpen: false,
   laneHeadSha: null,
   checksHeadSha: null,

@@ -63,14 +63,29 @@ test('required git config includes the conflict-memory settings', () => {
   }
 });
 
-test('queue policy batches, and the audit refuses strict mode', () => {
+test('the plan batches, requires a PR, and turns require-up-to-date off', () => {
   assert.equal(QUEUE_POLICY.merge_method, 'SQUASH');
   assert.ok(QUEUE_POLICY.max_entries_to_merge > 1, 'batching is the point of the queue');
-  assert.equal(plan().protection.strict, false);
 
+  const rules = plan().ruleset.rules;
+  const byType = (type) => rules.find((rule) => rule.type === type);
+
+  assert.ok(byType('pull_request'), 'every change must go through a pull request');
+  assert.equal(byType('pull_request').parameters.required_approving_review_count, 0);
+  assert.equal(
+    byType('required_status_checks').parameters.strict_required_status_checks_policy,
+    false,
+    'require-branches-up-to-date must be off or the queue fights the authors',
+  );
+  assert.ok(byType('merge_queue'), 'the queue rule is the whole point');
+  assert.ok(byType('non_fast_forward'), 'history must not be rewritten');
+});
+
+test('the audit refuses strict mode from either configuration surface', () => {
   const findings = audit({
     available: true,
     strict: true,
+    requiredChecks: ['test', 'budgets'],
     merge: { allow_squash_merge: true, delete_branch_on_merge: true },
     queueEnabled: true,
     queueRuleset: { name: 'q' },
@@ -81,15 +96,17 @@ test('queue policy batches, and the audit refuses strict mode', () => {
   assert.match(strictFinding.detail, /restack treadmill/);
 });
 
-test('the audit flags an unenabled queue and excess WIP', () => {
+test('the audit flags an unenabled queue, missing checks, and excess WIP', () => {
   const findings = audit({
     available: true,
     strict: false,
+    requiredChecks: [],
     merge: { allow_squash_merge: true, delete_branch_on_merge: true },
     queueEnabled: false,
     openPrs: Array.from({ length: 45 }, (_, index) => ({ number: index })),
   });
   assert.equal(findings.find((finding) => finding.id === 'merge-queue').ok, false);
+  assert.equal(findings.find((finding) => finding.id === 'required-checks').ok, false);
   assert.equal(findings.find((finding) => finding.id === 'wip').ok, false);
 });
 

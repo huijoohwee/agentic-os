@@ -4,6 +4,7 @@ import {
   transition,
   legalEvents,
   canRestack,
+  orderingMode,
   TRANSITIONS,
   STATES,
   REFUSALS,
@@ -57,10 +58,26 @@ test('publish requires a clean tree with commits already pushed', () => {
   assert.equal(transition('active', 'publish', { ...ready, pushed: false }).reason, REFUSALS.NOT_PUSHED);
 });
 
-test('enqueue is impossible without a merge queue', () => {
+test('enqueue requires the provider to own landing order', () => {
   const facts = { prOpen: true, laneHeadSha: 'a', checksHeadSha: 'a' };
   assert.equal(transition('published', 'enqueue', facts).reason, REFUSALS.NO_QUEUE);
   assert.equal(transition('published', 'enqueue', { ...facts, queueEnabled: true }).ok, true);
+
+  // Auto-merge with checks and require-up-to-date off is the weaker delegation.
+  const autoMerge = { ...facts, autoMergeAllowed: true, requiredCheckCount: 2, strict: false };
+  assert.equal(transition('published', 'enqueue', autoMerge).ok, true);
+  assert.equal(orderingMode(autoMerge), 'auto-merge');
+  assert.equal(orderingMode({ ...autoMerge, queueEnabled: true }), 'merge-queue');
+});
+
+test('auto-merge without checks, or with strict on, is not delegation', () => {
+  const facts = { prOpen: true, laneHeadSha: 'a', checksHeadSha: 'a', autoMergeAllowed: true };
+  assert.equal(orderingMode({ ...facts, requiredCheckCount: 0, strict: false }), 'none');
+  assert.equal(orderingMode({ ...facts, requiredCheckCount: 2, strict: true }), 'none');
+  assert.equal(
+    transition('published', 'enqueue', { ...facts, requiredCheckCount: 2, strict: true }).reason,
+    REFUSALS.NO_QUEUE,
+  );
 });
 
 test('enqueue refuses a head whose checks are stale', () => {

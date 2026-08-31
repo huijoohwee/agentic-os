@@ -18,7 +18,7 @@ import {
   worktrees,
 } from '../src/git.mjs';
 import { deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import { transition, legalEvents } from '../src/lane-state.mjs';
+import { transition, legalEvents, orderingMode } from '../src/lane-state.mjs';
 import { capFacts, capAdvice, CAPS } from '../src/wip.mjs';
 import * as store from '../src/lane-records.mjs';
 import * as queue from '../src/queue.mjs';
@@ -208,8 +208,14 @@ function cmdLand(cwd) {
   store.put({ ref, state: 'published' }, root);
 
   const observed = queue.observe({ cwd: root });
-  const enqueueResult = transition('published', 'enqueue', {
+  const orderingFacts = {
     queueEnabled: observed.queueEnabled,
+    autoMergeAllowed: observed.autoMerge,
+    requiredCheckCount: observed.requiredChecks?.length ?? 0,
+    strict: observed.strict,
+  };
+  const enqueueResult = transition('published', 'enqueue', {
+    ...orderingFacts,
     prOpen: true,
     laneHeadSha,
     checksHeadSha: laneHeadSha,
@@ -219,11 +225,17 @@ function cmdLand(cwd) {
     return 1;
   }
 
+  const mode = orderingMode(orderingFacts);
   const handed = queue.enqueue(ref, { cwd: root });
-  store.put({ ref, state: 'queued', pr: handed.pr?.number ?? null }, root);
-  out(handed.pr?.url ? `queued ${handed.pr.url}` : 'queued');
+  store.put({ ref, state: 'queued', pr: handed.pr?.number ?? null, mode }, root);
+  out(handed.pr?.url ? `handed to the provider: ${handed.pr.url}` : 'handed to the provider');
+  out(
+    mode === 'merge-queue'
+      ? 'ordering: merge queue, batched'
+      : 'ordering: auto-merge, no batching (enable the merge queue for batches)',
+  );
   out('');
-  out('Do not rebase or restack this lane now. The queue owns its base.');
+  out('Do not rebase or restack this lane now. The provider owns its base.');
   return 0;
 }
 
@@ -314,10 +326,14 @@ function cmdQueue(root, argv) {
       return 1;
     }
     const applied = queue.apply({ cwd: root });
-    for (const step of applied) out(`${step.ok ? 'ok  ' : 'FAIL'} ${step.step}`);
+    for (const step of applied) {
+      out(`${step.ok ? 'ok  ' : 'FAIL'} ${step.step}`);
+      if (step.error) out(`       provider: ${step.error}`);
+      if (step.note) out(`       ${step.note}`);
+    }
     out('');
     out('Verify with: npm run doctor');
-    return applied.every((step) => step.ok) ? 0 : 1;
+    return applied.some((step) => step.step.startsWith('ruleset') && step.ok) ? 0 : 1;
   }
   err(`unknown queue action "${action}". use: show | apply`);
   return 1;
