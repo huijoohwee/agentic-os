@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { CONTRACT_PROOF_SCHEMA } from '../src/readiness-proof.mjs';
 import {
   catalogDigest,
   dispatchInvocation,
@@ -10,6 +11,11 @@ import {
   resolveInvocation,
   validateCatalog,
 } from '../src/invocation.mjs';
+
+export const READINESS_PROOF = Object.freeze({
+  schema: CONTRACT_PROOF_SCHEMA,
+  claims: ['sha256:88043008a2caa5c9e7b5ed2b57c082addd6ca3843b17b3edc4119464afbfd28b'],
+});
 
 const clone = (value) => structuredClone(value);
 
