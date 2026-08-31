@@ -8,7 +8,8 @@
     "node": ">=20.11"
   },
   "bin": {
-    "agentic-os": "bin/agentic-os.mjs"
+    "agentic-os": "bin/agentic-os.mjs",
+    "agentic-os-mcp": "bin/agentic-os-mcp.mjs"
   },
   "files": [
     "bin",
@@ -30,6 +31,7 @@
     "git:configure": "node bin/agentic-os.mjs git-configure",
     "guard:install": "node bin/agentic-os.mjs guard-install",
     "guard:main": "node src/guard-main.mjs",
+    "mcp": "node bin/agentic-os-mcp.mjs",
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node src/doc-budget.mjs",
     "modules:check": "node src/module-budget.mjs",
