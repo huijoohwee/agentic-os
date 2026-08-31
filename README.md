@@ -63,9 +63,10 @@ docs/LANE.md         lane state machine, the scenario SSOT
 docs/MERGE-QUEUE.md  ordering, batching, ejection, stacked lanes
 docs/BUDGETS.md      byte and module budgets
 docs/INVOCATION.md   exact slash, semantic, and binding grammar
+docs/MCP.md          backend MCP tool and transport contract
 src/                 small responsibility-owned modules, 25 module cap
 catalog/             runtime data with count and digest fences
-bin/agentic-os.mjs   single entrypoint
+bin/                 CLI and stdio MCP entrypoints
 ```
 
 ## Verify
