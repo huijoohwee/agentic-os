@@ -81,6 +81,40 @@ test('Source-Head trailer proves integration even when the patch differs', (t) =
   assert.equal(proof.kind, 'source-head-trailer');
 });
 
+test('a multi-commit squash is proven by combined diff, not per-commit identity', (t) => {
+  const { dir, run } = fixture();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  run(['switch', '--quiet', '--create', 'agent/dev/multi']);
+  commitFile(run, dir, 'p.txt', 'p\n', 'add p');
+  commitFile(run, dir, 'q.txt', 'q\n', 'add q');
+
+  run(['switch', '--quiet', 'main']);
+  run(['merge', '--quiet', '--squash', 'agent/dev/multi']);
+  run(['commit', '--quiet', '--message', 'landed both, no trailer']);
+
+  // Per-commit identity cannot see it: neither lane commit matches the squash.
+  const { pending } = cherry('main', 'agent/dev/multi', { cwd: dir });
+  assert.equal(pending.length, 2, 'both lane commits look pending to per-commit identity');
+
+  const proof = integrationProof('main', 'agent/dev/multi', { cwd: dir });
+  assert.equal(proof.kind, 'squash-identity');
+});
+
+test('squash identity does not fire when the combined diff differs', (t) => {
+  const { dir, run } = fixture();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  run(['switch', '--quiet', '--create', 'agent/dev/partial']);
+  commitFile(run, dir, 'r.txt', 'r\n', 'add r');
+  commitFile(run, dir, 's.txt', 's\n', 'add s');
+
+  run(['switch', '--quiet', 'main']);
+  commitFile(run, dir, 'r.txt', 'r\n', 'only r landed');
+
+  assert.equal(integrationProof('main', 'agent/dev/partial', { cwd: dir }), null);
+});
+
 test('an unintegrated lane yields no proof at all', (t) => {
   const { dir, run } = fixture();
   t.after(() => rmSync(dir, { recursive: true, force: true }));

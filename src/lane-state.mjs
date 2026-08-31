@@ -75,8 +75,13 @@ export function isOrderingDelegated(facts) {
   return orderingMode(facts) !== 'none';
 }
 
-/** Ordered strongest-first. Squash merges destroy `ancestor`, hence the other two. */
-export const PROOF_KINDS = Object.freeze(['ancestor', 'source-head-trailer', 'patch-identity']);
+/** Ordered strongest-first. Squash merges destroy `ancestor`, hence the other three. */
+export const PROOF_KINDS = Object.freeze([
+  'ancestor',
+  'source-head-trailer',
+  'patch-identity',
+  'squash-identity',
+]);
 
 export function isProof(kind) {
   return PROOF_KINDS.includes(kind);

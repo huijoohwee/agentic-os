@@ -74,16 +74,23 @@ Every blocked transition returns one of these. They name the upstream owner, nev
 
 ## Integration proof
 
-`retired` is reachable only with one of three proofs, in falling strength:
+`retired` is reachable only with one of four proofs, in falling strength:
 
 1. `ancestor` — the lane head is an ancestor of `origin/main`.
 2. `source-head-trailer` — a commit on `origin/main` carries `Source-Head: <lane-head-sha>`.
 3. `patch-identity` — every lane commit is patch-equivalent to a commit on `origin/main`.
+4. `squash-identity` — the lane's combined diff equals the diff of one commit on `origin/main`.
 
-Squash merges destroy proof 1, which is why proofs 2 and 3 exist. Proof 2 is deterministic and comes
-free once the queue's squash message carries the trailer. Proof 3 is the fallback for history that
-predates the trailer. No other signal counts: not review state, not mergeability, not branch age,
-not a passing check, not the absence of a diff in a UI.
+Squash merges destroy proof 1, which is why the rest exist. Proof 3 also fails whenever a lane had
+more than one commit, because the squash produces a single combined patch that matches no individual
+lane commit. Proof 4 covers exactly that case by comparing the lane's whole diff instead.
+
+Proof 2 is the only deterministic one, and it is not free: the provider must build the squash message
+from the pull request body, and `land` must put the trailer in that body. `doctor` checks both as
+`trailer-carrier`. If that check fails, lanes still land but only prove themselves by diff search.
+
+No other signal counts: not review state, not mergeability, not branch age, not a passing check, not
+the absence of a diff in a UI.
 
 ## Owned untracked state
 

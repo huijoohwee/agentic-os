@@ -32,7 +32,7 @@ import {
   laneBranches,
   staleWorktrees,
 } from '../src/worktree.mjs';
-import { surveyLanes } from '../src/patch-identity.mjs';
+import { surveyLanes, sourceHeadTrailer } from '../src/patch-identity.mjs';
 import * as report from '../src/report.mjs';
 
 const out = (text) => process.stdout.write(`${text}\n`);
@@ -168,6 +168,28 @@ function cmdStart(root, argv) {
   return 0;
 }
 
+/**
+ * Title and body for the lane's pull request.
+ *
+ * The body ends with the Source-Head trailer. With the squash message built from
+ * the body, that trailer lands on the protected branch and becomes the
+ * deterministic integration proof for a lane whose commits were collapsed.
+ */
+function pullRequestText(root, ref, laneHeadSha) {
+  const subjects = gitLines(['log', '--format=%s', `${PROTECTED_REF}..HEAD`, '--reverse'], {
+    cwd: root,
+  });
+  const scope = parseLaneRef(ref)?.scope ?? ref;
+  const title = subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`;
+  const body = [
+    ...(subjects.length > 1 ? subjects.map((subject) => `- ${subject}`) : []),
+    ...(subjects.length > 1 ? [''] : []),
+    `Lane: ${ref}`,
+    sourceHeadTrailer(laneHeadSha),
+  ].join('\n');
+  return { title, body };
+}
+
 function cmdLand(cwd) {
   const root = repoRoot(cwd);
   const ref = currentBranch(root);
@@ -226,7 +248,7 @@ function cmdLand(cwd) {
   }
 
   const mode = orderingMode(orderingFacts);
-  const handed = queue.enqueue(ref, { cwd: root });
+  const handed = queue.enqueue(ref, { cwd: root, ...pullRequestText(root, ref, laneHeadSha) });
   store.put({ ref, state: 'queued', pr: handed.pr?.number ?? null, mode }, root);
   out(handed.pr?.url ? `handed to the provider: ${handed.pr.url}` : 'handed to the provider');
   out(

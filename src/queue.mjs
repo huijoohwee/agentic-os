@@ -82,7 +82,8 @@ export function observe({ cwd = process.cwd() } = {}) {
       'api',
       'repos/:owner/:repo',
       '--jq',
-      '{allow_squash_merge,allow_merge_commit,allow_rebase_merge,delete_branch_on_merge,allow_auto_merge}',
+      '{allow_squash_merge,allow_merge_commit,allow_rebase_merge,delete_branch_on_merge,' +
+        'allow_auto_merge,squash_merge_commit_title,squash_merge_commit_message}',
     ],
     { cwd },
   );
@@ -173,6 +174,17 @@ export function audit(state) {
   if (state.pullRequestRequired) pass('pull-request', 'direct pushes to the protected branch are blocked');
   else fail('pull-request', 'the protected branch accepts direct pushes', 'npm run queue:apply');
 
+  if (state.merge?.squash_merge_commit_message === 'PR_BODY') {
+    pass('trailer-carrier', 'the squash commit carries the pull request body');
+  } else {
+    fail(
+      'trailer-carrier',
+      `squash message source is ${state.merge?.squash_merge_commit_message ?? 'unknown'}; ` +
+        'the Source-Head trailer would never reach the protected branch',
+      'npm run queue:apply',
+    );
+  }
+
   if (state.strict === true) {
     fail(
       'strict-off',
@@ -261,6 +273,11 @@ export function plan() {
       delete_branch_on_merge: true,
       // The merge_queue rule requires this, and so does arming a lane.
       allow_auto_merge: true,
+      // The squash commit must carry the pull request body, because that is
+      // where the Source-Head trailer lives. Without this the deterministic
+      // integration proof silently never lands.
+      squash_merge_commit_title: 'PR_TITLE',
+      squash_merge_commit_message: 'PR_BODY',
     },
   };
 }
@@ -282,9 +299,22 @@ export function apply({ cwd = process.cwd() } = {}) {
   const repo = gh(REPO_PATCH, { cwd, input: JSON.stringify(desired.repository) });
   applied.push({ step: 'repository settings', ok: Boolean(repo), error: repo ? null : lastError });
 
-  const full = gh(RULESET_POST, { cwd, input: JSON.stringify(desired.ruleset) });
+  // Upsert, because re-running apply after a partial failure is normal.
+  const existing = (gh(['api', 'repos/:owner/:repo/rulesets'], { cwd }) ?? []).find(
+    (entry) => entry.name === RULESET_NAME,
+  );
+  const write = (payload) =>
+    existing
+      ? gh(['api', '--method', 'PUT', `repos/:owner/:repo/rulesets/${existing.id}`, '--input', '-'], {
+          cwd,
+          input: JSON.stringify(payload),
+        })
+      : gh(RULESET_POST, { cwd, input: JSON.stringify(payload) });
+
+  const verb = existing ? 'updated' : 'created';
+  const full = write(desired.ruleset);
   if (full) {
-    applied.push({ step: `ruleset "${RULESET_NAME}" with merge queue`, ok: true, error: null });
+    applied.push({ step: `ruleset ${verb} with merge queue`, ok: true, error: null });
     return applied;
   }
 
@@ -293,7 +323,7 @@ export function apply({ cwd = process.cwd() } = {}) {
     ...desired.ruleset,
     rules: desired.ruleset.rules.filter((rule) => rule.type !== 'merge_queue'),
   };
-  const partial = gh(RULESET_POST, { cwd, input: JSON.stringify(degraded) });
+  const partial = write(degraded);
   applied.push({
     step: 'merge queue rule',
     ok: false,
@@ -301,19 +331,28 @@ export function apply({ cwd = process.cwd() } = {}) {
     note: 'the provider refused this rule; enable the merge queue in repository settings',
   });
   applied.push({
-    step: `ruleset "${RULESET_NAME}" without merge queue`,
+    step: `ruleset ${verb} without merge queue`,
     ok: Boolean(partial),
     error: partial ? null : lastError,
   });
   return applied;
 }
 
-/** Open a PR for a lane if none exists, then hand it to the queue. */
-export function enqueue(ref, { cwd = process.cwd(), title } = {}) {
+/**
+ * Open a PR for a lane if none exists, then hand it to the provider.
+ *
+ * The body must carry the Source-Head trailer, because the squash commit is
+ * built from the body and that trailer is the deterministic integration proof.
+ */
+export function enqueue(ref, { cwd = process.cwd(), title, body } = {}) {
   const existing = gh(['pr', 'view', ref, '--json', 'number,state,url'], { cwd });
-  if (!existing) {
-    const create = ['pr', 'create', '--base', PROTECTED_BRANCH, '--head', ref, '--fill'];
-    if (title) create.push('--title', title);
+  if (existing) {
+    if (body) gh(['pr', 'edit', ref, '--body', body], { cwd, json: false });
+    if (title) gh(['pr', 'edit', ref, '--title', title], { cwd, json: false });
+  } else {
+    const create = ['pr', 'create', '--base', PROTECTED_BRANCH, '--head', ref];
+    create.push('--title', title ?? ref);
+    create.push('--body', body ?? '');
     gh(create, { cwd, json: false });
   }
   const merged = gh(['pr', 'merge', ref, '--squash', '--auto'], { cwd, json: false });
