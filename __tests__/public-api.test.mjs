@@ -40,6 +40,12 @@ test('package exports stable public, adapter, and explicit migration-contract su
   const githubAuthority = await import('agentic-os/adapters/github-authority');
   const githubIssuance = await import('agentic-os/records/github-authority-issuance');
   const githubAuthorityIssuer = await import('agentic-os/adapters/github-authority-issuer');
+  const completion = await import('agentic-os/records/completion');
+  const authorityClient = await import('agentic-os/adapters/github-authority-client');
+  const transitionClient = await import('agentic-os/adapters/github-transition-client');
+  const transitionAuthority = await import('agentic-os/adapters/github-transition-authority');
+  const transitionPolicy = await import('agentic-os/adapters/github-transition-policy');
+  const cleanup = await import('agentic-os/adapters/worktree-cleanup');
   const compatGit = await import('agentic-os/compat/git');
   const compatLaneId = await import('agentic-os/compat/lane-id');
   const compatRecords = await import('agentic-os/compat/lane-records');
@@ -69,6 +75,24 @@ test('package exports stable public, adapter, and explicit migration-contract su
   assert.equal(typeof githubIssuance.validateGitHubAuthorityIssuance, 'function');
   assert.equal(typeof githubAuthorityIssuer.issueGitHubAuthority, 'function');
   assert.equal(typeof githubAuthorityIssuer.verifyGitHubAuthorityIssuanceLive, 'function');
+  assert.equal(typeof completion.createEffectPlan, 'function');
+  assert.equal(typeof completion.createAuthenticatedTransitionOperationReceipt, 'function');
+  assert.equal(typeof authorityClient.createGitHubAuthorityReadProvider, 'function');
+  assert.equal(typeof authorityClient.deriveGitHubAuthorityRunName, 'function');
+  assert.equal(typeof transitionAuthority.createGitHubTransitionAuthorityVerifier, 'function');
+  assert.equal(typeof transitionAuthority.publishGitHubTransitionAuthority, 'function');
+  assert.equal(typeof transitionClient.deriveGitHubTransitionRunName, 'function');
+  assert.equal(typeof transitionClient.createGitHubTransitionInput, 'function');
+  assert.equal(typeof transitionClient.encodeGitHubTransitionInput, 'function');
+  assert.equal(typeof transitionClient.deriveGitHubTransitionInputDigest, 'function');
+  assert.equal(typeof transitionClient.validateGitHubTransitionDispatchEvent, 'function');
+  assert.equal(typeof transitionPolicy.validateGitHubTransitionPolicy, 'function');
+  assert.equal(typeof transitionPolicy.encodeGitHubTransitionPolicy, 'function');
+  assert.equal(typeof transitionPolicy.assertGitHubTransitionPolicyTarget, 'function');
+  assert.equal(typeof transitionPolicy.validateGitHubTransitionPolicyExecution, 'function');
+  assert.equal(typeof cleanup.assessWorktreeCleanupEligibility, 'function');
+  assert.equal(typeof cleanup.executeWorktreeCleanup, 'function');
+  assert.equal(typeof cleanup.validateWorktreeCleanupReceipt, 'function');
   assert.equal(typeof compatGit.repoRoot, 'function');
   assert.equal(typeof compatLaneId.parseLaneRef, 'function');
   assert.equal(typeof compatRecords.load, 'function');
@@ -95,7 +119,18 @@ test('authority records, adapter, and binary are explicit public package surface
     './src/github-authority-issuer.mjs');
   assert.equal(pkg.exports['./adapters/github-authority-issuer'],
     './src/github-authority-operation.mjs');
+  assert.equal(pkg.exports['./records/completion'], './src/completion.mjs');
+  assert.equal(pkg.exports['./adapters/github-authority-client'],
+    './src/github-authority-client.mjs');
+  assert.equal(pkg.exports['./adapters/github-transition-client'],
+    './src/github-transition-client.mjs');
+  assert.equal(pkg.exports['./adapters/github-transition-authority'],
+    './src/github-transition-authority.mjs');
+  assert.equal(pkg.exports['./adapters/github-transition-policy'],
+    './src/github-transition-policy.mjs');
+  assert.equal(pkg.exports['./adapters/worktree-cleanup'], './src/cleanup.mjs');
   assert.equal(pkg.bin['agentic-os-authority'], 'bin/agentic-os-authority.mjs');
+  assert.equal(pkg.bin['agentic-os-transition'], 'bin/agentic-os-transition.mjs');
   assert.equal(pkg.scripts.authority, 'node bin/agentic-os-authority.mjs');
   assert.equal(existsSync(join(ROOT, pkg.bin['agentic-os-authority'])), true);
 });
@@ -175,7 +210,12 @@ test('new profile and public modules are exact authority-controlling surfaces', 
     'src/authority-record.mjs', 'src/recovery-candidate.mjs', 'src/recovery-inventory.mjs',
     'src/github-authority.mjs',
     'src/github-authority-issuer.mjs', 'src/github-authority-operation.mjs',
-    'bin/agentic-os-authority.mjs',
+    'src/completion.mjs', 'src/github-authority-client.mjs',
+    'src/github-transition-client.mjs', 'src/github-transition-authority.mjs',
+    'src/github-transition-policy.mjs', 'src/github-transition-proof.mjs',
+    'src/github-transition-provider.mjs', 'src/cleanup.mjs', 'src/cleanup-manifest.mjs',
+    'src/cleanup-quarantine.mjs', 'src/cleanup-records.mjs',
+    'bin/agentic-os-authority.mjs', 'bin/agentic-os-transition.mjs',
     'bin/agentic-os-hook-runtime.mjs', 'bin/agentic-os-config.mjs',
     'bin/agentic-os-filter-compare.mjs',
     'bin/agentic-os-hooks.mjs', 'bin/agentic-os-report.mjs',

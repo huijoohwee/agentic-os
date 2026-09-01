@@ -7,6 +7,17 @@ import { canonicalJson, claim } from '../src/governance.mjs';
 import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from '../src/recovery-candidate.mjs';
 import { deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from '../src/github-authority-issuer.mjs';
+import {
+  createEffectPlan,
+  effectPlanByteDigest,
+  encodeEffectPlan,
+} from '../src/completion.mjs';
+import {
+  createGitHubAuthorityLiveVerificationReceipt,
+  createGitHubAuthorityReadProvider,
+  deriveGitHubAuthorityRunName,
+  validateGitHubAuthorityLiveVerificationReceipt,
+} from '../src/github-authority-client.mjs';
 import { parseAuthorityArguments, runAuthority } from '../bin/agentic-os-authority.mjs';
 
 const hash = (value, length = 64) => value.repeat(length);
@@ -60,7 +71,7 @@ function content(value, sha) {
   return response({ type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha });
 }
 function commit(sha, parents, tree, date = COMMITTED) {
-  return response({ sha, parents: parents.map((parent) => ({ sha: parent })), tree: { sha: tree }, commit: { committer: { date } } });
+  return response({ sha, parents: parents.map((parent) => ({ sha: parent })), tree: { sha: tree }, committer: { date } });
 }
 function stream() { const values = []; return { values, write(value) { values.push(value); } }; }
 function sandbox(t) {
@@ -117,7 +128,15 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === 'GET /repos/example/evidence/actions/runs/101') return response({
       id: 101, url: RUN, event: 'workflow_dispatch', run_attempt: 1, repository: { full_name: 'example/evidence' },
       head_branch: 'release/2026', head_sha: HEAD, path: options.workflowPath ?? '.github/workflows/authority.yml',
+      status: options.runStatus ?? 'completed', conclusion: options.runConclusion ?? 'success', workflow_id: 501,
+      display_title: options.displayTitle ?? deriveGitHubAuthorityRunName({
+        authorityInputDigest: digest, workflowRevision: WORKFLOW,
+      }),
       run_started_at: STARTED, actor: { id: 42, login: 'example' }, triggering_actor: { id: 42, login: 'example' },
+    });
+    if (route === 'GET /repos/example/evidence/actions/workflows/501') return response({
+      id: options.workflowResourceId ?? 501, path: options.workflowResourcePath
+        ?? '.github/workflows/authority.yml', state: options.workflowState ?? 'active',
     });
     if (route === 'GET /users/example') return response({ id: 42, login: 'example' });
     if (route === 'GET /repos/example/target') return response({ id: 77, full_name: 'example/target', owner: { id: options.ownerId ?? 42, login: 'example', type: 'User' } });
@@ -270,5 +289,98 @@ test('fails closed for forged input, weak or inexact rules, target drift, and in
     assert.equal(result.code, 1, JSON.stringify(options));
     assert.match(result.stderr.values.join(''), /authority issuance failed:/u);
     assert.doesNotMatch(result.stderr.values.join(''), /environment-secret/u);
+  }
+});
+
+function laterVerificationInput() {
+  const draft = dispatch(), requestValue = draft.request, bound = draft.candidate;
+  const plan = createEffectPlan({
+    target: { repository: bound.targetRepository, resource: bound.branch,
+      immutableRevision: requestValue.immutableRevision },
+    authority: { requestedTransition: requestValue.requestedTransition,
+      authoritySubject: requestValue.authoritySubject, ownerSubject: requestValue.ownerSubject,
+      claimId: requestValue.claimId, leaseEpoch: requestValue.leaseEpoch,
+      fenceRevision: requestValue.fenceRevision, writeSetDigest: requestValue.writeSetDigest,
+      reviewLocator: requestValue.reviewLocator,
+      predecessorDigest: bound.predecessorEvidenceDigest },
+    candidateDigest: bound.candidateDigest, snapshotDigest: bound.workingStateDigest,
+    effectClass: 'publish-for-review-only',
+    allowedEffects: ['descendant-commit', 'exact-revalidation', 'new-review', 'nonforce-push'],
+    forbiddenEffects: ['auto-merge', 'cleanup', 'deletion', 'deploy', 'force-push',
+      'merge', 'release', 'reset', 'retire', 'stash'], parametersDigest: hash('a'),
+  });
+  const planBytes = encodeEffectPlan(plan);
+  const source = dispatch({ dependentWork: [
+    `effect-plan:sha256:${effectPlanByteDigest(planBytes)}`,
+  ] });
+  return { source, planBytes };
+}
+
+test('ambient-independent REST provider authenticates the API-visible authority run name', async (t) => {
+  const { source, planBytes } = laterVerificationInput(), api = fixture(t, { source });
+  const result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const issuance = JSON.parse(result.stdout.values.join(''));
+  const writes = api.calls.filter((call) => call.init.method !== 'GET').length;
+  const provider = createGitHubAuthorityReadProvider({
+    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
+  });
+  const receipt = await createGitHubAuthorityLiveVerificationReceipt({
+    issuance, planBytes,
+  }, provider, { now: () => NOW });
+  assert.deepEqual(validateGitHubAuthorityLiveVerificationReceipt(receipt), receipt);
+  assert.match(receipt.providerObservationDigest, /^[0-9a-f]{64}$/u);
+  assert.match(receipt.spendKey, /^[0-9a-f]{64}$/u);
+  assert.ok(api.calls.some((call) => call.route
+    === 'GET /repos/example/evidence/actions/workflows/501'));
+  assert.equal(api.calls.filter((call) => call.init.method !== 'GET').length, writes);
+});
+
+test('later REST verification rejects a static or forged workflow display title', async (t) => {
+  const { source, planBytes } = laterVerificationInput();
+  const api = fixture(t, { source, displayTitle: 'ADLC authority static' });
+  const result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const issuance = JSON.parse(result.stdout.values.join(''));
+  const provider = createGitHubAuthorityReadProvider({
+    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
+  });
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+    provider, { now: () => NOW }), /retained dispatch/u);
+});
+
+test('later REST verification accepts only the bare or exactly ref-qualified workflow path', async (t) => {
+  const { source, planBytes } = laterVerificationInput(), options = { source };
+  const api = fixture(t, options), result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const issuance = JSON.parse(result.stdout.values.join(''));
+  const provider = createGitHubAuthorityReadProvider({
+    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
+  });
+  options.workflowPath = '.github/workflows/authority.yml@refs/heads/release/2026';
+  await createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+    provider, { now: () => NOW });
+  options.workflowPath = '.github/workflows/authority.yml@refs/heads/other';
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+    provider, { now: () => NOW }), /retained dispatch/u);
+});
+
+test('later REST verification requires successful completion and the exact active workflow resource', async (t) => {
+  const { source, planBytes } = laterVerificationInput(), options = { source };
+  const api = fixture(t, options), result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const issuance = JSON.parse(result.stdout.values.join(''));
+  const provider = createGitHubAuthorityReadProvider({
+    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
+  });
+  for (const [key, value] of [
+    ['runStatus', 'in_progress'], ['runConclusion', 'failure'],
+    ['workflowResourceId', 502], ['workflowState', 'disabled_manually'],
+    ['workflowResourcePath', '.github/workflows/other.yml'],
+  ]) {
+    options[key] = value;
+    await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+      provider, { now: () => NOW }), /retained dispatch/u, key);
+    delete options[key];
   }
 });

@@ -141,7 +141,7 @@ test('validators reject repaired schemas and noncanonical wire shapes', () => {
   }), /require a provider adapter/u);
 });
 
-test('repository profiles preserve consumer authority and every cleanup target', () => {
+test('repository profiles preserve consumer authority and truthful cleanup capabilities', () => {
   const profile = createRepositoryProfile({
     schema: REPOSITORY_PROFILE_SCHEMA,
     repository: 'repo:fixture',
@@ -164,7 +164,23 @@ test('repository profiles preserve consumer authority and every cleanup target',
   assert.throws(() => createRepositoryProfile({
     ...profilePayload,
     cleanup: { ...RETAIN_ALL_CLEANUP, localBranch: 'delete' },
-  }), /must retain/);
+  }), /unsupported effect/);
+  const quarantine = createRepositoryProfile({ ...profilePayload,
+    capabilities: profilePayload.capabilities.filter((entry) => entry !== 'retain-all-cleanup'),
+    cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine',
+      worktreeRegistration: 'quarantine' } });
+  assert.equal(quarantine.capabilities.includes('retain-all-cleanup'), false);
+  assert.equal(quarantine.capabilities.includes('quarantine-worktree-cleanup-opt-in'), true);
+  assert.equal(quarantine.cleanup.worktreeProjection, 'quarantine');
+  assert.throws(() => createRepositoryProfile({ ...profilePayload,
+    cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine' } }),
+  /exact projection and registration/u);
+  assert.throws(() => createRepositoryProfile({ ...profilePayload,
+    cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine',
+      worktreeRegistration: 'quarantine' } }), /capability conflicts/u);
+  assert.throws(() => createRepositoryProfile({ ...profilePayload,
+    capabilities: [...profilePayload.capabilities, 'quarantine-worktree-cleanup-opt-in'] }),
+  /capability conflicts/u);
 });
 
 test('repository profiles reject malformed canonical Git refs before adapter access', () => {

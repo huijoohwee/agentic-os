@@ -112,10 +112,11 @@ authenticated authority source and grants no claim, lease, fence, review, integr
 release, retirement, deletion, or cleanup permission. Those decisions remain at the external
 authenticated authority and receipt boundary described above.
 
-The v1 profile fixes runtime and release authority to `consumer`. Its cleanup policy fixes all six
-effects to `retain`: worktree projection, worktree registration, remote-tracking ref, local branch,
-remote branch, and unreachable objects. No adapter can promote itself or translate legacy forced
-branch deletion into `retire`.
+The v1 profile fixes runtime and release authority to `consumer`. Cleanup defaults all six targets to
+`retain`. A profile may explicitly select `quarantine` only for both worktree projection and registration;
+it then derives `quarantine-worktree-cleanup-opt-in` instead of `retain-all-cleanup`. Remote-tracking refs,
+branches, and unreachable objects always remain retained. No adapter can promote itself or translate
+legacy deletion into `retire`.
 
 Provider-policy capabilities are optional and explicit: pull-request integration, merge-queue
 ordering, strict fresh-base checks, squash-only integration, and linear history are selected per

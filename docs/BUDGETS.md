@@ -26,7 +26,7 @@ any work begins, and it grows every time a scenario gets its own document.
 
 | Scope | Cap | Enforced by |
 |---|---|---|
-| Modules in `src/` | 35 | `bin/agentic-os-module-budget.mjs` |
+| Modules in `src/` | 46 | `bin/agentic-os-module-budget.mjs` |
 | Authored lines in `src/` | 15,000 | `bin/agentic-os-module-budget.mjs` |
 | Lines in one module | 400 | `bin/agentic-os-module-budget.mjs` |
 
@@ -42,6 +42,13 @@ The increase from 29 to 35 isolates six reusable authority boundaries: external 
 candidates, recovery inventory, GitHub challenge records, provider receipts, and I/O issuance. The
 inventory boundary owns one generic read-only Git byte observer; the others keep pure records independent
 of provider effects. None owns a scenario, target repository, release, or cleanup effect.
+
+The increase from 35 to 46 isolates eleven reusable lifecycle-completion boundaries: canonical effect and
+transition records, ambient-independent authority reads, transition inputs, committed transition policy,
+provider proof observation, provider REST I/O, create-only transition authority, cleanup records, cleanup
+joins, bounded manifests, and exact quarantine mechanics. The split keeps provider I/O out of pure records,
+policy out of provider proof, and bounded byte observation out of the mutation adapter. Defaults retain every
+target; no module owns a repository or release scenario.
 
 ## Reading the failure
 

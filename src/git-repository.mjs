@@ -21,11 +21,7 @@ import {
   assertPrivateDirectoryIdentity, legacyPrivateDirectoryIdentity,
   privateDirectoryIdentity, readPrivateFile, tightenLegacyPrivateDirectory,
 } from './file-integrity.mjs';
-import {
-  RETAIN_ALL_CLEANUP,
-  governanceDigest,
-  validateRepositoryProfile,
-} from './governance.mjs';
+import { governanceDigest, validateRepositoryProfile } from './governance.mjs';
 
 export const REPOSITORY_OBSERVATION_SCHEMA = 'agentic-os/repository-observation/v1';
 export const REPOSITORY_TRUST_SCHEMA = 'agentic-os/repository-trust/v1';
@@ -34,6 +30,7 @@ export const GIT_ADAPTER = Object.freeze({ id: 'git', version: '1' });
 export const GIT_CAPABILITIES = Object.freeze([
   'read-only-repository-observation',
   'retain-all-cleanup',
+  'quarantine-worktree-cleanup-opt-in',
   'shallow-observation-default',
   'deep-byte-audit-opt-in',
 ]);
@@ -187,9 +184,9 @@ function capture(root, expectedCommon, profile, localRef, remoteRef, mode) {
       operationallyClean: canonical?.operationallyClean ?? null,
     },
     projections,
-    capabilities: [...GIT_CAPABILITIES],
+    capabilities: [...profile.capabilities],
     authority: { runtime: 'consumer', release: 'consumer' },
-    cleanup: { ...RETAIN_ALL_CLEANUP },
+    cleanup: { ...profile.cleanup },
   };
 }
 

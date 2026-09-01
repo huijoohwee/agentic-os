@@ -585,7 +585,7 @@ test('this repository is inside its own documentation budget', () => {
 test('this repository is inside its own module budget', () => {
   const { found, entries, total } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
-  assert.equal(MODULE_BUDGET.modules, 35);
+  assert.equal(MODULE_BUDGET.modules, 46);
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
   for (const path of [
@@ -598,10 +598,11 @@ test('this repository is inside its own module budget', () => {
   ]) assert.ok(entries.some((entry) => entry.path === path), path);
 });
 
-test('the 35-module cap documents generic authority boundaries, not scenario growth', () => {
+test('the 46-module cap documents generic authority boundaries, not scenario growth', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const document = readFileSync(join(root, 'docs/BUDGETS.md'), 'utf8');
   assert.match(document, /increase from 29 to 35 isolates six reusable authority boundaries/u);
+  assert.match(document, /increase from 35 to 46 isolates eleven reusable lifecycle-completion boundaries/u);
   assert.match(document,
     /external evidence, recovery\s+candidates, recovery inventory, GitHub challenge records, provider receipts,\s+and I\/O issuance/u);
   assert.match(document,

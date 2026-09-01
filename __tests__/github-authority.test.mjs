@@ -17,6 +17,15 @@ import {
 } from '../src/github-authority-issuer.mjs';
 import { issueGitHubAuthority, verifyGitHubAuthorityIssuanceLive } from
   '../src/github-authority-operation.mjs';
+import {
+  createEffectPlan,
+  effectPlanByteDigest,
+  encodeEffectPlan,
+} from '../src/completion.mjs';
+import {
+  createGitHubAuthorityLiveVerificationReceipt,
+  validateGitHubAuthorityLiveVerificationReceipt,
+} from '../src/github-authority-client.mjs';
 
 const hash = (character, length = 64) => character.repeat(length);
 const CANONICAL = hash('a', 40), WORKFLOW = hash('b', 40), PUBLICATION = hash('9', 40);
@@ -508,4 +517,81 @@ test('protection projection digests ruleset ids, types, and bypass actors', () =
         parameters: { update_allows_fetch_and_merge: false } }], bypassActors: [] },
     ],
   }), /distinct active rulesets/u);
+});
+
+function spendFixture() {
+  const bound = candidate();
+  const draft = request(bound);
+  const plan = createEffectPlan({
+    target: {
+      repository: bound.targetRepository,
+      resource: bound.branch,
+      immutableRevision: `candidate:sha256:${bound.candidateDigest}`,
+    },
+    authority: {
+      requestedTransition: draft.requestedTransition,
+      authoritySubject: draft.authoritySubject,
+      ownerSubject: draft.ownerSubject,
+      claimId: draft.claimId,
+      leaseEpoch: draft.leaseEpoch,
+      fenceRevision: draft.fenceRevision,
+      writeSetDigest: draft.writeSetDigest,
+      reviewLocator: draft.reviewLocator,
+      predecessorDigest: bound.predecessorEvidenceDigest,
+    },
+    candidateDigest: bound.candidateDigest,
+    snapshotDigest: bound.workingStateDigest,
+    effectClass: 'publish-for-review-only',
+    allowedEffects: ['descendant-commit', 'exact-revalidation', 'new-review', 'nonforce-push'],
+    forbiddenEffects: ['auto-merge', 'cleanup', 'deletion', 'deploy', 'force-push',
+      'merge', 'release', 'reset', 'retire', 'stash'],
+    parametersDigest: hash('8'),
+  });
+  const planBytes = encodeEffectPlan(plan);
+  const source = request(bound, {
+    dependentWork: [`effect-plan:sha256:${effectPlanByteDigest(planBytes)}`],
+  });
+  const input = issueInput({ request: source, candidate: bound });
+  return { plan, planBytes, input, api: provider({ authorityInput: input }) };
+}
+
+test('live issuance spend binds exact canonical plan bytes and current provider state', async () => {
+  const fixture = spendFixture();
+  const issued = await issueGitHubAuthority(fixture.input, fixture.api);
+  const receipt = await createGitHubAuthorityLiveVerificationReceipt({
+    issuance: issued, planBytes: fixture.planBytes,
+  }, fixture.api, { now: () => LIVE_TIME });
+  assert.deepEqual(validateGitHubAuthorityLiveVerificationReceipt(receipt), receipt);
+  assert.equal(receipt.planDigest, fixture.plan.planDigest);
+  assert.equal(receipt.planByteDigest, effectPlanByteDigest(fixture.planBytes));
+  assert.equal(receipt.issuanceDigest, issued.issuanceDigest);
+  assert.equal(fixture.api.calls.filter(([name]) => name === 'publishBundle').length, 1);
+});
+
+test('live issuance spend rejects noncanonical, mismatched, stale, and drifting authority', async () => {
+  const fixture = spendFixture();
+  const issued = await issueGitHubAuthority(fixture.input, fixture.api);
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({
+    issuance: issued, planBytes: Buffer.concat([fixture.planBytes, Buffer.from('\n')]),
+  }, fixture.api, { now: () => LIVE_TIME }), /canonical bytes/u);
+  const { planDigest: ignoredPlanDigest, ...planInput } = fixture.plan;
+  assert.match(ignoredPlanDigest, /^[0-9a-f]{64}$/u);
+  const changed = encodeEffectPlan(createEffectPlan({
+    ...planInput, parametersDigest: hash('7'),
+  }));
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance: issued, planBytes: changed },
+    fixture.api, { now: () => LIVE_TIME }), /exact effect plan/u);
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({
+    issuance: issued, planBytes: fixture.planBytes,
+  }, fixture.api, { now: () => Date.parse('2026-09-02T00:50:00.000Z') }),
+  /validity window/u);
+  let calls = 0;
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({
+    issuance: issued, planBytes: fixture.planBytes,
+  }, fixture.api, { now: () => calls++ === 0 ? LIVE_TIME : LIVE_TIME - 1 }),
+  /moved backwards/u);
+  fixture.api.setCanonicalRevision(hash('4', 40));
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({
+    issuance: issued, planBytes: fixture.planBytes,
+  }, fixture.api, { now: () => LIVE_TIME }), /canonical ref moved/u);
 });

@@ -16,7 +16,7 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
-  modules: 35,
+  modules: 46,
   totalLines: 15000,
   perModuleLines: 400,
 });

@@ -18,13 +18,47 @@ const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 function installPriorReleaseRuntime(selected) {
   const files = selected.files.map((file) => {
-    if (file.path !== 'src/governance.mjs') return file;
-    const bytes = Buffer.from(file.bytes.toString('utf8')
+    let source = file.bytes.toString('utf8');
+    if (file.path === 'src/git.mjs') source = source.replace(
+      "/** Strict detailed worktree state for lifecycle decisions; includes head and retention flags. */\nexport function worktreeInventory(cwd = process.cwd()) {\n  return parseWorktreeList(observeGit([\n    'worktree', 'list', '--porcelain', '-z', '--expire=now',\n  ], { cwd, binary: true, maxBuffer: 16 * 1024 * 1024 }), { detailed: true });\n}\n\n", '\n');
+    if (file.path === 'src/git-tracked.mjs') source = source
+      .replace('export function parseWorktreeList(raw, { detailed = false } = {}) {',
+        'export function parseWorktreeList(raw) {')
+      .replace("    entries.push(detailed ? { ...current }\n      : { path: current.path, branch: current.branch, detached: current.detached });",
+        '    entries.push({ path: current.path, branch: current.branch, detached: current.detached });');
+    if (file.path === 'src/git-repository.mjs') source = source
+      .replace("import { governanceDigest, validateRepositoryProfile } from './governance.mjs';",
+        "import {\n  RETAIN_ALL_CLEANUP,\n  governanceDigest,\n  validateRepositoryProfile,\n} from './governance.mjs';")
+      .replace("  'quarantine-worktree-cleanup-opt-in',\n", '')
+      .replace('    capabilities: [...profile.capabilities],',
+        '    capabilities: [...GIT_CAPABILITIES],')
+      .replace('    cleanup: { ...profile.cleanup },', '    cleanup: { ...RETAIN_ALL_CLEANUP },');
+    if (file.path === 'src/governance.mjs') source = source
+      .replace("  'quarantine-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +\n  'shallow-observation-default tested-protected-ordering:merge-queue'",
+        "  'required-check-policy:strict retain-all-cleanup shallow-observation-default ' +\n  'tested-protected-ordering:merge-queue'")
+      .replace('  return encoded; }', '  return encoded;\n}')
+      .replace('  Object.values(value).forEach(frozen); return Object.freeze(value); }',
+        '  Object.values(value).forEach(frozen);\n  return Object.freeze(value);\n}')
+      .replace("  const quarantineKeys = ['worktreeProjection', 'worktreeRegistration'];\n  for (const key of CLEANUP_KEYS) if (value[key] !== 'retain'\n    && (!quarantineKeys.includes(key) || value[key] !== 'quarantine'))\n    fail(`cleanup.${key} selects an unsupported effect`);\n  if ((value.worktreeProjection === 'quarantine') !== (value.worktreeRegistration === 'quarantine')) fail('cleanup quarantine requires exact projection and registration opt-in');\n  return { ...value };",
+        "  const result = Object.fromEntries(CLEANUP_KEYS.map((key) => {\n    if (value[key] !== 'retain') fail(`cleanup.${key} must retain consumer-owned state`);\n    return [key, 'retain'];\n  }));\n  return result;")
+      .replace("  const cleanupPolicy = cleanup(source.cleanup);\n  const cleanupCapability = Object.values(cleanupPolicy).every((value) => value === 'retain')\n    ? 'retain-all-cleanup' : 'quarantine-worktree-cleanup-opt-in';\n  const requestedCapabilities = strings(source.capabilities ?? [], 'capabilities');\n  const conflicting = cleanupCapability === 'retain-all-cleanup'\n    ? 'quarantine-worktree-cleanup-opt-in' : 'retain-all-cleanup';\n  if (requestedCapabilities.includes(conflicting)) fail('cleanup capability conflicts with selected effects');\n  const capabilities = strings([...requestedCapabilities.filter((value) => value !== conflicting\n    && value !== cleanupCapability), cleanupCapability], 'capabilities');",
+        "  const capabilities = strings(source.capabilities ?? [], 'capabilities');")
+      .replace('    requiredChecks, capabilities,\n    authority: { ...CONSUMER_AUTHORITY }, cleanup: cleanupPolicy,',
+        '    requiredChecks,\n    capabilities,\n    authority: { ...CONSUMER_AUTHORITY },\n    cleanup: cleanup(source.cleanup),')
+      .replace('  const source = snapshot(input), payload = profilePayload(source), profileDigest = governanceDigest(payload);\n  if (source.profileDigest !== undefined && source.profileDigest !== profileDigest) fail(\'profileDigest mismatch\');',
+        "  const source = snapshot(input);\n  const payload = profilePayload(source);\n  const profileDigest = governanceDigest(payload);\n  if (source.profileDigest !== undefined && source.profileDigest !== profileDigest)\n    fail('profileDigest does not match repository profile');")
+      .replace('  const source = snapshot(value); exactKeys(source, PROFILE_KEYS, \'repository profile\');',
+        "  const source = snapshot(value);\n  exactKeys(source, PROFILE_KEYS, 'repository profile');")
       .replace(/export function deriveCoordinationClaimId\([^\n]+\n/u, '')
       .replace('source.claimId ?? deriveCoordinationClaimId(identity)',
-        "source.claimId ?? governanceDigest({ schema: 'agentic-os/claim-id/v1', ...identity })"));
-    assert.equal(digest(bytes),
-      '5c9790eb4dac5b7d2a41dd2287cd74327b6f21082646b4d69813606e36512bd2');
+        "source.claimId ?? governanceDigest({ schema: 'agentic-os/claim-id/v1', ...identity })");
+    const bytes = Buffer.from(source);
+    const expected = { 'src/git.mjs': '77d8b768ff6ce9d5b54a198b8463a5a54db0c175560aa8b6dd9d6cca3679ea24',
+      'src/git-repository.mjs': 'd8e5d32a6ff57b18279d1d34c1ce338771442521d188a46228f1d3779fec0b3b',
+      'src/git-tracked.mjs': '664364b8453ea69a6f5458abc038494eda2551320f58677dab9f24db68ec2503',
+      'src/governance.mjs': '5c9790eb4dac5b7d2a41dd2287cd74327b6f21082646b4d69813606e36512bd2' }[file.path];
+    if (expected === undefined) return file;
+    assert.equal(digest(bytes), expected);
     return { ...file, bytes, sha256: digest(bytes) };
   });
   const identity = { schema: 'agentic-os/hook-runtime/v1',

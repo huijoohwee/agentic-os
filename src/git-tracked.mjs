@@ -321,7 +321,7 @@ function invalidWorktreeInventory(detail) {
 }
 
 /** Strict parser for Git's NUL-delimited worktree porcelain format. */
-export function parseWorktreeList(raw) {
+export function parseWorktreeList(raw, { detailed = false } = {}) {
   if (!Buffer.isBuffer(raw) || raw.length === 0 || raw.at(-1) !== 0)
     throw invalidWorktreeInventory('output is not NUL-terminated');
   let text;
@@ -333,7 +333,8 @@ export function parseWorktreeList(raw) {
     if (!current || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(current.head ?? '')
       || Number(current.branch !== null) + Number(current.detached) + Number(current.bare) !== 1)
       throw invalidWorktreeInventory('record identity is incomplete or conflicting');
-    entries.push({ path: current.path, branch: current.branch, detached: current.detached });
+    entries.push(detailed ? { ...current }
+      : { path: current.path, branch: current.branch, detached: current.detached });
   };
   for (const field of fields) {
     if (field.startsWith('worktree ')) {
