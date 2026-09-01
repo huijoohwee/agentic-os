@@ -5,7 +5,7 @@
  * Every mutation is either local and reversible, or an explicit opt-in.
  */
 
-import { chmodSync, existsSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   git,
@@ -36,6 +36,7 @@ import { surveyLanes, sourceHeadTrailer } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
 import { classifyWriteSet, collectWriteSet } from '../src/autonomy-class.mjs';
 import * as report from '../src/report.mjs';
+import { applyCanonicalSync, planCanonicalSync } from '../src/canonical-sync.mjs';
 
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
@@ -363,6 +364,30 @@ function cmdQueue(root, argv) {
   return 1;
 }
 
+function cmdCanonicalSync(root, argv) {
+  const [action = 'plan'] = positional(argv);
+  if (action === 'plan') {
+    const plan = planCanonicalSync({ cwd: root });
+    out(JSON.stringify(plan, null, 2));
+    return 0;
+  }
+  if (action === 'apply') {
+    const planPath = option(argv, 'plan');
+    const authorization = option(argv, 'authorize');
+    const exclusive = option(argv, 'exclusive');
+    if (!planPath || !authorization || !exclusive) {
+      err('usage: agentic-os canonical-sync apply --plan=<file> --authorize=<plan authorization> --exclusive=<plan exclusive authorization>');
+      return 1;
+    }
+    const plan = JSON.parse(readFileSync(planPath, 'utf8'));
+    const receipt = applyCanonicalSync(plan, { cwd: root, authorization, exclusive });
+    out(JSON.stringify(receipt, null, 2));
+    return 0;
+  }
+  err(`unknown canonical-sync action "${action}". use: plan | apply`);
+  return 1;
+}
+
 function cmdAutonomyClass(root, argv) {
   const base = option(argv, 'base', PROTECTED_REF);
   const head = option(argv, 'head', 'HEAD');
@@ -398,6 +423,7 @@ function cmdHelp() {
       '  npm run land              push the lane, open a PR, hand it to the queue',
       '  npm run status            lanes, WIP against caps, queue state',
       '  npm run reap [-- --apply] retire lanes proven integrated by patch identity',
+      '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  npm run queue:show        inspect the required remote configuration',
       '  npm run queue:apply       write it (explicit, mutates branch protection)',
@@ -450,6 +476,8 @@ function main() {
       return cmdStatus(root, argv);
     case 'reap':
       return cmdReap(root, argv);
+    case 'canonical-sync':
+      return cmdCanonicalSync(root, argv);
     case 'queue':
       return cmdQueue(root, argv);
     case 'autonomy-class':

@@ -30,6 +30,35 @@ npm run status                   # lanes, WIP, queue
 npm run reap                     # survey lanes proven integrated; add -- --apply to retire
 ```
 
+If canonical `main` is behind with unstaged or untracked bytes, create a read-only synchronization
+plan instead of stashing or resetting it:
+
+```sh
+npm run --silent sync:canonical > /tmp/canonical-sync.json
+# Review the exact SHAs, inventory digest, recovery ref, and both authorizations in the plan.
+node bin/agentic-os.mjs canonical-sync apply \
+  --plan=/tmp/canonical-sync.json \
+  --authorize=agentic-os:canonical-sync:<plan-digest> \
+  --exclusive=agentic-os:canonical-sync:exclusive:<plan-digest>
+```
+
+Apply rechecks the plan, captures nonignored dirty state in the printed recovery ref, restores the
+already-fetched protected `origin/main` tree, compare-and-swaps local `main`, preserves ignored
+files, and prints a receipt. Before supplying the exact `--exclusive` token, stop every IDE agent,
+hook, watcher, and process that can write the checkout. The Git-private lock serializes cooperating
+canonical-sync processes but cannot stop an uncooperative filesystem writer. Every tracked and
+nonignored path is moved atomically into Git-private quarantine and verified. Exact target blobs
+are staged privately and installed with no-clobber links, so a path recreated after quarantine is
+retained and forces a typed failure instead of being overwritten. On success, captured dirty bytes
+remain in the recovery ref and both temporary directories are removed. Directory-to-file topology
+is refused before recovery, and the final `origin/main` verification plus local `main` advance share
+one reference transaction.
+
+The operation is recovery-backed, not atomic. If interrupted after recovery-ref creation, do not
+repeat it blindly: preserve the checkout, recovery ref, lock, and named quarantine/staging paths.
+Every caught post-recovery failure names the exact recovery ref and commit; a quarantine failure
+also names the retained quarantine directory.
+
 ## What problem this solves
 
 Three settings compose into a livelock that no amount of recovery code fixes:
