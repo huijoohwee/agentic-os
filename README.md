@@ -35,16 +35,25 @@ plan instead of stashing or resetting it:
 
 ```sh
 npm run --silent sync:canonical > /tmp/canonical-sync.json
-# Review the exact SHAs, inventory digest, recovery ref, and authorization in the plan.
+# Review the exact SHAs, inventory digest, recovery ref, and both authorizations in the plan.
 node bin/agentic-os.mjs canonical-sync apply \
-  --plan=/tmp/canonical-sync.json --authorize=agentic-os:canonical-sync:<plan-digest>
+  --plan=/tmp/canonical-sync.json \
+  --authorize=agentic-os:canonical-sync:<plan-digest> \
+  --exclusive=agentic-os:canonical-sync:exclusive:<plan-digest>
 ```
 
 Apply rechecks the plan, captures nonignored dirty state in the printed recovery ref, restores the
 already-fetched protected `origin/main` tree, compare-and-swaps local `main`, preserves ignored
-files, and prints a receipt. The operation is recovery-backed, not atomic: if it is interrupted
-after recovery-ref creation, do not repeat it blindly; preserve the checkout and recover from the
-exact printed ref. A post-recovery failure names that ref and commit explicitly.
+files, and prints a receipt. Before supplying the exact `--exclusive` token, stop every IDE agent,
+hook, watcher, and process that can write the checkout. The Git-private lock serializes cooperating
+canonical-sync processes but cannot stop an uncooperative filesystem writer. Dirty paths are moved
+atomically into Git-private quarantine and verified before restore; on success their captured bytes
+remain in the recovery ref and quarantine is removed.
+
+The operation is recovery-backed, not atomic. If interrupted after recovery-ref creation, do not
+repeat it blindly: preserve the checkout, recovery ref, lock, and any named quarantine directory.
+Every caught post-recovery failure names the exact recovery ref and commit; a quarantine failure
+also names the retained quarantine directory.
 
 ## What problem this solves
 

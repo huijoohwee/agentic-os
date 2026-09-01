@@ -4,6 +4,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, renameSync } from 'node:fs';
+import { join } from 'node:path';
 
 export class GitError extends Error {
   constructor(args, status, stderr) {
@@ -50,6 +52,34 @@ export function repoRoot(cwd = process.cwd()) {
 /** Shared across every worktree of one clone. rerere's cache lives here. */
 export function commonDir(cwd = process.cwd()) {
   return git(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd });
+}
+
+/** Serialize cooperating operations in a clone. A null result means another holder exists. */
+export function acquireOperationLock(name, cwd = process.cwd()) {
+  const path = join(commonDir(cwd), `${name}.lock`);
+  try { mkdirSync(path); } catch (error) {
+    if (error.code === 'EEXIST') return null;
+    throw error;
+  }
+  return path;
+}
+
+/** Atomically move exact worktree paths into same-filesystem Git-private storage. */
+export function quarantineWorktreeEntries(name, entries, verify, cwd = process.cwd()) {
+  const path = mkdtempSync(join(commonDir(cwd), `${name}-`));
+  const moved = [];
+  try {
+    for (const entry of entries) {
+      const slot = String(moved.length);
+      renameSync(join(cwd, entry.path), join(path, slot));
+      moved.push({ path: entry.path, slot });
+      verify(entry, slot, path);
+    }
+  } catch (error) {
+    error.quarantinePath = path;
+    throw error;
+  }
+  return { path, moved };
 }
 
 export function currentBranch(cwd = process.cwd()) {

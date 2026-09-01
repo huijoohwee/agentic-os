@@ -2,18 +2,20 @@
 import { lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { git, commonDir, currentBranch, isAncestor, repoRoot } from './git.mjs';
+import {
+  acquireOperationLock, commonDir, currentBranch, git, isAncestor, quarantineWorktreeEntries,
+  repoRoot,
+} from './git.mjs';
 
-export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v1';
-export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v1';
+export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2';
+export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v2';
 export const TARGET_REF = 'refs/remotes/origin/main';
 
 export class CanonicalSyncError extends Error {
   constructor(reason, detail = {}) {
     super(`${reason}: ${JSON.stringify(detail)}`);
     this.name = 'CanonicalSyncError';
-    this.reason = reason;
-    this.detail = detail;
+    Object.assign(this, { reason, detail });
   }
 }
 function refuse(reason, detail = {}) { throw new CanonicalSyncError(reason, detail); }
@@ -70,11 +72,8 @@ function contentAt(path, cwd) {
     kind: 'symlink', mode: '120000', bytes: readlinkSync(absolute, { encoding: 'buffer' }),
   };
   if (!stat.isFile()) refuse('blocked-unsupported-dirty-path', { path });
-  return {
-    kind: 'file',
-    mode: stat.mode & 0o111 ? '100755' : '100644',
-    bytes: readFileSync(absolute),
-  };
+  return { kind: 'file', mode: stat.mode & 0o111 ? '100755' : '100644',
+    bytes: readFileSync(absolute) };
 }
 function assertCleanIndex(cwd) {
   if (git(['diff', '--cached', '--quiet', 'HEAD', '--'], { cwd, allowFail: true }) === null)
@@ -91,7 +90,7 @@ function assertCleanIndex(cwd) {
     .filter((entry) => entry.assumeUnchanged || entry.skipWorktree);
   if (hidden.length > 0) refuse('blocked-index-visibility-flags', { entries: hidden });
 }
-function snapshotInventory(cwd, localSha) {
+function snapshotInventory(cwd, localSha, { rawTracked = true } = {}) {
   const base = treeEntries(localSha, cwd);
   const dirty = parseNameStatus(git(
     ['diff', '--name-status', '-z', '--no-renames', 'HEAD', '--'], { cwd, binary: true },
@@ -101,11 +100,16 @@ function snapshotInventory(cwd, localSha) {
   )).map((path) => ({ path, status: '?' }));
   const byPath = new Map([...dirty, ...untracked].map((entry) => [entry.path, entry.status]));
   for (const [path, prior] of base) {
-    if (prior.mode !== '100644' && prior.mode !== '100755') continue;
     const stat = lstatSync(join(cwd, path), { throwIfNoEntry: false });
-    if (!stat?.isFile()) continue;
-    const mode = stat.mode & 0o111 ? '100755' : '100644';
-    if (mode !== prior.mode && !byPath.has(path)) byPath.set(path, 'M');
+    if (!stat) {
+      if (!byPath.has(path)) byPath.set(path, 'D');
+      continue;
+    }
+    if (prior.mode === '160000') continue;
+    const content = contentAt(path, cwd);
+    const rawDrift = rawTracked
+      && git(['hash-object', '--stdin'], { cwd, input: content.bytes }) !== prior.oid;
+    if ((content.mode !== prior.mode || rawDrift) && !byPath.has(path)) byPath.set(path, 'M');
   }
   const inventory = [];
   for (const [path, status] of [...byPath].sort(([a], [b]) => a.localeCompare(b))) {
@@ -171,6 +175,7 @@ function stablePlanBody(plan) {
   };
 }
 function calculatePlanDigest(plan) { return sha256(JSON.stringify(stablePlanBody(plan))); }
+function exclusiveAuthorization(digest) { return `agentic-os:canonical-sync:exclusive:${digest}`; }
 function observed(cwd, targetRef) {
   if (targetRef !== TARGET_REF) refuse('blocked-target-ref', { targetRef, expected: TARGET_REF });
   const root = realpathSync(repoRoot(cwd));
@@ -187,9 +192,7 @@ function observed(cwd, targetRef) {
   assertIgnoredSafe(root, localSha, targetSha, ignored);
   const inventory = snapshotInventory(root, localSha);
   return { root, localSha, targetSha, inventory,
-    ignoredPathsDigest: sha256(JSON.stringify(ignored)),
-    ignoredPathCount: ignored.length,
-  };
+    ignoredPathsDigest: sha256(JSON.stringify(ignored)), ignoredPathCount: ignored.length };
 }
 export function planCanonicalSync({ cwd = process.cwd(), targetRef = TARGET_REF } = {}) {
   const state = observed(cwd, targetRef);
@@ -199,11 +202,11 @@ export function planCanonicalSync({ cwd = process.cwd(), targetRef = TARGET_REF 
     expectedLocalSha: state.localSha,
     expectedTargetSha: state.targetSha,
     inventoryDigest, inventory: state.inventory,
-    ignoredPathsDigest: state.ignoredPathsDigest,
-    ignoredPathCount: state.ignoredPathCount,
+    ignoredPathsDigest: state.ignoredPathsDigest, ignoredPathCount: state.ignoredPathCount,
   };
   plan.planDigest = calculatePlanDigest(plan);
   plan.authorization = `agentic-os:canonical-sync:${plan.planDigest}`;
+  plan.exclusiveAuthorization = exclusiveAuthorization(plan.planDigest);
   plan.recoveryRef = `refs/agentic-os/recovery/canonical-sync/${plan.planDigest}`;
   return plan;
 }
@@ -214,15 +217,15 @@ function assertPlan(plan) {
   const inventoryDigest = sha256(JSON.stringify(plan.inventory));
   if (plan.inventoryDigest !== inventoryDigest) {
     refuse('blocked-inventory-digest-mismatch', {
-      expected: inventoryDigest,
-      actual: plan.inventoryDigest,
-    });
+      expected: inventoryDigest, actual: plan.inventoryDigest });
   }
   const digest = calculatePlanDigest(plan);
   if (plan.planDigest !== digest)
     refuse('blocked-plan-digest-mismatch', { expected: digest, actual: plan.planDigest });
   if (plan.authorization !== `agentic-os:canonical-sync:${digest}`)
     refuse('blocked-plan-authorization-mismatch');
+  if (plan.exclusiveAuthorization !== exclusiveAuthorization(digest))
+    refuse('blocked-plan-exclusive-authorization-mismatch');
   if (plan.recoveryRef !== `refs/agentic-os/recovery/canonical-sync/${digest}`)
     refuse('blocked-plan-recovery-ref-mismatch');
 }
@@ -262,6 +265,8 @@ function captureRecovery(plan, cwd) {
   const temp = mkdtempSync(join(commonDir(cwd), 'agentic-os-canonical-sync-'));
   const index = join(temp, 'index');
   const env = { GIT_INDEX_FILE: index };
+  let commit;
+  let tree;
   try {
     git(['read-tree', plan.expectedLocalSha], { cwd, env });
     for (const entry of plan.inventory) {
@@ -274,12 +279,9 @@ function captureRecovery(plan, cwd) {
       if (oid !== entry.oid || content.mode !== entry.mode || sha256(content.bytes) !== entry.sha256) {
         refuse('blocked-capture-drift', { path: entry.path });
       }
-      git(['update-index', '--add', '--cacheinfo', `${entry.mode},${oid},${entry.path}`], {
-        cwd,
-        env,
-      });
+      git(['update-index', '--add', '--cacheinfo', `${entry.mode},${oid},${entry.path}`], { cwd, env });
     }
-    const tree = git(['write-tree'], { cwd, env });
+    tree = git(['write-tree'], { cwd, env });
     const message = `agentic-os canonical recovery\n\nPlan-Digest: ${plan.planDigest}\n`;
     const identity = {
       GIT_AUTHOR_NAME: 'agentic-os recovery',
@@ -287,56 +289,52 @@ function captureRecovery(plan, cwd) {
       GIT_COMMITTER_NAME: 'agentic-os recovery',
       GIT_COMMITTER_EMAIL: 'recovery@agentic-os.invalid',
     };
-    const commit = git(['commit-tree', tree, '-p', plan.expectedLocalSha], {
-      cwd,
-      input: message,
-      env: identity,
-    });
-    git(['update-ref', plan.recoveryRef, commit, '0'.repeat(commit.length)], { cwd });
-    return { commit, tree };
+    commit = git(['commit-tree', tree, '-p', plan.expectedLocalSha], {
+      cwd, input: message, env: identity });
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+  git(['update-ref', plan.recoveryRef, commit, '0'.repeat(commit.length)], { cwd });
+  return { commit, tree };
 }
 
-function removePlannedUntracked(plan, targetPaths, cwd) {
-  const removed = [];
-  for (const entry of plan.inventory) {
-    if (entry.status !== '?' || targetPaths.has(entry.path)) continue;
-    const content = contentAt(entry.path, cwd);
-    const oid = git(['hash-object', '--stdin'], { cwd, input: content.bytes });
-    if (content.mode !== entry.mode || oid !== entry.oid || sha256(content.bytes) !== entry.sha256) {
-      refuse('blocked-removal-drift', { path: entry.path });
-    }
-    rmSync(join(cwd, entry.path), { force: true });
-    removed.push(entry.path);
-  }
-  return removed;
+function quarantineInventory(plan, cwd) {
+  return quarantineWorktreeEntries(
+    'agentic-os-canonical-sync-quarantine',
+    plan.inventory.filter((entry) => entry.kind !== 'deleted'),
+    (entry, slot, path) => {
+      const content = contentAt(slot, path);
+      if (content.mode !== entry.mode || sha256(content.bytes) !== entry.sha256)
+        refuse('blocked-quarantine-drift', { path: entry.path, quarantinePath: path });
+    },
+    cwd,
+  );
 }
 
-function cleanStatus(cwd) {
-  return git(['status', '--porcelain=v1', '--untracked-files=all'], { cwd });
-}
+function cleanStatus(cwd) { return git(['status', '--porcelain=v1', '--untracked-files=all'], { cwd }); }
 
 export function applyCanonicalSync(
   plan,
-  { cwd = process.cwd(), authorization = null } = {},
+  { cwd = process.cwd(), authorization = null, exclusive = null } = {},
 ) {
   assertPlan(plan);
-  if (authorization !== plan.authorization) {
+  if (authorization !== plan.authorization)
     refuse('blocked-authorization', { expected: plan.authorization });
-  }
+  if (exclusive !== plan.exclusiveAuthorization)
+    refuse('blocked-exclusive-authorization', { expected: plan.exclusiveAuthorization });
   const root = realpathSync(repoRoot(cwd));
-  if (root !== realpathSync(resolve(plan.repository))) {
+  if (root !== realpathSync(resolve(plan.repository)))
     refuse('blocked-repository-mismatch', { expected: plan.repository, actual: root });
-  }
-  assertUnchanged(plan, root);
-  const recovery = captureRecovery(plan, root);
-  assertRecoveryFidelity(plan, recovery, root);
-  assertUnchanged(plan, root, { recoveryCommit: recovery.commit });
+  const lockPath = acquireOperationLock('agentic-os-canonical-sync', root);
+  if (!lockPath) refuse('blocked-exclusive-lock-held');
+  let recovery = null;
+  let quarantine = null;
   try {
-    const targetPaths = new Set(treeEntries(plan.expectedTargetSha, root).keys());
-    const removedUntracked = removePlannedUntracked(plan, targetPaths, root);
+    assertUnchanged(plan, root);
+    recovery = captureRecovery(plan, root);
+    assertRecoveryFidelity(plan, recovery, root);
+    assertUnchanged(plan, root, { recoveryCommit: recovery.commit });
+    quarantine = quarantineInventory(plan, root);
 
     git(
       ['restore', `--source=${plan.expectedTargetSha}`, '--staged', '--worktree', '--', '.'],
@@ -351,7 +349,7 @@ export function applyCanonicalSync(
     const actualTarget = git(['rev-parse', '--verify', plan.targetRef], { cwd: root });
     const status = cleanStatus(root);
     assertCleanIndex(root);
-    const remaining = snapshotInventory(root, plan.expectedTargetSha);
+    const remaining = snapshotInventory(root, plan.expectedTargetSha, { rawTracked: false });
     if (
       actualHead !== plan.expectedTargetSha
       || actualTarget !== plan.expectedTargetSha
@@ -366,6 +364,7 @@ export function applyCanonicalSync(
         remaining,
       });
     }
+    rmSync(quarantine.path, { recursive: true });
     return {
       schema: RECEIPT_SCHEMA,
       planDigest: plan.planDigest,
@@ -379,14 +378,21 @@ export function applyCanonicalSync(
       recoveryRef: plan.recoveryRef,
       recoveryCommit: recovery.commit,
       recoveryTree: recovery.tree,
-      removedUntracked,
+      removedUntracked: plan.inventory.filter((entry) => entry.status === '?')
+        .map((entry) => entry.path),
+      exclusiveContract: plan.exclusiveAuthorization,
+      quarantineRemoved: true,
       clean: true,
     };
   } catch (error) {
+    if (!recovery) throw error;
     refuse('blocked-after-recovery', {
       recoveryRef: plan.recoveryRef,
       recoveryCommit: recovery.commit,
+      quarantinePath: quarantine?.path ?? error.quarantinePath ?? error.detail?.quarantinePath ?? null,
       cause: error instanceof CanonicalSyncError ? error.reason : error.message,
     });
+  } finally {
+    rmSync(lockPath, { recursive: true, force: true });
   }
 }

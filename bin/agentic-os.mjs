@@ -374,12 +374,13 @@ function cmdCanonicalSync(root, argv) {
   if (action === 'apply') {
     const planPath = option(argv, 'plan');
     const authorization = option(argv, 'authorize');
-    if (!planPath || !authorization) {
-      err('usage: agentic-os canonical-sync apply --plan=<file> --authorize=<plan authorization>');
+    const exclusive = option(argv, 'exclusive');
+    if (!planPath || !authorization || !exclusive) {
+      err('usage: agentic-os canonical-sync apply --plan=<file> --authorize=<plan authorization> --exclusive=<plan exclusive authorization>');
       return 1;
     }
     const plan = JSON.parse(readFileSync(planPath, 'utf8'));
-    const receipt = applyCanonicalSync(plan, { cwd: root, authorization });
+    const receipt = applyCanonicalSync(plan, { cwd: root, authorization, exclusive });
     out(JSON.stringify(receipt, null, 2));
     return 0;
   }

@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -72,6 +73,12 @@ function reason(error, expected) {
   return true;
 }
 
+function applyPlan(plan, cwd) {
+  return applyCanonicalSync(plan, {
+    cwd, authorization: plan.authorization, exclusive: plan.exclusiveAuthorization,
+  });
+}
+
 test('plan is read-only and binds exact SHAs, inventory, authorization, and recovery ref', (t) => {
   const { dir, localSha, targetSha } = fixture();
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -84,6 +91,10 @@ test('plan is read-only and binds exact SHAs, inventory, authorization, and reco
   assert.equal(plan.expectedLocalSha, localSha);
   assert.equal(plan.expectedTargetSha, targetSha);
   assert.equal(plan.authorization, `agentic-os:canonical-sync:${plan.planDigest}`);
+  assert.equal(
+    plan.exclusiveAuthorization,
+    `agentic-os:canonical-sync:exclusive:${plan.planDigest}`,
+  );
   assert.equal(
     plan.recoveryRef,
     `refs/agentic-os/recovery/canonical-sync/${plan.planDigest}`,
@@ -113,10 +124,14 @@ test('apply refuses missing authorization and any byte drift before recovery or 
   );
   assert.equal(git(['rev-parse', 'HEAD'], { cwd: first.dir }), first.localSha);
   assert.equal(git(['show-ref', '--verify', plan.recoveryRef], { cwd: first.dir, allowFail: true }), null);
+  assert.throws(
+    () => applyCanonicalSync(plan, { cwd: first.dir, authorization: plan.authorization }),
+    (error) => reason(error, 'blocked-exclusive-authorization'),
+  );
 
   write(join(first.dir, 'tracked space.txt'), 'drift after plan\n');
   assert.throws(
-    () => applyCanonicalSync(plan, { cwd: first.dir, authorization: plan.authorization }),
+    () => applyPlan(plan, first.dir),
     (error) => reason(error, 'blocked-plan-drift'),
   );
   assert.equal(git(['rev-parse', 'HEAD'], { cwd: first.dir }), first.localSha);
@@ -136,6 +151,7 @@ test('apply refuses target-ref drift and a pre-existing recovery ref', (t) => {
     () => applyCanonicalSync(movedPlan, {
       cwd: moved.dir,
       authorization: movedPlan.authorization,
+      exclusive: movedPlan.exclusiveAuthorization,
     }),
     (error) => reason(error, 'blocked-plan-drift'),
   );
@@ -149,10 +165,24 @@ test('apply refuses target-ref drift and a pre-existing recovery ref', (t) => {
     () => applyCanonicalSync(occupiedPlan, {
       cwd: occupied.dir,
       authorization: occupiedPlan.authorization,
+      exclusive: occupiedPlan.exclusiveAuthorization,
     }),
     (error) => reason(error, 'blocked-recovery-ref-exists'),
   );
   assert.equal(occupied.run(['rev-parse', 'HEAD']), occupied.localSha);
+});
+
+test('apply refuses a held cooperative lock before recovery or mutation', (t) => {
+  const held = fixture();
+  t.after(() => rmSync(held.dir, { recursive: true, force: true }));
+  const plan = planCanonicalSync({ cwd: held.dir });
+  const lock = join(held.dir, '.git', 'agentic-os-canonical-sync.lock');
+  mkdirSync(lock);
+
+  assert.throws(() => applyPlan(plan, held.dir),
+    (error) => reason(error, 'blocked-exclusive-lock-held'));
+  assert.equal(held.run(['show-ref', '--verify', plan.recoveryRef], { allowFail: true }), null);
+  assert.equal(readFileSync(join(held.dir, 'untracked space.txt'), 'utf8'), 'owned untracked\n');
 });
 
 test('plan refuses index visibility flags without losing hidden authored bytes', (t) => {
@@ -192,10 +222,7 @@ test('NUL inventory preserves a leading-space and newline path through recovery'
   const plan = planCanonicalSync({ cwd: weird.dir });
   assert.deepEqual(plan.inventory.map((entry) => entry.path), [path]);
 
-  const receipt = applyCanonicalSync(plan, {
-    cwd: weird.dir,
-    authorization: plan.authorization,
-  });
+  const receipt = applyPlan(plan, weird.dir);
   assert.equal(existsSync(join(weird.dir, path)), false);
   assert.equal(
     weird.run(['show', `${receipt.recoveryRef}:${path}`]),
@@ -213,12 +240,30 @@ test('filesystem mode drift is recovered even when core.fileMode hides it', (t) 
 
   const plan = planCanonicalSync({ cwd: mode.dir });
   assert.deepEqual(plan.inventory.map((entry) => [entry.path, entry.mode]), [[path, '100755']]);
-  const receipt = applyCanonicalSync(plan, {
-    cwd: mode.dir,
-    authorization: plan.authorization,
-  });
+  const receipt = applyPlan(plan, mode.dir);
   assert.match(mode.run(['ls-tree', receipt.recoveryRef, '--', path]), /^100755 blob /u);
   assert.equal(statSync(join(mode.dir, path)).mode & 0o111, 0);
+});
+
+test('raw tracked bytes are recovered when Git normalization hides them', (t) => {
+  const normalized = fixture({ dirty: false });
+  t.after(() => rmSync(normalized.dir, { recursive: true, force: true }));
+  const path = 'tracked space.txt';
+  normalized.run(['config', 'core.autocrlf', 'true']);
+  rmSync(join(normalized.dir, path));
+  normalized.run(['checkout', '--', path]);
+  assert.deepEqual(readFileSync(join(normalized.dir, path)), Buffer.from('base tracked\r\n'));
+  assert.equal(normalized.run(['status', '--porcelain=v1', '--untracked-files=all']), '');
+
+  const plan = planCanonicalSync({ cwd: normalized.dir });
+  assert.deepEqual(plan.inventory.map((entry) => entry.path), [path]);
+  const receipt = applyPlan(plan, normalized.dir);
+  const recovered = execFileSync(
+    'git',
+    ['cat-file', 'blob', `${receipt.recoveryRef}:${path}`],
+    { cwd: normalized.dir },
+  );
+  assert.deepEqual(recovered, Buffer.from('base tracked\r\n'));
 });
 
 test('recovery preserves non-UTF-8 symlink target bytes and rejects non-UTF-8 paths', (t) => {
@@ -228,10 +273,7 @@ test('recovery preserves non-UTF-8 symlink target bytes and rejects non-UTF-8 pa
   const target = Buffer.from([0xff]);
   symlinkSync(target, join(symlink.dir, link));
   const plan = planCanonicalSync({ cwd: symlink.dir });
-  const receipt = applyCanonicalSync(plan, {
-    cwd: symlink.dir,
-    authorization: plan.authorization,
-  });
+  const receipt = applyPlan(plan, symlink.dir);
   const recovered = execFileSync(
     'git',
     ['cat-file', 'blob', `${receipt.recoveryRef}:${link}`],
@@ -264,7 +306,7 @@ test('a failure after recovery names the durable ref and commit', (t) => {
 
   let failure;
   assert.throws(
-    () => applyCanonicalSync(plan, { cwd: failed.dir, authorization: plan.authorization }),
+    () => applyPlan(plan, failed.dir),
     (error) => {
       failure = error;
       return reason(error, 'blocked-after-recovery');
@@ -274,6 +316,49 @@ test('a failure after recovery names the durable ref and commit', (t) => {
   assert.match(failure.detail.recoveryCommit, /^[0-9a-f]{40}$/u);
   assert.equal(failed.run(['rev-parse', 'HEAD']), failed.localSha);
   assert.equal(failed.run(['show', `${plan.recoveryRef}:tracked space.txt`]), 'owned tracked');
+});
+
+test('an immediate pre-quarantine replacement is retained and fails closed', (t) => {
+  const raced = fixture();
+  t.after(() => rmSync(raced.dir, { recursive: true, force: true }));
+  const plan = planCanonicalSync({ cwd: raced.dir });
+  const bin = mkdtempSync(join(tmpdir(), 'agentic-os-race-git-'));
+  t.after(() => rmSync(bin, { recursive: true, force: true }));
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const wrapper = join(bin, 'git');
+  write(wrapper, [
+    '#!/bin/sh',
+    'if [ "$1" = rev-parse ] && [ "$2" = --verify ] && [ "$3" = "$RECOVERY_REF" ] &&',
+    '   "$REAL_GIT" show-ref --verify --quiet "$RECOVERY_REF"; then',
+    '  printf "RACED UNIQUE\\n" > "$RACE_PATH"',
+    'fi',
+    'exec "$REAL_GIT" "$@"',
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const prior = { PATH: process.env.PATH, REAL_GIT: process.env.REAL_GIT,
+    RECOVERY_REF: process.env.RECOVERY_REF, RACE_PATH: process.env.RACE_PATH };
+  Object.assign(process.env, {
+    PATH: `${bin}:${prior.PATH}`, REAL_GIT: realGit, RECOVERY_REF: plan.recoveryRef,
+    RACE_PATH: join(raced.dir, 'untracked space.txt'),
+  });
+  t.after(() => {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
+  let failure;
+  assert.throws(() => applyPlan(plan, raced.dir), (error) => {
+    failure = error;
+    return reason(error, 'blocked-after-recovery');
+  });
+  assert.equal(failure.detail.cause, 'blocked-quarantine-drift');
+  assert.ok(failure.detail.quarantinePath);
+  const retained = readdirSync(failure.detail.quarantinePath)
+    .map((name) => readFileSync(join(failure.detail.quarantinePath, name), 'utf8'));
+  assert.ok(retained.includes('RACED UNIQUE\n'));
+  assert.equal(raced.run(['show', `${plan.recoveryRef}:untracked space.txt`]), 'owned untracked');
 });
 
 test('ignored leading-space collisions are rejected before recovery or overwrite', (t) => {
@@ -328,7 +413,7 @@ test('apply recovers dirty bytes, restores target, preserves ignored files, and 
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const plan = planCanonicalSync({ cwd: dir });
 
-  const receipt = applyCanonicalSync(plan, { cwd: dir, authorization: plan.authorization });
+  const receipt = applyPlan(plan, dir);
 
   assert.equal(receipt.schema, RECEIPT_SCHEMA);
   assert.equal(receipt.priorHead, localSha);
