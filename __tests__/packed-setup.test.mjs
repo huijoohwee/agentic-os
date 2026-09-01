@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync, copyFileSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync,
   writeFileSync,
@@ -8,9 +9,42 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { createRepositoryProfile } from '../src/governance.mjs';
-import { describeHookRuntime } from '../bin/agentic-os-hook-runtime.mjs';
+import {
+  assertPriorManagedRuntime, describeHookRuntime,
+} from '../bin/agentic-os-hook-runtime.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
+const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+function installPriorReleaseRuntime(selected) {
+  const files = selected.files.map((file) => {
+    if (file.path !== 'src/governance.mjs') return file;
+    const bytes = Buffer.from(file.bytes.toString('utf8')
+      .replace(/export function deriveCoordinationClaimId\([^\n]+\n/u, '')
+      .replace('source.claimId ?? deriveCoordinationClaimId(identity)',
+        "source.claimId ?? governanceDigest({ schema: 'agentic-os/claim-id/v1', ...identity })"));
+    assert.equal(digest(bytes),
+      '5c9790eb4dac5b7d2a41dd2287cd74327b6f21082646b4d69813606e36512bd2');
+    return { ...file, bytes, sha256: digest(bytes) };
+  });
+  const identity = { schema: 'agentic-os/hook-runtime/v1',
+    files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
+  const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
+  assert.equal(runtimeId,
+    'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0');
+  const manifest = { schema: identity.schema, runtimeId, files: identity.files };
+  const path = join(selected.managedRoot, runtimeId);
+  mkdirSync(path, { mode: 0o700 });
+  for (const name of ['.githooks', 'bin', 'src']) mkdirSync(join(path, name), { mode: 0o700 });
+  for (const file of files) {
+    const target = join(path, file.path);
+    writeFileSync(target, file.bytes, { mode: file.mode }); chmodSync(target, file.mode);
+  }
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(join(path, 'runtime-manifest.json'), manifestBytes, { mode: 0o600 });
+  chmodSync(join(path, 'runtime-manifest.json'), 0o600);
+  return { path, hooksPath: join(path, '.githooks'), manifestBytes };
+}
 
 function runChild(file, args, options) {
   return new Promise((resolveResult) => {
@@ -208,6 +242,24 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(hooksPath.includes('node_modules'), false);
   for (const hook of ['pre-commit', 'pre-push'])
     assert.notEqual(statSync(join(hooksPath, hook)).mode & 0o111, 0, `${hook} must be executable`);
+
+  const priorRuntime = installPriorReleaseRuntime(contestedRuntime);
+  assert.notEqual(priorRuntime.hooksPath, hooksPath);
+  execFileSync('git', ['config', '--local', '--fixed-value', '--replace-all',
+    'core.hooksPath', priorRuntime.hooksPath, hooksPath], { cwd: repository });
+  const releaseMigration = spawnSync(cli, ['setup'], { cwd: repository, encoding: 'utf8' });
+  assert.equal(releaseMigration.status, 0, releaseMigration.stderr);
+  const migratedValues = execFileSync('git', [
+    'config', '--local', '--get-all', 'core.hooksPath',
+  ], { cwd: repository, encoding: 'utf8' }).trim().split('\n');
+  assert.deepEqual(migratedValues, [hooksPath]);
+  assert.equal(assertPriorManagedRuntime(priorRuntime.hooksPath, contestedRuntime), true);
+  assert.deepEqual(readFileSync(join(priorRuntime.path, 'runtime-manifest.json')),
+    priorRuntime.manifestBytes);
+  execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: repository });
+  const migratedDoctor = spawnSync(cli, ['doctor'], { cwd: repository, encoding: 'utf8' });
+  assert.equal(migratedDoctor.status, 0, migratedDoctor.stderr || migratedDoctor.stdout);
+
   const installedCommit = spawnSync(join(hooksPath, 'pre-commit'), [], {
     cwd: repository, encoding: 'utf8',
   });
