@@ -21,6 +21,9 @@ Lane records are non-authoritative hints stored as immutable Git blobs behind th
 clone-common `refs/agentic-os/cache/lanes-v1` ref. Writers advance that ref only by exact old-object
 compare-and-swap. A pre-v1 `agentic-os/lanes.json` is read only before the ref exists, identity-bound
 through first publication, and retained afterward; neither cache form grants lifecycle authority.
+The only accepted legacy projection is the retired non-authoritative nonnegative `ejections` count:
+it is dropped in memory without rewriting the legacy bytes. Any other malformed or unknown legacy
+shape remains fail-closed.
 
 ## States
 

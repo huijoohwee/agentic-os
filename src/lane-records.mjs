@@ -2,7 +2,6 @@
  * Clone-common lane-state cache. This is explicitly non-authoritative: safety
  * decisions always recover from exact Git/provider observations, never cache bytes.
  */
-
 import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -10,8 +9,8 @@ import { TextDecoder } from 'node:util';
 import { readBoundedFile } from './catalog-input.mjs';
 import { acquireDirectoryLock, finishOperationLock } from './file-integrity.mjs';
 import { commonDir, git } from './git.mjs';
+import { projectLegacyLaneCache } from './lane-cache-legacy.mjs';
 import { isLaneRef } from './lane-id.mjs';
-
 export const SCHEMA = 'agentic-os/lanes/v1';
 export const CACHE_REF = 'refs/agentic-os/cache/lanes-v1';
 export const CACHE_LIMITS = Object.freeze({
@@ -37,7 +36,6 @@ const RECORD_STATES = new Set(['planned', 'active', 'published', 'queued', 'inte
 const STRING_FIELDS = new Set([
   'device', 'scope', 'base', 'baseSha', 'worktree', 'createdAt', 'head', 'mode',
 ]);
-
 function invalid(message, cause) {
   return Object.assign(new Error(`lane cache ${message}`, cause ? { cause } : undefined), {
     reason: 'blocked-lane-cache-invalid',
@@ -192,7 +190,10 @@ function parseBytes(bytes) {
   try { parsed = JSON.parse(text); } catch (error) {
     throw invalid('must be JSON', error);
   }
-  return normalizeStore(parsed);
+  try { return normalizeStore(parsed); } catch (error) {
+    const projected = projectLegacyLaneCache(parsed, SCHEMA); if (!projected) throw error;
+    return normalizeStore(projected);
+  }
 }
 function directRefOid(cwd) {
   const symbolic = git(['symbolic-ref', '--quiet', CACHE_REF], { cwd, allowFail: true });

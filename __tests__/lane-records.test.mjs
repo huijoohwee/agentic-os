@@ -34,6 +34,30 @@ test('a missing cache recovers empty and bounded records round-trip as non-autho
   assert.equal(load(root).lanes[ref].head, 'a'.repeat(40));
 });
 
+test('a recognized legacy cache projects retired ejections without rewriting its bytes', (t) => {
+  const root = repository(t);
+  const ref = 'agent/device/legacy';
+  const file = storePath(root);
+  const legacy = { schema: SCHEMA, lanes: { [ref]: {
+    ref, state: 'published', head: 'a'.repeat(40), ejections: 0,
+  } } };
+  mkdirSync(dirname(file), { recursive: true });
+  const bytes = `${JSON.stringify(legacy, null, 2)}\n`;
+  writeFileSync(file, bytes);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(load(root))), {
+    schema: SCHEMA, lanes: { [ref]: { ref, state: 'published', head: 'a'.repeat(40) } },
+  });
+  writeFileSync(file, `${JSON.stringify({ schema: SCHEMA, lanes: { [ref]: {
+    ref, state: 'published', ejections: -1,
+  } } })}\n`);
+  assert.throws(() => load(root), /record shape is invalid/u);
+  writeFileSync(file, bytes);
+  save(load(root), root);
+  assert.equal(readFileSync(file, 'utf8'), bytes);
+  assert.equal(get(ref, root).ejections, undefined);
+});
+
 test('concurrent distinct-ref cache updates retain every device projection', async (t) => {
   const root = repository(t, 'agentic-os-lane-cache-concurrent-');
   const moduleUrl = new URL('../src/lane-records.mjs', import.meta.url).href;
