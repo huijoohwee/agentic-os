@@ -56,6 +56,34 @@ test('canonical JSON and digests are deterministic, bounded JSON data', () => {
   assert.throws(() => canonicalJson(new Proxy({}, {})), /JSON data/);
 });
 
+test('canonical JSON bounds sparse shape, raw strings, and keys without invoking accessors', () => {
+  const sparse = [];
+  sparse.length = 1_000_000_000;
+  assert.throws(() => canonicalJson(sparse), /node budget/);
+
+  let getterCalled = false;
+  const accessor = [];
+  Object.defineProperty(accessor, '0', { enumerable: true, get() {
+    getterCalled = true;
+    throw new Error('must not execute');
+  } });
+  assert.throws(() => canonicalJson(accessor), /accessors/);
+  assert.equal(getterCalled, false);
+
+  assert.throws(() => canonicalJson('x'.repeat(500_001)), /byte budget/);
+  assert.throws(() => canonicalJson({ ['x'.repeat(500_001)]: true }), /byte budget/);
+  assert.throws(() => canonicalJson(new Array(5_000).fill('x'.repeat(101))), /byte budget/);
+
+  const aggregateKeys = Object.create(null);
+  for (let index = 0; index < 6_000; index += 1)
+    aggregateKeys[`k${String(index).padStart(4, '0')}${'x'.repeat(90)}`] = true;
+  assert.throws(() => canonicalJson(aggregateKeys), /byte budget/);
+
+  const excessiveKeys = Object.create(null);
+  for (let index = 0; index < 10_001; index += 1) excessiveKeys[`k${index}`] = true;
+  assert.throws(() => canonicalJson(excessiveKeys), /node budget/);
+});
+
 test('four root operations create exact canonical Coordination Requests', () => {
   const initial = claim(base());
   assert.equal(initial.schema, COORDINATION_REQUEST_SCHEMA);
@@ -89,13 +117,28 @@ test('validators reject repaired schemas and noncanonical wire shapes', () => {
     repository: 'repo:fixture',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
-    capabilities: ['a', 'z'],
+    capabilities: ['deep-byte-audit-opt-in', 'retain-all-cleanup'],
   });
   assert.throws(() => validateRepositoryProfile({ ...profile, schema: 'evil' }), /schema/);
   assert.throws(() => validateRepositoryProfile({
     ...profile,
-    capabilities: ['z', 'a'],
+    capabilities: ['retain-all-cleanup', 'deep-byte-audit-opt-in'],
   }), /not canonical/);
+  assert.throws(() => createRepositoryProfile({
+    repository: 'repo:fixture',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: null },
+    capabilities: ['future-capability'],
+  }), /unsupported repository profile capabilities/u);
+  for (const selected of [
+    { capabilities: ['read-only-review-observation'] },
+    { requiredChecks: ['test'] },
+  ]) assert.throws(() => createRepositoryProfile({
+    repository: 'repo:fixture',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: null },
+    ...selected,
+  }), /require a provider adapter/u);
 });
 
 test('repository profiles preserve consumer authority and every cleanup target', () => {
@@ -107,7 +150,7 @@ test('repository profiles preserve consumer authority and every cleanup target',
       repository: { id: 'git', version: '1' },
       provider: { id: 'github', version: '1' },
     },
-    capabilities: ['review-projection', 'repository-observation'],
+    capabilities: ['read-only-review-observation', 'read-only-repository-observation'],
     requiredChecks: ['test'],
   });
   assert.deepEqual(profile.authority, CONSUMER_AUTHORITY);
@@ -122,6 +165,29 @@ test('repository profiles preserve consumer authority and every cleanup target',
     ...profilePayload,
     cleanup: { ...RETAIN_ALL_CLEANUP, localBranch: 'delete' },
   }), /must retain/);
+});
+
+test('repository profiles reject malformed canonical Git refs before adapter access', () => {
+  const baseProfile = {
+    repository: 'local:fixture',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: null },
+  };
+  for (const branch of ['main..other', 'main@{1}', 'release.lock', '.hidden', 'bad?name']) {
+    assert.throws(() => createRepositoryProfile({
+      ...baseProfile,
+      canonical: {
+        localRef: `refs/heads/${branch}`,
+        remoteRef: `refs/remotes/origin/${branch}`,
+      },
+    }), /portable direct Git ref/u);
+  }
+  for (const remote of ['bad remote', 'a..b', 'a.', 'a.lock']) {
+    assert.throws(() => createRepositoryProfile({
+      ...baseProfile,
+      canonical: { localRef: 'refs/heads/main', remoteRef: `refs/remotes/${remote}/main` },
+    }), /portable configured remote/u);
+  }
 });
 
 test('receipts bind exact requests, time windows, identities, and monotonic transitions', () => {
@@ -147,6 +213,33 @@ test('receipts bind exact requests, time windows, identities, and monotonic tran
   assert.throws(() => createAuthorityTransitionReceiptEnvelope(continued, outcome(continued, {
     resultFenceRevision: FENCE,
   })), /must advance/);
+});
+
+test('exact replay bounds its dense aggregate without rejecting identical duplicates', () => {
+  const request = claim(base());
+  const receipt = createAuthorityTransitionReceiptEnvelope(request, outcome(request));
+  assert.deepEqual(findExactReplay(request, [receipt, receipt]), receipt);
+
+  const sparse = [];
+  sparse.length = 1_000_000_000;
+  assert.throws(() => findExactReplay(request, sparse), /node budget/);
+
+  let getterCalled = false;
+  const accessor = [];
+  Object.defineProperty(accessor, '0', { enumerable: true, get() {
+    getterCalled = true;
+    return receipt;
+  } });
+  assert.throws(() => findExactReplay(request, accessor), /accessors/);
+  assert.equal(getterCalled, false);
+  assert.throws(() => findExactReplay(request, new Array(600).fill(receipt)), /node budget/);
+
+  const largeRequest = claim(base({ repository: 'r'.repeat(4_096) }));
+  const largeReceipt = createAuthorityTransitionReceiptEnvelope(largeRequest, outcome(largeRequest));
+  assert.throws(() => findExactReplay(
+    largeRequest,
+    new Array(126).fill(largeReceipt),
+  ), /byte budget/);
 });
 
 test('exact replay rejects structurally valid but request-inapplicable receipts', () => {

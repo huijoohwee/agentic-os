@@ -9,13 +9,21 @@ writer, and store.
 
 A lane is `agent/<device>/<scope>`:
 
-- `device` — lowercase host namespace used for branch identity and local WIP selection.
-- `scope` — lowercase hyphenated noun for the write set, checked only in the current clone.
+- `device` — lowercase host namespace used only for collision-resistant branch identity.
+- `scope` — lowercase hyphenated write-set label; it does not grant or exclude authority.
 
 The branch, pull request, and local record are provider projections, not claims or authority. Two
 devices can create distinct refs for the same scope. Cross-device exclusion therefore requires an
 external authenticated, fenced compare-and-swap claim; this compatibility lane machine does not
 provide one and must not be treated as one.
+
+Lane records are non-authoritative hints stored as immutable Git blobs behind the direct,
+clone-common `refs/agentic-os/cache/lanes-v1` ref. Writers advance that ref only by exact old-object
+compare-and-swap. A pre-v1 `agentic-os/lanes.json` is read only before the ref exists, identity-bound
+through first publication, and retained afterward; neither cache form grants lifecycle authority.
+The only accepted legacy projection is the retired non-authoritative nonnegative `ejections` count:
+it is dropped in memory without rewriting the legacy bytes. Any other malformed or unknown legacy
+shape remains fail-closed.
 
 ## States
 
@@ -31,7 +39,7 @@ provide one and must not be treated as one.
 
 | From | Event | To | Guards |
 |---|---|---|---|
-| `planned` | `provision` | `active` | `wipWithinCap`, `baseFetched`, `scopeFree` |
+| `planned` | `provision` | `active` | `baseFetched` |
 | `active` | `author` | `active` | `onLaneWorktree` |
 | `active` | `publish` | `published` | `clean`, `hasCommits`, `pushed` |
 | `published` | `enqueue` | `queued` | `orderingDelegated`, exact `providerHandoff` receipt |
@@ -66,14 +74,12 @@ Every blocked transition returns one of these. They name the upstream owner, nev
 | Reason | Meaning |
 |---|---|
 | `blocked-illegal-transition` | The event is not defined for this state |
-| `blocked-wip-cap` | Device is at the open-lane cap; land something first |
-| `blocked-main-authoring` | The write target is the profile's canonical branch worktree |
+| `blocked-canonical-authoring` | The write target is the profile's canonical branch worktree |
 | `blocked-dirty` | Uncommitted tracked changes in the lane worktree |
 | `blocked-no-queue` | The merge queue is not enabled on the protected branch |
 | `blocked-not-pushed` | Local commits are not on the remote lane ref |
 | `blocked-provider-handoff` | Exact provider head or tested-ordering receipt is absent |
 | `blocked-not-integrated` | No integration proof, so nothing may be deleted |
-| `blocked-scope-taken` | Another open lane already owns this scope |
 
 ## Integration proof
 
@@ -98,8 +104,10 @@ the absence of a diff in a UI.
 ## Owned untracked state
 
 A file first observed after the lane baseline is authored state, not residue. It stays byte-for-byte
-in its owning worktree. Publication and any future cleanup adapter must fail closed on it, including
-when ignored. Do not stash, ignore-mask, relocate to the canonical worktree, or adopt it elsewhere.
+in its owning worktree. Publication rejects visible untracked paths because they are absent from the
+candidate revision. Ignored paths are preserved and reported but do not block publication; dependency
+trees and caches are not candidate bytes. Cleanup inventory remains conservative and includes ignored
+paths. Do not stash, relocate, adopt, or delete another lane's owned state.
 
 ## Split work
 

@@ -1,29 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import {
   PROVIDER_CAPABILITIES,
   QUEUE_POLICY,
   audit,
+  effectivePullRequestMethods,
   observe,
   plan,
+  providerBlockingReasons,
   providerPolicy,
+  pullRequestPolicyMatches,
+  queuePolicyMatches,
 } from '../src/queue.mjs';
 
 const CONTEXT = 'Integration Gate';
-const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
-function repositoryProfile(capabilities = [], requiredChecks = [CONTEXT]) {
+function repositoryProfile(capabilities = [], requiredChecks = [CONTEXT], branch = 'trunk') {
   return createRepositoryProfile({
     repository: 'github.com/owner/repo',
     canonical: {
-      localRef: 'refs/heads/trunk',
-      remoteRef: 'refs/remotes/origin/trunk',
+      localRef: `refs/heads/${branch}`,
+      remoteRef: `refs/remotes/origin/${branch}`,
     },
     adapters: {
       repository: { id: 'git', version: '1' },
@@ -65,65 +67,6 @@ function runGit(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
-function cliRepository(t, { repositoryAdapter, provider, capabilities, requiredChecks = [] }) {
-  const parent = mkdtempSync(join(tmpdir(), 'agentic-os-profile-cli-'));
-  const root = join(parent, 'repo');
-  const bare = join(parent, 'remote.git');
-  const lane = join(parent, 'lane');
-  const support = join(parent, 'bin');
-  const providerMarker = join(parent, 'provider-called');
-  mkdirSync(root);
-  mkdirSync(support);
-  runGit(parent, 'init', '--quiet', '--bare', bare);
-  runGit(root, 'init', '--quiet', '--initial-branch=main');
-  runGit(root, 'config', 'user.name', 'Fixture');
-  runGit(root, 'config', 'user.email', 'fixture@example.invalid');
-  writeFileSync(join(root, 'base.txt'), 'base\n');
-  const profile = createRepositoryProfile({
-    repository: 'github.com/owner/repo',
-    canonical: {
-      localRef: 'refs/heads/main',
-      remoteRef: 'refs/remotes/origin/main',
-    },
-    adapters: { repository: repositoryAdapter, provider },
-    capabilities,
-    requiredChecks,
-  });
-  writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(profile, null, 2)}\n`);
-  runGit(root, 'add', '.');
-  runGit(root, 'commit', '--quiet', '--message', 'fixture');
-  runGit(root, 'remote', 'add', 'origin', bare);
-  runGit(root, 'push', '--quiet', '--set-upstream', 'origin', 'main');
-  runGit(root, 'worktree', 'add', '--quiet', '-b', 'agent/test/profile-guard', lane, 'main');
-  writeFileSync(join(lane, 'lane.txt'), 'lane\n');
-  runGit(lane, 'add', 'lane.txt');
-  runGit(lane, 'commit', '--quiet', '--message', 'lane');
-  const gh = join(support, 'gh');
-  writeFileSync(gh, '#!/bin/sh\n: > "$AGENTIC_OS_TEST_PROVIDER_MARKER"\nexit 97\n');
-  chmodSync(gh, 0o755);
-  t.after(() => rmSync(parent, { recursive: true, force: true }));
-  return { root, bare, lane, support, providerMarker };
-}
-
-function runCli(subject, command, cwd = subject.root) {
-  return spawnSync(process.execPath, [CLI, command], {
-    cwd,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      PATH: `${subject.support}:${process.env.PATH}`,
-      AGENTIC_OS_TEST_PROVIDER_MARKER: subject.providerMarker,
-    },
-  });
-}
-
-function remoteLaneExists(subject) {
-  return spawnSync('git', [
-    '--git-dir', subject.bare, 'show-ref', '--verify', '--quiet',
-    'refs/heads/agent/test/profile-guard',
-  ]).status === 0;
-}
-
 test('repository profiles reject mismatched canonical branch identities', () => {
   assert.throws(() => createRepositoryProfile({
     repository: 'github.com/owner/repo',
@@ -133,6 +76,39 @@ test('repository profiles reject mismatched canonical branch identities', () => 
     },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   }), /same branch/u);
+});
+
+test('provider admission ignores unrelated source failures but requires retained lane refs', (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), 'agentic-os-capability-selective-provider-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  runGit(cwd, 'init', '--quiet', '--initial-branch=release/v2');
+  runGit(cwd, 'config', 'user.name', 'Fixture');
+  runGit(cwd, 'config', 'user.email', 'fixture@example.invalid');
+  runGit(cwd, 'commit', '--quiet', '--allow-empty', '--message', 'fixture');
+  runGit(cwd, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+  runGit(cwd, 'update-ref', 'refs/remotes/origin/release/v2', 'HEAD');
+  const profile = repositoryProfile([PROVIDER_CAPABILITIES.PULL_REQUEST], [], 'release/v2');
+  const provider = (args) => {
+    if (args[0] === 'repo') return { nameWithOwner: 'owner/repo',
+      defaultBranchRef: { name: 'release/v2' }, url: 'https://github.com/owner/repo' };
+    if (args[0] === 'pr') return [];
+    if (args[1] === 'repos/owner/repo') return {
+      allow_squash_merge: true, allow_merge_commit: true, allow_rebase_merge: true,
+      delete_branch_on_merge: false,
+    };
+    if (args[1] === 'repos/owner/repo/rulesets') return null;
+    if (args[1] === 'repos/owner/repo/branches/release%2Fv2/protection') return {
+      required_pull_request_reviews: { required_approving_review_count: 1 },
+    };
+    return assert.fail(`unexpected provider call: ${args.join(' ')}`);
+  };
+  const state = observe({ cwd, profile, provider, providerAvailable: () => true });
+  assert.ok(state.observationErrors.includes('rulesets'));
+  assert.deepEqual(state.blockingObservationErrors, []);
+  assert.equal(state.handoffPolicySatisfied, true);
+  assert.deepEqual(providerBlockingReasons({ ...state,
+    merge: { ...state.merge, delete_branch_on_merge: true },
+  }, providerPolicy(profile)), ['retain-on-merge']);
 });
 
 test('validated profiles project exact canonical and capability-selected provider policy', () => {
@@ -161,17 +137,30 @@ test('validated profiles project exact canonical and capability-selected provide
     exclude: [],
   });
   const byType = (type) => projected.ruleset.rules.find((rule) => rule.type === type);
-  assert.ok(byType('pull_request'));
-  assert.ok(byType('merge_queue'));
+  const providerOwned = (type) => projected.providerOwnedRules.find((rule) => rule.type === type);
+  assert.equal(byType('pull_request'), undefined);
+  assert.equal(byType('merge_queue'), undefined);
   assert.ok(byType('required_linear_history'));
-  assert.deepEqual(
-    byType('required_status_checks').parameters.required_status_checks,
-    [{ context: CONTEXT }],
-  );
-  assert.equal(
-    byType('required_status_checks').parameters.strict_required_status_checks_policy,
-    false,
-  );
+  assert.equal(byType('required_status_checks'), undefined);
+  assert.deepEqual(providerOwned('required_status_checks').constraints, [
+    { parameter: 'required_status_checks', operator: 'containsAll',
+      values: [{ context: CONTEXT }] },
+    { parameter: 'strict_required_status_checks_policy', operator: 'equals', value: false },
+  ]);
+  assert.deepEqual(providerOwned('pull_request'), {
+    type: 'pull_request',
+    requiredParameters: [
+      'required_approving_review_count', 'dismiss_stale_reviews_on_push',
+      'require_code_owner_review', 'require_last_push_approval',
+      'required_review_thread_resolution', 'allowed_merge_methods',
+    ],
+    constraints: [{ parameter: 'allowed_merge_methods', operator: 'effectiveNonemptySubsetOf',
+      values: ['squash'] }],
+  });
+  assert.deepEqual(providerOwned('merge_queue').constraints, [{
+    parameter: 'merge_method', operator: 'oneOf', values: ['SQUASH'],
+  }]);
+  assert.ok(providerOwned('merge_queue').requiredParameters.includes('max_entries_to_merge'));
   assert.equal(projected.repository.allow_squash_merge, true);
   assert.equal(projected.repository.allow_merge_commit, false);
   assert.equal(projected.repository.allow_rebase_merge, false);
@@ -193,8 +182,20 @@ test('optional provider capabilities stay absent while retain-all remains mandat
   for (const optional of ['pull_request', 'merge_queue', 'required_linear_history']) {
     assert.equal(ruleTypes.includes(optional), false, `${optional} must be capability-selected`);
   }
-  const checks = projected.ruleset.rules.find((rule) => rule.type === 'required_status_checks');
-  assert.equal('strict_required_status_checks_policy' in checks.parameters, false);
+  assert.equal(
+    projected.ruleset.rules.some((rule) => rule.type === 'required_status_checks'), false,
+  );
+  const checks = projected.providerOwnedRules.find(
+    (rule) => rule.type === 'required_status_checks',
+  );
+  assert.deepEqual(checks.requiredParameters,
+    ['strict_required_status_checks_policy', 'required_status_checks']);
+  assert.deepEqual(checks.constraints, [{
+    parameter: 'required_status_checks', operator: 'containsAll',
+    values: [{ context: CONTEXT }],
+  }]);
+  assert.equal(projected.providerOwnedRules.some(
+    (rule) => ['pull_request', 'merge_queue'].includes(rule.type)), false);
   for (const optional of [
     'allow_squash_merge', 'allow_merge_commit', 'allow_rebase_merge', 'allow_auto_merge',
   ]) {
@@ -218,11 +219,124 @@ test('optional provider capabilities stay absent while retain-all remains mandat
   assert.equal(finding(unsafe, 'retain-on-merge').ok, false);
 });
 
+test('audit recomputes admission blockers from raw provider facts', () => {
+  const profile = repositoryProfile([], []);
+  const forgedProjection = providerState({
+    identityBound: false,
+    blockingObservationErrors: [],
+  });
+  const observation = finding(audit(forgedProjection, profile), 'provider-observation');
+  assert.equal(observation.ok, false);
+  assert.match(observation.detail, /repository-identity/u);
+});
+
+test('merge-queue ordering does not invent an unselected integration method or tuning policy', () => {
+  const profile = repositoryProfile([
+    PROVIDER_CAPABILITIES.PULL_REQUEST,
+    PROVIDER_CAPABILITIES.MERGE_QUEUE,
+  ]);
+  const policy = providerPolicy(profile);
+  const projection = plan(profile);
+  const queueRule = projection.providerOwnedRules.find((rule) => rule.type === 'merge_queue');
+  assert.deepEqual(queueRule.constraints, []);
+  assert.ok(queueRule.requiredParameters.includes('check_response_timeout_minutes'));
+  const reviewRule = projection.providerOwnedRules.find((rule) => rule.type === 'pull_request');
+  assert.deepEqual(reviewRule.constraints, []);
+  assert.ok(reviewRule.requiredParameters.includes('allowed_merge_methods'));
+  assert.equal(queuePolicyMatches({ merge_method: 'MERGE', max_entries_to_merge: 17 }, policy), true);
+  assert.equal('allow_squash_merge' in projection.repository, false);
+});
+
+test('linear history accepts only provider methods that preserve linearity', () => {
+  const profile = repositoryProfile([
+    PROVIDER_CAPABILITIES.PULL_REQUEST,
+    PROVIDER_CAPABILITIES.LINEAR_HISTORY,
+  ]);
+  const policy = providerPolicy(profile);
+  assert.equal(queuePolicyMatches({ merge_method: 'MERGE' }, policy), false);
+  assert.equal(queuePolicyMatches({ merge_method: 'REBASE' }, policy), true);
+  assert.equal(queuePolicyMatches({ merge_method: 'SQUASH' }, policy), true);
+  const review = plan(profile).providerOwnedRules.find((rule) => rule.type === 'pull_request');
+  assert.deepEqual(review.constraints, [{
+    parameter: 'allowed_merge_methods', operator: 'effectiveNonemptySubsetOf',
+    values: ['rebase', 'squash'],
+  }]);
+  assert.equal(pullRequestPolicyMatches({ allowed_merge_methods: ['rebase'] }, policy), true);
+  assert.equal(pullRequestPolicyMatches({ allowed_merge_methods: ['squash'] }, policy), true);
+  assert.equal(pullRequestPolicyMatches({ allowed_merge_methods: ['rebase', 'squash'] }, policy), true);
+  assert.equal(pullRequestPolicyMatches({ allowed_merge_methods: ['merge'] }, policy), false);
+  const drift = audit(providerState({
+    pullRequestRequired: true, pullRequestPolicySatisfied: false,
+  }), profile);
+  assert.equal(finding(drift, 'pull-request-policy').ok, false);
+});
+
+test('effective pull-request methods intersect repository and applicable rule constraints', (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), 'agentic-os-effective-methods-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  runGit(cwd, 'init', '--quiet', '--initial-branch=trunk');
+  runGit(cwd, 'config', 'user.name', 'Fixture');
+  runGit(cwd, 'config', 'user.email', 'fixture@example.invalid');
+  runGit(cwd, 'commit', '--quiet', '--allow-empty', '--message', 'fixture');
+  runGit(cwd, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+  runGit(cwd, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD');
+  const profile = repositoryProfile([
+    PROVIDER_CAPABILITIES.PULL_REQUEST, PROVIDER_CAPABILITIES.SQUASH,
+  ], []);
+  const merge = {
+    allow_squash_merge: true,
+    allow_merge_commit: false,
+    allow_rebase_merge: false,
+    delete_branch_on_merge: false,
+  };
+  const broadRule = { type: 'pull_request', parameters: {
+    allowed_merge_methods: ['merge', 'squash', 'rebase'],
+  } };
+  assert.deepEqual(effectivePullRequestMethods(merge, [broadRule]), ['squash']);
+  const provider = (args) => {
+    if (args[0] === 'repo') return { nameWithOwner: 'owner/repo',
+      defaultBranchRef: { name: 'trunk' }, url: 'https://github.com/owner/repo' };
+    if (args[0] === 'pr') return [];
+    if (args[1] === 'repos/owner/repo') return merge;
+    if (args[1] === 'repos/owner/repo/rulesets') return [{ id: 12 }];
+    if (args[1] === 'repos/owner/repo/rulesets/12') return {
+      name: 'broad review rule', target: 'branch', enforcement: 'active',
+      conditions: { ref_name: { include: ['refs/heads/trunk'], exclude: [] } },
+      rules: [broadRule],
+    };
+    if (args[1] === 'repos/owner/repo/branches/trunk/protection') return {};
+    return assert.fail(`unexpected provider call: ${args.join(' ')}`);
+  };
+  const state = observe({ cwd, profile, provider, providerAvailable: () => true });
+  assert.deepEqual(state.effectiveMergeMethods, ['squash']);
+  assert.equal(state.pullRequestPolicySatisfied, true);
+  assert.equal(state.handoffPolicySatisfied, true);
+  assert.deepEqual(providerBlockingReasons(state, providerPolicy(profile)), []);
+  assert.deepEqual(audit(state, profile).filter((entry) => !entry.ok), []);
+
+  const incomplete = observe({
+    cwd, profile,
+    provider: (args) => {
+      if (args[1] === 'repos/owner/repo/rulesets') return null;
+      if (args[1] === 'repos/owner/repo/branches/trunk/protection') return {
+        required_pull_request_reviews: { required_approving_review_count: 1 },
+      };
+      return provider(args);
+    },
+    providerAvailable: () => true,
+  });
+  assert.equal(incomplete.pullRequestPolicySatisfied, true,
+    'repository settings alone appear compatible when hidden rules are unknown');
+  assert.deepEqual(providerBlockingReasons(incomplete, providerPolicy(profile)),
+    ['ruleset-observation']);
+});
+
 test('strict protection is selected independently of merge queue ordering', () => {
   const profile = repositoryProfile([PROVIDER_CAPABILITIES.STRICT]);
   const projected = plan(profile);
-  const checks = projected.ruleset.rules.find((rule) => rule.type === 'required_status_checks');
-  assert.equal(checks.parameters.strict_required_status_checks_policy, true);
+  const checks = projected.providerOwnedRules.find((rule) => rule.type === 'required_status_checks');
+  assert.ok(checks.constraints.some((constraint) => constraint.parameter
+    === 'strict_required_status_checks_policy' && constraint.value === true));
   assert.equal(projected.ruleset.rules.some((rule) => rule.type === 'merge_queue'), false);
 
   const findings = audit(providerState({ strict: true }), profile);
@@ -230,11 +344,21 @@ test('strict protection is selected independently of merge queue ordering', () =
   assert.notEqual(finding(findings, 'merge-queue')?.ok, false);
 });
 
-test('profile checks and non-main canonical ref drive merge-group observation', (t) => {
+test('tested ordering and strict-check policy reject an empty check gate', () => {
+  assert.throws(() => providerPolicy(repositoryProfile([
+    PROVIDER_CAPABILITIES.PULL_REQUEST,
+    PROVIDER_CAPABILITIES.MERGE_QUEUE,
+  ], [])), /at least one required check/u);
+  assert.throws(() => providerPolicy(repositoryProfile([
+    PROVIDER_CAPABILITIES.STRICT,
+  ], [])), /at least one required check/u);
+});
+
+test('profile checks and a slash-containing canonical ref drive provider observation', (t) => {
   const cwd = mkdtempSync(join(tmpdir(), 'agentic-os-profile-provider-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const run = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
-  run('init', '--quiet', '--initial-branch=trunk');
+  run('init', '--quiet', '--initial-branch=release/v2');
   run('config', 'user.name', 'Fixture');
   run('config', 'user.email', 'fixture@example.invalid');
   mkdirSync(join(cwd, '.github', 'workflows'), { recursive: true });
@@ -252,18 +376,18 @@ test('profile checks and non-main canonical ref drive merge-group observation', 
   run('add', '.github/workflows/integration.yml');
   run('commit', '--quiet', '--message', 'fixture');
   run('remote', 'add', 'origin', 'https://github.com/owner/repo.git');
-  run('update-ref', 'refs/remotes/origin/trunk', 'HEAD');
+  run('update-ref', 'refs/remotes/origin/release/v2', 'HEAD');
 
   const profile = repositoryProfile([
     PROVIDER_CAPABILITIES.PULL_REQUEST,
     PROVIDER_CAPABILITIES.MERGE_QUEUE,
-  ]);
+  ], [CONTEXT], 'release/v2');
   const calls = [];
   const provider = (args) => {
     calls.push(args);
     if (args[0] === 'repo') return {
       nameWithOwner: 'owner/repo',
-      defaultBranchRef: { name: 'trunk' },
+      defaultBranchRef: { name: 'release/v2' },
       url: 'https://github.com/owner/repo',
     };
     if (args[0] === 'pr') return [];
@@ -276,10 +400,10 @@ test('profile checks and non-main canonical ref drive merge-group observation', 
     };
     if (args[1] === 'repos/owner/repo/rulesets') return [{ id: 7 }];
     if (args[1] === 'repos/owner/repo/rulesets/7') return {
-      name: 'trunk queue',
+      name: 'release/v2 queue',
       target: 'branch',
       enforcement: 'active',
-      conditions: { ref_name: { include: ['refs/heads/trunk'], exclude: [] } },
+      conditions: { ref_name: { include: ['refs/heads/release/v2'], exclude: [] } },
       rules: [
         {
           type: 'required_status_checks',
@@ -291,7 +415,9 @@ test('profile checks and non-main canonical ref drive merge-group observation', 
         { type: 'merge_queue', parameters: { ...QUEUE_POLICY } },
       ],
     };
-    if (args[1] === 'repos/owner/repo/branches/trunk/protection') return {};
+    if (args[1] === 'repos/owner/repo/branches/release%2Fv2/protection') return {
+      required_pull_request_reviews: { required_approving_review_count: 2 },
+    };
     return assert.fail(`unexpected provider call: ${args.join(' ')}`);
   };
 
@@ -300,10 +426,26 @@ test('profile checks and non-main canonical ref drive merge-group observation', 
   assert.deepEqual(state.requiredChecks, [CONTEXT]);
   assert.equal(state.queueEnabled, true);
   assert.equal(state.mergeGroupSupported, true);
-  assert.ok(calls.some((args) => args[1] === 'repos/owner/repo/branches/trunk/protection'));
+  assert.equal(state.pullRequestRequired, true);
+  assert.equal(state.pullRequestPolicySatisfied, true);
+  assert.equal(state.handoffPolicySatisfied, true);
+  assert.ok(calls.some(
+    (args) => args[1] === 'repos/owner/repo/branches/release%2Fv2/protection',
+  ));
+  const missingStrict = observe({
+    cwd, profile, provider: (args) => {
+      const value = provider(args);
+      if (args[1] !== 'repos/owner/repo/rulesets/7') return value;
+      return { ...value, rules: value.rules.map((rule) => rule.type === 'required_status_checks'
+        ? { ...rule, parameters: { required_status_checks: [{ context: CONTEXT }] } } : rule) };
+    },
+    providerAvailable: () => true,
+  });
+  assert.equal(missingStrict.strict, null);
+  assert.ok(missingStrict.observationErrors.includes('required-status-checks-strict'));
 });
 
-test('a full ruleset page makes provider observation incomplete', (t) => {
+test('an unrelated full ruleset page is nonblocking when no ruleset capability is selected', (t) => {
   const cwd = mkdtempSync(join(tmpdir(), 'agentic-os-ruleset-boundary-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   runGit(cwd, 'init', '--quiet', '--initial-branch=trunk');
@@ -343,102 +485,26 @@ test('a full ruleset page makes provider observation incomplete', (t) => {
   const state = observe({ cwd, profile, provider, providerAvailable: () => true });
   assert.equal(detailCalls, 0, 'an incomplete page must not become a partial policy projection');
   assert.ok(state.observationErrors.includes('rulesets-pagination-boundary'));
+  assert.deepEqual(state.blockingObservationErrors, []);
   const listCall = calls.find((args) => args[1] === 'repos/owner/repo/rulesets');
   assert.equal(listCall[listCall.indexOf('--method') + 1], 'GET');
   assert.ok(listCall.includes('per_page=100'));
-  assert.equal(finding(audit(state, profile), 'provider-observation').ok, false);
+  assert.equal(finding(audit(state, profile), 'provider-observation').ok, true);
 });
 
-test('unsupported repository adapters refuse before remote or provider mutation', async (t) => {
-  for (const repositoryAdapter of [
-    { id: 'git', version: '2' },
-    { id: 'other', version: '1' },
-  ]) {
-    await t.test(`${repositoryAdapter.id}/${repositoryAdapter.version}`, (child) => {
-      const subject = cliRepository(child, {
-        repositoryAdapter,
-        provider: { id: 'github', version: '1' },
-        capabilities: [PROVIDER_CAPABILITIES.PULL_REQUEST],
-      });
-      const result = runCli(subject, 'land', subject.lane);
-      assert.equal(result.status, 1, result.stderr);
-      assert.match(result.stderr, /blocked-repository-adapter-unsupported/u);
-      assert.equal(remoteLaneExists(subject), false);
-      assert.equal(existsSync(subject.providerMarker), false);
-    });
-  }
-});
-
-test('pull-request capability without a provider fails doctor and land closed', (t) => {
-  const subject = cliRepository(t, {
-    repositoryAdapter: { id: 'git', version: '1' },
-    provider: null,
-    capabilities: [PROVIDER_CAPABILITIES.PULL_REQUEST],
-  });
-  const doctor = runCli(subject, 'doctor');
-  assert.equal(doctor.status, 1, doctor.stderr);
-  assert.match(doctor.stdout, /FAIL provider-adapter\s+selected capabilities require a provider adapter/u);
-
-  const land = runCli(subject, 'land', subject.lane);
-  assert.equal(land.status, 1, land.stderr);
-  assert.match(land.stderr, /blocked-provider-adapter-none/u);
-  assert.equal(remoteLaneExists(subject), false);
-  assert.equal(existsSync(subject.providerMarker), false);
-});
-
-test('every provider-enforced policy fails closed without a provider adapter', (t) => {
+test('provider-bound policy cannot be declared without a provider adapter', () => {
   for (const selected of [
+    { capabilities: [PROVIDER_CAPABILITIES.PULL_REQUEST] },
     { capabilities: [PROVIDER_CAPABILITIES.STRICT] },
     { capabilities: [PROVIDER_CAPABILITIES.LINEAR_HISTORY] },
     { capabilities: [PROVIDER_CAPABILITIES.SQUASH] },
     { capabilities: [], requiredChecks: ['external check'] },
   ]) {
-    const subject = cliRepository(t, {
-      repositoryAdapter: { id: 'git', version: '1' }, provider: null, ...selected,
-    });
-    const doctor = runCli(subject, 'doctor');
-    assert.equal(doctor.status, 1, `${JSON.stringify(selected)}\n${doctor.stdout}\n${doctor.stderr}`);
-    assert.match(doctor.stdout, /selected capabilities require a provider adapter/u);
-    const land = runCli(subject, 'land', subject.lane);
-    assert.equal(land.status, 1, land.stderr);
-    assert.match(land.stderr, /blocked-provider-adapter-none/u);
-    assert.equal(remoteLaneExists(subject), false);
+    assert.throws(() => createRepositoryProfile({
+      repository: 'github.com/owner/repo',
+      canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+      adapters: { repository: { id: 'git', version: '1' }, provider: null },
+      ...selected,
+    }), /require a provider adapter/u);
   }
-});
-
-test('remote profile advance blocks stale-policy start and land', (t) => {
-  const subject = cliRepository(t, {
-    repositoryAdapter: { id: 'git', version: '1' }, provider: null, capabilities: [],
-  });
-  const parent = mkdtempSync(join(tmpdir(), 'agentic-os-profile-writer-'));
-  const writer = join(parent, 'writer');
-  t.after(() => rmSync(parent, { recursive: true, force: true }));
-  runGit(subject.root, '--git-dir', subject.bare, 'symbolic-ref', 'HEAD', 'refs/heads/main');
-  runGit(parent, 'clone', '--quiet', subject.bare, writer);
-  runGit(writer, 'config', 'user.name', 'Profile Writer');
-  runGit(writer, 'config', 'user.email', 'writer@example.invalid');
-  const advanced = createRepositoryProfile({
-    repository: 'github.com/owner/repo',
-    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
-    adapters: { repository: { id: 'git', version: '1' }, provider: null },
-    requiredChecks: ['new-policy'],
-  });
-  writeFileSync(join(writer, '.agentic-os.json'), `${JSON.stringify(advanced, null, 2)}\n`);
-  runGit(writer, 'add', '.agentic-os.json');
-  runGit(writer, 'commit', '--quiet', '--message', 'advance policy');
-  runGit(writer, 'push', '--quiet', 'origin', 'main');
-
-  const land = runCli(subject, 'land', subject.lane);
-  assert.equal(land.status, 1, land.stderr);
-  assert.match(land.stderr, /blocked-repository-profile-stale/u);
-  assert.equal(remoteLaneExists(subject), false);
-
-  const start = spawnSync(process.execPath, [CLI, 'start', 'stale-policy'], {
-    cwd: subject.root, encoding: 'utf8',
-    env: { ...process.env, PATH: `${subject.support}:${process.env.PATH}` },
-  });
-  assert.equal(start.status, 1, start.stderr);
-  assert.match(start.stderr, /blocked-repository-profile-stale/u);
-  assert.equal(runGit(subject.root, 'for-each-ref', '--format=%(refname)', 'refs/heads/agent')
-    .includes('stale-policy'), false);
 });

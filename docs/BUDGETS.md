@@ -13,10 +13,10 @@ length cap to keep diffs and reviews readable.
 
 | Scope | Cap | Enforced by |
 |---|---|---|
-| `AGENTS.md` | 4 KB | `src/doc-budget.mjs` |
-| Any single file in `docs/` | 12 KB | `src/doc-budget.mjs` |
-| Always-load set (`AGENTS.md` + `docs/`) | 40 KB | `src/doc-budget.mjs` |
-| Any authored line | 120 characters | `src/doc-budget.mjs` |
+| `AGENTS.md` | 4 KB | `bin/agentic-os-doc-budget.mjs` |
+| Any single file in `docs/` | 12 KB | `bin/agentic-os-doc-budget.mjs` |
+| Always-load set (`AGENTS.md` + `docs/`) | 40 KB | `bin/agentic-os-doc-budget.mjs` |
+| Any authored line | 120 characters | `bin/agentic-os-doc-budget.mjs` |
 
 40 KB is roughly 10k tokens of fixed session cost. The comparison worth keeping in mind: an
 instruction surface of 629 KB is about 157k tokens, which is most of a context window spent before
@@ -26,13 +26,17 @@ any work begins, and it grows every time a scenario gets its own document.
 
 | Scope | Cap | Enforced by |
 |---|---|---|
-| Modules in `src/` | 25 | `src/module-budget.mjs` |
-| Authored lines in `src/` | 15,000 | `src/module-budget.mjs` |
-| Lines in one module | 400 | `src/module-budget.mjs` |
+| Modules in `src/` | 29 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `src/` | 15,000 | `bin/agentic-os-module-budget.mjs` |
+| Lines in one module | 400 | `bin/agentic-os-module-budget.mjs` |
 
 The cap is the design constraint that keeps scenarios in the state table. A per-scenario quadruple of
 contract, controller, adapter, and evidence module multiplies: 76 scenarios becomes 304 modules and
 roughly 195k lines, and at that size the harness is the product.
+
+The increase from 25 to 29 isolates canonical projection, staging, recovery/effect journaling, MCP
+process termination, and quarantine preservation/conditional clean retirement as clone-wide safety
+boundaries. They replace mixed responsibilities rather than adding scenario modules.
 
 ## Reading the failure
 

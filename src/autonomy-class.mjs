@@ -7,7 +7,7 @@
  * participates in the decision.
  */
 
-import { execFileSync } from 'node:child_process';
+import { observeGit } from './git.mjs';
 
 export const AUTONOMY_CLASS_SCHEMA = 'agentic-os/autonomy-class/v1';
 export const CLASS_DOCS_ONLY = 'docs-only';
@@ -34,26 +34,40 @@ export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   'AGENTS.md',
   'package.json',
   'bin/agentic-os-auxiliary.mjs',
+  'bin/agentic-os-argv.mjs',
+  'bin/agentic-os-config.mjs',
+  'bin/agentic-os-doc-budget.mjs',
+  'bin/agentic-os-filter-compare.mjs',
+  'bin/agentic-os-filter-materialize.mjs',
+  'bin/agentic-os-hooks.mjs',
+  'bin/agentic-os-report.mjs',
   'bin/agentic-os.mjs',
   'bin/agentic-os-mcp.mjs',
+  'bin/agentic-os-module-budget.mjs',
   'catalog/invocation.json',
   'src/autonomy-class.mjs',
+  'src/canonical-recovery.mjs',
+  'src/canonical-staging.mjs',
   'src/canonical-sync.mjs',
-  'src/config.mjs',
-  'src/doc-budget.mjs',
+  'src/canonical-resources.mjs',
+  'src/catalog-input.mjs',
+  'src/file-integrity.mjs',
   'src/git.mjs',
   'src/git-repository.mjs',
+  'src/git-tracked.mjs',
   'src/governance.mjs',
   'src/guard-main.mjs',
+  'bin/agentic-os-hook-runtime.mjs',
   'src/invocation.mjs',
   'src/lane-id.mjs',
   'src/lane-records.mjs',
   'src/lane-state.mjs',
   'src/mcp-server.mjs',
   'src/mcp-stdio.mjs',
-  'src/module-budget.mjs',
   'src/patch-identity.mjs',
+  'src/protected-workflows.mjs',
   'src/queue.mjs',
+  'src/quarantine.mjs',
   'src/readiness-proof.mjs',
   'src/github-provider.mjs',
   'src/worktree.mjs',
@@ -215,11 +229,7 @@ export function parseNameStatusZ(raw) {
 }
 
 function executeGitRaw(args, { cwd }) {
-  return execFileSync('git', args, {
-    cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  return observeGit(args, { cwd, binary: true, maxBuffer: 64 * 1024 * 1024 });
 }
 
 function revision(value, label) {

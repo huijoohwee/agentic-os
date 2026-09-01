@@ -2,8 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFileSync, statSync } from 'node:fs';
+import {
+  existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { pathToFileURL } from 'node:url';
 import { CONTRACT_PROOF_SCHEMA } from '../src/readiness-proof.mjs';
 import {
   LEGACY_VERSION,
@@ -12,14 +17,15 @@ import {
   SUPPORTED_VERSIONS,
   TOOLS,
   handleRequest,
-  runCli,
   toolArguments,
 } from '../src/mcp-server.mjs';
-import { MAX_IN_FLIGHT, createConnection, createLineFramer } from '../src/mcp-stdio.mjs';
+import {
+  CLI_OUTPUT_BYTES, MAX_IN_FLIGHT, createConnection, createLineFramer, runCli,
+} from '../src/mcp-stdio.mjs';
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:53b854bc3e62760b70c9c8de3224360d75a77e956028970140f4285a5ae24de9'],
+  claims: ['sha256:c9cb6ac9fbf4e7e0b475ebb3d454051abb897c1b33c0b7abbc63216c78eaac96'],
 });
 
 const CLIENT_META = Object.freeze({
@@ -72,6 +78,27 @@ test('modern discovery advertises both eras and the exact server identity', asyn
   assert.equal(response.result.resultType, 'complete');
   assert.equal(response.result.cacheScope, 'public');
   assert.ok(response.result.ttlMs > 0);
+});
+
+test('every modern success result is server-stamped while errors and legacy stay schema-clean', async () => {
+  const expected = { 'io.modelcontextprotocol/serverInfo': SERVER_INFO };
+  const successes = [
+    await handleRequest(request('ping', 1)),
+    await handleRequest(request('tools/list', 2)),
+    await handleRequest(request('tools/call', 3, {
+      name: 'doctor', arguments: {},
+    }), { runCli: okRunner }),
+  ];
+  for (const response of successes) assert.deepEqual(response.result._meta, expected);
+  const invalid = await handleRequest(request('tools/call', 4, {
+    name: 'unknown', arguments: {},
+  }));
+  assert.equal('_meta' in invalid, false);
+  assert.equal(invalid.error.data?._meta, undefined);
+  const legacy = await handleRequest(legacyInitialize(5), {
+    era: 'legacy', allowInitialize: true,
+  });
+  assert.equal('_meta' in legacy.result, false);
 });
 
 test('modern tool listing is stable, cacheable, and schema-complete', async () => {
@@ -149,6 +176,102 @@ test('the production runner invokes the packaged CLI entrypoint', async () => {
   assert.equal(result.exitCode, 0, result.stderr);
   assert.match(result.stdout, /agentic-os — ADLC harness/);
   assert.equal(result.stderr, '');
+});
+
+test('production cancellation terminates delayed descendants before they can mutate', {
+  skip: process.platform === 'win32',
+}, async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'agentic-os-mcp-cancel-'));
+  const fixture = join(directory, 'spawn-descendant.mjs');
+  const ready = join(directory, 'descendant-ready');
+  const marker = join(directory, 'late-effect');
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  writeFileSync(fixture, `
+import { spawn } from 'node:child_process';
+const environment = { ...process.env };
+delete environment.NODE_OPTIONS;
+spawn(process.execPath, ['-e', ${JSON.stringify(`
+  const { writeFileSync } = require('node:fs');
+  process.on('SIGTERM', () => {});
+  writeFileSync(${JSON.stringify(ready)}, 'ready\\n');
+  setTimeout(() => { writeFileSync(${JSON.stringify(marker)}, 'late\\n'); process.exit(0); }, 400);
+`)}], { env: environment, stdio: 'ignore' });
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
+`);
+  const controller = new AbortController();
+  const pending = runCli(['help'], {
+    cwd: new URL('..', import.meta.url),
+    signal: controller.signal,
+    timeoutMs: 5_000,
+    env: { ...process.env, NODE_OPTIONS: `--import=${pathToFileURL(fixture).href}` },
+  });
+  const readyDeadline = Date.now() + 2_000;
+  while (!existsSync(ready) && Date.now() < readyDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(existsSync(ready), true, 'the TERM-resistant descendant must be running');
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(existsSync(marker), false);
+});
+
+test('effectful tool cancellation waits for and delivers the governed outcome', async () => {
+  const responses = [];
+  let resolveRun;
+  let admitted = false;
+  const connection = createConnection({
+    write: (value) => responses.push(value),
+    runCli: (argv, options) => new Promise((resolve) => {
+      assert.deepEqual(argv, ['start', 'cancel-after-effect']);
+      assert.equal(options.effectful, true);
+      assert.equal(options.signal, undefined);
+      admitted = true; resolveRun = resolve;
+    }),
+  });
+  connection.receive(request('tools/call', 71, {
+    name: 'lane', arguments: { scope: 'cancel-after-effect' },
+  }));
+  assert.equal(admitted, true);
+  connection.receive({
+    jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 71 },
+  });
+  resolveRun({ exitCode: 0, stdout: 'exact lane receipt\n', stderr: '' });
+  await connection.idle();
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].id, 71);
+  assert.equal(responses[0].result.structuredContent.stdout, 'exact lane receipt\n');
+  await connection.close();
+});
+
+test('effectful forced termination returns bounded write-result-unknown evidence', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'agentic-os-mcp-forced-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  for (const scenario of ['timeout', 'stdout']) {
+    const marker = join(directory, `${scenario}-effect`);
+    const fixture = join(directory, `${scenario}.mjs`);
+    writeFileSync(fixture, [
+      "import { writeFileSync, writeSync } from 'node:fs';",
+      `writeFileSync(${JSON.stringify(marker)}, 'effect\\n');`,
+      ...(scenario === 'stdout'
+        ? [`for (let written = 0; written < ${CLI_OUTPUT_BYTES + 1024}; written += 8192)`,
+          `  writeSync(1, Buffer.alloc(Math.min(8192, ${CLI_OUTPUT_BYTES + 1024} - written), 120));`]
+        : []),
+      'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);',
+      '',
+    ].join('\n'));
+    const result = await runCli(['help'], {
+      cwd: new URL('..', import.meta.url), effectful: true,
+      timeoutMs: scenario === 'timeout' ? 100 : 5_000,
+      env: { ...process.env, NODE_OPTIONS: `--import=${pathToFileURL(fixture).href}` },
+    });
+    assert.equal(existsSync(marker), true);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.writeResultUnknown, true);
+    assert.match(result.terminationReason,
+      scenario === 'timeout' ? /timed out/u : /stdout exceeded/u);
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 500_000);
+  }
 });
 
 test('modern requests fail closed on metadata, version, method, and parameter drift', async () => {
@@ -275,7 +398,7 @@ test('duplicate IDs are rejected and cancellation suppresses the original respon
   connection.receive({
     jsonrpc: '2.0',
     method: 'notifications/cancelled',
-    params: { requestId: 'same', reason: 'test' },
+    params: { requestId: 'same', reason: 'test', _meta: CLIENT_META },
   });
   await connection.idle();
   assert.equal(aborted, true);
@@ -302,12 +425,38 @@ test('the in-flight cap bounds concurrent CLI processes', async () => {
   });
   connection.receive(request('tools/call', 1, { name: 'doctor', arguments: {} }));
   connection.receive(request('tools/call', 2, { name: 'status', arguments: {} }));
-  connection.receive({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } });
+  connection.receive({ jsonrpc: '2.0', method: 'notifications/cancelled',
+    params: { requestId: 1, _meta: CLIENT_META } });
   await connection.idle();
   assert.equal(runs, 1);
   assert.equal(responses.length, 1);
   assert.equal(responses[0].id, 2);
   assert.equal(responses[0].error.code, -31000);
+  await connection.close();
+});
+
+test('modern cancellation without its request envelope is dropped without a response', async () => {
+  const responses = [];
+  let aborted = false;
+  const connection = createConnection({
+    write: (value) => responses.push(value),
+    runCli: (_argv, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        aborted = true; reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      }, { once: true });
+    }),
+  });
+  connection.receive(request('tools/call', 88, { name: 'doctor', arguments: {} }));
+  connection.receive({ jsonrpc: '2.0', method: 'notifications/cancelled',
+    params: { requestId: 88 } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(aborted, false);
+  assert.deepEqual(responses, []);
+  connection.receive({ jsonrpc: '2.0', method: 'notifications/cancelled',
+    params: { requestId: 88, _meta: CLIENT_META } });
+  await connection.idle();
+  assert.equal(aborted, true);
+  assert.deepEqual(responses, []);
   await connection.close();
 });
 

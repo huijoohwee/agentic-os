@@ -9,33 +9,28 @@
  */
 
 import { realpathSync } from 'node:fs';
-import { commonDir, currentBranch, git, repoRoot, worktrees } from './git.mjs';
-import { loadRepositoryProfileAtRef } from './git-repository.mjs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { commonDir, currentBranch, gitDir, repoRoot, worktrees } from './git.mjs';
+import { loadRepositoryTrust } from './git-repository.mjs';
 import { isLaneRef } from './lane-id.mjs';
-import { PROTECTED_BRANCH } from './worktree.mjs';
 
-export const OVERRIDE_ENV = 'AGENTIC_OS_ALLOW_MAIN_WRITE';
+export const OVERRIDE_ENV = 'AGENTIC_OS_ALLOW_CANONICAL_WRITE';
 
 export function protectedRefForRepository(root) {
-  const primary = worktrees(root)[0];
-  if (!primary?.branch || primary.detached || isLaneRef(primary.branch))
-    throw new TypeError('primary canonical worktree identity is unavailable');
-  const profile = loadRepositoryProfileAtRef({
-    repository: primary.path, ref: `refs/heads/${primary.branch}`,
-  });
-  if (profile && profile.canonical.localRef !== `refs/heads/${primary.branch}`)
-    throw new TypeError('committed profile does not bind the primary canonical branch');
-  return profile?.canonical.localRef ?? `refs/heads/${PROTECTED_BRANCH}`;
+  return loadRepositoryTrust(root).canonical.localRef;
 }
 
-export function evaluate({ branch, phase, override, protectedBranch = PROTECTED_BRANCH }) {
+export function evaluate({ branch, phase, override, protectedBranch }) {
   if (override === '1') {
     return { allow: true, note: `${OVERRIDE_ENV}=1 override in effect for ${phase}` };
   }
+  if (typeof protectedBranch !== 'string' || protectedBranch.length === 0)
+    throw new TypeError('canonical branch identity is required');
   if (branch === protectedBranch) {
     return {
       allow: false,
-      reason: 'blocked-main-authoring',
+      reason: 'blocked-canonical-authoring',
       message: [
         `refusing to ${phase} on "${protectedBranch}".`,
         '',
@@ -67,14 +62,21 @@ export function isBoundLane(branch, root) {
   if (!isLaneRef(branch)) return false;
   const entry = worktrees(root).find((candidate) => candidate.branch === branch);
   try {
-    const gitDir = git(['rev-parse', '--path-format=absolute', '--git-dir'], { cwd: root });
-    const linked = realpathSync(gitDir) !== realpathSync(commonDir(root));
+    const directory = gitDir(root);
+    const linked = realpathSync(directory) !== realpathSync(commonDir(root));
     return linked && Boolean(entry) && realpathSync(entry.path) === realpathSync(root);
   } catch { return false; }
 }
 
 function main() {
   const phase = process.argv[2] ?? 'commit';
+  const override = process.env[OVERRIDE_ENV];
+  if (phase !== 'protected-ref' && override === '1') {
+    const verdict = evaluate({ branch: null, phase, override });
+    if (process.env.AGENTIC_OS_GUARD_VERBOSE === '1')
+      process.stderr.write(`agentic-os: ${verdict.note}\n`);
+    return 0;
+  }
   const root = repoRoot();
   const protectedRef = protectedRefForRepository(root);
   if (phase === 'protected-ref') {
@@ -86,10 +88,10 @@ function main() {
   const verdict = evaluate({
     branch,
     phase,
-    override: process.env[OVERRIDE_ENV],
+    override,
     protectedBranch,
   });
-  if (verdict.allow && process.env[OVERRIDE_ENV] !== '1' && !isBoundLane(branch, root)) {
+  if (verdict.allow && override !== '1' && !isBoundLane(branch, root)) {
     verdict.allow = false;
     verdict.message = `refusing to ${phase}: ${branch} is not bound to this registered worktree.`;
   }
@@ -103,6 +105,7 @@ function main() {
   return 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1]
+  && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
   process.exit(main());
 }

@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import { loadRepositoryProfile, resolveRepositoryRoot } from './git-repository.mjs';
 import { remoteTransport } from './git.mjs';
 import { canonicalJson, governanceDigest, validateRepositoryProfile } from './governance.mjs';
-import { PROTECTED_BRANCH } from './worktree.mjs';
 
 export const GITHUB_ADAPTER = Object.freeze({ id: 'github', version: '1' });
 export const GITHUB_CAPABILITIES = Object.freeze([
@@ -30,7 +29,7 @@ function repositoryIdentity(value) {
     ? { host: match[1].toLowerCase(), name: match[2] } : null;
 }
 
-function originRepositoryIdentity(value) {
+function remoteRepositoryIdentity(value) {
   if (typeof value !== 'string') return null;
   let host;
   let path;
@@ -58,7 +57,7 @@ function bindProfileToRemote(profile, root) {
   const separator = suffix.indexOf('/');
   const remote = separator > 0 ? suffix.slice(0, separator) : null;
   const transport = remoteTransport(remote, root);
-  const observed = originRepositoryIdentity(transport.fetchUrl);
+  const observed = remoteRepositoryIdentity(transport.fetchUrl);
   if (!configured || !observed || configured.host !== observed.host
     || configured.name !== observed.name) {
     const error = new Error(
@@ -138,7 +137,7 @@ export function gh(args, { cwd = process.cwd(), json = true, input } = {}) {
 }
 
 function identityExact(review, {
-  ref, expectedHead, expectedRepository, baseBranch = PROTECTED_BRANCH,
+  ref, expectedHead, expectedRepository, baseBranch,
 }) {
   const expected = repositoryIdentity(expectedRepository);
   const headRepository = repositoryName(review?.headRepository);
@@ -160,17 +159,19 @@ function identityExact(review, {
 
 function receipt({
   ref, identity, review, written = true, mutationAttempted = false,
-  failureReason = null,
+  failureReason = null, sourceHeadCurrent = true, writeResultUnknown = false,
+  reobservedAfterMutation = false, reobservationExact = false,
 }) {
-  const exact = identityExact(review, identity);
+  const exact = identityExact(review, identity) && sourceHeadCurrent
+    && (!mutationAttempted || reobservedAfterMutation);
   const queueEntry = exact ? review?.mergeQueueEntry ?? null : null;
   const accepted = Boolean(exact && (review.state === 'MERGED' || queueEntry));
   return {
     schema: 'agentic-os-provider-handoff/v1',
     provider: 'github-gh',
-    ok: accepted,
+    ok: accepted && written && failureReason === null,
     reason: failureReason ?? (!written ? mutationAttempted
-      ? 'review-write-result-unknown' : 'review-write-failed'
+      ? 'review-write-result-unknown' : 'review-observation-failed'
       : !exact ? 'review-identity-mismatch'
         : !queueEntry && review.state !== 'MERGED' ? 'tested-ordering-unavailable'
           : !accepted ? 'provider-handoff-not-observed' : null),
@@ -178,6 +179,10 @@ function receipt({
     headSha: review?.headRefOid ?? null,
     sourceHeadBound: Boolean(exact),
     reviewMutationAttempted: mutationAttempted,
+    reviewWriteResultUnknown: writeResultUnknown,
+    reviewReobservedAfterMutation: reobservedAfterMutation,
+    reviewReobservationExact: Boolean(reobservedAfterMutation && reobservationExact
+      && sourceHeadCurrent),
     reviewRequiresAttention: Boolean(mutationAttempted && (!written || !exact || failureReason)),
     orderingArmed: Boolean(exact && queueEntry),
     testedProtectedOrdering: Boolean(exact && queueEntry),
@@ -188,7 +193,7 @@ function receipt({
 
 export function enqueue(ref, {
   cwd = process.cwd(), title, body, expectedHead, expectedRepository,
-  baseBranch = PROTECTED_BRANCH, provider = gh, assertSourceHead = null,
+  baseBranch, provider = gh, assertSourceHead = null,
 } = {}) {
   const call = (args, json = true) => provider(args, { cwd, json });
   const target = repositoryIdentity(expectedRepository);
@@ -220,6 +225,26 @@ export function enqueue(ref, {
   ])?.data?.resource ?? null : null;
   const bodyExact = (review) => identity(review)
     && review.body?.split('\n').includes(`Source-Head: ${expectedHead}`);
+  const sourceHeadCurrent = () => {
+    if (typeof assertSourceHead !== 'function') return false;
+    try { return assertSourceHead() === true; } catch { return false; }
+  };
+  const sourceHeadReason = () => typeof assertSourceHead === 'function'
+    ? 'source-ref-moved' : 'source-head-assertion-missing';
+  const reobserve = (fallback = null) => {
+    const projected = call(view);
+    const observed = snapshot(projected?.url ?? fallback?.url) ?? projected;
+    return { review: observed ?? fallback, fresh: observed !== null };
+  };
+  const unknownWrite = (fallback = null) => {
+    const { review, fresh } = reobserve(fallback);
+    const sourceCurrent = sourceHeadCurrent();
+    return receipt({ ref, identity: { ref, expectedHead, expectedRepository, baseBranch },
+      review, written: false, mutationAttempted: true,
+      failureReason: 'review-write-result-unknown', sourceHeadCurrent: sourceCurrent,
+      writeResultUnknown: true, reobservedAfterMutation: fresh,
+      reobservationExact: fresh && bodyExact(review) });
+  };
   const listed = call(pin([
     'pr', 'list', '--state', 'all', '--head', ref, '--limit', '2', '--json', FIELDS,
   ]));
@@ -240,55 +265,61 @@ export function enqueue(ref, {
   }
   const observedExisting = snapshot(existing?.url);
   if (bodyExact(observedExisting) && observedExisting.mergeQueueEntry) {
+    const sourceCurrent = sourceHeadCurrent();
     return receipt({
       ref, identity: { ref, expectedHead, expectedRepository, baseBranch },
-      review: observedExisting,
+      review: observedExisting, sourceHeadCurrent: sourceCurrent,
+      failureReason: sourceCurrent ? null : sourceHeadReason(),
     });
   }
 
-  let written = true;
   let mutationAttempted = false;
-  const sourceHeadCurrent = () => {
-    if (typeof assertSourceHead !== 'function') return false;
-    try { return assertSourceHead() === true; } catch { return false; }
-  };
-  const sourceHeadReason = () => typeof assertSourceHead === 'function'
-    ? 'source-ref-moved' : 'source-head-assertion-missing';
   if (existing?.state === 'OPEN') {
     if (body) {
       if (!sourceHeadCurrent()) return receipt({ ref,
         identity: { ref, expectedHead, expectedRepository, baseBranch }, review: existing,
-        written: false, failureReason: sourceHeadReason() });
+        written: false, failureReason: sourceHeadReason(), sourceHeadCurrent: false });
       mutationAttempted = true;
-      written = call(pin(['pr', 'edit', ref, '--body', body]), false) !== null && written;
+      if (call(pin(['pr', 'edit', ref, '--body', body]), false) === null)
+        return unknownWrite(existing);
     }
     if (title) {
-      if (!sourceHeadCurrent()) return receipt({ ref,
-        identity: { ref, expectedHead, expectedRepository, baseBranch }, review: existing,
-        written, mutationAttempted, failureReason: sourceHeadReason() });
+      if (!sourceHeadCurrent()) { const observed = mutationAttempted ? reobserve(existing) : null;
+        if (mutationAttempted) sourceHeadCurrent();
+        return receipt({ ref, identity: { ref, expectedHead, expectedRepository, baseBranch },
+          review: observed?.review ?? existing, mutationAttempted,
+          failureReason: sourceHeadReason(), sourceHeadCurrent: false,
+          reobservedAfterMutation: observed?.fresh ?? false,
+          reobservationExact: Boolean(observed?.fresh && bodyExact(observed.review)) }); }
       mutationAttempted = true;
-      written = call(pin(['pr', 'edit', ref, '--title', title]), false) !== null && written;
+      if (call(pin(['pr', 'edit', ref, '--title', title]), false) === null)
+        return unknownWrite(existing);
     }
   } else if (!existing) {
     if (!sourceHeadCurrent()) return receipt({ ref,
       identity: { ref, expectedHead, expectedRepository, baseBranch }, review: null,
-      written: false, failureReason: sourceHeadReason() });
+      written: false, failureReason: sourceHeadReason(), sourceHeadCurrent: false });
     mutationAttempted = true;
-    written = call(pin([
+    if (call(pin([
       'pr', 'create', '--base', baseBranch, '--head', ref,
       '--title', title ?? ref, '--body', body ?? '',
-    ]), false) !== null;
+    ]), false) === null) return unknownWrite();
   }
-  const projected = written ? call(view) : null;
-  let final = snapshot(projected?.url);
-  const verified = bodyExact(final);
+  const observed = reobserve(existing);
+  const final = observed.review;
+  const verified = (!mutationAttempted || observed.fresh) && bodyExact(final);
+  const sourceCurrent = sourceHeadCurrent();
   return receipt({
     ref,
     identity: { ref, expectedHead, expectedRepository, baseBranch },
-    review: final ?? projected,
-    written,
+    review: final,
+    written: true,
     mutationAttempted,
-    failureReason: mutationAttempted && !verified ? 'written-but-identity-failed' : null,
+    sourceHeadCurrent: sourceCurrent,
+    reobservedAfterMutation: mutationAttempted && observed.fresh,
+    reobservationExact: mutationAttempted && observed.fresh && verified,
+    failureReason: !sourceCurrent ? sourceHeadReason()
+      : mutationAttempted && !verified ? 'written-but-identity-failed' : null,
   });
 }
 

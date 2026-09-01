@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Documentation budget in bytes.
+ * Always-loaded documentation budget in bytes.
  *
  * A line cap gets gamed: 600 lines of 3,000-character paragraphs reports
  * compliance while costing 97 KB of context. Tokens track bytes, so the budget
  * tracks bytes, plus a line length cap to keep diffs reviewable.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
@@ -122,6 +122,7 @@ function report() {
   return 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1]
+  && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
   process.exit(report());
 }

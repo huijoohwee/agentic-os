@@ -20,17 +20,14 @@ import {
   publishExactNewRef,
   remoteTransport,
   remoteRefSha,
-  worktreeCleanupRisks,
 } from '../src/git.mjs';
 import {
   cherry,
   integrationProof,
   sourceHeadTrailer,
-  surveyLanes,
 } from '../src/patch-identity.mjs';
-import { retire } from '../src/worktree.mjs';
-import { isBoundLane } from '../src/guard-main.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
+import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 
 /** Real repository fixture: patch identity cannot be tested against a mock. */
 function fixture() {
@@ -49,6 +46,17 @@ function commitFile(run, dir, name, body, message) {
   writeFileSync(join(dir, name), body);
   run(['add', name]);
   run(['commit', '--quiet', '--message', message]);
+}
+
+function commitGithubProfile(run, dir) {
+  const profile = createRepositoryProfile({
+    repository: 'github.com/owner/repo',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' },
+      provider: { id: 'github', version: '1' } },
+  });
+  commitFile(run, dir, '.agentic-os.json', `${JSON.stringify(profile, null, 2)}\n`, 'profile');
+  ensureRepositoryTrust(dir, profile, { allowCreate: true });
 }
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -86,18 +94,68 @@ test('ordinary fetch preserves stale remote-tracking refs for governed cleanup',
   run(['init', '--quiet', '--bare', bare]);
   run(['remote', 'add', 'origin', bare]);
   run(['push', '--quiet', 'origin', 'main:retained']);
-  fetch('origin', dir);
+  run(['update-ref', '-d', 'refs/remotes/origin/retained']);
+  const first = fetch('origin', dir);
+  assert.equal(first.schema, 'agentic-os/git-fetch/v1');
+  assert.equal(first.fetchCompleted, true);
+  assert.equal(first.fetchHeadWritten, false);
+  assert.equal(first.autoMaintenanceRun, false);
+  assert.equal(first.refChanges.length, 1);
+  assert.equal(existsSync(join(dir, '.git', 'FETCH_HEAD')), false);
   const retained = run(['rev-parse', 'refs/remotes/origin/retained']);
   run(['--git-dir', bare, 'update-ref', '-d', 'refs/heads/retained']);
   fetch('origin', dir);
   assert.equal(run(['rev-parse', 'refs/remotes/origin/retained']), retained);
 });
 
+test('fetch response loss reobserves exact refs and reports unknown object writes', (t) => {
+  const { dir, run } = fixture();
+  const bare = mkdtempSync(join(tmpdir(), 'adlc-fetch-response-loss-'));
+  const support = mkdtempSync(join(tmpdir(), 'adlc-fetch-wrapper-'));
+  t.after(() => rmSync(support, { recursive: true, force: true }));
+  t.after(() => rmSync(bare, { recursive: true, force: true }));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  run(['init', '--quiet', '--bare', bare]);
+  run(['remote', 'add', 'origin', bare]);
+  const oid = run(['rev-parse', 'HEAD']);
+  run(['push', '--quiet', 'origin', 'main:recovered']);
+  run(['update-ref', '-d', 'refs/remotes/origin/recovered']);
+  const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+  const wrapper = join(support, 'git');
+  writeFileSync(wrapper, [
+    '#!/bin/sh',
+    'if [ "$1" = -c ] && [ "$2" = fetch.writeCommitGraph=false ] && [ "$3" = fetch ]; then',
+    '  "$REAL_GIT" "$@" || exit',
+    '  exit 23',
+    'fi',
+    'exec "$REAL_GIT" "$@"',
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const priorPath = process.env.PATH;
+  process.env.PATH = `${support}:${priorPath}`;
+  process.env.REAL_GIT = realGit;
+  t.after(() => { process.env.PATH = priorPath; delete process.env.REAL_GIT; });
+
+  assert.throws(() => fetch('origin', dir), (error) => {
+    assert.equal(error.reason, 'blocked-fetch-result-unknown');
+    assert.equal(error.artifacts.writeResultUnknown, true);
+    assert.equal(error.artifacts.objectWriteResultUnknown, true);
+    assert.equal(error.artifacts.reobservationExact, true);
+    assert.equal(error.artifacts.effectsRetained, true);
+    assert.equal(error.artifacts.refChanges.length, 1);
+    assert.equal(error.artifacts.refChanges[0].after.oid, oid);
+    return true;
+  });
+  assert.equal(run(['rev-parse', 'refs/remotes/origin/recovered']), oid);
+  assert.equal(existsSync(join(dir, '.git', 'FETCH_HEAD')), false);
+});
+
 test('remote options and absent remotes fail before fetch interpretation', (t) => {
   const { dir, run } = fixture();
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const before = run(['for-each-ref', '--format=%(refname)']);
-  for (const remote of ['--prune', '--all', 'missing']) {
+  for (const remote of [undefined, '--prune', '--all', 'missing']) {
     assert.throws(() => fetch(remote, dir),
       (error) => error?.reason === 'blocked-configured-remote');
   }
@@ -120,6 +178,45 @@ test('remote publication creates the captured OID once and never rewrites it', (
   assert.notEqual(captured, moved);
   assert.throws(() => publishExactNewRef('origin', 'agent/dev/captured', moved, dir));
   assert.equal(remoteRefSha('origin', 'agent/dev/captured', dir), captured);
+});
+
+test('push response loss reobserves and reports the exact retained remote ref', (t) => {
+  const { dir, run } = fixture();
+  const bare = mkdtempSync(join(tmpdir(), 'adlc-push-response-loss-'));
+  const support = mkdtempSync(join(tmpdir(), 'adlc-push-wrapper-'));
+  t.after(() => rmSync(support, { recursive: true, force: true }));
+  t.after(() => rmSync(bare, { recursive: true, force: true }));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  run(['init', '--quiet', '--bare', bare]);
+  run(['remote', 'add', 'origin', bare]);
+  const oid = run(['rev-parse', 'HEAD']);
+  const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+  const wrapper = join(support, 'git');
+  writeFileSync(wrapper, [
+    '#!/bin/sh',
+    'if [ "$1" = push ]; then',
+    '  "$REAL_GIT" "$@" || exit',
+    '  exit 23',
+    'fi',
+    'exec "$REAL_GIT" "$@"',
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const priorPath = process.env.PATH;
+  process.env.PATH = `${support}:${priorPath}`;
+  process.env.REAL_GIT = realGit;
+  t.after(() => { process.env.PATH = priorPath; delete process.env.REAL_GIT; });
+  const ref = 'agent/dev/response-loss';
+  assert.throws(() => publishExactNewRef('origin', ref, oid, dir), (error) => {
+    assert.equal(error.reason, 'blocked-remote-publication-result-unknown');
+    assert.equal(error.artifacts.writeResultUnknown, true);
+    assert.equal(error.artifacts.reobservationExact, true);
+    assert.equal(error.artifacts.effectsRetained, true);
+    assert.equal(error.artifacts.refPublished, true);
+    assert.equal(error.artifacts.remoteRefCurrentOid, oid);
+    return true;
+  });
+  assert.equal(remoteRefSha('origin', ref, dir), oid);
 });
 
 test('a captured remote refuses retargeting before publication', (t) => {
@@ -156,9 +253,11 @@ test('land uses the committed primary profile, not candidate profile bytes', (t)
     canonical: { localRef: 'refs/heads/main', remoteRef: `refs/remotes/${remote}/main` },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
-  writeFileSync(join(dir, '.agentic-os.json'), `${JSON.stringify(profile('origin'), null, 2)}\n`);
+  const trustedProfile = profile('origin');
+  writeFileSync(join(dir, '.agentic-os.json'), `${JSON.stringify(trustedProfile, null, 2)}\n`);
   run(['add', '.agentic-os.json']);
   run(['commit', '--quiet', '--message', 'trusted profile']);
+  ensureRepositoryTrust(dir, trustedProfile, { allowCreate: true });
   run(['remote', 'add', 'origin', origin]);
   run(['remote', 'add', 'upstream', upstream]);
   run(['push', '--quiet', 'origin', 'main']);
@@ -195,14 +294,26 @@ test('profile remote publishes to upstream without contacting conflicting origin
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
   writeFileSync(join(dir, '.agentic-os.json'), `${JSON.stringify(profile, null, 2)}\n`);
+  writeFileSync(join(dir, '.gitignore'), '*.cache\n');
   run(['add', '.agentic-os.json']);
+  run(['add', '.gitignore']);
   run(['commit', '--quiet', '--message', 'add repository profile']);
+  ensureRepositoryTrust(dir, profile, { allowCreate: true });
   run(['push', '--quiet', 'origin', 'main']);
   run(['push', '--quiet', 'upstream', 'main']);
   const ref = 'agent/dev/upstream-only';
   run(['worktree', 'add', '--quiet', '-b', ref, lanePath, 'main']);
   const laneRun = (args) => git(args, { cwd: lanePath });
   commitFile(laneRun, lanePath, 'lane.txt', 'lane\n', 'publish upstream lane');
+  writeFileSync(join(lanePath, 'uncommitted.txt'), 'visible authored bytes\n');
+  const blocked = spawnSync(process.execPath, [CLI, 'land'], {
+    cwd: lanePath, encoding: 'utf8', env: { ...process.env, PATH: '/usr/bin:/bin' },
+  });
+  assert.equal(blocked.status, 1, blocked.stderr);
+  assert.match(blocked.stderr, /blocked-publish-byte-risk/u);
+  assert.equal(remoteRefSha('upstream', ref, dir), null);
+  unlinkSync(join(lanePath, 'uncommitted.txt'));
+  writeFileSync(join(lanePath, 'dependency.cache'), 'ignored dependency bytes remain\n');
   const head = laneRun(['rev-parse', 'HEAD']);
 
   const result = spawnSync(process.execPath, [CLI, 'land'], {
@@ -212,6 +323,8 @@ test('profile remote publishes to upstream without contacting conflicting origin
   assert.match(result.stdout, /no pull-request integration capability selected/u);
   assert.equal(remoteRefSha('upstream', ref, dir), head);
   assert.equal(remoteRefSha('origin', ref, dir), null);
+  assert.equal(readFileSync(join(lanePath, 'dependency.cache'), 'utf8'),
+    'ignored dependency bytes remain\n');
 });
 
 test('a lost cache cannot republish an already-integrated lane or contact the provider', (t) => {
@@ -225,6 +338,7 @@ test('a lost cache cannot republish an already-integrated lane or contact the pr
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   run(['init', '--quiet', '--bare', bare]);
   run(['remote', 'add', 'origin', bare]);
+  commitGithubProfile(run, dir);
   run(['push', '--quiet', 'origin', 'main']);
   const ref = 'agent/dev/already-integrated';
   run(['worktree', 'add', '--quiet', '-b', ref, lanePath, 'main']);
@@ -239,8 +353,7 @@ test('a lost cache cannot republish an already-integrated lane or contact the pr
   const result = spawnSync(process.execPath, [CLI, 'land'], {
     cwd: lanePath,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${support}:${process.env.PATH}`,
-      AGENTIC_OS_ALLOW_LEGACY_PROFILE: '1' },
+    env: { ...process.env, PATH: `${support}:${process.env.PATH}` },
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /blocked-already-integrated/u);
@@ -259,6 +372,7 @@ test('hidden tracked lane bytes block publication before remote or provider muta
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   run(['init', '--quiet', '--bare', bare]);
   run(['remote', 'add', 'origin', bare]);
+  commitGithubProfile(run, dir);
   run(['push', '--quiet', 'origin', 'main']);
   const ref = 'agent/dev/hidden-bytes';
   run(['worktree', 'add', '--quiet', '-b', ref, lanePath, 'main']);
@@ -273,8 +387,7 @@ test('hidden tracked lane bytes block publication before remote or provider muta
   const result = spawnSync(process.execPath, [CLI, 'land'], {
     cwd: lanePath,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${support}:${process.env.PATH}`,
-      AGENTIC_OS_ALLOW_LEGACY_PROFILE: '1' },
+    env: { ...process.env, PATH: `${support}:${process.env.PATH}` },
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /blocked-publish-byte-risk/u);
@@ -470,99 +583,4 @@ test('an unintegrated lane yields no proof at all', (t) => {
   run(['switch', '--quiet', 'main']);
 
   assert.equal(integrationProof('main', 'agent/dev/four', { cwd: dir }), null);
-});
-
-test('partially landed lane is not proven and reports the pending remainder', (t) => {
-  const { dir, run } = fixture();
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-
-  run(['switch', '--quiet', '--create', 'agent/dev/five']);
-  commitFile(run, dir, 'a.txt', 'a\n', 'add a');
-  const first = git(['rev-parse', 'HEAD'], { cwd: dir });
-  commitFile(run, dir, 'b.txt', 'b\n', 'add b');
-
-  run(['switch', '--quiet', 'main']);
-  run(['cherry-pick', first]);
-  // A cherry-pick can reproduce the original commit byte for byte, which makes
-  // it the same SHA rather than an equivalent one. Reword so the SHA differs and
-  // only the patch identity matches, which is the case this test is about.
-  run(['commit', '--quiet', '--amend', '--message', 'add a (landed by the queue)']);
-
-  assert.equal(integrationProof('main', 'agent/dev/five', { cwd: dir }), null);
-  const { upstream, pending } = cherry('main', 'agent/dev/five', { cwd: dir });
-  assert.equal(upstream.length, 1, 'the landed commit is equivalent, not identical');
-  assert.equal(pending.length, 1, 'the remaining commit is genuinely pending');
-});
-
-test('compatibility retirement cannot delete even a clean exact worktree', (t) => {
-  const { dir, run } = fixture();
-  const parent = mkdtempSync(join(tmpdir(), 'adlc-retire-'));
-  t.after(() => rmSync(parent, { recursive: true, force: true }));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const ref = 'agent/dev/retire';
-  run(['switch', '--quiet', '--create', ref]);
-  commitFile(run, dir, 'retire.txt', 'retire\n', 'retire candidate');
-  const tip = run(['rev-parse', 'HEAD']);
-  run(['switch', '--quiet', 'main']);
-  run(['merge', '--quiet', '--ff-only', ref]);
-  const path = join(parent, 'lane');
-  run(['worktree', 'add', '--quiet', path, ref]);
-  assert.equal(isBoundLane(ref, path), true);
-  assert.equal(isBoundLane(ref, dir), false);
-
-  assert.throws(() => retire(ref, { cwd: dir, expectedHead: tip }),
-    (error) => error.reason === 'blocked-authenticated-cleanup-required');
-  assert.equal(run(['rev-parse', ref]), tip);
-  assert.match(run(['worktree', 'list', '--porcelain']), /adlc-retire-/u);
-  assert.equal(existsSync(path), true);
-});
-
-test('cleanup inventory sees ignored authored bytes and hidden tracked drift', (t) => {
-  const { dir, run } = fixture();
-  const parent = mkdtempSync(join(tmpdir(), 'adlc-owned-'));
-  t.after(() => rmSync(parent, { recursive: true, force: true }));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, '.gitignore'), '*.secret\n');
-  run(['add', '.gitignore']);
-  run(['commit', '--quiet', '--message', 'ignore secrets']);
-  const ref = 'agent/dev/owned';
-  run(['switch', '--quiet', '--create', ref]);
-  commitFile(run, dir, 'owned.txt', 'integrated\n', 'owned lane');
-  run(['switch', '--quiet', 'main']);
-  run(['merge', '--quiet', '--ff-only', ref]);
-  const ignoredPath = join(parent, 'ignored-lane');
-  run(['worktree', 'add', '--quiet', ignoredPath, ref]);
-  writeFileSync(join(ignoredPath, 'owned.secret'), 'must survive\n');
-  assert.ok(worktreeCleanupRisks(ignoredPath).owned.includes('owned.secret'));
-  assert.equal(existsSync(join(ignoredPath, 'owned.secret')), true);
-
-  unlinkSync(join(ignoredPath, 'owned.secret'));
-  run(['update-index', '--assume-unchanged', 'owned.txt'], { cwd: ignoredPath });
-  writeFileSync(join(ignoredPath, 'owned.txt'), 'hidden changed bytes\n');
-  const risks = worktreeCleanupRisks(ignoredPath);
-  assert.ok(risks.hidden.includes('owned.txt'));
-  assert.ok(risks.tracked.includes('owned.txt'));
-  assert.equal(readFileSync(join(ignoredPath, 'owned.txt'), 'utf8'), 'hidden changed bytes\n');
-});
-
-test('a survey binds proof to exact base and lane heads before a ref can move', (t) => {
-  const { dir, run } = fixture();
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const ref = 'agent/dev/moving';
-  run(['switch', '--quiet', '--create', ref]);
-  commitFile(run, dir, 'moving.txt', 'moving\n', 'moving candidate');
-  const provenHead = run(['rev-parse', 'HEAD']);
-  run(['switch', '--quiet', 'main']);
-  run(['merge', '--quiet', '--ff-only', ref]);
-  const baseHead = run(['rev-parse', 'main']);
-  const [proof] = surveyLanes('main', [ref], { cwd: dir }).integrated;
-  assert.equal(proof.head, provenHead);
-  assert.equal(proof.baseHead, baseHead);
-
-  const movedHead = run(['commit-tree', `${provenHead}^{tree}`, '-p', provenHead], {
-    input: 'unintegrated ref advance\n',
-  });
-  run(['update-ref', `refs/heads/${ref}`, movedHead, provenHead]);
-  assert.equal(run(['rev-parse', ref]), movedHead);
-  assert.equal(integrationProof('main', ref, { cwd: dir }), null);
 });

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRepositoryProfile } from '../src/governance.mjs';
+import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
@@ -37,6 +38,7 @@ function fixture(t) {
   writeFileSync(join(root, 'base.txt'), 'base\n');
   runGit(root, 'add', '.');
   runGit(root, 'commit', '--quiet', '--message', 'base');
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
   const base = runGit(root, 'rev-parse', 'HEAD');
   runGit(root, 'remote', 'add', 'origin', bare);
   runGit(root, 'push', '--quiet', '--set-upstream', 'origin', 'main');
@@ -111,7 +113,7 @@ test('reap surveys the captured base when the symbolic protected ref moves', (t)
   const result = runCli(subject, 'reap', subject.root, 'reap', subject.laneHead);
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.equal(runGit(subject.root, 'rev-parse', 'refs/remotes/origin/main'), subject.laneHead);
-  assert.match(result.stdout, /open lanes:/u);
+  assert.match(result.stdout, /not-integrated lane projections:/u);
   assert.match(result.stdout, /agent\/test\/protected-race\s+1 pending/u);
   assert.doesNotMatch(result.stdout, /proven integrated/u);
 });

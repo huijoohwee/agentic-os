@@ -1,21 +1,26 @@
 /** Read-only Git reference adapter for the provider-neutral governance contract. */
 
 import { createHash } from 'node:crypto';
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   commonDir,
   currentBranch,
   decodeNulFields,
-  git,
   headSha,
   isAncestor,
+  observeGit,
   repoRoot,
+  trackedChanges,
   untrackedPaths,
   worktreeCleanupRisks,
   worktrees,
 } from './git.mjs';
 import { readBoundedFile } from './catalog-input.mjs';
+import {
+  assertPrivateDirectoryIdentity, legacyPrivateDirectoryIdentity,
+  privateDirectoryIdentity, readPrivateFile, tightenLegacyPrivateDirectory,
+} from './file-integrity.mjs';
 import {
   RETAIN_ALL_CLEANUP,
   governanceDigest,
@@ -23,6 +28,7 @@ import {
 } from './governance.mjs';
 
 export const REPOSITORY_OBSERVATION_SCHEMA = 'agentic-os/repository-observation/v1';
+export const REPOSITORY_TRUST_SCHEMA = 'agentic-os/repository-trust/v1';
 export const REPOSITORY_PROFILE_FILENAME = '.agentic-os.json';
 export const GIT_ADAPTER = Object.freeze({ id: 'git', version: '1' });
 export const GIT_CAPABILITIES = Object.freeze([
@@ -32,8 +38,8 @@ export const GIT_CAPABILITIES = Object.freeze([
   'deep-byte-audit-opt-in',
 ]);
 const MAX_PROFILE_BYTES = 64 * 1024;
+const MAX_TRUST_BYTES = 16 * 1024;
 const MAX_OWNED_PATH_SAMPLE = 128;
-
 function blocked(message, reason = 'blocked-repository-identity') {
   const error = new Error(message);
   error.reason = reason;
@@ -48,7 +54,8 @@ function frozen(value) {
 
 function ref(value, prefix, root) {
   if (typeof value !== 'string' || !value.startsWith(prefix)
-    || value.includes('\0') || git(['check-ref-format', value], { cwd: root, allowFail: true }) === null) {
+    || value.includes('\0')
+    || observeGit(['check-ref-format', value], { cwd: root, allowFail: true }) === null) {
     throw new TypeError(`canonical ref must be a valid ${prefix} ref`);
   }
   return value;
@@ -88,7 +95,7 @@ export function resolveRepositoryRoot(repository = process.cwd()) {
 }
 
 function hiddenPaths(path) {
-  const records = decodeNulFields(git(['ls-files', '-v', '-z'], {
+  const records = decodeNulFields(observeGit(['ls-files', '-v', '-z'], {
     cwd: path, binary: true, allowFail: true,
   }));
   if (!records) blocked('Git hidden-path inventory is unavailable', 'blocked-invalid-path-inventory');
@@ -96,28 +103,6 @@ function hiddenPaths(path) {
     const tag = record[0];
     return tag >= 'a' && tag <= 'z' || tag?.toUpperCase() === 'S';
   }).map((record) => record.slice(2));
-}
-
-function trackedProjection(path, cached) {
-  const fields = decodeNulFields(git([
-    'diff', ...(cached ? ['--cached'] : []), '--raw', '-z', '--no-renames', '--abbrev=64',
-    ...(cached ? ['HEAD'] : []), '--',
-  ], { cwd: path, binary: true, allowFail: true }));
-  if (!fields || fields.length % 2 !== 0) {
-    blocked('Git tracked projection is unavailable', 'blocked-invalid-path-inventory');
-  }
-  const entries = [];
-  for (let index = 0; index < fields.length; index += 2) {
-    const match = fields[index].match(
-      /^:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40,64}) ([0-9a-f]{40,64}) ([A-Z])$/u,
-    );
-    if (!match) blocked('Git tracked projection is malformed', 'blocked-invalid-path-inventory');
-    entries.push({
-      path: fields[index + 1], status: match[5], oldMode: match[1], newMode: match[2],
-      oldObject: match[3], newObject: match[4],
-    });
-  }
-  return entries;
 }
 
 function pathSet(paths) {
@@ -132,8 +117,7 @@ function pathSet(paths) {
 }
 
 function risks(path, mode) {
-  const headToIndex = trackedProjection(path, true);
-  const indexToWorkingTree = trackedProjection(path, false);
+  const { headToIndex, indexToWorkingTree } = trackedChanges(path);
   const exact = mode === 'deep' ? worktreeCleanupRisks(path) : null;
   return {
     dirtyTracked: headToIndex.length > 0 || indexToWorkingTree.length > 0,
@@ -231,23 +215,29 @@ export function loadRepositoryProfile({ repository = process.cwd(), profilePath 
 export function observeRepositoryProfileAtRef({ repository = process.cwd(), ref } = {}) {
   const root = resolveRepositoryRoot(repository);
   if (typeof ref !== 'string' || !/^refs\/(?:heads|remotes)\//u.test(ref)
-    || git(['check-ref-format', ref], { cwd: root, allowFail: true }) === null) {
+    || observeGit(['check-ref-format', ref], { cwd: root, allowFail: true }) === null) {
     throw new TypeError('trusted repository profile ref is invalid');
   }
-  const revision = git(['rev-parse', '--verify', `${ref}^{commit}`], {
+  const revision = observeGit(['rev-parse', '--verify', `${ref}^{commit}`], {
     cwd: root, allowFail: true,
   });
   if (revision === null) return frozen({ revision: null, profile: null });
   const object = `${revision}:${REPOSITORY_PROFILE_FILENAME}`;
-  const sizeText = git(['cat-file', '-s', object], { cwd: root, allowFail: true });
   let profile = null;
-  if (sizeText !== null) {
+  const entries = decodeNulFields(observeGit([
+    'ls-tree', '-z', revision, '--', REPOSITORY_PROFILE_FILENAME,
+  ], { cwd: root, binary: true }));
+  if (!entries) throw new TypeError('trusted repository profile tree entry is invalid');
+  if (entries.length > 0) {
+    if (entries.length !== 1 || !/^100(?:644|755) blob [0-9a-f]{40,64}\t\.agentic-os\.json$/u
+      .test(entries[0])) throw new TypeError('trusted repository profile tree entry is invalid');
+    const sizeText = observeGit(['cat-file', '-s', object], { cwd: root });
     const size = Number(sizeText);
     if (!Number.isSafeInteger(size) || size < 1 || size > MAX_PROFILE_BYTES
-      || git(['cat-file', '-t', object], { cwd: root }) !== 'blob') {
+      || observeGit(['cat-file', '-t', object], { cwd: root }) !== 'blob') {
       throw new TypeError('trusted repository profile blob is invalid');
     }
-    const bytes = git(['cat-file', 'blob', object], { cwd: root, binary: true });
+    const bytes = observeGit(['cat-file', 'blob', object], { cwd: root, binary: true });
     if (bytes.length !== size) throw new TypeError('trusted repository profile blob is invalid');
     const text = bytes.toString('utf8');
     if (!Buffer.from(text, 'utf8').equals(bytes)) throw new TypeError('repository profile must be UTF-8');
@@ -258,12 +248,115 @@ export function observeRepositoryProfileAtRef({ repository = process.cwd(), ref 
   }
   return frozen({ revision, profile });
 }
-
 /** Compatibility projection for callers that only consume committed profile data. */
 export function loadRepositoryProfileAtRef(options = {}) {
   return observeRepositoryProfileAtRef(options).profile;
 }
-
+export function repositoryTrustPath(repository = process.cwd()) {
+  return join(commonDir(resolveRepositoryRoot(repository)), 'agentic-os', 'repository-trust.json');
+}
+function trustFor(profile) {
+  return frozen({ schema: REPOSITORY_TRUST_SCHEMA, repository: profile.repository,
+    canonical: { ...profile.canonical } });
+}
+export function loadRepositoryTrust(repository = process.cwd(), {
+  required = true, allowLegacyUnanchored = false,
+} = {}) {
+  const root = resolveRepositoryRoot(repository);
+  const path = repositoryTrustPath(root);
+  let bytes;
+  try {
+    const directory = join(commonDir(root), 'agentic-os');
+    let parent;
+    try { parent = privateDirectoryIdentity(directory, 'repository trust directory'); } catch (error) {
+      if (!allowLegacyUnanchored || lstatSync(path, { throwIfNoEntry: false })) throw error;
+      legacyPrivateDirectoryIdentity(directory, 'repository trust directory');
+      return null;
+    }
+    if (!parent) {
+      const error = new Error('repository trust anchor is missing');
+      error.code = 'ENOENT';
+      throw error;
+    }
+    bytes = readPrivateFile(path, MAX_TRUST_BYTES, 'repository trust anchor', parent);
+  } catch (error) {
+    if (error.code === 'ENOENT' && !required) return null;
+    blocked(error.code === 'ENOENT' ? 'repository trust anchor is missing' : error.message,
+      error.code === 'ENOENT' ? 'blocked-repository-trust-missing' : 'blocked-repository-trust-invalid');
+  }
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes))
+    blocked('repository trust anchor must be UTF-8 JSON', 'blocked-repository-trust-invalid');
+  let value;
+  try { value = JSON.parse(text); } catch {
+    blocked('repository trust anchor must be UTF-8 JSON', 'blocked-repository-trust-invalid');
+  }
+  const keys = value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.keys(value).sort() : [];
+  const canonicalKeys = value?.canonical && typeof value.canonical === 'object'
+    && !Array.isArray(value.canonical) ? Object.keys(value.canonical).sort() : [];
+  if (JSON.stringify(keys) !== JSON.stringify(['canonical', 'repository', 'schema'])
+    || JSON.stringify(canonicalKeys) !== JSON.stringify(['localRef', 'remoteRef'])
+    || value.schema !== REPOSITORY_TRUST_SCHEMA || typeof value.repository !== 'string')
+    blocked('repository trust anchor shape is invalid', 'blocked-repository-trust-invalid');
+  ref(value.canonical.localRef, 'refs/heads/', root);
+  ref(value.canonical.remoteRef, 'refs/remotes/', root);
+  return frozen(value);
+}
+export function ensureRepositoryTrust(repository, profile, { allowCreate = false, onEffect = null } = {}) {
+  const root = resolveRepositoryRoot(repository);
+  const expected = trustFor(validateRepositoryProfile(profile));
+  const path = repositoryTrustPath(root), directory = join(commonDir(root), 'agentic-os');
+  const parent = lstatSync(directory, { throwIfNoEntry: false });
+  if (!parent) {
+    if (!allowCreate)
+      blocked('repository trust anchor is missing', 'blocked-repository-trust-missing');
+    try { mkdirSync(directory, { mode: 0o700 });
+      onEffect?.({ statePath: directory, stateDirectoryCreated: true }); }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+  }
+  let parentIdentity; try {
+    if (allowCreate && !lstatSync(path, { throwIfNoEntry: false })) {
+      try { parentIdentity = privateDirectoryIdentity(directory, 'repository trust directory'); } catch {
+        parentIdentity = tightenLegacyPrivateDirectory(directory, 'repository trust directory', {
+          onTightenAttempt: () => onEffect?.({ statePath: directory,
+            stateDirectoryTightenAttempted: true, stateDirectoryTightenResultUnknown: true }),
+          onTightened: () => onEffect?.({ statePath: directory,
+            stateDirectoryTightenResultUnknown: false, stateDirectoryTightened: true }),
+        });
+      }
+    } else parentIdentity = privateDirectoryIdentity(directory, 'repository trust directory');
+  } catch (error) {
+    blocked(error.message, 'blocked-repository-trust-invalid');
+  }
+  if (!parentIdentity)
+    blocked('repository trust directory is missing', 'blocked-repository-trust-invalid');
+  const bytes = Buffer.from(`${JSON.stringify(expected, null, 2)}\n`);
+  let created = false;
+  if (allowCreate) {
+    try {
+      onEffect?.({ trustPath: path, trustWriteAttempted: true, trustWriteResultUnknown: true });
+      writeFileSync(path, bytes, { flag: 'wx', mode: 0o600 }); created = true;
+      onEffect?.({ trustPath: path, trustCreated: true, trustWriteResultUnknown: false });
+    } catch (error) {
+      const seen = lstatSync(path, { throwIfNoEntry: false });
+      onEffect?.({ trustPath: path, trustWriteResultUnknown: error.code !== 'EEXIST',
+        trustWriteObservedPathExists: Boolean(seen),
+        trustWriteObservedKind: !seen ? null : seen.isFile() ? 'file'
+          : seen.isDirectory() ? 'directory' : seen.isSymbolicLink() ? 'symlink' : 'other',
+        trustWriteObservedSize: seen?.size ?? null });
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+  const actual = loadRepositoryTrust(root);
+  try { assertPrivateDirectoryIdentity(parentIdentity, 'repository trust directory'); } catch (error) {
+    blocked(error.message, 'blocked-repository-trust-invalid');
+  }
+  if (governanceDigest(actual) !== governanceDigest(expected))
+    blocked('repository trust anchor conflicts with the setup profile',
+      'blocked-repository-trust-conflict');
+  return { created, trust: actual };
+}
 export function observeRepository({
   repository = process.cwd(), profile: value, mode = 'shallow',
 } = {}) {

@@ -13,7 +13,7 @@ ADLC supersedes Agentic SDLC: lanes and computed proofs replace phases and appro
    protected ordering; auto-merge alone leaves the lane `published`.
 4. Never ask "is this already merged?" from memory or a ledger. Run `npm run reap` — exact
    ancestry or touched-path content identity answers it.
-5. Respect the local cap: 3 open lanes per device. It is a WIP selector, not a cross-device claim.
+5. Treat registered worktrees and retained refs as observations, never capacity limits or claims.
 6. Fix defects at the owning source. No downstream masks, aliases, shims, or per-scenario modules.
 7. Budgets are contracts: docs are byte-capped, `src/` is module-capped. `npm run check` enforces both.
 
@@ -21,11 +21,11 @@ ADLC supersedes Agentic SDLC: lanes and computed proofs replace phases and appro
 
 | Intent | Command |
 |---|---|
-| Configure a fresh clone | `npm run setup` |
+| Configure a fresh clone from its primary canonical worktree | `npm run setup` |
 | Verify the harness invariants | `npm run doctor` |
 | Open a lane | `npm run lane -- <scope>` |
 | Publish and project a selected review | `npm run land` |
-| See lanes, WIP, queue | `npm run status` |
+| See registered lane projections and provider state | `npm run status` |
 | Classify exact integration | `npm run reap` |
 | Prove the repository | `npm run check` |
 
@@ -49,7 +49,7 @@ This harness removes the livelock by configuration, not by recovery code:
 - An externally authorized, observed queue entry serializes and tests protected-branch landing order.
 - Exact mode/type/blob identity on every lane-touched path answers "already integrated" after a
   squash; whitespace-insensitive patch IDs and `Source-Head` are never retirement proof.
-- `rerere` resolves a conflict once per clone and replays it across that clone's worktrees.
+- A consumer may opt into native `rerere`; the harness does not mutate unrelated Git policy.
 
 Branch names, pull requests, and local lane records are projections, never governance authority.
 Cross-device scope exclusion is unsupported until an authoritative adapter supplies an authenticated,

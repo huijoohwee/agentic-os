@@ -17,7 +17,7 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:c17e6dea737c72d97d5d9c0e4b106103fb26d72c9b6a87ab451756ad2a50c393'],
+  claims: ['sha256:1897165973e1f2024ee350a630d57ba2f67081821489763685ae87612771186f'],
 });
 
 const clone = (value) => structuredClone(value);
@@ -126,6 +126,14 @@ test('catalog count, digest, and ambiguity drift are distinct', () => {
 
   assert.throws(() => { ENTRY_CONTRACTS['/help'].action = 'queue'; }, TypeError);
   assert.throws(() => { ENTRY_CONTRACTS['/queue.show'].argv.push('apply'); }, TypeError);
+});
+
+test('catalog validation rejects proxies without executing their traps', () => {
+  let touched = false;
+  const proxy = new Proxy({}, { get() { touched = true; return null; } });
+  const result = validateCatalog(proxy);
+  assert.equal(result.ok, false);
+  assert.equal(touched, false);
 });
 
 test('prefix order is a permutation-invariant property', () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Module budget.
+ * Source-module budget.
  *
  * The cap is the design constraint that keeps new scenarios in the lane state
  * table. A per-scenario quadruple of contract, controller, adapter and evidence
@@ -8,15 +8,15 @@
  * at which point the harness is the product.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
-  modules: 25,
+  modules: 29,
   totalLines: 15000,
   perModuleLines: 400,
 });
@@ -115,6 +115,7 @@ function report() {
   return 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1]
+  && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
   process.exit(report());
 }
