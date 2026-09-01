@@ -5,7 +5,7 @@
 
 import { execFileSync } from 'node:child_process';
 import {
-  chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, renameSync, rmdirSync,
+  chmodSync, linkSync, mkdirSync, mkdtempSync, readlinkSync, renameSync,
   statSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -65,6 +65,15 @@ export function acquireOperationLock(name, cwd = process.cwd()) {
     throw error;
   }
   return path;
+}
+
+/** Verify a peer ref and advance another ref in one lock/prepare/commit transaction. */
+export function atomicAdvanceRef(ref, newOid, oldOid, peerRef, peerOid, cwd = process.cwd()) {
+  const input = [
+    'start', `verify ${peerRef} ${peerOid}`, `update ${ref} ${newOid} ${oldOid}`,
+    'prepare', 'commit', '',
+  ].join('\n');
+  git(['update-ref', '--stdin'], { cwd, input });
 }
 
 /** Atomically move exact worktree paths into same-filesystem Git-private storage. */
@@ -142,8 +151,6 @@ export function installStagedEntries(stagingPath, entries, cwd = process.cwd()) 
     const target = join(cwd, entry.path);
     try {
       mkdirSync(dirname(target), { recursive: true });
-      const existing = lstatSync(target, { throwIfNoEntry: false });
-      if (existing?.isDirectory()) rmdirSync(target);
       if (entry.mode === '120000') symlinkSync(readlinkSync(source, { encoding: 'buffer' }), target);
       else linkSync(source, target);
     } catch (error) {

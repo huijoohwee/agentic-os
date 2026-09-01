@@ -50,7 +50,9 @@ canonical-sync processes but cannot stop an uncooperative filesystem writer. Eve
 nonignored path is moved atomically into Git-private quarantine and verified. Exact target blobs
 are staged privately and installed with no-clobber links, so a path recreated after quarantine is
 retained and forces a typed failure instead of being overwritten. On success, captured dirty bytes
-remain in the recovery ref and both temporary directories are removed.
+remain in the recovery ref and both temporary directories are removed. Directory-to-file topology
+is refused before recovery, and the final `origin/main` verification plus local `main` advance share
+one reference transaction.
 
 The operation is recovery-backed, not atomic. If interrupted after recovery-ref creation, do not
 repeat it blindly: preserve the checkout, recovery ref, lock, and named quarantine/staging paths.

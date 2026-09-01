@@ -382,7 +382,7 @@ test('an immediate pre-quarantine replacement is retained and fails closed', (t)
   assert.equal(raced.run(['show', `${plan.recoveryRef}:untracked space.txt`]), 'owned untracked');
 });
 
-test('a post-quarantine write is never overwritten by target installation', (t) => {
+test('a post-quarantine directory is never removed by target installation', (t) => {
   const raced = fixture();
   t.after(() => rmSync(raced.dir, { recursive: true, force: true }));
   const plan = planCanonicalSync({ cwd: raced.dir });
@@ -399,7 +399,7 @@ test('a post-quarantine write is never overwritten by target installation', (t) 
     '  [ -f "$COUNT_FILE" ] && count=$("$REAL_CAT" "$COUNT_FILE")',
     '  count=$((count + 1))',
     '  printf "%s\\n" "$count" > "$COUNT_FILE"',
-    '  [ "$count" -eq 2 ] && printf "RACED UNIQUE\\n" > "$RACE_PATH"',
+    '  [ "$count" -eq 2 ] && mkdir "$RACE_PATH"',
     'fi',
     'exec "$REAL_GIT" "$@"',
     '',
@@ -427,9 +427,64 @@ test('a post-quarantine write is never overwritten by target installation', (t) 
   assert.equal(failure.detail.collisionPath, 'target collision.txt');
   assert.ok(failure.detail.quarantinePath);
   assert.ok(failure.detail.stagingPath);
-  assert.equal(readFileSync(join(raced.dir, 'target collision.txt'), 'utf8'), 'RACED UNIQUE\n');
+  assert.equal(statSync(join(raced.dir, 'target collision.txt')).isDirectory(), true);
   assert.equal(raced.run(['show', `${plan.recoveryRef}:target collision.txt`]), 'owned collision');
   assert.equal(raced.run(['rev-parse', 'HEAD']), raced.localSha);
+});
+
+test('the ref transaction refuses a moved origin without advancing local main', (t) => {
+  const moved = fixture();
+  t.after(() => rmSync(moved.dir, { recursive: true, force: true }));
+  const plan = planCanonicalSync({ cwd: moved.dir });
+  const nextTarget = moved.run(
+    ['commit-tree', `${moved.targetSha}^{tree}`, '-p', moved.targetSha],
+    { input: 'target moved during apply\n' },
+  );
+  const bin = mkdtempSync(join(tmpdir(), 'agentic-os-ref-race-git-'));
+  t.after(() => rmSync(bin, { recursive: true, force: true }));
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const wrapper = join(bin, 'git');
+  write(wrapper, [
+    '#!/bin/sh',
+    'if [ "$1" = update-ref ] && [ "$2" = --stdin ]; then',
+    '  "$REAL_GIT" update-ref refs/remotes/origin/main "$MOVED_TARGET" "$EXPECTED_TARGET"',
+    'fi',
+    'exec "$REAL_GIT" "$@"',
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const keys = ['PATH', 'REAL_GIT', 'MOVED_TARGET', 'EXPECTED_TARGET'];
+  const prior = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  Object.assign(process.env, {
+    PATH: `${bin}:${prior.PATH}`, REAL_GIT: realGit,
+    MOVED_TARGET: nextTarget, EXPECTED_TARGET: moved.targetSha,
+  });
+  t.after(() => {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
+  let failure;
+  assert.throws(() => applyPlan(plan, moved.dir), (error) => {
+    failure = error;
+    return reason(error, 'blocked-after-recovery');
+  });
+  assert.match(failure.detail.cause, /update-ref --stdin/u);
+  assert.equal(moved.run(['rev-parse', 'refs/heads/main']), moved.localSha);
+  assert.equal(moved.run(['rev-parse', 'HEAD']), moved.localSha);
+  assert.equal(moved.run(['rev-parse', 'refs/remotes/origin/main']), nextTarget);
+  assert.match(moved.run(['rev-parse', plan.recoveryRef]), /^[0-9a-f]{40}$/u);
+});
+
+test('planning refuses a target file over an existing directory', (t) => {
+  const directory = fixture({ dirty: false });
+  t.after(() => rmSync(directory.dir, { recursive: true, force: true }));
+  mkdirSync(join(directory.dir, 'target collision.txt'));
+  assert.throws(() => planCanonicalSync({ cwd: directory.dir }),
+    (error) => reason(error, 'blocked-directory-target-collision'));
+  assert.equal(statSync(join(directory.dir, 'target collision.txt')).isDirectory(), true);
+  assert.equal(directory.run(['for-each-ref', '--format=%(refname)', 'refs/agentic-os/recovery']), '');
 });
 
 test('ignored leading-space collisions are rejected before recovery or overwrite', (t) => {

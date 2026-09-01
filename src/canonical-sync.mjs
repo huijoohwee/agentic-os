@@ -3,14 +3,12 @@ import { lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSyn
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import {
-  acquireOperationLock, commonDir, currentBranch, git, installStagedEntries, isAncestor,
+  acquireOperationLock, atomicAdvanceRef, commonDir, currentBranch, git, installStagedEntries, isAncestor,
   quarantineWorktreeEntries, repoRoot, stageTreeEntries, worktreePreservationEntries,
 } from './git.mjs';
-
 export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2';
 export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v2';
 export const TARGET_REF = 'refs/remotes/origin/main';
-
 export class CanonicalSyncError extends Error {
   constructor(reason, detail = {}) {
     super(`${reason}: ${JSON.stringify(detail)}`);
@@ -188,8 +186,12 @@ function observed(cwd, targetRef) {
   const targetSha = git(['rev-parse', '--verify', targetRef], { cwd: root, allowFail: true });
   if (!targetSha) refuse('blocked-target-ref-missing', { targetRef });
   if (!isAncestor(localSha, targetSha, root)) refuse('blocked-non-fast-forward', { localSha, targetSha });
-  if ([...treeEntries(localSha, root).values(), ...treeEntries(targetSha, root).values()]
+  const targetTree = treeEntries(targetSha, root);
+  if ([...treeEntries(localSha, root).values(), ...targetTree.values()]
     .some((entry) => entry.type !== 'blob')) refuse('blocked-submodule-topology');
+  const directory = [...targetTree.keys()].find(
+    (path) => lstatSync(join(root, path), { throwIfNoEntry: false })?.isDirectory());
+  if (directory) refuse('blocked-directory-target-collision', { path: directory });
   const ignored = ignoredPaths(root);
   assertIgnoredSafe(root, localSha, targetSha, ignored);
   const inventory = snapshotInventory(root, localSha);
@@ -262,7 +264,6 @@ function assertRecoveryFidelity(plan, recovery, cwd) {
     }
   }
 }
-
 function captureRecovery(plan, cwd) {
   const temp = mkdtempSync(join(commonDir(cwd), 'agentic-os-canonical-sync-'));
   const index = join(temp, 'index');
@@ -332,8 +333,8 @@ export function applyCanonicalSync(
   let stagingPath = null;
   try {
     assertUnchanged(plan, root);
-    const targetEntries = [...treeEntries(plan.expectedTargetSha, root)]
-      .map(([path, entry]) => ({ path, ...entry }));
+    const targetEntries = [...treeEntries(plan.expectedTargetSha, root)].map(
+      ([path, entry]) => ({ path, ...entry }));
     stagingPath = stageTreeEntries('agentic-os-canonical-sync-target', targetEntries, root);
     recovery = captureRecovery(plan, root);
     assertRecoveryFidelity(plan, recovery, root);
@@ -343,7 +344,8 @@ export function applyCanonicalSync(
       refuse('blocked-recovery-ref-drift');
     installStagedEntries(stagingPath, targetEntries, root);
     git(['read-tree', plan.expectedTargetSha], { cwd: root });
-    git(['update-ref', 'refs/heads/main', plan.expectedTargetSha, plan.expectedLocalSha], { cwd: root });
+    atomicAdvanceRef('refs/heads/main', plan.expectedTargetSha, plan.expectedLocalSha,
+      plan.targetRef, plan.expectedTargetSha, root);
     const actualHead = git(['rev-parse', 'HEAD'], { cwd: root });
     const actualTarget = git(['rev-parse', '--verify', plan.targetRef], { cwd: root });
     const status = git(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root });
