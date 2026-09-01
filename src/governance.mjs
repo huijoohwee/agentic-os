@@ -9,8 +9,8 @@ export const OPERATIONS = Object.freeze(['claim', 'continue', 'integrate', 'reti
 const PROFILE_CAPABILITIES = new Set((
   'deep-byte-audit-opt-in history:linear host-qualified-repository-pin integration-method:squash ' +
   'protected-integration:pull-request read-only-repository-observation read-only-review-observation ' +
-  'required-check-policy:strict retain-all-cleanup shallow-observation-default ' +
-  'tested-protected-ordering:merge-queue'
+  'quarantine-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +
+  'shallow-observation-default tested-protected-ordering:merge-queue'
 ).split(' '));
 const PROVIDER_BOUND_CAPABILITIES = new Set((
   'history:linear host-qualified-repository-pin integration-method:squash protected-integration:pull-request ' +
@@ -70,15 +70,12 @@ function snapshot(value, budget = { nodes: 0, stringBytes: 0 }) {
 export function canonicalJson(value) {
   const encoded = JSON.stringify(snapshot(value));
   if (Buffer.byteLength(encoded, 'utf8') > MAX_BYTES) fail('governance value exceeds byte budget');
-  return encoded;
-}
+  return encoded; }
 export function governanceDigest(value) {
   return createHash('sha256').update(canonicalJson(value)).digest('hex'); }
 function frozen(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(frozen);
-  return Object.freeze(value);
-}
+  Object.values(value).forEach(frozen); return Object.freeze(value); }
 function exactKeys(value, keys, label, requireAll = true) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   const actual = Object.keys(value);
@@ -113,11 +110,12 @@ function strings(value, label, { nonempty = false } = {}) {
 }
 function cleanup(value = RETAIN_ALL_CLEANUP) {
   exactKeys(value, CLEANUP_KEYS, 'cleanup');
-  const result = Object.fromEntries(CLEANUP_KEYS.map((key) => {
-    if (value[key] !== 'retain') fail(`cleanup.${key} must retain consumer-owned state`);
-    return [key, 'retain'];
-  }));
-  return result;
+  const quarantineKeys = ['worktreeProjection', 'worktreeRegistration'];
+  for (const key of CLEANUP_KEYS) if (value[key] !== 'retain'
+    && (!quarantineKeys.includes(key) || value[key] !== 'quarantine'))
+    fail(`cleanup.${key} selects an unsupported effect`);
+  if ((value.worktreeProjection === 'quarantine') !== (value.worktreeRegistration === 'quarantine')) fail('cleanup quarantine requires exact projection and registration opt-in');
+  return { ...value };
 }
 export function deriveCoordinationClaimId({ repository, authoritySubject, ownerSubject, scope }) { return governanceDigest({ schema: 'agentic-os/claim-id/v1', repository, authoritySubject, ownerSubject, scope }); }
 function requestPayload(input, requestedOperation) {
@@ -353,7 +351,15 @@ function profilePayload(input) {
   exactKeys(authority, ['runtime', 'release'], 'authority');
   if (authority.runtime !== 'consumer' || authority.release !== 'consumer')
     fail('runtime and release authority must remain consumer-owned');
-  const capabilities = strings(source.capabilities ?? [], 'capabilities');
+  const cleanupPolicy = cleanup(source.cleanup);
+  const cleanupCapability = Object.values(cleanupPolicy).every((value) => value === 'retain')
+    ? 'retain-all-cleanup' : 'quarantine-worktree-cleanup-opt-in';
+  const requestedCapabilities = strings(source.capabilities ?? [], 'capabilities');
+  const conflicting = cleanupCapability === 'retain-all-cleanup'
+    ? 'quarantine-worktree-cleanup-opt-in' : 'retain-all-cleanup';
+  if (requestedCapabilities.includes(conflicting)) fail('cleanup capability conflicts with selected effects');
+  const capabilities = strings([...requestedCapabilities.filter((value) => value !== conflicting
+    && value !== cleanupCapability), cleanupCapability], 'capabilities');
   const unsupported = capabilities.filter((capability) => !PROFILE_CAPABILITIES.has(capability));
   if (unsupported.length > 0)
     fail(`unsupported repository profile capabilities: ${unsupported.join(', ')}`);
@@ -369,23 +375,17 @@ function profilePayload(input) {
     canonical: { localRef: text(source.canonical.localRef, 'canonical.localRef'),
       remoteRef: text(source.canonical.remoteRef, 'canonical.remoteRef') },
     adapters: { repository: repositoryAdapter, provider: providerAdapter },
-    requiredChecks,
-    capabilities,
-    authority: { ...CONSUMER_AUTHORITY },
-    cleanup: cleanup(source.cleanup),
+    requiredChecks, capabilities,
+    authority: { ...CONSUMER_AUTHORITY }, cleanup: cleanupPolicy,
   };
 }
 export function createRepositoryProfile(input) {
-  const source = snapshot(input);
-  const payload = profilePayload(source);
-  const profileDigest = governanceDigest(payload);
-  if (source.profileDigest !== undefined && source.profileDigest !== profileDigest)
-    fail('profileDigest does not match repository profile');
+  const source = snapshot(input), payload = profilePayload(source), profileDigest = governanceDigest(payload);
+  if (source.profileDigest !== undefined && source.profileDigest !== profileDigest) fail('profileDigest mismatch');
   return frozen({ ...payload, profileDigest });
 }
 export function validateRepositoryProfile(value) {
-  const source = snapshot(value);
-  exactKeys(source, PROFILE_KEYS, 'repository profile');
+  const source = snapshot(value); exactKeys(source, PROFILE_KEYS, 'repository profile');
   if (source.schema !== REPOSITORY_PROFILE_SCHEMA) fail('repository profile schema is invalid');
   const normalized = createRepositoryProfile(source);
   if (canonicalJson(source) !== canonicalJson(normalized)) fail('repository profile is not canonical');

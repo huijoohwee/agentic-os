@@ -11,10 +11,16 @@
     "./records/recovery-candidate": "./src/recovery-candidate.mjs",
     "./adapters/recovery-inventory": "./src/recovery-inventory.mjs",
     "./records/github-authority-issuance": "./src/github-authority-issuer.mjs",
+    "./records/completion": "./src/completion.mjs",
     "./adapters/git": "./src/git-repository.mjs",
     "./adapters/github": "./src/github-provider.mjs",
     "./adapters/github-authority": "./src/github-authority.mjs",
     "./adapters/github-authority-issuer": "./src/github-authority-operation.mjs",
+    "./adapters/github-authority-client": "./src/github-authority-client.mjs",
+    "./adapters/github-transition-client": "./src/github-transition-client.mjs",
+    "./adapters/github-transition-authority": "./src/github-transition-authority.mjs",
+    "./adapters/github-transition-policy": "./src/github-transition-policy.mjs",
+    "./adapters/worktree-cleanup": "./src/cleanup.mjs",
     "./compat/git": "./src/compat/git.mjs",
     "./compat/lane-id": "./src/compat/lane-id.mjs",
     "./compat/lane-records": "./src/compat/lane-records.mjs",
@@ -26,6 +32,7 @@
   "bin": {
     "agentic-os": "bin/agentic-os.mjs",
     "agentic-os-authority": "bin/agentic-os-authority.mjs",
+    "agentic-os-transition": "bin/agentic-os-transition.mjs",
     "agentic-os-mcp": "bin/agentic-os-mcp.mjs"
   },
   "files": [
@@ -57,6 +64,7 @@
     "observe": "node bin/agentic-os.mjs observe",
     "governance:request": "node bin/agentic-os.mjs request",
     "authority": "node bin/agentic-os-authority.mjs",
+    "transition:validate": "node bin/agentic-os-transition.mjs validate-event",
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node bin/agentic-os-doc-budget.mjs",
     "modules:check": "node bin/agentic-os-module-budget.mjs",

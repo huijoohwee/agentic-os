@@ -342,7 +342,7 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
       || oneParent && source.parents.length !== 1) fail('GitHub commit parentage is invalid');
     const parentRevisions = source.parents.map((entry) => sha(entry?.sha, 'GitHub commit parent SHA'));
     return { revision, parentRevisions, parentRevision: parentRevisions.length === 1 ? parentRevisions[0] : null,
-      tree: sha(source.tree?.sha, 'GitHub commit tree SHA'), committedAt: apiInstant(source.commit?.committer?.date, 'GitHub commit time') };
+      tree: sha(source.tree?.sha, 'GitHub commit tree SHA'), committedAt: apiInstant(source.committer?.date, 'GitHub commit time') };
   };
   const gitTree = async (repository, revision) => {
     const source = jsonObject(await request('GET', `${repository.path}/git/trees/${sha(revision, 'Git tree revision')}?recursive=1`), 'GitHub tree');

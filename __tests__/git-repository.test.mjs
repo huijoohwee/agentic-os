@@ -83,6 +83,19 @@ test('Git adapter observes a bound clean clone without assuming consumer authori
   assert.throws(() => observation.projections[0].ownedPaths.push('invented'), TypeError);
 });
 
+test('Git observation preserves the profile-selected exact quarantine opt-in', (t) => {
+  const subject = repository(t), selected = profile({ cleanup: {
+    worktreeProjection: 'quarantine', worktreeRegistration: 'quarantine',
+    remoteTrackingRef: 'retain', localBranch: 'retain', remoteBranch: 'retain',
+    unreachableObjects: 'retain',
+  } });
+  const observation = observeRepository({ repository: subject.root, profile: selected });
+  assert.deepEqual(observation.cleanup, selected.cleanup);
+  assert.deepEqual(observation.capabilities, selected.capabilities);
+  assert.equal(observation.capabilities.includes('retain-all-cleanup'), false);
+  assert.equal(observation.capabilities.includes('quarantine-worktree-cleanup-opt-in'), true);
+});
+
 test('trusted profile loading reads committed canonical bytes, not working-tree edits', (t) => {
   const subject = repository(t);
   const committed = writeProfile(subject.root);

@@ -304,6 +304,12 @@ export function worktrees(cwd = process.cwd()) {
     cwd, binary: true, maxBuffer: 16 * 1024 * 1024,
   }));
 }
+/** Strict detailed worktree state for lifecycle decisions; includes head and retention flags. */
+export function worktreeInventory(cwd = process.cwd()) {
+  return parseWorktreeList(observeGit([
+    'worktree', 'list', '--porcelain', '-z', '--expire=now',
+  ], { cwd, binary: true, maxBuffer: 16 * 1024 * 1024 }), { detailed: true });
+}
 
 /** Commits on `ref` that are not on `base`, oldest first. */
 export function commitsAhead(base, ref, cwd = process.cwd()) {
