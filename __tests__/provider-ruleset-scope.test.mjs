@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { git } from '../src/git.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import {
-  PROVIDER_CAPABILITIES, QUEUE_POLICY, effectivePullRequestMethods, observe,
-  providerBlockingReasons, providerPolicy,
+  PROVIDER_CAPABILITIES, QUEUE_POLICY, RULESET_SCOPE, effectivePullRequestMethods, observe,
+  providerBlockingReasons, providerPolicy, rulesetScope,
 } from '../src/queue.mjs';
 
 const CHECK = 'Integration Gate';
@@ -65,6 +65,25 @@ function ruleset(id, name, refName, rules) {
     conditions: { ref_name: refName }, rules };
 }
 
+test('literal-prefix proofs stay conservative across every pattern marker class', () => {
+  const scope = (include) => rulesetScope(ruleset(0, 'pattern', {
+    include: [include], exclude: [],
+  }, []), 'trunk', 'trunk');
+  for (const pattern of [
+    'refs/heads/adlc/?',
+    'refs/heads/adlc/[ab]*',
+    'refs/heads/adlc/\\*',
+  ]) assert.equal(scope(pattern), RULESET_SCOPE.INAPPLICABLE, pattern);
+  for (const pattern of [
+    '*',
+    'refs/heads/*',
+    'refs/heads/tr?nk',
+    'refs/heads/tr[ua]nk',
+    'refs/heads/tr\\unk',
+  ]) assert.equal(scope(pattern), RULESET_SCOPE.UNKNOWN, pattern);
+  assert.equal(scope('refs/heads/trunk'), RULESET_SCOPE.APPLICABLE);
+});
+
 test('an unknown wildcard ruleset cannot be ignored beside an exact passing queue rule', (t) => {
   const passing = ruleset(1, 'exact queue', {
     include: ['refs/heads/trunk'], exclude: [],
@@ -92,7 +111,7 @@ test('an unknown wildcard ruleset cannot be ignored beside an exact passing queu
   assert.equal(state.handoffPolicySatisfied, false);
 });
 
-test('an unknown exclusion cannot hide a pull-request method conflict', (t) => {
+test('a disjoint wildcard exclusion exposes a pull-request method conflict', (t) => {
   const passingRule = { type: 'pull_request', parameters: {
     allowed_merge_methods: ['squash'],
   } };
@@ -110,10 +129,33 @@ test('an unknown exclusion cannot hide a pull-request method conflict', (t) => {
   ], [], [passing, conflicting]);
 
   assert.deepEqual(effectivePullRequestMethods(MERGE, [passingRule, conflictingRule]), []);
+  assert.deepEqual(state.effectiveMergeMethods, []);
+  assert.equal(state.pullRequestPolicySatisfied, false);
+  assert.equal(state.unknownRulesetScope, false);
+  assert.ok(!state.observationErrors.includes('ruleset-scope'));
+  assert.deepEqual(providerBlockingReasons(state, policy), ['pull-request']);
+  assert.equal(state.handoffPolicySatisfied, false);
+});
+
+test('a wildcard with a disjoint literal prefix cannot govern the canonical branch', (t) => {
+  const passing = ruleset(5, 'canonical review', {
+    include: ['refs/heads/trunk'], exclude: [],
+  }, [{ type: 'pull_request', parameters: { allowed_merge_methods: ['squash'] } }]);
+  const immutableEvidence = ruleset(6, 'immutable evidence', {
+    include: ['refs/heads/adlc/authority/**'], exclude: [],
+  }, [
+    { type: 'update', parameters: { update_allows_fetch_and_merge: false } },
+    { type: 'deletion' },
+    { type: 'non_fast_forward' },
+  ]);
+  const { state, policy } = observeRulesets(t, [
+    PROVIDER_CAPABILITIES.PULL_REQUEST, PROVIDER_CAPABILITIES.SQUASH,
+  ], [], [passing, immutableEvidence]);
+
   assert.deepEqual(state.effectiveMergeMethods, ['squash']);
   assert.equal(state.pullRequestPolicySatisfied, true);
-  assert.equal(state.unknownRulesetScope, true);
-  assert.ok(state.observationErrors.includes('ruleset-scope'));
-  assert.deepEqual(providerBlockingReasons(state, policy), ['ruleset-observation']);
-  assert.equal(state.handoffPolicySatisfied, false);
+  assert.equal(state.unknownRulesetScope, false);
+  assert.ok(!state.observationErrors.includes('ruleset-scope'));
+  assert.deepEqual(providerBlockingReasons(state, policy), []);
+  assert.equal(state.handoffPolicySatisfied, true);
 });
