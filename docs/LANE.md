@@ -9,11 +9,13 @@ writer, and store.
 
 A lane is `agent/<device>/<scope>`:
 
-- `device` — lowercase host segment, so two machines cannot collide on one scope.
-- `scope` — lowercase hyphenated noun for the write set, unique among open lanes.
+- `device` — lowercase host namespace used for branch identity and local WIP selection.
+- `scope` — lowercase hyphenated noun for the write set, checked only in the current clone.
 
-The branch name is the whole coordination surface. There is no lease registry, no fence epoch, and
-no compare-and-swap ledger. The merge queue is the serialization point; the PR is the claim.
+The branch, pull request, and local record are provider projections, not claims or authority. Two
+devices can create distinct refs for the same scope. Cross-device exclusion therefore requires an
+external authenticated, fenced compare-and-swap claim; this compatibility lane machine does not
+provide one and must not be treated as one.
 
 ## States
 
@@ -21,10 +23,9 @@ no compare-and-swap ledger. The merge queue is the serialization point; the PR i
 |---|---|---|
 | `planned` | Lane recorded, no worktree or branch yet | no |
 | `active` | Worktree registered, branch bound, work in progress | no |
-| `published` | Branch pushed, PR open, not yet enqueued | no |
+| `published` | Exact remote lane ref present; selected review projection may exist | no |
 | `queued` | PR accepted into the merge queue | no |
-| `integrated` | Content proven present on `origin/main` | no |
-| `retired` | Worktree removed, branch deleted | yes |
+| `integrated` | Content proven present on the profile's canonical remote ref | no |
 
 ## Events and legal transitions
 
@@ -33,33 +34,30 @@ no compare-and-swap ledger. The merge queue is the serialization point; the PR i
 | `planned` | `provision` | `active` | `wipWithinCap`, `baseFetched`, `scopeFree` |
 | `active` | `author` | `active` | `onLaneWorktree` |
 | `active` | `publish` | `published` | `clean`, `hasCommits`, `pushed` |
-| `published` | `enqueue` | `queued` | `queueEnabled`, `prOpen`, `checksNotStale` |
-| `published` | `restack` | `published` | `ejectedOnce` |
-| `queued` | `eject` | `published` | none |
+| `published` | `enqueue` | `queued` | `orderingDelegated`, exact `providerHandoff` receipt |
 | `queued` | `integrate` | `integrated` | `integratedProof` |
 | `active` | `integrate` | `integrated` | `integratedProof` |
 | `published` | `integrate` | `integrated` | `integratedProof` |
-| `integrated` | `reap` | `retired` | `integratedProof`, `noOwnedUntracked` |
 
 Anything absent from this table is illegal and returns a typed refusal.
 
 ## Computed autonomy class
 
 `npm run autonomy:class` derives a committed candidate's promotion ceiling from the merge-base of
-`origin/main...HEAD`; `-- --base=<revision> --head=<revision> --json` binds another exact range.
+the profile's canonical remote ref and `HEAD`; `-- --base=<revision> --head=<revision> --json`
+binds another exact range.
 Mixed write sets resolve upward through docs-only, test-only, additive-contract, behavioral, and
-authority-controlling. A standing grant never covers authority-controlling changes. The classifier,
-guards, queue policy, integration proofs, command dispatch, budgets, and provider workflows are
-authority-controlling themselves, so none can widen its own promotion ceiling.
+authority-controlling. A standing grant never covers authority-controlling changes. Modifying,
+deleting, or renaming an existing test is authority-controlling; only a newly added test is
+test-only. The classifier is deterministic evidence, not a security boundary when executed from
+candidate bytes. Candidate-side `land` never arms ordering. A consumer must evaluate promotion
+with trusted code and credentials outside the candidate before protected integration.
 
-## The two transitions that remove the livelock
+## Tested provider ordering
 
-`queued` has no `restack`. A queued lane never moves its own base. The queue tests the lane on a
-speculative branch ahead of `main`, so an out-of-date base is the queue's problem, not the author's.
-
-`published --restack--> published` requires `ejectedOnce`. One ejection buys exactly one restack.
-A lane cannot circle: restack, requeue, fall behind, restack again. If it is ejected twice, the
-lane is wrong, not stale, and the refusal says so.
+`queued` is reached only when an externally authorized adapter re-observes the exact pull-request
+head in a native merge queue. An auto-merge request alone is not tested protected ordering, so it
+remains `published`. No `restack` or `eject` event is implemented; absent events fail closed.
 
 ## Typed refusals
 
@@ -69,34 +67,30 @@ Every blocked transition returns one of these. They name the upstream owner, nev
 |---|---|
 | `blocked-illegal-transition` | The event is not defined for this state |
 | `blocked-wip-cap` | Device is at the open-lane cap; land something first |
-| `blocked-stack-depth` | Stack is at the depth cap; land the bottom of the stack |
-| `blocked-main-authoring` | The write target is the canonical `main` worktree |
+| `blocked-main-authoring` | The write target is the profile's canonical branch worktree |
 | `blocked-dirty` | Uncommitted tracked changes in the lane worktree |
-| `blocked-owned-untracked` | Untracked authored files exist; they stay in place, lane cannot retire |
 | `blocked-no-queue` | The merge queue is not enabled on the protected branch |
 | `blocked-not-pushed` | Local commits are not on the remote lane ref |
-| `blocked-no-pr` | No open PR for the lane ref |
-| `blocked-stale-checks` | Required checks have not run on the current head |
+| `blocked-provider-handoff` | Exact provider head or tested-ordering receipt is absent |
 | `blocked-not-integrated` | No integration proof, so nothing may be deleted |
-| `blocked-restack-exhausted` | A second restack was requested; escalate instead |
 | `blocked-scope-taken` | Another open lane already owns this scope |
 
 ## Integration proof
 
-`retired` is reachable only with one of four proofs, in falling strength:
+`integrated` is reachable only with one of two exact proofs, in falling strength:
 
-1. `ancestor` — the lane head is an ancestor of `origin/main`.
-2. `source-head-trailer` — a commit on `origin/main` carries `Source-Head: <lane-head-sha>`.
-3. `patch-identity` — every lane commit is patch-equivalent to a commit on `origin/main`.
-4. `squash-identity` — the lane's combined diff equals the diff of one commit on `origin/main`.
+1. `ancestor` — the lane head is an ancestor of the profile's canonical remote ref.
+2. `exact-tree-projection` — every path changed by the lane has the exact same Git mode, object type,
+   and object ID at the lane head and the observed canonical remote head.
 
-Squash merges destroy proof 1, which is why the rest exist. Proof 3 also fails whenever a lane had
-more than one commit, because the squash produces a single combined patch that matches no individual
-lane commit. Proof 4 covers exactly that case by comparing the lane's whole diff instead.
+Squash merges destroy proof 1, so proof 2 compares resulting repository content instead of commit
+shape. Git patch IDs deliberately ignore some whitespace and therefore remain diagnostic only.
+`Source-Head` binds review observations to a requested revision but is forgeable correlation, never
+integration or retirement proof.
 
-Proof 2 is the only deterministic one, and it is not free: the provider must build the squash message
-from the pull request body, and `land` must put the trailer in that body. `doctor` checks both as
-`trailer-carrier`. If that check fails, lanes still land but only prove themselves by diff search.
+This compatibility machine has no cleanup transition. `reap` only computes these projections.
+Authenticated `retire(claim)`, clean detachment, and target-specific filesystem cleanup remain
+separate public governance operations and receipts.
 
 No other signal counts: not review state, not mergeability, not branch age, not a passing check, not
 the absence of a diff in a UI.
@@ -104,11 +98,11 @@ the absence of a diff in a UI.
 ## Owned untracked state
 
 A file first observed after the lane baseline is authored state, not residue. It stays byte-for-byte
-in its owning worktree. `reap` refuses the lane, and the refusal is `blocked-owned-untracked`. Do
-not stash, ignore-mask, relocate to `main`, or adopt it under another lane.
+in its owning worktree. Publication and any future cleanup adapter must fail closed on it, including
+when ignored. Do not stash, ignore-mask, relocate to the canonical worktree, or adopt it elsewhere.
 
 ## Split work
 
-A goal spanning repositories or write sets is a dependency-ordered set of lanes, never one lane with
-a wide scope. A blocked lane blocks itself and its dependents only. A disjoint lane may proceed and
-may record that it observed the blocker, but may not clean, adopt, or move another lane's bytes.
+A goal spanning repositories or write sets is dependency ordered. A blocked lane blocks itself and
+its dependents only. Disjoint work may proceed, but no lane may clean, adopt, or move another lane's
+bytes. Cross-device ownership must come from a governance adapter, never this local scope scan.

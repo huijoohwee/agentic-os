@@ -1,13 +1,14 @@
 /**
  * Integration oracle. Answers "is this lane already on the protected branch?"
- * as a computed fact, replacing a ledger, receipt chain, or recovery document.
+ * as a computed local classification. It never replaces authenticated authority,
+ * an Integration Receipt, or recovery evidence.
  *
  * Squash merges rewrite lane commits into one new commit, so ancestry alone
- * reports a finished lane as unmerged forever. Two weaker but sufficient proofs
- * cover that: a Source-Head trailer written by the queue, and patch identity.
+ * reports a finished lane as unmerged forever. Exact path-state identity covers
+ * squash without trusting whitespace-insensitive patch IDs or commit messages.
  */
 
-import { git, gitLines, isAncestor, commitsAhead, headSha } from './git.mjs';
+import { commitsAhead, decodeNulFields, git, gitLines, headSha, isAncestor } from './git.mjs';
 
 export const SOURCE_HEAD_TRAILER = 'Source-Head';
 
@@ -32,95 +33,67 @@ export function cherry(base, ref, { cwd } = {}) {
   return { upstream, pending };
 }
 
-/** Stable patch id of an arbitrary diff, or null when the diff is empty. */
-function patchId(diffArgs, { cwd } = {}) {
-  const diff = git(diffArgs, { cwd, allowFail: true });
-  if (!diff) return null;
-  const id = git(['patch-id', '--stable'], { cwd, input: `${diff}\n`, allowFail: true });
-  return id ? id.split(' ')[0] : null;
+function changedPaths(mergeBase, tip, { cwd } = {}) {
+  const output = git(
+    ['diff', '--name-only', '-z', '--no-renames', mergeBase, tip],
+    { cwd, binary: true, allowFail: true },
+  );
+  return decodeNulFields(output);
 }
 
-/**
- * A squash merge collapses N lane commits into one, so no individual lane commit
- * is patch-equivalent to anything upstream. Compare the lane's combined diff
- * against each candidate upstream commit instead.
- */
-export function squashIdentityProof(base, ref, { cwd, limit = 200 } = {}) {
+function treeEntry(revision, path, { cwd } = {}) {
+  return git(['--literal-pathspecs', 'ls-tree', '-z', revision, '--', path], {
+    cwd,
+    binary: true,
+    allowFail: true,
+  });
+}
+
+/** Exact mode/type/blob state for every path changed by the lane. */
+export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
   const mergeBase = git(['merge-base', base, ref], { cwd, allowFail: true });
   if (!mergeBase) return null;
-
-  const combined = patchId(['diff', `${mergeBase}...${ref}`], { cwd });
-  if (!combined) return null;
-
-  const candidates = gitLines(
-    ['rev-list', `--max-count=${limit}`, `${mergeBase}..${base}`],
-    { cwd },
-  );
-  for (const candidate of candidates) {
-    if (patchId(['diff-tree', '-p', candidate], { cwd }) === combined) {
-      return {
-        kind: 'squash-identity',
-        detail: `${base} commit ${candidate} carries this lane's combined diff`,
-        pending: [],
-      };
-    }
-  }
-  return null;
-}
-
-/** Commit on `base` whose message carries a Source-Head trailer for `sha`. */
-export function findSourceHeadCommit(base, sha, { cwd } = {}) {
-  if (!sha) return null;
-  const args = [
-    'log',
-    base,
-    '--fixed-strings',
-    `--grep=${sourceHeadTrailer(sha)}`,
-    '--format=%H',
-    '--max-count=1',
-  ];
-  const found = git(args, { cwd, allowFail: true });
-  return found || null;
+  const paths = changedPaths(mergeBase, ref, { cwd });
+  if (!paths || paths.length === 0) return null;
+  const mismatched = paths.filter((path) => {
+    const baseEntry = treeEntry(base, path, { cwd });
+    const laneEntry = treeEntry(ref, path, { cwd });
+    return !Buffer.isBuffer(baseEntry) || !Buffer.isBuffer(laneEntry)
+      || !baseEntry.equals(laneEntry);
+  });
+  if (mismatched.length > 0) return null;
+  return {
+    kind: 'exact-tree-projection',
+    detail: `${paths.length} lane-touched path(s) exactly match ${base}`,
+    pathCount: paths.length,
+    pending: [],
+  };
 }
 
 /**
  * Strongest available proof that `ref` is integrated into `base`, or null.
  *
- * @returns {{kind: 'ancestor'|'source-head-trailer'|'patch-identity',
+ * @returns {{kind: 'ancestor'|'exact-tree-projection',
  *            detail: string, pending: string[]} | null}
  */
 export function integrationProof(base, ref, { cwd } = {}) {
+  const baseTip = headSha(base, cwd);
   const tip = headSha(ref, cwd);
-  if (!tip) return null;
+  if (!baseTip || !tip) return null;
 
-  if (isAncestor(tip, base, cwd)) {
-    return { kind: 'ancestor', detail: `${tip} is an ancestor of ${base}`, pending: [] };
+  if (isAncestor(tip, baseTip, cwd)) {
+    return { kind: 'ancestor', baseHead: baseTip, head: tip,
+      detail: `${tip} is an ancestor of ${baseTip}`, pending: [] };
   }
 
-  const trailerCommit = findSourceHeadCommit(base, tip, { cwd });
-  if (trailerCommit) {
-    return {
-      kind: 'source-head-trailer',
-      detail: `${base} commit ${trailerCommit} records ${sourceHeadTrailer(tip)}`,
-      pending: [],
-    };
-  }
-
-  const laneCommits = commitsAhead(base, ref, cwd);
+  const laneCommits = commitsAhead(baseTip, tip, cwd);
   if (laneCommits.length === 0) {
-    return { kind: 'ancestor', detail: `${ref} adds no commits over ${base}`, pending: [] };
+    return { kind: 'ancestor', baseHead: baseTip, head: tip,
+      detail: `${tip} adds no commits over ${baseTip}`, pending: [] };
   }
 
-  const { upstream, pending } = cherry(base, ref, { cwd });
-  if (pending.length === 0 && upstream.length > 0) {
-    return {
-      kind: 'patch-identity',
-      detail: `${upstream.length} lane commit(s) patch-equivalent to ${base}`,
-      pending: [],
-    };
-  }
-
-  return squashIdentityProof(base, ref, { cwd });
+  const content = exactTreeProjectionProof(baseTip, tip, { cwd });
+  return content ? { ...content, baseHead: baseTip, head: tip } : null;
 }
 
 /**
@@ -133,7 +106,8 @@ export function surveyLanes(base, branches, { cwd } = {}) {
   for (const branch of branches) {
     const proof = integrationProof(base, branch, { cwd });
     if (proof) {
-      integrated.push({ branch, proof: proof.kind, detail: proof.detail });
+      integrated.push({ branch, head: proof.head, baseHead: proof.baseHead,
+        proof: proof.kind, detail: proof.detail });
     } else {
       const { upstream, pending } = cherry(base, branch, { cwd });
       open.push({ branch, alreadyUpstream: upstream.length, pending: pending.length });

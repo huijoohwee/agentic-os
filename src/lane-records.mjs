@@ -2,8 +2,9 @@
  * Lane records. One JSON file in the git common directory, so every worktree of
  * the clone reads the same file and nothing lands in the repository tree.
  *
- * This is a cache of observable state, never an authority. Anything it claims
- * can be recomputed from git and the provider; when they disagree, they win.
+ * This is a best-effort cache of observable state, never an authority. Its
+ * shared read-modify-write form can lose a concurrent cache update, so safety
+ * decisions must be recomputed from exact git and provider observations.
  */
 
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
@@ -71,7 +72,6 @@ export function newRecord({ ref, device, scope, base, baseSha, worktree }) {
     base,
     baseSha,
     worktree,
-    ejections: 0,
     pr: null,
     createdAt: new Date().toISOString(),
   };

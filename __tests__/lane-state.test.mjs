@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   transition,
   legalEvents,
-  canRestack,
   orderingMode,
   TRANSITIONS,
   STATES,
@@ -11,32 +10,15 @@ import {
   PROOF_KINDS,
 } from '../src/lane-state.mjs';
 
-test('a queued lane cannot restack: the queue owns its base', () => {
-  assert.equal(canRestack('queued'), false);
-  const result = transition('queued', 'restack', { ejections: 1 });
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, REFUSALS.ILLEGAL);
-});
-
-test('ejection buys exactly one restack, never two', () => {
-  assert.equal(transition('published', 'restack', { ejections: 1 }).ok, true);
-  const second = transition('published', 'restack', { ejections: 2 });
-  assert.equal(second.ok, false);
-  assert.equal(second.reason, REFUSALS.RESTACK_EXHAUSTED);
-
-  const never = transition('published', 'restack', { ejections: 0 });
-  assert.equal(never.reason, REFUSALS.RESTACK_EXHAUSTED);
+test('unimplemented restack and ejection events are refused', () => {
+  assert.equal(transition('queued', 'eject', {}).reason, REFUSALS.ILLEGAL);
+  assert.equal(transition('published', 'restack', {}).reason, REFUSALS.ILLEGAL);
 });
 
 test('provision enforces the WIP cap', () => {
   const base = { baseFetched: true, openLanes: 3, wipCap: 3 };
   assert.equal(transition('planned', 'provision', base).reason, REFUSALS.WIP_CAP);
   assert.equal(transition('planned', 'provision', { ...base, openLanes: 2 }).ok, true);
-});
-
-test('provision enforces the stack depth cap', () => {
-  const facts = { baseFetched: true, stackDepth: 4, stackCap: 3 };
-  assert.equal(transition('planned', 'provision', facts).reason, REFUSALS.STACK_DEPTH);
 });
 
 test('provision refuses a scope another open lane owns', () => {
@@ -59,54 +41,69 @@ test('publish requires a clean tree with commits already pushed', () => {
 });
 
 test('enqueue requires the provider to own landing order', () => {
-  const facts = { prOpen: true, laneHeadSha: 'a', checksHeadSha: 'a' };
+  const providerReceipt = { ok: true, testedProtectedOrdering: true, headSha: 'a' };
+  const facts = { laneHeadSha: 'a', providerReceipt };
   assert.equal(transition('published', 'enqueue', facts).reason, REFUSALS.NO_QUEUE);
-  assert.equal(transition('published', 'enqueue', { ...facts, queueEnabled: true }).ok, true);
+  const capable = { ...facts, providerObservationComplete: true,
+    queueEnabled: true, queuePolicySatisfied: true,
+    requiredChecksSatisfied: true,
+    mergeGroupSupported: true };
+  assert.equal(transition('published', 'enqueue', capable).ok, true);
 
-  // Auto-merge with checks and require-up-to-date off is the weaker delegation.
-  const autoMerge = { ...facts, autoMergeAllowed: true, requiredCheckCount: 2, strict: false };
-  assert.equal(transition('published', 'enqueue', autoMerge).ok, true);
-  assert.equal(orderingMode(autoMerge), 'auto-merge');
-  assert.equal(orderingMode({ ...autoMerge, queueEnabled: true }), 'merge-queue');
+  const autoMerge = { ...facts, autoMergeAllowed: true };
+  assert.equal(transition('published', 'enqueue', autoMerge).reason, REFUSALS.NO_QUEUE);
+  assert.equal(orderingMode(autoMerge), 'none');
+  assert.equal(orderingMode({ ...capable }), 'merge-queue');
+  assert.equal(orderingMode({ ...capable, queuePolicySatisfied: false }), 'none');
+  assert.equal(orderingMode({ ...capable, requiredChecksSatisfied: false }), 'none');
+  assert.equal(orderingMode({ ...capable, mergeGroupSupported: false }), 'none');
+  assert.equal(orderingMode({ ...capable, providerObservationComplete: false }), 'none');
 });
 
 test('auto-merge without checks, or with strict on, is not delegation', () => {
-  const facts = { prOpen: true, laneHeadSha: 'a', checksHeadSha: 'a', autoMergeAllowed: true };
-  assert.equal(orderingMode({ ...facts, requiredCheckCount: 0, strict: false }), 'none');
-  assert.equal(orderingMode({ ...facts, requiredCheckCount: 2, strict: true }), 'none');
+  const facts = { laneHeadSha: 'a', autoMergeAllowed: true };
+  assert.equal(orderingMode({ ...facts, queueEnabled: true, queuePolicySatisfied: true,
+    requiredChecksSatisfied: false, mergeGroupSupported: true }), 'none');
   assert.equal(
-    transition('published', 'enqueue', { ...facts, requiredCheckCount: 2, strict: true }).reason,
+    transition('published', 'enqueue', { ...facts, queueEnabled: true,
+      queuePolicySatisfied: true, requiredChecksSatisfied: false,
+      mergeGroupSupported: true }).reason,
     REFUSALS.NO_QUEUE,
   );
 });
 
-test('enqueue refuses a head whose checks are stale', () => {
-  const facts = { queueEnabled: true, prOpen: true, laneHeadSha: 'new', checksHeadSha: 'old' };
-  assert.equal(transition('published', 'enqueue', facts).reason, REFUSALS.STALE_CHECKS);
+test('enqueue refuses an absent, failed, or mismatched provider handoff receipt', () => {
+  const facts = { providerObservationComplete: true,
+    queueEnabled: true, queuePolicySatisfied: true,
+    requiredChecksSatisfied: true,
+    mergeGroupSupported: true, laneHeadSha: 'new' };
+  assert.equal(transition('published', 'enqueue', facts).reason, REFUSALS.PROVIDER_HANDOFF);
+  assert.equal(transition('published', 'enqueue', {
+    ...facts, providerReceipt: { ok: false, testedProtectedOrdering: false, headSha: 'new' },
+  }).reason, REFUSALS.PROVIDER_HANDOFF);
+  assert.equal(transition('published', 'enqueue', {
+    ...facts, providerReceipt: { ok: true, testedProtectedOrdering: true, headSha: 'old' },
+  }).reason, REFUSALS.PROVIDER_HANDOFF);
 });
 
-test('nothing is deleted without an integration proof', () => {
-  assert.equal(transition('integrated', 'reap', {}).reason, REFUSALS.NOT_INTEGRATED);
+test('integration proof is exact and compatibility cleanup is not a lane transition', () => {
   for (const kind of PROOF_KINDS) {
-    assert.equal(transition('integrated', 'reap', { integrationProof: kind }).ok, true, kind);
+    assert.equal(transition('queued', 'integrate', { integrationProof: kind }).ok, true, kind);
   }
   assert.equal(
-    transition('integrated', 'reap', { integrationProof: 'looks-merged' }).reason,
+    transition('queued', 'integrate', { integrationProof: 'looks-merged' }).reason,
     REFUSALS.NOT_INTEGRATED,
   );
+  assert.equal(transition('integrated', 'reap', { integrationProof: 'ancestor' }).reason,
+    REFUSALS.ILLEGAL);
 });
 
-test('owned untracked state blocks retirement even with a proof', () => {
-  const facts = { integrationProof: 'ancestor', ownedUntracked: true };
-  assert.equal(transition('integrated', 'reap', facts).reason, REFUSALS.OWNED_UNTRACKED);
-});
-
-test('every transition targets a declared state and retired is terminal', () => {
+test('every transition targets a declared state and integrated has no local cleanup event', () => {
   for (const row of TRANSITIONS) {
     assert.ok(STATES.includes(row.from), `unknown from state ${row.from}`);
     assert.ok(STATES.includes(row.to), `unknown to state ${row.to}`);
   }
-  assert.deepEqual(legalEvents('retired'), []);
+  assert.deepEqual(legalEvents('integrated'), []);
 });
 
 test('an undefined event is refused rather than silently ignored', () => {
