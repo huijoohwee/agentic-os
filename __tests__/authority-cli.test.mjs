@@ -28,13 +28,14 @@ function candidate() {
     observedAt: '2026-09-02T00:05:00.000Z', expiresAt: '2026-09-02T00:55:00.000Z',
   });
 }
-function dispatch() {
+function dispatch(requestOverrides = {}) {
   const bound = candidate();
   return { request: claim({
     repository: bound.targetRepository, authoritySubject: 'github-user:42', ownerSubject: 'github-user:42',
     scope: ['recovery:fixture'], dependentWork: [`effect-plan:sha256:${hash('e')}`],
     immutableRevision: `candidate:sha256:${bound.candidateDigest}`, reviewLocator: bound.reviewLocator,
     observedAt: '2026-09-02T00:00:00.000Z', expiresAt: '2026-09-02T01:00:00.000Z',
+    ...requestOverrides,
   }), candidate: bound };
 }
 function policy() {
@@ -75,10 +76,13 @@ function rule(type, options = {}) {
   } };
   if (type === 'pull_request') return { type, ruleset_id: options.id, parameters: { allowed_merge_methods: ['squash'] } };
   if (type === 'update') return { type, ruleset_id: options.id, parameters: { update_allows_fetch_and_merge: Boolean(options.updateAllows) } };
+  if (type === 'deletion' && options.evidenceDeletionParameters) {
+    return { type, ruleset_id: options.id, parameters: {} };
+  }
   return { type, ruleset_id: options.id, parameters: null };
 }
 function fixture(t, options = {}, root = sandbox(t)) {
-  const source = dispatch(), staticPolicy = policy(), fullPolicy = effectivePolicy(staticPolicy);
+  const source = options.source ?? dispatch(), staticPolicy = policy(), fullPolicy = effectivePolicy(staticPolicy);
   const digest = options.digest ?? deriveGitHubAuthorityInputDigest({ request: source.request, candidate: source.candidate, policy: fullPolicy });
   const eventPath = join(root, 'event.json');
   writeFileSync(join(root, 'policy.json'), canonicalJson(staticPolicy));
@@ -89,7 +93,8 @@ function fixture(t, options = {}, root = sandbox(t)) {
     GITHUB_TOKEN: 'environment-secret', GITHUB_EVENT_PATH: eventPath, GITHUB_RUN_ID: '101', GITHUB_REF: 'refs/heads/release/2026',
     GITHUB_SHA: HEAD, GITHUB_WORKFLOW_REF: 'example/evidence/.github/workflows/authority.yml@refs/heads/release/2026', GITHUB_WORKFLOW_SHA: WORKFLOW };
   const calls = [], canonicalRules = ['pull_request', 'required_status_checks', 'deletion', 'non_fast_forward'];
-  const creationRules = ['creation'], immutableRules = ['update', 'deletion', 'non_fast_forward'];
+  const evidenceRules = ['update', 'deletion', 'non_fast_forward',
+    ...(options.evidenceCreation ? ['creation'] : [])];
   let published = false, stored = null, evidencePath = null;
   const entries = (types, id, extra = {}) => types.map((type) => rule(type, { id, ...extra }));
   const ruleset = (id, types, bypass, extra = {}) => ({ id: Number(id), enforcement: 'active',
@@ -122,15 +127,24 @@ function fixture(t, options = {}, root = sandbox(t)) {
     }
     if (route.startsWith('GET /repos/example/evidence/rules/branches/agentic-os/evidence/')) {
       assert.equal(parsed.searchParams.get('per_page'), '100');
-      return response([...entries(creationRules, '12'), ...entries(immutableRules, '13', { updateAllows: options.updateAllows })]);
+      return response([
+        ...entries(evidenceRules, '12', { updateAllows: options.updateAllows,
+          evidenceDeletionParameters: options.evidenceDeletionParameters }),
+        ...(options.extraEvidenceRuleset ? entries(['creation'], '13') : []),
+      ]);
     }
     if (route === 'GET /repos/example/evidence/rulesets/11') {
       assert.equal(parsed.searchParams.get('includes_parents'), 'true'); return response(ruleset('11', canonicalRules, [], {
         emptyChecks: options.emptyChecks, extraDetailRule: options.extraDetailRule,
       }));
     }
-    if (route === 'GET /repos/example/evidence/rulesets/12') return response(ruleset('12', creationRules, [{ actor_type: 'Integration', actor_id: 15368, bypass_mode: 'always' }]));
-    if (route === 'GET /repos/example/evidence/rulesets/13') return response(ruleset('13', immutableRules, [], { updateAllows: options.updateAllows }));
+    if (route === 'GET /repos/example/evidence/rulesets/12') return response(ruleset('12', evidenceRules,
+      options.evidenceBypass ? [{ actor_type: 'RepositoryRole', actor_id: 5, bypass_mode: 'always' }] : [],
+      { updateAllows: options.updateAllows,
+        evidenceDeletionParameters: options.evidenceDeletionParameters }));
+    if (route === 'GET /repos/example/evidence/rulesets/13' && options.extraEvidenceRuleset) {
+      return response(ruleset('13', ['creation'], []));
+    }
     if (route.startsWith('GET /repos/example/evidence/git/ref/heads/agentic-os/evidence/')) {
       return published ? response({ ref: `refs/heads/${decodeURIComponent(parsed.pathname).split('/heads/')[1]}`, object: { type: 'commit', sha: PUBLICATION } }) : new Response('', { status: 404 });
     }
@@ -161,7 +175,13 @@ function fixture(t, options = {}, root = sandbox(t)) {
       const body = JSON.parse(init.body); assert.deepEqual(body.parents, [HEAD]); assert.equal(body.tree, EVIDENCE_TREE); return response({ sha: PUBLICATION }, 201);
     }
     if (route === 'POST /repos/example/evidence/git/refs') {
-      const body = JSON.parse(init.body); assert.deepEqual(Object.keys(body).sort(), ['ref', 'sha']); published = true; return response({ ref: body.ref, object: { sha: PUBLICATION } }, 201);
+      const body = JSON.parse(init.body); assert.deepEqual(Object.keys(body).sort(), ['ref', 'sha']);
+      if (options.refCreateRace || options.refCreateRaceStored) {
+        stored = options.refCreateRaceStored ?? stored;
+        published = true;
+        return response({ message: 'Reference already exists' }, 422);
+      }
+      published = true; return response({ ref: body.ref, object: { sha: PUBLICATION } }, 201);
     }
     throw new Error(`unexpected ${route}`);
   };
@@ -196,11 +216,46 @@ test('issues, replays, and live-verifies one GitHub-fenced authority issuance', 
   assert.equal(api.calls.filter((call) => call.route === 'POST /repos/example/evidence/git/refs').length, 1);
 });
 
+test('REST create race accepts only the exact stored bundle as an idempotent replay', async (t) => {
+  const api = fixture(t, { refCreateRace: true }), result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  assert.equal(validateGitHubAuthorityIssuance(
+    JSON.parse(result.stdout.values.join(''))).schema, 'agentic-os/github-authority-issuance/v1');
+  assert.equal(api.calls.filter((call) => call.route === 'POST /repos/example/evidence/git/refs').length, 1);
+  assert.equal(api.calls.some((call) => ['PATCH', 'DELETE'].includes(call.init.method)), false);
+});
+
+test('REST create race rejects a conflicting bundle at the same absent-ref coordinate', async (t) => {
+  const root = sandbox(t);
+  const competingSource = dispatch({
+    observedAt: '2026-09-02T00:01:00.000Z',
+    expiresAt: '2026-09-02T00:59:00.000Z',
+  });
+  const competingApi = fixture(t, { source: competingSource }, root);
+  const competingResult = await competingApi.run();
+  assert.equal(competingResult.code, 0, competingResult.stderr.values.join(''));
+  const competing = JSON.parse(competingResult.stdout.values.join('')).storedBundle;
+  const api = fixture(t, { refCreateRaceStored: competing }, root), result = await api.run();
+  assert.equal(result.code, 1);
+  assert.match(result.stderr.values.join(''), /authority issuance failed:/u);
+  const blobCall = api.calls.find((call) => call.route === 'POST /repos/example/evidence/git/blobs');
+  const body = JSON.parse(blobCall.init.body);
+  const attempted = JSON.parse(Buffer.from(body.content, 'base64').toString('utf8'));
+  assert.equal(competing.authorityBundle.evidenceRef, attempted.authorityBundle.evidenceRef);
+  assert.equal(competing.authorityBundle.claimCoordinate,
+    attempted.authorityBundle.claimCoordinate);
+  assert.notEqual(competing.storedDigest, attempted.storedDigest);
+  assert.equal(api.calls.filter((call) => call.route === 'POST /repos/example/evidence/git/refs').length, 1);
+  assert.equal(api.calls.some((call) => ['PATCH', 'DELETE'].includes(call.init.method)), false);
+});
+
 test('fails closed for forged input, weak or inexact rules, target drift, and inexact trees', async (t) => {
   const root = sandbox(t);
   for (const options of [
     { digest: hash('f') }, { workflowPath: '.github/workflows/authority.yml@refs/heads/release/2026' },
     { rulesObject: true }, { emptyChecks: true }, { updateAllows: true }, { extraDetailRule: true },
+    { evidenceBypass: true }, { evidenceCreation: true }, { extraEvidenceRuleset: true },
+    { evidenceDeletionParameters: true },
     { targetHead: hash('9', 40) }, { extraTree: true }, { wrongTreeSha: true }, { truncatedTree: true },
   ]) {
     const api = fixture(t, options, root), result = await api.run();

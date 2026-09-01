@@ -54,12 +54,21 @@ workflow identity. A claim requires the authenticated authority to be its owner 
 digest-bound effect plan; claim ID, lease epoch, and root operation form the create-only CAS coordinate.
 The stored bundle has no transition receipt. The issuer binds exact target repository, branch, revision,
 pull-request, owner, status-context, Actions integration, and merge-method projections. Evidence creation
-uses an Actions-only bypass ruleset separate from zero-bypass update, deletion, and non-fast-forward
-immutability. Only after re-reading the canonical and evidence refs, provider commit revision and time,
-target state, stored bytes, and unchanged protection does it emit a publication-bound transition receipt.
-Issuance record validation is structural only; `verifyGitHubAuthorityIssuanceLive` performs exact,
-read-only provider re-observation when current authentication is required.
-Merge, deployment, retirement, cleanup, and target-repository writes remain separate consumer decisions.
+uses one active zero-bypass ruleset with exact update, deletion, and non-fast-forward immutability;
+creation restrictions, extra rules or rulesets, and every bypass actor fail closed. Publication is an
+absent-ref, create-only compare-and-swap. Its authenticity comes from the exact owner-bound
+workflow run, bundle, commit, tree, blob, and live re-observation, not from the identity of the ref creator.
+A repository writer can win the absent-ref race with a conflicting value and deny availability, but that
+value cannot authenticate as the requested authority; an exact winner is only an idempotent replay. Only
+after re-reading the canonical and evidence refs, provider commit revision and time, target state, stored
+bytes, and unchanged protection does the issuer emit a publication-bound transition receipt.
+Issuance record validation is structural only. JSON copied from a file, message, or prior run is never
+transferable authority. A later consumer must obtain the exact issuance from the provider-authenticated
+workflow-run output, call `verifyGitHubAuthorityIssuanceLive` to re-observe exact provider state with a
+trusted current clock while `issuedAt <= now < expiresAt`, and separately resolve the digest-bound effect
+plan to its exact bytes before considering any effect. Live verification does not approve that plan or
+grant merge, deployment, retirement, cleanup, or target-repository writes; those remain separate
+consumer decisions.
 
 Validators reject unknown, missing, noncanonical, accessor-backed, aliased, cyclic, oversized, or
 wrong-schema data. Set-like arrays are sorted and duplicate-free. Receipt replay is request-digest,

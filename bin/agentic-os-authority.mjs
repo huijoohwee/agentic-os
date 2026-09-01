@@ -581,7 +581,7 @@ export async function runAuthority(argv, {
     const expiresAt = boundedExpiry(dispatch, prepared.startedAt, prepared.policy.validitySeconds, now);
     const issuance = await issueGitHubAuthority({ request: dispatch.request, candidate: dispatch.candidate,
       policy: prepared.policy, workflowRunLocator: prepared.locator, expiresAt }, provider);
-    const output = canonicalJson(await verifyGitHubAuthorityIssuanceLive(issuance, provider));
+    const output = canonicalJson(await verifyGitHubAuthorityIssuanceLive(issuance, provider, { now }));
     if (Buffer.byteLength(output, 'utf8') > MAX_AUTHORITY_OUTPUT_BYTES) fail('authority output exceeds byte bound');
     write(stdout, output);
     return 0;

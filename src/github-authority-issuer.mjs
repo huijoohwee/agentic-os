@@ -1,6 +1,6 @@
 import { canonicalJson, createAuthorityTransitionReceiptEnvelope, findExactReplay,
   governanceDigest } from './governance.mjs';
-import { GITHUB_ACTIONS_INTEGRATION_ID, GITHUB_ACTIONS_RULESET_BYPASS, GITHUB_AUTHORITY_ADAPTER,
+import { GITHUB_ACTIONS_INTEGRATION_ID, GITHUB_AUTHORITY_ADAPTER,
   parseGitHubRepositoryIdentity, validateFencedClaimBundle } from './github-authority.mjs';
 export const GITHUB_PROTECTION_PROJECTION_SCHEMA = 'agentic-os/github-protection-projection/v1';
 export const GITHUB_CANONICAL_REF_PROJECTION_SCHEMA = 'agentic-os/github-canonical-ref-projection/v1';
@@ -139,20 +139,17 @@ function canonicalProtection(value, bundle) {
 function evidenceProtection(value, bundle) {
   const projection = createGitHubProtectionProjection(value);
   projectionIdentity(projection, bundle.policy.evidenceRepository, bundle.evidenceRef);
-  if (projection.rulesets.length !== 2) fail('evidence protection must use exactly two rulesets');
-  const creation = projection.rulesets.find((entry) =>
-    canonicalJson(entry.rules.map((rule) => rule.type)) === canonicalJson(['creation']));
-  const immutable = projection.rulesets.find((entry) =>
-    canonicalJson(entry.rules.map((rule) => rule.type))
-      === canonicalJson(['deletion', 'non_fast_forward', 'update']));
+  const immutable = projection.rulesets[0];
   const update = immutable?.rules.find((rule) => rule.type === 'update');
-  if (!creation || !immutable
-    || canonicalJson(creation.bypassActors) !== canonicalJson([GITHUB_ACTIONS_RULESET_BYPASS])
+  if (projection.rulesets.length !== 1
+    || canonicalJson(immutable.rules.map((rule) => rule.type))
+      !== canonicalJson(['deletion', 'non_fast_forward', 'update'])
     || immutable.bypassActors.length !== 0
-    || creation.rules[0].parameters !== null
     || immutable.rules.some((rule) => rule.type !== 'update' && rule.parameters !== null)
     || canonicalJson(update?.parameters)
-      !== canonicalJson({ update_allows_fetch_and_merge: false })) fail('evidence protection must split creation bypass from zero-bypass immutability');
+      !== canonicalJson({ update_allows_fetch_and_merge: false })) {
+    fail('evidence protection must be one exact zero-bypass immutable ruleset');
+  }
   return projection;
 }
 function canonicalRefProjection(value, bundle) {
