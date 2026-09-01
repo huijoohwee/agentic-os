@@ -23,11 +23,19 @@ export const RULESET_SCOPE = Object.freeze({
 const MERGE_METHODS = Object.freeze(['merge', 'rebase', 'squash']);
 
 function refConditionMatch(value, defaultBranch, protectedBranch) {
-  if (value === `refs/heads/${protectedBranch}` || value === '~ALL') return true;
+  const protectedRef = `refs/heads/${protectedBranch}`;
+  if (value === protectedRef || value === '~ALL') return true;
   if (value === '~DEFAULT_BRANCH')
     return typeof defaultBranch === 'string' && defaultBranch.length > 0
       ? defaultBranch === protectedBranch : null;
-  if (typeof value === 'string' && /^refs\/heads\/[^*?[\\]+$/u.test(value)) return false;
+  if (typeof value === 'string') {
+    if (/^refs\/heads\/[^*?[\\]+$/u.test(value)) return false;
+    const boundaries = ['*', '?', '[', '\\'].map((marker) => value.indexOf(marker))
+      .filter((index) => index >= 0);
+    const firstPatternMarker = boundaries.length > 0 ? Math.min(...boundaries) : 0;
+    const literalPrefix = value.slice(0, firstPatternMarker);
+    if (literalPrefix.length > 0 && !protectedRef.startsWith(literalPrefix)) return false;
+  }
   return null;
 }
 
