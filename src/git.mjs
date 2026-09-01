@@ -15,17 +15,21 @@ export class GitError extends Error {
   }
 }
 
-/** Run git and return trimmed stdout. Throws GitError unless `allowFail`. */
-export function git(args, { cwd = process.cwd(), allowFail = false, input, env } = {}) {
+/** Run git and return stdout. Trim human-oriented output unless `raw` is requested. */
+export function git(
+  args,
+  { cwd = process.cwd(), allowFail = false, input, env, raw = false, binary = false } = {},
+) {
   try {
-    return execFileSync('git', args, {
+    const output = execFileSync('git', args, {
       cwd,
       input,
       env: env ? { ...process.env, ...env } : process.env,
-      encoding: 'utf8',
+      encoding: binary ? undefined : 'utf8',
       stdio: input === undefined ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
       maxBuffer: 64 * 1024 * 1024,
-    }).trim();
+    });
+    return binary || raw ? output : output.trim();
   } catch (error) {
     if (allowFail) return null;
     throw new GitError(args, error.status ?? -1, String(error.stderr ?? error.message));

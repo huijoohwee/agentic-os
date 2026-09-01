@@ -367,7 +367,7 @@ function cmdQueue(root, argv) {
 function cmdCanonicalSync(root, argv) {
   const [action = 'plan'] = positional(argv);
   if (action === 'plan') {
-    const plan = planCanonicalSync({ cwd: root, targetRef: option(argv, 'target', 'origin/main') });
+    const plan = planCanonicalSync({ cwd: root });
     out(JSON.stringify(plan, null, 2));
     return 0;
   }
@@ -422,7 +422,7 @@ function cmdHelp() {
       '  npm run land              push the lane, open a PR, hand it to the queue',
       '  npm run status            lanes, WIP against caps, queue state',
       '  npm run reap [-- --apply] retire lanes proven integrated by patch identity',
-      '  npm run sync:canonical    plan a crash-safe canonical checkout synchronization',
+      '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  npm run queue:show        inspect the required remote configuration',
       '  npm run queue:apply       write it (explicit, mutates branch protection)',

@@ -1,25 +1,12 @@
-/**
- * Crash-safe synchronization of the canonical checkout.
- *
- * Planning is read-only. Apply accepts only the plan-derived authorization,
- * snapshots every nonignored dirty byte under a durable recovery ref, restores
- * the fetched target tree, then advances main with compare-and-swap.
- */
-
-import {
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-  rmSync,
-} from 'node:fs';
+/** Recovery-backed canonical sync: read-only plan, durable snapshot, then protected SHA-CAS. */
+import { lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { git, commonDir, currentBranch, isAncestor, repoRoot } from './git.mjs';
 
 export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v1';
 export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v1';
+export const TARGET_REF = 'refs/remotes/origin/main';
 
 export class CanonicalSyncError extends Error {
   constructor(reason, detail = {}) {
@@ -29,24 +16,31 @@ export class CanonicalSyncError extends Error {
     this.detail = detail;
   }
 }
-
-function refuse(reason, detail = {}) {
-  throw new CanonicalSyncError(reason, detail);
-}
-
-function sha256(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function nulFields(value) {
+function refuse(reason, detail = {}) { throw new CanonicalSyncError(reason, detail); }
+function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+export function decodeNulFields(value) {
+  if (Buffer.isBuffer(value)) {
+    const fields = [];
+    let start = 0;
+    for (let index = 0; index <= value.length; index += 1) {
+      if (index !== value.length && value[index] !== 0) continue;
+      if (index > start) {
+        const field = value.subarray(start, index);
+        const text = field.toString('utf8');
+        if (!Buffer.from(text).equals(field)) refuse('blocked-non-utf8-path');
+        fields.push(text);
+      }
+      start = index + 1;
+    }
+    return fields;
+  }
   if (!value) return [];
   const fields = value.split('\0');
   if (fields.at(-1) === '') fields.pop();
   return fields;
 }
-
 function parseNameStatus(raw) {
-  const fields = nulFields(raw);
+  const fields = decodeNulFields(raw);
   const entries = [];
   for (let index = 0; index < fields.length; ) {
     const status = fields[index++];
@@ -59,9 +53,8 @@ function parseNameStatus(raw) {
   }
   return entries;
 }
-
 function treeEntries(ref, cwd) {
-  const fields = nulFields(git(['ls-tree', '-r', '-z', ref], { cwd }));
+  const fields = decodeNulFields(git(['ls-tree', '-r', '-z', ref], { cwd, binary: true }));
   const found = new Map();
   for (const field of fields) {
     const tab = field.indexOf('\t');
@@ -70,13 +63,12 @@ function treeEntries(ref, cwd) {
   }
   return found;
 }
-
 function contentAt(path, cwd) {
   const absolute = join(cwd, path);
   const stat = lstatSync(absolute);
-  if (stat.isSymbolicLink()) {
-    return { kind: 'symlink', mode: '120000', bytes: Buffer.from(readlinkSync(absolute)) };
-  }
+  if (stat.isSymbolicLink()) return {
+    kind: 'symlink', mode: '120000', bytes: readlinkSync(absolute, { encoding: 'buffer' }),
+  };
   if (!stat.isFile()) refuse('blocked-unsupported-dirty-path', { path });
   return {
     kind: 'file',
@@ -84,25 +76,38 @@ function contentAt(path, cwd) {
     bytes: readFileSync(absolute),
   };
 }
-
 function assertCleanIndex(cwd) {
-  if (git(['diff', '--cached', '--quiet', 'HEAD', '--'], { cwd, allowFail: true }) === null) {
+  if (git(['diff', '--cached', '--quiet', 'HEAD', '--'], { cwd, allowFail: true }) === null)
     refuse('blocked-index-dirty');
-  }
   if (git(['ls-files', '--unmerged'], { cwd }) !== '') refuse('blocked-index-unmerged');
+  const hidden = decodeNulFields(git(['ls-files', '-v', '-z'], { cwd, binary: true }))
+    .map((record) => {
+      if (record.length < 3 || record[1] !== ' ') refuse('blocked-malformed-index-flags');
+      const tag = record[0];
+      const assumeUnchanged = tag >= 'a' && tag <= 'z';
+      const skipWorktree = tag.toUpperCase() === 'S';
+      return { path: record.slice(2), assumeUnchanged, skipWorktree };
+    })
+    .filter((entry) => entry.assumeUnchanged || entry.skipWorktree);
+  if (hidden.length > 0) refuse('blocked-index-visibility-flags', { entries: hidden });
 }
-
 function snapshotInventory(cwd, localSha) {
   const base = treeEntries(localSha, cwd);
-  const dirty = parseNameStatus(
-    git(['diff', '--name-status', '-z', '--no-renames', 'HEAD', '--'], { cwd }),
-  );
-  const untracked = nulFields(
-    git(['ls-files', '--others', '--exclude-standard', '-z'], { cwd }),
-  ).map((path) => ({ path, status: '?' }));
+  const dirty = parseNameStatus(git(
+    ['diff', '--name-status', '-z', '--no-renames', 'HEAD', '--'], { cwd, binary: true },
+  ));
+  const untracked = decodeNulFields(git(
+    ['ls-files', '--others', '--exclude-standard', '-z'], { cwd, binary: true },
+  )).map((path) => ({ path, status: '?' }));
   const byPath = new Map([...dirty, ...untracked].map((entry) => [entry.path, entry.status]));
+  for (const [path, prior] of base) {
+    if (prior.mode !== '100644' && prior.mode !== '100755') continue;
+    const stat = lstatSync(join(cwd, path), { throwIfNoEntry: false });
+    if (!stat?.isFile()) continue;
+    const mode = stat.mode & 0o111 ? '100755' : '100644';
+    if (mode !== prior.mode && !byPath.has(path)) byPath.set(path, 'M');
+  }
   const inventory = [];
-
   for (const [path, status] of [...byPath].sort(([a], [b]) => a.localeCompare(b))) {
     const prior = base.get(path) ?? null;
     if (prior?.mode === '160000') refuse('blocked-dirty-submodule', { path });
@@ -113,65 +118,61 @@ function snapshotInventory(cwd, localSha) {
     const content = contentAt(path, cwd);
     const oid = git(['hash-object', '--stdin'], { cwd, input: content.bytes });
     inventory.push({
-      path,
-      status,
-      kind: content.kind,
-      mode: content.mode,
-      oid,
-      sha256: sha256(content.bytes),
-      prior,
+      path, status, kind: content.kind, mode: content.mode,
+      oid, sha256: sha256(content.bytes), prior,
     });
   }
   return inventory;
 }
-
 function ignoredPaths(cwd) {
-  return nulFields(
-    git(['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { cwd }),
-  )
+  return decodeNulFields(git(
+    ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+    { cwd, binary: true },
+  ))
     .map((path) => path.endsWith('/') ? path.slice(0, -1) : path)
     .sort();
 }
-
 function pathCollision(left, right) {
   return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 }
-
-function assertIgnoredSafe(cwd, targetSha) {
+function ignoreRuleEntries(ref, cwd) {
+  return [...treeEntries(ref, cwd)]
+    .filter(([path]) => path === '.gitignore' || path.endsWith('/.gitignore'))
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+function assertIgnoredSafe(cwd, localSha, targetSha, ignored) {
+  if (
+    ignored.length > 0
+    && JSON.stringify(ignoreRuleEntries(localSha, cwd))
+      !== JSON.stringify(ignoreRuleEntries(targetSha, cwd))
+  ) refuse('blocked-ignore-rules-drift');
   const targetPaths = [...treeEntries(targetSha, cwd).keys()].sort();
   const targetSet = new Set(targetPaths);
-  const collisions = ignoredPaths(cwd).filter((ignored) => {
-    let prefix = ignored;
+  const collisions = ignored.filter((ignoredPath) => {
+    let prefix = ignoredPath;
     while (prefix.includes('/')) {
       if (targetSet.has(prefix)) return true;
       prefix = prefix.slice(0, prefix.lastIndexOf('/'));
     }
     if (targetSet.has(prefix)) return true;
-    const descendant = `${ignored}/`;
+    const descendant = `${ignoredPath}/`;
     const candidate = targetPaths.find((tracked) => tracked >= descendant);
-    return candidate ? pathCollision(ignored, candidate) : false;
+    return candidate ? pathCollision(ignoredPath, candidate) : false;
   });
   if (collisions.length > 0) refuse('blocked-ignored-target-collision', { paths: collisions });
 }
-
 function stablePlanBody(plan) {
   return {
-    schema: plan.schema,
-    repository: plan.repository,
-    branch: plan.branch,
-    targetRef: plan.targetRef,
+    schema: plan.schema, repository: plan.repository, branch: plan.branch, targetRef: plan.targetRef,
     expectedLocalSha: plan.expectedLocalSha,
     expectedTargetSha: plan.expectedTargetSha,
-    inventoryDigest: plan.inventoryDigest,
-    inventory: plan.inventory,
+    inventoryDigest: plan.inventoryDigest, inventory: plan.inventory,
+    ignoredPathsDigest: plan.ignoredPathsDigest, ignoredPathCount: plan.ignoredPathCount,
   };
 }
-
-function calculatePlanDigest(plan) {
-  return sha256(JSON.stringify(stablePlanBody(plan)));
-}
-
+function calculatePlanDigest(plan) { return sha256(JSON.stringify(stablePlanBody(plan))); }
 function observed(cwd, targetRef) {
+  if (targetRef !== TARGET_REF) refuse('blocked-target-ref', { targetRef, expected: TARGET_REF });
   const root = realpathSync(repoRoot(cwd));
   const branch = currentBranch(root);
   if (branch !== 'main') refuse('blocked-not-canonical-main', { branch });
@@ -181,35 +182,35 @@ function observed(cwd, targetRef) {
   if (headSha !== localSha) refuse('blocked-head-ref-mismatch', { headSha, localSha });
   const targetSha = git(['rev-parse', '--verify', targetRef], { cwd: root, allowFail: true });
   if (!targetSha) refuse('blocked-target-ref-missing', { targetRef });
-  if (!isAncestor(localSha, targetSha, root)) {
-    refuse('blocked-non-fast-forward', { localSha, targetSha });
-  }
-  assertIgnoredSafe(root, targetSha);
+  if (!isAncestor(localSha, targetSha, root)) refuse('blocked-non-fast-forward', { localSha, targetSha });
+  const ignored = ignoredPaths(root);
+  assertIgnoredSafe(root, localSha, targetSha, ignored);
   const inventory = snapshotInventory(root, localSha);
-  return { root, localSha, targetSha, inventory };
+  return { root, localSha, targetSha, inventory,
+    ignoredPathsDigest: sha256(JSON.stringify(ignored)),
+    ignoredPathCount: ignored.length,
+  };
 }
-
-export function planCanonicalSync({ cwd = process.cwd(), targetRef = 'origin/main' } = {}) {
+export function planCanonicalSync({ cwd = process.cwd(), targetRef = TARGET_REF } = {}) {
   const state = observed(cwd, targetRef);
   const inventoryDigest = sha256(JSON.stringify(state.inventory));
   const plan = {
-    schema: PLAN_SCHEMA,
-    repository: state.root,
-    branch: 'main',
-    targetRef,
+    schema: PLAN_SCHEMA, repository: state.root, branch: 'main', targetRef,
     expectedLocalSha: state.localSha,
     expectedTargetSha: state.targetSha,
-    inventoryDigest,
-    inventory: state.inventory,
+    inventoryDigest, inventory: state.inventory,
+    ignoredPathsDigest: state.ignoredPathsDigest,
+    ignoredPathCount: state.ignoredPathCount,
   };
   plan.planDigest = calculatePlanDigest(plan);
   plan.authorization = `agentic-os:canonical-sync:${plan.planDigest}`;
   plan.recoveryRef = `refs/agentic-os/recovery/canonical-sync/${plan.planDigest}`;
   return plan;
 }
-
 function assertPlan(plan) {
   if (!plan || plan.schema !== PLAN_SCHEMA) refuse('blocked-invalid-plan-schema');
+  if (plan.targetRef !== TARGET_REF)
+    refuse('blocked-target-ref', { targetRef: plan.targetRef, expected: TARGET_REF });
   const inventoryDigest = sha256(JSON.stringify(plan.inventory));
   if (plan.inventoryDigest !== inventoryDigest) {
     refuse('blocked-inventory-digest-mismatch', {
@@ -218,44 +219,34 @@ function assertPlan(plan) {
     });
   }
   const digest = calculatePlanDigest(plan);
-  if (plan.planDigest !== digest) {
+  if (plan.planDigest !== digest)
     refuse('blocked-plan-digest-mismatch', { expected: digest, actual: plan.planDigest });
-  }
-  if (plan.authorization !== `agentic-os:canonical-sync:${digest}`) {
+  if (plan.authorization !== `agentic-os:canonical-sync:${digest}`)
     refuse('blocked-plan-authorization-mismatch');
-  }
-  if (plan.recoveryRef !== `refs/agentic-os/recovery/canonical-sync/${digest}`) {
+  if (plan.recoveryRef !== `refs/agentic-os/recovery/canonical-sync/${digest}`)
     refuse('blocked-plan-recovery-ref-mismatch');
-  }
 }
-
 function assertUnchanged(plan, cwd, { recoveryCommit = null } = {}) {
   const state = observed(cwd, plan.targetRef);
   const digest = sha256(JSON.stringify(state.inventory));
-  const facts = {
-    repository: state.root,
-    localSha: state.localSha,
-    targetSha: state.targetSha,
+  const facts = { repository: state.root, localSha: state.localSha, targetSha: state.targetSha,
     inventoryDigest: digest,
+    ignoredPathsDigest: state.ignoredPathsDigest,
+    ignoredPathCount: state.ignoredPathCount,
   };
-  const expected = {
-    repository: plan.repository,
-    localSha: plan.expectedLocalSha,
-    targetSha: plan.expectedTargetSha,
-    inventoryDigest: plan.inventoryDigest,
+  const expected = { repository: plan.repository, localSha: plan.expectedLocalSha,
+    targetSha: plan.expectedTargetSha, inventoryDigest: plan.inventoryDigest,
+    ignoredPathsDigest: plan.ignoredPathsDigest,
+    ignoredPathCount: plan.ignoredPathCount,
   };
-  if (JSON.stringify(facts) !== JSON.stringify(expected)) {
+  if (JSON.stringify(facts) !== JSON.stringify(expected))
     refuse('blocked-plan-drift', { expected, actual: facts });
-  }
   const existing = git(['rev-parse', '--verify', plan.recoveryRef], { cwd, allowFail: true });
-  if (existing && existing !== recoveryCommit) {
+  if (existing && existing !== recoveryCommit)
     refuse('blocked-recovery-ref-exists', { recoveryRef: plan.recoveryRef, existing });
-  }
-  if (!recoveryCommit && existing) {
+  if (!recoveryCommit && existing)
     refuse('blocked-recovery-ref-exists', { recoveryRef: plan.recoveryRef, existing });
-  }
 }
-
 function assertRecoveryFidelity(plan, recovery, cwd) {
   const captured = treeEntries(recovery.commit, cwd);
   for (const entry of plan.inventory) {
@@ -343,42 +334,59 @@ export function applyCanonicalSync(
   const recovery = captureRecovery(plan, root);
   assertRecoveryFidelity(plan, recovery, root);
   assertUnchanged(plan, root, { recoveryCommit: recovery.commit });
-  const targetPaths = new Set(treeEntries(plan.expectedTargetSha, root).keys());
-  const removedUntracked = removePlannedUntracked(plan, targetPaths, root);
+  try {
+    const targetPaths = new Set(treeEntries(plan.expectedTargetSha, root).keys());
+    const removedUntracked = removePlannedUntracked(plan, targetPaths, root);
 
-  git(
-    ['restore', `--source=${plan.expectedTargetSha}`, '--staged', '--worktree', '--', '.'],
-    { cwd: root },
-  );
-  git(
-    ['update-ref', 'refs/heads/main', plan.expectedTargetSha, plan.expectedLocalSha],
-    { cwd: root },
-  );
+    git(
+      ['restore', `--source=${plan.expectedTargetSha}`, '--staged', '--worktree', '--', '.'],
+      { cwd: root },
+    );
+    git(
+      ['update-ref', 'refs/heads/main', plan.expectedTargetSha, plan.expectedLocalSha],
+      { cwd: root },
+    );
 
-  const actualHead = git(['rev-parse', 'HEAD'], { cwd: root });
-  const actualTarget = git(['rev-parse', '--verify', plan.targetRef], { cwd: root });
-  const status = cleanStatus(root);
-  if (actualHead !== plan.expectedTargetSha || actualTarget !== plan.expectedTargetSha || status !== '') {
-    refuse('blocked-postcondition', {
-      expectedHead: plan.expectedTargetSha,
-      actualHead,
-      actualTarget,
-      status,
+    const actualHead = git(['rev-parse', 'HEAD'], { cwd: root });
+    const actualTarget = git(['rev-parse', '--verify', plan.targetRef], { cwd: root });
+    const status = cleanStatus(root);
+    assertCleanIndex(root);
+    const remaining = snapshotInventory(root, plan.expectedTargetSha);
+    if (
+      actualHead !== plan.expectedTargetSha
+      || actualTarget !== plan.expectedTargetSha
+      || status !== ''
+      || remaining.length > 0
+    ) {
+      refuse('blocked-postcondition', {
+        expectedHead: plan.expectedTargetSha,
+        actualHead,
+        actualTarget,
+        status,
+        remaining,
+      });
+    }
+    return {
+      schema: RECEIPT_SCHEMA,
+      planDigest: plan.planDigest,
+      repository: root,
+      priorHead: plan.expectedLocalSha,
+      targetHead: plan.expectedTargetSha,
+      inventoryDigest: plan.inventoryDigest,
+      inventoryCount: plan.inventory.length,
+      ignoredPathsDigest: plan.ignoredPathsDigest,
+      ignoredPathCount: plan.ignoredPathCount,
       recoveryRef: plan.recoveryRef,
+      recoveryCommit: recovery.commit,
+      recoveryTree: recovery.tree,
+      removedUntracked,
+      clean: true,
+    };
+  } catch (error) {
+    refuse('blocked-after-recovery', {
+      recoveryRef: plan.recoveryRef,
+      recoveryCommit: recovery.commit,
+      cause: error instanceof CanonicalSyncError ? error.reason : error.message,
     });
   }
-  return {
-    schema: RECEIPT_SCHEMA,
-    planDigest: plan.planDigest,
-    repository: root,
-    priorHead: plan.expectedLocalSha,
-    targetHead: plan.expectedTargetSha,
-    inventoryDigest: plan.inventoryDigest,
-    inventoryCount: plan.inventory.length,
-    recoveryRef: plan.recoveryRef,
-    recoveryCommit: recovery.commit,
-    recoveryTree: recovery.tree,
-    removedUntracked,
-    clean: true,
-  };
 }

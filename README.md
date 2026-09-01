@@ -41,7 +41,10 @@ node bin/agentic-os.mjs canonical-sync apply \
 ```
 
 Apply rechecks the plan, captures nonignored dirty state in the printed recovery ref, restores the
-fetched target tree, compare-and-swaps local `main`, preserves ignored files, and prints a receipt.
+already-fetched protected `origin/main` tree, compare-and-swaps local `main`, preserves ignored
+files, and prints a receipt. The operation is recovery-backed, not atomic: if it is interrupted
+after recovery-ref creation, do not repeat it blindly; preserve the checkout and recover from the
+exact printed ref. A post-recovery failure names that ref and commit explicitly.
 
 ## What problem this solves
 
