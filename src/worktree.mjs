@@ -20,6 +20,8 @@ import {
 } from './git.mjs';
 import { isLaneRef, laneDirName } from './lane-id.mjs';
 
+export const LANE_BRANCH_LIMIT = 256;
+
 /** `<parent>/.worktrees/<repo>` by default; override with AGENTIC_OS_WORKTREE_ROOT. */
 export function worktreeRoot(cwd = process.cwd()) {
   const override = process.env.AGENTIC_OS_WORKTREE_ROOT;
@@ -34,9 +36,17 @@ export function lanePath(scope, device, cwd = process.cwd()) {
 
 /** Lane branches that exist locally. */
 export function laneBranches(cwd = process.cwd()) {
-  return observeGitLines(
-    ['for-each-ref', '--format=%(refname:short)', 'refs/heads/agent'], { cwd },
-  );
+  const branches = observeGitLines([
+    'for-each-ref', '--format=%(refname:short)', 'refs/heads/agent',
+    `--count=${LANE_BRANCH_LIMIT + 1}`,
+  ], { cwd });
+  if (branches.length > LANE_BRANCH_LIMIT) {
+    const error = new Error(`lane branch inventory exceeds ${LANE_BRANCH_LIMIT}; `
+      + 'preserve every ref and recover or partition it before survey');
+    error.reason = 'blocked-lane-inventory-over-budget';
+    throw error;
+  }
+  return branches;
 }
 
 /** Lane refs with a registered worktree, including preserved stale projections. */
