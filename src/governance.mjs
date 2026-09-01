@@ -119,6 +119,7 @@ function cleanup(value = RETAIN_ALL_CLEANUP) {
   }));
   return result;
 }
+export function deriveCoordinationClaimId({ repository, authoritySubject, ownerSubject, scope }) { return governanceDigest({ schema: 'agentic-os/claim-id/v1', repository, authoritySubject, ownerSubject, scope }); }
 function requestPayload(input, requestedOperation) {
   const source = snapshot(input);
   exactKeys(source, REQUEST_KEYS, 'Coordination Request input', false);
@@ -144,7 +145,7 @@ function requestPayload(input, requestedOperation) {
   const dependentWork = strings(source.dependentWork ?? [], 'dependentWork');
   if (operation === 'retire' && !dependentWork.some((item) => EFFECT_PLAN.test(item)))
     fail('retire requires a digest-bound effect-plan reference');
-  const claimId = source.claimId ?? governanceDigest({ schema: 'agentic-os/claim-id/v1', ...identity });
+  const claimId = source.claimId ?? deriveCoordinationClaimId(identity);
   const payload = {
     schema: COORDINATION_REQUEST_SCHEMA,
     ...identity,

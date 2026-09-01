@@ -34,6 +34,7 @@ export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   'AGENTS.md',
   'package.json',
   'bin/agentic-os-auxiliary.mjs',
+  'bin/agentic-os-authority.mjs',
   'bin/agentic-os-argv.mjs',
   'bin/agentic-os-config.mjs',
   'bin/agentic-os-doc-budget.mjs',
@@ -46,6 +47,7 @@ export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   'bin/agentic-os-module-budget.mjs',
   'catalog/invocation.json',
   'src/autonomy-class.mjs',
+  'src/authority-record.mjs',
   'src/canonical-recovery.mjs',
   'src/canonical-staging.mjs',
   'src/canonical-sync.mjs',
@@ -70,6 +72,11 @@ export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   'src/quarantine.mjs',
   'src/readiness-proof.mjs',
   'src/github-provider.mjs',
+  'src/github-authority.mjs',
+  'src/github-authority-issuer.mjs',
+  'src/github-authority-operation.mjs',
+  'src/recovery-candidate.mjs',
+  'src/recovery-inventory.mjs',
   'src/worktree.mjs',
 ]);
 

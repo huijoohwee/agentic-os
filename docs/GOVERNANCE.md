@@ -37,6 +37,30 @@ sourceLeaseEpoch sourceFenceRevision resultClaimId resultLeaseEpoch resultFenceR
 resultState immutableRevision reviewLocator operationReceiptDigest transitionedAt receiptDigest
 ```
 
+An External Authority Evidence v1 record binds one request to an adapter version, authenticated
+subject, provider record, challenge and response, candidate inventory, validity window, and derived
+replay key. `agentic-os/records/authority-evidence` validates its canonical structure. The record is
+not authentication by itself: the selected adapter must re-observe the provider record and prove the
+content-addressed replay fence before a consumer accepts the joined transition envelope.
+
+`agentic-os/records/recovery-candidate` binds the observed and canonical branch names, repository,
+review, revisions, and opaque inventory digests without local paths or authored bytes.
+`collectRecoveryInventory({ cwd, canonicalRef })` from `agentic-os/adapters/recovery-inventory` computes
+those digests from raw-byte Git paths and netstring-framed index, content, hidden-flag, and category records.
+It compares two complete read-only collections plus HEAD, canonical ref, branch, porcelain-v2, and hidden
+state, so ignored-byte or Git-state drift fails closed. `agentic-os/adapters/github-authority` binds it to a
+committed target-owner namespace, exact dispatch-input digest, provider-start time, and protected-main
+workflow identity. A claim requires the authenticated authority to be its owner and exactly one
+digest-bound effect plan; claim ID, lease epoch, and root operation form the create-only CAS coordinate.
+The stored bundle has no transition receipt. The issuer binds exact target repository, branch, revision,
+pull-request, owner, status-context, Actions integration, and merge-method projections. Evidence creation
+uses an Actions-only bypass ruleset separate from zero-bypass update, deletion, and non-fast-forward
+immutability. Only after re-reading the canonical and evidence refs, provider commit revision and time,
+target state, stored bytes, and unchanged protection does it emit a publication-bound transition receipt.
+Issuance record validation is structural only; `verifyGitHubAuthorityIssuanceLive` performs exact,
+read-only provider re-observation when current authentication is required.
+Merge, deployment, retirement, cleanup, and target-repository writes remain separate consumer decisions.
+
 Validators reject unknown, missing, noncanonical, accessor-backed, aliased, cyclic, oversized, or
 wrong-schema data. Set-like arrays are sorted and duplicate-free. Receipt replay is request-digest,
 repository, subject, immutable-revision, review, claim, fence, lease, operation, and time-window

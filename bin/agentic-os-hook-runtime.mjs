@@ -41,7 +41,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,
     sha256: 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f' }),
   Object.freeze({ path: 'src/governance.mjs', mode: 0o644,
-    sha256: '5c9790eb4dac5b7d2a41dd2287cd74327b6f21082646b4d69813606e36512bd2' }),
+    sha256: '673b3fec205895ba72bb08519188225c049aa322e0cac563f7de304986c0c402' }),
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,

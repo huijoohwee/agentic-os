@@ -103,6 +103,15 @@ test('only additive tests are test-only; weakening existing tests controls autho
 test('the classifier and every agentic-os authority surface control authority', () => {
   assert.ok(AGENTIC_OS_AUTHORITY_PATHS.includes('src/autonomy-class.mjs'));
   assert.ok(AGENTIC_OS_AUTHORITY_PATHS.includes('src/mcp-stdio.mjs'));
+  for (const path of [
+    'src/authority-record.mjs',
+    'src/recovery-candidate.mjs',
+    'src/recovery-inventory.mjs',
+    'src/github-authority.mjs',
+    'src/github-authority-issuer.mjs',
+    'src/github-authority-operation.mjs',
+    'bin/agentic-os-authority.mjs',
+  ]) assert.ok(AGENTIC_OS_AUTHORITY_PATHS.includes(path), path);
   assert.equal(classifyPath('src/canonical-sync.mjs'), CLASS_AUTHORITY_CONTROLLING);
   for (const path of AGENTIC_OS_AUTHORITY_PATHS) {
     assert.equal(classifyPath(path), CLASS_AUTHORITY_CONTROLLING, path);
@@ -271,4 +280,5 @@ test('real git diff and CLI preserve spaces, tabs, newlines, and authority renam
 test('the package exposes the concise classifier command', () => {
   const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
   assert.equal(pkg.scripts['autonomy:class'], 'node bin/agentic-os.mjs autonomy-class');
+  assert.equal(pkg.scripts.authority, 'node bin/agentic-os-authority.mjs');
 });
