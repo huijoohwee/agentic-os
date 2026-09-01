@@ -85,6 +85,26 @@ function targetQuery(bundle) {
     reviewLocator: bundle.candidate.reviewLocator,
   };
 }
+function verificationClock(options) {
+  const source = options ?? {};
+  if (!source || typeof source !== 'object' || Array.isArray(source)
+    || Object.keys(source).some((key) => key !== 'now')) {
+    fail('GitHub authority verification options are invalid');
+  }
+  const clock = Object.hasOwn(source, 'now') ? source.now : Date.now;
+  if (typeof clock !== 'function') fail('GitHub authority verification requires a trusted clock');
+  return clock;
+}
+function requireCurrentWindow(bundle, clock) {
+  const value = clock();
+  if (!Number.isSafeInteger(value) || value < 0) {
+    fail('GitHub authority verification clock returned an invalid time');
+  }
+  if (value < Date.parse(bundle.challenge.issuedAt)
+    || value >= Date.parse(bundle.challenge.expiresAt)) {
+    fail('GitHub authority issuance is outside its current validity window');
+  }
+}
 async function observeState(provider, stored) {
   const bundle = stored.authorityBundle;
   const query = {
@@ -179,10 +199,12 @@ export async function issueGitHubAuthority(input, providerValue) {
   return createGitHubAuthorityIssuance({ storedBundle: state.stored, publicationReceipt });
 }
 
-/** Authenticates a structural issuance by exact read-only provider re-observation. */
-export async function verifyGitHubAuthorityIssuanceLive(value, providerValue) {
+/** Authenticates a current structural issuance by exact read-only provider re-observation. */
+export async function verifyGitHubAuthorityIssuanceLive(value, providerValue, options) {
   const issuance = validateGitHubAuthorityIssuance(value), provider = providerApi(providerValue);
   const stored = issuance.storedBundle, bundle = stored.authorityBundle;
+  const clock = verificationClock(options);
+  requireCurrentWindow(bundle, clock);
   const observedRun = snap(await provider.readRun({
     repository: bundle.policy.evidenceRepository,
     locator: bundle.workflowRun.locator,
@@ -215,6 +237,7 @@ export async function verifyGitHubAuthorityIssuanceLive(value, providerValue) {
   if (canonicalJson(observed) !== canonicalJson(issuance)) {
     fail('provider state no longer authenticates the authority issuance');
   }
+  requireCurrentWindow(bundle, clock);
   return issuance;
 }
 

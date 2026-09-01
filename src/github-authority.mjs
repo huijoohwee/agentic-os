@@ -6,7 +6,6 @@ export const GITHUB_AUTHORITY_INPUT_SCHEMA = 'agentic-os/github-authority-input/
 export const GITHUB_AUTHORITY_CLAIM_COORDINATE_SCHEMA = 'agentic-os/github-authority-claim-coordinate/v1';
 export const GITHUB_AUTHORITY_CHALLENGE_SCHEMA = 'agentic-os/github-authority-challenge/v1';
 export const FENCED_CLAIM_BUNDLE_SCHEMA = 'agentic-os/github-fenced-claim-bundle/v1';
-export const GITHUB_ACTIONS_RULESET_BYPASS = 'Integration:15368:always';
 export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
 const DIGEST = /^[0-9a-f]{64}$/u;
 const EFFECT_PLAN = /^effect-plan:sha256:([0-9a-f]{64})$/u;

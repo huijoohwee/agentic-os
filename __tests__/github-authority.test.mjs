@@ -6,7 +6,6 @@ import {
   createRecoveryCandidate,
 } from '../src/recovery-candidate.mjs';
 import {
-  GITHUB_ACTIONS_RULESET_BYPASS,
   createFencedClaimBundle,
   createGitHubAuthorityChallenge,
   deriveGitHubAuthorityInputDigest,
@@ -21,6 +20,7 @@ import { issueGitHubAuthority, verifyGitHubAuthorityIssuanceLive } from
 
 const hash = (character, length = 64) => character.repeat(length);
 const CANONICAL = hash('a', 40), WORKFLOW = hash('b', 40), PUBLICATION = hash('9', 40);
+const LIVE_TIME = Date.parse('2026-09-02T00:20:00.000Z');
 function candidate(overrides = {}) {
   return createRecoveryCandidate({
     targetRepository: 'github.com/example/target',
@@ -133,28 +133,32 @@ function canonicalRules(input, { canonicalTypes, canonicalBypass = [],
     },
   });
 }
-function evidenceRules(input, { creationBypass = [GITHUB_ACTIONS_RULESET_BYPASS],
-  immutableBypass = [], immutableTypes, evidenceUpdateAllows = false,
+function evidenceRules(input, { evidenceBypass = [], evidenceTypes, evidenceUpdateAllows = false,
+  evidenceParameters = {}, extraEvidenceRuleset = false,
 } = {}) {
-  const creation = rules(input.policy.evidenceRepository, input.bundleRef ?? '', '12',
-    ['creation'], creationBypass).rulesets[0];
   const immutable = rules(input.policy.evidenceRepository, input.bundleRef ?? '', '13',
-    immutableTypes ?? ['update', 'deletion', 'non_fast_forward'], immutableBypass, {
+    evidenceTypes ?? ['update', 'deletion', 'non_fast_forward'], evidenceBypass, {
+      ...evidenceParameters,
       update: { update_allows_fetch_and_merge: evidenceUpdateAllows },
     }).rulesets[0];
-  return { repository: input.policy.evidenceRepository, ref: input.bundleRef, rulesets: [creation, immutable] };
+  const rulesets = [immutable];
+  if (extraEvidenceRuleset) {
+    rulesets.push(rules(input.policy.evidenceRepository, input.bundleRef ?? '', '14',
+      ['creation'], []).rulesets[0]);
+  }
+  return { repository: input.policy.evidenceRepository, ref: input.bundleRef, rulesets };
 }
 function provider({ targetOwnerId = '42', targetOverrides = {}, reviewOverrides = {},
   postTargetOverrides = {}, postReviewOverrides = {}, canonicalTypes,
   canonicalBypass = [], canonicalContexts = ['Integration Gate'], canonicalStrict = false,
   canonicalMethods = ['squash'], canonicalIntegrationId = 15368,
-  creationBypass = [GITHUB_ACTIONS_RULESET_BYPASS],
-  immutableBypass = [], postImmutableTypes, evidenceUpdateAllows = false,
+  evidenceBypass = [], evidenceTypes, postEvidenceTypes, evidenceUpdateAllows = false,
+  evidenceParameters = {}, extraEvidenceRuleset = false,
   canonicalRevision = CANONICAL, postCanonicalRevision,
-  throwAfterPublish = false,
+  throwAfterPublish = false, raceStored = null, authorityInput = issueInput(),
   committedAt = '2026-09-02T00:11:00.000Z',
 } = {}) {
-  const input = issueInput(), calls = [];
+  const input = authorityInput, calls = [];
   let stored = null, publication = null, liveCanonicalRevision = null;
   return {
     calls,
@@ -202,10 +206,10 @@ function provider({ targetOwnerId = '42', targetOverrides = {}, reviewOverrides 
           canonicalStrict, canonicalMethods, canonicalIntegrationId });
       }
       return evidenceRules({ ...input, bundleRef: query.ref }, {
-        creationBypass, immutableBypass,
-        immutableTypes: stored !== null && postImmutableTypes !== undefined
-          ? postImmutableTypes : undefined,
-        evidenceUpdateAllows,
+        evidenceBypass,
+        evidenceTypes: stored !== null && postEvidenceTypes !== undefined
+          ? postEvidenceTypes : evidenceTypes,
+        evidenceUpdateAllows, evidenceParameters, extraEvidenceRuleset,
       });
     },
     async readCanonicalRef(query) {
@@ -225,16 +229,17 @@ function provider({ targetOwnerId = '42', targetOverrides = {}, reviewOverrides 
     async publishBundle(inputValue) {
       calls.push(['publishBundle', inputValue]);
       if (stored !== null) throw new Error('reference already exists');
-      stored = inputValue.storedBundle;
+      stored = raceStored ?? inputValue.storedBundle;
       publication = {
         repository: inputValue.repository,
         ref: inputValue.ref,
         path: inputValue.path,
         revision: PUBLICATION,
-        parentRevision: inputValue.storedBundle.authorityBundle.policy.canonicalRevision,
+        parentRevision: stored.authorityBundle.policy.canonicalRevision,
         committedAt,
-        storedDigest: inputValue.storedBundle.storedDigest,
+        storedDigest: stored.storedDigest,
       };
+      if (raceStored !== null) throw new Error('reference already exists after competing create');
       if (throwAfterPublish) throw new Error('create response lost after provider CAS');
       return { created: true };
     },
@@ -342,8 +347,9 @@ test('issuance binds provider commit time, target owner, and exact pre/post prot
   assert.equal(issued.publicationReceipt.targetRepository.review.headRevision,
     issued.storedBundle.authorityBundle.candidate.headRevision);
   assert.equal(issued.publicationReceipt.preProtection.canonical.rulesets[0].id, '11');
-  assert.equal(issued.publicationReceipt.preProtection.evidence.rulesets[0].id, '12');
-  assert.equal(issued.publicationReceipt.preProtection.evidence.rulesets[1].id, '13');
+  assert.equal(issued.publicationReceipt.preProtection.evidence.rulesets.length, 1);
+  assert.equal(issued.publicationReceipt.preProtection.evidence.rulesets[0].id, '13');
+  assert.deepEqual(issued.publicationReceipt.preProtection.evidence.rulesets[0].bypassActors, []);
   assert.equal(issued.publicationReceipt.preProtection.canonicalHead.revision, CANONICAL);
   assert.equal(issued.publicationReceipt.preProtection.snapshotDigest,
     issued.publicationReceipt.postProtection.snapshotDigest);
@@ -362,15 +368,56 @@ test('exact replay reconstructs the same issuance from provider-persisted state'
   assert.ok(api.calls.filter(([name]) => name === 'readPublication').length >= 6);
 });
 
+test('a conflicting winner of the absent-ref CAS cannot become authority', async () => {
+  const bound = candidate();
+  const conflictingInput = issueInput({
+    request: request(bound, {
+      observedAt: '2026-09-02T00:01:00.000Z',
+      expiresAt: '2026-09-02T00:59:00.000Z',
+    }),
+    candidate: bound,
+  });
+  const conflictingProvider = provider({ authorityInput: conflictingInput });
+  const conflicting = await issueGitHubAuthority(conflictingInput, conflictingProvider);
+  const api = provider({ raceStored: conflicting.storedBundle });
+  await assert.rejects(issueGitHubAuthority(issueInput(), api),
+    /publication is not exact|conflicting stored bundle/u);
+  const publications = api.calls.filter(([name]) => name === 'publishBundle');
+  assert.equal(publications.length, 1);
+  assert.equal(conflicting.storedBundle.authorityBundle.evidenceRef, publications[0][1].ref);
+  assert.notEqual(conflicting.storedBundle.storedDigest,
+    publications[0][1].storedBundle.storedDigest);
+  assert.equal(api.calls.filter(([name]) => name === 'readPublication').length >= 4, true);
+});
+
 test('structural validation is not authentication; live verification is read-only and exact', async () => {
   const api = provider(), issued = await issueGitHubAuthority(issueInput(), api);
   const writes = api.calls.filter(([name]) => name === 'publishBundle').length;
   assert.deepEqual(validateGitHubAuthorityIssuance(issued), issued);
-  assert.deepEqual(await verifyGitHubAuthorityIssuanceLive(issued, api), issued);
+  assert.deepEqual(await verifyGitHubAuthorityIssuanceLive(issued, api,
+    { now: () => LIVE_TIME }), issued);
   assert.equal(api.calls.filter(([name]) => name === 'publishBundle').length, writes);
   api.setCanonicalRevision(hash('4', 40));
   assert.deepEqual(validateGitHubAuthorityIssuance(issued), issued);
-  await assert.rejects(verifyGitHubAuthorityIssuanceLive(issued, api), /canonical ref moved/u);
+  await assert.rejects(verifyGitHubAuthorityIssuanceLive(issued, api,
+    { now: () => LIVE_TIME }), /canonical ref moved/u);
+});
+
+test('live verification rejects authority before issuance and at expiry', async () => {
+  const api = provider(), issued = await issueGitHubAuthority(issueInput(), api);
+  const reads = api.calls.length;
+  await assert.rejects(verifyGitHubAuthorityIssuanceLive(issued, api, {
+    now: () => Date.parse('2026-09-02T00:09:59.999Z'),
+  }), /current validity window/u);
+  await assert.rejects(verifyGitHubAuthorityIssuanceLive(issued, api, {
+    now: () => Date.parse('2026-09-02T00:50:00.000Z'),
+  }), /current validity window/u);
+  assert.equal(api.calls.length, reads);
+  let observations = 0;
+  await assert.rejects(verifyGitHubAuthorityIssuanceLive(issued, api, {
+    now: () => observations++ === 0
+      ? LIVE_TIME : Date.parse('2026-09-02T00:50:00.000Z'),
+  }), /current validity window/u);
 });
 
 test('issuer rejects wrong-owner targets, weak policy rules, and non-provider time', async () => {
@@ -392,16 +439,23 @@ test('issuer rejects wrong-owner targets, weak policy rules, and non-provider ti
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({
     canonicalMethods: ['merge'],
   })), /merge methods/u);
-  await assert.rejects(issueGitHubAuthority(issueInput(), provider({ creationBypass: [] })),
-    /split creation bypass/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({
-    immutableBypass: [GITHUB_ACTIONS_RULESET_BYPASS],
-  })), /zero-bypass immutability/u);
+    evidenceBypass: ['RepositoryRole:5:always'],
+  })), /one exact zero-bypass immutable ruleset/u);
+  await assert.rejects(issueGitHubAuthority(issueInput(), provider({
+    evidenceTypes: ['creation', 'deletion', 'non_fast_forward', 'update'],
+  })), /one exact zero-bypass immutable ruleset/u);
+  await assert.rejects(issueGitHubAuthority(issueInput(), provider({
+    extraEvidenceRuleset: true,
+  })), /one exact zero-bypass immutable ruleset/u);
+  await assert.rejects(issueGitHubAuthority(issueInput(), provider({
+    evidenceParameters: { deletion: {} },
+  })), /one exact zero-bypass immutable ruleset/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({ evidenceUpdateAllows: true })),
-    /zero-bypass immutability/u);
+    /one exact zero-bypass immutable ruleset/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({
-    postImmutableTypes: ['deletion', 'non_fast_forward'],
-  })), /split creation bypass|protection changed/u);
+    postEvidenceTypes: ['deletion', 'non_fast_forward'],
+  })), /one exact zero-bypass immutable ruleset|protection changed/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({
     committedAt: '2026-09-02T00:50:00.000Z',
   })), /in-window/u);
@@ -434,14 +488,14 @@ test('issuer rejects canonical-ref and exact target PR drift before or after CAS
 test('protection projection digests ruleset ids, types, and bypass actors', () => {
   const projected = createGitHubProtectionProjection(rules(
     'github.com/example/evidence', 'refs/heads/main', '12',
-    ['update', 'creation'], [GITHUB_ACTIONS_RULESET_BYPASS], {
+    ['update', 'creation'], ['RepositoryRole:5:always'], {
       update: { update_allows_fetch_and_merge: false },
     }));
   assert.deepEqual(projected.rulesets[0].rules.map((entry) => entry.type), ['creation', 'update']);
   assert.match(projected.projectionDigest, /^[0-9a-f]{64}$/u);
   assert.throws(() => createGitHubProtectionProjection({
     ...rules('github.com/example/evidence', 'refs/heads/main', '12',
-      ['creation'], [GITHUB_ACTIONS_RULESET_BYPASS]),
+      ['creation'], ['RepositoryRole:5:always']),
     rulesets: [
       { id: '12', enforcement: 'active',
         rules: [{ type: 'creation', parameters: null }], bypassActors: [] },
