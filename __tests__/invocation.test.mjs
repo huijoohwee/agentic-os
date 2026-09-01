@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CONTRACT_PROOF_SCHEMA } from '../src/readiness-proof.mjs';
 import {
   catalogDigest,
@@ -150,6 +153,23 @@ test('slash tokens are wired into the real CLI runtime path', () => {
       cwd: new URL('..', import.meta.url),
       encoding: 'utf8',
     });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /agentic-os — ADLC harness/);
+  }
+});
+
+test('help is repository-independent in a detached primary checkout', (t) => {
+  const repository = mkdtempSync(join(tmpdir(), 'agentic-os-detached-help-'));
+  t.after(() => rmSync(repository, { recursive: true, force: true }));
+  execFileSync('git', ['init', '--quiet'], { cwd: repository });
+  execFileSync('git', ['config', 'user.email', 'detached-help@example.invalid'], { cwd: repository });
+  execFileSync('git', ['config', 'user.name', 'Detached Help Test'], { cwd: repository });
+  execFileSync('git', ['commit', '--quiet', '--allow-empty', '-m', 'fixture'], { cwd: repository });
+  execFileSync('git', ['checkout', '--quiet', '--detach', 'HEAD'], { cwd: repository });
+
+  const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
+  for (const args of [[], ['help'], ['--help'], ['/help']]) {
+    const run = spawnSync(process.execPath, [cli, ...args], { cwd: repository, encoding: 'utf8' });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /agentic-os — ADLC harness/);
   }

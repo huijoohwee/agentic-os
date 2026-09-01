@@ -511,6 +511,20 @@ function cmdHelp() {
 function main() {
   const supplied = process.argv.slice(2);
   let [command, ...argv] = supplied;
+
+  if (isInvocationTuple(supplied)) {
+    const resolution = resolveInvocation(supplied);
+    const dispatch = dispatchInvocation(resolution);
+    if (!dispatch.ok) {
+      err(`invocation ${resolution.code}: ${JSON.stringify(resolution.detail ?? {})}`);
+      return 1;
+    }
+    command = dispatch.command;
+    argv = dispatch.argv;
+  }
+
+  if (command === undefined || command === 'help' || command === '--help') return cmdHelp();
+
   const cwd = process.cwd();
   let root;
   try {
@@ -526,17 +540,6 @@ function main() {
     return 1;
   }
   const policy = queue.providerPolicy(profile ?? undefined);
-
-  if (isInvocationTuple(supplied)) {
-    const resolution = resolveInvocation(supplied);
-    const dispatch = dispatchInvocation(resolution);
-    if (!dispatch.ok) {
-      err(`invocation ${resolution.code}: ${JSON.stringify(resolution.detail ?? {})}`);
-      return 1;
-    }
-    command = dispatch.command;
-    argv = dispatch.argv;
-  }
 
   const protectedMutation = ['start', 'land'].includes(command)
     || command === 'canonical-sync' && positional(argv)[0] === 'apply';
@@ -575,10 +578,6 @@ function main() {
       return runObserve(root, argv, profile);
     case 'request':
       return runRequest(argv);
-    case undefined:
-    case 'help':
-    case '--help':
-      return cmdHelp();
     default:
       err(`unknown command "${command}"`);
       cmdHelp();
