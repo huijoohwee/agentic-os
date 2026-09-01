@@ -34,6 +34,7 @@ import {
 } from '../src/worktree.mjs';
 import { surveyLanes, sourceHeadTrailer } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
+import { classifyWriteSet, collectWriteSet } from '../src/autonomy-class.mjs';
 import * as report from '../src/report.mjs';
 
 const out = (text) => process.stdout.write(`${text}\n`);
@@ -362,6 +363,30 @@ function cmdQueue(root, argv) {
   return 1;
 }
 
+function cmdAutonomyClass(root, argv) {
+  const base = option(argv, 'base', PROTECTED_REF);
+  const head = option(argv, 'head', 'HEAD');
+  const result = classifyWriteSet(collectWriteSet({ repository: root, base, head }));
+  if (flag(argv, 'json')) {
+    out(JSON.stringify({
+      schema: result.schema,
+      base,
+      head,
+      class: result.class,
+      escalates: result.escalates,
+      pathCount: result.paths.length,
+      escalatingPaths: result.escalatingPaths,
+    }, null, 2));
+  } else {
+    out(`autonomy class: ${result.class} (${result.paths.length} paths, ${base}...${head})`);
+    if (result.escalates) {
+      out('promotion requires explicit authority because these paths control authority:');
+      for (const path of result.escalatingPaths) out(`  ${path}`);
+    }
+  }
+  return result.escalates ? 2 : 0;
+}
+
 function cmdHelp() {
   out(
     [
@@ -373,6 +398,7 @@ function cmdHelp() {
       '  npm run land              push the lane, open a PR, hand it to the queue',
       '  npm run status            lanes, WIP against caps, queue state',
       '  npm run reap [-- --apply] retire lanes proven integrated by patch identity',
+      '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  npm run queue:show        inspect the required remote configuration',
       '  npm run queue:apply       write it (explicit, mutates branch protection)',
       '',
@@ -426,6 +452,8 @@ function main() {
       return cmdReap(root, argv);
     case 'queue':
       return cmdQueue(root, argv);
+    case 'autonomy-class':
+      return cmdAutonomyClass(root, argv);
     case undefined:
     case 'help':
     case '--help':
