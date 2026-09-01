@@ -1,14 +1,21 @@
 /**
  * Lane worktree lifecycle: provision, inspect, retire.
  *
- * A lane worktree is created detached at fetched `origin/main`, then bound to
+ * A lane worktree is created detached at one captured fetched canonical SHA, then bound to
  * exactly one lane branch. Worktrees live outside the repository tree so a lane
  * never appears as untracked state in another lane.
  */
 
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { git, gitLines, repoRoot, worktrees, refExists, untrackedPaths } from './git.mjs';
+import {
+  git,
+  gitLines,
+  repoRoot,
+  worktrees,
+  refExists,
+  untrackedPaths,
+} from './git.mjs';
 import { laneDirName } from './lane-id.mjs';
 
 export const PROTECTED_BRANCH = 'main';
@@ -46,18 +53,23 @@ export function staleWorktrees(cwd = process.cwd()) {
  * Detach at the fetched protected ref first so the lane never inherits local
  * `main`, which may be behind or dirty.
  */
-export function provision({ ref, scope, device, cwd = process.cwd() }) {
+export function provision({ ref, scope, device, baseSha, cwd = process.cwd() }) {
+  if (typeof baseSha !== 'string' || !/^[0-9a-f]{40,64}$/u.test(baseSha)) {
+    throw new TypeError('provision requires one captured base object ID');
+  }
   const path = lanePath(scope, device, cwd);
   if (existsSync(path)) throw new Error(`lane worktree already exists: ${path}`);
   if (refExists(`refs/heads/${ref}`, cwd)) throw new Error(`lane branch already exists: ${ref}`);
   mkdirSync(dirname(path), { recursive: true });
-  git(['worktree', 'add', '--detach', path, PROTECTED_REF], { cwd });
+  git(['worktree', 'add', '--detach', path, baseSha], { cwd });
   git(['switch', '--create', ref], { cwd: path });
-  return { path, ref, baseSha: git(['rev-parse', PROTECTED_REF], { cwd }) };
+  const observed = git(['rev-parse', 'HEAD'], { cwd: path });
+  if (observed !== baseSha) throw new Error('provisioned worktree does not match captured base');
+  return { path, ref, baseSha };
 }
 
 /** Observed facts for the lane state machine. */
-export function inspect(ref, cwd = process.cwd()) {
+export function inspect(ref, cwd = process.cwd(), baseRef = PROTECTED_REF) {
   const entry = worktreeFor(ref, cwd);
   if (!entry) return { registered: false, path: null, untracked: [], commits: 0 };
   const path = entry.path;
@@ -65,44 +77,17 @@ export function inspect(ref, cwd = process.cwd()) {
     registered: true,
     path,
     untracked: untrackedPaths(path),
-    commits: gitLines(['rev-list', `${PROTECTED_REF}..${ref}`], { cwd }).length,
+    commits: gitLines(['rev-list', `${baseRef}..${ref}`], { cwd }).length,
   };
 }
 
 /**
- * Retire a lane. Callers must already hold an integration proof; this function
- * performs no proof of its own and refuses only on owned untracked state.
+ * Compatibility cleanup is intentionally unavailable. Authority retirement and
+ * filesystem cleanup require the public authenticated contract and separate
+ * target-specific receipts; a local integration projection cannot grant them.
  */
-export function retire(ref, { cwd = process.cwd(), deleteBranch = true } = {}) {
-  const entry = worktreeFor(ref, cwd);
-  const removed = [];
-  if (entry) {
-    const owned = untrackedPaths(entry.path);
-    if (owned.length > 0) {
-      const error = new Error(`lane ${ref} has ${owned.length} owned untracked path(s)`);
-      error.reason = 'blocked-owned-untracked';
-      error.paths = owned;
-      throw error;
-    }
-    git(['worktree', 'remove', entry.path], { cwd });
-    removed.push(entry.path);
-  }
-  git(['worktree', 'prune'], { cwd });
-  if (deleteBranch && refExists(`refs/heads/${ref}`, cwd)) {
-    git(['branch', '--delete', '--force', ref], { cwd });
-    removed.push(`refs/heads/${ref}`);
-  }
-  return removed;
-}
-
-/** Remove registrations whose directory is gone. Never touches real directories. */
-export function pruneStale(cwd = process.cwd()) {
-  const stale = staleWorktrees(cwd).map((entry) => entry.path);
-  git(['worktree', 'prune'], { cwd });
-  return stale;
-}
-
-/** Delete an abandoned empty lane directory that git no longer tracks. */
-export function removeEmptyDir(path) {
-  if (existsSync(path)) rmSync(path, { recursive: false });
+export function retire() {
+  const error = new Error('retirement requires an authenticated authority-transition receipt');
+  error.reason = 'blocked-authenticated-cleanup-required';
+  throw error;
 }

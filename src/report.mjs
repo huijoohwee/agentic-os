@@ -32,6 +32,8 @@ export function formatConfig(entries) {
 
 export function formatLocal(local) {
   const lines = ['local repository:'];
+  const branch = local.protectedBranch ?? 'main';
+  const target = (local.protectedRef ?? 'origin/main').replace(/^refs\/remotes\//u, '');
   const push = (ok, id, detail, remedy) => {
     lines.push(`  ${ok ? MARK.ok : MARK.fail} ${pad(id, 18)} ${detail}`);
     if (!ok && remedy) lines.push(`       remedy: ${remedy}`);
@@ -39,14 +41,26 @@ export function formatLocal(local) {
   push(
     !local.mainDirty,
     'main-clean',
-    local.mainDirty ? 'canonical main has uncommitted tracked changes' : 'canonical main is clean',
+    local.mainDirty
+      ? `canonical ${branch} has exact tracked-byte/index risk (${local.trackedRiskPaths.length} byte, ${local.hiddenPaths.length} hidden)`
+      : `canonical ${branch} tracked bytes and index match HEAD`,
     'move the bytes into a lane: npm run lane -- <scope>',
   );
+  lines.push(`  ${MARK.warn} ${pad('owned-paths', 18)} ${local.ownedPathCount ?? local.ownedPaths.length} untracked/ignored path(s) retained`);
+  const relationDetail = local.relation === 'equal'
+    ? `canonical ${branch} equals cached ${target}`
+    : local.relation === 'behind'
+      ? `canonical ${branch} is ${local.behind} behind cached ${target}`
+      : local.relation === 'ahead'
+        ? `canonical ${branch} is ${local.ahead} ahead of cached ${target}`
+        : local.relation === 'diverged'
+          ? `canonical ${branch} diverged from cached ${target} (${local.ahead} ahead, ${local.behind} behind)`
+          : `canonical ${branch} relation to cached ${target} is unknown`;
   push(
-    local.behind === 0,
+    local.relation === 'equal',
     'main-current',
-    local.behind === 0 ? 'canonical main equals origin/main' : `canonical main is ${local.behind} behind origin/main`,
-    'git -C . merge --ff-only origin/main',
+    relationDetail,
+    `git -C . merge --ff-only ${target}`,
   );
   push(
     local.staleWorktrees.length === 0,
@@ -70,10 +84,10 @@ export function formatStatus({ device, lanes, caps, queue }) {
   if (lanes.length === 0) {
     lines.push('no lanes. open one with: npm run lane -- <scope>');
   } else {
-    lines.push(`${pad('LANE', 44)} ${pad('STATE', 11)} ${pad('AHEAD', 6)} NEXT`);
+    lines.push(`${pad('LANE', 44)} ${pad('CACHED_STATE', 13)} ${pad('AHEAD', 6)} CACHED_NEXT`);
     for (const lane of lanes) {
       lines.push(
-        `${pad(lane.ref, 44)} ${pad(lane.state, 11)} ${pad(lane.commits, 6)} ${lane.next.join(', ')}`,
+        `${pad(lane.ref, 44)} ${pad(lane.state, 13)} ${pad(lane.commits, 6)} ${lane.next.join(', ')}`,
       );
       if (lane.untracked > 0) {
         lines.push(`  ${lane.untracked} owned untracked path(s); they stay in place`);
@@ -84,18 +98,19 @@ export function formatStatus({ device, lanes, caps, queue }) {
   lines.push(`open lanes ${caps.openLanes}/${caps.wipCap} for this device`);
   if (queue) {
     const state = queue.queueEnabled ? 'enabled' : 'NOT ENABLED';
-    lines.push(`merge queue ${state}; ${queue.openPrs.length} open pull request(s)`);
+    const count = Array.isArray(queue.openPrs) ? queue.openPrs.length : 'unknown';
+    lines.push(`merge queue ${state}; ${count} open pull request(s)`);
     if (!queue.queueEnabled) lines.push('run npm run doctor for the exact drift');
   }
   return lines.join('\n');
 }
 
-export function formatSurvey(survey, { applied = false } = {}) {
+export function formatSurvey(survey) {
   const lines = [];
   if (survey.integrated.length === 0) {
-    lines.push('no lane is provably integrated; nothing to retire.');
+    lines.push('no lane has an exact integration projection.');
   } else {
-    lines.push(applied ? 'retired:' : 'retirable (proven integrated):');
+    lines.push('proven integrated (cleanup remains separately governed):');
     for (const lane of survey.integrated) {
       lines.push(`  ${pad(lane.branch, 44)} ${lane.proof}`);
       lines.push(`       ${lane.detail}`);
@@ -131,7 +146,7 @@ export function formatRefusal(result, advice) {
 }
 
 export function formatPlan(plan) {
-  return ['this is the exact mutation queue:apply performs:', '', JSON.stringify(plan, null, 2)].join(
+  return ['desired provider policy for repository-authority review:', '', JSON.stringify(plan, null, 2)].join(
     '\n',
   );
 }

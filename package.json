@@ -1,9 +1,15 @@
 {
   "name": "agentic-os",
   "version": "0.1.0",
-  "description": "ADLC harness: merge-queue-owned ordering, patch-identity integration, zero runtime dependencies.",
+  "description": "ADLC harness: provider-owned ordering, exact-content integration, zero runtime dependencies.",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": "./src/governance.mjs",
+    "./records": "./src/governance.mjs",
+    "./adapters/git": "./src/git-repository.mjs",
+    "./adapters/github": "./src/github-provider.mjs"
+  },
   "engines": {
     "node": ">=20.11"
   },
@@ -12,6 +18,7 @@
     "agentic-os-mcp": "bin/agentic-os-mcp.mjs"
   },
   "files": [
+    ".agentic-os.json",
     "bin",
     "src",
     "catalog",
@@ -35,6 +42,8 @@
     "mcp": "node bin/agentic-os-mcp.mjs",
     "feature:rank": "node src/rank.mjs",
     "autonomy:class": "node bin/agentic-os.mjs autonomy-class",
+    "observe": "node bin/agentic-os.mjs observe",
+    "governance:request": "node bin/agentic-os.mjs request",
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node src/doc-budget.mjs",
     "modules:check": "node src/module-budget.mjs",

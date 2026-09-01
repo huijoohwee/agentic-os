@@ -1,23 +1,37 @@
-# Merge Queue
+# Tested Protected Ordering
 
-The queue is the only thing that decides what lands next. Authors never restack for ordering.
+The neutral capability is `tested-protected-ordering`: the provider evaluates the exact candidate
+in protected-branch landing order. The current GitHub adapter maps a native merge queue to that
+capability. Pull requests and queues project provider state; they do not grant claim authority.
 
-## Required configuration
+## Capability-selected configuration
 
-`npm run doctor` verifies all of it and names the drift. `npm run queue:apply` writes it.
+`npm run doctor` validates the repository's `.agentic-os.json`, observes the exact configured
+branch/checks, and reports only the provider capabilities that profile selects. `npm run
+queue:show` prints that repository's GitHub reference plan; candidate code never applies
+repository-owned provider policy.
 
-| Setting | Required | Why |
+| Profile capability | Provider requirement | Why |
 |---|---|---|
-| Merge queue on the protected branch | enabled | Serializes and batches; removes manual restacks |
-| Require branches up to date (`strict`) | **off** | With a queue this forces the restack treadmill it replaces |
-| Merge method | squash | One commit per lane on the protected branch |
-| Linear history | on | Compatible with squash-only |
-| Direct push to protected branch | blocked | Every change goes through the queue |
-| Delete branch on merge | on | Remote side of lane retirement |
-| CI `merge_group` trigger | present | Without it queued batches never report and the queue stalls |
+| `tested-protected-ordering:merge-queue` | queue, auto-merge, and `merge_group`; strict off | Tests landing order |
+| `required-check-policy:strict` | strict on; no queue | Selects fresh-base checks without a queue |
+| `protected-integration:pull-request` | direct protected-branch pushes blocked | Keeps integration provider-reviewed |
+| `integration-method:squash` | squash is the only merge method | One protected commit per lane |
+| `history:linear` | linear history required | Selects a consumer's history policy |
+
+The two ordering capabilities conflict and validation rejects a profile that selects both. Required
+check contexts always come from `requiredChecks`, including contexts with spaces. Capabilities not
+selected remain unprescribed, so GitHub, another provider, or a local-only repository can retain its
+own integration mechanism. `delete_branch_on_merge` is always **off** because every v1 profile
+retains refs until authenticated retirement and a separate cleanup receipt.
 
 Turning the queue on while leaving `strict` on is the common mistake: the two mechanisms solve the
 same problem and stack badly. Enable the queue, then turn `strict` off in the same change.
+
+Auto-merge is a merge-queue prerequisite on GitHub, but it is not equivalent to tested ordering.
+Checks on an auto-merge request can describe a stale base. Candidate-side `land` never arms it: the
+lane stays `published` until a trusted consumer authorizes ordering and an exact queue entry is
+re-observed.
 
 ## Batching, or the merge train
 
@@ -28,8 +42,8 @@ batches instead of single PRs.
 - `max` 5 — five lanes cost one CI run instead of five.
 - `wait` 5 minutes — enough for a batch to form under agent-paced authoring.
 
-A failing candidate is ejected. Candidates ahead of it still land, candidates behind it are rebuilt
-without it. Ejection is a normal outcome, not an incident.
+A failing candidate may leave the provider ordering projection. The harness does not invent an
+ejection or restack transition; it re-observes state and requires a separately authorized repair.
 
 ## Cost arithmetic
 
@@ -37,40 +51,28 @@ Draining `N` open PRs with require-up-to-date and no queue costs up to `N x (N-1
 cycles, because every merge invalidates every other PR. At `N = 45` that is about 1,980 CI runs, and
 every restack in that set re-presents the same hunks for resolution.
 
-With a queue at batch 5 the same 45 lanes cost roughly `N / 5` batch runs plus ejection retries, and
+With a queue at batch 5 the same 45 lanes cost roughly `N / 5` batch runs plus provider retries and
 zero author-driven restacks. This is the single largest lever in the harness.
 
 ## What the author does
 
 ```sh
-npm run lane -- my-scope   # worktree + branch at fetched origin/main
+npm run lane -- my-scope   # worktree + branch at the fetched profile canonical ref
 # ... author, commit ...
-npm run land                # push, open PR, enqueue
+npm run land                # publish exact head and project the selected review
 ```
 
-Then stop touching the lane. Do not fetch and rebase it. Do not merge `main` into it. Do not push an
-empty commit to re-trigger checks. If the queue ejects it, `npm run land` again performs the one
-permitted restack and requeues.
-
-## Stacked lanes toward main
-
-A stack is a chain of lanes where each is based on the one below. Cap depth at 3.
-
-- Restack the whole chain in one operation with `rebase.updateRefs`, which moves every intermediate
-  branch pointer at once. Never rebase the members one at a time.
-- Enqueue only the bottom of the stack. Enqueuing a middle lane asks the queue to test a base that
-  is not on the protected branch yet.
-- When the bottom lands, the queue's base advance plus `rerere` handles the remainder. `npm run reap`
-  then retires the bottom because patch identity proves it landed.
+Then stop touching the published lane. Do not rebase it, merge the canonical branch into it, or push
+an empty commit to simulate evidence. A rejected candidate remains preserved until a new authority
+decision.
 
 ## Cross-tool concurrency
 
-Several coding agents and IDEs on several devices are safe under this model because the coordination
-surface is only the branch name and the PR:
+Within one clone, worktrees isolate bytes and the queue tests landing combinations. Across devices:
 
-- The device segment keeps two machines from claiming one scope.
-- `scopeFree` keeps two sessions on one machine from claiming one scope.
-- The queue keeps two lanes that touch the same path from landing on an untested combination.
+- The device segment prevents branch-name collision; it is not an ownership claim.
+- `scopeFree` only detects local branch scopes.
+- The queue prevents an untested landing combination; it cannot authenticate who owns the scope.
 
-No lease, heartbeat, fence, or ledger is required, and none may be added. If two lanes conflict, the
-queue's batch test finds it and ejects one. That is the whole protocol.
+Until a governance adapter supplies authenticated claim identity, epoch, fence, and compare-and-swap
+state, cross-device exclusion is unsupported and must fail closed rather than be inferred.

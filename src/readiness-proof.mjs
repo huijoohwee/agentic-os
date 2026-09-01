@@ -6,10 +6,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { worktreeCleanupRisks } from './git.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
-const TEST_REPORTER_PATH = join(HERE, 'readiness-test-reporter.mjs');
+const TEST_REPORTER_PATH = fileURLToPath(import.meta.url);
 export const PROOF_KINDS = Object.freeze(['live-provider', 'contract', 'doc-parse', 'none']);
 export const LIVE_PROOF_SCHEMA = 'agentic-os-live-provider-proof/v1';
 export const CONTRACT_PROOF_SCHEMA = 'agentic-os-contract-proof/v1';
@@ -24,6 +25,22 @@ const CLAIM_RULES = [
   { pattern: /\bdoc[ -]parse[ -]ready\b/i, proof: 'doc-parse' },
 ];
 const PROOF_STRENGTH = Object.freeze({ none: 0, 'doc-parse': 1, contract: 2, 'live-provider': 3 });
+
+/** Machine-owned summary reporter used when this module is loaded by `node --test`. */
+export default async function* readinessTestReporter(events) {
+  const proofPath = process.env.AGENTIC_OS_PROOF_PATH;
+  const sentinel = process.env.AGENTIC_OS_PROOF_SENTINEL;
+  const result = { pass: 0, fail: 0, skipped: 0, todo: 0 };
+  for await (const event of events) {
+    const name = event.data?.name;
+    const wrapper = typeof name === 'string' && (name === proofPath || resolve(name) === proofPath);
+    if (event.type === 'test:fail') result.fail += 1;
+    if (event.type === 'test:pass' && !wrapper && event.data?.skip) result.skipped += 1;
+    if (event.type === 'test:pass' && !wrapper && event.data?.todo) result.todo += 1;
+    if (event.type === 'test:pass' && !wrapper && !event.data?.skip && !event.data?.todo) result.pass += 1;
+  }
+  yield `${sentinel}${Buffer.from(JSON.stringify(result)).toString('base64')}\n`;
+}
 
 function walk(dir) {
   const found = [];
@@ -120,10 +137,11 @@ function sourceClean(root, evidenceAt, options) {
     execFileSync('git', ['-C', root, 'diff', '--quiet', 'HEAD', '--', '.', `:(exclude,literal)${evidenceAt}`], {
       stdio: 'ignore',
     });
-    const untracked = gitOutput(root, ['ls-files', '--others', '--exclude-standard', '-z'])
-      .split('\0')
-      .filter(Boolean);
-    return untracked.every((path) => path === evidenceAt);
+    const risks = worktreeCleanupRisks(root);
+    const outsideEvidence = (paths) => paths.some((path) => path !== evidenceAt);
+    return !outsideEvidence(risks.hidden)
+      && !outsideEvidence(risks.tracked)
+      && !outsideEvidence(risks.owned);
   } catch {
     return false;
   }

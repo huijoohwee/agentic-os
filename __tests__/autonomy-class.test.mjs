@@ -72,8 +72,28 @@ test('paths derive documentation, test, additive, and behavioral classes', () =>
     CLASS_BEHAVIORAL);
 });
 
+test('only additive tests are test-only; weakening existing tests controls authority', () => {
+  assert.equal(classifyWriteSet([
+    { path: '__tests__/new.test.mjs', status: 'A', added: true },
+  ]).class, CLASS_TEST_ONLY);
+  for (const entry of [
+    { path: '__tests__/guard.test.mjs', status: 'M', added: false },
+    { path: '__tests__/guard.test.mjs', status: 'D', added: false },
+    {
+      previousPath: '__tests__/guard.test.mjs', path: 'docs/retired-test.md',
+      status: 'R100', added: false,
+    },
+  ]) {
+    const report = classifyWriteSet([entry]);
+    assert.equal(report.class, CLASS_AUTHORITY_CONTROLLING);
+    assert.equal(report.escalates, true);
+    assert.ok(report.escalatingPaths.includes('__tests__/guard.test.mjs'));
+  }
+});
+
 test('the classifier and every agentic-os authority surface control authority', () => {
   assert.ok(AGENTIC_OS_AUTHORITY_PATHS.includes('src/autonomy-class.mjs'));
+  assert.equal(classifyPath('src/canonical-sync.mjs'), CLASS_AUTHORITY_CONTROLLING);
   for (const path of AGENTIC_OS_AUTHORITY_PATHS) {
     assert.equal(classifyPath(path), CLASS_AUTHORITY_CONTROLLING, path);
   }

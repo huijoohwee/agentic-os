@@ -5,30 +5,82 @@
  * never a new controller/adapter/evidence/store quadruple.
  */
 
+import { parseLaneRef } from './lane-id.mjs';
+import { validateRepositoryProfile } from './governance.mjs';
+
+export const PROVIDER_CAPABILITIES = Object.freeze({
+  PULL_REQUEST: 'protected-integration:pull-request',
+  MERGE_QUEUE: 'tested-protected-ordering:merge-queue',
+  STRICT: 'required-check-policy:strict',
+  LINEAR_HISTORY: 'history:linear',
+  SQUASH: 'integration-method:squash',
+});
+
+const LEGACY_PROVIDER_POLICY = Object.freeze({
+  profileDigest: null,
+  protectedBranch: 'main',
+  protectedRef: 'refs/remotes/origin/main',
+  requiredChecks: Object.freeze(['test', 'budgets']),
+  pullRequestRequired: true,
+  mergeQueueRequired: true,
+  strict: false,
+  linearHistoryRequired: true,
+  squashOnlyRequired: true,
+  retainOnMergeRequired: true,
+});
+
+/** Pure policy projection from a validated, provider-neutral repository profile. */
+export function providerPolicy(value) {
+  if (value === undefined) return LEGACY_PROVIDER_POLICY;
+  const profile = validateRepositoryProfile(value);
+  const capabilities = new Set(profile.capabilities);
+  const mergeQueueRequired = capabilities.has(PROVIDER_CAPABILITIES.MERGE_QUEUE);
+  const strictRequired = capabilities.has(PROVIDER_CAPABILITIES.STRICT);
+  if (mergeQueueRequired && (strictRequired
+    || !capabilities.has(PROVIDER_CAPABILITIES.PULL_REQUEST)))
+    throw new TypeError('merge queue requires pull-request integration and conflicts with strict checks');
+  if (!profile.canonical.localRef.startsWith('refs/heads/')
+    || !profile.canonical.remoteRef.startsWith('refs/remotes/')) {
+    throw new TypeError('provider policy requires fully qualified branch and remote-tracking refs');
+  }
+  return Object.freeze({
+    profileDigest: profile.profileDigest,
+    protectedBranch: profile.canonical.localRef.slice('refs/heads/'.length),
+    protectedRef: profile.canonical.remoteRef,
+    requiredChecks: Object.freeze([...profile.requiredChecks]),
+    pullRequestRequired: capabilities.has(PROVIDER_CAPABILITIES.PULL_REQUEST),
+    mergeQueueRequired,
+    strict: mergeQueueRequired ? false : strictRequired ? true : null,
+    linearHistoryRequired: capabilities.has(PROVIDER_CAPABILITIES.LINEAR_HISTORY),
+    squashOnlyRequired: capabilities.has(PROVIDER_CAPABILITIES.SQUASH),
+    retainOnMergeRequired: Object.values(profile.cleanup).every((effect) => effect === 'retain'),
+  });
+}
+
+export function providerAdapterRequired(policy) {
+  return policy.pullRequestRequired || policy.mergeQueueRequired || policy.strict !== null
+    || policy.linearHistoryRequired || policy.squashOnlyRequired || policy.requiredChecks.length > 0;
+}
+
 export const STATES = Object.freeze([
   'planned',
   'active',
   'published',
   'queued',
   'integrated',
-  'retired',
 ]);
 
-export const TERMINAL_STATES = Object.freeze(['retired']);
+export const TERMINAL_STATES = Object.freeze([]);
 
 export const REFUSALS = Object.freeze({
   ILLEGAL: 'blocked-illegal-transition',
   WIP_CAP: 'blocked-wip-cap',
-  STACK_DEPTH: 'blocked-stack-depth',
   MAIN_AUTHORING: 'blocked-main-authoring',
   DIRTY: 'blocked-dirty',
-  OWNED_UNTRACKED: 'blocked-owned-untracked',
   NO_QUEUE: 'blocked-no-queue',
   NOT_PUSHED: 'blocked-not-pushed',
-  NO_PR: 'blocked-no-pr',
-  STALE_CHECKS: 'blocked-stale-checks',
+  PROVIDER_HANDOFF: 'blocked-provider-handoff',
   NOT_INTEGRATED: 'blocked-not-integrated',
-  RESTACK_EXHAUSTED: 'blocked-restack-exhausted',
   SCOPE_TAKEN: 'blocked-scope-taken',
   BASE_NOT_FETCHED: 'blocked-base-not-fetched',
   NO_COMMITS: 'blocked-no-commits',
@@ -40,7 +92,6 @@ export const REFUSALS = Object.freeze({
  */
 const GUARDS = Object.freeze({
   wipWithinCap: (f) => (f.openLanes < f.wipCap ? null : REFUSALS.WIP_CAP),
-  stackWithinCap: (f) => (f.stackDepth <= f.stackCap ? null : REFUSALS.STACK_DEPTH),
   baseFetched: (f) => (f.baseFetched ? null : REFUSALS.BASE_NOT_FETCHED),
   scopeFree: (f) => (f.scopeTaken ? REFUSALS.SCOPE_TAKEN : null),
   onLaneWorktree: (f) => (f.onCanonicalMain ? REFUSALS.MAIN_AUTHORING : null),
@@ -48,39 +99,39 @@ const GUARDS = Object.freeze({
   hasCommits: (f) => (f.laneCommits > 0 ? null : REFUSALS.NO_COMMITS),
   pushed: (f) => (f.pushed ? null : REFUSALS.NOT_PUSHED),
   orderingDelegated: (f) => (isOrderingDelegated(f) ? null : REFUSALS.NO_QUEUE),
-  prOpen: (f) => (f.prOpen ? null : REFUSALS.NO_PR),
-  checksNotStale: (f) => (f.checksHeadSha === f.laneHeadSha ? null : REFUSALS.STALE_CHECKS),
-  ejectedOnce: (f) => (f.ejections === 1 ? null : REFUSALS.RESTACK_EXHAUSTED),
+  providerHandoff: (f) => (
+    f.providerReceipt?.ok === true
+    && f.providerReceipt.testedProtectedOrdering === true
+    && f.providerReceipt.headSha === f.laneHeadSha
+      ? null
+      : REFUSALS.PROVIDER_HANDOFF
+  ),
   integratedProof: (f) => (isProof(f.integrationProof) ? null : REFUSALS.NOT_INTEGRATED),
-  noOwnedUntracked: (f) => (f.ownedUntracked ? REFUSALS.OWNED_UNTRACKED : null),
 });
 
 /**
- * The real invariant behind `enqueue` is that the *provider* owns landing order,
- * not the author. A merge queue is the strong form: it batches and tests ahead
- * of the protected branch. Auto-merge with require-up-to-date off is the weak
- * form: no batching, but the author still never restacks for ordering.
- *
- * Auto-merge without required checks is not delegation, it is a blind merge, so
- * it does not qualify. Neither does anything while require-up-to-date is on,
- * because that setting is what forces the restack treadmill.
+ * The provider must test the candidate in protected-branch landing order.
+ * Auto-merge alone does not provide that capability: its checks can describe a
+ * stale base even when require-up-to-date is disabled.
  */
 export function orderingMode(facts) {
-  if (facts.queueEnabled) return 'merge-queue';
-  const delegated = facts.autoMergeAllowed && facts.requiredCheckCount > 0 && facts.strict !== true;
-  return delegated ? 'auto-merge' : 'none';
+  return facts.providerObservationComplete === true
+    && facts.queueEnabled
+    && facts.queuePolicySatisfied === true
+    && facts.requiredChecksSatisfied === true
+    && facts.mergeGroupSupported === true
+    ? 'merge-queue'
+    : 'none';
 }
 
 export function isOrderingDelegated(facts) {
   return orderingMode(facts) !== 'none';
 }
 
-/** Ordered strongest-first. Squash merges destroy `ancestor`, hence the other three. */
+/** Ordered strongest-first. Squash merges destroy `ancestor`, hence exact content identity. */
 export const PROOF_KINDS = Object.freeze([
   'ancestor',
-  'source-head-trailer',
-  'patch-identity',
-  'squash-identity',
+  'exact-tree-projection',
 ]);
 
 export function isProof(kind) {
@@ -93,7 +144,7 @@ export const TRANSITIONS = Object.freeze([
     from: 'planned',
     event: 'provision',
     to: 'active',
-    guards: ['wipWithinCap', 'stackWithinCap', 'baseFetched', 'scopeFree'],
+    guards: ['wipWithinCap', 'baseFetched', 'scopeFree'],
   },
   { from: 'active', event: 'author', to: 'active', guards: ['onLaneWorktree'] },
   {
@@ -106,26 +157,16 @@ export const TRANSITIONS = Object.freeze([
     from: 'published',
     event: 'enqueue',
     to: 'queued',
-    guards: ['orderingDelegated', 'prOpen', 'checksNotStale'],
+    guards: ['orderingDelegated', 'providerHandoff'],
   },
-  { from: 'published', event: 'restack', to: 'published', guards: ['ejectedOnce'] },
-  { from: 'queued', event: 'eject', to: 'published', guards: [] },
   { from: 'queued', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
   { from: 'published', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
   { from: 'active', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
-  {
-    from: 'integrated',
-    event: 'reap',
-    to: 'retired',
-    guards: ['integratedProof', 'noOwnedUntracked'],
-  },
 ]);
 
 export const DEFAULT_FACTS = Object.freeze({
   openLanes: 0,
   wipCap: 3,
-  stackDepth: 1,
-  stackCap: 3,
   baseFetched: false,
   scopeTaken: false,
   onCanonicalMain: false,
@@ -133,15 +174,13 @@ export const DEFAULT_FACTS = Object.freeze({
   laneCommits: 0,
   pushed: false,
   queueEnabled: false,
+  providerObservationComplete: false,
   autoMergeAllowed: false,
   requiredCheckCount: 0,
   strict: null,
-  prOpen: false,
   laneHeadSha: null,
-  checksHeadSha: null,
-  ejections: 0,
+  providerReceipt: null,
   integrationProof: null,
-  ownedUntracked: false,
 });
 
 /**
@@ -166,15 +205,20 @@ export function transition(state, event, facts = {}) {
   return { ok: true, from: state, to: row.to, event };
 }
 
+export const CAPS = Object.freeze({ openLanesPerDevice: 3 });
+export function lanesForDevice(refs, device) {
+  return refs.filter((ref) => parseLaneRef(ref)?.device === device);
+}
+export function capFacts(refs, device) {
+  return { openLanes: lanesForDevice(refs, device).length, wipCap: CAPS.openLanesPerDevice };
+}
+export function capAdvice(reason) {
+  return reason === REFUSALS.WIP_CAP
+    ? `at the cap of ${CAPS.openLanesPerDevice} open lanes; land or classify work first`
+    : null;
+}
+
 /** Events legal from a state, ignoring facts. Used by `status` to show next steps. */
 export function legalEvents(state) {
   return TRANSITIONS.filter((t) => t.from === state).map((t) => t.event);
-}
-
-/**
- * A queued lane has no `restack` row, so an out-of-date base is the queue's
- * problem. This is asserted by tests, not by prose.
- */
-export function canRestack(state) {
-  return TRANSITIONS.some((t) => t.from === state && t.event === 'restack');
 }

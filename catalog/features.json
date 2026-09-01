@@ -10,7 +10,7 @@
     "fossOnly": true
   },
   "entryCount": 5,
-  "digest": "sha256:e6b335bffde1852fa895d05d0c7a7d8d4467b464b455c37df579b312ddfb9849",
+  "digest": "sha256:17714ee450c8d72ac1ff194392d67e9b5a463f96e9d69571e0ce3f6a6325d985",
   "candidates": [
     {
       "id": "repository-livelock-audit",
@@ -38,16 +38,16 @@
       }
     },
     {
-      "id": "branch-debt-cleanup",
-      "offer": "Branch-debt cleanup",
+      "id": "integration-classification",
+      "offer": "Exact integration classification",
       "pain": {
-        "statement": "Integrated branches consume review and CI attention until safely retired.",
+        "statement": "Teams cannot safely route stale-looking branches without exact content evidence.",
         "namedProspectivePayer": null,
         "evidenceRefs": ["README.md"],
         "demandEvidenceRefs": []
       },
       "solution": {
-        "statement": "Apply retirement only after the existing patch-identity survey proves integration.",
+        "statement": "Deliver ancestry and exact-tree projection facts without granting retirement or cleanup.",
         "evidenceRefs": ["src/patch-identity.mjs", "src/worktree.mjs"]
       },
       "estimates": {

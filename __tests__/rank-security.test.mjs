@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readBoundedFile } from '../src/bounded-read.mjs';
+import { readBoundedFile } from '../src/catalog-input.mjs';
 import {
   FEATURE_CATALOG_SCHEMA,
   MAX_FINDINGS,
@@ -121,7 +121,7 @@ test('bounded reads reject descriptor identity drift and do not block on FIFOs',
 
     const fifo = join(root, 'input.fifo');
     assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
-    const moduleUrl = pathToFileURL(join(import.meta.dirname, '../src/bounded-read.mjs')).href;
+    const moduleUrl = pathToFileURL(join(import.meta.dirname, '../src/catalog-input.mjs')).href;
     const probe = spawnSync(process.execPath, ['--input-type=module', '-e', [
       `import {readBoundedFile} from ${JSON.stringify(moduleUrl)};`,
       `try { readBoundedFile(${JSON.stringify(fifo)}, 10); process.exitCode = 2; }`,

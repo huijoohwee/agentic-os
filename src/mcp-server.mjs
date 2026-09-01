@@ -85,7 +85,7 @@ export const TOOLS = deepFreeze([
   {
     name: 'reap',
     title: 'Survey integrated lanes',
-    description: 'Survey patch identity without retirement; fetch may update remote-tracking refs.',
+    description: 'Survey exact integration identity; fetch may update remote-tracking refs.',
     inputSchema: EMPTY_INPUT,
     outputSchema: CLI_OUTPUT,
     annotations: {
@@ -98,7 +98,7 @@ export const TOOLS = deepFreeze([
   {
     name: 'lane',
     title: 'Open a guarded ADLC lane',
-    description: 'Create one lane worktree and branch at fetched origin/main for a valid scope.',
+    description: 'Create one lane worktree and branch at the fetched profile canonical ref.',
     inputSchema: LANE_INPUT,
     outputSchema: CLI_OUTPUT,
     annotations: {

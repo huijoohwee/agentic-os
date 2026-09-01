@@ -28,17 +28,22 @@ export const ESCALATING_CLASSES = Object.freeze([CLASS_AUTHORITY_CONTROLLING]);
 
 /** Executable agentic-os surfaces that can widen who may write, land, or retire. */
 export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
+  '.agentic-os.json',
   '.gitattributes',
   '.gitignore',
   'AGENTS.md',
   'package.json',
+  'bin/agentic-os-auxiliary.mjs',
   'bin/agentic-os.mjs',
   'bin/agentic-os-mcp.mjs',
   'catalog/invocation.json',
   'src/autonomy-class.mjs',
+  'src/canonical-sync.mjs',
   'src/config.mjs',
   'src/doc-budget.mjs',
   'src/git.mjs',
+  'src/git-repository.mjs',
+  'src/governance.mjs',
   'src/guard-main.mjs',
   'src/invocation.mjs',
   'src/lane-id.mjs',
@@ -50,8 +55,7 @@ export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   'src/patch-identity.mjs',
   'src/queue.mjs',
   'src/readiness-proof.mjs',
-  'src/readiness-test-reporter.mjs',
-  'src/wip.mjs',
+  'src/github-provider.mjs',
   'src/worktree.mjs',
 ]);
 
@@ -109,7 +113,9 @@ export function classifyPath(relativePath, options = {}) {
 }
 
 function classForEndpoint(path, added, options) {
-  return classifyPath(path, options) ?? (added ? CLASS_ADDITIVE_CONTRACT : CLASS_BEHAVIORAL);
+  const classified = classifyPath(path, options);
+  if (classified === CLASS_TEST_ONLY && !added) return CLASS_AUTHORITY_CONTROLLING;
+  return classified ?? (added ? CLASS_ADDITIVE_CONTRACT : CLASS_BEHAVIORAL);
 }
 
 function strongerClass(left, right) {
@@ -134,6 +140,7 @@ function normalizeEntry(entry, options) {
     path,
     ...(previousPath === null ? {} : { previousPath }),
     ...(value.status === undefined ? {} : { status: value.status }),
+    added,
     class: derived,
   });
 }
@@ -148,10 +155,13 @@ export function classifyWriteSet(entries, options = {}) {
   const derived = highest < 0 ? CLASS_DOCS_ONLY : CLASS_ORDER[highest];
   const escalatingPaths = [];
   for (const entry of paths) {
-    for (const candidate of [entry.previousPath, entry.path].filter(Boolean)) {
-      if (classifyPath(candidate, options) === CLASS_AUTHORITY_CONTROLLING) {
-        escalatingPaths.push(candidate);
-      }
+    const candidates = [
+      ...(entry.previousPath ? [{ path: entry.previousPath, added: false }] : []),
+      { path: entry.path, added: entry.added },
+    ];
+    for (const candidate of candidates) {
+      if (classForEndpoint(candidate.path, candidate.added, options) === CLASS_AUTHORITY_CONTROLLING)
+        escalatingPaths.push(candidate.path);
     }
   }
   return Object.freeze({
