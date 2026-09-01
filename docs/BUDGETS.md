@@ -26,7 +26,7 @@ any work begins, and it grows every time a scenario gets its own document.
 
 | Scope | Cap | Enforced by |
 |---|---|---|
-| Modules in `src/` | 29 | `bin/agentic-os-module-budget.mjs` |
+| Modules in `src/` | 35 | `bin/agentic-os-module-budget.mjs` |
 | Authored lines in `src/` | 15,000 | `bin/agentic-os-module-budget.mjs` |
 | Lines in one module | 400 | `bin/agentic-os-module-budget.mjs` |
 
@@ -37,6 +37,11 @@ roughly 195k lines, and at that size the harness is the product.
 The increase from 25 to 29 isolates canonical projection, staging, recovery/effect journaling, MCP
 process termination, and quarantine preservation/conditional clean retirement as clone-wide safety
 boundaries. They replace mixed responsibilities rather than adding scenario modules.
+
+The increase from 29 to 35 isolates six reusable authority boundaries: external evidence, recovery
+candidates, recovery inventory, GitHub challenge records, provider receipts, and I/O issuance. The
+inventory boundary owns one generic read-only Git byte observer; the others keep pure records independent
+of provider effects. None owns a scenario, target repository, release, or cleanup effect.
 
 ## Reading the failure
 

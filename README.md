@@ -101,6 +101,11 @@ authenticated/fenced verifier boundary, `.agentic-os.json` profile, and optional
 canonical Coordination Request for shell consumers; it runs outside a Git repository, does not
 access Git or adapter state, and does not execute the requested transition.
 
+Embeddings that need owner recovery may use the separate authority-evidence, recovery-candidate,
+read-only recovery-inventory, and GitHub-authority subpaths. The `agentic-os-authority` binary consumes
+bounded event/input files;
+it never turns a local digest into authentication or grants merge, deployment, retirement, or cleanup.
+
 ## Compatibility import contract
 
 Consumers moving from pre-v1 private imports may use only the explicit `agentic-os/compat/*`
@@ -142,7 +147,7 @@ docs/BUDGETS.md      byte and module budgets
 docs/INVOCATION.md   exact slash, semantic, and binding grammar
 docs/MCP.md          backend MCP tool and transport contract
 docs/GOVERNANCE.md   provider-neutral records, trust boundary, and reference adapters
-src/                 small responsibility-owned modules, 29 module cap
+src/                 small responsibility-owned modules, 35 module cap
 catalog/             invocation and feature data with count and digest fences
 bin/                 CLI and stdio MCP entrypoints
 ```

@@ -7,8 +7,14 @@
   "exports": {
     ".": "./src/governance.mjs",
     "./records": "./src/governance.mjs",
+    "./records/authority-evidence": "./src/authority-record.mjs",
+    "./records/recovery-candidate": "./src/recovery-candidate.mjs",
+    "./adapters/recovery-inventory": "./src/recovery-inventory.mjs",
+    "./records/github-authority-issuance": "./src/github-authority-issuer.mjs",
     "./adapters/git": "./src/git-repository.mjs",
     "./adapters/github": "./src/github-provider.mjs",
+    "./adapters/github-authority": "./src/github-authority.mjs",
+    "./adapters/github-authority-issuer": "./src/github-authority-operation.mjs",
     "./compat/git": "./src/compat/git.mjs",
     "./compat/lane-id": "./src/compat/lane-id.mjs",
     "./compat/lane-records": "./src/compat/lane-records.mjs",
@@ -19,6 +25,7 @@
   },
   "bin": {
     "agentic-os": "bin/agentic-os.mjs",
+    "agentic-os-authority": "bin/agentic-os-authority.mjs",
     "agentic-os-mcp": "bin/agentic-os-mcp.mjs"
   },
   "files": [
@@ -49,6 +56,7 @@
     "autonomy:class": "node bin/agentic-os.mjs autonomy-class",
     "observe": "node bin/agentic-os.mjs observe",
     "governance:request": "node bin/agentic-os.mjs request",
+    "authority": "node bin/agentic-os-authority.mjs",
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node bin/agentic-os-doc-budget.mjs",
     "modules:check": "node bin/agentic-os-module-budget.mjs",

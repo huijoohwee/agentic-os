@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -585,9 +585,27 @@ test('this repository is inside its own documentation budget', () => {
 test('this repository is inside its own module budget', () => {
   const { found, entries, total } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
-  assert.equal(MODULE_BUDGET.modules, 29);
+  assert.equal(MODULE_BUDGET.modules, 35);
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
+  for (const path of [
+    'src/authority-record.mjs',
+    'src/recovery-candidate.mjs',
+    'src/recovery-inventory.mjs',
+    'src/github-authority.mjs',
+    'src/github-authority-issuer.mjs',
+    'src/github-authority-operation.mjs',
+  ]) assert.ok(entries.some((entry) => entry.path === path), path);
+});
+
+test('the 35-module cap documents generic authority boundaries, not scenario growth', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const document = readFileSync(join(root, 'docs/BUDGETS.md'), 'utf8');
+  assert.match(document, /increase from 29 to 35 isolates six reusable authority boundaries/u);
+  assert.match(document,
+    /external evidence, recovery\s+candidates, recovery inventory, GitHub challenge records, provider receipts,\s+and I\/O issuance/u);
+  assert.match(document,
+    /none owns a scenario, target repository, release, or cleanup effect/iu);
 });
 
 test('per-scenario module families are forbidden by name', () => {

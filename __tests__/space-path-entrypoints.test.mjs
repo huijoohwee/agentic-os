@@ -57,7 +57,7 @@ test('space-bearing runtime paths execute guards and budget/readiness entrypoint
   assert.match(prePush.stderr, /refusing to push directly to refs\/heads\/main/u);
 
   for (const [path, output] of [
-    [['bin', 'agentic-os-module-budget.mjs'], /modules 29\/29/u],
+    [['bin', 'agentic-os-module-budget.mjs'], /modules 35\/35/u],
     [['bin', 'agentic-os-doc-budget.mjs'], /always-load total/u],
     [['src', 'readiness-proof.mjs'], /readiness proof/u],
   ]) {

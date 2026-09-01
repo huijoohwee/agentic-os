@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -34,6 +34,12 @@ test('package exports stable public, adapter, and explicit migration-contract su
   const records = await import('agentic-os/records');
   const git = await import('agentic-os/adapters/git');
   const github = await import('agentic-os/adapters/github');
+  const authorityEvidence = await import('agentic-os/records/authority-evidence');
+  const recoveryCandidate = await import('agentic-os/records/recovery-candidate');
+  const recoveryInventory = await import('agentic-os/adapters/recovery-inventory');
+  const githubAuthority = await import('agentic-os/adapters/github-authority');
+  const githubIssuance = await import('agentic-os/records/github-authority-issuance');
+  const githubAuthorityIssuer = await import('agentic-os/adapters/github-authority-issuer');
   const compatGit = await import('agentic-os/compat/git');
   const compatLaneId = await import('agentic-os/compat/lane-id');
   const compatRecords = await import('agentic-os/compat/lane-records');
@@ -44,11 +50,25 @@ test('package exports stable public, adapter, and explicit migration-contract su
   }
   assert.equal(typeof records.createAuthorityTransitionReceiptEnvelope, 'function');
   assert.equal(typeof records.validateAuthorityTransitionReceiptEnvelope, 'function');
+  assert.equal(typeof records.deriveCoordinationClaimId, 'function');
   assert.equal(Object.hasOwn(records, 'createAuthorityTransitionReceipt'), false);
   assert.equal(typeof git.loadRepositoryProfile, 'function');
   assert.equal(typeof git.createGitRepositoryAdapter, 'function');
   assert.equal(typeof github.observeGitHubReview, 'function');
   assert.equal(typeof github.createGitHubAdapter, 'function');
+  assert.equal(typeof authorityEvidence.createExternalAuthorityEvidence, 'function');
+  assert.equal(typeof authorityEvidence.validateExternalAuthorityEvidence, 'function');
+  assert.equal(typeof authorityEvidence.isEvidenceBoundToRequest, 'function');
+  assert.equal(typeof recoveryCandidate.createRecoveryCandidate, 'function');
+  assert.equal(typeof recoveryCandidate.validateRecoveryCandidate, 'function');
+  assert.equal(typeof recoveryInventory.collectRecoveryInventory, 'function');
+  assert.equal(typeof githubAuthority.createGitHubAuthorityChallenge, 'function');
+  assert.equal(typeof githubAuthority.validateGitHubAuthorityChallenge, 'function');
+  assert.equal(typeof githubAuthority.createFencedClaimBundle, 'function');
+  assert.equal(typeof githubAuthority.validateFencedClaimBundle, 'function');
+  assert.equal(typeof githubIssuance.validateGitHubAuthorityIssuance, 'function');
+  assert.equal(typeof githubAuthorityIssuer.issueGitHubAuthority, 'function');
+  assert.equal(typeof githubAuthorityIssuer.verifyGitHubAuthorityIssuanceLive, 'function');
   assert.equal(typeof compatGit.repoRoot, 'function');
   assert.equal(typeof compatLaneId.parseLaneRef, 'function');
   assert.equal(typeof compatRecords.load, 'function');
@@ -63,6 +83,21 @@ test('package exports stable public, adapter, and explicit migration-contract su
     code: 'ERR_PACKAGE_PATH_NOT_EXPORTED',
   });
   await assert.rejects(import('agentic-os/src/git.mjs'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+});
+
+test('authority records, adapter, and binary are explicit public package surfaces', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  assert.equal(pkg.exports['./records/authority-evidence'], './src/authority-record.mjs');
+  assert.equal(pkg.exports['./records/recovery-candidate'], './src/recovery-candidate.mjs');
+  assert.equal(pkg.exports['./adapters/recovery-inventory'], './src/recovery-inventory.mjs');
+  assert.equal(pkg.exports['./adapters/github-authority'], './src/github-authority.mjs');
+  assert.equal(pkg.exports['./records/github-authority-issuance'],
+    './src/github-authority-issuer.mjs');
+  assert.equal(pkg.exports['./adapters/github-authority-issuer'],
+    './src/github-authority-operation.mjs');
+  assert.equal(pkg.bin['agentic-os-authority'], 'bin/agentic-os-authority.mjs');
+  assert.equal(pkg.scripts.authority, 'node bin/agentic-os-authority.mjs');
+  assert.equal(existsSync(join(ROOT, pkg.bin['agentic-os-authority'])), true);
 });
 
 
@@ -137,6 +172,10 @@ test('new profile and public modules are exact authority-controlling surfaces', 
     'src/file-integrity.mjs',
     'src/governance.mjs', 'src/git-repository.mjs', 'src/quarantine.mjs',
     'src/protected-workflows.mjs',
+    'src/authority-record.mjs', 'src/recovery-candidate.mjs', 'src/recovery-inventory.mjs',
+    'src/github-authority.mjs',
+    'src/github-authority-issuer.mjs', 'src/github-authority-operation.mjs',
+    'bin/agentic-os-authority.mjs',
     'bin/agentic-os-hook-runtime.mjs', 'bin/agentic-os-config.mjs',
     'bin/agentic-os-filter-compare.mjs',
     'bin/agentic-os-hooks.mjs', 'bin/agentic-os-report.mjs',
