@@ -101,6 +101,14 @@ authenticated/fenced verifier boundary, `.agentic-os.json` profile, and optional
 canonical Coordination Request for shell consumers; it runs outside a Git repository, does not
 access Git or adapter state, and does not execute the requested transition.
 
+## Compatibility import contract
+
+Consumers moving from pre-v1 private imports may use only the explicit `agentic-os/compat/*`
+subpaths: `git`, `lane-id`, `lane-records`, and `worktree`. These observation-only contracts expose
+no lifecycle mutation, cleanup, publication, or authority transition. Their purpose is to replace
+unpublished `agentic-os/src/*` reads with declared, test-covered v1 migration contracts. New
+integrations should prefer the root records API and `agentic-os/adapters/*`.
+
 ## What problem this solves
 
 Three settings compose into a livelock that no amount of recovery code fixes:

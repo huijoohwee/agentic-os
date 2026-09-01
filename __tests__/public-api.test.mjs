@@ -29,11 +29,15 @@ function providerRepository(
   return root;
 }
 
-test('package exports one stable public contract and explicit adapter subpaths', async () => {
+test('package exports stable public, adapter, and explicit migration-contract subpaths', async () => {
   const root = await import('agentic-os');
   const records = await import('agentic-os/records');
   const git = await import('agentic-os/adapters/git');
   const github = await import('agentic-os/adapters/github');
+  const compatGit = await import('agentic-os/compat/git');
+  const compatLaneId = await import('agentic-os/compat/lane-id');
+  const compatRecords = await import('agentic-os/compat/lane-records');
+  const compatWorktree = await import('agentic-os/compat/worktree');
   for (const operation of ['claim', 'continue', 'integrate', 'retire']) {
     assert.equal(typeof root[operation], 'function');
     assert.equal(records[operation], root[operation]);
@@ -45,6 +49,19 @@ test('package exports one stable public contract and explicit adapter subpaths',
   assert.equal(typeof git.createGitRepositoryAdapter, 'function');
   assert.equal(typeof github.observeGitHubReview, 'function');
   assert.equal(typeof github.createGitHubAdapter, 'function');
+  assert.equal(typeof compatGit.repoRoot, 'function');
+  assert.equal(typeof compatLaneId.parseLaneRef, 'function');
+  assert.equal(typeof compatRecords.load, 'function');
+  assert.equal(typeof compatWorktree.staleWorktrees, 'function');
+  assert.deepEqual(Object.keys(compatGit).sort(), [
+    'dirtyTracked', 'headSha', 'repoRoot', 'untrackedPaths', 'worktrees',
+  ]);
+  assert.deepEqual(Object.keys(compatLaneId), ['parseLaneRef']);
+  assert.deepEqual(Object.keys(compatRecords), ['load']);
+  assert.deepEqual(Object.keys(compatWorktree), ['staleWorktrees']);
+  await assert.rejects(import('agentic-os/compat/patch-identity'), {
+    code: 'ERR_PACKAGE_PATH_NOT_EXPORTED',
+  });
   await assert.rejects(import('agentic-os/src/git.mjs'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
 });
 
