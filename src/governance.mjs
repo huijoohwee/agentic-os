@@ -1,87 +1,71 @@
 /** Provider-neutral governance records and four root operations. No I/O or clock. */
-
 import { createHash } from 'node:crypto';
 import { types } from 'node:util';
-
+import { JsonSnapshotError, snapshotBoundedJson } from './catalog-input.mjs';
 export const COORDINATION_REQUEST_SCHEMA = 'agentic-os/coordination-request/v1';
 export const AUTHORITY_TRANSITION_RECEIPT_SCHEMA = 'agentic-os/authority-transition-receipt/v1';
 export const REPOSITORY_PROFILE_SCHEMA = 'agentic-os/repository-profile/v1';
 export const OPERATIONS = Object.freeze(['claim', 'continue', 'integrate', 'retire']);
-const DIGEST = /^[0-9a-f]{64}$/u;
-const EFFECT_PLAN = /^effect-plan:sha256:[0-9a-f]{64}$/u;
-const MAX_DEPTH = 16;
-const MAX_NODES = 10_000;
-const MAX_BYTES = 500_000;
-const CLEANUP_KEYS = Object.freeze([
-  'worktreeProjection', 'worktreeRegistration', 'remoteTrackingRef',
-  'localBranch', 'remoteBranch', 'unreachableObjects',
-]);
+const PROFILE_CAPABILITIES = new Set((
+  'deep-byte-audit-opt-in history:linear host-qualified-repository-pin integration-method:squash ' +
+  'protected-integration:pull-request read-only-repository-observation read-only-review-observation ' +
+  'required-check-policy:strict retain-all-cleanup shallow-observation-default ' +
+  'tested-protected-ordering:merge-queue'
+).split(' '));
+const PROVIDER_BOUND_CAPABILITIES = new Set((
+  'history:linear host-qualified-repository-pin integration-method:squash protected-integration:pull-request ' +
+  'read-only-review-observation required-check-policy:strict tested-protected-ordering:merge-queue'
+).split(' '));
+const DIGEST = /^[0-9a-f]{64}$/u, EFFECT_PLAN = /^effect-plan:sha256:[0-9a-f]{64}$/u;
+const MAX_DEPTH = 16, MAX_NODES = 10_000, MAX_BYTES = 500_000;
+const CLEANUP_KEYS = Object.freeze(['worktreeProjection', 'worktreeRegistration',
+  'remoteTrackingRef', 'localBranch', 'remoteBranch', 'unreachableObjects']);
 const REQUEST_KEYS = Object.freeze([
-  'schema', 'repository', 'authoritySubject', 'ownerSubject', 'scope', 'writeSetDigest',
-  'claimId', 'leaseEpoch', 'fenceRevision', 'immutableRevision', 'reviewLocator', 'blocker',
-  'requestedTransition', 'dependentWork', 'replyLocator', 'observedAt', 'expiresAt',
-  'requestDigest',
-]);
+  'schema', 'repository', 'authoritySubject', 'ownerSubject', 'scope', 'writeSetDigest', 'claimId',
+  'leaseEpoch', 'fenceRevision', 'immutableRevision', 'reviewLocator', 'blocker', 'requestedTransition',
+  'dependentWork', 'replyLocator', 'observedAt', 'expiresAt', 'requestDigest']);
 const RECEIPT_KEYS = Object.freeze([
-  'schema', 'repository', 'authoritySubject', 'requestDigest', 'requestedTransition',
-  'sourceClaimId', 'sourceLeaseEpoch', 'sourceFenceRevision', 'resultClaimId',
-  'resultLeaseEpoch', 'resultFenceRevision', 'resultState', 'immutableRevision',
-  'reviewLocator', 'operationReceiptDigest', 'transitionedAt', 'receiptDigest',
-]);
+  'schema', 'repository', 'authoritySubject', 'requestDigest', 'requestedTransition', 'sourceClaimId',
+  'sourceLeaseEpoch', 'sourceFenceRevision', 'resultClaimId', 'resultLeaseEpoch', 'resultFenceRevision',
+  'resultState', 'immutableRevision', 'reviewLocator', 'operationReceiptDigest', 'transitionedAt',
+  'receiptDigest']);
 const PROFILE_KEYS = Object.freeze([
-  'schema', 'repository', 'canonical', 'adapters', 'requiredChecks', 'capabilities',
-  'authority', 'cleanup', 'profileDigest',
-]);
+  'schema', 'repository', 'canonical', 'adapters', 'requiredChecks', 'capabilities', 'authority',
+  'cleanup', 'profileDigest']);
 const RESULT_STATE = Object.freeze({ claim: 'current', continue: 'current',
   integrate: 'integrated', retire: 'retired' });
-
 export const RETAIN_ALL_CLEANUP = Object.freeze(Object.fromEntries(
-  CLEANUP_KEYS.map((key) => [key, 'retain']),
-));
+  CLEANUP_KEYS.map((key) => [key, 'retain'])));
 export const CONSUMER_AUTHORITY = Object.freeze({ runtime: 'consumer', release: 'consumer' });
 function fail(message) { throw new TypeError(message); }
-function snapshot(value) {
-  const seen = new WeakSet();
-  let nodes = 0;
-  const visit = (input, depth) => {
-    nodes += 1;
-    if (nodes > MAX_NODES) fail('governance value exceeds node budget');
-    if (depth > MAX_DEPTH) fail('governance value exceeds depth budget');
-    if (input === null || typeof input === 'boolean' || typeof input === 'string') return input;
-    if (typeof input === 'number') {
-      if (!Number.isFinite(input)) fail('governance numbers must be finite');
-      return input;
-    }
-    if (typeof input !== 'object' || types.isProxy(input)) fail('governance value is not JSON data');
-    if (seen.has(input)) fail('governance value contains an alias or cycle');
-    seen.add(input);
-    if (Array.isArray(input)) {
-      const keys = Reflect.ownKeys(input);
-      const expected = new Set(['length',
-        ...Array.from({ length: input.length }, (_, index) => String(index))]);
-      if (keys.length !== expected.size || keys.some((key) => !expected.has(key)))
-        fail('governance arrays must be dense data arrays');
-      return input.map((_, index) => {
-        const descriptor = Object.getOwnPropertyDescriptor(input, String(index));
-        if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value'))
-          fail('governance arrays cannot contain accessors');
-        return visit(descriptor.value, depth + 1);
-      });
-    }
-    const prototype = Object.getPrototypeOf(input);
-    if (prototype !== Object.prototype && prototype !== null) fail('governance objects must be plain');
-    const output = Object.create(null);
-    const keys = Reflect.ownKeys(input);
-    if (keys.some((key) => typeof key !== 'string')) fail('governance object keys must be strings');
-    for (const key of keys.sort()) {
-      const descriptor = Object.getOwnPropertyDescriptor(input, key);
-      if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value'))
-        fail('governance objects cannot contain accessors');
-      output[key] = visit(descriptor.value, depth + 1);
-    }
-    return output;
-  };
-  return visit(value, 0);
+const SNAPSHOT_ERRORS = Object.freeze({
+  'node-budget': 'governance value exceeds node budget',
+  'object-budget': 'governance value exceeds node budget',
+  'array-budget': 'governance value exceeds node budget',
+  'depth-budget': 'governance value exceeds depth budget',
+  'string-budget': 'governance value exceeds byte budget',
+  'aggregate-string-budget': 'governance value exceeds byte budget',
+  'number-invalid': 'governance numbers must be finite',
+  'json-alias-invalid': 'governance value contains an alias or cycle',
+  'array-property-invalid': 'governance arrays must be dense data arrays',
+  'sparse-array-invalid': 'governance arrays must be dense data arrays',
+  'array-accessor-invalid': 'governance arrays cannot contain accessors',
+  'object-accessor-invalid': 'governance objects cannot contain accessors',
+  'nonenumerable-property-invalid': 'governance objects cannot contain accessors',
+  'object-prototype-invalid': 'governance objects must be plain',
+  'symbol-property-invalid': 'governance object keys must be strings',
+});
+function snapshot(value, budget = { nodes: 0, stringBytes: 0 }) {
+  try {
+    return snapshotBoundedJson(value, {
+      maxDepth: MAX_DEPTH, maxNodes: MAX_NODES, maxStringBytes: MAX_BYTES,
+      maxAggregateStringBytes: MAX_BYTES, maxArrayLength: MAX_NODES, maxObjectKeys: MAX_NODES,
+      sortKeys: true, arrayBudgetCode: 'node-budget', budget,
+    });
+  } catch (error) {
+    if (!(error instanceof JsonSnapshotError)) throw error;
+    fail(SNAPSHOT_ERRORS[error.code] ?? 'governance value is not JSON data');
+  }
 }
 export function canonicalJson(value) {
   const encoded = JSON.stringify(snapshot(value));
@@ -89,8 +73,7 @@ export function canonicalJson(value) {
   return encoded;
 }
 export function governanceDigest(value) {
-  return createHash('sha256').update(canonicalJson(value)).digest('hex');
-}
+  return createHash('sha256').update(canonicalJson(value)).digest('hex'); }
 function frozen(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.values(value).forEach(frozen);
@@ -128,7 +111,6 @@ function strings(value, label, { nonempty = false } = {}) {
   if (new Set(result).size !== result.length) fail(`${label} must not contain duplicates`);
   return result;
 }
-
 function cleanup(value = RETAIN_ALL_CLEANUP) {
   exactKeys(value, CLEANUP_KEYS, 'cleanup');
   const result = Object.fromEntries(CLEANUP_KEYS.map((key) => {
@@ -137,7 +119,6 @@ function cleanup(value = RETAIN_ALL_CLEANUP) {
   }));
   return result;
 }
-
 function requestPayload(input, requestedOperation) {
   const source = snapshot(input);
   exactKeys(source, REQUEST_KEYS, 'Coordination Request input', false);
@@ -186,7 +167,6 @@ function requestPayload(input, requestedOperation) {
   if (operation !== 'claim' && payload.fenceRevision === null) fail(`${operation} requires a fenceRevision`);
   return payload;
 }
-
 export function createCoordinationRequest(input, operation) {
   const source = snapshot(input);
   const payload = requestPayload(source, operation);
@@ -195,7 +175,6 @@ export function createCoordinationRequest(input, operation) {
     fail('requestDigest does not match the Coordination Request');
   return frozen({ ...payload, requestDigest });
 }
-
 export function validateCoordinationRequest(value) {
   const source = snapshot(value);
   exactKeys(source, REQUEST_KEYS, 'Coordination Request');
@@ -204,14 +183,12 @@ export function validateCoordinationRequest(value) {
   if (canonicalJson(source) !== canonicalJson(normalized)) fail('Coordination Request is not canonical');
   return normalized;
 }
-
 export function createAuthorityTransitionReceiptEnvelope(requestValue, outcome) {
   const request = validateCoordinationRequest(requestValue);
   const source = snapshot(outcome);
   const keys = [
-    'resultClaimId', 'resultLeaseEpoch', 'resultFenceRevision', 'resultState',
-    'operationReceiptDigest', 'transitionedAt',
-  ];
+    'resultClaimId', 'resultLeaseEpoch', 'resultFenceRevision', 'resultState', 'operationReceiptDigest',
+    'transitionedAt'];
   exactKeys(source, keys, 'Authority Transition outcome');
   if (source.resultState !== RESULT_STATE[request.requestedTransition])
     fail('resultState does not match the requested transition');
@@ -250,7 +227,6 @@ export function createAuthorityTransitionReceiptEnvelope(requestValue, outcome) 
     fail('resultLeaseEpoch must be a positive safe integer');
   return frozen({ ...payload, receiptDigest: governanceDigest(payload) });
 }
-
 export function validateAuthorityTransitionReceiptEnvelope(value) {
   const receipt = snapshot(value);
   exactKeys(receipt, RECEIPT_KEYS, 'Authority Transition Receipt');
@@ -261,9 +237,8 @@ export function validateAuthorityTransitionReceiptEnvelope(value) {
   }
   for (const [field, nullable] of [
     ['requestDigest', false], ['sourceClaimId', true], ['sourceFenceRevision', true],
-    ['resultClaimId', false], ['resultFenceRevision', false],
-    ['operationReceiptDigest', false], ['receiptDigest', false],
-  ]) digest(receipt[field], field, nullable);
+    ['resultClaimId', false], ['resultFenceRevision', false], ['operationReceiptDigest', false],
+    ['receiptDigest', false]]) digest(receipt[field], field, nullable);
   text(receipt.repository, 'repository');
   text(receipt.authoritySubject, 'authoritySubject');
   text(receipt.immutableRevision, 'immutableRevision');
@@ -290,7 +265,6 @@ export function validateAuthorityTransitionReceiptEnvelope(value) {
   if (governanceDigest(payload) !== receiptDigest) fail('receiptDigest does not match receipt');
   return frozen({ ...receipt });
 }
-
 export function isExactReplay(requestValue, receiptValue) {
   try {
     const request = validateCoordinationRequest(requestValue);
@@ -314,12 +288,25 @@ export function isExactReplay(requestValue, receiptValue) {
     return false;
   }
 }
-
 export function findExactReplay(requestValue, receiptValues) {
   const request = validateCoordinationRequest(requestValue);
-  if (!Array.isArray(receiptValues)) fail('receiptValues must be an array');
-  const matches = receiptValues.map(validateAuthorityTransitionReceiptEnvelope)
-    .filter((receipt) => receipt.requestDigest === request.requestDigest);
+  if (!Array.isArray(receiptValues) || types.isProxy(receiptValues))
+    fail('receiptValues must be an array');
+  const length = Object.getOwnPropertyDescriptor(receiptValues, 'length')?.value;
+  if (!Number.isSafeInteger(length) || length < 0 || length > MAX_NODES - 1)
+    fail('governance value exceeds node budget');
+  const keys = Reflect.ownKeys(receiptValues);
+  if (keys.length !== length + 1) fail('receiptValues must be a dense data array');
+  const budget = { nodes: 1, stringBytes: 0 };
+  const matches = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(receiptValues, String(index));
+    if (!descriptor) fail('receiptValues must be a dense data array');
+    if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value'))
+      fail('receiptValues cannot contain accessors');
+    const receipt = validateAuthorityTransitionReceiptEnvelope(snapshot(descriptor.value, budget));
+    if (receipt.requestDigest === request.requestDigest) matches.push(receipt);
+  }
   if (matches.length === 0) return null;
   if (matches.some((receipt) => !isExactReplay(request, receipt))
     || new Set(matches.map((receipt) => receipt.receiptDigest)).size !== 1) {
@@ -327,13 +314,24 @@ export function findExactReplay(requestValue, receiptValues) {
   }
   return matches[0];
 }
-
 function adapter(value, label, nullable = false) {
   if (nullable && value === null) return null;
   exactKeys(value, ['id', 'version'], label);
   return { id: text(value.id, `${label}.id`), version: text(value.version, `${label}.version`) };
 }
-
+function canonicalBranch(value, prefix, label) {
+  if (typeof value !== 'string' || !value.startsWith(prefix))
+    fail(`${label} must be a fully qualified Git ref`);
+  const name = value.slice(prefix.length);
+  const components = name.split('/');
+  const forbidden = /[\u0000-\u0020\u007f~^:?*[\\]/u;
+  if (!name || name === '@' || name.includes('..') || name.includes('@{')
+    || components.some((component) => !component || component.startsWith('.')
+      || component.endsWith('.') || component.endsWith('.lock') || forbidden.test(component))) {
+    fail(`${label} must be a portable direct Git ref`);
+  }
+  return name;
+}
 function profilePayload(input) {
   const source = snapshot(input);
   exactKeys(source, PROFILE_KEYS, 'repository profile input', false);
@@ -341,32 +339,41 @@ function profilePayload(input) {
     fail('repository profile schema is invalid');
   exactKeys(source.canonical, ['localRef', 'remoteRef'], 'canonical');
   exactKeys(source.adapters, ['repository', 'provider'], 'adapters');
-  const localBranch = source.canonical.localRef?.match(/^refs\/heads\/(.+)$/u)?.[1];
-  const remoteBranch = source.canonical.remoteRef?.match(/^refs\/remotes\/[^/]+\/(.+)$/u)?.[1];
-  if (!localBranch || localBranch !== remoteBranch)
+  const localBranch = canonicalBranch(source.canonical.localRef,
+    'refs/heads/', 'canonical.localRef');
+  const remote = source.canonical.remoteRef?.match(/^refs\/remotes\/([^/]+)\/(.+)$/u);
+  if (!remote || !/^(?!.*\.\.)(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(remote[1]))
+    fail('canonical.remoteRef must name one portable configured remote');
+  const remoteBranch = canonicalBranch(source.canonical.remoteRef,
+    `refs/remotes/${remote[1]}/`, 'canonical.remoteRef');
+  if (localBranch !== remoteBranch)
     fail('canonical local and remote refs must identify the same branch');
   const authority = source.authority ?? CONSUMER_AUTHORITY;
   exactKeys(authority, ['runtime', 'release'], 'authority');
   if (authority.runtime !== 'consumer' || authority.release !== 'consumer')
     fail('runtime and release authority must remain consumer-owned');
+  const capabilities = strings(source.capabilities ?? [], 'capabilities');
+  const unsupported = capabilities.filter((capability) => !PROFILE_CAPABILITIES.has(capability));
+  if (unsupported.length > 0)
+    fail(`unsupported repository profile capabilities: ${unsupported.join(', ')}`);
+  const repositoryAdapter = adapter(source.adapters.repository, 'adapters.repository');
+  const providerAdapter = adapter(source.adapters.provider, 'adapters.provider', true);
+  const requiredChecks = strings(source.requiredChecks ?? [], 'requiredChecks');
+  if (providerAdapter === null && (requiredChecks.length > 0
+    || capabilities.some((capability) => PROVIDER_BOUND_CAPABILITIES.has(capability))))
+    fail('provider-bound capabilities and checks require a provider adapter');
   return {
     schema: REPOSITORY_PROFILE_SCHEMA,
     repository: text(source.repository, 'repository'),
-    canonical: {
-      localRef: text(source.canonical.localRef, 'canonical.localRef'),
-      remoteRef: text(source.canonical.remoteRef, 'canonical.remoteRef'),
-    },
-    adapters: {
-      repository: adapter(source.adapters.repository, 'adapters.repository'),
-      provider: adapter(source.adapters.provider, 'adapters.provider', true),
-    },
-    requiredChecks: strings(source.requiredChecks ?? [], 'requiredChecks'),
-    capabilities: strings(source.capabilities ?? [], 'capabilities'),
+    canonical: { localRef: text(source.canonical.localRef, 'canonical.localRef'),
+      remoteRef: text(source.canonical.remoteRef, 'canonical.remoteRef') },
+    adapters: { repository: repositoryAdapter, provider: providerAdapter },
+    requiredChecks,
+    capabilities,
     authority: { ...CONSUMER_AUTHORITY },
     cleanup: cleanup(source.cleanup),
   };
 }
-
 export function createRepositoryProfile(input) {
   const source = snapshot(input);
   const payload = profilePayload(source);
@@ -375,7 +382,6 @@ export function createRepositoryProfile(input) {
     fail('profileDigest does not match repository profile');
   return frozen({ ...payload, profileDigest });
 }
-
 export function validateRepositoryProfile(value) {
   const source = snapshot(value);
   exactKeys(source, PROFILE_KEYS, 'repository profile');
@@ -384,7 +390,6 @@ export function validateRepositoryProfile(value) {
   if (canonicalJson(source) !== canonicalJson(normalized)) fail('repository profile is not canonical');
   return normalized;
 }
-
 export function claim(input) { return createCoordinationRequest(input, 'claim'); }
 function continueOperation(input) { return createCoordinationRequest(input, 'continue'); }
 export { continueOperation as continue };

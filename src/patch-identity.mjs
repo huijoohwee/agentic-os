@@ -8,7 +8,9 @@
  * squash without trusting whitespace-insensitive patch IDs or commit messages.
  */
 
-import { commitsAhead, decodeNulFields, git, gitLines, headSha, isAncestor } from './git.mjs';
+import {
+  commitsAhead, decodeNulFields, headSha, isAncestor, observeGit, observeGitLines,
+} from './git.mjs';
 
 export const SOURCE_HEAD_TRAILER = 'Source-Head';
 
@@ -24,7 +26,7 @@ export function sourceHeadTrailer(sha) {
 export function cherry(base, ref, { cwd } = {}) {
   const upstream = [];
   const pending = [];
-  for (const line of gitLines(['cherry', base, ref], { cwd })) {
+  for (const line of observeGitLines(['cherry', base, ref], { cwd })) {
     const mark = line[0];
     const sha = line.slice(2).trim();
     if (mark === '-') upstream.push(sha);
@@ -34,7 +36,7 @@ export function cherry(base, ref, { cwd } = {}) {
 }
 
 function changedPaths(mergeBase, tip, { cwd } = {}) {
-  const output = git(
+  const output = observeGit(
     ['diff', '--name-only', '-z', '--no-renames', mergeBase, tip],
     { cwd, binary: true, allowFail: true },
   );
@@ -42,7 +44,7 @@ function changedPaths(mergeBase, tip, { cwd } = {}) {
 }
 
 function treeEntry(revision, path, { cwd } = {}) {
-  return git(['--literal-pathspecs', 'ls-tree', '-z', revision, '--', path], {
+  return observeGit(['--literal-pathspecs', 'ls-tree', '-z', revision, '--', path], {
     cwd,
     binary: true,
     allowFail: true,
@@ -51,7 +53,7 @@ function treeEntry(revision, path, { cwd } = {}) {
 
 /** Exact mode/type/blob state for every path changed by the lane. */
 export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
-  const mergeBase = git(['merge-base', base, ref], { cwd, allowFail: true });
+  const mergeBase = observeGit(['merge-base', base, ref], { cwd, allowFail: true });
   if (!mergeBase) return null;
   const paths = changedPaths(mergeBase, ref, { cwd });
   if (!paths || paths.length === 0) return null;

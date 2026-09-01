@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { worktreeCleanupRisks } from './git.mjs';
+import { observeGit, trackedChanges, worktreeCleanupRisks } from './git.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
@@ -127,19 +127,18 @@ function sha256(text) {
 }
 
 function gitOutput(root, args) {
-  return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-    .trim();
+  return observeGit(args, { cwd: root });
 }
 
 function sourceClean(root, evidenceAt, options) {
   if (options.isSourceClean) return options.isSourceClean(evidenceAt);
   try {
-    execFileSync('git', ['-C', root, 'diff', '--quiet', 'HEAD', '--', '.', `:(exclude,literal)${evidenceAt}`], {
-      stdio: 'ignore',
-    });
+    const changes = trackedChanges(root);
     const risks = worktreeCleanupRisks(root);
     const outsideEvidence = (paths) => paths.some((path) => path !== evidenceAt);
-    return !outsideEvidence(risks.hidden)
+    return !outsideEvidence(changes.headToIndex.map(({ path }) => path))
+      && !outsideEvidence(changes.indexToWorkingTree.map(({ path }) => path))
+      && !outsideEvidence(risks.hidden)
       && !outsideEvidence(risks.tracked)
       && !outsideEvidence(risks.owned);
   } catch {
@@ -287,4 +286,6 @@ function report(root = ROOT) {
   return 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(report());
+if (process.argv[1]
+  && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href)
+  process.exit(report());

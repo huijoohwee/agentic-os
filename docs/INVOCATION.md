@@ -22,7 +22,8 @@ node bin/agentic-os.mjs /lane '#mutating' '@scope:pricing-table'
 node bin/agentic-os.mjs /status '@device:box-1.local'
 ```
 
-`/lane` deliberately dispatches to the internal `start` command so the existing worktree, WIP, and scope guards
-remain the only mutation owner. `/reap` is the fetch-and-survey form; authenticated retirement remains a separate
+`/lane` deliberately dispatches to the internal `start` command so exact-ref creation and fetched-base guards
+remain the only local mutation owner. Cross-device exclusion belongs to the external authenticated claim adapter.
+`/reap` is the fetch-and-survey form; authenticated retirement remains a separate
 public governance operation, not an ordinary CLI action. A semantic token describes the selected command and
 cannot grant it additional authority.

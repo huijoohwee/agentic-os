@@ -27,6 +27,8 @@ import {
   coversClass,
   parseNameStatusZ,
 } from '../src/autonomy-class.mjs';
+import { createRepositoryProfile } from '../src/governance.mjs';
+import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -48,8 +50,15 @@ function fixture(t) {
   git(root, 'config', 'user.email', 'autonomy@example.invalid');
   put(root, 'docs/old name.md', 'rename me\n');
   put(root, '.github/workflows/ci.yml', 'name: CI\n');
+  const profile = createRepositoryProfile({
+    repository: 'example.invalid/owner/repository',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: null },
+  });
+  put(root, '.agentic-os.json', `${JSON.stringify(profile, null, 2)}\n`);
   git(root, 'add', '.');
   git(root, 'commit', '--quiet', '-m', 'base');
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
   const base = git(root, 'rev-parse', 'HEAD');
 
   renameSync(join(root, 'docs/old name.md'), join(root, 'docs/new name.md'));
@@ -93,6 +102,7 @@ test('only additive tests are test-only; weakening existing tests controls autho
 
 test('the classifier and every agentic-os authority surface control authority', () => {
   assert.ok(AGENTIC_OS_AUTHORITY_PATHS.includes('src/autonomy-class.mjs'));
+  assert.ok(AGENTIC_OS_AUTHORITY_PATHS.includes('src/mcp-stdio.mjs'));
   assert.equal(classifyPath('src/canonical-sync.mjs'), CLASS_AUTHORITY_CONTROLLING);
   for (const path of AGENTIC_OS_AUTHORITY_PATHS) {
     assert.equal(classifyPath(path), CLASS_AUTHORITY_CONTROLLING, path);

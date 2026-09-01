@@ -1,21 +1,15 @@
 /** MCP protocol surface for the existing ADLC CLI. Zero dependencies, no shell. */
 
-import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { assertScope } from './lane-id.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSION = '2025-11-25';
 export const SUPPORTED_VERSIONS = Object.freeze([MODERN_VERSION, LEGACY_VERSION]);
-export const CLI_TIMEOUT_MS = 60_000;
-export const CLI_OUTPUT_BYTES = 256 * 1024;
-
 const VERSION_KEY = 'io.modelcontextprotocol/protocolVersion';
 const CLIENT_INFO_KEY = 'io.modelcontextprotocol/clientInfo';
 const CLIENT_CAPABILITIES_KEY = 'io.modelcontextprotocol/clientCapabilities';
 const SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
-const CLI_PATH = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 function deepFreeze(value) {
@@ -50,6 +44,8 @@ const CLI_OUTPUT = {
     exitCode: { type: 'integer' },
     stdout: { type: 'string' },
     stderr: { type: 'string' },
+    writeResultUnknown: { type: 'boolean' },
+    terminationReason: { type: 'string' },
   },
   required: ['exitCode', 'stdout', 'stderr'],
   additionalProperties: false,
@@ -72,7 +68,7 @@ export const TOOLS = deepFreeze([
   {
     name: 'status',
     title: 'Inspect lanes and queue',
-    description: 'Report lanes, WIP caps, and provider queue state without changing them.',
+    description: 'Report registered lanes and provider queue state without changing them.',
     inputSchema: EMPTY_INPUT,
     outputSchema: CLI_OUTPUT,
     annotations: {
@@ -187,73 +183,6 @@ export function toolArguments(name, args) {
   return ['start', args.scope];
 }
 
-function abortError() {
-  const error = new Error('operation aborted');
-  error.name = 'AbortError';
-  return error;
-}
-
-/** Execute the existing CLI with an argument array and bounded resources. */
-export function runCli(argv, options = {}) {
-  const cwd = options.cwd ?? process.cwd();
-  const timeoutMs = options.timeoutMs ?? CLI_TIMEOUT_MS;
-  const signal = options.signal;
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(abortError());
-    const child = spawn(process.execPath, [CLI_PATH, ...argv], {
-      cwd,
-      shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    let finished = false;
-    let forcedReason = '';
-    let killTimer;
-
-    const finish = (callback, value) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      clearTimeout(killTimer);
-      signal?.removeEventListener('abort', cancel);
-      callback(value);
-    };
-    const stop = (reason) => {
-      if (forcedReason) return;
-      forcedReason = reason;
-      child.kill('SIGTERM');
-      killTimer = setTimeout(() => child.kill('SIGKILL'), 1_000);
-      killTimer.unref?.();
-    };
-    const append = (channel, chunk) => {
-      const current = channel === 'stdout' ? stdout : stderr;
-      const next = current + chunk;
-      if (Buffer.byteLength(next) > CLI_OUTPUT_BYTES) {
-        stop(`${channel} exceeded ${CLI_OUTPUT_BYTES} bytes`);
-        return;
-      }
-      if (channel === 'stdout') stdout = next;
-      else stderr = next;
-    };
-    const cancel = () => stop('operation cancelled');
-    const timer = setTimeout(() => stop(`command timed out after ${timeoutMs}ms`), timeoutMs);
-    timer.unref?.();
-    signal?.addEventListener('abort', cancel, { once: true });
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => append('stdout', chunk));
-    child.stderr.on('data', (chunk) => append('stderr', chunk));
-    child.once('error', (error) => finish(reject, error));
-    child.once('close', (code) => {
-      if (signal?.aborted) return finish(reject, abortError());
-      if (forcedReason) stderr += `${stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n'}${forcedReason}\n`;
-      finish(resolve, { exitCode: Number.isInteger(code) ? code : 1, stdout, stderr });
-    });
-    return undefined;
-  });
-}
-
 function success(id, result) {
   return { jsonrpc: '2.0', id, result };
 }
@@ -296,10 +225,19 @@ async function callResult(params, modern, options) {
     invalidParams('tools/call requires a tool name and optional arguments object');
   }
   const argv = toolArguments(params.name, params.arguments);
-  const run = options.runCli ?? runCli;
-  const payload = await run(argv, { cwd: options.cwd, signal: options.signal });
+  const run = options.runCli;
+  if (typeof run !== 'function') throw new Error('CLI runner is unavailable');
+  const effectful = params.name === 'lane' || params.name === 'reap';
+  if (effectful) options.onEffectful?.();
+  const payload = await run(argv, {
+    cwd: options.cwd, signal: effectful ? undefined : options.signal, effectful,
+  });
   if (!plainObject(payload) || !Number.isInteger(payload.exitCode)
-    || typeof payload.stdout !== 'string' || typeof payload.stderr !== 'string') {
+    || typeof payload.stdout !== 'string' || typeof payload.stderr !== 'string'
+    || !onlyKeys(payload, [
+      'exitCode', 'stdout', 'stderr', 'writeResultUnknown', 'terminationReason',
+    ]) || ('writeResultUnknown' in payload && payload.writeResultUnknown !== true)
+    || (payload.writeResultUnknown === true && typeof payload.terminationReason !== 'string')) {
     throw new Error('CLI runner returned an invalid result');
   }
   return {
@@ -379,4 +317,8 @@ export async function handleRequest(message, options = {}) {
 export function hasModernMetadata(message) {
   const meta = message?.params?._meta;
   return plainObject(meta) && (VERSION_KEY in meta || CLIENT_CAPABILITIES_KEY in meta);
+}
+
+export function hasValidModernMetadata(message) {
+  try { validateModernMeta(message?.params); return true; } catch { return false; }
 }

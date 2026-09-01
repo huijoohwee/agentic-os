@@ -2,68 +2,45 @@
  * Thin git wrapper. Array argv only, never a shell string, so no path or scope
  * value can be interpolated into a command.
  */
-import { execFileSync } from 'node:child_process';
-import {
-  chmodSync, linkSync, mkdirSync, mkdtempSync, readlinkSync, renameSync,
-  lstatSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync,
-} from 'node:fs';
-import { dirname, join } from 'node:path';
-export class GitError extends Error {
-  constructor(args, status, stderr) {
-    super(`git ${args.join(' ')} failed (${status}): ${stderr.trim()}`);
-    this.name = 'GitError';
-    this.args = args;
-    this.status = status;
-    this.stderr = stderr;
-  }
+import { lstatSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { acquireDirectoryLock, finishOperationLock,
+  OperationLockError } from './file-integrity.mjs';
+import { git, observeGit, observeGitLines, parseWorktreeList } from './git-tracked.mjs';
+import { copyWorktreeEntriesToQuarantine } from './quarantine.mjs';
+export { retireCleanProjectionUnderExclusiveContract } from './quarantine.mjs';
+export { GitError, git, gitLines, observeGit, observeGitLines } from './git-tracked.mjs';
+export { decodeNulFields, dirtyTracked, trackedChanges, untrackedPaths,
+  worktreeCleanupRisks } from './git-tracked.mjs';
+export { finishOperationLock, OperationLockError };
+function gitPath(args, cwd, label) {
+  const output = observeGit(args, { cwd, raw: true });
+  if (!output.endsWith('\n')) throw new Error(`${label} is not newline-terminated`);
+  return output.slice(0, -1);
 }
-/** Run git and return stdout. Trim human-oriented output unless `raw` is requested. */
-export function git(
-  args,
-  { cwd = process.cwd(), allowFail = false, input, env, raw = false, binary = false } = {},
-) {
-  try {
-    const output = execFileSync('git', args, {
-      cwd,
-      input,
-      env: env ? { ...process.env, ...env } : process.env,
-      encoding: binary ? undefined : 'utf8',
-      stdio: input === undefined ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    return binary || raw ? output : output.trim();
-  } catch (error) {
-    if (allowFail) return null;
-    throw new GitError(args, error.status ?? -1, String(error.stderr ?? error.message));
-  }
-}
-/** Non-empty stdout lines. */
-export function gitLines(args, options = {}) {
-  const out = git(args, options);
-  if (out === null || out === '') return [];
-  return out.split('\n').filter((line) => line !== '');
-}
-export function repoRoot(cwd = process.cwd()) {
-  return git(['rev-parse', '--show-toplevel'], { cwd });
-}
+export const repoRoot = (cwd = process.cwd()) => gitPath(['rev-parse', '--show-toplevel'], cwd, 'repository root');
+export const gitDir = (cwd = process.cwd()) => gitPath(['rev-parse', '--path-format=absolute', '--git-dir'], cwd, 'Git directory');
 /** Shared across every worktree of one clone. rerere's cache lives here. */
-export function commonDir(cwd = process.cwd()) {
-  return git(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd });
-}
+export const commonDir = (cwd = process.cwd()) => gitPath(['rev-parse', '--path-format=absolute', '--git-common-dir'], cwd, 'Git common directory');
 /** Serialize cooperating operations in a clone. A null result means another holder exists. */
-export function acquireOperationLock(name, cwd = process.cwd()) {
-  const path = join(commonDir(cwd), `${name}.lock`);
-  try { mkdirSync(path); } catch (error) {
-    if (error.code === 'EEXIST') return null;
-    throw error;
-  }
-  return path;
-}
+export const acquireOperationLock = (name, cwd = process.cwd()) => acquireDirectoryLock(join(commonDir(cwd), `${name}.lock`));
 /** Verify every depended-on ref and advance one ref in a single reference transaction. */
 export function atomicAdvanceRef(ref, newOid, oldOid, expectedRefs, cwd = process.cwd()) {
+  for (const candidate of [ref, ...expectedRefs.map(([expectedRef]) => expectedRef)]) {
+    const symbolicTarget = observeGit(['symbolic-ref', '--quiet', candidate], {
+      cwd, allowFail: true,
+    });
+    if (symbolicTarget !== null) throw Object.assign(new Error(
+      `exact reference transaction refuses symbolic ref ${candidate} -> ${symbolicTarget}`,
+    ), { reason: 'blocked-symbolic-reference', ref: candidate, symbolicTarget });
+  }
   const input = [
     'start',
-    ...expectedRefs.map(([expectedRef, expectedOid]) => `verify ${expectedRef} ${expectedOid}`),
+    ...expectedRefs.flatMap(([expectedRef, expectedOid]) => [
+      'option no-deref', `verify ${expectedRef} ${expectedOid}`,
+    ]),
+    'option no-deref',
     `update ${ref} ${newOid} ${oldOid}`,
     'prepare', 'commit', '',
   ].join('\n');
@@ -84,39 +61,13 @@ export function assertDirectoryAncestors(path, cwd = process.cwd(), { allowMissi
     }
   }
 }
-/** Atomically move exact worktree paths into same-filesystem Git-private storage. */
+/** Copy exact worktree paths into distinct bounded Git-private storage; sources stay untouched. */
 export function quarantineWorktreeEntries(
-  name, entries, verify, cwd = process.cwd(), manifest = null,
+  name, entries, verify, cwd = process.cwd(), manifest = null, limits = null,
 ) {
   entries.forEach((entry) => assertDirectoryAncestors(entry.path, cwd));
-  const path = mkdtempSync(join(commonDir(cwd), `${name}-`));
-  const moved = [];
-  const checked = (entry, slot) => {
-    try { verify(entry, slot, path); } catch (error) {
-      error.quarantinePath = path;
-      throw error;
-    }
-  };
-  try {
-    for (const entry of entries) {
-      const slot = String(moved.length);
-      renameSync(join(cwd, entry.path), join(path, slot));
-      moved.push({ entry, path: entry.path, slot });
-      checked(entry, slot);
-    }
-    if (manifest !== null) {
-      writeFileSync(join(path, 'manifest.json'), manifest, { flag: 'wx', mode: 0o600 });
-    }
-  } catch (error) {
-    error.quarantinePath = path;
-    throw error;
-  }
-  return {
-    path,
-    moved,
-    manifestPath: manifest === null ? null : join(path, 'manifest.json'),
-    verify: () => moved.forEach(({ entry, slot }) => checked(entry, slot)),
-  };
+  return copyWorktreeEntriesToQuarantine({ name, entries, verify, sourceRoot: cwd,
+    storageRoot: commonDir(cwd), manifest, limits });
 }
 /** Expand dirty inventory to every current tracked/nonignored path without changing bytes. */
 export function worktreePreservationEntries(baseEntries, inventory) {
@@ -126,70 +77,24 @@ export function worktreePreservationEntries(baseEntries, inventory) {
     const entry = dirty.get(path);
     dirty.delete(path);
     if (entry?.kind === 'deleted') continue;
-    entries.push(entry ? { path, mode: entry.mode, sha256: entry.sha256 }
-      : { path, mode: prior.mode, oid: prior.oid });
+    entries.push(entry ? { path, mode: entry.mode, size: entry.size, sha256: entry.sha256 }
+      : { path, mode: prior.mode, size: prior.size, oid: prior.oid });
   }
   for (const entry of dirty.values()) {
     if (entry.kind !== 'deleted')
-      entries.push({ path: entry.path, mode: entry.mode, sha256: entry.sha256 });
+      entries.push({ path: entry.path, mode: entry.mode, size: entry.size,
+        sha256: entry.sha256 });
   }
   return entries.sort((left, right) => left.path.localeCompare(right.path));
 }
-/** Materialize exact Git blobs in private same-filesystem storage. */
-export function stageTreeEntries(name, entries, cwd = process.cwd()) {
-  const path = mkdtempSync(join(commonDir(cwd), `${name}-`));
-  try {
-    if (statSync(path).dev !== statSync(cwd).dev) {
-      const error = new Error('staging and worktree are on different filesystems');
-      error.code = 'EXDEV';
-      throw error;
-    }
-    for (const entry of entries) {
-      const target = join(path, entry.path);
-      mkdirSync(dirname(target), { recursive: true });
-      const bytes = git(['cat-file', 'blob', entry.oid], { cwd, binary: true });
-      if (entry.mode === '120000') symlinkSync(bytes, target);
-      else {
-        writeFileSync(target, bytes);
-        chmodSync(target, entry.mode === '100755' ? 0o755 : 0o644);
-      }
-    }
-  } catch (error) {
-    error.stagingPath = path;
-    throw error;
-  }
-  return path;
-}
-/** Install staged entries without overwriting any path recreated by a concurrent writer. */
-export function installStagedEntries(stagingPath, entries, cwd = process.cwd()) {
-  for (const entry of entries) {
-    const source = join(stagingPath, entry.path);
-    const target = join(cwd, entry.path);
-    try {
-      assertDirectoryAncestors(entry.path, cwd, { allowMissing: true });
-      mkdirSync(dirname(target), { recursive: true });
-      assertDirectoryAncestors(entry.path, cwd);
-      if (entry.mode === '120000') symlinkSync(readlinkSync(source, { encoding: 'buffer' }), target);
-      else linkSync(source, target);
-    } catch (error) {
-      if (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
-        error.reason = 'blocked-install-collision';
-      error.installPath = entry.path;
-      throw error;
-    }
-  }
-}
-export function currentBranch(cwd = process.cwd()) {
-  const name = git(['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd, allowFail: true });
-  return name || null;
-}
-export function headSha(ref = 'HEAD', cwd = process.cwd()) {
-  return git(['rev-parse', '--verify', ref], { cwd, allowFail: true });
-}
+export function currentBranch(cwd = process.cwd()) { const name = observeGit(
+  ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd, allowFail: true }); return name || null; }
+export const headSha = (ref = 'HEAD', cwd = process.cwd()) =>
+  observeGit(['rev-parse', '--verify', ref], { cwd, allowFail: true });
 /** Exact configured remote name, safe as a positional Git argument. */
 export function configuredRemote(remote, cwd = process.cwd()) {
   if (typeof remote !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(remote)
-    || !gitLines(['remote'], { cwd }).includes(remote))
+    || !observeGitLines(['remote'], { cwd }).includes(remote))
     throw Object.assign(new Error(`configured Git remote is unavailable: ${String(remote)}`),
       { reason: 'blocked-configured-remote' });
   return remote;
@@ -197,13 +102,23 @@ export function configuredRemote(remote, cwd = process.cwd()) {
 /** One captured transport; hidden push URLs and ambiguous URL sets fail closed. */
 export function remoteTransport(remote, cwd = process.cwd()) {
   const name = configuredRemote(remote, cwd);
-  const fetchUrls = gitLines(['remote', 'get-url', '--all', name], { cwd });
-  const pushUrls = gitLines(['remote', 'get-url', '--push', '--all', name], { cwd });
+  const fetchUrls = observeGitLines(['remote', 'get-url', '--all', name], { cwd });
+  const pushUrls = observeGitLines(['remote', 'get-url', '--push', '--all', name], { cwd });
   if (fetchUrls.length !== 1 || pushUrls.length !== 1 || fetchUrls[0] !== pushUrls[0])
     throw Object.assign(new Error(`Git remote transport is ambiguous: ${name}`),
       { reason: 'blocked-remote-transport-identity' });
-  return Object.freeze({ name, fetchUrl: fetchUrls[0], pushUrl: pushUrls[0] });
+  return Object.freeze({ name, fetchUrl: fetchUrls[0], pushUrl: pushUrls[0],
+    displayUrl: redactedTransportUrl(fetchUrls[0]), urlDigest: transportDigest(fetchUrls[0]) });
 }
+function redactedTransportUrl(url) {
+  try {
+    const parsed = new URL(String(url));
+    if (parsed.protocol) return parsed.hostname ? `${parsed.protocol}//${parsed.hostname.toLowerCase()}/...` : 'opaque://...';
+  } catch { /* non-URL Git transports are handled below */ }
+  const match = String(url).match(/^(?:[^@/\s:]+@)?([A-Za-z0-9.-]+):/u);
+  return match ? `ssh://${match[1].toLowerCase()}/...` : 'opaque://...';
+}
+function transportDigest(url) { return createHash('sha256').update(String(url)).digest('hex'); }
 function transportRace(message) {
   return Object.assign(new Error(message), { reason: 'blocked-remote-transport-race' });
 }
@@ -213,186 +128,184 @@ function capturedTransport(remote, cwd, expectedUrl) {
     throw transportRace('Git remote changed before the captured operation');
   return transport;
 }
+
+function retainedGitEffect(reason, message, cause, artifacts) {
+  const operationArtifacts = Object.freeze({ ...artifacts });
+  return Object.assign(new Error(message, cause ? { cause } : undefined), {
+    reason, retainedOperation: true, artifacts: operationArtifacts,
+    operationArtifacts, operationError: cause ?? null, operationResult: null,
+  });
+}
+
+function remoteOidAtUrl(url, remoteRef, cwd) {
+  const output = git(['ls-remote', '--refs', '--', url, remoteRef], { cwd });
+  if (output === '') return null;
+  const lines = output.split('\n').filter(Boolean);
+  if (lines.length !== 1) throw new Error('remote ref advertisement is ambiguous');
+  const match = lines[0].match(/^([0-9a-f]{40}(?:[0-9a-f]{24})?)\s+(.+)$/u);
+  if (!match || match[2] !== remoteRef)
+    throw new Error('remote ref advertisement is malformed');
+  return match[1];
+}
+
+function remoteBranchRef(ref, cwd) {
+  const remoteRef = `refs/heads/${ref}`;
+  if (typeof ref !== 'string' || ref.includes('\0')
+    || observeGit(['check-ref-format', remoteRef], { cwd, allowFail: true }) === null) {
+    throw Object.assign(new Error('remote branch ref is invalid'), {
+      reason: 'blocked-remote-ref-identity',
+    });
+  }
+  return remoteRef;
+}
 /** Exact SHA currently advertised for one remote branch, or null. */
 export function remoteRefSha(remote, ref, cwd = process.cwd(), expectedUrl = null) {
   const transport = capturedTransport(remote, cwd, expectedUrl);
-  const output = git(['ls-remote', '--refs', '--', transport.fetchUrl,
-    `refs/heads/${ref}`], { cwd, allowFail: true });
+  const oid = remoteOidAtUrl(transport.fetchUrl, remoteBranchRef(ref, cwd), cwd);
   if (remoteTransport(remote, cwd).fetchUrl !== transport.fetchUrl)
     throw transportRace('Git remote changed during observation');
-  if (!output) return null;
-  const [sha, advertised] = output.split(/\s+/u);
-  return advertised === `refs/heads/${ref}` ? sha : null;
+  return oid;
 }
 /** Create one remote ref at one captured OID; refuse if the ref already exists. */
 export function publishExactNewRef(remote, ref, oid, cwd = process.cwd(), expectedUrl = null) {
   const transport = capturedTransport(remote, cwd, expectedUrl);
-  const remoteRef = `refs/heads/${ref}`;
-  git([
-    'push',
-    `--force-with-lease=${remoteRef}:`,
-    '--',
-    transport.fetchUrl,
-    `${oid}:${remoteRef}`,
-  ], { cwd });
-  if (remoteTransport(remote, cwd).fetchUrl !== transport.fetchUrl)
-    throw transportRace('Git remote changed during publication');
-  const advertised = git(['ls-remote', '--refs', '--', transport.fetchUrl, remoteRef], { cwd });
-  if (advertised.split(/\s+/u)[0] !== oid)
-    throw Object.assign(new Error('published Git ref does not advertise the captured OID'),
-      { reason: 'blocked-remote-publication-proof' });
-  return Object.freeze({ remote: transport.name, remoteRef, oid, url: transport.fetchUrl });
+  const remoteRef = remoteBranchRef(ref, cwd);
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid ?? ''))
+    throw new TypeError('remote publication requires one full object ID');
+  const priorOid = remoteOidAtUrl(transport.fetchUrl, remoteRef, cwd);
+  if (priorOid !== null) throw Object.assign(new Error(
+    `remote ref already exists at ${priorOid}: ${remoteRef}`,
+  ), { reason: 'blocked-remote-ref-exists', remoteRef, currentOid: priorOid });
+  const artifacts = {
+    effectsRetained: false, operation: 'publish-exact-new-ref', remote: transport.name,
+    url: transport.displayUrl, urlDigest: transport.urlDigest, remoteRef, candidateOid: oid, priorOid,
+    publicationAttempted: true, pushCompleted: false, refPublished: false,
+    writeResultUnknown: false, reobservationExact: false, remoteRefCurrentOid: null,
+  };
+  try {
+    git([
+      'push',
+      `--force-with-lease=${remoteRef}:`,
+      '--',
+      transport.fetchUrl,
+      `${oid}:${remoteRef}`,
+    ], { cwd });
+    Object.assign(artifacts, { effectsRetained: true, pushCompleted: true, refPublished: true });
+  } catch (cause) {
+    artifacts.writeResultUnknown = true;
+    try {
+      artifacts.remoteRefCurrentOid = remoteOidAtUrl(transport.fetchUrl, remoteRef, cwd);
+      artifacts.reobservationExact = true;
+      if (artifacts.remoteRefCurrentOid === oid)
+        Object.assign(artifacts, { effectsRetained: true, refPublished: true });
+    } catch { /* the write outcome remains explicitly unknown */ }
+    throw retainedGitEffect('blocked-remote-publication-result-unknown',
+      'remote publication did not return a trustworthy result; exact reobservation is attached',
+      cause, artifacts);
+  }
+  try {
+    artifacts.remoteRefCurrentOid = remoteOidAtUrl(transport.fetchUrl, remoteRef, cwd);
+    artifacts.reobservationExact = true;
+    if (remoteTransport(remote, cwd).fetchUrl !== transport.fetchUrl)
+      throw transportRace('Git remote changed during publication');
+    if (artifacts.remoteRefCurrentOid !== oid)
+      throw Object.assign(new Error('published Git ref does not advertise the captured OID'),
+        { reason: 'blocked-remote-publication-proof' });
+  } catch (cause) {
+    throw retainedGitEffect(cause.reason ?? 'blocked-remote-publication-proof',
+      'remote publication succeeded but its exact postcondition failed', cause, artifacts);
+  }
+  return Object.freeze({ schema: 'agentic-os/git-publication/v1', ...artifacts });
 }
 export function refExists(ref, cwd = process.cwd()) {
-  return git(['rev-parse', '--verify', '--quiet', ref], { cwd, allowFail: true }) !== null;
+  return observeGit(['rev-parse', '--verify', '--quiet', ref], {
+    cwd, allowFail: true,
+  }) !== null;
 }
-/** Tracked, staged, or unmerged changes. Untracked files are reported separately. */
-export function dirtyTracked(cwd = process.cwd()) {
-  return gitLines(['status', '--porcelain=v1', '--untracked-files=no'], { cwd }).length > 0;
-}
-/** Strict UTF-8 decode for NUL-delimited Git path output. */
-export function decodeNulFields(value) {
-  if (!Buffer.isBuffer(value)) return null;
-  const paths = [];
-  let start = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== 0) continue;
-    const bytes = value.subarray(start, index);
-    start = index + 1;
-    if (bytes.length === 0) continue;
-    const path = bytes.toString('utf8');
-    if (!Buffer.from(path, 'utf8').equals(bytes)) return null;
-    paths.push(path);
-  }
-  return start === value.length ? paths : null;
-}
-function strictGitPaths(args, cwd) {
-  const paths = decodeNulFields(git(args, { cwd, binary: true, allowFail: true }));
-  if (paths) return paths;
-  const error = new Error('Git path inventory is non-UTF-8, truncated, or unavailable');
-  error.reason = 'blocked-invalid-path-inventory';
-  throw error;
-}
-/** Owned paths outside HEAD/index, including ignored files. Never delete them. */
-export function untrackedPaths(cwd = process.cwd()) {
-  const visible = strictGitPaths(['ls-files', '--others', '--exclude-standard', '-z'], cwd);
-  const ignored = strictGitPaths(
-    ['ls-files', '--others', '--ignored', '--exclude-standard', '-z'],
-    cwd,
-  );
-  return [...new Set([...visible, ...ignored])].sort((left, right) => left.localeCompare(right));
-}
-/** Conservative exact-byte risks that make worktree removal ineligible. */
-export function worktreeCleanupRisks(cwd = process.cwd()) {
-  const hidden = strictGitPaths(['ls-files', '-v', '-z'], cwd).filter((record) => {
-    const tag = record[0];
-    return tag >= 'a' && tag <= 'z' || tag?.toUpperCase() === 'S';
-  }).map((record) => record.slice(2));
-  const tracked = [];
-  for (const record of strictGitPaths(['ls-tree', '-r', '-z', 'HEAD'], cwd)) {
-    const tab = record.indexOf('\t');
-    if (tab < 0) {
-      tracked.push('[malformed-tree-entry]');
-      continue;
-    }
-    const [mode, , oid] = record.slice(0, tab).split(' ');
-    const path = record.slice(tab + 1);
-    const absolute = join(cwd, path);
-    const stat = lstatSync(absolute, { throwIfNoEntry: false });
-    if (mode === '160000') {
-      if (!stat) continue;
-      if (!stat.isDirectory()) {
-        tracked.push(path);
-        continue;
-      }
-      const submoduleHead = git(['rev-parse', '--verify', 'HEAD'], {
-        cwd: absolute,
-        allowFail: true,
-      });
-      if (!submoduleHead) {
-        if (readdirSync(absolute).length > 0) tracked.push(path);
-        continue;
-      }
-      const nested = worktreeCleanupRisks(absolute);
-      if (submoduleHead !== oid || nested.dirtyTracked || nested.hidden.length > 0
-          || nested.owned.length > 0 || nested.tracked.length > 0) tracked.push(path);
-      continue;
-    }
-    if (!stat) {
-      tracked.push(path);
-      continue;
-    }
-    let observedMode;
-    let bytes;
-    if (stat.isSymbolicLink()) {
-      observedMode = '120000';
-      bytes = readlinkSync(absolute, { encoding: 'buffer' });
-    } else if (stat.isFile()) {
-      observedMode = stat.mode & 0o111 ? '100755' : '100644';
-      bytes = readFileSync(absolute);
-    } else {
-      tracked.push(path);
-      continue;
-    }
-    const observedOid = git(['hash-object', '--stdin'], { cwd, input: bytes });
-    if (observedMode !== mode || observedOid !== oid) tracked.push(path);
-  }
-  return {
-    dirtyTracked: dirtyTracked(cwd),
-    hidden,
-    owned: untrackedPaths(cwd),
-    tracked,
-  };
-}
-
 export function isAncestor(maybeAncestor, descendant, cwd = process.cwd()) {
-  try {
-    execFileSync('git', ['merge-base', '--is-ancestor', maybeAncestor, descendant], {
-      cwd,
-      stdio: 'ignore',
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return observeGit(['merge-base', '--is-ancestor', maybeAncestor, descendant], {
+    cwd, allowFail: true,
+  }) !== null;
 }
 
-export function fetch(remote = 'origin', cwd = process.cwd(), expectedUrl = null) {
+function remoteTrackingSnapshot(remote, cwd) {
+  const prefix = `refs/remotes/${remote}/`;
+  return observeGitLines([
+    'for-each-ref', '--format=%(refname)%00%(objectname)%00%(symref)', prefix,
+  ], { cwd }).map((line) => {
+    const fields = line.split('\0');
+    if (fields.length !== 3 || !fields[0].startsWith(prefix)
+      || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(fields[1])
+      || fields[2] && !fields[2].startsWith('refs/')) {
+      throw new Error('remote-tracking ref inventory is malformed');
+    }
+    return Object.freeze({ ref: fields[0], oid: fields[1], symbolicTarget: fields[2] || null });
+  }).sort((left, right) => left.ref.localeCompare(right.ref));
+}
+
+function remoteTrackingChanges(before, after) {
+  const prior = new Map(before.map((entry) => [entry.ref, entry]));
+  const current = new Map(after.map((entry) => [entry.ref, entry]));
+  return [...new Set([...prior.keys(), ...current.keys()])].sort().flatMap((ref) => {
+    const left = prior.get(ref) ?? null, right = current.get(ref) ?? null;
+    return left?.oid === right?.oid && left?.symbolicTarget === right?.symbolicTarget ? []
+      : [Object.freeze({ ref, before: left, after: right })];
+  });
+}
+
+export function fetch(remote, cwd = process.cwd(), expectedUrl = null) {
   // Remote-tracking-ref pruning is a separately governed cleanup effect.
   const transport = capturedTransport(remote, cwd, expectedUrl);
-  git(['fetch', '--no-tags', '--', transport.fetchUrl,
-    `+refs/heads/*:refs/remotes/${transport.name}/*`], { cwd });
-  const after = remoteTransport(remote, cwd);
-  if (after.fetchUrl !== transport.fetchUrl)
-    throw transportRace('Git remote changed during fetch');
+  const before = remoteTrackingSnapshot(transport.name, cwd);
+  const artifacts = {
+    effectsRetained: false, operation: 'fetch', remote: transport.name,
+    url: transport.displayUrl, urlDigest: transport.urlDigest, fetchAttempted: true, fetchCompleted: false,
+    fetchHeadWritten: false, autoMaintenanceRun: false,
+    writeResultUnknown: false, objectWriteResultUnknown: false,
+    reobservationExact: false, refsBefore: before, refsAfter: null, refChanges: null,
+  };
+  try {
+    git(['-c', 'fetch.writeCommitGraph=false', 'fetch', '--no-tags', '--atomic',
+      '--no-write-fetch-head', '--no-auto-maintenance',
+      '--', transport.fetchUrl,
+      `+refs/heads/*:refs/remotes/${transport.name}/*`], { cwd });
+    artifacts.fetchCompleted = true;
+  } catch (cause) {
+    Object.assign(artifacts, { writeResultUnknown: true, objectWriteResultUnknown: true });
+    try {
+      artifacts.refsAfter = remoteTrackingSnapshot(transport.name, cwd);
+      artifacts.refChanges = remoteTrackingChanges(before, artifacts.refsAfter);
+      artifacts.reobservationExact = true;
+      artifacts.effectsRetained = artifacts.refChanges.length > 0;
+    } catch { /* the retained local ref state remains explicitly unknown */ }
+    throw retainedGitEffect('blocked-fetch-result-unknown',
+      'fetch did not return a trustworthy result; exact local ref reobservation is attached',
+      cause, artifacts);
+  }
+  try {
+    artifacts.refsAfter = remoteTrackingSnapshot(transport.name, cwd);
+    artifacts.refChanges = remoteTrackingChanges(before, artifacts.refsAfter);
+    artifacts.reobservationExact = true;
+    artifacts.effectsRetained = artifacts.refChanges.length > 0;
+    const after = remoteTransport(remote, cwd);
+    if (after.fetchUrl !== transport.fetchUrl)
+      throw transportRace('Git remote changed during fetch');
+  } catch (cause) {
+    artifacts.writeResultUnknown = !artifacts.reobservationExact;
+    artifacts.objectWriteResultUnknown = !artifacts.reobservationExact;
+    throw retainedGitEffect(cause.reason ?? 'blocked-fetch-postcondition',
+      'fetch completed but its exact postcondition failed', cause, artifacts);
+  }
+  return Object.freeze({ schema: 'agentic-os/git-fetch/v1', ...artifacts });
 }
 
 export function worktrees(cwd = process.cwd()) {
-  const out = git(['worktree', 'list', '--porcelain'], { cwd });
-  const entries = [];
-  let current = null;
-  for (const line of out.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      current = { path: line.slice('worktree '.length), branch: null, detached: false };
-      entries.push(current);
-    } else if (line.startsWith('branch ') && current) {
-      current.branch = line.slice('branch refs/heads/'.length);
-    } else if (line === 'detached' && current) {
-      current.detached = true;
-    }
-  }
-  return entries;
+  return parseWorktreeList(observeGit(['worktree', 'list', '--porcelain', '-z'], {
+    cwd, binary: true, maxBuffer: 16 * 1024 * 1024,
+  }));
 }
 
 /** Commits on `ref` that are not on `base`, oldest first. */
 export function commitsAhead(base, ref, cwd = process.cwd()) {
-  return gitLines(['rev-list', '--reverse', `${base}..${ref}`], { cwd });
-}
-
-export function configGet(key, cwd = process.cwd()) {
-  return git(['config', '--get', key], { cwd, allowFail: true });
-}
-
-export function configSet(key, value, cwd = process.cwd()) {
-  git(['config', key, value], { cwd });
+  return observeGitLines(['rev-list', '--reverse', `${base}..${ref}`], { cwd });
 }

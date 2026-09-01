@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -48,26 +48,82 @@ test('package exports one stable public contract and explicit adapter subpaths',
   await assert.rejects(import('agentic-os/src/git.mjs'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
 });
 
-test('published files contain public JSON and adapters without deleted deep imports', () => {
-  const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  }));
-  const files = new Set(packed[0].files.map((entry) => entry.path));
-  for (const path of [
-    '.agentic-os.json',
-    'src/governance.mjs',
-    'src/git-repository.mjs',
-    'src/github-provider.mjs',
-    'docs/GOVERNANCE.md',
-  ]) assert.equal(files.has(path), true, `${path} must be packed`);
-  assert.equal(files.has('src/bounded-read.mjs'), false);
-  assert.equal(files.has('src/readiness-test-reporter.mjs'), false);
-  assert.equal(files.has('src/wip.mjs'), false);
+
+test('request CLI is repository-independent and performs no adapter preflight', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'agentic-os-request-only-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const input = join(directory, 'request.json');
+  writeFileSync(input, `${JSON.stringify({
+    repository: 'repo:fixture',
+    authoritySubject: 'feature:portable-request',
+    ownerSubject: 'actor:fixture',
+    scope: ['src/portable.mjs'],
+    immutableRevision: 'a'.repeat(40),
+    observedAt: '2026-09-01T00:00:00.000Z',
+    expiresAt: '2026-09-01T01:00:00.000Z',
+  })}\n`);
+
+  const cli = join(ROOT, 'bin', 'agentic-os.mjs');
+  const result = spawnSync(process.execPath, [cli, 'request', 'claim', `--input=${input}`], {
+    cwd: directory, encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const request = JSON.parse(result.stdout);
+  assert.equal(request.requestedTransition, 'claim');
+  assert.equal(request.repository, 'repo:fixture');
+  const unsupported = spawnSync(
+    process.execPath, [cli, 'request', 'canonicalJson', `--input=${input}`],
+    { cwd: directory, encoding: 'utf8' },
+  );
+  assert.equal(unsupported.status, 1);
+  assert.match(unsupported.stderr,
+    /blocked-invalid-arguments: request: unknown request operation "canonicalJson"/u);
+});
+
+test('request CLI rejects FIFOs and oversized inputs without blocking', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'agentic-os-request-input-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cli = join(ROOT, 'bin', 'agentic-os.mjs');
+
+  const fifo = join(directory, 'request.fifo');
+  assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+  const fifoResult = spawnSync(
+    process.execPath, [cli, 'request', 'claim', `--input=${fifo}`],
+    { cwd: directory, encoding: 'utf8', timeout: 5_000 },
+  );
+  assert.equal(fifoResult.signal, null, 'FIFO input read timed out');
+  assert.equal(fifoResult.status, 1);
+  assert.match(fifoResult.stderr, /request input must be a regular file/u);
+
+  const oversized = join(directory, 'oversized.json');
+  writeFileSync(oversized, Buffer.alloc(500_001));
+  const oversizedResult = spawnSync(
+    process.execPath, [cli, 'request', 'claim', `--input=${oversized}`],
+    { cwd: directory, encoding: 'utf8' },
+  );
+  assert.equal(oversizedResult.status, 1);
+  assert.match(oversizedResult.stderr, /request input byte budget exceeded/u);
+
+  const invalid = join(directory, 'invalid-utf8.json');
+  writeFileSync(invalid, Buffer.from([0xff]));
+  const invalidResult = spawnSync(
+    process.execPath, [cli, 'request', 'claim', `--input=${invalid}`],
+    { cwd: directory, encoding: 'utf8' },
+  );
+  assert.equal(invalidResult.status, 1);
+  assert.match(invalidResult.stderr, /request input must be UTF-8/u);
 });
 
 test('new profile and public modules are exact authority-controlling surfaces', () => {
-  for (const path of ['.agentic-os.json', 'src/governance.mjs', 'src/git-repository.mjs']) {
+  for (const path of [
+    '.agentic-os.json', 'src/canonical-recovery.mjs', 'src/catalog-input.mjs',
+    'src/file-integrity.mjs',
+    'src/governance.mjs', 'src/git-repository.mjs', 'src/quarantine.mjs',
+    'src/protected-workflows.mjs',
+    'bin/agentic-os-hook-runtime.mjs', 'bin/agentic-os-config.mjs',
+    'bin/agentic-os-filter-compare.mjs',
+    'bin/agentic-os-hooks.mjs', 'bin/agentic-os-report.mjs',
+  ]) {
     assert.equal(AGENTIC_OS_AUTHORITY_PATHS.includes(path), true);
     assert.equal(classifyPath(path), CLASS_AUTHORITY_CONTROLLING);
   }

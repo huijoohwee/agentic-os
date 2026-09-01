@@ -19,6 +19,7 @@
   },
   "files": [
     ".agentic-os.json",
+    ".githooks",
     "bin",
     "src",
     "catalog",
@@ -45,8 +46,8 @@
     "observe": "node bin/agentic-os.mjs observe",
     "governance:request": "node bin/agentic-os.mjs request",
     "readiness:check": "node src/readiness-proof.mjs",
-    "docs:check": "node src/doc-budget.mjs",
-    "modules:check": "node src/module-budget.mjs",
+    "docs:check": "node bin/agentic-os-doc-budget.mjs",
+    "modules:check": "node bin/agentic-os-module-budget.mjs",
     "test": "node --test __tests__/*.test.mjs",
     "check": "npm test && npm run readiness:check && npm run docs:check && npm run modules:check"
   },

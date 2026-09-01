@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /** ADLC harness entrypoint: local lanes plus exact provider handoff. */
-import { chmodSync, existsSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import {
   git,
   gitLines,
@@ -10,51 +9,64 @@ import {
   configuredRemote,
   remoteTransport,
   acquireOperationLock,
+  finishOperationLock,
   headSha,
   publishExactNewRef,
   remoteRefSha,
   fetch as gitFetch,
-  worktreeCleanupRisks,
+  worktrees,
 } from '../src/git.mjs';
-import { deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
+import { assertDevice, deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import {
-  CAPS,
-  capAdvice,
-  capFacts,
   legalEvents,
-  orderingMode,
   providerAdapterRequired,
   transition,
 } from '../src/lane-state.mjs';
 import * as store from '../src/lane-records.mjs';
 import * as queue from '../src/queue.mjs';
-import * as config from '../src/config.mjs';
 import {
-  provision,
+  provision, assertProvisionable,
   inspect as inspectWorktree,
   laneBranches,
   staleWorktrees,
 } from '../src/worktree.mjs';
-import { integrationProof, surveyLanes, sourceHeadTrailer } from '../src/patch-identity.mjs';
+import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
-import * as report from '../src/report.mjs';
+import * as report from './agentic-os-report.mjs';
 import {
   REPOSITORY_PROFILE_FILENAME,
 } from '../src/git-repository.mjs';
 import {
   runAutonomyClass,
   runCanonicalSync,
-  classifyPromotion,
-  observeLocalHealth,
+  assertPublicationPreflight, classifyPromotion, observeLocalHealth, publicationByteRisks,
   runObserve,
   runRequest,
+  pullRequestText,
+  providerKind,
+  repositoryKind,
   assertProfileCurrent,
   assertProtectedRefCurrent,
   trustedRepositoryProfile,
 } from './agentic-os-auxiliary.mjs';
+import { hookDoctorEntries, runHookSetup } from './agentic-os-hooks.mjs';
+import { validateCommandArguments } from './agentic-os-argv.mjs';
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
+function projectCache(record, root) {
+  const projected = store.project(record, root);
+  if (!projected.ok) {
+    err(`warning-lane-cache-degraded: authoritative effects retained; cache projection failed (${projected.error.reason ?? projected.error.message})`);
+    const retained = report.formatLaneProjectionRetained(record, projected.error);
+    if (retained) err(retained);
+  }
+}
+function effectReceipt(operation, receipt) {
+  const rendered = receipt?.effectsRetained ? report.formatEffectReceipt(operation, receipt) : null;
+  if (rendered) err(rendered);
+  return receipt;
+}
 function flag(argv, name) {
   return argv.includes(`--${name}`);
 }
@@ -70,16 +82,6 @@ function remoteName(policy, root) {
   if (!name) throw new TypeError('repository profile remote-tracking ref has no remote name');
   return configuredRemote(name, root);
 }
-function providerKind(profile) {
-  if (!profile) return 'github';
-  const selected = profile.adapters.provider;
-  if (selected === null) return 'none';
-  return selected.id === 'github' && selected.version === '1' ? 'github' : 'unsupported';
-}
-function repositoryKind(profile) {
-  const selected = profile?.adapters.repository;
-  return !selected || selected.id === 'git' && selected.version === '1' ? 'git' : 'unsupported';
-}
 function requireCanonical(root, policy) {
   const branch = currentBranch(root);
   if (branch === policy.protectedBranch) return;
@@ -89,20 +91,11 @@ function requireCanonical(root, policy) {
   );
   process.exit(1);
 }
-function cmdSetup(root) {
-  const changed = config.ensure(root);
-  for (const hook of ['pre-commit', 'pre-push']) {
-    const path = join(root, '.githooks', hook);
-    if (existsSync(path)) chmodSync(path, 0o755);
-  }
-  out(report.formatConfig(config.inspect(root)));
-  out('');
-  out(changed.length === 0 ? 'configuration already correct.' : `${changed.length} setting(s) written.`);
-  out('hooks executable, core.hooksPath set. Next: npm run doctor');
-  return 0;
+function cmdSetup(root, policy, profile, allowTrustCreation) {
+  return runHookSetup(root, policy, profile, out, { allowTrustCreation });
 }
 function cmdDoctor(root, profile, policy) {
-  const configEntries = config.inspect(root);
+  const configEntries = hookDoctorEntries(root);
   const local = observeLocalHealth(root, policy, profile);
   out(report.formatConfig(configEntries));
   out('');
@@ -110,9 +103,9 @@ function cmdDoctor(root, profile, policy) {
   out('');
   const kind = providerKind(profile);
   const observed = kind === 'github'
-    ? queue.observe({ cwd: root, profile: profile ?? undefined }) : null;
+    ? queue.observe({ cwd: root, profile }) : null;
   const providerRequired = providerAdapterRequired(policy);
-  const findings = kind === 'github' ? queue.audit(observed, profile ?? undefined) : [{
+  const findings = kind === 'github' ? queue.audit(observed, profile) : [{
     id: 'provider-adapter', ok: kind === 'none' && !providerRequired,
     detail: kind === 'none' ? providerRequired
       ? 'selected capabilities require a provider adapter' : 'no provider selected'
@@ -123,10 +116,9 @@ function cmdDoctor(root, profile, policy) {
   const failures =
     configEntries.filter((entry) => !entry.ok).length +
     findings.filter((finding) => !finding.ok).length +
-    (local.mainDirty ? 1 : 0) +
+    (local.canonicalDirty ? 1 : 0) +
     (local.relation === 'equal' ? 0 : 1) +
-    (local.staleWorktrees.length > 0 ? 1 : 0) +
-    (local.laneBranches <= 20 ? 0 : 1);
+    (local.staleWorktrees.length > 0 ? 1 : 0);
   out('');
   if (failures === 0) {
     out('harness invariants hold.');
@@ -142,80 +134,72 @@ function cmdStart(root, argv, policy, profile) {
     err('usage: npm run lane -- <scope>   e.g. npm run lane -- pricing-table');
     return 1;
   }
-  const device = option(argv, 'device', deviceSegment());
+  const device = assertDevice(option(argv, 'device') ?? deviceSegment());
   const ref = laneRef(scope, device);
-  const lockPath = acquireOperationLock('agentic-os-start', root);
-  if (!lockPath) {
+  store.load(root); // A present invalid cache must fail before fetch or lane creation.
+  const lock = acquireOperationLock('agentic-os-start', root);
+  if (!lock) {
     err('blocked-concurrent-start: another lane admission owns the clone-wide start lock');
     return 1;
   }
+  let operationResult;
+  let operationError = null;
+  const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null,
+    protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
+    provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false,
+    fetchReceipt: null, provisionReceipt: null };
   try {
-    gitFetch(remoteName(policy, root), root);
-    const baseSha = assertProfileCurrent(root, policy, profile);
-    if (!baseSha) {
-      err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
-      return 1;
-    }
-    const branches = laneBranches(root);
-    const scopeTaken = branches.some((branch) => parseLaneRef(branch)?.scope === scope);
-    const facts = {
-      ...capFacts(branches, device),
-      baseFetched: true,
-      scopeTaken,
-    };
-    const result = transition('planned', 'provision', facts);
-    if (!result.ok) {
-      err(report.formatRefusal(result, capAdvice(result.reason)));
-      if (result.reason === 'blocked-scope-taken') err(`scope "${scope}" is already an open lane`);
-      return 1;
-    }
-    const created = provision({ ref, scope, device, baseSha, cwd: root });
-    store.put(
-      {
+    operationResult = (() => {
+      assertProvisionable({ ref, scope, device, cwd: root });
+      const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
+      Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true,
+        effectsRetained: fetched.effectsRetained,
+        fetchedProtectedSha: headSha(policy.protectedRef, root) });
+      const baseSha = assertProfileCurrent(root, policy, profile);
+      artifacts.baseSha = baseSha;
+      if (!baseSha) {
+        err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
+        return 1;
+      }
+      const facts = { baseFetched: true };
+      const result = transition('planned', 'provision', facts);
+      if (!result.ok) {
+        err(report.formatRefusal(result));
+        return 1;
+      }
+      const created = effectReceipt('provision-worktree',
+        provision({ ref, scope, device, baseSha, cwd: root }));
+      Object.assign(artifacts, { worktree: created.path, provisioned: true,
+        provisionReceipt: created, effectsRetained: true });
+      out(`lane ${ref}`);
+      out(`worktree ${created.path}`);
+      out(`base ${policy.protectedRef} @ ${baseSha.slice(0, 9)}`);
+      projectCache({
         ...store.newRecord({
-          ref,
-          device,
-          scope,
-          base: policy.protectedRef,
-          baseSha,
-          worktree: created.path,
-        }),
-        state: 'active',
-      },
-      root,
-    );
-    out(`lane ${ref}`);
-    out(`worktree ${created.path}`);
-    out(`base ${policy.protectedRef} @ ${baseSha.slice(0, 9)}`);
-    out('');
-    out(`  cd ${created.path}`);
-    out('  # author, commit, then:');
-    out('  npm run land');
-    return 0;
-  } finally {
-    rmSync(lockPath, { recursive: true, force: true });
+          ref, device, scope, base: policy.protectedRef, baseSha, worktree: created.path,
+        }), state: 'active',
+      }, root);
+      out('');
+      out(`  cd ${created.path}`);
+      out('  # author, commit, then:');
+      out('  npm run land');
+      return 0;
+    })();
+  } catch (error) {
+    const retained = error.operationArtifacts ?? error.artifacts;
+    if (retained) {
+      artifacts[retained.operation === 'fetch' ? 'fetchReceipt' : 'provisionReceipt'] = retained;
+      artifacts.branchSha = retained.branchSha ?? null;
+      artifacts.registeredWorktree = retained.registeredWorktree ?? null;
+      artifacts.pathExists = retained.pathExists === true;
+      artifacts.worktree = retained.path ?? retained.registeredWorktree?.path ?? null;
+      artifacts.effectsRetained ||= retained.effectsRetained === true;
+    }
+    operationError = error;
   }
-}
-/** Review text binds Source-Head correlation; it never proves integration. */
-function pullRequestText(root, ref, laneHeadSha, baseSha) {
-  const subjects = gitLines(['log', '--format=%s', `${baseSha}..${laneHeadSha}`, '--reverse'], {
-    cwd: root,
+  return finishOperationLock(lock, {
+    label: 'start', result: operationResult, error: operationError, artifacts,
   });
-  const scope = parseLaneRef(ref)?.scope ?? ref;
-  const title = subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`;
-  const body = [
-    ...(subjects.length > 1 ? subjects.map((subject) => `- ${subject}`) : []),
-    ...(subjects.length > 1 ? [''] : []),
-    `Lane: ${ref}`,
-    `Base-Revision: ${baseSha}`,
-    sourceHeadTrailer(laneHeadSha),
-  ].join('\n');
-  return { title, body };
-}
-function publicationByteRisks(root) {
-  const observed = worktreeCleanupRisks(root);
-  const paths = [...new Set([...observed.hidden, ...observed.owned, ...observed.tracked])];
-  return { blocked: observed.dirtyTracked || paths.length > 0, paths };
 }
 function cmdLand(cwd, profile, policy) {
   const root = repoRoot(cwd);
@@ -231,62 +215,51 @@ function cmdLand(cwd, profile, policy) {
   }
   const kind = providerKind(profile);
   if (providerAdapterRequired(policy) && kind !== 'github') {
-    err(`blocked-provider-adapter-${kind}: selected integration policy requires github adapter v1`);
+    err(`blocked-provider-adapter-${kind}: no landing adapter matches the selected profile policy`);
     return 1;
   }
-
   const remote = remoteName(policy, root);
   const capturedRemote = remoteTransport(remote, root);
-  gitFetch(remote, root, capturedRemote.fetchUrl);
+  // A present invalid optional cache must fail before fetch mutates local provider evidence.
+  store.load(root);
+  const laneHeadSha = assertPublicationPreflight(root);
+  effectReceipt('fetch', gitFetch(remote, root, capturedRemote.fetchUrl));
   const baseSha = assertProfileCurrent(root, policy, profile);
   if (!baseSha) {
     err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
     return 1;
   }
-  const record = store.get(ref, root);
-  const laneHeadSha = headSha('HEAD', root);
   const commits = gitLines(['rev-list', `${baseSha}..${laneHeadSha}`], { cwd: root }).length;
   const publishedHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
-  const byteRisks = publicationByteRisks(root);
-  if (byteRisks.blocked) {
-    err(`blocked-publish-byte-risk: preserve ${byteRisks.paths.length} exact path(s) and tracked state`);
-    return 1;
-  }
+  assertPublicationPreflight(root, laneHeadSha);
 
   if (integrationProof(baseSha, laneHeadSha, { cwd: root })) {
     err('blocked-already-integrated: do not republish; reap can classify for public governance');
     return 1;
   }
 
-  const providerPreflight = kind === 'github' && policy.pullRequestRequired
-    ? queue.observe({ cwd: root, profile: profile ?? undefined }) : null;
+  const providerPreflight = kind === 'github' && providerAdapterRequired(policy)
+    ? queue.observe({ cwd: root, profile }) : null;
+  const providerBlockers = providerPreflight
+    ? queue.providerBlockingReasons(providerPreflight, policy) : [];
   if (providerPreflight && (providerPreflight.available !== true
       || providerPreflight.repo === null
-      || (providerPreflight.observationErrors ?? []).length > 0)) {
-    err('blocked-provider-observation-incomplete: bind repository identity before publication');
+      || providerBlockers.length > 0)) {
+    err(`blocked-provider-observation-incomplete: ${providerBlockers.join(', ')}`);
     return 1;
   }
 
-  let state = record?.state === 'planned' ? 'active' : record?.state ?? 'active';
   if (publishedHead) {
-    if (publishedHead !== laneHeadSha || (record?.head && record.head !== laneHeadSha)) {
+    if (publishedHead !== laneHeadSha) {
       err('blocked-published-head-drift: the exact remote lane revision is immutable');
       return 1;
     }
-    // The remote exact ref is the publication fact. Recover safely when a
-    // process crashed before updating the local, non-authoritative cache.
-    if (state === 'active') state = 'published';
-  } else if (state === 'published') {
-    err('blocked-published-ref-missing: preserve the lane; its exact remote ref is absent');
-    return 1;
   }
-  if (!['active', 'published'].includes(state)) {
-    err(`land requires an active or published lane; observed ${state}`);
-    return 1;
-  }
+  // Only the exact advertised ref determines publication; stale cache states cannot block recovery.
+  const state = publishedHead ? 'published' : 'active';
   const publishFacts = {
-    onCanonicalMain: false,
-    dirtyTracked: byteRisks.blocked,
+    onCanonicalBranch: false,
+    dirtyTracked: false,
     laneCommits: commits,
     pushed: false,
   };
@@ -296,14 +269,10 @@ function cmdLand(cwd, profile, policy) {
     return 1;
   }
 
-  if (state === 'published' && ((record?.head && record.head !== laneHeadSha)
-      || publishFacts.dirtyTracked)) {
-    err('blocked-published-head-drift: published lanes are immutable; preserve this worktree');
-    return 1;
-  }
   if (state === 'active') {
     assertProtectedRefCurrent(root, policy.protectedRef, baseSha);
-    publishExactNewRef(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl);
+    effectReceipt('publish-exact-new-ref',
+      publishExactNewRef(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl));
     out(`pushed ${ref} @ ${laneHeadSha.slice(0, 9)}`);
   }
   const postPublishRisks = publicationByteRisks(root);
@@ -326,34 +295,23 @@ function cmdLand(cwd, profile, policy) {
       return 1;
     }
   }
-  store.put({ ref, state: 'published', head: laneHeadSha }, root);
+  projectCache({ ref, state: 'published', head: laneHeadSha }, root);
 
   if (kind !== 'github' || !policy.pullRequestRequired) {
     out('published exact lane ref; no pull-request integration capability selected');
     return 0;
   }
 
-  const observed = queue.observe({ cwd: root, profile: profile ?? undefined });
+  const observed = queue.observe({ cwd: root, profile });
   const promotion = classifyPromotion(root, baseSha, laneHeadSha);
-  const orderingFacts = {
-    providerObservationComplete: observed.available === true
-      && observed.repo !== null
-      && (observed.observationErrors ?? []).length === 0,
-    queueEnabled: policy.mergeQueueRequired && observed.queueEnabled,
-    queuePolicySatisfied: observed.queuePolicySatisfied,
-    requiredChecksSatisfied: policy.requiredChecks.every(
-      (check) => observed.requiredChecks?.includes(check),
-    ),
-    mergeGroupSupported: observed.mergeGroupSupported,
-  };
-  const mode = orderingMode(orderingFacts);
-  if (observed.remoteUrl !== providerPreflight.remoteUrl) {
-    err('blocked-provider-remote-race: exact published lane retained; provider handoff refused');
+  const observedBlockers = queue.providerBlockingReasons(observed, policy);
+  if (observed.available !== true || observed.repo === null || observedBlockers.length > 0) {
+    projectCache({ ref, state: 'published', head: laneHeadSha }, root);
+    err('blocked-provider-observation-incomplete: exact published lane retained; exact repository and policy facts are required');
     return 1;
   }
-  if (!orderingFacts.providerObservationComplete) {
-    store.put({ ref, state: 'published', head: laneHeadSha }, root);
-    err('blocked-provider-observation-incomplete: exact repository and policy facts are required');
+  if (observed.remoteUrlDigest !== providerPreflight.remoteUrlDigest) {
+    err('blocked-provider-remote-race: exact published lane retained; provider handoff refused');
     return 1;
   }
   assertProtectedRefCurrent(root, policy.protectedRef, baseSha);
@@ -365,9 +323,54 @@ function cmdLand(cwd, profile, policy) {
     assertSourceHead: () => remoteRefSha(remote, ref, root, capturedRemote.fetchUrl) === laneHeadSha,
     ...pullRequestText(root, ref, laneHeadSha, baseSha),
   });
-  const reviewProjected = handed.sourceHeadBound === true && handed.pr !== null;
-  if (!handed.ok && !reviewProjected) {
-    store.put({ ref, state: 'published', head: laneHeadSha,
+  let finalObserved;
+  try {
+    finalObserved = queue.observe({ cwd: root, profile });
+  } catch {
+    projectCache({ ref, state: 'published', head: laneHeadSha,
+      pr: handed.pr?.number ?? null, handoff: handed }, root);
+    err('blocked-provider-final-observation: provider effects retained; final observation failed');
+    return 1;
+  }
+  const finalProviderBlockers = queue.providerBlockingReasons(finalObserved, policy);
+  if (finalObserved.available !== true || finalObserved.repo === null
+      || finalProviderBlockers.length > 0) {
+    projectCache({ ref, state: 'published', head: laneHeadSha,
+      pr: handed.pr?.number ?? null, handoff: handed }, root);
+    err('blocked-provider-observation-incomplete: provider effects retained; selected policy facts changed after handoff');
+    return 1;
+  }
+  if (finalObserved.remoteUrlDigest !== observed.remoteUrlDigest) {
+    projectCache({ ref, state: 'published', head: laneHeadSha,
+      pr: handed.pr?.number ?? null, handoff: handed }, root);
+    err('blocked-provider-remote-race: provider effects retained; final remote identity changed');
+    return 1;
+  }
+  const finalRemoteHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
+  if (finalRemoteHead !== laneHeadSha) {
+    projectCache({ ref, state: 'published', head: laneHeadSha,
+      pr: handed.pr?.number ?? null, handoff: handed }, root);
+    err(`blocked-provider-source-ref-race: provider effects retained; ${remote} advertises ${finalRemoteHead ?? 'no exact ref'}`);
+    return 1;
+  }
+  const orderingFacts = {
+    providerObservationComplete: true,
+    handoffPolicySatisfied: finalObserved.handoffPolicySatisfied,
+    queueEnabled: policy.mergeQueueRequired && finalObserved.queueEnabled,
+    queuePolicySatisfied: finalObserved.queuePolicySatisfied,
+    requiredChecksSatisfied: policy.requiredChecks.every(
+      (check) => finalObserved.requiredChecks?.includes(check),
+    ),
+    mergeGroupSupported: finalObserved.mergeGroupSupported,
+  };
+  const toleratedReviewProjection = handed.ok === false
+    && handed.reason === 'tested-ordering-unavailable'
+    && handed.reviewRequiresAttention === false
+    && handed.sourceHeadBound === true
+    && handed.testedProtectedOrdering === false
+    && handed.pr !== null;
+  if (!handed.ok && !toleratedReviewProjection) {
+    projectCache({ ref, state: 'published', head: laneHeadSha,
       pr: handed.pr?.number ?? null, handoff: handed }, root);
     if (handed.pr?.url) out(`projected exact review: ${handed.pr.url}`);
     err(`provider handoff refused: ${handed.reason ?? 'unknown'}`);
@@ -378,33 +381,46 @@ function cmdLand(cwd, profile, policy) {
       ...orderingFacts, laneHeadSha, providerReceipt: handed,
     });
     if (!queued.ok) {
-      store.put({ ref, state: 'published', head: laneHeadSha,
+      projectCache({ ref, state: 'published', head: laneHeadSha,
         pr: handed.pr?.number ?? null, handoff: handed }, root);
       err(report.formatRefusal(queued, 'observed ordering does not satisfy repository policy'));
       return 1;
     }
-    store.put({ ref, state: 'queued', head: laneHeadSha,
+    projectCache({ ref, state: 'queued', head: laneHeadSha,
       pr: handed.pr?.number ?? null, handoff: handed, mode: 'merge-queue' }, root);
     out(handed.pr?.url ? `observed external queue entry: ${handed.pr.url}`
       : 'observed external queue entry');
     return 0;
   }
-  store.put({ ref, state: 'published', head: laneHeadSha,
+  projectCache({ ref, state: 'published', head: laneHeadSha,
     pr: handed.pr?.number ?? null, handoff: handed }, root);
   out(handed.pr?.url ? `projected exact review: ${handed.pr.url}` : 'projected exact review');
   out(promotion.escalates
     ? 'authority-controlling candidate: external promotion authority required'
-    : `candidate-side auto-arm refused; repository authority may select ${mode} ordering`);
+    : 'candidate retained as published; protected integration requires external authority');
   out('exact protected integration proof is still required');
   return 0;
 }
 function cmdStatus(root, argv, profile, policy) {
-  const device = option(argv, 'device', deviceSegment());
-  const branches = laneBranches(root);
-  const lanes = branches.map((ref) => {
-    const record = store.get(ref, root);
-    const observedLane = inspectWorktree(ref, root, policy.protectedRef);
+  const device = assertDevice(option(argv, 'device') ?? deviceSegment());
+  const cachedRecords = store.load(root).lanes;
+  const registrations = worktrees(root)
+    .filter(({ branch }) => parseLaneRef(branch)?.device === device);
+  const lanes = registrations.map(({ branch: ref, path }) => {
+    const record = cachedRecords[ref] ?? null;
     const state = record?.state ?? 'active';
+    if (!existsSync(path)) return {
+      ref, path, state, commits: '-', untracked: 0, next: [], stale: true,
+    };
+    let observedLane;
+    try {
+      observedLane = inspectWorktree(ref, root, policy.protectedRef);
+    } catch (error) {
+      if (!existsSync(path)) return {
+        ref, path, state, commits: '-', untracked: 0, next: [], stale: true,
+      };
+      throw error;
+    }
     return {
       ref,
       state,
@@ -413,14 +429,15 @@ function cmdStatus(root, argv, profile, policy) {
       next: legalEvents(state),
     };
   });
-  const observed = providerKind(profile) === 'github'
-    ? queue.observe({ cwd: root, profile: profile ?? undefined }) : { available: false };
+  const kind = providerKind(profile);
+  const observed = kind === 'github'
+    ? queue.observe({ cwd: root, profile })
+    : kind === 'unsupported' ? { available: false, reason: 'unsupported' } : null;
   out(
     report.formatStatus({
       device,
       lanes,
-      caps: capFacts(branches, device),
-      queue: observed.available ? observed : null,
+      queue: observed,
     }),
   );
   return 0;
@@ -431,7 +448,7 @@ function cmdReap(root, argv, policy, profile) {
     err('blocked-authenticated-cleanup-required: reap is classification-only');
     return 1;
   }
-  gitFetch(remoteName(policy, root), root);
+  effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
   const baseSha = assertProfileCurrent(root, policy, profile);
   if (!baseSha) {
     err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
@@ -453,25 +470,20 @@ function cmdReap(root, argv, policy, profile) {
 }
 function cmdQueue(root, argv, profile) {
   const [action = 'show'] = positional(argv);
-  if (providerKind(profile) !== 'github') {
-    err('blocked-provider-adapter-unselected: queue commands require github adapter v1');
+  const kind = providerKind(profile);
+  if (kind !== 'github') {
+    err(`${kind === 'unsupported' ? 'blocked-provider-adapter-unsupported'
+      : 'blocked-provider-adapter-unselected'}: queue commands require github adapter v1`);
     return 1;
   }
   if (action === 'show') {
-    const observed = queue.observe({ cwd: root, profile: profile ?? undefined });
-    out(report.formatFindings('remote configuration', queue.audit(observed, profile ?? undefined)));
+    const observed = queue.observe({ cwd: root, profile });
+    out(report.formatFindings('remote configuration', queue.audit(observed, profile)));
     out('');
-    out(report.formatPlan(queue.plan(profile ?? undefined)));
+    out(report.formatPlan(queue.plan(profile)));
     return 0;
   }
   if (action === 'apply') {
-    if (!flag(argv, 'yes')) {
-      out(report.formatPlan(queue.plan(profile ?? undefined)));
-      out('');
-      out('Provider policy is repository-owned; this adapter will refuse candidate-side apply:');
-      out('  npm run queue:apply -- --yes');
-      return 1;
-    }
     const applied = queue.apply({ cwd: root });
     for (const step of applied) {
       out(`${step.ok ? 'ok  ' : 'FAIL'} ${step.step}`);
@@ -490,20 +502,19 @@ function cmdHelp() {
     [
       'agentic-os — ADLC harness',
       '',
-      '  npm run setup             write local git config, make hooks executable',
+      '  npm run setup             write config and select packaged hooks without clobbering',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope>   open a lane at the fetched profile canonical ref',
       '  npm run land              publish the exact lane head and request provider handoff',
-      '  npm run status            lanes, WIP against caps, queue state',
+      '  npm run status            registered lane projections and provider state',
       '  npm run reap             classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
       '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
       '  npm run queue:show        inspect the required remote configuration',
-      '  npm run queue:apply       fail closed; provider policy is repository-owned',
+      '  npm run queue:apply -- --yes  fail closed; provider policy is repository-owned',
       '',
-      `cap: ${CAPS.openLanesPerDevice} open lanes per device`,
     ].join('\n'),
   );
   return 0;
@@ -511,7 +522,6 @@ function cmdHelp() {
 function main() {
   const supplied = process.argv.slice(2);
   let [command, ...argv] = supplied;
-
   if (isInvocationTuple(supplied)) {
     const resolution = resolveInvocation(supplied);
     const dispatch = dispatchInvocation(resolution);
@@ -522,9 +532,14 @@ function main() {
     command = dispatch.command;
     argv = dispatch.argv;
   }
-
-  if (command === undefined || command === 'help' || command === '--help') return cmdHelp();
-
+  if (command === undefined) return cmdHelp();
+  const argumentError = validateCommandArguments(command, argv);
+  if (argumentError) {
+    err(`blocked-invalid-arguments: ${command}: ${argumentError}`);
+    return 1;
+  }
+  if (command === 'help' || command === '--help') return cmdHelp();
+  if (command === 'request') return runRequest(argv);
   const cwd = process.cwd();
   let root;
   try {
@@ -533,31 +548,23 @@ function main() {
     err('not inside a git repository.');
     return 1;
   }
-  const trustedProfile = trustedRepositoryProfile(root);
+  const setupCommand = ['setup', 'git-configure', 'guard-install'].includes(command);
+  const trustedProfile = trustedRepositoryProfile(root, { allowUnanchored: setupCommand });
   const { profile } = trustedProfile;
+  if (!profile) {
+    err(`blocked-repository-profile-missing: commit ${REPOSITORY_PROFILE_FILENAME} before operation`);
+    return 1;
+  }
   if (repositoryKind(profile) !== 'git') {
     err('blocked-repository-adapter-unsupported: operational commands require git adapter v1');
     return 1;
   }
-  const policy = queue.providerPolicy(profile ?? undefined);
-
-  const protectedMutation = ['start', 'land'].includes(command)
-    || command === 'canonical-sync' && positional(argv)[0] === 'apply';
-  if (!profile && protectedMutation
-      && process.env.AGENTIC_OS_ALLOW_LEGACY_PROFILE !== '1') {
-    err(`blocked-repository-profile-missing: commit ${REPOSITORY_PROFILE_FILENAME} before mutation`);
-    return 1;
-  }
-
+  const policy = queue.providerPolicy(profile);
   switch (command) {
     case 'setup':
-      return cmdSetup(root);
     case 'git-configure':
-      out(report.formatConfig(config.inspect(root)));
-      config.ensure(root);
-      return 0;
     case 'guard-install':
-      return cmdSetup(root);
+      return cmdSetup(root, policy, profile, trustedProfile.trust === null);
     case 'doctor':
       return cmdDoctor(root, profile, policy);
     case 'start':
@@ -576,18 +583,16 @@ function main() {
       return runAutonomyClass(root, argv, policy);
     case 'observe':
       return runObserve(root, argv, profile);
-    case 'request':
-      return runRequest(argv);
     default:
       err(`unknown command "${command}"`);
       cmdHelp();
       return 1;
   }
 }
-
 try {
   process.exit(main());
 } catch (error) {
+  const retained = report.formatRetainedOperation(error); if (retained) err(retained);
   err(`agentic-os: ${error.reason ? `${error.reason}: ` : ''}${error.message}`);
   process.exit(1);
 }

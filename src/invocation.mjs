@@ -1,9 +1,10 @@
 /** Exact `/`, `#`, and `@` invocation grammar backed by a digest-fenced JSON catalog. */
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TextDecoder } from 'node:util';
+import { readBoundedFile, snapshotCatalogInput } from './catalog-input.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
@@ -13,6 +14,8 @@ export const RESOLUTION_SCHEMA = 'agentic-os-invocation-resolution/v1';
 export const PREFIX_KINDS = Object.freeze({ '/': 'command', '#': 'semantic', '@': 'binding' });
 const MAX_NAME = 128;
 const MAX_ARGUMENT = 1024;
+const MAX_INVOCATION_CATALOG_BYTES = 64 * 1024;
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -41,13 +44,19 @@ function canonical(value) {
   return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
 }
 
-export function catalogDigest(entries) {
+export function catalogDigest(input) {
+  const snapshot = snapshotCatalogInput(input);
+  if (!snapshot.ok) throw new TypeError('invocation catalog entries are invalid');
+  const entries = snapshot.value;
   const ordered = [...entries].sort((left, right) => String(left?.token ?? '').localeCompare(String(right?.token ?? '')));
   return `sha256:${createHash('sha256').update(JSON.stringify(canonical(ordered))).digest('hex')}`;
 }
 
 export function loadCatalog(path = CATALOG_PATH) {
-  return JSON.parse(readFileSync(path, 'utf8'));
+  const bytes = readBoundedFile(path, MAX_INVOCATION_CATALOG_BYTES, 'invocation catalog');
+  let text;
+  try { text = UTF8.decode(bytes); } catch { throw new TypeError('invocation catalog must be UTF-8'); }
+  return JSON.parse(text);
 }
 
 function parseToken(token, declaration = false) {
@@ -68,7 +77,10 @@ function parseToken(token, declaration = false) {
   return { prefix, kind: PREFIX_KINDS[prefix], canonical: `${prefix}${name}${colon < 0 ? '' : ':'}`, argument };
 }
 
-export function validateCatalog(catalog) {
+export function validateCatalog(input) {
+  const snapshot = snapshotCatalogInput(input);
+  if (!snapshot.ok) return { ok: false, findings: snapshot.findings };
+  const catalog = snapshot.value;
   const findings = [];
   if (catalog?.schema !== CATALOG_SCHEMA) findings.push({ code: 'schema-drift' });
   if (!Array.isArray(catalog?.entries)) return { ok: false, findings: [...findings, { code: 'entries-missing' }] };

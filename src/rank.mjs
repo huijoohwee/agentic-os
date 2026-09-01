@@ -2,6 +2,7 @@
 /** ADLC ranking: hard constraints, Pareto dominance, then grounded argumentation. */
 
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { types } from 'node:util';
@@ -391,6 +392,7 @@ function main() {
   return result.ok ? (result.status === 'selected' ? 0 : 2) : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (process.argv[1]
+  && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
   process.exitCode = main();
 }

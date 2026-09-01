@@ -15,21 +15,15 @@ test('unimplemented restack and ejection events are refused', () => {
   assert.equal(transition('published', 'restack', {}).reason, REFUSALS.ILLEGAL);
 });
 
-test('provision enforces the WIP cap', () => {
-  const base = { baseFetched: true, openLanes: 3, wipCap: 3 };
-  assert.equal(transition('planned', 'provision', base).reason, REFUSALS.WIP_CAP);
-  assert.equal(transition('planned', 'provision', { ...base, openLanes: 2 }).ok, true);
+test('provision relies on the exact ref and external claim boundary for exclusion', () => {
+  const facts = { baseFetched: true, openLanes: 500, wipCap: 0, scopeTaken: true };
+  assert.equal(transition('planned', 'provision', facts).ok, true);
 });
 
-test('provision refuses a scope another open lane owns', () => {
-  const facts = { baseFetched: true, scopeTaken: true };
-  assert.equal(transition('planned', 'provision', facts).reason, REFUSALS.SCOPE_TAKEN);
-});
-
-test('authoring on canonical main is refused, not warned', () => {
-  const result = transition('active', 'author', { onCanonicalMain: true });
+test('authoring on the canonical branch is refused, not warned', () => {
+  const result = transition('active', 'author', { onCanonicalBranch: true });
   assert.equal(result.ok, false);
-  assert.equal(result.reason, REFUSALS.MAIN_AUTHORING);
+  assert.equal(result.reason, REFUSALS.CANONICAL_AUTHORING);
 });
 
 test('publish requires a clean tree with commits already pushed', () => {
@@ -45,6 +39,7 @@ test('enqueue requires the provider to own landing order', () => {
   const facts = { laneHeadSha: 'a', providerReceipt };
   assert.equal(transition('published', 'enqueue', facts).reason, REFUSALS.NO_QUEUE);
   const capable = { ...facts, providerObservationComplete: true,
+    handoffPolicySatisfied: true,
     queueEnabled: true, queuePolicySatisfied: true,
     requiredChecksSatisfied: true,
     mergeGroupSupported: true };
@@ -57,6 +52,7 @@ test('enqueue requires the provider to own landing order', () => {
   assert.equal(orderingMode({ ...capable, queuePolicySatisfied: false }), 'none');
   assert.equal(orderingMode({ ...capable, requiredChecksSatisfied: false }), 'none');
   assert.equal(orderingMode({ ...capable, mergeGroupSupported: false }), 'none');
+  assert.equal(orderingMode({ ...capable, handoffPolicySatisfied: false }), 'none');
   assert.equal(orderingMode({ ...capable, providerObservationComplete: false }), 'none');
 });
 
@@ -74,6 +70,7 @@ test('auto-merge without checks, or with strict on, is not delegation', () => {
 
 test('enqueue refuses an absent, failed, or mismatched provider handoff receipt', () => {
   const facts = { providerObservationComplete: true,
+    handoffPolicySatisfied: true,
     queueEnabled: true, queuePolicySatisfied: true,
     requiredChecksSatisfied: true,
     mergeGroupSupported: true, laneHeadSha: 'new' };

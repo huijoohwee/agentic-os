@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -16,12 +18,16 @@ import {
   GIT_ADAPTER,
   REPOSITORY_PROFILE_FILENAME,
   createGitRepositoryAdapter,
+  ensureRepositoryTrust,
+  loadRepositoryTrust,
   loadRepositoryProfileAtRef,
   loadRepositoryProfile,
   observeRepositoryProfileAtRef,
   observeRepository,
+  repositoryTrustPath,
 } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
+import { commonDir, git, repoRoot, worktrees } from '../src/git.mjs';
 
 function run(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
@@ -93,6 +99,45 @@ test('trusted profile loading reads committed canonical bytes, not working-tree 
   }), committed);
 });
 
+test('trusted profile loading rejects a committed symlink blob', (t) => {
+  const subject = repository(t);
+  symlinkSync('{}', join(subject.root, REPOSITORY_PROFILE_FILENAME));
+  run(subject.root, 'add', REPOSITORY_PROFILE_FILENAME);
+  run(subject.root, 'commit', '--quiet', '-m', 'symlink profile');
+  assert.throws(() => observeRepositoryProfileAtRef({
+    repository: subject.root, ref: 'refs/heads/trunk',
+  }), /tree entry is invalid/u);
+});
+
+test('repository trust requires private single-link stable file identity', (t) => {
+  const subject = repository(t);
+  const expected = profile();
+  ensureRepositoryTrust(subject.root, expected, { allowCreate: true });
+  const path = repositoryTrustPath(subject.root);
+
+  chmodSync(path, 0o644);
+  assert.throws(() => loadRepositoryTrust(subject.root),
+    (error) => error?.reason === 'blocked-repository-trust-invalid'
+      && /mode must be 0600/u.test(error.message));
+
+  chmodSync(path, 0o600);
+  const alias = join(subject.parent, 'trust-hardlink.json');
+  linkSync(path, alias);
+  assert.throws(() => loadRepositoryTrust(subject.root),
+    (error) => error?.reason === 'blocked-repository-trust-invalid'
+      && /link count must be 1/u.test(error.message));
+  rmSync(alias);
+  assert.equal(loadRepositoryTrust(subject.root).repository, expected.repository);
+
+  const directory = join(commonDir(subject.root), 'agentic-os');
+  chmodSync(directory, 0o755);
+  assert.throws(() => loadRepositoryTrust(subject.root),
+    (error) => error?.reason === 'blocked-repository-trust-invalid'
+      && /directory mode must be 0700/u.test(error.message));
+  chmodSync(directory, 0o700);
+  assert.equal(loadRepositoryTrust(subject.root).repository, expected.repository);
+});
+
 test('trusted profile observation rejects canonical ref movement during the read', (t) => {
   const subject = repository(t);
   writeProfile(subject.root);
@@ -131,6 +176,96 @@ test('trusted profile observation rejects canonical ref movement during the read
   }
 });
 
+test('Git observation strips inherited identity and executable configuration overrides', (t) => {
+  const subject = repository(t);
+  const support = join(subject.parent, 'safe-observation-bin');
+  mkdirSync(support);
+  const wrapper = join(support, 'git');
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  writeFileSync(wrapper, [
+    '#!/bin/sh',
+    '[ -z "${GIT_INDEX_FILE+x}" ] || exit 81',
+    '[ -z "${GIT_CONFIG_PARAMETERS+x}" ] || exit 82',
+    '[ -z "${GIT_EXTERNAL_DIFF+x}" ] || exit 83',
+    '[ -z "${GIT_TRACE+x}" ] || exit 84',
+    '[ "$GIT_OPTIONAL_LOCKS" = 0 ] || exit 85',
+    '[ "$GIT_NO_LAZY_FETCH" = 1 ] || exit 86',
+    '[ "$GIT_NO_REPLACE_OBJECTS" = 1 ] || exit 87',
+    '[ "$GIT_CONFIG_COUNT" = 3 ] || exit 88',
+    '[ "$GIT_CONFIG_KEY_0" = core.fsmonitor ] || exit 89',
+    `exec ${JSON.stringify(realGit)} "$@"`,
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const overrides = {
+    PATH: `${support}:${process.env.PATH}`,
+    GIT_INDEX_FILE: join(subject.parent, 'foreign-index'),
+    GIT_CONFIG_PARAMETERS: "'core.fsmonitor=/foreign/helper'",
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'core.fsmonitor',
+    GIT_CONFIG_VALUE_0: '/foreign/helper',
+    GIT_EXTERNAL_DIFF: '/foreign/diff',
+    GIT_TRACE: join(subject.parent, 'trace'),
+  };
+  const prior = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, overrides);
+  t.after(() => Object.entries(prior).forEach(([key, value]) => {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }));
+  assert.equal(repoRoot(subject.root), subject.root);
+  assert.equal(observeRepository({ repository: subject.root, profile: profile() })
+    .canonical.operationallyClean, true);
+});
+
+test('Git mutation strips inherited identity and config but honors explicit controlled index state', (t) => {
+  const subject = repository(t);
+  const foreign = join(subject.parent, 'foreign');
+  mkdirSync(foreign);
+  run(foreign, 'init', '--quiet', '--initial-branch=trunk');
+  const support = join(subject.parent, 'safe-mutation-bin');
+  mkdirSync(support);
+  const wrapper = join(support, 'git');
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  writeFileSync(wrapper, [
+    '#!/bin/sh',
+    '[ -z "${GIT_DIR+x}" ] || exit 71',
+    '[ -z "${GIT_WORK_TREE+x}" ] || exit 72',
+    '[ -z "${GIT_INDEX_FILE+x}" ] || exit 73',
+    '[ -z "${GIT_CONFIG_PARAMETERS+x}" ] || exit 74',
+    '[ -z "${GIT_CONFIG_COUNT+x}" ] || exit 75',
+    '[ "$GIT_NO_REPLACE_OBJECTS" = 1 ] || exit 76',
+    `exec ${JSON.stringify(realGit)} "$@"`,
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const oid = run(subject.root, 'rev-parse', 'HEAD');
+  const overrides = {
+    PATH: `${support}:${process.env.PATH}`,
+    GIT_DIR: join(foreign, '.git'), GIT_WORK_TREE: foreign,
+    GIT_INDEX_FILE: join(foreign, '.git', 'index'),
+    GIT_CONFIG_PARAMETERS: "'core.hooksPath=/foreign/hooks'",
+    GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.hooksPath',
+    GIT_CONFIG_VALUE_0: '/foreign/hooks',
+  };
+  const prior = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, overrides);
+  try {
+    git(['update-ref', 'refs/heads/sanitized-mutation', oid], { cwd: subject.root });
+  } finally {
+    Object.entries(prior).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    });
+  }
+  assert.equal(run(subject.root, 'rev-parse', 'refs/heads/sanitized-mutation'), oid);
+  assert.equal(git(['rev-parse', '--verify', 'refs/heads/sanitized-mutation'], {
+    cwd: foreign, allowFail: true,
+  }), null);
+
+  const controlledIndex = join(subject.parent, 'controlled-index');
+  git(['read-tree', 'HEAD'], { cwd: subject.root, env: { GIT_INDEX_FILE: controlledIndex } });
+  assert.equal(existsSync(controlledIndex), true);
+});
+
 test('shallow cleanliness reports but does not block on ignored ownership', (t) => {
   const subject = repository(t);
   writeFileSync(join(subject.root, 'owned.secret'), 'owned\n');
@@ -147,8 +282,11 @@ test('shallow cleanliness reports but does not block on ignored ownership', (t) 
   writeFileSync(join(subject.root, 'tracked.txt'), 'locally owned bytes\n');
   observation = observeRepository({ repository: subject.root, profile: profile() });
   canonical = observation.projections.find((item) => item.path === subject.root);
-  assert.equal(canonical.dirtyTracked, false);
+  assert.equal(canonical.dirtyTracked, true);
   assert.deepEqual(canonical.hiddenPaths, ['tracked.txt']);
+  assert.deepEqual(canonical.indexToWorkingTree.map(({ path, status }) => ({ path, status })), [
+    { path: 'tracked.txt', status: 'M' },
+  ]);
   assert.equal(canonical.trackedByteDriftPaths, null);
   assert.equal(observation.canonical.operationallyClean, false);
 
@@ -201,14 +339,12 @@ test('adapter validates exact version and fully-qualified ref classes', (t) => {
   });
   assert.throws(() => observeRepository({ repository: subject.root, profile: wrongVersion }),
     /version 1/);
-  const unsafeRef = profile({
+  assert.throws(() => profile({
     canonical: {
       localRef: 'refs/heads/trunk..bad',
       remoteRef: 'refs/remotes/upstream/trunk..bad',
     },
-  });
-  assert.throws(() => observeRepository({ repository: subject.root, profile: unsafeRef }),
-    /canonical ref/);
+  }), /portable direct Git ref/);
 
   const configured = writeProfile(subject.root);
   assert.deepEqual(loadRepositoryProfile({ repository: subject.root }), configured);
@@ -260,4 +396,15 @@ test('profile loader rejects floating and symlinked configuration', (t) => {
   symlinkSync(outside, join(subject.root, REPOSITORY_PROFILE_FILENAME));
   assert.throws(() => loadRepositoryProfile({ repository: subject.root }),
     (error) => error?.reason === 'blocked-repository-profile-identity');
+});
+
+test('repository and worktree identities preserve trailing whitespace and newlines', async (t) => {
+  for (const name of ['repo ', 'repo\n']) await t.test(JSON.stringify(name), (child) => {
+    const subject = repository(child, name);
+    assert.equal(repoRoot(subject.root), subject.root);
+    assert.equal(commonDir(subject.root), realpathSync(join(subject.root, '.git')));
+    assert.deepEqual(worktrees(subject.root), [{
+      path: subject.root, branch: 'trunk', detached: false,
+    }]);
+  });
 });

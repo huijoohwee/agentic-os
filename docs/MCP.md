@@ -18,5 +18,6 @@ Four tools cross the MCP boundary by spawning the existing CLI with an argument 
 
 Every tool returns `{ exitCode, stdout, stderr }` as both structured content and serialized text. A
 nonzero CLI exit is a tool error, while malformed protocol input remains a JSON-RPC error. Input,
-output, and execution time are bounded. Cancellation terminates the matching child and suppresses its
-response; end-of-file terminates all remaining work.
+output, and execution time are bounded. Cancellation terminates the isolated CLI process group on
+POSIX, or the child process on Windows, and suppresses its response. End-of-file terminates all
+remaining work.
