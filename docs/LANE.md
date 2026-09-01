@@ -43,6 +43,15 @@ no compare-and-swap ledger. The merge queue is the serialization point; the PR i
 
 Anything absent from this table is illegal and returns a typed refusal.
 
+## Computed autonomy class
+
+`npm run autonomy:class` derives a committed candidate's promotion ceiling from the merge-base of
+`origin/main...HEAD`; `-- --base=<revision> --head=<revision> --json` binds another exact range.
+Mixed write sets resolve upward through docs-only, test-only, additive-contract, behavioral, and
+authority-controlling. A standing grant never covers authority-controlling changes. The classifier,
+guards, queue policy, integration proofs, command dispatch, budgets, and provider workflows are
+authority-controlling themselves, so none can widen its own promotion ceiling.
+
 ## The two transitions that remove the livelock
 
 `queued` has no `restack`. A queued lane never moves its own base. The queue tests the lane on a
