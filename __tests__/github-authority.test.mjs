@@ -134,12 +134,13 @@ function canonicalRules(input, { canonicalTypes, canonicalBypass = [],
   });
 }
 function evidenceRules(input, { evidenceBypass = [], evidenceTypes, evidenceUpdateAllows = false,
+  evidenceUpdateParameters = { update_allows_fetch_and_merge: evidenceUpdateAllows },
   evidenceParameters = {}, extraEvidenceRuleset = false,
 } = {}) {
   const immutable = rules(input.policy.evidenceRepository, input.bundleRef ?? '', '13',
     evidenceTypes ?? ['update', 'deletion', 'non_fast_forward'], evidenceBypass, {
       ...evidenceParameters,
-      update: { update_allows_fetch_and_merge: evidenceUpdateAllows },
+      update: evidenceUpdateParameters,
     }).rulesets[0];
   const rulesets = [immutable];
   if (extraEvidenceRuleset) {
@@ -153,6 +154,7 @@ function provider({ targetOwnerId = '42', targetOverrides = {}, reviewOverrides 
   canonicalBypass = [], canonicalContexts = ['Integration Gate'], canonicalStrict = false,
   canonicalMethods = ['squash'], canonicalIntegrationId = 15368,
   evidenceBypass = [], evidenceTypes, postEvidenceTypes, evidenceUpdateAllows = false,
+  evidenceUpdateParameters,
   evidenceParameters = {}, extraEvidenceRuleset = false,
   canonicalRevision = CANONICAL, postCanonicalRevision,
   throwAfterPublish = false, raceStored = null, authorityInput = issueInput(),
@@ -209,7 +211,7 @@ function provider({ targetOwnerId = '42', targetOverrides = {}, reviewOverrides 
         evidenceBypass,
         evidenceTypes: stored !== null && postEvidenceTypes !== undefined
           ? postEvidenceTypes : evidenceTypes,
-        evidenceUpdateAllows, evidenceParameters, extraEvidenceRuleset,
+        evidenceUpdateAllows, evidenceUpdateParameters, evidenceParameters, extraEvidenceRuleset,
       });
     },
     async readCanonicalRef(query) {
@@ -453,6 +455,9 @@ test('issuer rejects wrong-owner targets, weak policy rules, and non-provider ti
   })), /one exact zero-bypass immutable ruleset/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({ evidenceUpdateAllows: true })),
     /one exact zero-bypass immutable ruleset/u);
+  await assert.rejects(issueGitHubAuthority(issueInput(), provider({
+    evidenceUpdateParameters: { update_allows_fetch_and_merge: false, unexpected: true },
+  })), /one exact zero-bypass immutable ruleset/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({
     postEvidenceTypes: ['deletion', 'non_fast_forward'],
   })), /one exact zero-bypass immutable ruleset|protection changed/u);
