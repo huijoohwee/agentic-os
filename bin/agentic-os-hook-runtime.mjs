@@ -16,7 +16,9 @@ const MAX_RUNTIME_BYTES = 500_000;
 const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
-const TRUSTED_PRIOR_RUNTIME_IDS = new Set([]);
+const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0',
+]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
     'pre-commit': '124028d56aa2921cf5ff427d2c0b84d661d0214f3acee33f2c1ae5947017984e',
