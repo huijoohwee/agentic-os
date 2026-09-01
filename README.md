@@ -30,6 +30,19 @@ npm run status                   # lanes, WIP, queue
 npm run reap                     # survey lanes proven integrated; add -- --apply to retire
 ```
 
+If canonical `main` is behind with unstaged or untracked bytes, create a read-only synchronization
+plan instead of stashing or resetting it:
+
+```sh
+npm run --silent sync:canonical > /tmp/canonical-sync.json
+# Review the exact SHAs, inventory digest, recovery ref, and authorization in the plan.
+node bin/agentic-os.mjs canonical-sync apply \
+  --plan=/tmp/canonical-sync.json --authorize=agentic-os:canonical-sync:<plan-digest>
+```
+
+Apply rechecks the plan, captures nonignored dirty state in the printed recovery ref, restores the
+fetched target tree, compare-and-swaps local `main`, preserves ignored files, and prints a receipt.
+
 ## What problem this solves
 
 Three settings compose into a livelock that no amount of recovery code fixes:

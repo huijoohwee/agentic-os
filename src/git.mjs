@@ -16,11 +16,12 @@ export class GitError extends Error {
 }
 
 /** Run git and return trimmed stdout. Throws GitError unless `allowFail`. */
-export function git(args, { cwd = process.cwd(), allowFail = false, input } = {}) {
+export function git(args, { cwd = process.cwd(), allowFail = false, input, env } = {}) {
   try {
     return execFileSync('git', args, {
       cwd,
       input,
+      env: env ? { ...process.env, ...env } : process.env,
       encoding: 'utf8',
       stdio: input === undefined ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
       maxBuffer: 64 * 1024 * 1024,
