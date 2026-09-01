@@ -25,6 +25,10 @@ The only accepted legacy projection is the retired non-authoritative nonnegative
 it is dropped in memory without rewriting the legacy bytes. Any other malformed or unknown legacy
 shape remains fail-closed.
 
+Lane survey inventory is bounded to 256 local `refs/heads/agent/*` branches. At the first overflow
+it refuses before classifying or retiring anything; recovery must first partition the retained refs
+under authenticated consumer authority.
+
 ## States
 
 | State | Meaning | Terminal |
