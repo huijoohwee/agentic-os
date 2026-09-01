@@ -8,7 +8,11 @@
     ".": "./src/governance.mjs",
     "./records": "./src/governance.mjs",
     "./adapters/git": "./src/git-repository.mjs",
-    "./adapters/github": "./src/github-provider.mjs"
+    "./adapters/github": "./src/github-provider.mjs",
+    "./compat/git": "./src/compat/git.mjs",
+    "./compat/lane-id": "./src/compat/lane-id.mjs",
+    "./compat/lane-records": "./src/compat/lane-records.mjs",
+    "./compat/worktree": "./src/compat/worktree.mjs"
   },
   "engines": {
     "node": ">=20.11"

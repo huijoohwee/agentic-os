@@ -99,6 +99,14 @@ acquires authority or performs cleanup. Provider observation dispatches only the
 and version selected by the profile; unsupported adapters fail before provider access. Request
 construction is repository-independent and does not access Git or adapter state.
 
+### Compatibility imports
+
+The only declared migration imports are `agentic-os/compat/git`, `lane-id`, `lane-records`, and
+`worktree`. They replace old unpublished `agentic-os/src/*` observation imports without creating
+authority, release, integration, retirement, or cleanup effects. New consumers use the root records
+API or the named Git/GitHub adapters; compatibility imports are narrow v1 contracts, not a second
+lifecycle controller.
+
 ## Reference adapters
 
 The Git adapter is read-only and binds every present registered worktree to the observed clone using
