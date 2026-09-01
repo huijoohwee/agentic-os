@@ -34,6 +34,7 @@
     "guard:main": "node src/guard-main.mjs",
     "mcp": "node bin/agentic-os-mcp.mjs",
     "feature:rank": "node src/rank.mjs",
+    "autonomy:class": "node bin/agentic-os.mjs autonomy-class",
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node src/doc-budget.mjs",
     "modules:check": "node src/module-budget.mjs",
