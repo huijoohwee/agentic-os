@@ -285,7 +285,8 @@ function checkResponse(response) {
 function ruleDescriptor(value, label) {
   const source = jsonObject(value, label), type = text(source.type, `${label}.type`);
   if (!/^[a-z][a-z0-9_]{0,63}$/u.test(type)) fail(`${label} is invalid`);
-  const parameters = Object.hasOwn(source, 'parameters') ? source.parameters : null;
+  const parameters = Object.hasOwn(source, 'parameters') ? source.parameters
+    : type === 'update' ? { update_allows_fetch_and_merge: false } : null;
   if (parameters !== null && (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)))
     fail(`${label}.parameters must be an object or null`);
   return { type, parameters };

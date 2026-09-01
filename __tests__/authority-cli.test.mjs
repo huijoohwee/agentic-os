@@ -75,7 +75,12 @@ function rule(type, options = {}) {
     strict_required_status_checks_policy: false,
   } };
   if (type === 'pull_request') return { type, ruleset_id: options.id, parameters: { allowed_merge_methods: ['squash'] } };
-  if (type === 'update') return { type, ruleset_id: options.id, parameters: { update_allows_fetch_and_merge: Boolean(options.updateAllows) } };
+  if (type === 'update') {
+    const descriptor = { type, ruleset_id: options.id };
+    if (options.updateAllows) return { ...descriptor, parameters: { update_allows_fetch_and_merge: true } };
+    if (options.updateExtraParameter) return { ...descriptor, parameters: { update_allows_fetch_and_merge: false, unexpected: true } };
+    return descriptor;
+  }
   if (type === 'deletion' && options.evidenceDeletionParameters) {
     return { type, ruleset_id: options.id, parameters: {} };
   }
@@ -129,6 +134,7 @@ function fixture(t, options = {}, root = sandbox(t)) {
       assert.equal(parsed.searchParams.get('per_page'), '100');
       return response([
         ...entries(evidenceRules, '12', { updateAllows: options.updateAllows,
+          updateExtraParameter: options.updateExtraParameter,
           evidenceDeletionParameters: options.evidenceDeletionParameters }),
         ...(options.extraEvidenceRuleset ? entries(['creation'], '13') : []),
       ]);
@@ -141,6 +147,7 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === 'GET /repos/example/evidence/rulesets/12') return response(ruleset('12', evidenceRules,
       options.evidenceBypass ? [{ actor_type: 'RepositoryRole', actor_id: 5, bypass_mode: 'always' }] : [],
       { updateAllows: options.updateAllows,
+        updateExtraParameter: options.updateExtraParameter,
         evidenceDeletionParameters: options.evidenceDeletionParameters }));
     if (route === 'GET /repos/example/evidence/rulesets/13' && options.extraEvidenceRuleset) {
       return response(ruleset('13', ['creation'], []));
@@ -253,7 +260,8 @@ test('fails closed for forged input, weak or inexact rules, target drift, and in
   const root = sandbox(t);
   for (const options of [
     { digest: hash('f') }, { workflowPath: '.github/workflows/authority.yml@refs/heads/release/2026' },
-    { rulesObject: true }, { emptyChecks: true }, { updateAllows: true }, { extraDetailRule: true },
+    { rulesObject: true }, { emptyChecks: true }, { updateAllows: true }, { updateExtraParameter: true },
+    { extraDetailRule: true },
     { evidenceBypass: true }, { evidenceCreation: true }, { extraEvidenceRuleset: true },
     { evidenceDeletionParameters: true },
     { targetHead: hash('9', 40) }, { extraTree: true }, { wrongTreeSha: true }, { truncatedTree: true },
