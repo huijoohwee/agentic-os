@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { realpathSync, statSync } from 'node:fs';
 import { isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readBoundedFile } from './bounded-read.mjs';
+import { readBoundedFile } from './catalog-input.mjs';
 
 export const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const DEMAND_EVIDENCE_SCHEMA = 'agentic-os-demand-evidence/v1';

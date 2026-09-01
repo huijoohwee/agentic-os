@@ -1,9 +1,8 @@
 /**
  * Repo-owned local git configuration.
  *
- * These four settings are the difference between resolving a conflict once and
- * resolving it on every restack on every device. They are native git, cost
- * nothing, and apply per clone, so every worktree in the clone shares them.
+ * These settings keep repository-owned Git behavior explicit. They are native
+ * Git, cost nothing, and apply per clone, so its worktrees share them.
  */
 
 import { configGet, configSet, repoRoot } from './git.mjs';
@@ -23,11 +22,6 @@ export const REQUIRED_CONFIG = Object.freeze([
     key: 'merge.conflictStyle',
     value: 'zdiff3',
     why: 'smaller conflict regions, so fewer hunks need a decision at all',
-  },
-  {
-    key: 'rebase.updateRefs',
-    value: 'true',
-    why: 'restack an entire stack in one rebase, moving every intermediate lane ref',
   },
   {
     key: 'pull.ff',

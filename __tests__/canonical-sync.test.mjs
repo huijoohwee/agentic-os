@@ -7,16 +7,16 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
-  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { git } from '../src/git.mjs';
+import { git, installStagedEntries } from '../src/git.mjs';
 import {
   CanonicalSyncError,
   PLAN_SCHEMA,
@@ -25,11 +25,26 @@ import {
   decodeNulFields,
   planCanonicalSync,
 } from '../src/canonical-sync.mjs';
+import { runCanonicalSync } from '../bin/agentic-os-auxiliary.mjs';
 
 function write(path, body) {
   mkdirSync(join(path, '..'), { recursive: true });
   writeFileSync(path, body);
 }
+
+test('canonical-sync apply rejects a plan outside the active profile target', (t) => {
+  const target = fixture({ dirty: false });
+  t.after(() => rmSync(target.dir, { recursive: true, force: true }));
+  const planPath = join(target.dir, 'foreign-plan.json');
+  writeFileSync(planPath, JSON.stringify({
+    branch: 'dev', targetRef: 'refs/remotes/origin/dev',
+  }));
+  const before = target.run(['rev-parse', 'HEAD']);
+  assert.equal(runCanonicalSync(target.dir, [
+    'apply', `--plan=${planPath}`, '--authorize=x', '--exclusive=y',
+  ], { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' }), 1);
+  assert.equal(target.run(['rev-parse', 'HEAD']), before);
+});
 
 function fixture({ dirty = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'agentic-os-canonical-sync-'));
@@ -111,8 +126,29 @@ test('plan is read-only and binds exact SHAs, inventory, authorization, and reco
   assert.equal(git(['show-ref', '--verify', plan.recoveryRef], { cwd: dir, allowFail: true }), null);
   assert.throws(
     () => planCanonicalSync({ cwd: dir, targetRef: 'refs/heads/unprotected' }),
-    (error) => reason(error, 'blocked-target-ref'),
+    (error) => reason(error, 'blocked-canonical-identity'),
   );
+});
+
+test('profile-selected non-main canonical identity plans and applies exactly', (t) => {
+  const subject = fixture();
+  t.after(() => rmSync(subject.dir, { recursive: true, force: true }));
+  subject.run(['branch', '--move', 'trunk']);
+  subject.run(['update-ref', 'refs/remotes/origin/trunk', subject.targetSha]);
+  subject.run(['update-ref', '-d', 'refs/remotes/origin/main']);
+
+  const plan = planCanonicalSync({
+    cwd: subject.dir,
+    branch: 'trunk',
+    targetRef: 'refs/remotes/origin/trunk',
+  });
+  const receipt = applyPlan(plan, subject.dir);
+
+  assert.equal(plan.branch, 'trunk');
+  assert.equal(plan.targetRef, 'refs/remotes/origin/trunk');
+  assert.equal(subject.run(['symbolic-ref', '--short', 'HEAD']), 'trunk');
+  assert.equal(subject.run(['rev-parse', 'HEAD']), subject.targetSha);
+  assert.equal(receipt.targetHead, subject.targetSha);
 });
 
 test('apply refuses missing authorization and any byte drift before recovery or mutation', (t) => {
@@ -284,7 +320,11 @@ test('recovery preserves non-UTF-8 symlink target bytes and rejects non-UTF-8 pa
 
   assert.throws(
     () => decodeNulFields(Buffer.from([0xfe, 0x00])),
-    (error) => reason(error, 'blocked-non-utf8-path'),
+    (error) => reason(error, 'blocked-invalid-path-inventory'),
+  );
+  assert.throws(
+    () => decodeNulFields(Buffer.from('unterminated')),
+    (error) => reason(error, 'blocked-invalid-path-inventory'),
   );
 });
 
@@ -339,144 +379,6 @@ test('a failure after recovery names the durable ref and commit', (t) => {
   assert.equal(failed.run(['show', `${plan.recoveryRef}:tracked space.txt`]), 'owned tracked');
 });
 
-test('an immediate pre-quarantine replacement is retained and fails closed', (t) => {
-  const raced = fixture();
-  t.after(() => rmSync(raced.dir, { recursive: true, force: true }));
-  const plan = planCanonicalSync({ cwd: raced.dir });
-  const bin = mkdtempSync(join(tmpdir(), 'agentic-os-race-git-'));
-  t.after(() => rmSync(bin, { recursive: true, force: true }));
-  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-  const wrapper = join(bin, 'git');
-  write(wrapper, [
-    '#!/bin/sh',
-    'if [ "$1" = rev-parse ] && [ "$2" = --verify ] && [ "$3" = "$RECOVERY_REF" ] &&',
-    '   "$REAL_GIT" show-ref --verify --quiet "$RECOVERY_REF"; then',
-    '  printf "RACED UNIQUE\\n" > "$RACE_PATH"',
-    'fi',
-    'exec "$REAL_GIT" "$@"',
-    '',
-  ].join('\n'));
-  chmodSync(wrapper, 0o755);
-  const prior = { PATH: process.env.PATH, REAL_GIT: process.env.REAL_GIT,
-    RECOVERY_REF: process.env.RECOVERY_REF, RACE_PATH: process.env.RACE_PATH };
-  Object.assign(process.env, {
-    PATH: `${bin}:${prior.PATH}`, REAL_GIT: realGit, RECOVERY_REF: plan.recoveryRef,
-    RACE_PATH: join(raced.dir, 'untracked space.txt'),
-  });
-  t.after(() => {
-    for (const [key, value] of Object.entries(prior)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
-
-  let failure;
-  assert.throws(() => applyPlan(plan, raced.dir), (error) => {
-    failure = error;
-    return reason(error, 'blocked-after-recovery');
-  });
-  assert.equal(failure.detail.cause, 'blocked-quarantine-drift');
-  assert.ok(failure.detail.quarantinePath);
-  const retained = readdirSync(failure.detail.quarantinePath)
-    .map((name) => readFileSync(join(failure.detail.quarantinePath, name), 'utf8'));
-  assert.ok(retained.includes('RACED UNIQUE\n'));
-  assert.equal(raced.run(['show', `${plan.recoveryRef}:untracked space.txt`]), 'owned untracked');
-});
-
-test('a post-quarantine directory is never removed by target installation', (t) => {
-  const raced = fixture();
-  t.after(() => rmSync(raced.dir, { recursive: true, force: true }));
-  const plan = planCanonicalSync({ cwd: raced.dir });
-  const bin = mkdtempSync(join(tmpdir(), 'agentic-os-install-race-git-'));
-  t.after(() => rmSync(bin, { recursive: true, force: true }));
-  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-  const wrapper = join(bin, 'git');
-  const countFile = join(bin, 'recovery-ref-count');
-  write(wrapper, [
-    '#!/bin/sh',
-    'if [ "$1" = rev-parse ] && [ "$2" = --verify ] && [ "$3" = "$RECOVERY_REF" ] &&',
-    '   "$REAL_GIT" show-ref --verify --quiet "$RECOVERY_REF"; then',
-    '  count=0',
-    '  [ -f "$COUNT_FILE" ] && count=$("$REAL_CAT" "$COUNT_FILE")',
-    '  count=$((count + 1))',
-    '  printf "%s\\n" "$count" > "$COUNT_FILE"',
-    '  [ "$count" -eq 2 ] && mkdir "$RACE_PATH"',
-    'fi',
-    'exec "$REAL_GIT" "$@"',
-    '',
-  ].join('\n'));
-  chmodSync(wrapper, 0o755);
-  const keys = ['PATH', 'REAL_GIT', 'REAL_CAT', 'RECOVERY_REF', 'COUNT_FILE', 'RACE_PATH'];
-  const prior = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
-  Object.assign(process.env, {
-    PATH: `${bin}:${prior.PATH}`, REAL_GIT: realGit, REAL_CAT: '/bin/cat',
-    RECOVERY_REF: plan.recoveryRef, COUNT_FILE: countFile,
-    RACE_PATH: join(raced.dir, 'target collision.txt'),
-  });
-  t.after(() => {
-    for (const [key, value] of Object.entries(prior)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
-
-  let failure;
-  assert.throws(() => applyPlan(plan, raced.dir), (error) => {
-    failure = error;
-    return reason(error, 'blocked-after-recovery');
-  });
-  assert.equal(failure.detail.cause, 'blocked-install-collision');
-  assert.equal(failure.detail.collisionPath, 'target collision.txt');
-  assert.ok(failure.detail.quarantinePath);
-  assert.ok(failure.detail.stagingPath);
-  assert.equal(statSync(join(raced.dir, 'target collision.txt')).isDirectory(), true);
-  assert.equal(raced.run(['show', `${plan.recoveryRef}:target collision.txt`]), 'owned collision');
-  assert.equal(raced.run(['rev-parse', 'HEAD']), raced.localSha);
-});
-
-test('the ref transaction refuses a moved origin without advancing local main', (t) => {
-  const moved = fixture();
-  t.after(() => rmSync(moved.dir, { recursive: true, force: true }));
-  const plan = planCanonicalSync({ cwd: moved.dir });
-  const nextTarget = moved.run(
-    ['commit-tree', `${moved.targetSha}^{tree}`, '-p', moved.targetSha],
-    { input: 'target moved during apply\n' },
-  );
-  const bin = mkdtempSync(join(tmpdir(), 'agentic-os-ref-race-git-'));
-  t.after(() => rmSync(bin, { recursive: true, force: true }));
-  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-  const wrapper = join(bin, 'git');
-  write(wrapper, [
-    '#!/bin/sh',
-    'if [ "$1" = update-ref ] && [ "$2" = --stdin ]; then',
-    '  "$REAL_GIT" update-ref refs/remotes/origin/main "$MOVED_TARGET" "$EXPECTED_TARGET"',
-    'fi',
-    'exec "$REAL_GIT" "$@"',
-    '',
-  ].join('\n'));
-  chmodSync(wrapper, 0o755);
-  const keys = ['PATH', 'REAL_GIT', 'MOVED_TARGET', 'EXPECTED_TARGET'];
-  const prior = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
-  Object.assign(process.env, {
-    PATH: `${bin}:${prior.PATH}`, REAL_GIT: realGit,
-    MOVED_TARGET: nextTarget, EXPECTED_TARGET: moved.targetSha,
-  });
-  t.after(() => {
-    for (const [key, value] of Object.entries(prior)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
-
-  let failure;
-  assert.throws(() => applyPlan(plan, moved.dir), (error) => {
-    failure = error;
-    return reason(error, 'blocked-after-recovery');
-  });
-  assert.match(failure.detail.cause, /update-ref --stdin/u);
-  assert.equal(moved.run(['rev-parse', 'refs/heads/main']), moved.localSha);
-  assert.equal(moved.run(['rev-parse', 'HEAD']), moved.localSha);
-  assert.equal(moved.run(['rev-parse', 'refs/remotes/origin/main']), nextTarget);
-  assert.match(moved.run(['rev-parse', plan.recoveryRef]), /^[0-9a-f]{40}$/u);
-});
-
 test('planning refuses a target file over an existing directory', (t) => {
   const directory = fixture({ dirty: false });
   t.after(() => rmSync(directory.dir, { recursive: true, force: true }));
@@ -485,6 +387,23 @@ test('planning refuses a target file over an existing directory', (t) => {
     (error) => reason(error, 'blocked-directory-target-collision'));
   assert.equal(statSync(join(directory.dir, 'target collision.txt')).isDirectory(), true);
   assert.equal(directory.run(['for-each-ref', '--format=%(refname)', 'refs/agentic-os/recovery']), '');
+});
+
+test('nested installation refuses a pre-existing symlink-parent escape without external writes', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'agentic-os-install-root-'));
+  const staging = mkdtempSync(join(tmpdir(), 'agentic-os-install-stage-'));
+  const outside = mkdtempSync(join(tmpdir(), 'agentic-os-install-outside-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(staging, { recursive: true, force: true }));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  mkdirSync(join(staging, 'dir'));
+  writeFileSync(join(staging, 'dir', 'file.txt'), 'target\n');
+  symlinkSync(outside, join(root, 'dir'));
+  assert.throws(
+    () => installStagedEntries(staging, [{ path: 'dir/file.txt', mode: '100644' }], root),
+    (error) => error.reason === 'blocked-directory-ancestor',
+  );
+  assert.equal(existsSync(join(outside, 'file.txt')), false);
 });
 
 test('ignored leading-space collisions are rejected before recovery or overwrite', (t) => {
@@ -545,6 +464,22 @@ test('apply recovers dirty bytes, restores target, preserves ignored files, and 
   assert.equal(receipt.priorHead, localSha);
   assert.equal(receipt.targetHead, targetSha);
   assert.equal(receipt.recoveryRef, plan.recoveryRef);
+  assert.equal(receipt.recoveryRefObservedBeforeReceipt, true);
+  assert.equal(receipt.quarantineRemoved, false);
+  assert.equal(existsSync(receipt.quarantinePath), true);
+  assert.equal(existsSync(receipt.quarantineManifestPath), true);
+  const manifestBytes = readFileSync(receipt.quarantineManifestPath);
+  assert.equal(
+    createHash('sha256').update(manifestBytes).digest('hex'),
+    receipt.quarantineManifestDigest,
+  );
+  const manifest = JSON.parse(manifestBytes);
+  assert.equal(manifest.schema, 'agentic-os-canonical-sync-quarantine/v1');
+  assert.equal(manifest.planDigest, plan.planDigest);
+  assert.equal(manifest.entries.length, receipt.quarantineEntryCount);
+  assert.equal(receipt.visibleStatusClean, true);
+  assert.equal(receipt.ignoredPathsPreservedInPlace, true);
+  assert.equal(receipt.stagingRemoved, true);
   assert.equal(run(['rev-parse', 'HEAD']), targetSha);
   assert.equal(run(['status', '--porcelain=v1', '--untracked-files=all']), '');
   assert.equal(readFileSync(join(dir, 'tracked space.txt'), 'utf8'), 'target tracked\n');

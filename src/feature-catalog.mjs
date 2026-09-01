@@ -2,11 +2,11 @@
 
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { readBoundedFile } from './bounded-read.mjs';
 import {
   MAX_ARGUMENTS,
   MAX_CANDIDATES,
   MAX_REFS_PER_FIELD,
+  readBoundedFile,
   snapshotCatalogInput,
 } from './catalog-input.mjs';
 import { MAX_EVIDENCE_REFS, ROOT, evidenceRef } from './feature-grounding.mjs';

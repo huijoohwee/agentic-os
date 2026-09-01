@@ -1,14 +1,10 @@
-/**
- * Merge queue adapter. The queue is the only thing that decides what lands
- * next, so this module reads and writes provider configuration and enqueues a
- * lane. It never restacks, never force-pushes, and never merges directly.
- *
- * Provider access goes through the `gh` CLI, which already holds the operator's
- * credentials. No token is read, stored, or logged here.
- */
-
-import { execFileSync } from 'node:child_process';
-import { PROTECTED_BRANCH } from './worktree.mjs';
+/** Profile-driven GitHub protected-integration observation and handoff. */
+import { git, gitLines, remoteTransport } from './git.mjs';
+import { enqueue as providerEnqueue, gh, ghAvailable, isAbsentClassicProtection,
+  lastError, lastHttpStatus } from './github-provider.mjs';
+import { PROVIDER_CAPABILITIES, providerPolicy as resolveProviderPolicy } from './lane-state.mjs';
+export { isAbsentClassicProtection, providerHttpStatus } from './github-provider.mjs';
+export { PROVIDER_CAPABILITIES } from './lane-state.mjs';
 
 export const RULESET_NAME = 'ADLC merge queue';
 
@@ -24,203 +20,310 @@ export const QUEUE_POLICY = Object.freeze({
   check_response_timeout_minutes: 60,
 });
 
-export const REQUIRED_CHECKS = Object.freeze(['test', 'budgets']);
-
-export function ghAvailable() {
-  try {
-    execFileSync('gh', ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+export const REQUIRED_CHECKS = resolveProviderPolicy().requiredChecks;
+export const providerPolicy = resolveProviderPolicy;
+export function queuePolicyMatches(parameters) {
+  return Object.entries(QUEUE_POLICY).every(([key, value]) => parameters?.[key] === value);
+}
+/** Fail-closed recognition of a ruleset that explicitly governs the configured branch. */
+export function rulesetApplies(entry, defaultBranch = null, protectedBranch = 'main') {
+  const refs = entry.conditions?.ref_name ?? {};
+  const protectedRef = `refs/heads/${protectedBranch}`;
+  const include = Array.isArray(refs.include) ? refs.include : [];
+  const exclude = Array.isArray(refs.exclude) ? refs.exclude : [];
+  const recognized = (value) => value === protectedRef
+    || (value === '~DEFAULT_BRANCH' && defaultBranch === protectedBranch);
+  return entry.enforcement === 'active'
+    && entry.target === 'branch'
+    && include.length > 0
+    && include.every(recognized)
+    && exclude.length === 0;
+}
+export function workflowHasMergeGroup(text) {
+  const lines = text.split('\n').filter((line) => !/^\s*#/u.test(line));
+  const start = lines.findIndex((line) => /^(?:on|["']on["'])\s*:/u.test(line));
+  if (start < 0) return false;
+  const inline = lines[start].replace(/^(?:on|["']on["'])\s*:\s*/u, '')
+    .replace(/\s+#.*$/u, '').trim();
+  if (inline === 'merge_group') return true;
+  if (inline.startsWith('[') && inline.endsWith(']')) {
+    const triggers = inline.slice(1, -1).split(',')
+      .map((value) => value.trim().replace(/^["']|["']$/gu, ''));
+    return triggers.includes('merge_group');
   }
+  if (inline !== '') return false;
+  return directBlockEntries(lines, start).some((entry) => entry.key === 'merge_group');
+}
+function directBlockEntries(lines, start) {
+  const parentIndent = lines[start].match(/^\s*/u)[0].length, block = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index], indentation = line.match(/^\s*/u)[0].length;
+    if (line.trim() !== '' && indentation <= parentIndent) break;
+    if (line.trim() !== '') block.push({ line, index, indentation });
+  }
+  const indent = Math.min(...block.map((entry) => entry.indentation));
+  return block.filter((entry) => entry.indentation === indent).map((entry) => {
+    const match = entry.line.trim().match(/^(?:["']?)([^:"']+)(?:["']?)\s*:\s*(.*)$/u);
+    return match ? { ...entry, key: match[1], value: match[2] } : null;
+  }).filter(Boolean);
+}
+export function workflowMergeGroupChecks(text) {
+  if (!workflowHasMergeGroup(text)) return [];
+  const lines = text.split('\n').filter((line) => !/^\s*#/u.test(line));
+  const jobs = lines.findIndex((line) => /^(?:jobs|["']jobs["'])\s*:/u.test(line));
+  if (jobs < 0) return [];
+  return directBlockEntries(lines, jobs).flatMap((job) => {
+    if (job.value !== '') return [];
+    const fields = directBlockEntries(lines, job.index);
+    if (fields.some((entry) => entry.key === 'if')) return [];
+    const name = fields.find((entry) => entry.key === 'name')?.value?.replace(/\s+#.*$/u, '')
+      .replace(/^(["'])(.*)\1$/u, '$2').trim();
+    return [name ?? job.key];
+  });
 }
 
-/** Last provider error, so a failed call can be reported instead of guessed at. */
-export let lastError = null;
-
-/** Run gh and parse JSON. Returns null on any failure; callers report drift. */
-export function gh(args, { cwd = process.cwd(), json = true, input } = {}) {
-  try {
-    const out = execFileSync('gh', args, {
-      cwd,
-      input,
-      encoding: 'utf8',
-      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    lastError = null;
-    return json ? JSON.parse(out || 'null') : out.trim();
-  } catch (error) {
-    lastError = providerMessage(error);
-    return null;
+function protectedWorkflowSupportsMergeGroup(cwd, policy) {
+  const contexts = new Set();
+  for (const path of gitLines(
+    ['ls-tree', '-r', '--name-only', policy.protectedRef, '--', '.github/workflows'], { cwd },
+  )) {
+    workflowMergeGroupChecks(git(['show', `${policy.protectedRef}:${path}`], { cwd }))
+      .forEach((context) => contexts.add(context));
   }
+  return policy.requiredChecks.every((context) => contexts.has(context));
 }
 
-/** Pull the useful sentence out of a gh failure. */
-export function providerMessage(error) {
-  const raw = `${error.stdout ?? ''}${error.stderr ?? ''}`.trim();
-  if (!raw) return String(error.message ?? 'unknown provider error');
-  try {
-    const parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-    const detail = (parsed.errors ?? [])
-      .map((entry) => (typeof entry === 'string' ? entry : entry.message ?? ''))
-      .filter(Boolean)
-      .join('; ');
-    return [parsed.message, detail].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  } catch {
-    return raw.split('\n').filter(Boolean).slice(0, 2).join(' ');
+function hostOf(value) {
+  try { return new URL(value).host.toLowerCase(); } catch {
+    return value.match(/^(?:[^@/]+@)?([^:/]+)(?::|\/)/u)?.[1]?.toLowerCase() ?? null;
   }
 }
 
 /** Observed provider state relevant to the livelock. Read-only. */
-export function observe({ cwd = process.cwd() } = {}) {
-  if (!ghAvailable()) return { available: false };
+export function observe({
+  cwd = process.cwd(), profile, provider = gh, providerAvailable = ghAvailable,
+} = {}) {
+  const policy = resolveProviderPolicy(profile);
+  if (!providerAvailable()) return { available: false };
 
-  const repo = gh(['repo', 'view', '--json', 'nameWithOwner,defaultBranchRef'], { cwd });
-  const merge = gh(
+  const errors = [];
+  const call = (args) => provider(args, { cwd });
+  const remote = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
+  const originUrl = remoteTransport(remote, cwd).fetchUrl;
+  const repo = originUrl
+    ? call(['repo', 'view', '--json', 'nameWithOwner,defaultBranchRef,url', '--', originUrl])
+    : null;
+  const hostname = hostOf(repo?.url ?? '');
+  const repositoryName = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repo?.nameWithOwner ?? '')
+    && hostname && hostname === hostOf(originUrl ?? '') ? repo.nameWithOwner : null;
+  const repository = repositoryName ? `${hostname}/${repositoryName}` : null;
+  if (!repository) errors.push('repository');
+  if (profile && repository !== profile.repository) errors.push('configured-repository');
+  const endpoint = (suffix = '') => `repos/${repositoryName}${suffix}`;
+  const onHost = (args) => [...args, '--hostname', hostname];
+  const merge = repository ? call(onHost(
     [
       'api',
-      'repos/:owner/:repo',
+      endpoint(),
       '--jq',
       '{allow_squash_merge,allow_merge_commit,allow_rebase_merge,delete_branch_on_merge,' +
         'allow_auto_merge,squash_merge_commit_title,squash_merge_commit_message}',
     ],
-    { cwd },
-  );
-  const rulesets = gh(['api', 'repos/:owner/:repo/rulesets'], { cwd }) ?? [];
-  const protection = gh(
-    ['api', `repos/:owner/:repo/branches/${PROTECTED_BRANCH}/protection`],
-    { cwd },
-  );
+  )) : null;
+  if (!merge) errors.push('merge-settings');
+  const rulesetsResult = repository
+    ? call(onHost(['api', endpoint('/rulesets'), '--method', 'GET', '-F', 'per_page=100'])) : null;
+  const rulesets = Array.isArray(rulesetsResult) ? rulesetsResult : [];
+  if (!Array.isArray(rulesetsResult)) errors.push('rulesets');
+  if (rulesets.length === 100) errors.push('rulesets-pagination-boundary');
+  const protection = repository
+    ? call(onHost(['api', endpoint(`/branches/${policy.protectedBranch}/protection`)])) : null;
+  const classicAbsent = !protection && isAbsentClassicProtection(lastHttpStatus, lastError);
+  if (!protection && !classicAbsent) errors.push('classic-protection');
 
-  const expanded = expandRulesets(rulesets, { cwd });
-  const queueRuleset = expanded.find((entry) =>
-    entry.rules.some((rule) => rule.type === 'merge_queue'),
-  );
+  const expanded = rulesets.length === 100 ? [] : expandRulesets(rulesets, {
+    cwd, repository: repositoryName, hostname, provider,
+  });
+  if (expanded.length !== rulesets.length) errors.push('expanded-rulesets');
+  const defaultBranch = repo?.defaultBranchRef?.name ?? null;
+  const applicable = expanded.filter((entry) =>
+    rulesetApplies(entry, defaultBranch, policy.protectedBranch));
+  const queueRules = applicable.flatMap((entry) => entry.rules
+    .filter((rule) => rule.type === 'merge_queue')
+    .map((rule) => ({ ruleset: entry, rule })));
+  const queueRuleset = queueRules[0]?.ruleset ?? null;
   const prArgs = ['pr', 'list', '--state', 'open', '--json', 'number,headRefName'];
-  const openPrs = gh(prArgs, { cwd }) ?? [];
+  if (repository) prArgs.push('--repo', repository);
+  const openPrs = repository ? call(prArgs) : null;
+  if (!Array.isArray(openPrs)) errors.push('open-pull-requests');
 
-  // Rules are looked up across every ruleset, not only the one holding the
-  // queue rule, so a partially applied configuration reports honestly.
-  const allRules = expanded.flatMap((entry) => entry.rules);
-  const checksRule = allRules.find((rule) => rule.type === 'required_status_checks');
-  const prRule = allRules.find((rule) => rule.type === 'pull_request');
-  const rulesetStrict = checksRule?.parameters?.strict_required_status_checks_policy ?? null;
+  const allRules = applicable.flatMap((entry) => entry.rules);
+  const checksRules = allRules.filter((rule) => rule.type === 'required_status_checks');
+  const prRules = allRules.filter((rule) => rule.type === 'pull_request');
+  const rulesetStrictValues = checksRules
+    .map((rule) => rule.parameters?.strict_required_status_checks_policy)
+    .filter((value) => typeof value === 'boolean');
+  const rulesetStrict = rulesetStrictValues.includes(true)
+    ? true
+    : rulesetStrictValues.length > 0 ? false : null;
   const classicStrict = protection?.required_status_checks?.strict ?? null;
+  const requiredChecks = [...new Set(checksRules.flatMap(
+    (rule) => rule.parameters?.required_status_checks ?? [],
+  ).map((entry) => entry.context).concat(
+    protection?.required_status_checks?.contexts ?? [],
+  ))];
 
   return {
     available: true,
-    repo: repo?.nameWithOwner ?? null,
+    observationErrors: [...new Set(errors)],
+    repo: repository,
+    remoteUrl: originUrl,
+    policy,
     merge,
-    // Either surface can impose require-up-to-date, so either one turning it on
-    // is drift.
-    strict: classicStrict === true || rulesetStrict === true ? true : classicStrict ?? rulesetStrict,
-    requiredChecks: (checksRule?.parameters?.required_status_checks ?? [])
-      .map((entry) => entry.context)
-      .concat(protection?.required_status_checks?.contexts ?? []),
+    strict: (protection || classicAbsent) && expanded.length === rulesets.length
+      ? (classicStrict === true || rulesetStrict === true
+        ? true : classicStrict ?? rulesetStrict ?? false)
+      : null,
+    requiredChecks,
     autoMerge: Boolean(merge?.allow_auto_merge),
-    pullRequestRequired: Boolean(prRule),
-    queueEnabled: Boolean(queueRuleset),
+    pullRequestRequired: prRules.length > 0,
+    linearHistoryRequired: allRules.some((rule) => rule.type === 'required_linear_history')
+      || protection?.required_linear_history?.enabled === true,
+    queueEnabled: queueRules.length > 0,
+    queuePolicySatisfied: queueRules.length > 0
+      && queueRules.every(({ rule }) => queuePolicyMatches(rule.parameters)),
     queueRuleset: queueRuleset ?? null,
-    openPrs,
+    mergeGroupSupported: policy.mergeQueueRequired
+      ? protectedWorkflowSupportsMergeGroup(cwd, policy) : null,
+    openPrs: Array.isArray(openPrs) ? openPrs : null,
   };
 }
 
 /** Every active ruleset with its rules resolved. */
-export function expandRulesets(rulesets, { cwd = process.cwd() } = {}) {
+export function expandRulesets(rulesets, {
+  cwd = process.cwd(), repository, hostname, provider = gh,
+} = {}) {
   const expanded = [];
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository ?? '') || !hostname) return expanded;
   for (const summary of rulesets) {
-    const full = gh(['api', `repos/:owner/:repo/rulesets/${summary.id}`], { cwd });
-    if (full) expanded.push({ id: summary.id, name: full.name, rules: full.rules ?? [] });
+    const full = provider([
+      'api', `repos/${repository}/rulesets/${summary.id}`, '--hostname', hostname,
+    ], { cwd });
+    if (full) expanded.push({
+      id: summary.id, name: full.name, target: full.target,
+      enforcement: full.enforcement, conditions: full.conditions, rules: full.rules ?? [],
+    });
   }
   return expanded;
 }
 
-/**
- * Findings against the required configuration. Each is the drift, the reason it
- * matters, and the exact remedy. Never applied automatically.
- */
-export function audit(state) {
+/** Compare observed state with the capability-selected repository policy. */
+export function audit(state, profile) {
+  const policy = profile === undefined ? state.policy ?? resolveProviderPolicy()
+    : resolveProviderPolicy(profile);
   const findings = [];
   const fail = (id, detail, remedy) => findings.push({ id, ok: false, detail, remedy });
   const pass = (id, detail) => findings.push({ id, ok: true, detail });
 
-  if (!state.available) {
-    return [
-      {
-        id: 'gh',
-        ok: false,
-        detail: 'gh CLI not available',
-        remedy: 'install gh, then gh auth login',
-      },
-    ];
-  }
+  if (!state.available) return [{
+    id: 'gh', ok: false, detail: 'gh CLI not available', remedy: 'install gh, then gh auth login',
+  }];
 
-  if (state.queueEnabled) {
+  if ((state.observationErrors ?? []).length === 0) pass('provider-observation', 'all provider facts observed');
+  else fail('provider-observation', `unknown: ${state.observationErrors.join(', ')}`,
+    'restore provider observation before relying on this report');
+
+  if (!policy.mergeQueueRequired) {
+    pass('merge-queue', 'not selected by repository profile');
+  } else if (state.queueEnabled) {
     pass('merge-queue', `enabled by ruleset "${state.queueRuleset.name}"`);
-  } else if (state.autoMerge && (state.requiredChecks?.length ?? 0) > 0 && state.strict !== true) {
-    findings.push({
-      id: 'merge-queue',
-      ok: true,
-      detail: 'no queue; ordering delegated to auto-merge (no batching, still no restacks)',
-    });
-  } else {
-    fail('merge-queue', 'nothing owns landing order', 'npm run queue:apply');
-  }
-
-  if (state.autoMerge) pass('auto-merge', 'auto-merge is allowed, so a lane can be armed and left');
-  else fail('auto-merge', 'auto-merge is disabled; the queue rule also requires it', 'npm run queue:apply');
-
-  if (state.pullRequestRequired) pass('pull-request', 'direct pushes to the protected branch are blocked');
-  else fail('pull-request', 'the protected branch accepts direct pushes', 'npm run queue:apply');
-
-  if (state.merge?.squash_merge_commit_message === 'PR_BODY') {
-    pass('trailer-carrier', 'the squash commit carries the pull request body');
   } else {
     fail(
-      'trailer-carrier',
-      `squash message source is ${state.merge?.squash_merge_commit_message ?? 'unknown'}; ` +
-        'the Source-Head trailer would never reach the protected branch',
-      'npm run queue:apply',
+      'merge-queue',
+      'tested protected-branch ordering is unavailable; auto-merge is not equivalent',
+      'enable a provider merge queue',
     );
   }
 
-  if (state.strict === true) {
+  if (!policy.mergeQueueRequired) pass('queue-policy', 'not selected by repository profile');
+  else if (state.queuePolicySatisfied) pass('queue-policy', 'every applicable queue rule matches policy');
+  else fail(
+    'queue-policy',
+    'an applicable queue rule is absent or has policy drift',
+    'apply the reviewed repository-owned queue policy',
+  );
+
+  if (!policy.mergeQueueRequired) pass('auto-merge', 'not required without merge-queue ordering');
+  else if (state.autoMerge) pass('auto-merge', 'auto-merge is allowed, so a lane can be armed and left');
+  else fail('auto-merge', 'auto-merge is disabled; the queue rule also requires it',
+    'ask repository authority to apply the reviewed provider policy');
+
+  if (!policy.pullRequestRequired) pass('pull-request', 'not selected by repository profile');
+  else if (state.pullRequestRequired) pass('pull-request', 'an applicable pull-request rule is active');
+  else fail('pull-request', 'no applicable pull-request rule was observed',
+    'ask repository authority to apply the reviewed pull-request policy');
+
+  if (!policy.linearHistoryRequired) pass('linear-history', 'not selected by repository profile');
+  else if (state.linearHistoryRequired) pass('linear-history', 'linear history is required');
+  else fail('linear-history', 'linear history is not required',
+    'ask repository authority to apply the reviewed provider policy');
+
+  const strictId = policy.strict === true ? 'strict-on' : 'strict-off';
+  if (policy.strict === null) {
+    pass('strict-policy', 'strictness not selected by repository profile');
+  } else if (state.strict === policy.strict) {
+    pass(strictId, `require-branches-up-to-date is ${policy.strict ? 'on' : 'off'} as selected`);
+  } else if (state.strict === null) {
+    fail(strictId, 'require-branches-up-to-date is unknown', 'restore protection observation');
+  } else if (policy.strict === false) {
     fail(
-      'strict-off',
+      strictId,
       'require-branches-up-to-date is ON, which forces the restack treadmill the queue replaces',
-      'npm run queue:apply',
+      'ask repository authority to apply the reviewed provider policy',
     );
   } else {
-    pass('strict-off', 'require-branches-up-to-date is off');
+    fail(strictId, 'require-branches-up-to-date is off but the profile requires fresh-base checks',
+      'apply the reviewed repository-owned strict-check policy');
   }
 
   const squashOnly =
     state.merge?.allow_squash_merge &&
     !state.merge.allow_merge_commit &&
     !state.merge.allow_rebase_merge;
-  if (squashOnly) pass('squash-only', 'squash is the only merge method');
-  else fail('squash-only', 'more than one merge method is allowed', 'npm run queue:apply');
+  if (!policy.squashOnlyRequired) pass('squash-only', 'not selected by repository profile');
+  else if (squashOnly) pass('squash-only', 'squash is the only merge method');
+  else fail('squash-only', 'more than one merge method is allowed',
+    'ask repository authority to apply the reviewed provider policy');
 
-  if (state.merge?.delete_branch_on_merge) {
-    pass('delete-on-merge', 'remote lane refs are deleted on merge');
+  if (state.merge?.delete_branch_on_merge === false) {
+    pass('retain-on-merge', 'remote lane refs remain available for governed retirement');
   } else {
-    fail('delete-on-merge', 'merged lane refs are retained', 'npm run queue:apply');
+    fail('retain-on-merge', 'merge can delete a lane ref before a retirement receipt', 'disable automatic branch deletion');
   }
 
-  const missingChecks = REQUIRED_CHECKS.filter((check) => !state.requiredChecks?.includes(check));
+  const missingChecks = policy.requiredChecks.filter(
+    (check) => !state.requiredChecks?.includes(check),
+  );
   if (missingChecks.length === 0) {
-    pass('required-checks', `${REQUIRED_CHECKS.join(', ')} are required`);
+    pass('required-checks', policy.requiredChecks.length === 0
+      ? 'none selected by repository profile'
+      : `${policy.requiredChecks.join(', ')} are required`);
   } else {
     fail(
       'required-checks',
       `not required: ${missingChecks.join(', ')}; the queue has nothing to gate a batch on`,
-      'npm run queue:apply',
+      'ask repository authority to apply the reviewed provider policy',
     );
   }
 
-  const openCount = state.openPrs.length;
-  if (openCount > 15) {
+  if (!policy.mergeQueueRequired) pass('merge-group', 'not required without merge-queue ordering');
+  else if (state.mergeGroupSupported) pass('merge-group', 'CI statically binds required jobs to merge groups');
+  else fail('merge-group', 'CI has no merge_group trigger', 'add merge_group to protected CI');
+
+  const openCount = Array.isArray(state.openPrs) ? state.openPrs.length : null;
+  if (openCount === null) {
+    fail('wip', 'open pull-request count is unknown', 'restore pull-request observation');
+  } else if (openCount > 15) {
     fail(
       'wip',
       `${openCount} open pull requests; drain cost grows with the square of this number`,
@@ -232,130 +335,64 @@ export function audit(state) {
 
   return findings;
 }
-
-/** The exact mutation `queue apply` performs, as data, so it can be reviewed. */
-export function plan() {
+/** Desired provider policy, rendered as data for repository-authority review. */
+export function plan(profile) {
+  const policy = resolveProviderPolicy(profile);
+  const rules = [
+    ...(policy.pullRequestRequired ? [{
+      type: 'pull_request',
+      parameters: {
+        required_approving_review_count: 0,
+        dismiss_stale_reviews_on_push: false,
+        require_code_owner_review: false,
+        require_last_push_approval: false,
+        required_review_thread_resolution: false,
+      },
+    }] : []),
+    ...(policy.requiredChecks.length > 0 ? [{
+      type: 'required_status_checks',
+      parameters: {
+        ...(policy.strict === null ? {} : { strict_required_status_checks_policy: policy.strict }),
+        required_status_checks: policy.requiredChecks.map((context) => ({ context })),
+      },
+    }] : []),
+    ...(policy.mergeQueueRequired ? [{ type: 'merge_queue', parameters: { ...QUEUE_POLICY } }] : []),
+    ...(policy.linearHistoryRequired ? [{ type: 'required_linear_history' }] : []),
+    { type: 'deletion' },
+    { type: 'non_fast_forward' },
+  ];
+  const repository = {
+    delete_branch_on_merge: false,
+    ...(policy.mergeQueueRequired ? { allow_auto_merge: true } : {}),
+    ...(policy.squashOnlyRequired ? {
+      allow_squash_merge: true,
+      allow_merge_commit: false,
+      allow_rebase_merge: false,
+      squash_merge_commit_title: 'PR_TITLE',
+      squash_merge_commit_message: 'PR_BODY',
+    } : {}),
+  };
   return {
     ruleset: {
       name: RULESET_NAME,
       target: 'branch',
       enforcement: 'active',
-      conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
-      rules: [
-        {
-          type: 'pull_request',
-          parameters: {
-            required_approving_review_count: 0,
-            dismiss_stale_reviews_on_push: false,
-            require_code_owner_review: false,
-            require_last_push_approval: false,
-            required_review_thread_resolution: false,
-          },
-        },
-        {
-          type: 'required_status_checks',
-          parameters: {
-            // The ruleset spelling of "require branches up to date". Off, because
-            // the queue tests ahead of the protected branch on its own.
-            strict_required_status_checks_policy: false,
-            required_status_checks: REQUIRED_CHECKS.map((context) => ({ context })),
-          },
-        },
-        { type: 'merge_queue', parameters: { ...QUEUE_POLICY } },
-        { type: 'deletion' },
-        { type: 'non_fast_forward' },
-      ],
+      conditions: { ref_name: { include: [`refs/heads/${policy.protectedBranch}`], exclude: [] } },
+      rules,
     },
-    repository: {
-      allow_squash_merge: true,
-      allow_merge_commit: false,
-      allow_rebase_merge: false,
-      delete_branch_on_merge: true,
-      // The merge_queue rule requires this, and so does arming a lane.
-      allow_auto_merge: true,
-      // The squash commit must carry the pull request body, because that is
-      // where the Source-Head trailer lives. Without this the deterministic
-      // integration proof silently never lands.
-      squash_merge_commit_title: 'PR_TITLE',
-      squash_merge_commit_message: 'PR_BODY',
-    },
+    repository,
   };
 }
 
-const RULESET_POST = ['api', '--method', 'POST', 'repos/:owner/:repo/rulesets', '--input', '-'];
-const REPO_PATCH = ['api', '--method', 'PATCH', 'repos/:owner/:repo', '--input', '-'];
-
-/**
- * Apply the plan. Mutates shared branch protection, so it is never automatic.
- *
- * If the provider rejects the merge_queue rule, the remaining rules are applied
- * and the rejection is reported verbatim. A partial apply still removes the
- * livelock: pull requests required, require-up-to-date off, no force pushes.
- */
-export function apply({ cwd = process.cwd() } = {}) {
-  const desired = plan();
-  const applied = [];
-
-  const repo = gh(REPO_PATCH, { cwd, input: JSON.stringify(desired.repository) });
-  applied.push({ step: 'repository settings', ok: Boolean(repo), error: repo ? null : lastError });
-
-  // Upsert, because re-running apply after a partial failure is normal.
-  const existing = (gh(['api', 'repos/:owner/:repo/rulesets'], { cwd }) ?? []).find(
-    (entry) => entry.name === RULESET_NAME,
-  );
-  const write = (payload) =>
-    existing
-      ? gh(['api', '--method', 'PUT', `repos/:owner/:repo/rulesets/${existing.id}`, '--input', '-'], {
-          cwd,
-          input: JSON.stringify(payload),
-        })
-      : gh(RULESET_POST, { cwd, input: JSON.stringify(payload) });
-
-  const verb = existing ? 'updated' : 'created';
-  const full = write(desired.ruleset);
-  if (full) {
-    applied.push({ step: `ruleset ${verb} with merge queue`, ok: true, error: null });
-    return applied;
-  }
-
-  const queueError = lastError;
-  const degraded = {
-    ...desired.ruleset,
-    rules: desired.ruleset.rules.filter((rule) => rule.type !== 'merge_queue'),
-  };
-  const partial = write(degraded);
-  applied.push({
-    step: 'merge queue rule',
+/** Candidate code cannot widen repository-owned provider policy. */
+export function apply() {
+  return [{
+    step: 'repository-owned provider policy',
     ok: false,
-    error: queueError,
-    note: 'the provider refused this rule; enable the merge queue in repository settings',
-  });
-  applied.push({
-    step: `ruleset ${verb} without merge queue`,
-    ok: Boolean(partial),
-    error: partial ? null : lastError,
-  });
-  return applied;
+    error: 'blocked-repository-owned-policy: apply the reviewed plan through repository authority',
+  }];
 }
 
-/**
- * Open a PR for a lane if none exists, then hand it to the provider.
- *
- * The body must carry the Source-Head trailer, because the squash commit is
- * built from the body and that trailer is the deterministic integration proof.
- */
-export function enqueue(ref, { cwd = process.cwd(), title, body } = {}) {
-  const existing = gh(['pr', 'view', ref, '--json', 'number,state,url'], { cwd });
-  if (existing) {
-    if (body) gh(['pr', 'edit', ref, '--body', body], { cwd, json: false });
-    if (title) gh(['pr', 'edit', ref, '--title', title], { cwd, json: false });
-  } else {
-    const create = ['pr', 'create', '--base', PROTECTED_BRANCH, '--head', ref];
-    create.push('--title', title ?? ref);
-    create.push('--body', body ?? '');
-    gh(create, { cwd, json: false });
-  }
-  const merged = gh(['pr', 'merge', ref, '--squash', '--auto'], { cwd, json: false });
-  const view = ['pr', 'view', ref, '--json', 'number,state,url,mergeStateStatus'];
-  return { pr: gh(view, { cwd }), enqueued: merged !== null };
+export function enqueue(ref, options = {}) {
+  return providerEnqueue(ref, { provider: gh, ...options });
 }

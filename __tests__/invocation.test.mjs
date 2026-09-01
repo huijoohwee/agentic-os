@@ -14,7 +14,7 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:88043008a2caa5c9e7b5ed2b57c082addd6ca3843b17b3edc4119464afbfd28b'],
+  claims: ['sha256:c17e6dea737c72d97d5d9c0e4b106103fb26d72c9b6a87ab451756ad2a50c393'],
 });
 
 const clone = (value) => structuredClone(value);

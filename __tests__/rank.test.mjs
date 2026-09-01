@@ -4,8 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readBoundedFile } from '../src/bounded-read.mjs';
-import { MAX_STRING_BYTES } from '../src/catalog-input.mjs';
+import { MAX_STRING_BYTES, readBoundedFile } from '../src/catalog-input.mjs';
 import {
   FEATURE_CATALOG_SCHEMA,
   MAX_ARGUMENTS,
@@ -148,7 +147,7 @@ test('the seed catalog is valid and honestly has no admissible buyer-backed cand
   assert.deepEqual(result.trail.frontier, []);
   assert.match(result.digest, /^sha256:[0-9a-f]{64}$/);
   assert.equal(Object.isFrozen(result.trail.constraints[0].findings), true);
-  for (const id of ['repository-livelock-audit', 'branch-debt-cleanup', 'mcp-server']) {
+  for (const id of ['repository-livelock-audit', 'integration-classification', 'mcp-server']) {
     assert.ok(codes(result, id).includes('named-payer-missing'));
     assert.ok(codes(result, id).includes('demand-evidence-missing'));
   }

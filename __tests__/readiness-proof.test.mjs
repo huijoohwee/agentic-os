@@ -212,6 +212,13 @@ test('live proof rejects committed and dirty source drift', (t) => {
   writeFileSync(join(root, 'src/runtime.mjs'), 'export const value = 2;\n');
   assert.equal(violations(root, options)[0].kind, 'invalid-proof-artifact');
 
+  writeFileSync(join(root, 'src/runtime.mjs'), 'export const value = 1;\n');
+  execFileSync('git', ['update-index', '--assume-unchanged', 'src/runtime.mjs'], { cwd: root });
+  writeFileSync(join(root, 'src/runtime.mjs'), 'export const value = 3;\n');
+  assert.equal(violations(root, options)[0].kind, 'invalid-proof-artifact');
+  execFileSync('git', ['update-index', '--no-assume-unchanged', 'src/runtime.mjs'], { cwd: root });
+  writeFileSync(join(root, 'src/runtime.mjs'), 'export const value = 4;\n');
+
   execFileSync('git', ['add', 'src/runtime.mjs'], { cwd: root });
   execFileSync('git', ['commit', '--quiet', '-m', 'runtime drift'], { cwd: root });
   assert.equal(violations(root, options)[0].kind, 'invalid-proof-artifact');
