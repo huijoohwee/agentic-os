@@ -4,8 +4,11 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, renameSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, renameSync, rmdirSync,
+  statSync, symlinkSync, writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 
 export class GitError extends Error {
   constructor(args, status, stderr) {
@@ -68,18 +71,88 @@ export function acquireOperationLock(name, cwd = process.cwd()) {
 export function quarantineWorktreeEntries(name, entries, verify, cwd = process.cwd()) {
   const path = mkdtempSync(join(commonDir(cwd), `${name}-`));
   const moved = [];
+  const checked = (entry, slot) => {
+    try { verify(entry, slot, path); } catch (error) {
+      error.quarantinePath = path;
+      throw error;
+    }
+  };
   try {
     for (const entry of entries) {
       const slot = String(moved.length);
       renameSync(join(cwd, entry.path), join(path, slot));
-      moved.push({ path: entry.path, slot });
-      verify(entry, slot, path);
+      moved.push({ entry, path: entry.path, slot });
+      checked(entry, slot);
     }
   } catch (error) {
     error.quarantinePath = path;
     throw error;
   }
-  return { path, moved };
+  return { path, moved, verify: () => moved.forEach(({ entry, slot }) => checked(entry, slot)) };
+}
+
+/** Expand dirty inventory to every current tracked/nonignored path without changing bytes. */
+export function worktreePreservationEntries(baseEntries, inventory) {
+  const dirty = new Map(inventory.map((entry) => [entry.path, entry]));
+  const entries = [];
+  for (const [path, prior] of baseEntries) {
+    const entry = dirty.get(path);
+    dirty.delete(path);
+    if (entry?.kind === 'deleted') continue;
+    entries.push(entry ? { path, mode: entry.mode, sha256: entry.sha256 }
+      : { path, mode: prior.mode, oid: prior.oid });
+  }
+  for (const entry of dirty.values()) {
+    if (entry.kind !== 'deleted')
+      entries.push({ path: entry.path, mode: entry.mode, sha256: entry.sha256 });
+  }
+  return entries.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/** Materialize exact Git blobs in private same-filesystem storage. */
+export function stageTreeEntries(name, entries, cwd = process.cwd()) {
+  const path = mkdtempSync(join(commonDir(cwd), `${name}-`));
+  try {
+    if (statSync(path).dev !== statSync(cwd).dev) {
+      const error = new Error('staging and worktree are on different filesystems');
+      error.code = 'EXDEV';
+      throw error;
+    }
+    for (const entry of entries) {
+      const target = join(path, entry.path);
+      mkdirSync(dirname(target), { recursive: true });
+      const bytes = git(['cat-file', 'blob', entry.oid], { cwd, binary: true });
+      if (entry.mode === '120000') symlinkSync(bytes, target);
+      else {
+        writeFileSync(target, bytes);
+        chmodSync(target, entry.mode === '100755' ? 0o755 : 0o644);
+      }
+    }
+  } catch (error) {
+    error.stagingPath = path;
+    throw error;
+  }
+  return path;
+}
+
+/** Install staged entries without overwriting any path recreated by a concurrent writer. */
+export function installStagedEntries(stagingPath, entries, cwd = process.cwd()) {
+  for (const entry of entries) {
+    const source = join(stagingPath, entry.path);
+    const target = join(cwd, entry.path);
+    try {
+      mkdirSync(dirname(target), { recursive: true });
+      const existing = lstatSync(target, { throwIfNoEntry: false });
+      if (existing?.isDirectory()) rmdirSync(target);
+      if (entry.mode === '120000') symlinkSync(readlinkSync(source, { encoding: 'buffer' }), target);
+      else linkSync(source, target);
+    } catch (error) {
+      if (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
+        error.reason = 'blocked-install-collision';
+      error.installPath = entry.path;
+      throw error;
+    }
+  }
 }
 
 export function currentBranch(cwd = process.cwd()) {

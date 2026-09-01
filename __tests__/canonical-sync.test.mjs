@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   rmSync,
   statSync,
@@ -287,6 +288,26 @@ test('recovery preserves non-UTF-8 symlink target bytes and rejects non-UTF-8 pa
   );
 });
 
+test('target installation preserves executable modes and symlink targets', (t) => {
+  const target = fixture({ dirty: false });
+  t.after(() => rmSync(target.dir, { recursive: true, force: true }));
+  target.run(['switch', '--quiet', '--detach', 'origin/main']);
+  write(join(target.dir, 'target executable'), '#!/bin/sh\nexit 0\n');
+  chmodSync(join(target.dir, 'target executable'), 0o755);
+  symlinkSync(Buffer.from('target executable'), join(target.dir, 'target symlink'));
+  target.run(['add', '--', 'target executable', 'target symlink']);
+  target.run(['commit', '--quiet', '--message', 'target modes']);
+  const targetSha = target.run(['rev-parse', 'HEAD']);
+  target.run(['update-ref', 'refs/remotes/origin/main', targetSha]);
+  target.run(['switch', '--quiet', 'main']);
+
+  const receipt = applyPlan(planCanonicalSync({ cwd: target.dir }), target.dir);
+  assert.equal(receipt.targetHead, targetSha);
+  assert.equal(statSync(join(target.dir, 'target executable')).mode & 0o111, 0o111);
+  assert.deepEqual(readlinkSync(join(target.dir, 'target symlink'), { encoding: 'buffer' }),
+    Buffer.from('target executable'));
+});
+
 test('a failure after recovery names the durable ref and commit', (t) => {
   const failed = fixture();
   t.after(() => rmSync(failed.dir, { recursive: true, force: true }));
@@ -359,6 +380,56 @@ test('an immediate pre-quarantine replacement is retained and fails closed', (t)
     .map((name) => readFileSync(join(failure.detail.quarantinePath, name), 'utf8'));
   assert.ok(retained.includes('RACED UNIQUE\n'));
   assert.equal(raced.run(['show', `${plan.recoveryRef}:untracked space.txt`]), 'owned untracked');
+});
+
+test('a post-quarantine write is never overwritten by target installation', (t) => {
+  const raced = fixture();
+  t.after(() => rmSync(raced.dir, { recursive: true, force: true }));
+  const plan = planCanonicalSync({ cwd: raced.dir });
+  const bin = mkdtempSync(join(tmpdir(), 'agentic-os-install-race-git-'));
+  t.after(() => rmSync(bin, { recursive: true, force: true }));
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const wrapper = join(bin, 'git');
+  const countFile = join(bin, 'recovery-ref-count');
+  write(wrapper, [
+    '#!/bin/sh',
+    'if [ "$1" = rev-parse ] && [ "$2" = --verify ] && [ "$3" = "$RECOVERY_REF" ] &&',
+    '   "$REAL_GIT" show-ref --verify --quiet "$RECOVERY_REF"; then',
+    '  count=0',
+    '  [ -f "$COUNT_FILE" ] && count=$("$REAL_CAT" "$COUNT_FILE")',
+    '  count=$((count + 1))',
+    '  printf "%s\\n" "$count" > "$COUNT_FILE"',
+    '  [ "$count" -eq 2 ] && printf "RACED UNIQUE\\n" > "$RACE_PATH"',
+    'fi',
+    'exec "$REAL_GIT" "$@"',
+    '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const keys = ['PATH', 'REAL_GIT', 'REAL_CAT', 'RECOVERY_REF', 'COUNT_FILE', 'RACE_PATH'];
+  const prior = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  Object.assign(process.env, {
+    PATH: `${bin}:${prior.PATH}`, REAL_GIT: realGit, REAL_CAT: '/bin/cat',
+    RECOVERY_REF: plan.recoveryRef, COUNT_FILE: countFile,
+    RACE_PATH: join(raced.dir, 'target collision.txt'),
+  });
+  t.after(() => {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
+  let failure;
+  assert.throws(() => applyPlan(plan, raced.dir), (error) => {
+    failure = error;
+    return reason(error, 'blocked-after-recovery');
+  });
+  assert.equal(failure.detail.cause, 'blocked-install-collision');
+  assert.equal(failure.detail.collisionPath, 'target collision.txt');
+  assert.ok(failure.detail.quarantinePath);
+  assert.ok(failure.detail.stagingPath);
+  assert.equal(readFileSync(join(raced.dir, 'target collision.txt'), 'utf8'), 'RACED UNIQUE\n');
+  assert.equal(raced.run(['show', `${plan.recoveryRef}:target collision.txt`]), 'owned collision');
+  assert.equal(raced.run(['rev-parse', 'HEAD']), raced.localSha);
 });
 
 test('ignored leading-space collisions are rejected before recovery or overwrite', (t) => {

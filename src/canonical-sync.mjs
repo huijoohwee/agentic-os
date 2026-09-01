@@ -3,8 +3,8 @@ import { lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSyn
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import {
-  acquireOperationLock, commonDir, currentBranch, git, isAncestor, quarantineWorktreeEntries,
-  repoRoot,
+  acquireOperationLock, commonDir, currentBranch, git, installStagedEntries, isAncestor,
+  quarantineWorktreeEntries, repoRoot, stageTreeEntries, worktreePreservationEntries,
 } from './git.mjs';
 
 export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2';
@@ -188,6 +188,8 @@ function observed(cwd, targetRef) {
   const targetSha = git(['rev-parse', '--verify', targetRef], { cwd: root, allowFail: true });
   if (!targetSha) refuse('blocked-target-ref-missing', { targetRef });
   if (!isAncestor(localSha, targetSha, root)) refuse('blocked-non-fast-forward', { localSha, targetSha });
+  if ([...treeEntries(localSha, root).values(), ...treeEntries(targetSha, root).values()]
+    .some((entry) => entry.type !== 'blob')) refuse('blocked-submodule-topology');
   const ignored = ignoredPaths(root);
   assertIgnoredSafe(root, localSha, targetSha, ignored);
   const inventory = snapshotInventory(root, localSha);
@@ -297,22 +299,20 @@ function captureRecovery(plan, cwd) {
   git(['update-ref', plan.recoveryRef, commit, '0'.repeat(commit.length)], { cwd });
   return { commit, tree };
 }
-
 function quarantineInventory(plan, cwd) {
   return quarantineWorktreeEntries(
     'agentic-os-canonical-sync-quarantine',
-    plan.inventory.filter((entry) => entry.kind !== 'deleted'),
+    worktreePreservationEntries(treeEntries(plan.expectedLocalSha, cwd), plan.inventory),
     (entry, slot, path) => {
       const content = contentAt(slot, path);
-      if (content.mode !== entry.mode || sha256(content.bytes) !== entry.sha256)
+      const bytesMatch = entry.sha256 ? sha256(content.bytes) === entry.sha256
+        : git(['hash-object', '--stdin'], { cwd, input: content.bytes }) === entry.oid;
+      if (content.mode !== entry.mode || !bytesMatch)
         refuse('blocked-quarantine-drift', { path: entry.path, quarantinePath: path });
     },
     cwd,
   );
 }
-
-function cleanStatus(cwd) { return git(['status', '--porcelain=v1', '--untracked-files=all'], { cwd }); }
-
 export function applyCanonicalSync(
   plan,
   { cwd = process.cwd(), authorization = null, exclusive = null } = {},
@@ -329,27 +329,26 @@ export function applyCanonicalSync(
   if (!lockPath) refuse('blocked-exclusive-lock-held');
   let recovery = null;
   let quarantine = null;
+  let stagingPath = null;
   try {
     assertUnchanged(plan, root);
+    const targetEntries = [...treeEntries(plan.expectedTargetSha, root)]
+      .map(([path, entry]) => ({ path, ...entry }));
+    stagingPath = stageTreeEntries('agentic-os-canonical-sync-target', targetEntries, root);
     recovery = captureRecovery(plan, root);
     assertRecoveryFidelity(plan, recovery, root);
     assertUnchanged(plan, root, { recoveryCommit: recovery.commit });
     quarantine = quarantineInventory(plan, root);
-
-    git(
-      ['restore', `--source=${plan.expectedTargetSha}`, '--staged', '--worktree', '--', '.'],
-      { cwd: root },
-    );
-    git(
-      ['update-ref', 'refs/heads/main', plan.expectedTargetSha, plan.expectedLocalSha],
-      { cwd: root },
-    );
-
+    if (git(['rev-parse', '--verify', plan.recoveryRef], { cwd: root }) !== recovery.commit)
+      refuse('blocked-recovery-ref-drift');
+    installStagedEntries(stagingPath, targetEntries, root);
+    git(['read-tree', plan.expectedTargetSha], { cwd: root });
+    git(['update-ref', 'refs/heads/main', plan.expectedTargetSha, plan.expectedLocalSha], { cwd: root });
     const actualHead = git(['rev-parse', 'HEAD'], { cwd: root });
     const actualTarget = git(['rev-parse', '--verify', plan.targetRef], { cwd: root });
-    const status = cleanStatus(root);
+    const status = git(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root });
     assertCleanIndex(root);
-    const remaining = snapshotInventory(root, plan.expectedTargetSha, { rawTracked: false });
+    const remaining = snapshotInventory(root, plan.expectedTargetSha);
     if (
       actualHead !== plan.expectedTargetSha
       || actualTarget !== plan.expectedTargetSha
@@ -357,24 +356,16 @@ export function applyCanonicalSync(
       || remaining.length > 0
     ) {
       refuse('blocked-postcondition', {
-        expectedHead: plan.expectedTargetSha,
-        actualHead,
-        actualTarget,
-        status,
-        remaining,
-      });
+        expectedHead: plan.expectedTargetSha, actualHead, actualTarget, status, remaining });
     }
+    quarantine.verify();
+    rmSync(stagingPath, { recursive: true });
     rmSync(quarantine.path, { recursive: true });
     return {
-      schema: RECEIPT_SCHEMA,
-      planDigest: plan.planDigest,
-      repository: root,
-      priorHead: plan.expectedLocalSha,
-      targetHead: plan.expectedTargetSha,
-      inventoryDigest: plan.inventoryDigest,
-      inventoryCount: plan.inventory.length,
-      ignoredPathsDigest: plan.ignoredPathsDigest,
-      ignoredPathCount: plan.ignoredPathCount,
+      schema: RECEIPT_SCHEMA, planDigest: plan.planDigest, repository: root,
+      priorHead: plan.expectedLocalSha, targetHead: plan.expectedTargetSha,
+      inventoryDigest: plan.inventoryDigest, inventoryCount: plan.inventory.length,
+      ignoredPathsDigest: plan.ignoredPathsDigest, ignoredPathCount: plan.ignoredPathCount,
       recoveryRef: plan.recoveryRef,
       recoveryCommit: recovery.commit,
       recoveryTree: recovery.tree,
@@ -382,15 +373,22 @@ export function applyCanonicalSync(
         .map((entry) => entry.path),
       exclusiveContract: plan.exclusiveAuthorization,
       quarantineRemoved: true,
+      stagingRemoved: true,
       clean: true,
     };
   } catch (error) {
-    if (!recovery) throw error;
+    if (!recovery) {
+      const abandoned = stagingPath ?? error.stagingPath;
+      if (abandoned) rmSync(abandoned, { recursive: true, force: true });
+      throw error;
+    }
     refuse('blocked-after-recovery', {
       recoveryRef: plan.recoveryRef,
       recoveryCommit: recovery.commit,
       quarantinePath: quarantine?.path ?? error.quarantinePath ?? error.detail?.quarantinePath ?? null,
-      cause: error instanceof CanonicalSyncError ? error.reason : error.message,
+      stagingPath: stagingPath ?? error.stagingPath ?? null,
+      collisionPath: error.installPath ?? null,
+      cause: error.reason ?? error.message,
     });
   } finally {
     rmSync(lockPath, { recursive: true, force: true });

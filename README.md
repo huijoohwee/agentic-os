@@ -46,12 +46,14 @@ Apply rechecks the plan, captures nonignored dirty state in the printed recovery
 already-fetched protected `origin/main` tree, compare-and-swaps local `main`, preserves ignored
 files, and prints a receipt. Before supplying the exact `--exclusive` token, stop every IDE agent,
 hook, watcher, and process that can write the checkout. The Git-private lock serializes cooperating
-canonical-sync processes but cannot stop an uncooperative filesystem writer. Dirty paths are moved
-atomically into Git-private quarantine and verified before restore; on success their captured bytes
-remain in the recovery ref and quarantine is removed.
+canonical-sync processes but cannot stop an uncooperative filesystem writer. Every tracked and
+nonignored path is moved atomically into Git-private quarantine and verified. Exact target blobs
+are staged privately and installed with no-clobber links, so a path recreated after quarantine is
+retained and forces a typed failure instead of being overwritten. On success, captured dirty bytes
+remain in the recovery ref and both temporary directories are removed.
 
 The operation is recovery-backed, not atomic. If interrupted after recovery-ref creation, do not
-repeat it blindly: preserve the checkout, recovery ref, lock, and any named quarantine directory.
+repeat it blindly: preserve the checkout, recovery ref, lock, and named quarantine/staging paths.
 Every caught post-recovery failure names the exact recovery ref and commit; a quarantine failure
 also names the retained quarantine directory.
 
