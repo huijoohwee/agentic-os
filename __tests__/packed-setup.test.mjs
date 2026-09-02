@@ -198,6 +198,7 @@ test('published files contain public JSON and adapters without deleted deep impo
     'src/github-provider.mjs',
     'docs/GOVERNANCE.md',
     'docs/adlc-guidelines.md',
+    'guides/AUTONOMOUS-GOAL-PURSUIT.md',
     'templates/SYSTEM-PROMPT-RUNTIME.md',
   ]) assert.equal(files.has(path), true, `${path} must be packed`);
   assert.equal(files.has('src/bounded-read.mjs'), false);
@@ -220,6 +221,12 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   execFileSync('npm', [
     'install', '--ignore-scripts', '--no-package-lock', '--save-exact', archive,
   ], { cwd: repository, stdio: 'pipe' });
+  const installedRoot = join(repository, 'node_modules', 'agentic-os');
+  const installedEvals = execFileSync('npm', ['run', 'evals'], {
+    cwd: installedRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  assert.match(installedEvals, /ok\s+always-load total/u);
+  assert.match(installedEvals, /modules 46\/46/u);
   const legacyHooks = join(repository, '.githooks');
   mkdirSync(legacyHooks);
   for (const hook of ['pre-commit', 'pre-push']) {

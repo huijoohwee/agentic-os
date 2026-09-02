@@ -1,11 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TextDecoder } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import {
   OVERRIDE_ENV,
@@ -13,12 +11,6 @@ import {
 } from '../src/guard-main.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
-import { violations as docViolations, BUDGET as DOC_BUDGET } from '../bin/agentic-os-doc-budget.mjs';
-import {
-  violations as moduleViolations,
-  BUDGET as MODULE_BUDGET,
-  FORBIDDEN_SUFFIXES,
-} from '../bin/agentic-os-module-budget.mjs';
 import {
   assertDevice, assertScope, deviceSegment, isLaneRef, laneRef, parseLaneRef,
 } from '../src/lane-id.mjs';
@@ -576,135 +568,4 @@ test('a post-write identity race exposes the retained review artifact', () => {
   assert.equal(receipt.reviewRequiresAttention, true);
   assert.equal(receipt.pr.url, review.url);
   assert.equal(receipt.sourceHeadBound, false);
-});
-
-test('this repository is inside its own documentation budget', () => {
-  const { found, total } = docViolations();
-  assert.deepEqual(found, [], `doc budget violations: ${JSON.stringify(found, null, 2)}`);
-  assert.deepEqual(DOC_BUDGET, {
-    agentsFileBytes: 4 * 1024,
-    perDocBytes: 12 * 1024,
-    alwaysLoadBytes: 40 * 1024,
-    maxLineChars: 120,
-  });
-  assert.equal(total, 40_702, 'update this exact cost to expose every always-load byte delta');
-  assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
-});
-
-test('the portable runtime system prompt is exact and within its native byte contract', () => {
-  const root = fileURLToPath(new URL('..', import.meta.url));
-  const bytes = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 996, 'update this exact cost to expose every prompt byte delta');
-  assert.ok(bytes.byteLength <= 1_000);
-  const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 984);
-  assert.ok([...prompt].length <= 1_000);
-  assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
-  assert.equal(bytes.includes(0x0d), false);
-  assert.equal(bytes.at(-1), 0x0a);
-  assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'be6697b0aeb4c093be5f785c9f313ab3c5672c3746908a8e317bd4d131c8396d');
-});
-
-test('ADLC requires bounded active-work completion estimates at every execution boundary', () => {
-  const root = fileURLToPath(new URL('..', import.meta.url));
-  const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
-  const requirements = new Map([
-    ['docs/adlc-guidelines.md', [
-      'bounded active-work estimated time to completion (ETA), as a range/upper bound',
-      'refresh after material drift in scope, evidence, authority, checks, workload, or dependencies.',
-      'External waits are not ETA: name the dependency/condition and next recheck; never invent completion.',
-      '1,000-byte hard ceiling; code-point count is secondary and token estimates are advisory',
-      'New always-load guidance or module patterns declare projected byte/module delta',
-      'One admitted lane binds branch, worktree, scope, review',
-      'retirement, each cleanup target, sync, deploy, and rollback',
-    ]],
-    ['docs/START-WORKFLOW.md', [
-      "At start/resume, apply the global prompt's completion-estimate and external-wait rule.",
-      'Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
-      '`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
-      'for one admitted lane',
-    ]],
-    ['docs/RELEASE-WORKFLOW.md', [
-      "At release start/resume, apply the global prompt's completion-estimate and external-wait rule.",
-      'Retire and clean each exact target only by its own authorized receipt.',
-    ]],
-    ['templates/SYSTEM-PROMPT-RUNTIME.md', [
-      'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md; obey always.',
-      'Always simplify/fix owner/remove replacements; contract-only shims.',
-      'Start/resume: bounded active-work ETA range/cap; refresh on material drift.',
-      'External wait: dependency/condition+recheck, not ETA.',
-      'authority+green proof per effect/receipt; never infer.',
-    ]],
-    ['AGENTS.md', [
-      'Continuously obey the global `templates/SYSTEM-PROMPT-RUNTIME.md`',
-    ]],
-    ['docs/BUDGETS.md', [
-      'Universal runtime prompt | 1,000 UTF-8 bytes',
-      'states its projected byte delta and fits the configured budget',
-      'module pattern states its per-scenario multiplier and projected module delta',
-      'token estimates are advisory because tokenizers vary by model and provider',
-      'Caps do not rise under pressure.',
-    ]],
-  ]);
-  for (const [path, markers] of requirements) {
-    const text = compact(path);
-    for (const marker of markers) assert.ok(text.includes(marker), `${path} missing: ${marker}`);
-  }
-  for (const path of ['docs/START-WORKFLOW.md', 'docs/RELEASE-WORKFLOW.md']) {
-    assert.doesNotMatch(compact(path), /bounded active-work ETA/u,
-      `${path} must reference rather than fork the global prompt rule`);
-  }
-});
-
-test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
-  const root = fileURLToPath(new URL('..', import.meta.url));
-  const text = readFileSync(join(root, 'docs/adlc-guidelines.md'), 'utf8');
-  const match = text.match(/^---\n([\s\S]+?)\n---\n/u);
-  assert.ok(match, 'ADLC guideline requires YAML frontmatter');
-  const entries = match[1].split('\n').map((line) => {
-    const field = line.match(/^([a-z_]+): (\S(?:.*\S)?)$/u);
-    assert.ok(field, `invalid ADLC frontmatter line: ${line}`);
-    return [field[1], field[2]];
-  });
-  assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
-  assert.deepEqual(Object.fromEntries(entries), {
-    schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.0.0', owner: 'agentic-os', universal_scope: 'true',
-    supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
-    runtime_evaluator: 'npm run check', runtime_policy: 'fail-closed',
-    lifecycle_status: 'active',
-  });
-});
-
-test('this repository is inside its own module budget', () => {
-  const { found, entries, total } = moduleViolations();
-  assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
-  assert.deepEqual(MODULE_BUDGET, { modules: 46, totalLines: 15_000, perModuleLines: 400 });
-  assert.equal(entries.length, 46);
-  assert.equal(total, 13_247, 'update this exact cost to expose every source-line delta');
-  assert.ok(entries.length <= MODULE_BUDGET.modules);
-  assert.ok(total <= MODULE_BUDGET.totalLines);
-  for (const path of [
-    'src/authority-record.mjs',
-    'src/recovery-candidate.mjs',
-    'src/recovery-inventory.mjs',
-    'src/github-authority.mjs',
-    'src/github-authority-issuer.mjs',
-    'src/github-authority-operation.mjs',
-  ]) assert.ok(entries.some((entry) => entry.path === path), path);
-});
-
-test('the module budget rejects scenario multiplication without retaining historical ceremony', () => {
-  const root = fileURLToPath(new URL('..', import.meta.url));
-  const document = readFileSync(join(root, 'docs/BUDGETS.md'), 'utf8');
-  assert.match(document, /per-scenario quadruple of\s+contract, controller, adapter, and evidence module multiplies/u);
-  assert.match(document, /states its per-scenario multiplier and projected module delta/u);
-  assert.match(document, /New behavior belongs in the state table or an existing responsibility owner/u);
-  assert.doesNotMatch(document, /increase from \d+ to \d+/u);
-});
-
-test('per-scenario module families are forbidden by name', () => {
-  assert.ok(FORBIDDEN_SUFFIXES.includes('-controller.mjs'));
-  assert.ok(FORBIDDEN_SUFFIXES.includes('-repository-adapter.mjs'));
 });

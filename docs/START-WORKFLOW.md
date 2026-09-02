@@ -6,5 +6,5 @@ Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT. Consu
 installed asset (for example `node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.
 
 From consumer canonical run `agentic-os doctor` and `agentic-os status`. Preserve bytes; resolve owner
-findings. Use `agentic-os start <scope>` for one admitted lane; commit there and run bounded product checks.
-See `LANE.md`.
+findings. Use `agentic-os start <scope>` for one admitted lane; commit only its smallest scoped diff and run
+bounded product checks. Never copy lane files into canonical. See `LANE.md`.

@@ -42,6 +42,7 @@
     "src",
     "catalog",
     "templates",
+    "guides",
     "docs",
     "__tests__",
     "AGENTS.md"
@@ -69,8 +70,9 @@
     "readiness:check": "node src/readiness-proof.mjs",
     "docs:check": "node bin/agentic-os-doc-budget.mjs",
     "modules:check": "node bin/agentic-os-module-budget.mjs",
-    "test": "node --test __tests__/*.test.mjs",
-    "check": "npm test && npm run readiness:check && npm run docs:check && npm run modules:check"
+    "evals": "npm run readiness:check && npm run docs:check && npm run modules:check",
+    "test": "node --test --test-concurrency=4 __tests__/*.test.mjs",
+    "check": "npm test && npm run evals"
   },
   "dependencies": {},
   "devDependencies": {}

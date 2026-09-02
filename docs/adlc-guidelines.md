@@ -2,35 +2,38 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.0.0
+version: 1.1.0
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
 runtime_contract: enforced
-runtime_evaluator: npm run check
+runtime_evaluator: npm run evals
+execution_policy: lean-time-bound-budget-driven-sprints
+load_policy: lazy-beyond-always-load
+integration_policy: minimal-diff-protected-merge
 runtime_policy: fail-closed
 lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC lifecycle/cleanup. This document interprets the global prompt SSOT. Consumers
-keep product/deploy/rollback/authority policy; no competing controller.
+ADLC supersedes Agentic SDLC lifecycle/cleanup. Consumers keep product/deploy/rollback/authority policy,
+never a competing controller.
 
 - Universal, neutral, agnostic, headless, simple, adaptive, autonomous, modular; adapt providers.
-- Use minimal proof; fix owner, remove replacements, avoid scenario controllers.
-- Continue safe work; infer no scope, authority, destruction, promotion, deploy, or product choice.
-- At start/resume, give a bounded active-work estimated time to completion (ETA), as a range/upper bound;
-  refresh after material drift in scope, evidence, authority, checks, workload, or dependencies.
-- External waits are not ETA: name the dependency/condition and next recheck; never invent completion.
-- The global prompt is exact LF-terminated UTF-8 with a 1,000-byte hard ceiling; code-point count is
-  secondary and token estimates are advisory because tokenizers vary by model/provider.
-- New always-load guidance or module patterns declare projected byte/module delta and fit the configured
-  budget; otherwise replace lower-value text, lazy-load it, or reject it as incomplete.
+- Minimize time-to-production: smallest valuable vertical diff; fix owner/remove replacements; no scenario
+  controllers.
+- Continue safe work; infer no scope/authority/destruction/promotion/deploy/product choice.
+- Lean bounded sprints state TTP ETA and time/byte/module caps; refresh on drift. External waits state
+  dependency/condition/recheck, never ETA.
+- Global prompt: exact LF-terminated UTF-8, at most 1,000 bytes; code points secondary, tokens advisory.
+- New always-load guidance/modules declare deltas; otherwise replace, lazy-load, or reject.
+- Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.
+- Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md` for delivery planning or repeated mechanical failure.
 - Preserve bytes; inspect live state. Projections are evidence, not authority.
-- Canonical is read-only. One admitted lane binds branch, worktree, scope, review; disjoint lanes may concur.
-- Bind exact candidates; protected integration only. Proof, retirement, each cleanup target, sync, deploy,
-  and rollback each require an authorized receipt.
-- Clean exact eligible targets only after value closure/detachment; no wildcards/ambiguity. Effects need exact
+- Canonical is read-only. Patch minimal scoped hunks in one admitted lane; never copy lane files into it.
+- Land the exact committed diff by protected merge. Lane binds branch/worktree/scope/review.
+- Exact candidates; proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt.
+- Clean exact eligible targets only after value closure/detachment; no wildcards. Effects need exact
   byte/path/ref/race proof; structural health is advisory.
 
 Run both workflows; local policy may narrow ADLC or select adapters.
