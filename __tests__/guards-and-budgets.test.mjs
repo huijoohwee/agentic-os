@@ -583,12 +583,59 @@ test('this repository is inside its own documentation budget', () => {
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
 });
 
-test('the portable runtime system prompt is exact and within its character contract', () => {
+test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const prompt = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'), 'utf8');
+  assert.ok(Buffer.byteLength(prompt, 'utf8') <= 1_000);
   assert.ok([...prompt].length <= 1_000);
+  assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
+  assert.equal(prompt.includes('\r'), false);
+  assert.equal(prompt.endsWith('\n'), true);
   assert.equal(createHash('sha256').update(prompt).digest('hex'),
-    'b1d6398097e8cc542d1c5f759c8a5cfbc3a30a1f8ef7db42b6f93fe05023d38a');
+    '6c34623e9ce973fb502ef00dbafa7bc55ad1bf2a086e6cda52d9d2ffe77594d3');
+});
+
+test('ADLC requires bounded active-work completion estimates at every execution boundary', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
+  const requirements = new Map([
+    ['docs/adlc-guidelines.md', [
+      'bounded active-work estimated time to completion (ETA), as a range/upper bound',
+      'refresh after material drift in scope, evidence, authority, checks, workload, or dependencies.',
+      'External waits are not ETA: name the dependency/condition and next recheck; never invent completion.',
+      '1,000-byte hard ceiling; code-point count is secondary and token estimates are advisory',
+      'New always-load guidance or module patterns declare projected byte/module delta',
+    ]],
+    ['docs/START-WORKFLOW.md', [
+      'At start/resume, give a bounded active-work ETA (range/cap); refresh after material drift.',
+      'external wait, state its dependency/condition and next recheck; it is not ETA.',
+      'Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
+      '`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
+    ]],
+    ['docs/RELEASE-WORKFLOW.md', [
+      'At release start/resume, give a bounded active-work ETA; refresh after material drift.',
+      'External waits state dependency/condition and next recheck; they are not ETA.',
+    ]],
+    ['templates/SYSTEM-PROMPT-RUNTIME.md', [
+      'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md; obey always.',
+      'Always simplify/fix owner/remove replacements; contract-only shims.',
+      'Start/resume: bounded active-work ETA range/cap; refresh on material drift.',
+      'External wait: dependency/condition+recheck, not ETA.',
+    ]],
+    ['AGENTS.md', [
+      'Continuously obey the global `templates/SYSTEM-PROMPT-RUNTIME.md`',
+    ]],
+    ['docs/BUDGETS.md', [
+      'Universal runtime prompt | 1,000 UTF-8 bytes',
+      'states its projected byte delta and fits the configured budget',
+      'module pattern states its per-scenario multiplier and projected module delta',
+      'token estimates are advisory because tokenizers vary by model and provider',
+    ]],
+  ]);
+  for (const [path, markers] of requirements) {
+    const text = compact(path);
+    for (const marker of markers) assert.ok(text.includes(marker), `${path} missing: ${marker}`);
+  }
 });
 
 test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
@@ -627,15 +674,13 @@ test('this repository is inside its own module budget', () => {
   ]) assert.ok(entries.some((entry) => entry.path === path), path);
 });
 
-test('the 46-module cap documents generic authority boundaries, not scenario growth', () => {
+test('the module budget rejects scenario multiplication without retaining historical ceremony', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const document = readFileSync(join(root, 'docs/BUDGETS.md'), 'utf8');
-  assert.match(document, /increase from 29 to 35 isolates six reusable authority boundaries/u);
-  assert.match(document, /increase from 35 to 46 isolates eleven reusable lifecycle-completion boundaries/u);
-  assert.match(document,
-    /external evidence, recovery\s+candidates, recovery inventory, GitHub challenge records, provider receipts,\s+and I\/O issuance/u);
-  assert.match(document,
-    /none owns a scenario, target repository, release, or cleanup effect/iu);
+  assert.match(document, /per-scenario quadruple of\s+contract, controller, adapter, and evidence module multiplies/u);
+  assert.match(document, /states its per-scenario multiplier and projected module delta/u);
+  assert.match(document, /New behavior belongs in the state table or an existing responsibility owner/u);
+  assert.doesNotMatch(document, /increase from \d+ to \d+/u);
 });
 
 test('per-scenario module families are forbidden by name', () => {
