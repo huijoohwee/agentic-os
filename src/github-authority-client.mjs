@@ -4,7 +4,7 @@ import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { validateGitHubAuthorityIssuance, validateGitHubStoredAuthorityBundle }
   from './github-authority-issuer.mjs';
 import { effectPlanByteDigest, validateEffectPlanBytes } from './completion.mjs';
-import { verifyGitHubAuthorityIssuanceLive } from './github-authority-operation.mjs';
+import { projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from './github-authority-operation.mjs';
 export const GITHUB_AUTHORITY_READ_ADAPTER = Object.freeze({ id: 'github-rest-authority-read', version: '1' });
 export const GITHUB_AUTHORITY_RUN_NAME_PREFIX = 'ADLC authority ';
 export const GITHUB_AUTHORITY_LIVE_VERIFICATION_SCHEMA = 'agentic-os/github-authority-live-verification/v1';
@@ -61,8 +61,8 @@ function base64(value) {
   const source = value.replaceAll('\r', '').replaceAll('\n', ''), bytes = Buffer.from(source, 'base64');
   if (bytes.length > MAX_RESPONSE_BYTES || bytes.toString('base64') !== source) fail('GitHub content exceeds bounds');
   return bytes; }
-function jsonBytes(bytes, label) {
-  try { return snap(JSON.parse(UTF8.decode(bytes))); } catch { fail(`${label} must be bounded UTF-8 JSON`); } }
+function jsonBytes(bytes, label, project = (value) => value) {
+  try { return snap(project(JSON.parse(UTF8.decode(bytes)))); } catch { fail(`${label} must be bounded UTF-8 JSON`); } }
 async function body(response) {
   const length = response.headers?.get?.('content-length');
   if (length && (!/^(?:0|[1-9][0-9]*)$/u.test(length)
@@ -113,7 +113,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
   const origin = apiOrigin(originValue), secret = text(token, 'GitHub token');
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs)
     || timeoutMs < 1 || timeoutMs > 60_000) fail('GitHub read provider options are invalid');
-  const request = async (path, { absent = false, withLink = false } = {}) => {
+  const request = async (path, { absent = false, withLink = false, project } = {}) => {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       let response; try { response = await fetchImpl(new URL(path, origin).href, {
@@ -126,7 +126,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
       const bytes = await body(response);
       if (absent && response.status === 404) return null;
       if (response.status !== 200) fail(`GitHub API read failed with HTTP ${response.status}`);
-      const value = jsonBytes(bytes, 'GitHub API response');
+      const value = jsonBytes(bytes, 'GitHub API response', project);
       return withLink ? { value, link: response.headers?.get?.('link') ?? null } : value;
     } finally { clearTimeout(timer); }
   };
@@ -230,7 +230,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     const prefix = `/${repo.owner}/${repo.name}/pull/`, number = url.pathname.slice(prefix.length);
     if (url.origin !== 'https://github.com' || !url.pathname.startsWith(prefix)
       || url.search || url.hash || !ID.test(number)) fail('GitHub review locator is invalid');
-    const value = object(await request(`${repo.path}/pulls/${number}`), 'GitHub review');
+    const value = object(await request(`${repo.path}/pulls/${number}`, { project: projectGitHubTargetReview }), 'GitHub review');
     const identity = (entry) => repository(`github.com/${text(entry?.full_name, 'review repository')}`).repository;
     const state = value.merged_at === null ? value.state : 'merged';
     if (String(value.number) !== number || value.html_url !== locator
@@ -284,7 +284,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
         || query.candidateBranch !== expectedCandidate.branch
         || query.candidateHeadRevision !== expectedCandidate.headRevision
         || query.reviewLocator !== expectedCandidate.reviewLocator) fail('target query changed');
-      const repo = repository(query.repository), value = await request(repo.path);
+      const repo = repository(query.repository), value = await request(repo.path, { project: projectGitHubTargetRepository });
       const [base, head, pull] = await Promise.all([
         gitRef(repo, `refs/heads/${query.canonicalBranch}`),
         gitRef(repo, `refs/heads/${query.candidateBranch}`), review(repo, query.reviewLocator),
