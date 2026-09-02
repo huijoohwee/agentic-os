@@ -121,7 +121,8 @@ function fixture(t, options = {}, root = sandbox(t)) {
   const env = { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ATTEMPT: '1', GITHUB_REPOSITORY: 'example/evidence',
     GITHUB_TOKEN: 'environment-secret', GITHUB_EVENT_PATH: eventPath, GITHUB_RUN_ID: '101', GITHUB_REF: 'refs/heads/release/2026',
     GITHUB_SHA: HEAD, GITHUB_WORKFLOW_REF: 'example/evidence/.github/workflows/authority.yml@refs/heads/release/2026', GITHUB_WORKFLOW_SHA: WORKFLOW };
-  const calls = [], canonicalRules = ['pull_request', 'required_status_checks', 'deletion', 'non_fast_forward'];
+  const calls = [], reads = { run: 0, workflow: 0, actor: 0 };
+  const canonicalRules = ['pull_request', 'required_status_checks', 'deletion', 'non_fast_forward'];
   const evidenceRules = ['update', 'deletion', 'non_fast_forward',
     ...(options.evidenceCreation ? ['creation'] : [])];
   let published = false, stored = null, evidencePath = null;
@@ -139,24 +140,33 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === 'GET /repos/example/evidence/contents/.github/workflows/authority.yml') {
       assert.equal(parsed.searchParams.get('ref'), WORKFLOW); return content('name: authority\n', hash('5', 40));
     }
-    if (route === 'GET /repos/example/evidence/actions/runs/101') return response({
+    if (route === 'GET /repos/example/evidence/actions/runs/101') {
+      reads.run += 1; const late = reads.run >= 4;
+      return response({
       id: 101, url: RUN, event: 'workflow_dispatch', run_attempt: 1, repository: { full_name: 'example/evidence' },
       head_branch: 'release/2026', head_sha: HEAD, path: options.workflowPath ?? '.github/workflows/authority.yml',
-      status: options.runStatus ?? 'completed', conclusion: options.runConclusion === undefined
+      status: late && options.lateRunStatus ? options.lateRunStatus : options.runStatus ?? 'completed', conclusion: options.runConclusion === undefined
         ? 'success' : options.runConclusion, workflow_id: 501,
-      display_title: options.displayTitle ?? deriveGitHubAuthorityRunName({
+      display_title: late && options.lateDisplayTitle ? options.lateDisplayTitle : options.displayTitle ?? deriveGitHubAuthorityRunName({
         authorityInputDigest: digest, workflowRevision: WORKFLOW,
       }),
       run_started_at: STARTED, updated_at: options.completedAt ?? COMPLETED,
       actor: { id: 42, login: 'example' }, triggering_actor: { id: 42, login: 'example' },
-    });
-    if (route === 'GET /repos/example/evidence/actions/workflows/501') return response({
+    }); }
+    if (route === 'GET /repos/example/evidence/actions/workflows/501') {
+      reads.workflow += 1; const late = reads.workflow >= 4;
+      return response({
       id: options.workflowResourceId ?? 501, path: options.workflowResourcePath
-        ?? '.github/workflows/authority.yml', state: options.workflowState ?? 'active',
-    });
+        ?? '.github/workflows/authority.yml', state: late && options.lateWorkflowState
+        ? options.lateWorkflowState : options.workflowState ?? 'active',
+    }); }
     if (route === 'GET /users/example') return response({ id: 42, login: 'example' });
-    if (route === 'GET /user') return response(options.authenticatedActor
-      ?? { id: 42, login: 'example' });
+    if (route === 'GET /user') {
+      reads.actor += 1;
+      return response(reads.actor >= 2 && options.lateAuthenticatedActor
+        ? options.lateAuthenticatedActor : options.authenticatedActor
+          ?? { id: 42, login: 'example' });
+    }
     if (route === 'GET /repos/example/target') return response({
       ...(options.ambientTargetRepositoryMetadata ? ambientMetadata(93) : {}),
       ...(options.oversizedTargetMetadata ? { padding: 'x'.repeat(MAX_AUTHORITY_RESPONSE_BYTES) } : {}),
@@ -304,6 +314,23 @@ test('owner-local issuance requires exact terminal success and bearer identity b
   }
 });
 
+test('issue-github refuses the GitHub Actions execution boundary without provider I/O', async (t) => {
+  const api = fixture(t); api.env.GITHUB_ACTIONS = 'true';
+  const result = await api.run(); assert.equal(result.code, 1);
+  assert.match(result.stderr.values.join(''), /owner-local.*GitHub Actions/u);
+  assert.deepEqual(api.calls, []);
+});
+
+test('publication reauthenticates the exact run, workflow, and bearer immediately before POST', async (t) => {
+  const root = sandbox(t); for (const options of [{ lateRunStatus: 'in_progress' },
+    { lateDisplayTitle: 'ADLC authority stale' }, { lateWorkflowState: 'disabled_manually' },
+    { lateAuthenticatedActor: { id: 43, login: 'other' } }]) {
+    const api = fixture(t, options, root), result = await api.run();
+    assert.equal(result.code, 1, JSON.stringify(options)); assert.match(result.stderr.values.join(''), /authority issuance failed/u);
+    assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
+  }
+});
+
 test('authority dispatch bounds the envelope independently from exact semantic inputs', (t) => {
   const root = sandbox(t), eventPath = join(root, 'large-event.json');
   const source = dispatch({ scope: Array.from({ length: 200 }, (_, index) => (
@@ -376,6 +403,12 @@ test('issues, replays, and live-verifies one GitHub-fenced authority issuance', 
   assert.equal(issuance.publicationReceipt.parentRevision, HEAD);
   assert.equal(issuance.publicationReceipt.targetRepository.review.headRevision, TARGET_HEAD);
   assert.ok(api.calls.filter((call) => call.route === 'GET /repos/example/evidence/actions/runs/101').length >= 3);
+  const firstPost = api.calls.findIndex((call) => call.init.method !== 'GET');
+  assert.deepEqual(api.calls.slice(firstPost - 3, firstPost).map((call) => call.route), [
+    'GET /repos/example/evidence/actions/runs/101',
+    'GET /repos/example/evidence/actions/workflows/501',
+    'GET /user',
+  ]);
   assert.equal(api.calls.filter((call) => call.route === 'POST /repos/example/evidence/git/refs').length, 1);
   assert.equal(api.calls.some((call) => call.init.method === 'PATCH'), false);
   assert.equal(api.calls.every((call) => call.parsed.origin === 'https://api.github.com' && call.init.redirect === 'error'), true);

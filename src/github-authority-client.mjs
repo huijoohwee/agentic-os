@@ -4,7 +4,7 @@ import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { validateGitHubAuthorityIssuance, validateGitHubStoredAuthorityBundle }
   from './github-authority-issuer.mjs';
 import { effectPlanByteDigest, validateEffectPlanBytes } from './completion.mjs';
-import { projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from './github-authority-operation.mjs';
+import { projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from './github-authority-operation.mjs'; export { verifyGitHubAuthorityIssuanceLive };
 export const GITHUB_AUTHORITY_READ_ADAPTER = Object.freeze({ id: 'github-rest-authority-read', version: '1' });
 export const GITHUB_AUTHORITY_RUN_NAME_PREFIX = 'ADLC authority ';
 export const GITHUB_AUTHORITY_LIVE_VERIFICATION_SCHEMA = 'agentic-os/github-authority-live-verification/v1';
