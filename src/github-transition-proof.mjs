@@ -244,9 +244,10 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const bundle = input.predecessorIssuance.storedBundle.authorityBundle;
   const candidate = bundle.candidate;
   const canonicalRef = `refs/heads/${candidate.canonicalBranch}`;
-  const [predecessor, pullResponse, candidateHead, currentCanonicalHead, protectionObservation,
-    mergedCommit, targetResponse] = await Promise.all([
+  const [predecessor, pullResponse, mergeEventsResponse, candidateHead, currentCanonicalHead,
+    protectionObservation, mergedCommit, targetResponse] = await Promise.all([
     initialAuthorityProof(initialProvider, input), api.call('GET', `${target.path}/pulls/${number}`),
+    api.call('GET', `${target.path}/issues/${number}/events?per_page=100`),
     api.gitRef(target, `refs/heads/${candidate.branch}`), api.gitRef(target, canonicalRef),
     expectedProof === null ? api.rules(target, canonicalRef) : Promise.resolve(null),
     api.commit(target, input.plan.target.immutableRevision),
@@ -256,6 +257,12 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     'GitHub target repository'), target, input.predecessorIssuance.storedBundle.targetRepository);
   const pull = object(api.exact(pullResponse, [200], 'GitHub integration review'),
     'GitHub integration review');
+  const events = api.exact(mergeEventsResponse, [200], 'GitHub integration merge events');
+  if (!Array.isArray(events) || mergeEventsResponse.headers?.get?.('link')?.includes('rel="next"'))
+    fail('GitHub integration merge events are incomplete');
+  const mergedEvents = events.filter((entry) => entry?.event === 'merged');
+  if (mergedEvents.length !== 1) fail('GitHub integration lacks one exact merge event');
+  const mergeEvent = object(mergedEvents[0], 'GitHub integration merge event');
   const mergedAt = instant(pull.merged_at, 'review merged time');
   const protectedTarget = expectedProof === null
     ? targetProtection(protectionObservation, target, canonicalRef)
@@ -287,7 +294,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     canonicalBranch: candidate.canonicalBranch, canonicalRef,
     observedCanonicalHead: storedCanonicalHead,
     mergeRevision: input.plan.target.immutableRevision, mergeMethod: method,
-    mergedAt,
+    mergeEventId: id(mergeEvent.id, 'merge event id'), mergedAt,
     targetProtectionDigest: protectedTarget.projection.projectionDigest,
     targetBypassActorsObserved: protectedTarget.bypassActorsObserved,
     targetRequiredContexts: protectedTarget.requiredContexts,
@@ -303,11 +310,14 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     headBranch: text(pull.head?.ref, 'review head branch'),
     headRevision: api.sha(pull.head?.sha, 'review head revision') };
   if (String(pull.number) !== number || pull.html_url !== locator || pull.state !== 'closed'
-    || pull.draft !== false || pull.merge_commit_sha !== projection.mergeRevision
+    || pull.merged !== true || pull.draft !== false
     || pull.base?.repo?.full_name !== `${target.owner}/${target.name}`
     || pull.base?.ref !== candidate.canonicalBranch
     || projection.headRepository !== candidate.targetRepository
     || projection.headBranch !== candidate.branch || projection.headRevision !== candidate.headRevision
+    || api.sha(mergeEvent.commit_id, 'merge event revision') !== projection.mergeRevision
+    || mergeEvent.commit_url !== `https://api.github.com${target.path}/commits/${projection.mergeRevision}`
+    || instant(mergeEvent.created_at, 'merge event time') !== mergedAt
     || candidateHead !== candidate.headRevision)
     fail('GitHub review does not prove exact protected integration');
   const payload = { schema: 'agentic-os/github-integrate-provider-proof/v1', ...projection };
