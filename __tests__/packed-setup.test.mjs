@@ -16,7 +16,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-function installPriorReleaseRuntime(selected) {
+function installPriorReleaseRuntime(selected, { authorityRelease = false } = {}) {
   const files = selected.files.map((file) => {
     let source = file.bytes.toString('utf8');
     if (file.path === 'src/git.mjs') source = source.replace(
@@ -48,7 +48,8 @@ function installPriorReleaseRuntime(selected) {
       .replace('  const source = snapshot(input), payload = profilePayload(source), profileDigest = governanceDigest(payload);\n  if (source.profileDigest !== undefined && source.profileDigest !== profileDigest) fail(\'profileDigest mismatch\');',
         "  const source = snapshot(input);\n  const payload = profilePayload(source);\n  const profileDigest = governanceDigest(payload);\n  if (source.profileDigest !== undefined && source.profileDigest !== profileDigest)\n    fail('profileDigest does not match repository profile');")
       .replace('  const source = snapshot(value); exactKeys(source, PROFILE_KEYS, \'repository profile\');',
-        "  const source = snapshot(value);\n  exactKeys(source, PROFILE_KEYS, 'repository profile');")
+        "  const source = snapshot(value);\n  exactKeys(source, PROFILE_KEYS, 'repository profile');");
+    if (file.path === 'src/governance.mjs' && !authorityRelease) source = source
       .replace(/export function deriveCoordinationClaimId\([^\n]+\n/u, '')
       .replace('source.claimId ?? deriveCoordinationClaimId(identity)',
         "source.claimId ?? governanceDigest({ schema: 'agentic-os/claim-id/v1', ...identity })");
@@ -56,7 +57,9 @@ function installPriorReleaseRuntime(selected) {
     const expected = { 'src/git.mjs': '77d8b768ff6ce9d5b54a198b8463a5a54db0c175560aa8b6dd9d6cca3679ea24',
       'src/git-repository.mjs': 'd8e5d32a6ff57b18279d1d34c1ce338771442521d188a46228f1d3779fec0b3b',
       'src/git-tracked.mjs': '664364b8453ea69a6f5458abc038494eda2551320f58677dab9f24db68ec2503',
-      'src/governance.mjs': '5c9790eb4dac5b7d2a41dd2287cd74327b6f21082646b4d69813606e36512bd2' }[file.path];
+      'src/governance.mjs': authorityRelease
+        ? '673b3fec205895ba72bb08519188225c049aa322e0cac563f7de304986c0c402'
+        : '5c9790eb4dac5b7d2a41dd2287cd74327b6f21082646b4d69813606e36512bd2' }[file.path];
     if (expected === undefined) return file;
     assert.equal(digest(bytes), expected);
     return { ...file, bytes, sha256: digest(bytes) };
@@ -64,8 +67,9 @@ function installPriorReleaseRuntime(selected) {
   const identity = { schema: 'agentic-os/hook-runtime/v1',
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
-  assert.equal(runtimeId,
-    'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0');
+  assert.equal(runtimeId, authorityRelease
+    ? 'v1-aeca6cdae21159346f98bbf744ae7a2b51d95b9040b048bb0cc64b40ea994c72'
+    : 'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
   mkdirSync(path, { mode: 0o700 });
@@ -290,6 +294,16 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(assertPriorManagedRuntime(priorRuntime.hooksPath, contestedRuntime), true);
   assert.deepEqual(readFileSync(join(priorRuntime.path, 'runtime-manifest.json')),
     priorRuntime.manifestBytes);
+  const authorityRuntime = installPriorReleaseRuntime(contestedRuntime, { authorityRelease: true });
+  assert.equal(assertPriorManagedRuntime(authorityRuntime.hooksPath, contestedRuntime), true);
+  assert.deepEqual(readFileSync(join(authorityRuntime.path, 'runtime-manifest.json')),
+    authorityRuntime.manifestBytes);
+  const authorityGovernance = join(authorityRuntime.path, 'src/governance.mjs');
+  writeFileSync(authorityGovernance, Buffer.concat([
+    readFileSync(authorityGovernance), Buffer.from('\n'),
+  ]));
+  assert.throws(() => assertPriorManagedRuntime(authorityRuntime.hooksPath, contestedRuntime),
+    /managed hook runtime integrity failed/u);
   execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: repository });
   const migratedDoctor = spawnSync(cli, ['doctor'], { cwd: repository, encoding: 'utf8' });
   assert.equal(migratedDoctor.status, 0, migratedDoctor.stderr || migratedDoctor.stdout);

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { canonicalJson, claim } from '../src/governance.mjs';
+import { MAX_STRING_BYTES } from '../src/catalog-input.mjs';
 import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from '../src/recovery-candidate.mjs';
 import { deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from '../src/github-authority-issuer.mjs';
@@ -18,7 +19,13 @@ import {
   deriveGitHubAuthorityRunName,
   validateGitHubAuthorityLiveVerificationReceipt,
 } from '../src/github-authority-client.mjs';
-import { parseAuthorityArguments, runAuthority } from '../bin/agentic-os-authority.mjs';
+import {
+  MAX_AUTHORITY_EVENT_BYTES,
+  MAX_AUTHORITY_INPUT_BYTES,
+  loadAuthorityDispatch,
+  parseAuthorityArguments,
+  runAuthority,
+} from '../bin/agentic-os-authority.mjs';
 
 const hash = (value, length = 64) => value.repeat(length);
 const HEAD = hash('a', 40), WORKFLOW = hash('b', 40), TARGET_BASE = hash('c', 40);
@@ -222,6 +229,52 @@ test('authority command accepts only a current workflow dispatch event and commi
   });
   assert.throws(() => parseAuthorityArguments(['issue-github', '--input=x', '--policy=y']), /only --event and --policy/u);
   assert.throws(() => parseAuthorityArguments(['issue-github', '--event=x']), /policy path/u);
+});
+
+test('authority dispatch bounds the envelope independently from exact semantic inputs', (t) => {
+  const root = sandbox(t), eventPath = join(root, 'large-event.json');
+  const source = dispatch({ scope: Array.from({ length: 200 }, (_, index) => (
+    `path:bounded-${String(index).padStart(3, '0')}-${'x'.repeat(80)}`
+  )) });
+  const payload = canonicalJson(source), authorityInputDigest = hash('a');
+  const inputs = { authority_payload: payload, authority_input_digest: authorityInputDigest };
+  const event = {
+    ambient: 'x'.repeat(70_000),
+    deepAmbient: Array.from({ length: 32 }).reduce((value) => ({ next: value }), 'leaf'),
+    inputs,
+    repository: Object.fromEntries(Array.from({ length: 95 }, (_, index) => [`field${index}`, index])),
+  };
+  const bytes = Buffer.from(JSON.stringify(event));
+  assert.ok(Buffer.byteLength(payload) > MAX_STRING_BYTES);
+  assert.ok(bytes.length > MAX_AUTHORITY_INPUT_BYTES && bytes.length < MAX_AUTHORITY_EVENT_BYTES);
+  writeFileSync(eventPath, bytes);
+  assert.deepEqual(loadAuthorityDispatch(eventPath, eventPath), {
+    dispatch: source,
+    authorityInputDigest,
+  });
+  assert.throws(() => loadAuthorityDispatch(eventPath, `${eventPath}.other`),
+    /--event must equal GITHUB_EVENT_PATH/u);
+  writeFileSync(eventPath, JSON.stringify({ ...event, inputs: { authority_payload: payload } }));
+  assert.throws(() => loadAuthorityDispatch(eventPath, eventPath), /inputs fields are invalid/u);
+  writeFileSync(eventPath, JSON.stringify({ ...event, inputs: { ...inputs, unexpected: 'rejected' } }));
+  assert.throws(() => loadAuthorityDispatch(eventPath, eventPath), /inputs fields are invalid/u);
+  const structurallyOversized = { ...source, request: {
+    ...source.request, scope: ['x'.repeat(MAX_STRING_BYTES + 1)],
+  } };
+  writeFileSync(eventPath, JSON.stringify({ ...event, inputs: {
+    ...inputs, authority_payload: JSON.stringify(structurallyOversized),
+  } }));
+  assert.throws(() => loadAuthorityDispatch(eventPath, eventPath),
+    /authority_payload exceeds structural bounds/u);
+  writeFileSync(eventPath, JSON.stringify({ ...event, inputs: {
+    ...inputs, authority_payload: 'x'.repeat(MAX_AUTHORITY_INPUT_BYTES + 1),
+  } }));
+  assert.throws(() => loadAuthorityDispatch(eventPath, eventPath),
+    /authority_payload must be a bounded non-empty string/u);
+  writeFileSync(eventPath, JSON.stringify({ ...event, ambient: 'x'.repeat(MAX_AUTHORITY_EVENT_BYTES) }));
+  assert.throws(() => loadAuthorityDispatch(eventPath, eventPath), /GitHub event byte budget exceeded/u);
+  writeFileSync(eventPath, '[]');
+  assert.throws(() => loadAuthorityDispatch(eventPath, eventPath), /GitHub event must be an object/u);
 });
 
 test('issues, replays, and live-verifies one GitHub-fenced authority issuance', async (t) => {
