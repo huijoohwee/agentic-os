@@ -162,7 +162,7 @@ function apiFixture(issuance) {
     authorityHead: TRANSITION_BASE, runUpdatedAt: null, transitionPolicy: TRANSITION_POLICY,
     transitionRulesUpdatedAt: '2026-09-02T00:01:00Z', targetBypassActors: null,
     mergedAt: '2026-09-02T00:15:00Z', targetRepositoryId: 77,
-    targetMergeMethods: ['merge'],
+    targetMergeMethods: ['merge'], ruleSuiteQuery: null,
     targetOwner: { id: 42, login: 'example' }, absentRefBarrier: null,
     refCreateStatuses: [], concurrentRunTimes: false, runDigests: {} };
   const initialStored = issuance.storedBundle, bundle = initialStored.authorityBundle;
@@ -240,11 +240,14 @@ function apiFixture(issuance) {
       return response({ id: 701, name: 'Integration Gate', app: { id: 15368 },
         status: 'completed', conclusion: 'success', head_sha: CANDIDATE,
         completed_at: state.checkCompletedAt });
-    if (route === 'GET /repos/example/target/rulesets/rule-suites') return response([{
-      id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
-      ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
-      pushed_at: '2026-09-02T00:16:00Z', result: state.ruleSuiteResult,
-    }]);
+    if (route === 'GET /repos/example/target/rulesets/rule-suites') {
+      state.ruleSuiteQuery = parsed.search;
+      return response([{
+        id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
+        ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
+        pushed_at: '2026-09-02T00:16:00Z', result: state.ruleSuiteResult,
+      }]);
+    }
     if (route === 'GET /repos/example/target/rulesets/rule-suites/801') return response({
       id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
       ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
@@ -395,7 +398,9 @@ function inputWithExpiry(fixture, expiresAt) {
 }
 
 test('canonical transition input binds predecessor issuance and excludes result fields', async () => {
-  const { operationInput } = await integrationFixture();
+  const { api, operationInput } = await integrationFixture();
+  assert.equal(api.state.ruleSuiteQuery,
+    '?ref=refs%2Fheads%2Fmain&time_period=day&rule_suite_result=pass&per_page=100');
   const bytes = encodeGitHubTransitionInput(operationInput);
   const digest = deriveGitHubTransitionInputDigest(bytes);
   assert.equal(digest, deriveGitHubTransitionInputDigest(operationInput));
