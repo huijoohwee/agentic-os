@@ -172,7 +172,7 @@ function apiFixture(issuance) {
     transitionRulesUpdatedAt: '2026-09-02T00:01:00Z', targetBypassActors: null,
     mergedAt: '2026-09-02T00:15:00Z', targetRepositoryId: 77,
     targetMergeMethods: ['merge'], ruleSuiteQuery: null, mergeEventRevisions: [MERGE],
-    mergeEventHeaders: {},
+    mergeEventCreatedAt: null, mergeEventHeaders: {},
     ruleSuitePushedAt: '2026-09-02T00:14:59Z', targetRulesUpdatedAt: '2026-09-02T00:13:00Z',
     mergeParents: [TARGET_BASE, CANDIDATE], mergeCommittedAt: '2026-09-02T00:15:00Z',
     candidateTree: hex('a', 40), mergeTree: hex('a', 40), pullBaseRevision: TARGET_BASE,
@@ -237,7 +237,7 @@ function apiFixture(issuance) {
     if (route === 'GET /repos/example/target/issues/7/events') return response(
       state.mergeEventRevisions.map((commit_id, index) => ({ id: 901 + index, event: 'merged',
         commit_id, commit_url: `https://api.github.com/repos/example/target/commits/${commit_id}`,
-        created_at: state.mergedAt })), 200, state.mergeEventHeaders);
+        created_at: state.mergeEventCreatedAt ?? state.mergedAt })), 200, state.mergeEventHeaders);
     if (route === `GET /repos/example/target/git/commits/${MERGE}`)
       return response(commit(MERGE, state.mergeParents, state.mergeTree, state.mergeCommittedAt));
     if (route === `GET /repos/example/target/git/commits/${CANDIDATE}`)
@@ -490,6 +490,17 @@ test('merge event is unique, exact, and pagination-bounded', async () => {
   await assert.rejects(integrationFixture((state) => {
     state.mergeEventHeaders = { link: '<https://api.github.com/next>; rel="next"' };
   }), /merge events are incomplete/u);
+});
+
+test('merge event timestamp permits only bounded absolute provider skew', async () => {
+  await integrationFixture((state) => {
+    state.mergeEventCreatedAt = '2026-09-02T00:15:01Z';
+  });
+  for (const createdAt of ['2026-09-02T00:15:06Z', '2026-09-02T00:14:54Z']) {
+    await assert.rejects(integrationFixture((state) => {
+      state.mergeEventCreatedAt = createdAt;
+    }), /exact protected integration/u);
+  }
 });
 
 test('explicit retrospective recovery records an already-merged exact squash without backdating',
