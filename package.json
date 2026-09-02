@@ -68,6 +68,8 @@
     "authority": "node bin/agentic-os-authority.mjs",
     "transition:validate": "node bin/agentic-os-transition.mjs validate-event",
     "readiness:check": "node src/readiness-proof.mjs",
+    "composition:runtime:check": "node bin/composition-runtime-check.mjs",
+    "composition:admission:probe": "node bin/composition-admission-probe.mjs",
     "docs:check": "node bin/agentic-os-doc-budget.mjs",
     "modules:check": "node bin/agentic-os-module-budget.mjs",
     "evals": "npm run readiness:check && npm run docs:check && npm run modules:check",
