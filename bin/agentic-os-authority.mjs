@@ -5,10 +5,11 @@ import { pathToFileURL } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { readBoundedFile, snapshotCatalogInput } from '../src/catalog-input.mjs';
 import { canonicalJson } from '../src/governance.mjs';
-import { deriveGitHubAuthorityInputDigest, parseGitHubRepositoryIdentity, validateGitHubAuthorityPolicy } from '../src/github-authority.mjs';
+import { deriveGitHubAuthorityInputDigest, GITHUB_RETROSPECTIVE_RECOVERY_MODE, parseGitHubRepositoryIdentity,
+  validateGitHubAuthorityPolicy } from '../src/github-authority.mjs';
 import { validateGitHubStoredAuthorityBundle } from '../src/github-authority-issuer.mjs';
 import { deriveGitHubAuthorityExpiry, issueGitHubAuthority, projectGitHubTargetRepository,
-  parseAuthorityArguments, projectGitHubTargetReview, validateGitHubAuthorityDispatch,
+  observeGitHubRetrospectiveTarget, parseAuthorityArguments, projectGitHubTargetReview, validateGitHubAuthorityDispatch,
   validateGitHubPreparedPublication, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
 export { parseAuthorityArguments } from '../src/github-authority-operation.mjs';
 import { deriveGitHubAuthorityRunName } from '../src/github-authority-client.mjs';
@@ -70,8 +71,7 @@ function actionValue(env, name, { secret = false, path = false } = {}) {
   const value = env?.[name];
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 8192
     || /[\u0000-\u001f\u007f]/u.test(value) || !secret && !path && /\s/u.test(value)) fail(`${name} is required`);
-  return value;
-}
+  return value; }
 function actionPath(env, name) { return actionValue(env, name, { path: true }); }
 function githubRepository(value, label = 'GitHub repository') {
   const source = text(value, label), match = source.match(/^github\.com\/([^/]+)\/([^/]+)$/u);
@@ -79,8 +79,7 @@ function githubRepository(value, label = 'GitHub repository') {
     fail(`${label} must be canonical github.com/<owner>/<repository>`);
   const repository = parseGitHubRepositoryIdentity(source, label).repository;
   return Object.freeze({ repository, owner: match[1], name: match[2],
-    path: `/repos/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}` });
-}
+    path: `/repos/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}` }); }
 function githubRepositoryFromActions(env) { return githubRepository(`github.com/${actionValue(env, 'GITHUB_REPOSITORY')}`, 'GITHUB_REPOSITORY'); }
 function workflowReference(value, repository) {
   const source = actionValue({ GITHUB_WORKFLOW_REF: value }, 'GITHUB_WORKFLOW_REF');
@@ -88,8 +87,7 @@ function workflowReference(value, repository) {
   if (!source.startsWith(prefix) || marker <= prefix.length || source.indexOf('@') !== marker)
     fail('GITHUB_WORKFLOW_REF must bind GITHUB_REPOSITORY');
   return Object.freeze({ workflowPath: relativePath(source.slice(prefix.length, marker), 'GITHUB_WORKFLOW_REF path'),
-    workflowRef: ref(source.slice(marker + 1), 'GITHUB_WORKFLOW_REF ref') });
-}
+    workflowRef: ref(source.slice(marker + 1), 'GITHUB_WORKFLOW_REF ref') }); }
 function targetBranch(value, label) {
   const branch = text(value, label); if (branch.startsWith('refs/')) fail(`${label} must be a short Git branch`);
   return shortRef(`refs/heads/${branch}`, label); }
@@ -101,8 +99,7 @@ function pullNumber(locator, target) {
   if (value.protocol !== 'https:' || value.hostname !== 'github.com' || value.port || value.username
     || value.password || value.search || value.hash || !value.pathname.startsWith(prefix)
     || value.href !== locator) fail('target review locator must be an exact GitHub pull request URL');
-  return identifier(value.pathname.slice(prefix.length), 'target review number');
-}
+  return identifier(value.pathname.slice(prefix.length), 'target review number'); }
 function actionContext(env, { requireToken = true } = {}) {
   if (actionValue(env, 'GITHUB_EVENT_NAME') !== 'workflow_dispatch') fail('GITHUB_EVENT_NAME must be workflow_dispatch');
   if (actionValue(env, 'GITHUB_RUN_ATTEMPT') !== '1') fail('GITHUB_RUN_ATTEMPT must be exactly 1');
@@ -117,8 +114,7 @@ function actionContext(env, { requireToken = true } = {}) {
   if (context.ref !== context.workflowRef || context.revision !== context.workflowRevision)
     fail('GitHub workflow ref and revision must equal the checked-out ref and revision');
   context.locator = `${GITHUB_API_ORIGIN}${repository.path}/actions/runs/${context.runId}`;
-  return Object.freeze(context);
-}
+  return Object.freeze(context); }
 function staticPolicy(value) {
   exact(value, STATIC_POLICY_KEYS, 'committed authority policy');
   if (!Number.isSafeInteger(value.validitySeconds) || value.validitySeconds < 60 || value.validitySeconds > 86_400)
@@ -144,8 +140,7 @@ function staticPolicy(value) {
     allowedMergeMethods: strings(value.allowedMergeMethods, 'policy.allowedMergeMethods', ['merge', 'rebase', 'squash']),
     evidenceRefPrefix: `${ref(evidenceRefPrefix.slice(0, -1), 'policy.evidenceRefPrefix')}/`,
     evidencePathPrefix: `${relativePath(evidencePathPrefix.slice(0, -1), 'policy.evidencePathPrefix')}/`,
-    validitySeconds: value.validitySeconds });
-}
+    validitySeconds: value.validitySeconds }); }
 function runtimePolicy(staticValue, context) {
   const policy = staticPolicy(staticValue);
   if (policy.canonicalRef !== context.ref || policy.workflowPath !== context.workflowPath)
@@ -156,8 +151,7 @@ function runtimePolicy(staticValue, context) {
     workflowRef: context.workflowRef, workflowRevision: context.workflowRevision,
     confirmationClass: policy.confirmationClass, requiredStatusChecks: policy.requiredStatusChecks,
     allowedMergeMethods: policy.allowedMergeMethods, evidenceRefPrefix: policy.evidenceRefPrefix,
-    evidencePathPrefix: policy.evidencePathPrefix, validitySeconds: policy.validitySeconds });
-}
+    evidencePathPrefix: policy.evidencePathPrefix, validitySeconds: policy.validitySeconds }); }
 function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_INPUT_BYTES,
   catalog = true, exactBytes = false } = {}) {
   const source = text(path, `${label} path`);
@@ -171,8 +165,7 @@ function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_
   const snapshot = snapshotCatalogInput(value); if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
   const encoded = canonicalJson(snapshot.value);
   if (exactBytes && !bytes.equals(Buffer.from(encoded, 'utf8'))) fail(`${label} must use exact canonical JSON bytes`);
-  return JSON.parse(encoded);
-}
+  return JSON.parse(encoded); }
 export function loadAuthorityDispatch(eventPath, expectedEventPath) {
   if (expectedEventPath !== undefined && eventPath !== expectedEventPath)
     fail('--event must equal GITHUB_EVENT_PATH');
@@ -187,7 +180,8 @@ export function loadAuthorityDispatch(eventPath, expectedEventPath) {
   catch { fail('authority_payload must be JSON'); }
   const snapshot = snapshotCatalogInput(value);
   if (!snapshot.ok) fail('authority_payload exceeds structural bounds');
-  exact(snapshot.value, DISPATCH_KEYS, 'authority_payload');
+  exact(snapshot.value, snapshot.value.issuanceMode === undefined ? DISPATCH_KEYS
+    : [...DISPATCH_KEYS, 'issuanceMode'], 'authority_payload');
   const canonical = canonicalJson(snapshot.value);
   if (encoded !== canonical) fail('authority_payload must use exact canonical JSON bytes');
   return Object.freeze({ dispatch: JSON.parse(canonical), authorityInputDigest });
@@ -212,8 +206,7 @@ function parseJsonBytes(bytes, label, project = (value) => value) { try {
     const snapshot = snapshotCatalogInput(project(JSON.parse(UTF8.decode(bytes))));
     if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
     return snapshot.value;
-  } catch (error) { if (error instanceof TypeError) throw error; fail(`${label} must be valid UTF-8 JSON`); }
-}
+  } catch (error) { if (error instanceof TypeError) throw error; fail(`${label} must be valid UTF-8 JSON`); } }
 async function boundedBody(response) {
   const length = response.headers?.get?.('content-length');
   if (length !== null && length !== undefined && (!/^(?:0|[1-9][0-9]*)$/u.test(length)
@@ -252,8 +245,7 @@ function githubRequester(token, fetchImpl) {
       if (!statuses.includes(response.status)) fail(`GitHub API request failed with HTTP ${response.status}`);
       const value = parseJsonBytes(bytes, 'GitHub API response', project);
       return includeHeaders ? { value, link: response.headers?.get?.('link') ?? null } : value;
-    } finally { clearTimeout(timer); } };
-}
+    } finally { clearTimeout(timer); } }; }
 function ruleDescriptor(value, label) {
   const source = jsonObject(value, label), type = text(source.type, `${label}.type`);
   if (!/^[a-z][a-z0-9_]{0,63}$/u.test(type)) fail(`${label} is invalid`);
@@ -272,8 +264,7 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
   const requireEvidenceRepository = (value) => {
     const source = githubRepository(value);
     if (source.repository !== context.repository.repository) fail('GitHub provider cannot target another evidence repository');
-    return source;
-  };
+    return source; };
   const content = async (repository, path, revision, { absent = false, json = false } = {}) => {
     const source = await request('GET', `${repository.path}/contents/${encodedPath(path)}?ref=${encodeURIComponent(revision)}`, undefined, { absent });
     if (source === null) return null;
@@ -282,23 +273,20 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
     const value = json ? parseJsonBytes(bytes, 'GitHub content') : UTF8.decode(bytes);
     if (json && !bytes.equals(Buffer.from(canonicalJson(value), 'utf8')))
       fail('GitHub JSON content must use exact canonical bytes');
-    return { value, sha: sha(source.sha, 'GitHub content SHA') };
-  };
+    return { value, sha: sha(source.sha, 'GitHub content SHA') }; };
   const gitRef = async (repository, branchRef, { absent = false } = {}) => {
     const checked = ref(branchRef, 'GitHub ref');
     const source = await request('GET', `${repository.path}/git/ref/heads/${encodeURIComponent(shortRef(checked, 'GitHub ref'))}`, undefined, { absent });
     if (source === null) return null;
     if (source.ref !== checked || source.object?.type !== 'commit') fail('GitHub ref is not the exact commit ref');
-    return sha(source.object.sha, 'GitHub ref object SHA');
-  };
+    return sha(source.object.sha, 'GitHub ref object SHA'); };
   const gitCommit = async (repository, revision, { oneParent = false } = {}) => {
     const source = jsonObject(await request('GET', `${repository.path}/git/commits/${sha(revision, 'Git commit revision')}`), 'GitHub commit');
     if (sha(source.sha, 'GitHub commit SHA') !== revision || !Array.isArray(source.parents)
       || oneParent && source.parents.length !== 1) fail('GitHub commit parentage is invalid');
     const parentRevisions = source.parents.map((entry) => sha(entry?.sha, 'GitHub commit parent SHA'));
     return { revision, parentRevisions, parentRevision: parentRevisions.length === 1 ? parentRevisions[0] : null,
-      tree: sha(source.tree?.sha, 'GitHub commit tree SHA'), committedAt: apiInstant(source.committer?.date, 'GitHub commit time') };
-  };
+      tree: sha(source.tree?.sha, 'GitHub commit tree SHA'), committedAt: apiInstant(source.committer?.date, 'GitHub commit time') }; };
   const gitTree = async (repository, revision) => {
     const source = jsonObject(await request('GET', `${repository.path}/git/trees/${sha(revision, 'Git tree revision')}?recursive=1`), 'GitHub tree');
     if (source.truncated !== false || sha(source.sha, 'GitHub tree SHA') !== revision
@@ -312,8 +300,7 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
         fail('GitHub tree entries must be distinct Git objects');
       entries.set(path, descriptor);
     }
-    return entries;
-  };
+    return entries; };
   const readRunRecord = async () => {
     if (!prepared) fail('GitHub authority provider is not prepared');
     const source = jsonObject(await request('GET', `${context.repository.path}/actions/runs/${context.runId}`), 'GitHub workflow run');
@@ -343,8 +330,7 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
       workflowPath: context.workflowPath, workflowRef: context.workflowRef,
       workflowRevision: context.workflowRevision, startedAt, completedAt,
       authorityInputDigest: prepared.authorityInputDigest, actor: actor(source.actor, 'workflow actor'),
-      triggeringActor: actor(source.triggering_actor, 'workflow triggering actor') };
-  };
+      triggeringActor: actor(source.triggering_actor, 'workflow triggering actor') }; };
   const protection = async (branchRef) => {
     const checked = ref(branchRef, 'GitHub protection ref'), branch = shortRef(checked, 'GitHub protection ref');
     const page = await request('GET', `${context.repository.path}/rules/branches/${encodeURIComponent(branch)}?per_page=100`, undefined,
@@ -376,14 +362,12 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
         bypassActors: [...new Set(detail.bypass_actors.map(bypassActor))].sort() });
     }
     return { repository: context.repository.repository, ref: checked,
-      rulesets: rulesets.sort((left, right) => left.id.localeCompare(right.id)) };
-  };
+      rulesets: rulesets.sort((left, right) => left.id.localeCompare(right.id)) }; };
   const storedForEvidence = (value, evidence, checked, rawPath) => {
     const stored = validateGitHubStoredAuthorityBundle(value), bundle = stored.authorityBundle;
     if (bundle.policy.evidenceRepository !== evidence.repository || bundle.evidenceRef !== checked
       || bundle.evidencePath !== rawPath) fail('GitHub stored bundle is not bound to its evidence location');
-    return stored;
-  };
+    return stored; };
   const proveEvidenceCommit = async ({ evidence, checked, rawPath, canonicalRevision, revision, expectedBlob }) => {
     const commit = await gitCommit(evidence, revision, { oneParent: true });
     if (commit.parentRevision !== canonicalRevision) fail('GitHub evidence commit is not a one-parent canonical child');
@@ -404,8 +388,7 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
       if (!allowed.has(path) && canonicalJson(prior ?? null) !== canonicalJson(current ?? null))
         fail('GitHub evidence tree contains changes outside the exact evidence path');
     }
-    return commit;
-  };
+    return commit; };
   const targetReview = async (target, locator) => {
     const number = pullNumber(locator, target);
     if (number === null) return null;
@@ -420,8 +403,7 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
     return { locator, state, draft: source.draft, headRepository: repository(source.head?.repo, 'GitHub target review head repository'),
       headBranch: text(source.head?.ref, 'GitHub target review head branch'), headRevision: sha(source.head?.sha, 'GitHub target review head revision'),
       baseRepository: repository(source.base?.repo, 'GitHub target review base repository'),
-      baseBranch: text(source.base?.ref, 'GitHub target review base branch'), baseRevision: sha(source.base?.sha, 'GitHub target review base revision') };
-  };
+      baseBranch: text(source.base?.ref, 'GitHub target review base branch'), baseRevision: sha(source.base?.sha, 'GitHub target review base revision') }; };
   const reauthenticatePublication = async (storedBundle) => validateGitHubPreparedPublication({ storedBundle, prepared,
     workflowRun: await readRunRecord(), authenticatedActor: await request('GET', '/user', undefined,
       { project: (value) => actor(value, 'GitHub bearer actor') }) });
@@ -431,53 +413,69 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
       const remote = staticPolicy((await content(context.repository, policyPath, context.revision, { json: true })).value);
       if (canonicalJson(local) !== canonicalJson(remote)) fail('local authority policy does not match its committed revision');
       const effective = runtimePolicy(remote, context);
-      const derivedDigest = deriveGitHubAuthorityInputDigest({ request: dispatch.request, candidate: dispatch.candidate, policy: effective });
+      const derivedDigest = deriveGitHubAuthorityInputDigest({ request: dispatch.request,
+        candidate: dispatch.candidate, policy: effective,
+        ...(dispatch.issuanceMode === undefined ? {} : { issuanceMode: dispatch.issuanceMode }) });
       if (authorityInputDigest !== derivedDigest) fail('authority_input_digest does not match the event payload and committed policy');
       const workflow = await content(context.repository, context.workflowPath, context.workflowRevision);
       if (!workflow.value.trim()) fail('committed workflow text is empty');
       prepared = Object.freeze({ policy: effective, authorityInputDigest: derivedDigest,
         dispatch: JSON.parse(canonicalJson(dispatch)) });
       const run = await readRunRecord();
-      return Object.freeze({ policy: effective, authorityInputDigest, locator: context.locator, startedAt: run.startedAt });
-    },
+      return Object.freeze({ policy: effective, authorityInputDigest, locator: context.locator, startedAt: run.startedAt }); },
     async readRun({ repository, locator }) {
       requireEvidenceRepository(repository);
       if (locator !== context.locator) fail('GitHub workflow run locator is not this Actions run');
-      return readRunRecord();
-    },
+      return readRunRecord(); },
     async readActor({ repository, workflowRun }) {
       requireEvidenceRepository(repository);
       const observed = actor(workflowRun?.actor, 'workflow actor');
       const source = jsonObject(await request('GET', '/user'), 'GitHub actor');
       const reobserved = actor(source, 'GitHub actor');
       if (reobserved.id !== observed.id || reobserved.login !== observed.login) fail('GitHub actor re-observation changed');
-      return { ...reobserved, subject: `github-user:${reobserved.id}` };
-    },
+      return { ...reobserved, subject: `github-user:${reobserved.id}` }; },
     async readRules({ repository, ref: branchRef }) {
       requireEvidenceRepository(repository);
-      return protection(branchRef);
-    },
+      return protection(branchRef); },
     async readCanonicalRef({ repository, ref: branchRef }) {
       const evidence = requireEvidenceRepository(repository), checked = ref(branchRef, 'GitHub canonical ref');
-      return { repository: evidence.repository, ref: checked, revision: await gitRef(evidence, checked) };
-    },
-    async readTargetRepository({ repository, canonicalBranch, canonicalRevision, candidateBranch, candidateHeadRevision, reviewLocator }) {
+      return { repository: evidence.repository, ref: checked, revision: await gitRef(evidence, checked) }; },
+    async readTargetRepository(query) {
+      const { repository, canonicalBranch, canonicalRevision, candidateBranch, candidateHeadRevision, reviewLocator } = query;
       const target = githubRepository(repository, 'target repository');
       if (!prepared || !target.repository.startsWith(prepared.policy.targetRepositoryPrefix)) fail('target repository is outside committed policy');
-      const baseBranch = targetBranch(canonicalBranch, 'target canonical branch'), headBranch = targetBranch(candidateBranch, 'target candidate branch');
-      const baseRevision = sha(canonicalRevision, 'target canonical revision'), headRevision = sha(candidateHeadRevision, 'target candidate head revision');
+      const baseBranch = targetBranch(canonicalBranch, 'target canonical branch'), headBranch = targetBranch(candidateBranch, 'target candidate branch'),
+        baseRevision = sha(canonicalRevision, 'target canonical revision'), headRevision = sha(candidateHeadRevision, 'target candidate head revision');
+      const retrospective = query.issuanceMode === GITHUB_RETROSPECTIVE_RECOVERY_MODE;
       const [source, currentBase, currentHead, review] = await Promise.all([
-        request('GET', target.path, undefined, { project: projectGitHubTargetRepository }), gitRef(target, `refs/heads/${baseBranch}`),
-        gitRef(target, `refs/heads/${headBranch}`), targetReview(target, reviewLocator),
+        request('GET', target.path, undefined, { project: projectGitHubTargetRepository }),
+        gitRef(target, `refs/heads/${baseBranch}`), gitRef(target, `refs/heads/${headBranch}`),
+        retrospective ? request('GET', `${target.path}/pulls/${pullNumber(reviewLocator, target)}`, undefined,
+          { project: projectGitHubTargetReview }) : targetReview(target, reviewLocator),
       ]);
       if (source.full_name !== `${target.owner}/${target.name}` || source.owner?.type !== 'User') fail('GitHub target repository identity is invalid');
       const owner = actor(source.owner, 'GitHub target repository owner');
       if (owner.login !== target.owner) fail('GitHub target repository owner changed');
-      if (currentBase !== baseRevision || currentHead !== headRevision) fail('GitHub target branch revisions changed');
+      if (!retrospective && currentBase !== baseRevision || currentHead !== headRevision) fail('GitHub target branch revisions changed');
+      if (retrospective) {
+        const number = pullNumber(reviewLocator, target);
+        const eventPage = await request('GET', `${target.path}/issues/${number}/events?per_page=100`, undefined,
+          { includeHeaders: true, project: (rows) => rows.map((entry) => ({ id: entry.id, event: entry.event,
+            commit_id: entry.commit_id, commit_url: entry.commit_url, created_at: entry.created_at })) });
+        return observeGitHubRetrospectiveTarget({ query, repositoryValue: source,
+          liveCanonicalRevision: currentBase, liveCandidateRevision: currentHead, pull: review,
+          eventPage: { value: eventPage.value, link: eventPage.link },
+          readCommit: async (revision) => { const found = await gitCommit(target, revision);
+            return { revision: found.revision, parents: found.parentRevisions, tree: found.tree,
+              committedAt: found.committedAt }; },
+          compare: (base, head) => request('GET', `${target.path}/compare/${base}...${head}`,
+            undefined, { project: (value) => ({ status: value.status, base_commit: { sha: value.base_commit?.sha },
+              merge_base_commit: { sha: value.merge_base_commit?.sha },
+              head_commit: { sha: value.head_commit?.sha } }) }) });
+      }
       return { repository: target.repository, repositoryId: identifier(source.id, 'GitHub target repository id'), owner,
         canonicalBranch: baseBranch, canonicalRevision: baseRevision, candidateBranch: headBranch,
-        candidateHeadRevision: headRevision, review };
-    },
+        candidateHeadRevision: headRevision, review }; },
     async readPublication({ repository, ref: branchRef, path }) {
       const evidence = requireEvidenceRepository(repository), checked = ref(branchRef, 'GitHub evidence ref');
       const rawPath = relativePath(path, 'GitHub evidence path'), revision = await gitRef(evidence, checked, { absent: true });
@@ -588,7 +586,8 @@ export async function runAuthority(argv, {
     const prepared = await provider.prepareInvocation({ dispatch, authorityInputDigest, policy, policyPath: command.policyPath });
     const expiresAt = deriveGitHubAuthorityExpiry(dispatch, prepared.startedAt, prepared.policy.validitySeconds, now);
     const issuance = await issueGitHubAuthority({ request: dispatch.request, candidate: dispatch.candidate,
-      policy: prepared.policy, workflowRunLocator: prepared.locator, expiresAt }, provider);
+      policy: prepared.policy, workflowRunLocator: prepared.locator, expiresAt,
+      ...(dispatch.issuanceMode === undefined ? {} : { issuanceMode: dispatch.issuanceMode }) }, provider);
     const output = canonicalJson(await verifyGitHubAuthorityIssuanceLive(issuance, provider, { now }));
     if (Buffer.byteLength(output, 'utf8') > MAX_AUTHORITY_OUTPUT_BYTES) fail('authority output exceeds byte bound');
     write(stdout, output); return 0;

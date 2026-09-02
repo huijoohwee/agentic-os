@@ -1,40 +1,26 @@
 /** Provider I/O orchestration for one create-only GitHub authority issuance. */
 import { canonicalJson } from './governance.mjs';
-import {
-  createFencedClaimBundle,
-  createGitHubAuthorityChallenge,
-  deriveGitHubAuthorityInputDigest,
-  parseGitHubRepositoryIdentity,
-  validateGitHubAuthorityPolicy,
-} from './github-authority.mjs';
-import {
-  createGitHubAuthorityIssuance,
-  createGitHubProtectionSnapshot,
-  createGitHubPublicationReceipt,
-  createGitHubStoredAuthorityBundle,
-  createGitHubTargetRepositoryProjection,
-  validateGitHubAuthorityIssuance,
-  validateGitHubEvidencePublication,
-  validateGitHubStoredAuthorityBundle,
-} from './github-authority-issuer.mjs';
+import { createFencedClaimBundle, createGitHubAuthorityChallenge, deriveGitHubAuthorityInputDigest,
+  GITHUB_RETROSPECTIVE_RECOVERY_MODE, parseGitHubRepositoryIdentity,
+  validateGitHubAuthorityPolicy } from './github-authority.mjs';
+import { createGitHubAuthorityIssuance, GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA,
+  createGitHubProtectionSnapshot, createGitHubPublicationReceipt, createGitHubStoredAuthorityBundle,
+  createGitHubTargetRepositoryProjection, validateGitHubAuthorityIssuance, validateGitHubEvidencePublication,
+  validateGitHubStoredAuthorityBundle } from './github-authority-issuer.mjs';
 
-const IDENTIFIER = /^[1-9][0-9]{0,18}$/u;
-const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
+const IDENTIFIER = /^[1-9][0-9]{0,18}$/u, LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u,
+  REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function exact(value, keys, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some((key) => !keys.includes(key))
-    || keys.some((key) => !Object.hasOwn(value, key))) {
-    fail(`${label} fields are invalid`);
-  }
+    || keys.some((key) => !Object.hasOwn(value, key))) fail(`${label} fields are invalid`);
 }
 function text(value, label) {
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
-    || /[\u0000-\u001f\u007f]/u.test(value)) {
-    fail(`${label} must be a bounded non-empty string`);
-  }
+    || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`);
   return value;
 }
 function identifier(value, label) {
@@ -72,14 +58,11 @@ export function parseAuthorityArguments(argv) {
   return Object.freeze(result);
 }
 function projectionObject(value, label) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    fail(`${label} must be an object`);
-  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   return value;
 }
 function projectRepository(value, label) {
-  const source = projectionObject(value, label);
-  return { full_name: source.full_name };
+  return { full_name: projectionObject(value, label).full_name };
 }
 export function projectGitHubTargetRepository(value) {
   const source = projectionObject(value, 'GitHub target repository response');
@@ -89,14 +72,65 @@ export function projectGitHubTargetRepository(value) {
 }
 export function projectGitHubTargetReview(value) {
   const source = projectionObject(value, 'GitHub target review response');
-  const head = projectionObject(source.head, 'GitHub target review head');
-  const base = projectionObject(source.base, 'GitHub target review base');
+  const head = projectionObject(source.head, 'GitHub target review head'),
+    base = projectionObject(source.base, 'GitHub target review base');
   return { number: source.number, html_url: source.html_url, state: source.state,
+    ...(source.merged === undefined ? {} : { merged: source.merged }),
     merged_at: source.merged_at, draft: source.draft,
     head: { repo: projectRepository(head.repo, 'GitHub target review head repository'),
       ref: head.ref, sha: head.sha },
     base: { repo: projectRepository(base.repo, 'GitHub target review base repository'),
       ref: base.ref, sha: base.sha } };
+}
+/** Validate a historical squash using provider-owned PR, event, commit, and ancestry evidence. */
+export async function observeGitHubRetrospectiveTarget({ query, repositoryValue,
+  liveCanonicalRevision, liveCandidateRevision, pull, eventPage, readCommit, compare }) {
+  const target = parseGitHubRepositoryIdentity(query.repository, 'target repository');
+  let locator; try { locator = new URL(query.reviewLocator); } catch { fail('retrospective review URL is invalid'); }
+  const prefix = `/${target.owner}/${target.name}/pull/`, number = locator.pathname.slice(prefix.length),
+    mergedAt = text(pull?.merged_at, 'retrospective merged_at'), mergedTime = Date.parse(mergedAt);
+  const events = eventPage?.value, next = eventPage?.link?.includes('rel="next"'),
+    merged = Array.isArray(events) ? events.filter((entry) => entry?.event === 'merged') : [];
+  if (query.issuanceMode !== GITHUB_RETROSPECTIVE_RECOVERY_MODE
+    || locator.origin !== 'https://github.com' || !locator.pathname.startsWith(prefix)
+    || locator.search || locator.hash || !IDENTIFIER.test(number) || !Number.isFinite(mergedTime)
+    || pull.number !== Number(number) || pull.html_url !== query.reviewLocator
+    || pull.state !== 'closed' || pull.merged !== true || pull.draft !== false
+    || pull.head?.repo?.full_name !== `${target.owner}/${target.name}`
+    || pull.head?.ref !== query.candidateBranch || pull.head?.sha !== query.candidateHeadRevision
+    || pull.base?.repo?.full_name !== `${target.owner}/${target.name}`
+    || pull.base?.ref !== query.canonicalBranch || pull.base?.sha !== query.canonicalRevision
+    || mergedTime >= Date.parse(query.authorityStartedAt) || next || merged.length !== 1
+    || liveCandidateRevision !== query.candidateHeadRevision)
+    fail('retrospective authority requires one exact already-merged pull request');
+  const event = merged[0], mergeRevision = event?.commit_id;
+  if (!REVISION.test(mergeRevision) || event.commit_url
+    !== `https://api.github.com/repos/${target.owner}/${target.name}/commits/${mergeRevision}`
+    || new Date(Date.parse(event.created_at)).toISOString() !== new Date(mergedTime).toISOString())
+    fail('retrospective authority merge event is not exact');
+  const [candidateCommit, mergeCommit] = await Promise.all([readCommit(query.candidateHeadRevision),
+    readCommit(mergeRevision)]), ancestry = mergeRevision === liveCanonicalRevision
+    ? null : await compare(mergeRevision, liveCanonicalRevision);
+  if (candidateCommit.revision !== query.candidateHeadRevision || mergeCommit.revision !== mergeRevision
+    || mergeCommit.parents.length !== 1 || mergeCommit.parents[0] !== query.canonicalRevision
+    || candidateCommit.tree !== mergeCommit.tree
+    || Math.abs(Date.parse(mergeCommit.committedAt) - mergedTime) > 5_000
+    || ancestry && (ancestry.status !== 'ahead'
+      || ancestry.base_commit?.sha !== mergeRevision || ancestry.merge_base_commit?.sha !== mergeRevision
+      || ancestry.head_commit?.sha !== liveCanonicalRevision))
+    fail('retrospective authority lacks exact squash-tree or current ancestry proof');
+  const review = { locator: query.reviewLocator, state: 'merged', draft: false,
+    headRepository: query.repository, headBranch: query.candidateBranch, headRevision: query.candidateHeadRevision,
+    baseRepository: query.repository, baseBranch: query.canonicalBranch, baseRevision: query.canonicalRevision };
+  const retrospectiveProof = { schema: GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA, mergeRevision,
+    mergeEventId: identifier(event.id, 'merge event id'), mergedAt: new Date(mergedTime).toISOString(),
+    historicalBaseRevision: query.canonicalRevision, liveCanonicalRevision, candidateTreeRevision: candidateCommit.tree,
+    mergeTreeRevision: mergeCommit.tree };
+  return { repository: query.repository, repositoryId: identifier(repositoryValue.id, 'target repository id'),
+    owner: { id: identifier(repositoryValue.owner?.id, 'target owner id'), login: text(repositoryValue.owner?.login, 'target owner login') },
+    canonicalBranch: query.canonicalBranch, canonicalRevision: query.canonicalRevision,
+    candidateBranch: query.candidateBranch, candidateHeadRevision: query.candidateHeadRevision,
+    review, retrospectiveProof };
 }
 function providerApi(provider, writable = false) {
   if (!provider || typeof provider !== 'object') fail('GitHub authority provider is required');
@@ -134,14 +168,11 @@ async function observeProtection(provider, bundle) {
   return createGitHubProtectionSnapshot(canonical, evidence, canonicalHead, bundle);
 }
 function targetQuery(bundle) {
-  return {
-    repository: bundle.candidate.targetRepository,
-    canonicalBranch: bundle.candidate.canonicalBranch,
-    canonicalRevision: bundle.candidate.canonicalRevision,
-    candidateBranch: bundle.candidate.branch,
-    candidateHeadRevision: bundle.candidate.headRevision,
-    reviewLocator: bundle.candidate.reviewLocator,
-  };
+  return { repository: bundle.candidate.targetRepository, canonicalBranch: bundle.candidate.canonicalBranch,
+    canonicalRevision: bundle.candidate.canonicalRevision, candidateBranch: bundle.candidate.branch,
+    candidateHeadRevision: bundle.candidate.headRevision, reviewLocator: bundle.candidate.reviewLocator,
+    ...(bundle.challenge.issuanceMode === undefined ? {} : {
+      issuanceMode: bundle.challenge.issuanceMode, authorityStartedAt: bundle.workflowRun.startedAt }) };
 }
 function inputTime(value, key, label) {
   const source = snap(value), instant = text(source[key], `${label}.${key}`);
@@ -171,34 +202,34 @@ export function validateGitHubAuthorityDispatch(input) {
     'GitHub authority dispatch validation input');
   const policy = validateGitHubAuthorityPolicy(source.policy), candidate = source.dispatch.candidate;
   const derived = deriveGitHubAuthorityInputDigest({ request: source.dispatch.request,
-    candidate, policy });
+    candidate, policy, ...(source.dispatch.issuanceMode === undefined ? {}
+      : { issuanceMode: source.dispatch.issuanceMode }) });
   if (source.authorityInputDigest !== derived)
     fail('authority_input_digest does not match the event payload and committed policy');
   return Object.freeze({ schema: 'agentic-os/github-authority-dispatch-validation/v1',
     authorityInputDigest: derived,
     authoritySubject: source.dispatch.request.authoritySubject,
     targetRepository: candidate.targetRepository,
-    candidateDigest: candidate.candidateDigest });
+    candidateDigest: candidate.candidateDigest,
+    ...(source.dispatch.issuanceMode === undefined ? {}
+      : { issuanceMode: source.dispatch.issuanceMode }) });
 }
 function verificationClock(options) {
   const source = options ?? {};
   if (!source || typeof source !== 'object' || Array.isArray(source)
-    || Object.keys(source).some((key) => key !== 'now')) {
+    || Object.keys(source).some((key) => key !== 'now'))
     fail('GitHub authority verification options are invalid');
-  }
   const clock = Object.hasOwn(source, 'now') ? source.now : Date.now;
   if (typeof clock !== 'function') fail('GitHub authority verification requires a trusted clock');
   return clock;
 }
 function requireCurrentWindow(bundle, clock) {
   const value = clock();
-  if (!Number.isSafeInteger(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || value < 0)
     fail('GitHub authority verification clock returned an invalid time');
-  }
   if (value < Date.parse(bundle.challenge.issuedAt)
-    || value >= Date.parse(bundle.challenge.expiresAt)) {
+    || value >= Date.parse(bundle.challenge.expiresAt))
     fail('GitHub authority issuance is outside its current validity window');
-  }
 }
 async function observeState(provider, stored) {
   const bundle = stored.authorityBundle;
@@ -239,6 +270,7 @@ export function validateGitHubPreparedPublication(input) {
   if (canonicalJson(bundle.request) !== canonicalJson(prepared.dispatch.request)
     || canonicalJson(bundle.candidate) !== canonicalJson(prepared.dispatch.candidate)
     || canonicalJson(bundle.policy) !== canonicalJson(prepared.policy)
+    || (bundle.challenge.issuanceMode ?? null) !== (prepared.dispatch.issuanceMode ?? null)
     || bundle.workflowRun.authorityInputDigest !== prepared.authorityInputDigest) {
     fail('GitHub evidence publication does not match the exact prepared bundle');
   }
@@ -254,8 +286,8 @@ export function validateGitHubPreparedPublication(input) {
 
 export async function issueGitHubAuthority(input, providerValue) {
   const source = snap(input);
-  exact(source, ['request', 'candidate', 'policy', 'workflowRunLocator', 'expiresAt'],
-    'GitHub authority issue input');
+  exact(source, ['request', 'candidate', 'policy', 'workflowRunLocator', 'expiresAt',
+    ...(source.issuanceMode === undefined ? [] : ['issuanceMode'])], 'GitHub authority issue input');
   const provider = providerApi(providerValue, true);
   const policy = validateGitHubAuthorityPolicy(source.policy);
   const locator = text(source.workflowRunLocator, 'workflowRunLocator');
@@ -267,6 +299,7 @@ export async function issueGitHubAuthority(input, providerValue) {
     workflowRun: run,
     policy,
     expiresAt: source.expiresAt,
+    ...(source.issuanceMode === undefined ? {} : { issuanceMode: source.issuanceMode }),
   });
   const bundle = createFencedClaimBundle({
     request: source.request,
@@ -335,6 +368,8 @@ export async function verifyGitHubAuthorityIssuanceLive(value, providerValue, op
     workflowRun: observedRun,
     policy: bundle.policy,
     expiresAt: bundle.challenge.expiresAt,
+    ...(bundle.challenge.issuanceMode === undefined ? {}
+      : { issuanceMode: bundle.challenge.issuanceMode }),
   });
   const observedBundle = createFencedClaimBundle({ request: bundle.request,
     candidate: bundle.candidate, challenge, workflowRun: observedRun, policy: bundle.policy });

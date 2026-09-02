@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest, validateCoordinationRequest } from './governance.mjs';
 import { validateEffectPlan } from './completion.mjs';
-import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
+import { GITHUB_RETROSPECTIVE_RECOVERY_MODE,
+  parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from './github-authority-issuer.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS,
   INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from './cleanup-records.mjs';
@@ -14,6 +15,8 @@ import { assertGitHubTransitionPolicyTarget, validateGitHubTransitionPolicy,
 export const GITHUB_TRANSITION_READ_ADAPTER = Object.freeze({
   id: 'github-transition-rest-cas-verifier', version: '1',
 });
+/** Opt in only to recording an exact merge that provider evidence predates current authority. */
+export const GITHUB_RETROSPECTIVE_INTEGRATION_MODE = GITHUB_RETROSPECTIVE_RECOVERY_MODE;
 export const GITHUB_TRANSITION_INPUT_SCHEMA = 'agentic-os/transition-operation-input/v1';
 export const GITHUB_TRANSITION_COORDINATE_SCHEMA =
   'agentic-os/github-transition-coordinate/v1';
@@ -26,8 +29,10 @@ const DIGEST = /^[0-9a-f]{64}$/u, REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const INPUT_KEYS = ['request', 'plan', 'planByteDigest', 'predecessorIssuance'];
+const RECOVERY_INPUT_KEYS = [...INPUT_KEYS, 'integrationMode'];
 const OPERATION_INPUT_KEYS = ['schema', 'request', 'plan', 'planByteDigest',
   'predecessorIssuance'];
+const RECOVERY_OPERATION_INPUT_KEYS = [...OPERATION_INPUT_KEYS, 'integrationMode'];
 const EVENT_INPUT_KEYS = ['operation_payload', 'operation_input_digest'];
 const RUN_KEYS = ['id', 'url', 'ref', 'revision', 'workflowRef', 'workflowPath',
   'workflowRevision', 'authoritySubject'];
@@ -138,6 +143,17 @@ function predecessor(value, request, plan) {
     fail('integrate does not bind the exact predecessor GitHub authority issuance');
   return issuance;
 }
+function integrationMode(source, request, issuance) {
+  if (!Object.hasOwn(source, 'integrationMode')) return null;
+  if (source.integrationMode !== GITHUB_RETROSPECTIVE_INTEGRATION_MODE
+    || request.requestedTransition !== 'integrate'
+    || issuance?.storedBundle?.authorityBundle?.challenge?.issuanceMode
+      !== GITHUB_RETROSPECTIVE_RECOVERY_MODE
+    || issuance?.storedBundle?.targetRepository?.review?.state !== 'merged') {
+    fail('retrospective recovery requires an integrate request whose initial review was already merged');
+  }
+  return GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
+}
 export function validateGitHubTransitionWorkflowRun(value, authorityRepository) {
   const repo = repository(authorityRepository);
   const source = snap(value);
@@ -165,7 +181,9 @@ export function deriveGitHubTransitionRunName(value) {
 }
 export function validateGitHubTransitionInput(value) {
   const source = snap(value);
-  exact(source, OPERATION_INPUT_KEYS, 'GitHub transition operation input');
+  const recovery = Object.hasOwn(source, 'integrationMode');
+  exact(source, recovery ? RECOVERY_OPERATION_INPUT_KEYS : OPERATION_INPUT_KEYS,
+    'GitHub transition operation input');
   if (source.schema !== GITHUB_TRANSITION_INPUT_SCHEMA)
     fail('GitHub transition operation input schema is invalid');
   const request = validateCoordinationRequest(source.request), plan = validateEffectPlan(source.plan);
@@ -188,8 +206,10 @@ export function validateGitHubTransitionInput(value) {
     || request.leaseEpoch >= Number.MAX_SAFE_INTEGER)
     fail('GitHub transition operation input does not bind one safe exact plan transition');
   const predecessorIssuance = predecessor(source.predecessorIssuance, request, plan);
+  const mode = integrationMode(source, request, predecessorIssuance);
   const result = Object.freeze({ schema: GITHUB_TRANSITION_INPUT_SCHEMA, request, plan,
-    planByteDigest, predecessorIssuance });
+    planByteDigest, predecessorIssuance,
+    ...(mode === null ? {} : { integrationMode: mode }) });
   const encoded = canonicalJson(result);
   if (Buffer.byteLength(encoded, 'utf8') > MAX_OPERATION_PAYLOAD_BYTES
     || /[\u0000-\u001f\u007f]/u.test(encoded))
@@ -241,13 +261,16 @@ export function validateGitHubTransitionDispatchEvent(value, context) {
 }
 function planInput(value) {
   const source = snap(value);
-  exact(source, INPUT_KEYS, 'GitHub transition verifier input');
+  const recovery = Object.hasOwn(source, 'integrationMode');
+  exact(source, recovery ? RECOVERY_INPUT_KEYS : INPUT_KEYS, 'GitHub transition verifier input');
   const payload = validateGitHubTransitionInput({ schema: GITHUB_TRANSITION_INPUT_SCHEMA,
     request: source.request, plan: source.plan, planByteDigest: source.planByteDigest,
-    predecessorIssuance: source.predecessorIssuance });
+    predecessorIssuance: source.predecessorIssuance,
+    ...(recovery ? { integrationMode: source.integrationMode } : {}) });
   const bytes = encodeGitHubTransitionInput(payload);
   return { ...payload, payload, operationInputDigest: deriveGitHubTransitionInputDigest(bytes) };
 }
+/** Build a normal input, or an explicit retrospective input whose predecessor review is already merged. */
 export function createGitHubTransitionInput(value) { return planInput(value).payload; }
 
 export function deriveGitHubTransitionCoordinate(value) {

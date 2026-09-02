@@ -241,7 +241,9 @@ export function createGitHubTransitionAuthorityVerifier(value) {
   return async (inputValue) => {
     const supplied = validateGitHubTransitionInput({ ...inputValue,
       schema: expected.operationInput.schema,
-      predecessorIssuance: expected.operationInput.predecessorIssuance });
+      predecessorIssuance: expected.operationInput.predecessorIssuance,
+      ...(expected.operationInput.integrationMode === undefined ? {}
+        : { integrationMode: expected.operationInput.integrationMode }) });
     if (!same(supplied, expected.operationInput))
       fail('GitHub transition verifier input differs from the dispatched operation');
     const state = await provider.readPublication(expected.coordinate);

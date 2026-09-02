@@ -1,18 +1,18 @@
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
-import { validateGitHubAuthorityIssuance, validateGitHubStoredAuthorityBundle }
-  from './github-authority-issuer.mjs';
+import { validateGitHubAuthorityIssuance, validateGitHubStoredAuthorityBundle } from './github-authority-issuer.mjs';
 import { effectPlanByteDigest, validateEffectPlanBytes } from './completion.mjs';
-import { projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from './github-authority-operation.mjs'; export { verifyGitHubAuthorityIssuanceLive };
+import { observeGitHubRetrospectiveTarget, projectGitHubTargetRepository, projectGitHubTargetReview,
+  verifyGitHubAuthorityIssuanceLive }
+  from './github-authority-operation.mjs'; export { verifyGitHubAuthorityIssuanceLive };
 export const GITHUB_AUTHORITY_READ_ADAPTER = Object.freeze({ id: 'github-rest-authority-read', version: '1' });
 export const GITHUB_AUTHORITY_RUN_NAME_PREFIX = 'ADLC authority ';
 export const GITHUB_AUTHORITY_LIVE_VERIFICATION_SCHEMA = 'agentic-os/github-authority-live-verification/v1';
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u, ID = /^[1-9][0-9]{0,18}$/u;
-const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
-const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u, REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function object(value, label) {
@@ -20,15 +20,13 @@ function object(value, label) {
 function text(value, label) {
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
     || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`);
-  return value;
-}
+  return value; }
 function sha(value, label) {
   if (typeof value !== 'string' || !SHA.test(value)) fail(`${label} must be a full Git object ID`);
   return value; }
 function identifier(value, label) {
   const result = String(value); if (!ID.test(result)) fail(`${label} must be a positive identifier`);
-  return result;
-}
+  return result; }
 function instant(value, label) {
   const parsed = Date.parse(text(value, label));
   if (!Number.isFinite(parsed)) fail(`${label} must be a UTC instant`);
@@ -36,19 +34,16 @@ function instant(value, label) {
 function actor(value, label) {
   const source = object(value, label), login = text(source.login, `${label}.login`).toLowerCase();
   if (!LOGIN.test(login)) fail(`${label}.login is invalid`);
-  return { id: identifier(source.id, `${label}.id`), login };
-}
+  return { id: identifier(source.id, `${label}.id`), login }; }
 function repository(value) {
   const parsed = parseGitHubRepositoryIdentity(value);
-  return { ...parsed, path: `/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.name)}` };
-}
+  return { ...parsed, path: `/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.name)}` }; }
 function shortRef(value, label) {
   const prefix = 'refs/heads/', raw = text(value, label);
   const parts = raw.startsWith(prefix) ? raw.slice(prefix.length).split('/') : [];
   if (!parts.length || parts.some((part) => !REF_PART.test(part)
     || part.endsWith('.') || part.endsWith('.lock'))) fail(`${label} must be a portable branch ref`);
-  return parts.join('/');
-}
+  return parts.join('/'); }
 function branch(value, label) { return `refs/heads/${shortRef(value, label)}`; }
 function relative(value, label) {
   const result = text(value, label), parts = result.split('/');
@@ -77,14 +72,12 @@ async function body(response) {
       chunks.push(chunk);
     }
   } finally { reader.releaseLock(); }
-  return Buffer.concat(chunks, total);
-}
+  return Buffer.concat(chunks, total); }
 function apiOrigin(value) {
   let parsed; try { parsed = new URL(value); } catch { fail('GitHub API origin is invalid'); }
   if (parsed.origin !== 'https://api.github.com' || parsed.username || parsed.password || parsed.pathname !== '/'
     || parsed.search || parsed.hash) fail('GitHub API origin must be one exact HTTPS origin');
-  return parsed.origin;
-}
+  return parsed.origin; }
 function rule(value) {
   const source = object(value, 'GitHub rule'), type = text(source.type, 'GitHub rule type');
   if (!/^[a-z][a-z0-9_]{0,63}$/u.test(type)) fail('GitHub rule type is invalid');
@@ -92,18 +85,15 @@ function rule(value) {
     : type === 'update' ? { update_allows_fetch_and_merge: false } : null;
   if (parameters !== null && (!parameters || typeof parameters !== 'object'
     || Array.isArray(parameters))) fail('GitHub rule parameters are invalid');
-  return { type, parameters };
-}
+  return { type, parameters }; }
 function bypass(value) {
   const source = object(value, 'GitHub bypass actor');
   return `${text(source.actor_type, 'bypass actor type')}:${identifier(source.actor_id,
-    'bypass actor id')}:${text(source.bypass_mode, 'bypass mode')}`;
-}
+    'bypass actor id')}:${text(source.bypass_mode, 'bypass mode')}`; }
 export function deriveGitHubAuthorityRunName({ authorityInputDigest, workflowRevision }) {
   if (!/^[0-9a-f]{64}$/u.test(authorityInputDigest ?? '')) fail('authorityInputDigest is invalid');
   return `${GITHUB_AUTHORITY_RUN_NAME_PREFIX}${authorityInputDigest} @ ${sha(
-    workflowRevision, 'workflowRevision')}`;
-}
+    workflowRevision, 'workflowRevision')}`; }
 export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, token,
   fetchImpl = globalThis.fetch, apiOrigin: originValue = 'https://api.github.com',
   timeoutMs = 15_000 }) {
@@ -136,16 +126,14 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     if (value === null) return null;
     if (value.type !== 'file' || value.encoding !== 'base64') fail('GitHub content is not a file');
     return { value: jsonBytes(base64(value.content), 'GitHub content'),
-      sha: sha(value.sha, 'GitHub content SHA') };
-  };
+      sha: sha(value.sha, 'GitHub content SHA') }; };
   const gitRef = async (repo, value, { absent = false } = {}) => {
     const checked = branch(value, 'GitHub ref');
     const result = await request(`${repo.path}/git/ref/heads/${encodeURIComponent(shortRef(checked,
       'GitHub ref'))}`, { absent });
     if (result === null) return null;
     if (result.ref !== checked || result.object?.type !== 'commit') fail('GitHub ref is not exact');
-    return sha(result.object.sha, 'GitHub ref SHA');
-  };
+    return sha(result.object.sha, 'GitHub ref SHA'); };
   const commit = async (repo, revision, oneParent = false) => {
     const value = object(await request(`${repo.path}/git/commits/${sha(revision,
       'GitHub commit revision')}`), 'GitHub commit');
@@ -153,8 +141,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
       || oneParent && value.parents.length !== 1) fail('GitHub commit is not exact');
     const parents = value.parents.map((entry) => sha(entry?.sha, 'GitHub parent SHA'));
     return { revision, parents, tree: sha(value.tree?.sha, 'GitHub tree SHA'),
-      committedAt: instant(value.committer?.date, 'GitHub commit time') };
-  };
+      committedAt: instant(value.committer?.date, 'GitHub commit time') }; };
   const tree = async (repo, revision) => {
     const value = object(await request(`${repo.path}/git/trees/${sha(revision,
       'GitHub tree revision')}?recursive=1`), 'GitHub tree');
@@ -169,13 +156,11 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
         fail('GitHub tree has invalid or duplicate entries');
       entries.set(path, descriptor);
     }
-    return entries;
-  };
+    return entries; };
   const requireEvidence = (value) => {
     const repo = repository(value);
     if (repo.repository !== bundle.policy.evidenceRepository) fail('evidence repository changed');
-    return repo;
-  };
+    return repo; };
   const readRules = async ({ repository: identity, ref }) => {
     const repo = requireEvidence(identity), checked = branch(ref, 'GitHub protection ref');
     const page = await request(`${repo.path}/rules/branches/${encodeURIComponent(shortRef(checked,
@@ -279,19 +264,34 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     },
     async readTargetRepository(query) {
       if (query.repository !== expectedCandidate.targetRepository
-        || query.canonicalBranch !== expectedCandidate.canonicalBranch
-        || query.canonicalRevision !== expectedCandidate.canonicalRevision
-        || query.candidateBranch !== expectedCandidate.branch
-        || query.candidateHeadRevision !== expectedCandidate.headRevision
-        || query.reviewLocator !== expectedCandidate.reviewLocator) fail('target query changed');
+        || query.canonicalBranch !== expectedCandidate.canonicalBranch || query.canonicalRevision !== expectedCandidate.canonicalRevision
+        || query.candidateBranch !== expectedCandidate.branch || query.candidateHeadRevision !== expectedCandidate.headRevision
+        || query.reviewLocator !== expectedCandidate.reviewLocator
+        || (query.issuanceMode ?? null) !== (bundle.challenge.issuanceMode ?? null))
+        fail('target query changed');
       const repo = repository(query.repository), value = await request(repo.path, { project: projectGitHubTargetRepository });
+      const retrospective = bundle.challenge.issuanceMode !== undefined;
       const [base, head, pull] = await Promise.all([
-        gitRef(repo, `refs/heads/${query.canonicalBranch}`),
-        gitRef(repo, `refs/heads/${query.candidateBranch}`), review(repo, query.reviewLocator),
+        gitRef(repo, `refs/heads/${query.canonicalBranch}`), gitRef(repo, `refs/heads/${query.candidateBranch}`), retrospective
+          ? request(`${repo.path}/pulls/${new URL(query.reviewLocator).pathname.split('/').at(-1)}`,
+            { project: projectGitHubTargetReview }) : review(repo, query.reviewLocator),
       ]);
       if (value.full_name !== `${repo.owner}/${repo.name}` || value.owner?.type !== 'User'
-        || base !== query.canonicalRevision || head !== query.candidateHeadRevision)
+        || !retrospective && base !== query.canonicalRevision || head !== query.candidateHeadRevision)
         fail('target repository identity changed');
+      if (retrospective) {
+        const number = new URL(query.reviewLocator).pathname.split('/').at(-1);
+        const eventPage = await request(`${repo.path}/issues/${number}/events?per_page=100`, { withLink: true,
+          project: (rows) => rows.map((entry) => ({ id: entry.id, event: entry.event,
+            commit_id: entry.commit_id, commit_url: entry.commit_url, created_at: entry.created_at })) });
+        return observeGitHubRetrospectiveTarget({ query, repositoryValue: value,
+          liveCanonicalRevision: base, liveCandidateRevision: head, pull, eventPage,
+          readCommit: (revision) => commit(repo, revision), compare: (before, after) =>
+            request(`${repo.path}/compare/${before}...${after}`, { project: (entry) => ({ status: entry.status,
+              base_commit: { sha: entry.base_commit?.sha },
+              merge_base_commit: { sha: entry.merge_base_commit?.sha },
+              head_commit: { sha: entry.head_commit?.sha } }) }) });
+      }
       return { repository: repo.repository, repositoryId: identifier(value.id, 'target repository id'),
         owner: actor(value.owner, 'target owner'), canonicalBranch: query.canonicalBranch,
         canonicalRevision: base, candidateBranch: query.candidateBranch,
@@ -352,8 +352,9 @@ function spendKey(issuanceDigest, authorizationDigest, planByteDigest) {
 export async function createGitHubAuthorityLiveVerificationReceipt(input, provider, options) {
   if (!input || Object.keys(input).sort().join(',') !== 'issuance,planBytes') fail('GitHub live verification input is invalid');
   const issuance = validateGitHubAuthorityIssuance(input.issuance), now = clock(options);
-  const plan = validateEffectPlanBytes(input.planBytes), planByteDigest = effectPlanByteDigest(input.planBytes);
-  const bundle = issuance.storedBundle.authorityBundle, request = bundle.request;
+  const plan = validateEffectPlanBytes(input.planBytes), planByteDigest = effectPlanByteDigest(input.planBytes),
+    bundle = issuance.storedBundle.authorityBundle, request = bundle.request;
+  if (bundle.challenge.issuanceMode !== undefined) fail('retrospective issuance is record-only and cannot authorize effects');
   const authorization = bundle.bootstrapAuthorization, candidate = bundle.candidate, bound = plan.authority;
   const requestBound = plan.target.repository === request.repository
     && plan.target.immutableRevision === request.immutableRevision
@@ -395,5 +396,4 @@ export function validateGitHubAuthorityLiveVerificationReceipt(value) {
       <= Date.parse(instant(source.verifiedAt, 'verifiedAt'))) fail('live verification receipt semantics are invalid');
   const { receiptDigest, ...payload } = source;
   if (governanceDigest(payload) !== receiptDigest) fail('live verification receipt digest is invalid');
-  return Object.freeze(source);
-}
+  return Object.freeze(source); }
