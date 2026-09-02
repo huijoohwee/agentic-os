@@ -39,6 +39,12 @@ conflicting trust fails closed: commands never infer recovery from a lane, sibli
 remote, or environment, and setup never overwrites an existing anchor. This local identity pin is
 not an authenticated claim, lease, integration approval, retirement receipt, or cleanup authority.
 
+CI runs `npm run evals` from this root source on every protected candidate. A pinned consumer may invoke
+the same packaged evaluator with `npm --prefix node_modules/agentic-os run evals`; consumer-specific
+compatibility checks remain local. Load [the autonomous-goal guide](guides/AUTONOMOUS-GOAL-PURSUIT.md)
+only for delivery planning or when execution stalls/repeats a mechanical failure; it remains outside the
+always-load set.
+
 Open a lane, work, land it:
 
 ```sh

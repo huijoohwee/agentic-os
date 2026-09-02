@@ -46,6 +46,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm run docs:check
-      - run: npm run modules:check
-      - run: npm run readiness:check
+      - run: npm run evals
+        working-directory: ${{ github.workspace }}
