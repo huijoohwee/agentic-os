@@ -16,10 +16,10 @@ An effect plan binds the exact target, candidate, snapshot, predecessor, authori
 parameters. Its request cites `effect-plan:sha256:<planByteDigest>` exactly once. Structural validators do
 not authenticate GitHub; provider-live adapters do.
 
-## Read-only transition dispatch
+## Read-only authority dispatch
 
-The ACOS Actions workflow validates only. It has no publication token, network result, artifact, or log
-authority. It takes exactly two required string inputs:
+The ACOS Actions workflows validate authority inputs only. They have no publication token, network result,
+artifact, or log authority. A transition takes exactly two required string inputs:
 
 - `operation_payload`: exact canonical UTF-8 transition input bytes;
 - `operation_input_digest`: lowercase SHA-256 of those exact bytes.
@@ -36,19 +36,18 @@ run-name: ADLC transition ${{ inputs.operation_input_digest }} @ ${{ github.work
 
 `agentic-os-transition validate-event` reads only the bounded event file and the canonical committed policy.
 It requires `workflow_dispatch`, attempt 1, identical `GITHUB_SHA` and `GITHUB_WORKFLOW_SHA`, and exact
-repository, canonical ref, and workflow path. The policy contains an exact target repository allowlist;
-prefix or payload-selected authority is invalid.
+repository, canonical ref, and workflow path. Authority validation is also silent, tokenless, read-only,
+and requires exact canonical payload/policy bytes; prefix or payload-selected authority is invalid.
 
 Dispatch with GitHub API version `2026-03-10`, `return_run_details:true`, and retain the provider-returned run
 ID and URLs. Never discover authority by listing runs. Wait for that exact run to complete successfully.
 
-## Local create-only transition authority
+## Local create-only authority
 
-After terminal success, a local controller uses an authenticated `gh` user credential. It reads the exact
-committed policy and target Administration evidence, then publishes one create-only child under
-`refs/heads/adlc/authority/<coordinate>`. This flat namespace is covered by the immutable authority ruleset.
-The workflow token never publishes. A first publication requires the authority canonical ref still equals
-the workflow SHA; historical replay permits later canonical advancement.
+After exact-run success, local `gh` credentials call `agentic-os-authority issue-github` with exact event,
+policy, `--repository`, and dispatch-returned `--run-id`; listing is forbidden. Before create-only publication
+it binds active workflow ID/path, equal ref/SHA, completion time, and bearer `/user`. Workflow tokens never
+publish. First publication requires canonical ref equals workflow SHA; replay permits later advancement.
 
 The coordinate is keyed only by evidence repository, target repository, source claim, epoch, and fence. It
 excludes operation, plan, request, and run, so one source has only one successor. Exact-input replay returns

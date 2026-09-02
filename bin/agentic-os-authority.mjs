@@ -7,73 +7,65 @@ import { readBoundedFile, snapshotCatalogInput } from '../src/catalog-input.mjs'
 import { canonicalJson } from '../src/governance.mjs';
 import { deriveGitHubAuthorityInputDigest, parseGitHubRepositoryIdentity, validateGitHubAuthorityPolicy } from '../src/github-authority.mjs';
 import { validateGitHubStoredAuthorityBundle } from '../src/github-authority-issuer.mjs';
-import { issueGitHubAuthority, projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
-export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024;
-export const MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
+import { deriveGitHubAuthorityExpiry, issueGitHubAuthority, projectGitHubTargetRepository,
+  parseAuthorityArguments, projectGitHubTargetReview, validateGitHubAuthorityDispatch,
+  verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
+export { parseAuthorityArguments } from '../src/github-authority-operation.mjs';
+import { deriveGitHubAuthorityRunName } from '../src/github-authority-client.mjs';
+export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024,
+  MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
-const DIGEST = /^[0-9a-f]{64}$/u, SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const ID = /^[1-9][0-9]{0,18}$/u, OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
-const REPOSITORY = /^[a-z0-9][a-z0-9._-]{0,99}$/u;
+const DIGEST = /^[0-9a-f]{64}$/u, SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u,
+  ID = /^[1-9][0-9]{0,18}$/u, OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u,
+  REPOSITORY = /^[a-z0-9][a-z0-9._-]{0,99}$/u;
 const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const DISPATCH_KEYS = Object.freeze(['request', 'candidate']);
-const STATIC_POLICY_KEYS = Object.freeze(['targetRepositoryPrefix', 'canonicalRef', 'workflowPath', 'confirmationClass',
+const DISPATCH_KEYS = Object.freeze(['request', 'candidate']), STATIC_POLICY_KEYS = Object.freeze([
+  'targetRepositoryPrefix', 'canonicalRef', 'workflowPath', 'confirmationClass',
   'requiredStatusChecks', 'allowedMergeMethods', 'evidenceRefPrefix', 'evidencePathPrefix', 'validitySeconds']);
 function fail(message) { throw new TypeError(message); }
 function text(value, label, limit = 4096) {
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > limit
     || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`);
-  return value;
-}
+  return value; }
 function exact(value, keys, label, required = true) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   const found = Object.keys(value);
   if (found.some((key) => !keys.includes(key)) || (required && keys.some((key) => !Object.hasOwn(value, key))))
-    fail(`${label} fields are invalid`);
-}
-function object(value, label) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
-  return value;
-}
+    fail(`${label} fields are invalid`); }
+function object(value, label) { if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`); return value; }
 function sha(value, label) {
   if (typeof value !== 'string' || !SHA.test(value)) fail(`${label} must be a full lowercase Git object identifier`);
-  return value;
-}
+  return value; }
 function identifier(value, label) {
   const result = String(value);
   if (!ID.test(result)) fail(`${label} must be a canonical positive identifier`);
-  return result;
-}
+  return result; }
 function shortRef(value, label) {
   const result = text(value, label), prefix = 'refs/heads/';
   const parts = result.startsWith(prefix) ? result.slice(prefix.length).split('/') : [];
   if (!parts.length || parts.some((part) => !REF_PART.test(part) || part.endsWith('.') || part.endsWith('.lock')))
     fail(`${label} must be a portable refs/heads ref`);
-  return parts.join('/');
-}
+  return parts.join('/'); }
 function ref(value, label) { return `refs/heads/${shortRef(value, label)}`; }
 function relativePath(value, label) {
   const result = text(value, label), parts = result.split('/');
   if (result.startsWith('/') || result.includes('\\') || parts.some((part) => !part || part === '.' || part === '..'))
     fail(`${label} must be a portable relative Git path`);
-  return result;
-}
+  return result; }
 function instant(value, label) {
   const result = text(value, label), parsed = Date.parse(result);
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== result)
     fail(`${label} must be an exact UTC instant`);
-  return result;
-}
+  return result; }
 function apiInstant(value, label) {
   const result = text(value, label), parsed = Date.parse(result);
   if (!Number.isFinite(parsed)) fail(`${label} must be an API UTC instant`);
-  return new Date(parsed).toISOString();
-}
+  return new Date(parsed).toISOString(); }
 function clockValue(now) {
   const value = typeof now === 'function' ? now() : now;
   if (!Number.isFinite(value)) fail('authority clock must be a finite timestamp');
-  return value;
-}
+  return value; }
 function actionValue(env, name, { secret = false, path = false } = {}) {
   const value = env?.[name];
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 8192
@@ -89,9 +81,7 @@ function githubRepository(value, label = 'GitHub repository') {
   return Object.freeze({ repository, owner: match[1], name: match[2],
     path: `/repos/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}` });
 }
-function githubRepositoryFromActions(env) {
-  return githubRepository(`github.com/${actionValue(env, 'GITHUB_REPOSITORY')}`, 'GITHUB_REPOSITORY');
-}
+function githubRepositoryFromActions(env) { return githubRepository(`github.com/${actionValue(env, 'GITHUB_REPOSITORY')}`, 'GITHUB_REPOSITORY'); }
 function workflowReference(value, repository) {
   const source = actionValue({ GITHUB_WORKFLOW_REF: value }, 'GITHUB_WORKFLOW_REF');
   const prefix = `${repository.owner}/${repository.name}/`, marker = source.lastIndexOf('@');
@@ -102,8 +92,7 @@ function workflowReference(value, repository) {
 }
 function targetBranch(value, label) {
   const branch = text(value, label); if (branch.startsWith('refs/')) fail(`${label} must be a short Git branch`);
-  return shortRef(`refs/heads/${branch}`, label);
-}
+  return shortRef(`refs/heads/${branch}`, label); }
 function pullNumber(locator, target) {
   if (locator === null) return null;
   let value;
@@ -114,17 +103,19 @@ function pullNumber(locator, target) {
     || value.href !== locator) fail('target review locator must be an exact GitHub pull request URL');
   return identifier(value.pathname.slice(prefix.length), 'target review number');
 }
-function actionContext(env) {
+function actionContext(env, { requireToken = true } = {}) {
   if (actionValue(env, 'GITHUB_EVENT_NAME') !== 'workflow_dispatch') fail('GITHUB_EVENT_NAME must be workflow_dispatch');
   if (actionValue(env, 'GITHUB_RUN_ATTEMPT') !== '1') fail('GITHUB_RUN_ATTEMPT must be exactly 1');
   const repository = githubRepositoryFromActions(env), context = {
-    repository, token: actionValue(env, 'GITHUB_TOKEN', { secret: true }),
+    repository, token: requireToken ? actionValue(env, 'GITHUB_TOKEN', { secret: true }) : null,
     eventPath: actionPath(env, 'GITHUB_EVENT_PATH'), runId: identifier(actionValue(env, 'GITHUB_RUN_ID'), 'GITHUB_RUN_ID'),
     ref: ref(actionValue(env, 'GITHUB_REF'), 'GITHUB_REF'),
     revision: sha(actionValue(env, 'GITHUB_SHA'), 'GITHUB_SHA'),
     workflowRevision: sha(actionValue(env, 'GITHUB_WORKFLOW_SHA'), 'GITHUB_WORKFLOW_SHA'),
   };
   Object.assign(context, workflowReference(actionValue(env, 'GITHUB_WORKFLOW_REF'), repository));
+  if (context.ref !== context.workflowRef || context.revision !== context.workflowRevision)
+    fail('GitHub workflow ref and revision must equal the checked-out ref and revision');
   context.locator = `${GITHUB_API_ORIGIN}${repository.path}/actions/runs/${context.runId}`;
   return Object.freeze(context);
 }
@@ -167,19 +158,8 @@ function runtimePolicy(staticValue, context) {
     allowedMergeMethods: policy.allowedMergeMethods, evidenceRefPrefix: policy.evidenceRefPrefix,
     evidencePathPrefix: policy.evidencePathPrefix, validitySeconds: policy.validitySeconds });
 }
-function inputTime(value, key, label) { return Date.parse(instant(object(value, label)[key], `${label}.${key}`)); }
-function boundedExpiry(dispatch, startedAt, validitySeconds, now) {
-  const started = Date.parse(startedAt), expires = Math.min(
-    inputTime(dispatch.request, 'expiresAt', 'request'), inputTime(dispatch.candidate, 'expiresAt', 'candidate'),
-    started + validitySeconds * 1000,
-  );
-  if (started < inputTime(dispatch.request, 'observedAt', 'request')
-    || started < inputTime(dispatch.candidate, 'observedAt', 'candidate') || expires <= started)
-    fail('workflow start is outside the authority input validity window');
-  if (clockValue(now) < started || clockValue(now) >= expires) fail('authority issuance window is not currently valid');
-  return new Date(expires).toISOString();
-}
-function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_INPUT_BYTES, catalog = true } = {}) {
+function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_INPUT_BYTES,
+  catalog = true, exactBytes = false } = {}) {
   const source = text(path, `${label} path`);
   if (relative && (source.startsWith('/') || source.includes('\\') || source.split('/').some((part) => !part || part === '.' || part === '..')))
     fail(`${label} path must be repository-relative`);
@@ -189,10 +169,13 @@ function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_
   catch { fail(`${label} must be valid UTF-8 JSON`); }
   if (!catalog) return value;
   const snapshot = snapshotCatalogInput(value); if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
-  return JSON.parse(canonicalJson(snapshot.value));
+  const encoded = canonicalJson(snapshot.value);
+  if (exactBytes && !bytes.equals(Buffer.from(encoded, 'utf8'))) fail(`${label} must use exact canonical JSON bytes`);
+  return JSON.parse(encoded);
 }
 export function loadAuthorityDispatch(eventPath, expectedEventPath) {
-  if (eventPath !== expectedEventPath) fail('--event must equal GITHUB_EVENT_PATH');
+  if (expectedEventPath !== undefined && eventPath !== expectedEventPath)
+    fail('--event must equal GITHUB_EVENT_PATH');
   const event = object(readJsonFile(eventPath, 'GitHub event',
     { maxBytes: MAX_AUTHORITY_EVENT_BYTES, catalog: false }), 'GitHub event');
   const inputs = object(event.inputs, 'GitHub event inputs');
@@ -205,38 +188,18 @@ export function loadAuthorityDispatch(eventPath, expectedEventPath) {
   const snapshot = snapshotCatalogInput(value);
   if (!snapshot.ok) fail('authority_payload exceeds structural bounds');
   exact(snapshot.value, DISPATCH_KEYS, 'authority_payload');
-  return Object.freeze({ dispatch: JSON.parse(canonicalJson(snapshot.value)), authorityInputDigest });
+  const canonical = canonicalJson(snapshot.value);
+  if (encoded !== canonical) fail('authority_payload must use exact canonical JSON bytes');
+  return Object.freeze({ dispatch: JSON.parse(canonical), authorityInputDigest });
 }
-export function loadCommittedAuthorityPolicy(path) {
-  return staticPolicy(readJsonFile(path, 'committed authority policy', { relative: true }));
-}
+export function loadCommittedAuthorityPolicy(path) { return staticPolicy(readJsonFile(path, 'committed authority policy', { relative: true, exactBytes: true })); }
 export const loadAuthorityIssueInput = loadAuthorityDispatch;
-export function parseAuthorityArguments(argv) {
-  if (!Array.isArray(argv) || argv.some((value) => typeof value !== 'string')) fail('authority arguments are invalid');
-  if (argv.length === 1 && argv[0] === '--help') return Object.freeze({ command: 'help' });
-  if (argv[0] !== 'issue-github') fail('usage: agentic-os-authority issue-github --event=$GITHUB_EVENT_PATH --policy=<committed-policy.json>');
-  const values = {};
-  for (let index = 1; index < argv.length; index += 1) {
-    const current = argv[index], match = current.match(/^--(event|policy)=(.+)$/u);
-    if (match) {
-      if (Object.hasOwn(values, match[1])) fail(`authority --${match[1]} option is duplicated`);
-      values[match[1]] = match[2];
-    } else if (current === '--event' || current === '--policy') {
-      const name = current.slice(2), next = argv[++index];
-      if (Object.hasOwn(values, name) || typeof next !== 'string' || next.startsWith('--')) fail(`authority --${name} option is invalid`);
-      values[name] = next;
-    } else fail('authority command accepts only --event and --policy');
-  }
-  return Object.freeze({ command: 'issue-github', eventPath: text(values.event, 'authority event path'),
-    policyPath: text(values.policy, 'authority policy path') });
-}
 function encodedPath(path) { return relativePath(path, 'GitHub content path').split('/').map(encodeURIComponent).join('/'); }
 function jsonObject(value, label) { return object(value, label); }
 function actor(value, label) {
   const source = jsonObject(value, label), id = identifier(source.id, `${label}.id`), login = text(source.login, `${label}.login`).toLowerCase();
   if (!OWNER.test(login)) fail(`${label}.login is invalid`);
-  return { id, login };
-}
+  return { id, login }; }
 function decodeBase64(value, label, limit = MAX_AUTHORITY_INPUT_BYTES) {
   if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > MAX_AUTHORITY_RESPONSE_BYTES
     || /[^A-Za-z0-9+/=\r\n]/u.test(value)) fail(`${label} is not base64`);
@@ -244,8 +207,7 @@ function decodeBase64(value, label, limit = MAX_AUTHORITY_INPUT_BYTES) {
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(source)) fail(`${label} is not canonical base64`);
   const bytes = Buffer.from(source, 'base64');
   if (bytes.byteLength > limit || bytes.toString('base64') !== source) fail(`${label} exceeds byte bound`);
-  return bytes;
-}
+  return bytes; }
 function parseJsonBytes(bytes, label, project = (value) => value) { try {
     const snapshot = snapshotCatalogInput(project(JSON.parse(UTF8.decode(bytes))));
     if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
@@ -260,25 +222,37 @@ async function boundedBody(response) {
   if (typeof response.body.getReader !== 'function') fail('GitHub API response body is unavailable');
   const reader = response.body.getReader(), chunks = [];
   let total = 0;
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      const chunk = Buffer.from(next.value);
-      total += chunk.byteLength;
+  try { for (;;) {
+      const next = await reader.read(); if (next.done) break;
+      const chunk = Buffer.from(next.value); total += chunk.byteLength;
       if (total > MAX_AUTHORITY_RESPONSE_BYTES) fail('GitHub API response exceeds byte bound');
-      chunks.push(chunk);
-    }
-  } catch (error) {
-    await reader.cancel().catch(() => {});
-    throw error;
-  } finally { reader.releaseLock(); }
-  return Buffer.concat(chunks, total);
-}
+      chunks.push(chunk); }
+  } catch (error) { await reader.cancel().catch(() => {}); throw error; }
+  finally { reader.releaseLock(); }
+  return Buffer.concat(chunks, total); }
 function apiUrl(path) { return new URL(path, GITHUB_API_ORIGIN).href; }
 function checkResponse(response) {
   if (!response || typeof response !== 'object' || !Number.isInteger(response.status)) fail('GitHub API returned an invalid response');
-  if (response.redirected || response.status >= 300 && response.status < 400) fail('GitHub API redirects are refused');
+  if (response.redirected || response.status >= 300 && response.status < 400) fail('GitHub API redirects are refused'); }
+function githubRequester(token, fetchImpl) {
+  if (typeof fetchImpl !== 'function') fail('GitHub authority provider requires fetch');
+  return async (method, path, body, { absent = false, statuses = [200], includeHeaders = false,
+    project } = {}) => {
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      let response; try { response = await fetchImpl(apiUrl(path), {
+        method, redirect: 'error', signal: controller.signal,
+        headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${token}`,
+          'x-github-api-version': '2026-03-10', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: canonicalJson(body) }),
+      }); } catch { fail('GitHub API request failed'); }
+      checkResponse(response);
+      const bytes = await boundedBody(response);
+      if (absent && response.status === 404) return null;
+      if (!statuses.includes(response.status)) fail(`GitHub API request failed with HTTP ${response.status}`);
+      const value = parseJsonBytes(bytes, 'GitHub API response', project);
+      return includeHeaders ? { value, link: response.headers?.get?.('link') ?? null } : value;
+    } finally { clearTimeout(timer); } };
 }
 function ruleDescriptor(value, label) {
   const source = jsonObject(value, label), type = text(source.type, `${label}.type`);
@@ -287,33 +261,14 @@ function ruleDescriptor(value, label) {
     : type === 'update' ? { update_allows_fetch_and_merge: false } : null;
   if (parameters !== null && (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)))
     fail(`${label}.parameters must be an object or null`);
-  return { type, parameters };
-}
+  return { type, parameters }; }
 function bypassActor(value) {
   const source = jsonObject(value, 'GitHub ruleset bypass actor');
-  return `${text(source.actor_type, 'GitHub bypass actor type')}:${identifier(source.actor_id, 'GitHub bypass actor id')}:${text(source.bypass_mode, 'GitHub bypass actor mode')}`;
-}
-export function createGitHubActionsProvider({ env = process.env, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-  if (typeof fetchImpl !== 'function' || typeof now !== 'function') fail('GitHub authority provider requires fetch and clock functions');
-  const context = actionContext(env);
+  return `${text(source.actor_type, 'GitHub bypass actor type')}:${identifier(source.actor_id, 'GitHub bypass actor id')}:${text(source.bypass_mode, 'GitHub bypass actor mode')}`; }
+function createGitHubProvider({ context, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+  if (typeof now !== 'function') fail('GitHub authority provider requires a clock');
   let prepared = null;
-  const request = async (method, path, body, { absent = false, statuses = [200],
-    includeHeaders = false, project } = {}) => {
-    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
-    let response; try {
-      try { response = await fetchImpl(apiUrl(path), {
-        method, redirect: 'error', signal: controller.signal,
-        headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${context.token}`,
-          'x-github-api-version': '2022-11-28', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-        ...(body === undefined ? {} : { body: canonicalJson(body) }),
-      }); } catch { fail('GitHub API request failed'); }
-      checkResponse(response);
-      const bytes = await boundedBody(response);
-      if (absent && response.status === 404) return null;
-      if (!statuses.includes(response.status)) fail(`GitHub API request failed with HTTP ${response.status}`);
-      const value = parseJsonBytes(bytes, 'GitHub API response', project); return includeHeaders ? { value, link: response.headers?.get?.('link') ?? null } : value;
-    } finally { clearTimeout(timer); }
-  };
+  const request = githubRequester(context.token, fetchImpl);
   const requireEvidenceRepository = (value) => {
     const source = githubRepository(value);
     if (source.repository !== context.repository.repository) fail('GitHub provider cannot target another evidence repository');
@@ -324,7 +279,10 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
     if (source === null) return null;
     if (source.type !== 'file' || source.encoding !== 'base64') fail('GitHub content is not a base64 file');
     const bytes = decodeBase64(source.content, 'GitHub content body');
-    return { value: json ? parseJsonBytes(bytes, 'GitHub content') : UTF8.decode(bytes), sha: sha(source.sha, 'GitHub content SHA') };
+    const value = json ? parseJsonBytes(bytes, 'GitHub content') : UTF8.decode(bytes);
+    if (json && !bytes.equals(Buffer.from(canonicalJson(value), 'utf8')))
+      fail('GitHub JSON content must use exact canonical bytes');
+    return { value, sha: sha(source.sha, 'GitHub content SHA') };
   };
   const gitRef = async (repository, branchRef, { absent = false } = {}) => {
     const checked = ref(branchRef, 'GitHub ref');
@@ -359,17 +317,31 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
   const readRunRecord = async () => {
     if (!prepared) fail('GitHub authority provider is not prepared');
     const source = jsonObject(await request('GET', `${context.repository.path}/actions/runs/${context.runId}`), 'GitHub workflow run');
+    const workflowId = identifier(source.workflow_id, 'workflow run workflow_id');
+    const workflow = jsonObject(await request('GET', `${context.repository.path}/actions/workflows/${workflowId}`), 'GitHub workflow');
+    const bare = context.workflowPath, paths = [bare,
+      `${bare}@${shortRef(context.workflowRef, 'workflow run ref')}`, `${bare}@${context.workflowRef}`];
+    const startedAt = apiInstant(source.run_started_at, 'workflow run start time');
+    const completedAt = apiInstant(source.updated_at, 'workflow run completion time');
     if (identifier(source.id, 'workflow run id') !== context.runId || source.url !== context.locator
       || source.event !== 'workflow_dispatch' || source.run_attempt !== 1
       || source.repository?.full_name !== `${context.repository.owner}/${context.repository.name}`
       || ref(`refs/heads/${targetBranch(source.head_branch, 'workflow run branch')}`, 'workflow run branch') !== context.ref
       || sha(source.head_sha, 'workflow run SHA') !== context.revision
-      || relativePath(source.path, 'workflow run path') !== context.workflowPath
-      || String(source.path).includes('@')) fail('GitHub workflow run is not bound to this Actions invocation');
+      || !paths.includes(relativePath(source.path, 'workflow run path'))
+      || context.workflowId !== undefined && workflowId !== context.workflowId
+      || identifier(workflow.id, 'workflow resource id') !== workflowId
+      || workflow.state !== 'active' || relativePath(workflow.path, 'workflow resource path') !== bare
+      || source.display_title !== deriveGitHubAuthorityRunName({ authorityInputDigest:
+        prepared.authorityInputDigest, workflowRevision: context.workflowRevision })
+      || source.status !== 'completed' || source.conclusion !== 'success'
+      || Date.parse(completedAt) < Date.parse(startedAt)) {
+      fail('GitHub workflow run is not bound to one exact successful Actions invocation');
+    }
     return { id: context.runId, locator: context.locator, event: source.event, runAttempt: 1,
       repository: context.repository.repository, ref: context.ref, revision: context.revision,
       workflowPath: context.workflowPath, workflowRef: context.workflowRef,
-      workflowRevision: context.workflowRevision, startedAt: apiInstant(source.run_started_at, 'workflow run start time'),
+      workflowRevision: context.workflowRevision, startedAt, completedAt,
       authorityInputDigest: prepared.authorityInputDigest, actor: actor(source.actor, 'workflow actor'),
       triggeringActor: actor(source.triggering_actor, 'workflow triggering actor') };
   };
@@ -472,7 +444,7 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
     async readActor({ repository, workflowRun }) {
       requireEvidenceRepository(repository);
       const observed = actor(workflowRun?.actor, 'workflow actor');
-      const source = jsonObject(await request('GET', `/users/${encodeURIComponent(observed.login)}`), 'GitHub actor');
+      const source = jsonObject(await request('GET', '/user'), 'GitHub actor');
       const reobserved = actor(source, 'GitHub actor');
       if (reobserved.id !== observed.id || reobserved.login !== observed.login) fail('GitHub actor re-observation changed');
       return { ...reobserved, subject: `github-user:${reobserved.id}` };
@@ -554,45 +526,74 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
     },
   });
 }
+export function createGitHubActionsProvider({ env = process.env, fetchImpl = globalThis.fetch,
+  now = () => Date.now() } = {}) {
+  return createGitHubProvider({ context: actionContext(env), fetchImpl, now });
+}
+async function createGitHubOwnerProvider({ repository: identity, runId, eventPath, policy,
+  authorityInputDigest, token, fetchImpl, now }) {
+  const repository = githubRepository(identity, 'authority repository'), checkedToken = actionValue({ GITHUB_TOKEN: token }, 'GITHUB_TOKEN', { secret: true });
+  const request = githubRequester(checkedToken, fetchImpl), locator = `${GITHUB_API_ORIGIN}${repository.path}/actions/runs/${runId}`;
+  const run = jsonObject(await request('GET', `${repository.path}/actions/runs/${runId}`), 'GitHub workflow run');
+  const workflowId = identifier(run.workflow_id, 'workflow run workflow_id');
+  const workflow = jsonObject(await request('GET', `${repository.path}/actions/workflows/${workflowId}`), 'GitHub workflow');
+  const selected = staticPolicy(policy), branch = shortRef(selected.canonicalRef, 'policy.canonicalRef');
+  const paths = [selected.workflowPath, `${selected.workflowPath}@${branch}`,
+    `${selected.workflowPath}@${selected.canonicalRef}`];
+  if (identifier(run.id, 'workflow run id') !== runId || run.url !== locator
+    || run.event !== 'workflow_dispatch' || run.run_attempt !== 1
+    || run.repository?.full_name !== `${repository.owner}/${repository.name}`
+    || targetBranch(run.head_branch, 'workflow run branch') !== branch
+    || !paths.includes(relativePath(run.path, 'workflow run path'))
+    || run.status !== 'completed' || run.conclusion !== 'success'
+    || run.display_title !== deriveGitHubAuthorityRunName({ authorityInputDigest,
+      workflowRevision: sha(run.head_sha, 'workflow run SHA') })
+    || identifier(workflow.id, 'workflow resource id') !== workflowId
+    || workflow.state !== 'active' || relativePath(workflow.path, 'workflow resource path') !== selected.workflowPath)
+    fail('explicit GitHub run is not one exact successful active-workflow dispatch');
+  const context = actionContext({ GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ATTEMPT: '1',
+    GITHUB_REPOSITORY: `${repository.owner}/${repository.name}`, GITHUB_TOKEN: checkedToken,
+    GITHUB_EVENT_PATH: eventPath, GITHUB_RUN_ID: runId, GITHUB_REF: selected.canonicalRef,
+    GITHUB_SHA: run.head_sha, GITHUB_WORKFLOW_REF: `${repository.owner}/${repository.name}/${selected.workflowPath}@${selected.canonicalRef}`,
+    GITHUB_WORKFLOW_SHA: run.head_sha });
+  return createGitHubProvider({ context: Object.freeze({ ...context, workflowId }), fetchImpl, now });
+}
 export const createGitHubRestProvider = createGitHubActionsProvider;
 function safeMessage(error, secret) {
   let message = error instanceof Error ? error.message : 'unexpected authority failure';
   if (typeof secret === 'string' && secret) message = message.split(secret).join('[redacted]');
-  return message.replace(/(authorization|bearer|token)(?:=|:|\s+)\S+/giu, '$1 [redacted]');
-}
+  return message.replace(/(authorization|bearer|token)(?:=|:|\s+)\S+/giu, '$1 [redacted]'); }
 function write(stream, value) {
   if (!stream || typeof stream.write !== 'function') fail('authority output stream is invalid');
-  stream.write(`${value}\n`);
-}
+  stream.write(`${value}\n`); }
 export async function runAuthority(argv, {
   env = process.env, fetchImpl = globalThis.fetch, now = () => Date.now(), stdout = process.stdout, stderr = process.stderr,
 } = {}) {
-  const secret = typeof env?.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN : null;
+  const secret = typeof env?.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN : null; let operation = 'issuance';
   try {
     const command = parseAuthorityArguments(argv);
-    if (command.command === 'help') { write(stdout, 'usage: agentic-os-authority issue-github --event=$GITHUB_EVENT_PATH --policy=<committed-policy.json>'); return 0; }
-    const context = actionContext(env);
-    const eventInput = loadAuthorityDispatch(command.eventPath, context.eventPath);
-    const { dispatch, authorityInputDigest } = eventInput;
+    if (command.command === 'help') { write(stdout, 'usage: agentic-os-authority validate-event --event=<event.json> --policy=<policy.json> | issue-github --event=<event.json> --policy=<policy.json> --repository=github.com/<owner>/<repo> --run-id=<id>'); return 0; }
+    operation = command.command === 'validate-event' ? 'validation' : 'issuance';
     const policy = loadCommittedAuthorityPolicy(command.policyPath);
-    const provider = createGitHubActionsProvider({ env, fetchImpl, now });
+    const validationContext = command.command === 'validate-event'
+      ? actionContext(env, { requireToken: false }) : null;
+    const { dispatch, authorityInputDigest } = loadAuthorityDispatch(command.eventPath,
+      validationContext?.eventPath);
+    if (validationContext) { validateGitHubAuthorityDispatch({ dispatch,
+      policy: runtimePolicy(policy, validationContext), authorityInputDigest }); return 0; }
+    const provider = await createGitHubOwnerProvider({ repository: command.repository,
+      runId: command.runId, eventPath: command.eventPath, policy, authorityInputDigest,
+      token: actionValue(env, 'GITHUB_TOKEN', { secret: true }), fetchImpl, now });
     const prepared = await provider.prepareInvocation({ dispatch, authorityInputDigest, policy, policyPath: command.policyPath });
-    const expiresAt = boundedExpiry(dispatch, prepared.startedAt, prepared.policy.validitySeconds, now);
+    const expiresAt = deriveGitHubAuthorityExpiry(dispatch, prepared.startedAt, prepared.policy.validitySeconds, now);
     const issuance = await issueGitHubAuthority({ request: dispatch.request, candidate: dispatch.candidate,
       policy: prepared.policy, workflowRunLocator: prepared.locator, expiresAt }, provider);
     const output = canonicalJson(await verifyGitHubAuthorityIssuanceLive(issuance, provider, { now }));
     if (Buffer.byteLength(output, 'utf8') > MAX_AUTHORITY_OUTPUT_BYTES) fail('authority output exceeds byte bound');
-    write(stdout, output);
-    return 0;
-  } catch (error) {
-    write(stderr, `authority issuance failed: ${safeMessage(error, secret)}`);
-    return 1;
-  }
+    write(stdout, output); return 0;
+  } catch (error) { write(stderr, `authority ${operation} failed: ${safeMessage(error, secret)}`);
+    return 1; }
 }
-export const runAuthorityCli = runAuthority;
-export async function main() { process.exitCode = await runAuthority(process.argv.slice(2)); }
-function invokedDirectly() {
-  try { return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href; }
-  catch { return false; }
-}
+export const runAuthorityCli = runAuthority; export async function main() { process.exitCode = await runAuthority(process.argv.slice(2)); }
+function invokedDirectly() { try { return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href; } catch { return false; } }
 if (invokedDirectly()) await main();

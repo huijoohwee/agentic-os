@@ -86,6 +86,7 @@ function predecessorIssuance() {
     ref: policy.canonicalRef, revision: policy.canonicalRevision,
     workflowPath: policy.workflowPath, workflowRef: policy.workflowRef,
     workflowRevision: policy.workflowRevision, startedAt: '2026-09-02T00:05:00.000Z',
+    completedAt: '2026-09-02T00:05:30.000Z',
     authorityInputDigest: deriveGitHubAuthorityInputDigest({ request, candidate, policy }),
     actor: { id: '42', login: 'example' }, triggeringActor: { id: '42', login: 'example' } };
   const challenge = createGitHubAuthorityChallenge({ request, candidate, workflowRun, policy,
@@ -176,7 +177,8 @@ function apiFixture(issuance) {
       event: 'workflow_dispatch', status: 'completed', conclusion: 'success', run_attempt: 1,
       repository: { full_name: 'example/evidence' }, head_branch: 'main', head_sha: EVIDENCE_BASE,
       path: '.github/workflows/authority.yml@main', workflow_id: 501,
-      run_started_at: '2026-09-02T00:05:00Z', actor: { id: 42, login: 'example' },
+      run_started_at: '2026-09-02T00:05:00Z', updated_at: '2026-09-02T00:05:30Z',
+      actor: { id: 42, login: 'example' },
       triggering_actor: { id: 42, login: 'example' } });
     if (route === 'GET /repos/example/evidence/actions/workflows/501') return response({
       id: 501, path: '.github/workflows/authority.yml', state: 'active' });
