@@ -350,7 +350,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     || projection.headBranch !== candidate.branch || projection.headRevision !== candidate.headRevision
     || api.sha(mergeEvent.commit_id, 'merge event revision') !== projection.mergeRevision
     || mergeEvent.commit_url !== `https://api.github.com${target.path}/commits/${projection.mergeRevision}`
-    || instant(mergeEvent.created_at, 'merge event time') !== mergedAt
+    || Math.abs(Date.parse(instant(mergeEvent.created_at, 'merge event time'))
+      - Date.parse(mergedAt)) > PROVIDER_EVENT_SKEW_MS
     || candidateHead !== candidate.headRevision)
     fail('GitHub review does not prove exact protected integration');
   const payload = { schema: 'agentic-os/github-integrate-provider-proof/v1', ...projection };
