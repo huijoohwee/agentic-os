@@ -8,15 +8,12 @@ import { canonicalJson } from '../src/governance.mjs';
 import { deriveGitHubAuthorityInputDigest, parseGitHubRepositoryIdentity, validateGitHubAuthorityPolicy } from '../src/github-authority.mjs';
 import { validateGitHubStoredAuthorityBundle } from '../src/github-authority-issuer.mjs';
 import { issueGitHubAuthority, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
-export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024;
-export const MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024;
-export const MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
+export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024;
+export const MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
-const DIGEST = /^[0-9a-f]{64}$/u;
-const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const ID = /^[1-9][0-9]{0,18}$/u;
-const OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
+const DIGEST = /^[0-9a-f]{64}$/u, SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const ID = /^[1-9][0-9]{0,18}$/u, OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
 const REPOSITORY = /^[a-z0-9][a-z0-9._-]{0,99}$/u;
 const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const DISPATCH_KEYS = Object.freeze(['request', 'candidate']);
@@ -182,26 +179,28 @@ function boundedExpiry(dispatch, startedAt, validitySeconds, now) {
   if (clockValue(now) < started || clockValue(now) >= expires) fail('authority issuance window is not currently valid');
   return new Date(expires).toISOString();
 }
-function readJsonFile(path, label, { relative = false } = {}) {
+function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_INPUT_BYTES, catalog = true } = {}) {
   const source = text(path, `${label} path`);
   if (relative && (source.startsWith('/') || source.includes('\\') || source.split('/').some((part) => !part || part === '.' || part === '..')))
     fail(`${label} path must be repository-relative`);
-  let value;
-  try { value = JSON.parse(UTF8.decode(readBoundedFile(resolve(source), MAX_AUTHORITY_INPUT_BYTES, label))); }
+  let bytes; try { bytes = readBoundedFile(resolve(source), maxBytes, label); }
+  catch (error) { fail(error instanceof Error ? error.message : `${label} could not be read`); }
+  let value; try { value = JSON.parse(UTF8.decode(bytes)); }
   catch { fail(`${label} must be valid UTF-8 JSON`); }
-  const snapshot = snapshotCatalogInput(value);
-  if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
+  if (!catalog) return value;
+  const snapshot = snapshotCatalogInput(value); if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
   return JSON.parse(canonicalJson(snapshot.value));
 }
 export function loadAuthorityDispatch(eventPath, expectedEventPath) {
   if (eventPath !== expectedEventPath) fail('--event must equal GITHUB_EVENT_PATH');
-  const event = readJsonFile(eventPath, 'GitHub event');
+  const event = object(readJsonFile(eventPath, 'GitHub event',
+    { maxBytes: MAX_AUTHORITY_EVENT_BYTES, catalog: false }), 'GitHub event');
   const inputs = object(event.inputs, 'GitHub event inputs');
-  const encoded = inputs.authority_payload;
+  exact(inputs, ['authority_payload', 'authority_input_digest'], 'GitHub event inputs');
+  const encoded = text(inputs.authority_payload, 'authority_payload', MAX_AUTHORITY_INPUT_BYTES);
   const authorityInputDigest = text(inputs.authority_input_digest, 'authority_input_digest');
   if (!DIGEST.test(authorityInputDigest)) fail('authority_input_digest must be a lowercase sha256 digest');
-  let value;
-  try { value = JSON.parse(text(encoded, 'authority_payload', MAX_AUTHORITY_INPUT_BYTES)); }
+  let value; try { value = JSON.parse(encoded); }
   catch { fail('authority_payload must be JSON'); }
   const snapshot = snapshotCatalogInput(value);
   if (!snapshot.ok) fail('authority_payload exceeds structural bounds');
