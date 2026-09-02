@@ -132,7 +132,7 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
   let suiteId;
   if (expected === null) {
     const response = await api.call('GET', `${target.path}/rulesets/rule-suites?ref=${
-      encodeURIComponent(canonicalRef)}&time_period=month&rule_suite_result=pass&per_page=100`);
+      encodeURIComponent(canonicalRef)}&time_period=day&rule_suite_result=pass&per_page=100`);
     const suites = api.exact(response, [200], 'GitHub integration rule suites');
     if (!Array.isArray(suites) || response.headers?.get?.('link')?.includes('rel="next"'))
       fail('GitHub integration rule suites are incomplete');
