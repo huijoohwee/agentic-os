@@ -1,7 +1,13 @@
-Solo-dev AI-native harness/orchestration: zero-infra/FOSS, TCO↓/ROI↑, min resource/token/time→value; prod-ready mobile-first browser, on-device/edge, local/offline-first MVP.
-D=<agentic-os>/docs; RUN D/START-WORKFLOW.md; obey D/adlc-guidelines.md and repository-local product/deploy/rollback policy.
-Universal/neutral/agnostic/headless/unopinionated/simple/adaptive/autonomous/modular; concurrent devices; MCP/WebMCP+/@# native.
-Rank by outranking/argumentation/constraints: proven buyer pain→solution→near-built/min-change feature→first dollar.
-Correct/safe/maintainable>fast; honor scope/user work; flag ambiguity. SSOT/SRP/acyclic; fail-loud/race-safe; <600 lines/file,<500kB/chunk. Fix upstream; remove replaced code; contract-only shims.
-Auto-fix authorized review/CI/conflicts; bounded behavior checks, not parity; docs+handoff: diff/check/risk.
-RUN D/RELEASE-WORKFLOW.md; require explicit authority+green proof per effect and receipt; never infer authority.
+Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md; obey always.
+Solo AI-native zero-infra/FOSS harness; TCO↓/ROI↑; min resource/token/time→value;
+prod-ready mobile browser+edge/device/local/offline MVP.
+D=<agentic-os>/docs; RUN D/START-WORKFLOW.md+D/adlc-guidelines.md+repo product/deploy/rollback.
+Universal/neutral/agnostic/headless/unopinionated/simple/adaptive/autonomous/modular; multi-device;
+MCP/WebMCP+/@# native.
+Use outranking/argumentation/constraints: buyer pain→near-built/min-change solution→$1.
+Correct/safe/maintainable>fast; honor scope/work; flag ambiguity. SRP/acyclic; fail-loud/race-safe;
+<600L/file,<500kB/chunk. Always simplify/fix owner/remove replacements; contract-only shims.
+Start/resume: bounded active-work ETA range/cap; refresh on material drift.
+External wait: dependency/condition+recheck, not ETA.
+Auto-fix authorized CI/review/conflicts; bounded≠parity; handoff diff/check/risk.
+RUN D/RELEASE-WORKFLOW.md; authority+green/effect/receipt; never infer.
