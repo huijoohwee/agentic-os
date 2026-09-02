@@ -5,6 +5,7 @@ import { createGitHubProtectionProjection } from './github-authority-issuer.mjs'
 
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REDACTED_BYPASS = 'unobserved:provider-redacted:read-only';
+const PROVIDER_EVENT_SKEW_MS = 5_000;
 function fail(message) { throw new TypeError(message); }
 function object(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
@@ -150,7 +151,8 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
   if (id(detail.id, 'rule suite detail id') !== suiteId
     || detail.before_sha !== mergedCommit.parents[0]
     || detail.after_sha !== input.plan.target.immutableRevision || detail.ref !== canonicalRef
-    || detail.result !== 'pass' || Date.parse(pushedAt) < Date.parse(mergedAt)
+    || detail.result !== 'pass'
+    || Date.parse(pushedAt) + PROVIDER_EVENT_SKEW_MS < Date.parse(mergedAt)
     || !Array.isArray(detail.rule_evaluations))
     fail('GitHub integration rule suite identity or result is invalid');
   if (rulesetVersions.some((entry) => Date.parse(entry.updatedAt) > Date.parse(pushedAt)))

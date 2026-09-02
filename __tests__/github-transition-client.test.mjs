@@ -163,6 +163,7 @@ function apiFixture(issuance) {
     transitionRulesUpdatedAt: '2026-09-02T00:01:00Z', targetBypassActors: null,
     mergedAt: '2026-09-02T00:15:00Z', targetRepositoryId: 77,
     targetMergeMethods: ['merge'], ruleSuiteQuery: null,
+    ruleSuitePushedAt: '2026-09-02T00:14:59Z',
     targetOwner: { id: 42, login: 'example' }, absentRefBarrier: null,
     refCreateStatuses: [], concurrentRunTimes: false, runDigests: {} };
   const initialStored = issuance.storedBundle, bundle = initialStored.authorityBundle;
@@ -245,13 +246,13 @@ function apiFixture(issuance) {
       return response([{
         id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
         ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
-        pushed_at: '2026-09-02T00:16:00Z', result: state.ruleSuiteResult,
+        pushed_at: state.ruleSuitePushedAt, result: state.ruleSuiteResult,
       }]);
     }
     if (route === 'GET /repos/example/target/rulesets/rule-suites/801') return response({
       id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
       ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
-      pushed_at: '2026-09-02T00:16:00Z', result: state.ruleSuiteResult,
+      pushed_at: state.ruleSuitePushedAt, result: state.ruleSuiteResult,
       evaluation_result: state.ruleEvaluation,
       rule_evaluations: ['deletion', 'non_fast_forward', 'pull_request',
         'required_linear_history', 'required_status_checks'].map((rule_type) => ({
@@ -368,8 +369,9 @@ function apiFixture(issuance) {
   return { calls, fetchImpl, publications, state };
 }
 
-async function integrationFixture() {
+async function integrationFixture(configure = () => {}) {
   const issuance = predecessorIssuance(), api = apiFixture(issuance);
+  configure(api.state);
   const draft = integrationDraft(issuance), draftInput = createGitHubTransitionInput({
     request: draft.request, plan: draft.plan, planByteDigest: draft.planByteDigest,
     predecessorIssuance: draft.predecessorIssuance });
@@ -429,6 +431,12 @@ test('canonical transition input binds predecessor issuance and excludes result 
     operation_payload: bytes.toString('utf8'), operation_input_digest: digest,
   } }, { policy: TRANSITION_POLICY, execution: { ...POLICY_CONTEXT.execution,
     authorityRef: 'refs/heads/feature' } }), /committed policy/u);
+});
+
+test('provider event timestamp tolerance remains bounded', async () => {
+  await assert.rejects(integrationFixture((state) => {
+    state.ruleSuitePushedAt = '2026-09-02T00:14:54Z';
+  }), /rule suite identity or result/u);
 });
 
 test('read-only transition CLI validates canonical committed policy and Actions identity', async (t) => {
