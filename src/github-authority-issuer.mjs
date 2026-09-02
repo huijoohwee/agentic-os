@@ -292,7 +292,7 @@ export function validateGitHubEvidencePublication(value, stored) {
     || result.ref !== bundle.evidenceRef || result.path !== bundle.evidencePath
     || result.parentRevision !== bundle.policy.canonicalRevision
     || result.revision === result.parentRevision || result.storedDigest !== stored.storedDigest
-    || Date.parse(result.committedAt) < Date.parse(bundle.challenge.issuedAt)
+    || Date.parse(result.committedAt) < Date.parse(bundle.workflowRun.completedAt)
     || Date.parse(result.committedAt) >= Date.parse(bundle.challenge.expiresAt)) fail('GitHub evidence publication is not exact, descendant, and in-window');
   return freeze(result);
 }

@@ -262,7 +262,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
         || identifier(workflow.id, 'workflow resource id') !== workflowId
         || workflow.state !== 'active' || workflow.path !== bare)
         fail('GitHub workflow run no longer authenticates the retained dispatch');
-      return { ...expectedRun, startedAt: instant(value.run_started_at, 'workflow run start'),
+      return { ...expectedRun, startedAt: instant(value.run_started_at, 'workflow run start'), completedAt: instant(value.updated_at, 'workflow run completion'),
         actor: actor(value.actor, 'workflow actor'),
         triggeringActor: actor(value.triggering_actor, 'workflow triggering actor') };
     },

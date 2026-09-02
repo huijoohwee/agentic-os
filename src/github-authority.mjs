@@ -22,7 +22,7 @@ const POLICY_KEYS = [
 ];
 const RUN_KEYS = [
   'id', 'locator', 'event', 'runAttempt', 'repository', 'ref', 'revision',
-  'workflowPath', 'workflowRef', 'workflowRevision', 'startedAt', 'authorityInputDigest',
+  'workflowPath', 'workflowRef', 'workflowRevision', 'startedAt', 'completedAt', 'authorityInputDigest',
   'actor', 'triggeringActor',
 ];
 const CHALLENGE_KEYS = [
@@ -208,7 +208,7 @@ function workflowRun(value) {
     workflowPath: relative(source.workflowPath, 'workflowRun.workflowPath'),
     workflowRef: branchRef(source.workflowRef, 'workflowRun.workflowRef'),
     workflowRevision: revision(source.workflowRevision, 'workflowRun.workflowRevision'),
-    startedAt: instant(source.startedAt, 'workflowRun.startedAt'),
+    startedAt: instant(source.startedAt, 'workflowRun.startedAt'), completedAt: instant(source.completedAt, 'workflowRun.completedAt'),
     authorityInputDigest: digest(source.authorityInputDigest, 'workflowRun.authorityInputDigest'),
     actor: actor(source.actor, 'workflowRun.actor'),
     triggeringActor: actor(source.triggeringActor, 'workflowRun.triggeringActor'),
@@ -222,7 +222,7 @@ function checkedRun(value, request, candidate, policy) {
     || run.workflowPath !== policy.workflowPath || run.workflowRef !== policy.workflowRef
     || run.workflowRevision !== policy.workflowRevision
     || run.actor.id !== run.triggeringActor.id || run.actor.login !== run.triggeringActor.login
-    || run.actor.id !== owner.id || run.authorityInputDigest !== inputDigest) fail('workflow run is not bound to the exact policy, authority input, and subject');
+    || run.actor.id !== owner.id || run.authorityInputDigest !== inputDigest || Date.parse(run.completedAt) < Date.parse(run.startedAt)) fail('workflow run is not bound to the exact policy, authority input, and subject');
   return run;
 }
 function challengePayload(request, candidate, run, policy, expiresValue) {
@@ -230,7 +230,7 @@ function challengePayload(request, candidate, run, policy, expiresValue) {
   const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt);
   if (expires <= issued || expires > issued + policy.validitySeconds * 1000
     || issued < Date.parse(request.observedAt) || expires > Date.parse(request.expiresAt)
-    || issued < Date.parse(candidate.observedAt) || expires > Date.parse(candidate.expiresAt)) fail('challenge validity must be current-input-bound and within policy validitySeconds');
+    || issued < Date.parse(candidate.observedAt) || expires > Date.parse(candidate.expiresAt) || Date.parse(run.completedAt) >= expires) fail('challenge validity must be current-input-bound and within policy validitySeconds');
   return {
     schema: GITHUB_AUTHORITY_CHALLENGE_SCHEMA,
     requestDigest: request.requestDigest,

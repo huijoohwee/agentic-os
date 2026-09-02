@@ -99,6 +99,7 @@ function run(bound = candidate(), source = request(bound), selected = policy(), 
     workflowRef: selected.workflowRef,
     workflowRevision: selected.workflowRevision,
     startedAt: '2026-09-02T00:10:00.000Z',
+    completedAt: '2026-09-02T00:10:30.000Z',
     authorityInputDigest: deriveGitHubAuthorityInputDigest({
       request: source, candidate: bound, policy: selected,
     }),
@@ -472,6 +473,9 @@ test('issuer rejects wrong-owner targets, weak policy rules, and non-provider ti
   })), /one exact zero-bypass immutable ruleset|protection changed/u);
   await assert.rejects(issueGitHubAuthority(issueInput(), provider({
     committedAt: '2026-09-02T00:50:00.000Z',
+  })), /in-window/u);
+  await assert.rejects(issueGitHubAuthority(issueInput(), provider({
+    committedAt: '2026-09-02T00:10:15.000Z',
   })), /in-window/u);
 });
 

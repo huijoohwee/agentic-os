@@ -49,8 +49,8 @@ review, revisions, and opaque inventory digests without local paths or authored 
 those digests from raw-byte Git paths and netstring-framed index, content, hidden-flag, and category records.
 It compares two complete read-only collections plus HEAD, canonical ref, branch, porcelain-v2, and hidden
 state, so ignored-byte or Git-state drift fails closed. `agentic-os/adapters/github-authority` binds it to a
-committed target-owner namespace, exact dispatch-input digest, provider-start time, and protected-main
-workflow identity. A claim requires the authenticated authority to be its owner and exactly one
+committed target-owner namespace, exact canonical input/policy bytes, run start/completion, active workflow,
+and equal protected ref/workflow revisions. A claim requires its authenticated owner and exactly one
 digest-bound effect plan; claim ID, lease epoch, and root operation form the create-only CAS coordinate.
 The stored bundle has no transition receipt. The issuer binds exact target repository, branch, revision,
 pull-request, owner, status-context, Actions integration, and merge-method projections. Evidence creation
@@ -60,7 +60,7 @@ absent-ref, create-only compare-and-swap. Its authenticity comes from the exact 
 workflow run, bundle, commit, tree, blob, and live re-observation, not from the identity of the ref creator.
 A repository writer can win the absent-ref race with a conflicting value and deny availability, but that
 value cannot authenticate as the requested authority; an exact winner is only an idempotent replay. Only
-after re-reading the canonical and evidence refs, provider commit revision and time, target state, stored
+after re-reading the run completion, canonical and evidence refs, commit time, target state, stored
 bytes, and unchanged protection does the issuer emit a publication-bound transition receipt.
 Issuance record validation is structural only. JSON copied from a file, message, or prior run is never
 transferable authority. A later consumer must obtain the exact owner-local issuance bound to the successful
