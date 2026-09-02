@@ -13,8 +13,8 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC lifecycle/cleanup. Consumers keep product/deploy/rollback/authority policy;
-no competing controller.
+ADLC supersedes Agentic SDLC lifecycle/cleanup. This document interprets the global prompt SSOT. Consumers
+keep product/deploy/rollback/authority policy; no competing controller.
 
 - Universal, neutral, agnostic, headless, simple, adaptive, autonomous, modular; adapt providers.
 - Use minimal proof; fix owner, remove replacements, avoid scenario controllers.
@@ -27,9 +27,9 @@ no competing controller.
 - New always-load guidance or module patterns declare projected byte/module delta and fit the configured
   budget; otherwise replace lower-value text, lazy-load it, or reject it as incomplete.
 - Preserve bytes; inspect live state. Projections are evidence, not authority.
-- Canonical is read-only. A lane binds branch, worktree, scope, review; disjoint lanes may concur.
-- Bind exact candidates; protected integration only. Proof, retirement, cleanup, sync, deploy, and rollback
-  each require an authorized receipt.
+- Canonical is read-only. One admitted lane binds branch, worktree, scope, review; disjoint lanes may concur.
+- Bind exact candidates; protected integration only. Proof, retirement, each cleanup target, sync, deploy,
+  and rollback each require an authorized receipt.
 - Clean exact eligible targets only after value closure/detachment; no wildcards/ambiguity. Effects need exact
   byte/path/ref/race proof; structural health is advisory.
 

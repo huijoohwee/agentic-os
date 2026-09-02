@@ -44,11 +44,9 @@ otherwise it is incomplete. New behavior belongs in the state table or an existi
 
 ## Reading the failure
 
-Both checkers print the offending path, the measured value, and the cap. The fix is never to raise
-the cap. It is one of:
+Both checkers print the offending path, measured value, and cap. Caps do not rise under pressure. Fix
+overruns by:
 
 - move detail out of the always-load set into a document that loads on demand;
 - collapse a scenario module into a row in the lane state table;
 - delete guidance that has no repeated-error evidence behind it.
-
-Raise a cap only with a written reason and the same commit that shows why the alternatives fail.

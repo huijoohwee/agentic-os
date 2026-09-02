@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TextDecoder } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import {
   OVERRIDE_ENV,
@@ -580,19 +581,29 @@ test('a post-write identity race exposes the retained review artifact', () => {
 test('this repository is inside its own documentation budget', () => {
   const { found, total } = docViolations();
   assert.deepEqual(found, [], `doc budget violations: ${JSON.stringify(found, null, 2)}`);
+  assert.deepEqual(DOC_BUDGET, {
+    agentsFileBytes: 4 * 1024,
+    perDocBytes: 12 * 1024,
+    alwaysLoadBytes: 40 * 1024,
+    maxLineChars: 120,
+  });
+  assert.equal(total, 40_702, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
 });
 
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const prompt = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'), 'utf8');
-  assert.ok(Buffer.byteLength(prompt, 'utf8') <= 1_000);
+  const bytes = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'));
+  assert.equal(bytes.byteLength, 996, 'update this exact cost to expose every prompt byte delta');
+  assert.ok(bytes.byteLength <= 1_000);
+  const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  assert.equal([...prompt].length, 984);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
-  assert.equal(prompt.includes('\r'), false);
-  assert.equal(prompt.endsWith('\n'), true);
-  assert.equal(createHash('sha256').update(prompt).digest('hex'),
-    '6c34623e9ce973fb502ef00dbafa7bc55ad1bf2a086e6cda52d9d2ffe77594d3');
+  assert.equal(bytes.includes(0x0d), false);
+  assert.equal(bytes.at(-1), 0x0a);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),
+    'be6697b0aeb4c093be5f785c9f313ab3c5672c3746908a8e317bd4d131c8396d');
 });
 
 test('ADLC requires bounded active-work completion estimates at every execution boundary', () => {
@@ -605,22 +616,25 @@ test('ADLC requires bounded active-work completion estimates at every execution 
       'External waits are not ETA: name the dependency/condition and next recheck; never invent completion.',
       '1,000-byte hard ceiling; code-point count is secondary and token estimates are advisory',
       'New always-load guidance or module patterns declare projected byte/module delta',
+      'One admitted lane binds branch, worktree, scope, review',
+      'retirement, each cleanup target, sync, deploy, and rollback',
     ]],
     ['docs/START-WORKFLOW.md', [
-      'At start/resume, give a bounded active-work ETA (range/cap); refresh after material drift.',
-      'external wait, state its dependency/condition and next recheck; it is not ETA.',
+      "At start/resume, apply the global prompt's completion-estimate and external-wait rule.",
       'Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
       '`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
+      'for one admitted lane',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      'At release start/resume, give a bounded active-work ETA; refresh after material drift.',
-      'External waits state dependency/condition and next recheck; they are not ETA.',
+      "At release start/resume, apply the global prompt's completion-estimate and external-wait rule.",
+      'Retire and clean each exact target only by its own authorized receipt.',
     ]],
     ['templates/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md; obey always.',
       'Always simplify/fix owner/remove replacements; contract-only shims.',
       'Start/resume: bounded active-work ETA range/cap; refresh on material drift.',
       'External wait: dependency/condition+recheck, not ETA.',
+      'authority+green proof per effect/receipt; never infer.',
     ]],
     ['AGENTS.md', [
       'Continuously obey the global `templates/SYSTEM-PROMPT-RUNTIME.md`',
@@ -630,11 +644,16 @@ test('ADLC requires bounded active-work completion estimates at every execution 
       'states its projected byte delta and fits the configured budget',
       'module pattern states its per-scenario multiplier and projected module delta',
       'token estimates are advisory because tokenizers vary by model and provider',
+      'Caps do not rise under pressure.',
     ]],
   ]);
   for (const [path, markers] of requirements) {
     const text = compact(path);
     for (const marker of markers) assert.ok(text.includes(marker), `${path} missing: ${marker}`);
+  }
+  for (const path of ['docs/START-WORKFLOW.md', 'docs/RELEASE-WORKFLOW.md']) {
+    assert.doesNotMatch(compact(path), /bounded active-work ETA/u,
+      `${path} must reference rather than fork the global prompt rule`);
   }
 });
 
@@ -661,7 +680,9 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
 test('this repository is inside its own module budget', () => {
   const { found, entries, total } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
-  assert.equal(MODULE_BUDGET.modules, 46);
+  assert.deepEqual(MODULE_BUDGET, { modules: 46, totalLines: 15_000, perModuleLines: 400 });
+  assert.equal(entries.length, 46);
+  assert.equal(total, 13_247, 'update this exact cost to expose every source-line delta');
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
   for (const path of [
