@@ -149,7 +149,7 @@ docs/INVOCATION.md   exact slash, semantic, and binding grammar
 docs/MCP.md          backend MCP tool and transport contract
 docs/GOVERNANCE.md   provider-neutral records, trust boundary, and reference adapters
 docs/adlc-guidelines.md universal lifecycle principles for every consumer
-src/                 small responsibility-owned modules, 35 module cap
+src/                 small responsibility-owned modules under the configured cap
 catalog/             invocation and feature data with count and digest fences
 templates/           universal runtime prompt assets
 bin/                 CLI and stdio MCP entrypoints
