@@ -162,7 +162,8 @@ function apiFixture(issuance) {
     authorityHead: TRANSITION_BASE, runUpdatedAt: null, transitionPolicy: TRANSITION_POLICY,
     transitionRulesUpdatedAt: '2026-09-02T00:01:00Z', targetBypassActors: null,
     mergedAt: '2026-09-02T00:15:00Z', targetRepositoryId: 77,
-    targetMergeMethods: ['merge'], ruleSuiteQuery: null,
+    targetMergeMethods: ['merge'], ruleSuiteQuery: null, mergeEventRevisions: [MERGE],
+    mergeEventHeaders: {},
     ruleSuitePushedAt: '2026-09-02T00:14:59Z',
     targetOwner: { id: 42, login: 'example' }, absentRefBarrier: null,
     refCreateStatuses: [], concurrentRunTimes: false, runDigests: {} };
@@ -218,9 +219,13 @@ function apiFixture(issuance) {
       return response({ ref: 'refs/heads/main', object: { type: 'commit', sha: state.targetHead } });
     if (route === 'GET /repos/example/target/pulls/7') return response({ number: 7,
       html_url: 'https://github.com/example/target/pull/7', state: 'closed', merged_at: state.mergedAt,
-      draft: false, merge_commit_sha: MERGE, head: { repo: { full_name: 'example/target' },
+      merged: true, draft: false, head: { repo: { full_name: 'example/target' },
         ref: 'agent/device/recovery', sha: CANDIDATE },
       base: { repo: { full_name: 'example/target' }, ref: 'main' } });
+    if (route === 'GET /repos/example/target/issues/7/events') return response(
+      state.mergeEventRevisions.map((commit_id, index) => ({ id: 901 + index, event: 'merged',
+        commit_id, commit_url: `https://api.github.com/repos/example/target/commits/${commit_id}`,
+        created_at: state.mergedAt })), 200, state.mergeEventHeaders);
     if (route === `GET /repos/example/target/git/commits/${MERGE}`)
       return response(commit(MERGE, [TARGET_BASE, CANDIDATE], hex('a', 40), '2026-09-02T00:15:00Z'));
     if (route === 'GET /repos/example/target/rules/branches/main')
@@ -437,6 +442,18 @@ test('provider event timestamp tolerance remains bounded', async () => {
   await assert.rejects(integrationFixture((state) => {
     state.ruleSuitePushedAt = '2026-09-02T00:14:54Z';
   }), /rule suite identity or result/u);
+});
+
+test('merge event is unique, exact, and pagination-bounded', async () => {
+  await assert.rejects(integrationFixture((state) => {
+    state.mergeEventRevisions = [MERGE, hex('7', 40)];
+  }), /one exact merge event/u);
+  await assert.rejects(integrationFixture((state) => {
+    state.mergeEventRevisions = [hex('7', 40)];
+  }), /exact protected integration/u);
+  await assert.rejects(integrationFixture((state) => {
+    state.mergeEventHeaders = { link: '<https://api.github.com/next>; rel="next"' };
+  }), /merge events are incomplete/u);
 });
 
 test('read-only transition CLI validates canonical committed policy and Actions identity', async (t) => {
