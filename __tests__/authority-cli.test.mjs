@@ -79,6 +79,20 @@ function ambientMetadata(count = 96) {
   return { deepAmbient: Array.from({ length: 32 }).reduce((value) => ({ next: value }), 'leaf'),
     ...Object.fromEntries(Array.from({ length: count }, (_, index) => [`ambient_${index}`, index])) };
 }
+function githubUserMetadata() {
+  return {
+    node_id: 'MDQ6VXNlcjQy', avatar_url: 'https://avatars.example/42', gravatar_id: '',
+    url: 'https://api.github.com/users/example', html_url: 'https://github.com/example',
+    followers_url: 'https://api.github.com/users/example/followers', type: 'User',
+    site_admin: false, name: 'Example Owner', company: null, blog: '', location: null,
+    email: null, hireable: null, bio: null, public_repos: 1, public_gists: 0,
+    followers: 0, following: 0, created_at: '2020-01-01T00:00:00Z',
+    updated_at: '2026-09-02T00:00:00Z', private_gists: 0, total_private_repos: 1,
+    owned_private_repos: 1, disk_usage: 1, collaborators: 0,
+    two_factor_authentication: true,
+    plan: { name: 'free', space: 1, collaborators: 0, private_repos: 1 },
+  };
+}
 function content(value, sha) {
   const bytes = Buffer.from(typeof value === 'string' ? value : canonicalJson(value), 'utf8');
   return response({ type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha });
@@ -163,9 +177,10 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === 'GET /users/example') return response({ id: 42, login: 'example' });
     if (route === 'GET /user') {
       reads.actor += 1;
-      return response(reads.actor >= 2 && options.lateAuthenticatedActor
+      const authenticatedActor = reads.actor >= 2 && options.lateAuthenticatedActor
         ? options.lateAuthenticatedActor : options.authenticatedActor
-          ?? { id: 42, login: 'example' });
+          ?? { id: 42, login: 'example' };
+      return response({ ...githubUserMetadata(), ...authenticatedActor });
     }
     if (route === 'GET /repos/example/target') return response({
       ...(options.ambientTargetRepositoryMetadata ? ambientMetadata(93) : {}),
@@ -312,6 +327,13 @@ test('owner-local issuance requires exact terminal success and bearer identity b
     assert.match(result.stderr.values.join(''), /authority issuance failed/u);
     assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
   }
+});
+
+test('owner-local issuance projects realistic ambient bearer metadata before validation', async (t) => {
+  const api = fixture(t), result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  assert.equal(api.calls.some((call) => call.route === 'GET /user'), true);
+  assert.equal(api.calls.some((call) => call.init.method !== 'GET'), true);
 });
 
 test('issue-github refuses the GitHub Actions execution boundary without provider I/O', async (t) => {

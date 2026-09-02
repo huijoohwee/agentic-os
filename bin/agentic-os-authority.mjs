@@ -423,7 +423,8 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
       baseBranch: text(source.base?.ref, 'GitHub target review base branch'), baseRevision: sha(source.base?.sha, 'GitHub target review base revision') };
   };
   const reauthenticatePublication = async (storedBundle) => validateGitHubPreparedPublication({ storedBundle, prepared,
-    workflowRun: await readRunRecord(), authenticatedActor: await request('GET', '/user') });
+    workflowRun: await readRunRecord(), authenticatedActor: await request('GET', '/user', undefined,
+      { project: (value) => actor(value, 'GitHub bearer actor') }) });
   return Object.freeze({
     async prepareInvocation({ dispatch, authorityInputDigest, policy, policyPath }) {
       const local = staticPolicy(policy);
