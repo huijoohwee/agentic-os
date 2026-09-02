@@ -16,10 +16,10 @@ An effect plan binds the exact target, candidate, snapshot, predecessor, authori
 parameters. Its request cites `effect-plan:sha256:<planByteDigest>` exactly once. Structural validators do
 not authenticate GitHub; provider-live adapters do.
 
-## Read-only transition dispatch
+## Read-only authority dispatch
 
-The ACOS Actions workflow validates only. It has no publication token, network result, artifact, or log
-authority. It takes exactly two required string inputs:
+The ACOS Actions workflows validate authority inputs only. They have no publication token, network result,
+artifact, or log authority. A transition takes exactly two required string inputs:
 
 - `operation_payload`: exact canonical UTF-8 transition input bytes;
 - `operation_input_digest`: lowercase SHA-256 of those exact bytes.
@@ -47,7 +47,7 @@ ID and URLs. Never discover authority by listing runs. Wait for that exact run t
 After terminal success, a local controller uses an authenticated `gh` user credential. It reads the exact
 committed policy and target Administration evidence, then publishes one create-only child under
 `refs/heads/adlc/authority/<coordinate>`. This flat namespace is covered by the immutable authority ruleset.
-The workflow token never publishes. A first publication requires the authority canonical ref still equals
+The workflow token never publishes. A first owner-local publication requires the authority canonical ref still equals
 the workflow SHA; historical replay permits later canonical advancement.
 
 The coordinate is keyed only by evidence repository, target repository, source claim, epoch, and fence. It

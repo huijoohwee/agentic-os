@@ -63,8 +63,8 @@ value cannot authenticate as the requested authority; an exact winner is only an
 after re-reading the canonical and evidence refs, provider commit revision and time, target state, stored
 bytes, and unchanged protection does the issuer emit a publication-bound transition receipt.
 Issuance record validation is structural only. JSON copied from a file, message, or prior run is never
-transferable authority. A later consumer must obtain the exact issuance from the provider-authenticated
-workflow-run output, call `verifyGitHubAuthorityIssuanceLive` to re-observe exact provider state with a
+transferable authority. A later consumer must obtain the exact owner-local issuance bound to the successful
+read-only workflow run, call `verifyGitHubAuthorityIssuanceLive` to re-observe exact provider state with a
 trusted current clock while `issuedAt <= now < expiresAt`, and separately resolve the digest-bound effect
 plan to its exact bytes before considering any effect. Live verification does not approve that plan or
 grant merge, deployment, retirement, cleanup, or target-repository writes; those remain separate

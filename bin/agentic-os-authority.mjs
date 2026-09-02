@@ -7,7 +7,9 @@ import { readBoundedFile, snapshotCatalogInput } from '../src/catalog-input.mjs'
 import { canonicalJson } from '../src/governance.mjs';
 import { deriveGitHubAuthorityInputDigest, parseGitHubRepositoryIdentity, validateGitHubAuthorityPolicy } from '../src/github-authority.mjs';
 import { validateGitHubStoredAuthorityBundle } from '../src/github-authority-issuer.mjs';
-import { issueGitHubAuthority, projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
+import { deriveGitHubAuthorityExpiry, issueGitHubAuthority, projectGitHubTargetRepository,
+  projectGitHubTargetReview, validateGitHubAuthorityDispatch, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
+import { deriveGitHubAuthorityRunName } from '../src/github-authority-client.mjs';
 export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024;
 export const MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
@@ -167,18 +169,6 @@ function runtimePolicy(staticValue, context) {
     allowedMergeMethods: policy.allowedMergeMethods, evidenceRefPrefix: policy.evidenceRefPrefix,
     evidencePathPrefix: policy.evidencePathPrefix, validitySeconds: policy.validitySeconds });
 }
-function inputTime(value, key, label) { return Date.parse(instant(object(value, label)[key], `${label}.${key}`)); }
-function boundedExpiry(dispatch, startedAt, validitySeconds, now) {
-  const started = Date.parse(startedAt), expires = Math.min(
-    inputTime(dispatch.request, 'expiresAt', 'request'), inputTime(dispatch.candidate, 'expiresAt', 'candidate'),
-    started + validitySeconds * 1000,
-  );
-  if (started < inputTime(dispatch.request, 'observedAt', 'request')
-    || started < inputTime(dispatch.candidate, 'observedAt', 'candidate') || expires <= started)
-    fail('workflow start is outside the authority input validity window');
-  if (clockValue(now) < started || clockValue(now) >= expires) fail('authority issuance window is not currently valid');
-  return new Date(expires).toISOString();
-}
 function readJsonFile(path, label, { relative = false, maxBytes = MAX_AUTHORITY_INPUT_BYTES, catalog = true } = {}) {
   const source = text(path, `${label} path`);
   if (relative && (source.startsWith('/') || source.includes('\\') || source.split('/').some((part) => !part || part === '.' || part === '..')))
@@ -214,7 +204,8 @@ export const loadAuthorityIssueInput = loadAuthorityDispatch;
 export function parseAuthorityArguments(argv) {
   if (!Array.isArray(argv) || argv.some((value) => typeof value !== 'string')) fail('authority arguments are invalid');
   if (argv.length === 1 && argv[0] === '--help') return Object.freeze({ command: 'help' });
-  if (argv[0] !== 'issue-github') fail('usage: agentic-os-authority issue-github --event=$GITHUB_EVENT_PATH --policy=<committed-policy.json>');
+  if (!['issue-github', 'validate-event'].includes(argv[0])) fail('usage: agentic-os-authority <validate-event|issue-github> --event=$GITHUB_EVENT_PATH --policy=<committed-policy.json>');
+  const command = argv[0];
   const values = {};
   for (let index = 1; index < argv.length; index += 1) {
     const current = argv[index], match = current.match(/^--(event|policy)=(.+)$/u);
@@ -227,7 +218,7 @@ export function parseAuthorityArguments(argv) {
       values[name] = next;
     } else fail('authority command accepts only --event and --policy');
   }
-  return Object.freeze({ command: 'issue-github', eventPath: text(values.event, 'authority event path'),
+  return Object.freeze({ command, eventPath: text(values.event, 'authority event path'),
     policyPath: text(values.policy, 'authority policy path') });
 }
 function encodedPath(path) { return relativePath(path, 'GitHub content path').split('/').map(encodeURIComponent).join('/'); }
@@ -293,8 +284,9 @@ function bypassActor(value) {
   const source = jsonObject(value, 'GitHub ruleset bypass actor');
   return `${text(source.actor_type, 'GitHub bypass actor type')}:${identifier(source.actor_id, 'GitHub bypass actor id')}:${text(source.bypass_mode, 'GitHub bypass actor mode')}`;
 }
-export function createGitHubActionsProvider({ env = process.env, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-  if (typeof fetchImpl !== 'function' || typeof now !== 'function') fail('GitHub authority provider requires fetch and clock functions');
+export function createGitHubActionsProvider({ env = process.env, fetchImpl = globalThis.fetch, now = () => Date.now(),
+  requireSuccessfulRun = true } = {}) {
+  if (typeof fetchImpl !== 'function' || typeof now !== 'function' || typeof requireSuccessfulRun !== 'boolean') fail('GitHub authority provider requires fetch, clock, and run-mode inputs');
   const context = actionContext(env);
   let prepared = null;
   const request = async (method, path, body, { absent = false, statuses = [200],
@@ -304,7 +296,7 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
       try { response = await fetchImpl(apiUrl(path), {
         method, redirect: 'error', signal: controller.signal,
         headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${context.token}`,
-          'x-github-api-version': '2022-11-28', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          'x-github-api-version': '2026-03-10', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         ...(body === undefined ? {} : { body: canonicalJson(body) }),
       }); } catch { fail('GitHub API request failed'); }
       checkResponse(response);
@@ -365,7 +357,12 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
       || ref(`refs/heads/${targetBranch(source.head_branch, 'workflow run branch')}`, 'workflow run branch') !== context.ref
       || sha(source.head_sha, 'workflow run SHA') !== context.revision
       || relativePath(source.path, 'workflow run path') !== context.workflowPath
-      || String(source.path).includes('@')) fail('GitHub workflow run is not bound to this Actions invocation');
+      || String(source.path).includes('@')
+      || source.display_title !== deriveGitHubAuthorityRunName({ authorityInputDigest:
+        prepared.authorityInputDigest, workflowRevision: context.workflowRevision })
+      || requireSuccessfulRun && (source.status !== 'completed' || source.conclusion !== 'success')) {
+      fail('GitHub workflow run is not bound to one exact successful Actions invocation');
+    }
     return { id: context.runId, locator: context.locator, event: source.event, runAttempt: 1,
       repository: context.repository.repository, ref: context.ref, revision: context.revision,
       workflowPath: context.workflowPath, workflowRef: context.workflowRef,
@@ -472,7 +469,8 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
     async readActor({ repository, workflowRun }) {
       requireEvidenceRepository(repository);
       const observed = actor(workflowRun?.actor, 'workflow actor');
-      const source = jsonObject(await request('GET', `/users/${encodeURIComponent(observed.login)}`), 'GitHub actor');
+      const actorPath = requireSuccessfulRun ? '/user' : `/users/${encodeURIComponent(observed.login)}`,
+        source = jsonObject(await request('GET', actorPath), 'GitHub actor');
       const reobserved = actor(source, 'GitHub actor');
       if (reobserved.id !== observed.id || reobserved.login !== observed.login) fail('GitHub actor re-observation changed');
       return { ...reobserved, subject: `github-user:${reobserved.id}` };
@@ -567,30 +565,33 @@ function write(stream, value) {
 export async function runAuthority(argv, {
   env = process.env, fetchImpl = globalThis.fetch, now = () => Date.now(), stdout = process.stdout, stderr = process.stderr,
 } = {}) {
-  const secret = typeof env?.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN : null;
+  const secret = typeof env?.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN : null; let operation = 'issuance';
   try {
     const command = parseAuthorityArguments(argv);
-    if (command.command === 'help') { write(stdout, 'usage: agentic-os-authority issue-github --event=$GITHUB_EVENT_PATH --policy=<committed-policy.json>'); return 0; }
+    if (command.command === 'help') { write(stdout, 'usage: agentic-os-authority <validate-event|issue-github> --event=$GITHUB_EVENT_PATH --policy=<committed-policy.json>'); return 0; }
+    operation = command.command === 'validate-event' ? 'validation' : 'issuance';
     const context = actionContext(env);
     const eventInput = loadAuthorityDispatch(command.eventPath, context.eventPath);
     const { dispatch, authorityInputDigest } = eventInput;
     const policy = loadCommittedAuthorityPolicy(command.policyPath);
-    const provider = createGitHubActionsProvider({ env, fetchImpl, now });
+    const provider = createGitHubActionsProvider({ env, fetchImpl, now, requireSuccessfulRun: command.command === 'issue-github' });
     const prepared = await provider.prepareInvocation({ dispatch, authorityInputDigest, policy, policyPath: command.policyPath });
-    const expiresAt = boundedExpiry(dispatch, prepared.startedAt, prepared.policy.validitySeconds, now);
+    const expiresAt = deriveGitHubAuthorityExpiry(dispatch, prepared.startedAt, prepared.policy.validitySeconds, now);
+    if (command.command === 'validate-event') {
+      write(stdout, canonicalJson(await validateGitHubAuthorityDispatch(
+        { dispatch, prepared, authorityInputDigest, expiresAt }, provider))); return 0;
+    }
     const issuance = await issueGitHubAuthority({ request: dispatch.request, candidate: dispatch.candidate,
       policy: prepared.policy, workflowRunLocator: prepared.locator, expiresAt }, provider);
     const output = canonicalJson(await verifyGitHubAuthorityIssuanceLive(issuance, provider, { now }));
     if (Buffer.byteLength(output, 'utf8') > MAX_AUTHORITY_OUTPUT_BYTES) fail('authority output exceeds byte bound');
-    write(stdout, output);
-    return 0;
+    write(stdout, output); return 0;
   } catch (error) {
-    write(stderr, `authority issuance failed: ${safeMessage(error, secret)}`);
+    write(stderr, `authority ${operation} failed: ${safeMessage(error, secret)}`);
     return 1;
   }
 }
-export const runAuthorityCli = runAuthority;
-export async function main() { process.exitCode = await runAuthority(process.argv.slice(2)); }
+export const runAuthorityCli = runAuthority; export async function main() { process.exitCode = await runAuthority(process.argv.slice(2)); }
 function invokedDirectly() {
   try { return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href; }
   catch { return false; }

@@ -140,7 +140,8 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === 'GET /repos/example/evidence/actions/runs/101') return response({
       id: 101, url: RUN, event: 'workflow_dispatch', run_attempt: 1, repository: { full_name: 'example/evidence' },
       head_branch: 'release/2026', head_sha: HEAD, path: options.workflowPath ?? '.github/workflows/authority.yml',
-      status: options.runStatus ?? 'completed', conclusion: options.runConclusion ?? 'success', workflow_id: 501,
+      status: options.runStatus ?? 'completed', conclusion: options.runConclusion === undefined
+        ? 'success' : options.runConclusion, workflow_id: 501,
       display_title: options.displayTitle ?? deriveGitHubAuthorityRunName({
         authorityInputDigest: digest, workflowRevision: WORKFLOW,
       }),
@@ -151,6 +152,8 @@ function fixture(t, options = {}, root = sandbox(t)) {
         ?? '.github/workflows/authority.yml', state: options.workflowState ?? 'active',
     });
     if (route === 'GET /users/example') return response({ id: 42, login: 'example' });
+    if (route === 'GET /user') return response(options.authenticatedActor
+      ?? { id: 42, login: 'example' });
     if (route === 'GET /repos/example/target') return response({
       ...(options.ambientTargetRepositoryMetadata ? ambientMetadata(93) : {}),
       ...(options.oversizedTargetMetadata ? { padding: 'x'.repeat(MAX_AUTHORITY_RESPONSE_BYTES) } : {}),
@@ -236,17 +239,51 @@ function fixture(t, options = {}, root = sandbox(t)) {
     }
     throw new Error(`unexpected ${route}`);
   };
-  return { source, env, calls, fetchImpl, eventPath, run: (stdout = stream(), stderr = stream()) => runAuthority([
-    'issue-github', `--event=${eventPath}`, '--policy=policy.json',
-  ], { env, fetchImpl, now: () => NOW, stdout, stderr }).then((code) => ({ code, stdout, stderr })) };
+  const execute = (command, stdout = stream(), stderr = stream()) => runAuthority([
+    command, `--event=${eventPath}`, '--policy=policy.json',
+  ], { env, fetchImpl, now: () => NOW, stdout, stderr }).then((code) => ({ code, stdout, stderr }));
+  return { source, env, calls, fetchImpl, eventPath,
+    run: (stdout, stderr) => execute('issue-github', stdout, stderr),
+    validate: (stdout, stderr) => execute('validate-event', stdout, stderr) };
 }
 
 test('authority command accepts only a current workflow dispatch event and committed policy', () => {
   assert.deepEqual(parseAuthorityArguments(['issue-github', '--event=event.json', '--policy', 'policy.json']), {
     command: 'issue-github', eventPath: 'event.json', policyPath: 'policy.json',
   });
+  assert.deepEqual(parseAuthorityArguments(['validate-event', '--event=event.json', '--policy=policy.json']), {
+    command: 'validate-event', eventPath: 'event.json', policyPath: 'policy.json',
+  });
   assert.throws(() => parseAuthorityArguments(['issue-github', '--input=x', '--policy=y']), /only --event and --policy/u);
   assert.throws(() => parseAuthorityArguments(['issue-github', '--event=x']), /policy path/u);
+});
+
+test('Actions validation is read-only while the exact authority run is in progress', async (t) => {
+  const api = fixture(t, { runStatus: 'in_progress', runConclusion: null });
+  const result = await api.validate();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const record = JSON.parse(result.stdout.values.join(''));
+  assert.equal(record.schema, 'agentic-os/github-authority-dispatch-validation/v1');
+  assert.equal(record.authorityInputDigest, deriveGitHubAuthorityInputDigest({
+    request: api.source.request, candidate: api.source.candidate,
+    policy: effectivePolicy(policy()) }));
+  assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
+  assert.equal(api.calls.some((call) => call.route === 'GET /users/example'), true);
+  assert.equal(api.calls.some((call) => call.route === 'GET /user'), false);
+});
+
+test('owner-local issuance requires exact terminal success and bearer identity before writes', async (t) => {
+  const root = sandbox(t);
+  for (const options of [
+    { runStatus: 'in_progress', runConclusion: null },
+    { runStatus: 'completed', runConclusion: 'failure' },
+    { authenticatedActor: { id: 43, login: 'other' } },
+  ]) {
+    const api = fixture(t, options, root), result = await api.run();
+    assert.equal(result.code, 1, JSON.stringify(options));
+    assert.match(result.stderr.values.join(''), /authority issuance failed/u);
+    assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
+  }
 });
 
 test('authority dispatch bounds the envelope independently from exact semantic inputs', (t) => {
@@ -441,16 +478,12 @@ test('ambient-independent REST provider authenticates the API-visible authority 
 });
 
 test('later REST verification rejects a static or forged workflow display title', async (t) => {
-  const { source, planBytes } = laterVerificationInput();
+  const { source } = laterVerificationInput();
   const api = fixture(t, { source, displayTitle: 'ADLC authority static' });
   const result = await api.run();
-  assert.equal(result.code, 0, result.stderr.values.join(''));
-  const issuance = JSON.parse(result.stdout.values.join(''));
-  const provider = createGitHubAuthorityReadProvider({
-    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
-  });
-  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
-    provider, { now: () => NOW }), /retained dispatch/u);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr.values.join(''), /exact successful Actions invocation/u);
+  assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
 });
 
 test('later REST verification accepts only the bare or exactly ref-qualified workflow path', async (t) => {

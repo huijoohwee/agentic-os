@@ -112,6 +112,50 @@ function targetQuery(bundle) {
     reviewLocator: bundle.candidate.reviewLocator,
   };
 }
+function inputTime(value, key, label) {
+  const source = snap(value), instant = text(source[key], `${label}.${key}`);
+  const parsed = Date.parse(instant);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== instant)
+    fail(`${label}.${key} must be an exact UTC instant`);
+  return parsed;
+}
+export function deriveGitHubAuthorityExpiry(dispatchValue, startedAtValue,
+  validitySeconds, clockValue = Date.now) {
+  const dispatch = snap(dispatchValue), startedAt = text(startedAtValue, 'workflow startedAt');
+  const started = Date.parse(startedAt), now = typeof clockValue === 'function'
+    ? clockValue() : clockValue;
+  const expires = Math.min(inputTime(dispatch.request, 'expiresAt', 'request'),
+    inputTime(dispatch.candidate, 'expiresAt', 'candidate'), started + validitySeconds * 1000);
+  if (!Number.isFinite(started) || new Date(started).toISOString() !== startedAt
+    || !Number.isSafeInteger(validitySeconds) || validitySeconds < 60
+    || !Number.isFinite(now) || started < inputTime(dispatch.request, 'observedAt', 'request')
+    || started < inputTime(dispatch.candidate, 'observedAt', 'candidate')
+    || expires <= started || now < started || now >= expires)
+    fail('workflow start or clock is outside the authority input validity window');
+  return new Date(expires).toISOString();
+}
+export async function validateGitHubAuthorityDispatch(input, providerValue) {
+  const source = snap(input);
+  exact(source, ['dispatch', 'prepared', 'authorityInputDigest', 'expiresAt'],
+    'GitHub authority dispatch validation input');
+  const provider = providerApi(providerValue), candidate = source.dispatch.candidate;
+  const run = await provider.readRun({ repository: source.prepared.policy.evidenceRepository,
+    locator: source.prepared.locator });
+  const authenticated = await provider.readActor({
+    repository: source.prepared.policy.evidenceRepository, workflowRun: run });
+  const target = await provider.readTargetRepository(targetQuery(source.dispatch));
+  if (authenticated.subject !== source.dispatch.request.authoritySubject
+    || target.owner.id !== authenticated.id || target.owner.login !== authenticated.login)
+    fail('validated workflow actor must be the exact target repository owner');
+  return Object.freeze({ schema: 'agentic-os/github-authority-dispatch-validation/v1',
+    authorityInputDigest: source.authorityInputDigest,
+    workflowRunLocator: source.prepared.locator,
+    workflowStartedAt: source.prepared.startedAt,
+    expiresAt: source.expiresAt,
+    authoritySubject: authenticated.subject,
+    targetRepository: candidate.targetRepository,
+    candidateDigest: candidate.candidateDigest });
+}
 function verificationClock(options) {
   const source = options ?? {};
   if (!source || typeof source !== 'object' || Array.isArray(source)
