@@ -40,6 +40,33 @@ function identifier(value, label) {
   if (!IDENTIFIER.test(result)) fail(`${label} must be a canonical positive identifier`);
   return result;
 }
+function projectionObject(value, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`${label} must be an object`);
+  }
+  return value;
+}
+function projectRepository(value, label) {
+  const source = projectionObject(value, label);
+  return { full_name: source.full_name };
+}
+export function projectGitHubTargetRepository(value) {
+  const source = projectionObject(value, 'GitHub target repository response');
+  const owner = projectionObject(source.owner, 'GitHub target repository owner');
+  return { id: source.id, full_name: source.full_name,
+    owner: { id: owner.id, login: owner.login, type: owner.type } };
+}
+export function projectGitHubTargetReview(value) {
+  const source = projectionObject(value, 'GitHub target review response');
+  const head = projectionObject(source.head, 'GitHub target review head');
+  const base = projectionObject(source.base, 'GitHub target review base');
+  return { number: source.number, html_url: source.html_url, state: source.state,
+    merged_at: source.merged_at, draft: source.draft,
+    head: { repo: projectRepository(head.repo, 'GitHub target review head repository'),
+      ref: head.ref, sha: head.sha },
+    base: { repo: projectRepository(base.repo, 'GitHub target review base repository'),
+      ref: base.ref, sha: base.sha } };
+}
 function providerApi(provider, writable = false) {
   if (!provider || typeof provider !== 'object') fail('GitHub authority provider is required');
   for (const name of ['readRun', 'readActor', 'readRules', 'readCanonicalRef', 'readTargetRepository',

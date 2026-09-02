@@ -7,7 +7,7 @@ import { readBoundedFile, snapshotCatalogInput } from '../src/catalog-input.mjs'
 import { canonicalJson } from '../src/governance.mjs';
 import { deriveGitHubAuthorityInputDigest, parseGitHubRepositoryIdentity, validateGitHubAuthorityPolicy } from '../src/github-authority.mjs';
 import { validateGitHubStoredAuthorityBundle } from '../src/github-authority-issuer.mjs';
-import { issueGitHubAuthority, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
+import { issueGitHubAuthority, projectGitHubTargetRepository, projectGitHubTargetReview, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
 export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024;
 export const MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
@@ -246,9 +246,8 @@ function decodeBase64(value, label, limit = MAX_AUTHORITY_INPUT_BYTES) {
   if (bytes.byteLength > limit || bytes.toString('base64') !== source) fail(`${label} exceeds byte bound`);
   return bytes;
 }
-function parseJsonBytes(bytes, label) {
-  try {
-    const snapshot = snapshotCatalogInput(JSON.parse(UTF8.decode(bytes)));
+function parseJsonBytes(bytes, label, project = (value) => value) { try {
+    const snapshot = snapshotCatalogInput(project(JSON.parse(UTF8.decode(bytes))));
     if (!snapshot.ok) fail(`${label} exceeds structural bounds`);
     return snapshot.value;
   } catch (error) { if (error instanceof TypeError) throw error; fail(`${label} must be valid UTF-8 JSON`); }
@@ -298,9 +297,8 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
   if (typeof fetchImpl !== 'function' || typeof now !== 'function') fail('GitHub authority provider requires fetch and clock functions');
   const context = actionContext(env);
   let prepared = null;
-  const request = async (method, path, body, {
-    absent = false, statuses = [200], includeHeaders = false,
-  } = {}) => {
+  const request = async (method, path, body, { absent = false, statuses = [200],
+    includeHeaders = false, project } = {}) => {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
     let response; try {
       try { response = await fetchImpl(apiUrl(path), {
@@ -313,7 +311,7 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
       const bytes = await boundedBody(response);
       if (absent && response.status === 404) return null;
       if (!statuses.includes(response.status)) fail(`GitHub API request failed with HTTP ${response.status}`);
-      const value = parseJsonBytes(bytes, 'GitHub API response'); return includeHeaders ? { value, link: response.headers?.get?.('link') ?? null } : value;
+      const value = parseJsonBytes(bytes, 'GitHub API response', project); return includeHeaders ? { value, link: response.headers?.get?.('link') ?? null } : value;
     } finally { clearTimeout(timer); }
   };
   const requireEvidenceRepository = (value) => {
@@ -439,7 +437,7 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
   const targetReview = async (target, locator) => {
     const number = pullNumber(locator, target);
     if (number === null) return null;
-    const source = jsonObject(await request('GET', `${target.path}/pulls/${number}`), 'GitHub target review');
+    const source = jsonObject(await request('GET', `${target.path}/pulls/${number}`, undefined, { project: projectGitHubTargetReview }), 'GitHub target review');
     const repository = (value, label) => githubRepository(`github.com/${text(value?.full_name, label)}`, label).repository;
     if (!Object.hasOwn(source, 'merged_at') || source.merged_at !== null && typeof source.merged_at !== 'string')
       fail('GitHub target review state is invalid');
@@ -493,7 +491,8 @@ export function createGitHubActionsProvider({ env = process.env, fetchImpl = glo
       const baseBranch = targetBranch(canonicalBranch, 'target canonical branch'), headBranch = targetBranch(candidateBranch, 'target candidate branch');
       const baseRevision = sha(canonicalRevision, 'target canonical revision'), headRevision = sha(candidateHeadRevision, 'target candidate head revision');
       const [source, currentBase, currentHead, review] = await Promise.all([
-        request('GET', target.path), gitRef(target, `refs/heads/${baseBranch}`), gitRef(target, `refs/heads/${headBranch}`), targetReview(target, reviewLocator),
+        request('GET', target.path, undefined, { project: projectGitHubTargetRepository }), gitRef(target, `refs/heads/${baseBranch}`),
+        gitRef(target, `refs/heads/${headBranch}`), targetReview(target, reviewLocator),
       ]);
       if (source.full_name !== `${target.owner}/${target.name}` || source.owner?.type !== 'User') fail('GitHub target repository identity is invalid');
       const owner = actor(source.owner, 'GitHub target repository owner');

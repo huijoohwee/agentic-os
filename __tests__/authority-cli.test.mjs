@@ -22,6 +22,7 @@ import {
 import {
   MAX_AUTHORITY_EVENT_BYTES,
   MAX_AUTHORITY_INPUT_BYTES,
+  MAX_AUTHORITY_RESPONSE_BYTES,
   loadAuthorityDispatch,
   parseAuthorityArguments,
   runAuthority,
@@ -73,6 +74,10 @@ function effectivePolicy(staticPolicy) {
     validitySeconds: staticPolicy.validitySeconds };
 }
 function response(value, status = 200, headers = {}) { return new Response(JSON.stringify(value), { status, headers }); }
+function ambientMetadata(count = 96) {
+  return { deepAmbient: Array.from({ length: 32 }).reduce((value) => ({ next: value }), 'leaf'),
+    ...Object.fromEntries(Array.from({ length: count }, (_, index) => [`ambient_${index}`, index])) };
+}
 function content(value, sha) {
   const bytes = Buffer.from(typeof value === 'string' ? value : canonicalJson(value), 'utf8');
   return response({ type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha });
@@ -146,12 +151,25 @@ function fixture(t, options = {}, root = sandbox(t)) {
         ?? '.github/workflows/authority.yml', state: options.workflowState ?? 'active',
     });
     if (route === 'GET /users/example') return response({ id: 42, login: 'example' });
-    if (route === 'GET /repos/example/target') return response({ id: 77, full_name: 'example/target', owner: { id: options.ownerId ?? 42, login: 'example', type: 'User' } });
+    if (route === 'GET /repos/example/target') return response({
+      ...(options.ambientTargetRepositoryMetadata ? ambientMetadata(93) : {}),
+      ...(options.oversizedTargetMetadata ? { padding: 'x'.repeat(MAX_AUTHORITY_RESPONSE_BYTES) } : {}),
+      id: 77, full_name: 'example/target', owner: {
+        ...(options.ambientTargetRepositoryMetadata ? ambientMetadata(93) : {}),
+        id: options.ownerId ?? 42,
+        login: options.deepOwnerLogin
+          ? Array.from({ length: 32 }).reduce((value) => ({ next: value }), 'example') : 'example',
+        type: 'User',
+      },
+    });
     if (route === 'GET /repos/example/target/git/ref/heads/main') return response({ ref: 'refs/heads/main', object: { type: 'commit', sha: TARGET_BASE } });
     if (route === 'GET /repos/example/target/git/ref/heads/agent/device/recovery') return response({ ref: 'refs/heads/agent/device/recovery', object: { type: 'commit', sha: options.targetHead ?? TARGET_HEAD } });
     if (route === 'GET /repos/example/target/pulls/7') return response({ number: 7, html_url: 'https://github.com/example/target/pull/7',
-      state: 'open', merged_at: null, draft: false, head: { repo: { full_name: 'example/target' }, ref: 'agent/device/recovery', sha: TARGET_HEAD },
-      base: { repo: { full_name: 'example/target' }, ref: 'main', sha: TARGET_BASE } });
+      state: 'open', merged_at: null, draft: false,
+      head: { repo: { ...(options.ambientTargetReviewMetadata ? ambientMetadata(79) : {}), full_name: 'example/target' },
+        ref: 'agent/device/recovery', sha: TARGET_HEAD },
+      base: { repo: { ...(options.ambientTargetReviewMetadata ? ambientMetadata(79) : {}), full_name: 'example/target' },
+        ref: 'main', sha: TARGET_BASE } });
     if (route === 'GET /repos/example/evidence/rules/branches/release/2026') {
       assert.equal(parsed.searchParams.get('per_page'), '100');
       return options.rulesObject ? response({ rules: entries(canonicalRules, '11') }) : response(entries(canonicalRules, '11', { emptyChecks: options.emptyChecks }));
@@ -295,6 +313,31 @@ test('issues, replays, and live-verifies one GitHub-fenced authority issuance', 
   assert.equal(api.calls.filter((call) => call.route === 'POST /repos/example/evidence/git/refs').length, 1);
 });
 
+test('projects bounded target repository metadata before authority catalog inspection', async (t) => {
+  assert.equal(Object.keys({ ...ambientMetadata(93), id: 77, full_name: 'example/target',
+    owner: {} }).length, 97);
+  const api = fixture(t, { ambientTargetRepositoryMetadata: true }), result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const issuance = validateGitHubAuthorityIssuance(JSON.parse(result.stdout.values.join('')));
+  assert.equal(issuance.schema, 'agentic-os/github-authority-issuance/v1');
+  assert.doesNotMatch(JSON.stringify(issuance), /ambient_|deepAmbient/u);
+});
+
+test('projects bounded target review metadata before authority catalog inspection', async (t) => {
+  assert.equal(Object.keys({ ...ambientMetadata(79), full_name: 'example/target' }).length, 81);
+  const api = fixture(t, { ambientTargetReviewMetadata: true }), result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  const issuance = validateGitHubAuthorityIssuance(JSON.parse(result.stdout.values.join('')));
+  assert.equal(issuance.schema, 'agentic-os/github-authority-issuance/v1');
+  assert.doesNotMatch(JSON.stringify(issuance), /ambient_|deepAmbient/u);
+});
+
+test('retains the whole-body byte ceiling before target projection', async (t) => {
+  const api = fixture(t, { oversizedTargetMetadata: true }), result = await api.run();
+  assert.equal(result.code, 1);
+  assert.match(result.stderr.values.join(''), /GitHub API response exceeds byte bound/u);
+});
+
 test('REST create race accepts only the exact stored bundle as an idempotent replay', async (t) => {
   const api = fixture(t, { refCreateRace: true }), result = await api.run();
   assert.equal(result.code, 0, result.stderr.values.join(''));
@@ -336,7 +379,9 @@ test('fails closed for forged input, weak or inexact rules, target drift, and in
     { extraDetailRule: true },
     { evidenceBypass: true }, { evidenceCreation: true }, { extraEvidenceRuleset: true },
     { evidenceDeletionParameters: true },
-    { targetHead: hash('9', 40) }, { extraTree: true }, { wrongTreeSha: true }, { truncatedTree: true },
+    { targetHead: hash('9', 40) }, { ownerId: 43, ambientTargetRepositoryMetadata: true },
+    { deepOwnerLogin: true, ambientTargetRepositoryMetadata: true },
+    { extraTree: true }, { wrongTreeSha: true }, { truncatedTree: true },
   ]) {
     const api = fixture(t, options, root), result = await api.run();
     assert.equal(result.code, 1, JSON.stringify(options));
@@ -370,7 +415,10 @@ function laterVerificationInput() {
 }
 
 test('ambient-independent REST provider authenticates the API-visible authority run name', async (t) => {
-  const { source, planBytes } = laterVerificationInput(), api = fixture(t, { source });
+  const { source, planBytes } = laterVerificationInput();
+  const options = { source, ambientTargetRepositoryMetadata: true,
+    ambientTargetReviewMetadata: true };
+  const api = fixture(t, options);
   const result = await api.run();
   assert.equal(result.code, 0, result.stderr.values.join(''));
   const issuance = JSON.parse(result.stdout.values.join(''));
@@ -387,6 +435,9 @@ test('ambient-independent REST provider authenticates the API-visible authority 
   assert.ok(api.calls.some((call) => call.route
     === 'GET /repos/example/evidence/actions/workflows/501'));
   assert.equal(api.calls.filter((call) => call.init.method !== 'GET').length, writes);
+  options.oversizedTargetMetadata = true;
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+    provider, { now: () => NOW }), /GitHub response exceeds bounds/u);
 });
 
 test('later REST verification rejects a static or forged workflow display title', async (t) => {
