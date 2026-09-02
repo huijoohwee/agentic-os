@@ -9,7 +9,7 @@ import { deriveGitHubAuthorityInputDigest, parseGitHubRepositoryIdentity, valida
 import { validateGitHubStoredAuthorityBundle } from '../src/github-authority-issuer.mjs';
 import { deriveGitHubAuthorityExpiry, issueGitHubAuthority, projectGitHubTargetRepository,
   parseAuthorityArguments, projectGitHubTargetReview, validateGitHubAuthorityDispatch,
-  verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
+  validateGitHubPreparedPublication, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
 export { parseAuthorityArguments } from '../src/github-authority-operation.mjs';
 import { deriveGitHubAuthorityRunName } from '../src/github-authority-client.mjs';
 export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024,
@@ -265,7 +265,7 @@ function ruleDescriptor(value, label) {
 function bypassActor(value) {
   const source = jsonObject(value, 'GitHub ruleset bypass actor');
   return `${text(source.actor_type, 'GitHub bypass actor type')}:${identifier(source.actor_id, 'GitHub bypass actor id')}:${text(source.bypass_mode, 'GitHub bypass actor mode')}`; }
-function createGitHubProvider({ context, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
   if (typeof now !== 'function') fail('GitHub authority provider requires a clock');
   let prepared = null;
   const request = githubRequester(context.token, fetchImpl);
@@ -422,6 +422,8 @@ function createGitHubProvider({ context, fetchImpl = globalThis.fetch, now = () 
       baseRepository: repository(source.base?.repo, 'GitHub target review base repository'),
       baseBranch: text(source.base?.ref, 'GitHub target review base branch'), baseRevision: sha(source.base?.sha, 'GitHub target review base revision') };
   };
+  const reauthenticatePublication = async (storedBundle) => validateGitHubPreparedPublication({ storedBundle, prepared,
+    workflowRun: await readRunRecord(), authenticatedActor: await request('GET', '/user') });
   return Object.freeze({
     async prepareInvocation({ dispatch, authorityInputDigest, policy, policyPath }) {
       const local = staticPolicy(policy);
@@ -432,7 +434,8 @@ function createGitHubProvider({ context, fetchImpl = globalThis.fetch, now = () 
       if (authorityInputDigest !== derivedDigest) fail('authority_input_digest does not match the event payload and committed policy');
       const workflow = await content(context.repository, context.workflowPath, context.workflowRevision);
       if (!workflow.value.trim()) fail('committed workflow text is empty');
-      prepared = Object.freeze({ policy: effective, authorityInputDigest: derivedDigest });
+      prepared = Object.freeze({ policy: effective, authorityInputDigest: derivedDigest,
+        dispatch: JSON.parse(canonicalJson(dispatch)) });
       const run = await readRunRecord();
       return Object.freeze({ policy: effective, authorityInputDigest, locator: context.locator, startedAt: run.startedAt });
     },
@@ -506,6 +509,7 @@ function createGitHubProvider({ context, fetchImpl = globalThis.fetch, now = () 
         fail('GitHub canonical ref moved before evidence publication');
       const base = await gitCommit(evidence, bundle.policy.canonicalRevision);
       const bytes = Buffer.from(canonicalJson(stored), 'utf8').toString('base64');
+      await reauthenticatePublication(stored);
       const blob = sha(jsonObject(await request('POST', `${evidence.path}/git/blobs`, { content: bytes, encoding: 'base64' }, { statuses: [201] }), 'GitHub blob').sha, 'GitHub blob SHA');
       const tree = sha(jsonObject(await request('POST', `${evidence.path}/git/trees`, { base_tree: base.tree,
         tree: [{ path: rawPath, mode: '100644', type: 'blob', sha: blob }] }, { statuses: [201] }), 'GitHub tree').sha, 'GitHub tree SHA');
@@ -525,10 +529,6 @@ function createGitHubProvider({ context, fetchImpl = globalThis.fetch, now = () 
       return { created: true };
     },
   });
-}
-export function createGitHubActionsProvider({ env = process.env, fetchImpl = globalThis.fetch,
-  now = () => Date.now() } = {}) {
-  return createGitHubProvider({ context: actionContext(env), fetchImpl, now });
 }
 async function createGitHubOwnerProvider({ repository: identity, runId, eventPath, policy,
   authorityInputDigest, token, fetchImpl, now }) {
@@ -556,9 +556,8 @@ async function createGitHubOwnerProvider({ repository: identity, runId, eventPat
     GITHUB_EVENT_PATH: eventPath, GITHUB_RUN_ID: runId, GITHUB_REF: selected.canonicalRef,
     GITHUB_SHA: run.head_sha, GITHUB_WORKFLOW_REF: `${repository.owner}/${repository.name}/${selected.workflowPath}@${selected.canonicalRef}`,
     GITHUB_WORKFLOW_SHA: run.head_sha });
-  return createGitHubProvider({ context: Object.freeze({ ...context, workflowId }), fetchImpl, now });
+  return createGitHubOwnerWriter({ context: Object.freeze({ ...context, workflowId }), fetchImpl, now });
 }
-export const createGitHubRestProvider = createGitHubActionsProvider;
 function safeMessage(error, secret) {
   let message = error instanceof Error ? error.message : 'unexpected authority failure';
   if (typeof secret === 'string' && secret) message = message.split(secret).join('[redacted]');
@@ -574,6 +573,7 @@ export async function runAuthority(argv, {
     const command = parseAuthorityArguments(argv);
     if (command.command === 'help') { write(stdout, 'usage: agentic-os-authority validate-event --event=<event.json> --policy=<policy.json> | issue-github --event=<event.json> --policy=<policy.json> --repository=github.com/<owner>/<repo> --run-id=<id>'); return 0; }
     operation = command.command === 'validate-event' ? 'validation' : 'issuance';
+    if (command.command === 'issue-github' && env?.GITHUB_ACTIONS === 'true') fail('issue-github is owner-local and cannot run inside GitHub Actions');
     const policy = loadCommittedAuthorityPolicy(command.policyPath);
     const validationContext = command.command === 'validate-event'
       ? actionContext(env, { requireToken: false }) : null;

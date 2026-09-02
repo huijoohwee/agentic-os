@@ -227,6 +227,31 @@ async function observeState(provider, stored) {
   return { publication: second, stored: observed };
 }
 
+export function validateGitHubPreparedPublication(input) {
+  const source = snap(input);
+  exact(source, ['storedBundle', 'prepared', 'workflowRun', 'authenticatedActor'],
+    'GitHub prepared publication');
+  const stored = validateGitHubStoredAuthorityBundle(source.storedBundle);
+  const prepared = source.prepared;
+  exact(prepared, ['policy', 'authorityInputDigest', 'dispatch'],
+    'GitHub prepared invocation');
+  const bundle = stored.authorityBundle;
+  if (canonicalJson(bundle.request) !== canonicalJson(prepared.dispatch.request)
+    || canonicalJson(bundle.candidate) !== canonicalJson(prepared.dispatch.candidate)
+    || canonicalJson(bundle.policy) !== canonicalJson(prepared.policy)
+    || bundle.workflowRun.authorityInputDigest !== prepared.authorityInputDigest) {
+    fail('GitHub evidence publication does not match the exact prepared bundle');
+  }
+  if (canonicalJson(source.workflowRun) !== canonicalJson(bundle.workflowRun)) {
+    fail('GitHub workflow run changed immediately before evidence publication');
+  }
+  const actor = snap(source.authenticatedActor);
+  exact(actor, ['id', 'login'], 'GitHub bearer actor');
+  authenticatedActor({ ...actor, subject: `github-user:${actor.id}` },
+    bundle.request, bundle.workflowRun);
+  return stored;
+}
+
 export async function issueGitHubAuthority(input, providerValue) {
   const source = snap(input);
   exact(source, ['request', 'candidate', 'policy', 'workflowRunLocator', 'expiresAt'],

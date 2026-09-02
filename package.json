@@ -15,7 +15,7 @@
     "./adapters/git": "./src/git-repository.mjs",
     "./adapters/github": "./src/github-provider.mjs",
     "./adapters/github-authority": "./src/github-authority.mjs",
-    "./adapters/github-authority-issuer": "./src/github-authority-operation.mjs",
+    "./adapters/github-authority-issuer": "./src/github-authority-client.mjs",
     "./adapters/github-authority-client": "./src/github-authority-client.mjs",
     "./adapters/github-transition-client": "./src/github-transition-client.mjs",
     "./adapters/github-transition-authority": "./src/github-transition-authority.mjs",

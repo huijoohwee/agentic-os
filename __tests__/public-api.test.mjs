@@ -73,12 +73,14 @@ test('package exports stable public, adapter, and explicit migration-contract su
   assert.equal(typeof githubAuthority.createFencedClaimBundle, 'function');
   assert.equal(typeof githubAuthority.validateFencedClaimBundle, 'function');
   assert.equal(typeof githubIssuance.validateGitHubAuthorityIssuance, 'function');
-  assert.equal(typeof githubAuthorityIssuer.issueGitHubAuthority, 'function');
+  assert.equal(Object.hasOwn(githubAuthorityIssuer, 'issueGitHubAuthority'), false);
   assert.equal(typeof githubAuthorityIssuer.verifyGitHubAuthorityIssuanceLive, 'function');
+  assert.equal(Object.keys(githubAuthorityIssuer).some((name) => /publish|write/iu.test(name)), false);
   assert.equal(typeof completion.createEffectPlan, 'function');
   assert.equal(typeof completion.createAuthenticatedTransitionOperationReceipt, 'function');
   assert.equal(typeof authorityClient.createGitHubAuthorityReadProvider, 'function');
   assert.equal(typeof authorityClient.deriveGitHubAuthorityRunName, 'function');
+  assert.equal(Object.keys(authorityClient).some((name) => /publish|write/iu.test(name)), false);
   assert.equal(typeof transitionAuthority.createGitHubTransitionAuthorityVerifier, 'function');
   assert.equal(typeof transitionAuthority.publishGitHubTransitionAuthority, 'function');
   assert.equal(typeof transitionClient.deriveGitHubTransitionRunName, 'function');
@@ -118,7 +120,7 @@ test('authority records, adapter, and binary are explicit public package surface
   assert.equal(pkg.exports['./records/github-authority-issuance'],
     './src/github-authority-issuer.mjs');
   assert.equal(pkg.exports['./adapters/github-authority-issuer'],
-    './src/github-authority-operation.mjs');
+    './src/github-authority-client.mjs');
   assert.equal(pkg.exports['./records/completion'], './src/completion.mjs');
   assert.equal(pkg.exports['./adapters/github-authority-client'],
     './src/github-authority-client.mjs');
@@ -133,6 +135,12 @@ test('authority records, adapter, and binary are explicit public package surface
   assert.equal(pkg.bin['agentic-os-transition'], 'bin/agentic-os-transition.mjs');
   assert.equal(pkg.scripts.authority, 'node bin/agentic-os-authority.mjs');
   assert.equal(existsSync(join(ROOT, pkg.bin['agentic-os-authority'])), true);
+});
+
+test('authority binary exports no Actions or REST writer provider factory', async () => {
+  const binary = await import('../bin/agentic-os-authority.mjs');
+  assert.equal(Object.hasOwn(binary, 'createGitHubActionsProvider'), false);
+  assert.equal(Object.hasOwn(binary, 'createGitHubRestProvider'), false);
 });
 
 
