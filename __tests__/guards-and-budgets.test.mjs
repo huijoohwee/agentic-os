@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -580,6 +581,34 @@ test('this repository is inside its own documentation budget', () => {
   const { found, total } = docViolations();
   assert.deepEqual(found, [], `doc budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
+});
+
+test('the portable runtime system prompt is exact and within its character contract', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const prompt = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'), 'utf8');
+  assert.ok([...prompt].length <= 1_000);
+  assert.equal(createHash('sha256').update(prompt).digest('hex'),
+    'b1d6398097e8cc542d1c5f759c8a5cfbc3a30a1f8ef7db42b6f93fe05023d38a');
+});
+
+test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const text = readFileSync(join(root, 'docs/adlc-guidelines.md'), 'utf8');
+  const match = text.match(/^---\n([\s\S]+?)\n---\n/u);
+  assert.ok(match, 'ADLC guideline requires YAML frontmatter');
+  const entries = match[1].split('\n').map((line) => {
+    const field = line.match(/^([a-z_]+): (\S(?:.*\S)?)$/u);
+    assert.ok(field, `invalid ADLC frontmatter line: ${line}`);
+    return [field[1], field[2]];
+  });
+  assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
+  assert.deepEqual(Object.fromEntries(entries), {
+    schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
+    version: '1.0.0', owner: 'agentic-os', universal_scope: 'true',
+    supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
+    runtime_evaluator: 'npm run check', runtime_policy: 'fail-closed',
+    lifecycle_status: 'active',
+  });
 });
 
 test('this repository is inside its own module budget', () => {

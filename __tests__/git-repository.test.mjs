@@ -74,6 +74,7 @@ test('Git adapter observes a bound clean clone without assuming consumer authori
   assert.match(observation.observedRepository.commonDirectory, /\.git$/u);
   assert.equal(observation.canonical.relation, 'equal');
   assert.equal(observation.canonical.operationallyClean, true);
+  assert.equal(observation.projections[0].ownedPathScope, 'visible');
   assert.deepEqual(observation.authority, { runtime: 'consumer', release: 'consumer' });
   assert.ok(Object.values(observation.cleanup).every((effect) => effect === 'retain'));
   assert.equal(Object.isFrozen(observation), true);
@@ -81,6 +82,10 @@ test('Git adapter observes a bound clean clone without assuming consumer authori
   assert.equal(Object.isFrozen(observation.projections[0].ownedPaths), true);
   assert.throws(() => { observation.canonical.operationallyClean = false; }, TypeError);
   assert.throws(() => observation.projections[0].ownedPaths.push('invented'), TypeError);
+  assert.equal(observeRepository({ repository: subject.root, profile: profile(), mode: 'structural' })
+    .canonical.operationallyClean, null);
+  assert.equal(observeRepository({ repository: subject.root, profile: profile(), mode: 'deep' })
+    .canonical.operationallyClean, true);
 });
 
 test('Git observation preserves the profile-selected exact quarantine opt-in', (t) => {
@@ -279,16 +284,23 @@ test('Git mutation strips inherited identity and config but honors explicit cont
   assert.equal(existsSync(controlledIndex), true);
 });
 
-test('shallow cleanliness reports but does not block on ignored ownership', (t) => {
+test('shallow cleanliness skips ignored ownership while deep audit retains it', (t) => {
   const subject = repository(t);
   writeFileSync(join(subject.root, 'owned.secret'), 'owned\n');
   let observation = observeRepository({ repository: subject.root, profile: profile() });
   let canonical = observation.projections.find((item) => item.path === subject.root);
   assert.equal(observation.mode, 'shallow');
   assert.equal(observation.canonical.operationallyClean, true);
+  assert.equal(canonical.ownedPathScope, 'visible');
+  assert.deepEqual(canonical.ownedPaths, []);
+  assert.equal(canonical.ownedPathCount, 0);
+  assert.equal(canonical.trackedByteDriftPaths, null);
+
+  observation = observeRepository({ repository: subject.root, profile: profile(), mode: 'deep' });
+  canonical = observation.projections.find((item) => item.path === subject.root);
+  assert.equal(canonical.ownedPathScope, 'visible-and-ignored');
   assert.deepEqual(canonical.ownedPaths, ['owned.secret']);
   assert.equal(canonical.ownedPathCount, 1);
-  assert.equal(canonical.trackedByteDriftPaths, null);
 
   rmSync(join(subject.root, 'owned.secret'));
   run(subject.root, 'update-index', '--assume-unchanged', 'tracked.txt');
@@ -343,6 +355,61 @@ test('shallow evidence keeps HEAD, index, and working-tree projections distinct'
   assert.deepEqual(canonical.indexToWorkingTree.map(({ path, status, oldMode, newMode }) => ({
     path, status, oldMode, newMode,
   })), [{ path: 'tracked.txt', status: 'D', oldMode: '100644', newMode: '000000' }]);
+});
+
+test('structural health defers content but reports deletion and executable-bit changes', (t) => {
+  const subject = repository(t);
+  writeFileSync(join(subject.root, 'tracked.txt'), 'same type, authored content\n');
+  let observation = observeRepository({ repository: subject.root, profile: profile(),
+    mode: 'structural' });
+  let canonical = observation.projections.find((item) => item.path === subject.root);
+  assert.deepEqual(canonical.indexToWorkingTree, []);
+  assert.equal(canonical.operationallyClean, null);
+  assert.equal(observeRepository({ repository: subject.root, profile: profile(), mode: 'deep' })
+    .canonical.operationallyClean, false);
+
+  writeFileSync(join(subject.root, 'tracked.txt'), 'original\n');
+  chmodSync(join(subject.root, 'tracked.txt'), 0o755);
+  observation = observeRepository({ repository: subject.root, profile: profile(),
+    mode: 'structural' });
+  canonical = observation.projections.find((item) => item.path === subject.root);
+  assert.deepEqual(canonical.indexToWorkingTree.map(({ path, status }) => ({ path, status })),
+    [{ path: 'tracked.txt', status: 'M' }]);
+  assert.equal(canonical.operationallyClean, false);
+
+  chmodSync(join(subject.root, 'tracked.txt'), 0o644);
+  rmSync(join(subject.root, 'tracked.txt'));
+  observation = observeRepository({ repository: subject.root, profile: profile(),
+    mode: 'structural' });
+  canonical = observation.projections.find((item) => item.path === subject.root);
+  assert.deepEqual(canonical.indexToWorkingTree.map(({ path, status }) => ({ path, status })),
+    [{ path: 'tracked.txt', status: 'D' }]);
+  assert.equal(canonical.operationallyClean, false);
+});
+
+test('structural health defers nested submodule bytes while deep mode detects them', (t) => {
+  const subject = repository(t), nested = join(subject.parent, 'nested-source');
+  mkdirSync(nested);
+  run(nested, 'init', '--quiet', '--initial-branch=main');
+  run(nested, 'config', 'user.name', 'Fixture');
+  run(nested, 'config', 'user.email', 'fixture@example.invalid');
+  writeFileSync(join(nested, 'nested.txt'), 'nested original\n');
+  run(nested, 'add', 'nested.txt');
+  run(nested, 'commit', '--quiet', '-m', 'nested base');
+  run(subject.root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', nested,
+    'nested');
+  run(subject.root, 'commit', '--quiet', '-am', 'add nested module');
+  writeFileSync(join(subject.root, 'nested', 'nested.txt'), 'nested authored bytes\n');
+
+  const structural = observeRepository({ repository: subject.root, profile: profile(),
+    mode: 'structural' });
+  assert.equal(structural.canonical.operationallyClean, null);
+  assert.deepEqual(structural.projections.find((item) => item.path === subject.root)
+    .indexToWorkingTree, []);
+  const deep = observeRepository({ repository: subject.root, profile: profile(), mode: 'deep' });
+  assert.equal(deep.canonical.operationallyClean, false);
+  assert.deepEqual(deep.projections.find((item) => item.path === subject.root)
+    .trackedByteDriftPaths, ['nested']);
 });
 
 test('adapter validates exact version and fully-qualified ref classes', (t) => {

@@ -65,8 +65,20 @@ if [ "$AGENTIC_OS_TEST_RACE_MODE" = publication ] &&
       refs/remotes/origin/main "$AGENTIC_OS_TEST_MOVED" "$AGENTIC_OS_TEST_BASE" || exit
   fi
 fi
-if [ "$AGENTIC_OS_TEST_RACE_MODE" = reap ] && [ "$1" = for-each-ref ] &&
-   [ "$3" = refs/heads/agent ] && [ ! -f "$AGENTIC_OS_TEST_RACE_MARKER" ]; then
+if [ "$AGENTIC_OS_TEST_RACE_MODE" = lane-ref ] && [ "$1" = rev-parse ] &&
+   [ "$2" = --verify ] && [ "$3" = refs/heads/agent/test/protected-race ] &&
+   [ ! -f "$AGENTIC_OS_TEST_RACE_MARKER" ]; then
+  captured=$("$AGENTIC_OS_REAL_GIT" "$@") || exit
+  : > "$AGENTIC_OS_TEST_RACE_MARKER"
+  "$AGENTIC_OS_REAL_GIT" -C "$AGENTIC_OS_TEST_ROOT" update-ref \
+    refs/heads/agent/test/protected-race "$AGENTIC_OS_TEST_BASE" \
+    "$AGENTIC_OS_TEST_MOVED" || exit
+  printf '%s\n' "$captured"
+  exit 0
+fi
+if [ "$AGENTIC_OS_TEST_RACE_MODE" = reap ] && [ "$1" = rev-parse ] &&
+   [ "$2" = --verify ] && [ "$3" = refs/heads/agent/test/protected-race ] &&
+   [ ! -f "$AGENTIC_OS_TEST_RACE_MARKER" ]; then
   : > "$AGENTIC_OS_TEST_RACE_MARKER"
   "$AGENTIC_OS_REAL_GIT" -C "$AGENTIC_OS_TEST_ROOT" update-ref \
     refs/remotes/origin/main "$AGENTIC_OS_TEST_MOVED" "$AGENTIC_OS_TEST_BASE" || exit
@@ -78,8 +90,8 @@ exec "$AGENTIC_OS_REAL_GIT" "$@"
   return { parent, root, bare, lane, support, base, laneHead, future };
 }
 
-function runCli(subject, command, cwd, mode, moved) {
-  return spawnSync(process.execPath, [CLI, command], {
+function runCli(subject, command, cwd, mode, moved, argv = []) {
+  return spawnSync(process.execPath, [CLI, command, ...argv], {
     cwd,
     encoding: 'utf8',
     env: {
@@ -116,4 +128,27 @@ test('reap surveys the captured base when the symbolic protected ref moves', (t)
   assert.match(result.stdout, /not-integrated lane projections:/u);
   assert.match(result.stdout, /agent\/test\/protected-race\s+1 pending/u);
   assert.doesNotMatch(result.stdout, /proven integrated/u);
+});
+
+test('exact-ref reap remains usable beyond the unrelated global lane budget', (t) => {
+  const subject = fixture(t);
+  for (let index = 0; index < 257; index += 1)
+    runGit(subject.root, 'update-ref', `refs/heads/agent/retained/legacy-${index}`, subject.base);
+  const ref = 'agent/test/protected-race';
+  const result = runCli(subject, 'reap', subject.root, 'exact-ref', subject.future,
+    [`--ref=${ref}`]);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.doesNotMatch(result.stderr, /blocked-lane-inventory-over-budget/u);
+  assert.match(result.stdout, /agent\/test\/protected-race\s+1 pending/u);
+  assert.doesNotMatch(result.stdout, /legacy-/u);
+  assert.equal(runGit(subject.root, 'rev-parse', `refs/heads/${ref}`), subject.laneHead);
+});
+
+test('exact-ref reap fails closed when the surveyed lane ref moves', (t) => {
+  const subject = fixture(t), ref = 'agent/test/protected-race';
+  const result = runCli(subject, 'reap', subject.root, 'lane-ref', subject.laneHead,
+    [`--ref=${ref}`]);
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /blocked-lane-ref-race/u);
+  assert.equal(runGit(subject.root, 'rev-parse', `refs/heads/${ref}`), subject.base);
 });

@@ -1,5 +1,4 @@
 /** Sanitized Git execution plus exact tracked-byte observation. */
-
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -8,7 +7,6 @@ import {
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
-
 export class GitError extends Error {
   constructor(args, status, stderr) {
     const safeArgs = args.map(redactGitArgument), safeStderr = redactGitText(stderr);
@@ -43,7 +41,6 @@ function inheritedEnvironment({ preserveGit = false, preserveGlobalConfig = fals
   }
   return environment;
 }
-
 function mutationEnvironment(extra = null, { preserveGlobalConfig = false } = {}) {
   const environment = { ...inheritedEnvironment({ preserveGit: true, preserveGlobalConfig }), ...(extra ?? {}) };
   environment.GIT_NO_REPLACE_OBJECTS = '1';
@@ -53,7 +50,6 @@ function mutationEnvironment(extra = null, { preserveGlobalConfig = false } = {}
   }
   return environment;
 }
-
 function observationEnvironment(extra = null) {
   const environment = { ...inheritedEnvironment(), ...(extra ?? {}) };
   for (const key of Object.keys(environment))
@@ -68,7 +64,6 @@ function observationEnvironment(extra = null) {
   });
   return environment;
 }
-
 /** Execute a Git mutation with inherited repository redirection removed. */
 export function git(args, { cwd = process.cwd(), allowFail = false, input, env,
   raw = false, binary = false, maxBuffer = 64 * 1024 * 1024, replaceEnv = false,
@@ -86,14 +81,12 @@ export function git(args, { cwd = process.cwd(), allowFail = false, input, env,
     throw new GitError(args, error.status ?? -1, String(error.stderr ?? error.message));
   }
 }
-
 /** Local Git observation with optional writes, lazy fetches, replacements, and code disabled. */
 export function observeGit(args, options = {}) {
   const safeArgs = args[0] === 'diff'
     ? ['diff', '--no-ext-diff', '--no-textconv', ...args.slice(1)] : args;
   return git(safeArgs, { ...options, env: observationEnvironment(options.env), replaceEnv: true });
 }
-
 function outputLines(result) {
   return result === null || result === '' ? [] : result.split('\n').filter((line) => line !== '');
 }
@@ -101,7 +94,6 @@ export function gitLines(args, options = {}) { return outputLines(observeGit(arg
 export function observeGitLines(args, options = {}) {
   return outputLines(observeGit(args, options));
 }
-
 export const TRACKED_FILE_LIMITS = Object.freeze({ rawComparisonBytes: 32 * 1024 * 1024 });
 const FILTER_COMPARE = fileURLToPath(new URL('../bin/agentic-os-filter-compare.mjs', import.meta.url));
 
@@ -118,7 +110,6 @@ function sameRawNode(left, right) {
     && left.mode === right.mode && left.nlink === right.nlink && left.size === right.size
     && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
-
 function childEnvironment() {
   const environment = { ...process.env };
   for (const key of Object.keys(environment)) {
@@ -128,7 +119,6 @@ function childEnvironment() {
   }
   return environment;
 }
-
 export function rawTrackedFileMatches({ absolute, path, oid, mode, before, cwd }) {
   let source = null;
   try {
@@ -242,12 +232,12 @@ function parseIndexEntries(cwd) {
   return entries;
 }
 
-function parseRawDiff(cwd) {
-  const fields = decodeNulFields(observeGit([
-    'diff', '--cached', '--raw', '-z', '--no-renames', '--abbrev=64', 'HEAD', '--',
-  ], { cwd, binary: true, allowFail: true }));
+function parseRawDiff(cwd, args, label) {
+  const fields = decodeNulFields(observeGit(args, {
+    cwd, binary: true, allowFail: true,
+  }));
   if (!fields || fields.length % 2 !== 0) {
-    const error = new Error('Git HEAD-to-index projection is unavailable');
+    const error = new Error(`Git ${label} projection is unavailable`);
     error.reason = 'blocked-invalid-path-inventory';
     throw error;
   }
@@ -257,7 +247,7 @@ function parseRawDiff(cwd) {
       /^:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40,64}) ([0-9a-f]{40,64}) ([A-Z])$/u,
     );
     if (!match) {
-      const error = new Error('Git HEAD-to-index projection is malformed');
+      const error = new Error(`Git ${label} projection is malformed`);
       error.reason = 'blocked-invalid-path-inventory';
       throw error;
     }
@@ -267,11 +257,46 @@ function parseRawDiff(cwd) {
   return entries;
 }
 
+function headToIndexChanges(cwd) {
+  return parseRawDiff(cwd, [
+    'diff', '--cached', '--raw', '-z', '--no-renames', '--abbrev=64',
+    '--ita-visible-in-index', 'HEAD', '--',
+  ], 'HEAD-to-index');
+}
+
+function shallowIndexToWorkingTree(entries, cwd) {
+  const changes = [];
+  const unmerged = new Set(entries.filter(({ stage }) => stage !== 0).map(({ path }) => path));
+  for (const path of [...unmerged].sort()) {
+    const entry = entries.find((candidate) => candidate.path === path);
+    changes.push({ path, status: 'U', oldMode: entry.mode, newMode: '000000',
+      oldObject: entry.oid, newObject: '0'.repeat(entry.oid.length) });
+  }
+  for (const entry of entries) {
+    if (entry.stage !== 0) continue;
+    const stat = lstatSync(join(cwd, entry.path), { bigint: true, throwIfNoEntry: false });
+    const newMode = worktreeMode(stat);
+    if (stat && newMode === entry.mode) continue;
+    const sameType = entry.mode.startsWith('100') && newMode.startsWith('100');
+    changes.push({ path: entry.path, status: !stat ? 'D' : sameType ? 'M' : 'T',
+      oldMode: entry.mode, newMode, oldObject: entry.oid,
+      newObject: '0'.repeat(entry.oid.length) });
+  }
+  return changes;
+}
+
+/** Fast no-code structural projection. Content identity is explicitly deferred. */
+export function shallowTrackedChanges(cwd = process.cwd()) {
+  const entries = parseIndexEntries(cwd);
+  return { headToIndex: headToIndexChanges(cwd),
+    indexToWorkingTree: shallowIndexToWorkingTree(entries, cwd) };
+}
+
 /** Raw local tracked projections that never execute checkout filters or refresh the index. */
 export function trackedChanges(cwd = process.cwd()) {
-  const headToIndex = parseRawDiff(cwd);
   const indexToWorkingTree = [];
   const entries = parseIndexEntries(cwd);
+  const headToIndex = headToIndexChanges(cwd);
   const unmerged = new Set(entries.filter(({ stage }) => stage !== 0).map(({ path }) => path));
   for (const path of [...unmerged].sort()) {
     const entry = entries.find((candidate) => candidate.path === path);
@@ -290,17 +315,17 @@ export function trackedChanges(cwd = process.cwd()) {
   return { headToIndex, indexToWorkingTree };
 }
 
-export function dirtyTracked(cwd = process.cwd()) {
-  const changes = trackedChanges(cwd);
-  return changes.headToIndex.length > 0 || changes.indexToWorkingTree.length > 0;
-}
+export function dirtyTracked(cwd = process.cwd()) { const changes = trackedChanges(cwd);
+  return changes.headToIndex.length > 0 || changes.indexToWorkingTree.length > 0; }
 
+function hiddenIndexPaths(cwd) {
+  return strictGitPaths(['ls-files', '-v', '-z'], cwd).filter((record) => record[0] >= 'a'
+    && record[0] <= 'z' || record[0]?.toUpperCase() === 'S').map((record) => record.slice(2));
+}
 /** Conservative exact-byte risks; publication can skip ignored-only ownership enumeration. */
 export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = true } = {}) {
-  const hidden = strictGitPaths(['ls-files', '-v', '-z'], cwd).filter((record) => {
-    const tag = record[0];
-    return tag >= 'a' && tag <= 'z' || tag?.toUpperCase() === 'S';
-  }).map((record) => record.slice(2));
+  const headToIndex = headToIndexChanges(cwd);
+  const hidden = hiddenIndexPaths(cwd);
   const tracked = [];
   for (const record of strictGitPaths(['ls-tree', '-r', '-z', 'HEAD'], cwd)) {
     const tab = record.indexOf('\t');
@@ -309,8 +334,15 @@ export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = tru
     const path = record.slice(tab + 1);
     if (!trackedEntryMatches({ mode, oid, path }, cwd, includeIgnored)) tracked.push(path);
   }
-  return { dirtyTracked: dirtyTracked(cwd), hidden,
-    owned: untrackedPaths(cwd, { includeIgnored }), tracked };
+  const owned = untrackedPaths(cwd, { includeIgnored });
+  const headToIndexAfter = headToIndexChanges(cwd), hiddenAfter = hiddenIndexPaths(cwd);
+  if (JSON.stringify(headToIndexAfter) !== JSON.stringify(headToIndex)
+    || JSON.stringify(hiddenAfter) !== JSON.stringify(hidden)) {
+    const error = new Error('Git index projection moved during exact byte observation');
+    error.reason = 'blocked-repository-observation-race';
+    throw error;
+  }
+  return { dirtyTracked: headToIndex.length > 0 || tracked.length > 0, hidden, owned, tracked };
 }
 
 const UTF8 = new TextDecoder('utf-8', { fatal: true });

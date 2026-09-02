@@ -11,7 +11,7 @@ import { git, observeGit, observeGitLines, parseWorktreeList } from './git-track
 import { copyWorktreeEntriesToQuarantine } from './quarantine.mjs';
 export { retireCleanProjectionUnderExclusiveContract } from './quarantine.mjs';
 export { GitError, git, gitLines, observeGit, observeGitLines } from './git-tracked.mjs';
-export { decodeNulFields, dirtyTracked, trackedChanges, untrackedPaths,
+export { decodeNulFields, dirtyTracked, shallowTrackedChanges, trackedChanges, untrackedPaths,
   worktreeCleanupRisks } from './git-tracked.mjs';
 export { finishOperationLock, OperationLockError };
 function gitPath(args, cwd, label) {

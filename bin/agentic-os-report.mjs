@@ -291,6 +291,15 @@ export function formatFindings(title, findings) {
   return lines.join('\n');
 }
 
+export function formatDoctorConclusion(failures, cleanlinessDeferred = false) {
+  if (!Number.isSafeInteger(failures) || failures < 0)
+    throw new TypeError('doctor conclusion requires a non-negative finding count');
+  if (failures > 0) return `${failures} finding(s) need attention. Nothing was changed.`;
+  return cleanlinessDeferred
+    ? 'shallow harness invariants hold; tracked content identity was not evaluated.'
+    : 'harness invariants hold.';
+}
+
 export function formatConfig(entries) {
   const lines = ['local git configuration:'];
   for (const entry of entries) {
@@ -315,15 +324,15 @@ export function formatLocal(local) {
     lines.push(`  ${ok ? MARK.ok : MARK.fail} ${pad(id, 18)} ${detail}`);
     if (!ok && remedy) lines.push(`       remedy: ${remedy}`);
   };
-  push(
-    !local.canonicalDirty,
-    'canonical-clean',
-    local.canonicalDirty
-      ? `canonical ${branch} has exact tracked-byte/index risk (${local.trackedRiskPaths.length} byte, ${local.hiddenPaths.length} hidden)`
-      : `canonical ${branch} tracked bytes and index match HEAD`,
-    'preserve the bytes in place and complete owner-led recovery before lane or sync mutation',
+  if (local.canonicalDirty) push(false, 'canonical-clean',
+    `canonical ${branch} has shallow tracked/index structural or hidden-flag risk (${local.trackedRiskPaths.length} tracked, ${local.hiddenPaths.length} hidden)`,
+    'preserve the bytes in place; use agentic-os observe --deep for an exact byte audit');
+  else if (local.canonicalCleanlinessDeferred) lines.push(
+    `  ${MARK.warn} ${pad('canonical-clean', 18)} canonical ${branch} has no shallow risk; tracked content identity is deferred`,
+    '       remedy: use agentic-os observe --deep when exact byte cleanliness is required',
   );
-  lines.push(`  ${MARK.warn} ${pad('owned-paths', 18)} ${local.ownedPathCount ?? local.ownedPaths.length} untracked/ignored path(s) retained`);
+  else push(true, 'canonical-clean', `canonical ${branch} is exact-byte clean`);
+  lines.push(`  ${MARK.warn} ${pad('owned-paths', 18)} ${local.ownedPathCount ?? local.ownedPaths.length} visible untracked path(s); deep audit includes ignored paths`);
   const relationDetail = local.relation === 'equal'
     ? `canonical ${branch} equals cached ${target}`
     : local.relation === 'behind'
@@ -348,7 +357,7 @@ export function formatLocal(local) {
     'require authenticated retirement and target-specific cleanup eligibility before unregistering',
   );
   lines.push(
-    `  ${MARK.warn} ${pad('retained-refs', 18)} ${local.laneBranches} local lane ref(s); retention does not imply active authority`,
+    `  ${MARK.warn} ${pad('retained-refs', 18)} ${local.laneBranches}${local.laneBranchesTruncated ? '+' : ''} local lane ref(s); retention does not imply active authority`,
   );
   return lines.join('\n');
 }

@@ -106,14 +106,24 @@ export function surveyLanes(base, branches, { cwd } = {}) {
   const integrated = [];
   const open = [];
   for (const branch of branches) {
-    const proof = integrationProof(base, branch, { cwd });
+    const exactRef = branch.startsWith('refs/heads/') ? branch : `refs/heads/${branch}`;
+    const capturedHead = headSha(exactRef, cwd);
+    if (!capturedHead) throw Object.assign(new Error(`lane ref is unavailable: ${branch}`), {
+      reason: 'blocked-lane-ref-missing',
+    });
+    const proof = integrationProof(base, capturedHead, { cwd });
     if (proof) {
       integrated.push({ branch, head: proof.head, baseHead: proof.baseHead,
         proof: proof.kind, detail: proof.detail });
     } else {
-      const { upstream, pending } = cherry(base, branch, { cwd });
+      const { upstream, pending } = cherry(base, capturedHead, { cwd });
       open.push({ branch, alreadyUpstream: upstream.length, pending: pending.length });
     }
+    const currentHead = headSha(exactRef, cwd);
+    if (currentHead !== capturedHead)
+      throw Object.assign(new Error(`lane ref moved during survey: ${branch}`), {
+        reason: 'blocked-lane-ref-race', ref: exactRef, expectedHead: capturedHead, currentHead,
+      });
   }
   return { integrated, open };
 }

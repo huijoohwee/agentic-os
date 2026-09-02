@@ -41,6 +41,7 @@
     "bin",
     "src",
     "catalog",
+    "templates",
     "docs",
     "__tests__",
     "AGENTS.md"

@@ -17,6 +17,7 @@ length cap to keep diffs and reviews readable.
 | Any single file in `docs/` | 12 KB | `bin/agentic-os-doc-budget.mjs` |
 | Always-load set (`AGENTS.md` + `docs/`) | 40 KB | `bin/agentic-os-doc-budget.mjs` |
 | Any authored line | 120 characters | `bin/agentic-os-doc-budget.mjs` |
+| Universal runtime prompt | 1,000 characters | `__tests__/guards-and-budgets.test.mjs` |
 
 40 KB is roughly 10k tokens of fixed session cost. The comparison worth keeping in mind: an
 instruction surface of 629 KB is about 157k tokens, which is most of a context window spent before

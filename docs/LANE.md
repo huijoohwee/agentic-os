@@ -99,6 +99,8 @@ shape. Git patch IDs deliberately ignore some whitespace and therefore remain di
 integration or retirement proof.
 
 This compatibility machine has no cleanup transition. `reap` only computes these projections.
+The global form retains a strict bounded ref inventory; `reap --ref=<lane>` surveys one exact local
+lane ref without treating unrelated retained refs as active authority.
 Authenticated `retire(claim)`, clean detachment, and target-specific filesystem cleanup remain
 separate public governance operations and receipts.
 

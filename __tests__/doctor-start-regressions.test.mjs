@@ -16,7 +16,7 @@ import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import {
-  inspect as inspectWorktree, lanePath, provision, registeredLaneBranches,
+  inspect as inspectWorktree, LANE_BRANCH_LIMIT, lanePath, provision, registeredLaneBranches,
 } from '../src/worktree.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -148,7 +148,7 @@ test('doctor fails closed for missing, ahead, and diverged cached origin/main', 
   });
 });
 
-test('doctor exposes hidden tracked-byte risk and retains owned ignored paths', (t) => {
+test('doctor exposes hidden tracked risk without deep ignored-path enumeration', (t) => {
   const { root, run, support } = fixture(t);
   writeFileSync(join(root, '.gitignore'), '*.secret\n');
   run(['add', '.gitignore']);
@@ -160,9 +160,19 @@ test('doctor exposes hidden tracked-byte risk and retains owned ignored paths', 
 
   const result = doctor(root, support);
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stdout, /FAIL canonical-clean\s+canonical main has exact tracked-byte\/index risk \(1 byte, 1 hidden\)/u);
-  assert.match(result.stdout, /warn owned-paths\s+1 untracked\/ignored path\(s\) retained/u);
+  assert.match(result.stdout, /FAIL canonical-clean\s+canonical main has shallow tracked\/index structural or hidden-flag risk \(1 tracked, 1 hidden\)/u);
+  assert.match(result.stdout, /warn owned-paths\s+0 visible untracked path\(s\); deep audit includes ignored paths/u);
   assert.equal(existsSync(join(root, 'owner.secret')), true);
+});
+
+test('doctor reports structural deferral without claiming exact-byte cleanliness', (t) => {
+  const { root, run, support } = fixture(t);
+  run(['update-ref', 'refs/remotes/origin/main', run(['rev-parse', 'HEAD'])]);
+  const result = doctor(root, support);
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout,
+    /warn canonical-clean\s+canonical main has no shallow risk; tracked content identity is deferred/u);
+  assert.doesNotMatch(result.stdout, /harness invariants hold/u);
 });
 
 test('provision binds the lane to one supplied captured base when origin/main moves', (t) => {
@@ -195,6 +205,39 @@ test('provision binds the lane to one supplied captured base when origin/main mo
   assert.equal(git(['rev-parse', 'HEAD'], { cwd: created.path }), captured);
   assert.equal(run(['rev-parse', 'refs/heads/agent/test-device/captured-base']), captured);
   assert.equal(created.baseSha, captured);
+});
+
+test('lane inspection preserves deep compatibility while status can omit ignored runtime', (t) => {
+  const { root, run } = fixture(t);
+  const base = run(['rev-parse', 'HEAD']);
+  run(['update-ref', 'refs/remotes/origin/main', base]);
+  writeFileSync(join(root, '.git', 'info', 'exclude'), 'ignored.runtime\n');
+  const ref = 'agent/test-device/shallow-owned';
+  const created = provision({
+    ref, scope: 'shallow-owned', device: 'test-device', baseSha: base, cwd: root,
+  });
+  writeFileSync(join(created.path, 'ignored.runtime'), 'reproducible runtime\n');
+  writeFileSync(join(created.path, 'visible.txt'), 'owned source\n');
+
+  const deep = inspectWorktree(ref, root, 'refs/remotes/origin/main');
+  assert.deepEqual(deep.untracked, ['ignored.runtime', 'visible.txt']);
+  const shallow = inspectWorktree(ref, root, 'refs/remotes/origin/main', {
+    includeIgnored: false,
+  });
+  assert.deepEqual(shallow.untracked, ['visible.txt']);
+  assert.equal(existsSync(join(created.path, 'ignored.runtime')), true);
+});
+
+test('doctor reports a bounded lower count instead of failing on retained legacy refs', (t) => {
+  const { root, run, support } = fixture(t);
+  const head = run(['rev-parse', 'HEAD']);
+  run(['update-ref', 'refs/remotes/origin/main', head]);
+  for (let index = 0; index <= LANE_BRANCH_LIMIT; index += 1)
+    run(['update-ref', `refs/heads/agent/device/legacy-${index}`, head]);
+  const result = doctor(root, support);
+  assert.doesNotMatch(result.stderr, /blocked-lane-inventory-over-budget/u);
+  assert.match(result.stdout, /257\+ local lane ref\(s\)/u);
+  assert.equal(run(['rev-parse', 'refs/heads/agent/device/legacy-256']), head);
 });
 
 test('retained lane refs do not become registered authoring projections', (t) => {
