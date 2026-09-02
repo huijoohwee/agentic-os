@@ -1,25 +1,20 @@
-import { canonicalJson, createAuthorityTransitionReceiptEnvelope, findExactReplay,
-  governanceDigest } from './governance.mjs';
-import { GITHUB_ACTIONS_INTEGRATION_ID, GITHUB_AUTHORITY_ADAPTER,
+import { canonicalJson, createAuthorityTransitionReceiptEnvelope, findExactReplay, governanceDigest } from './governance.mjs';
+import { GITHUB_ACTIONS_INTEGRATION_ID, GITHUB_AUTHORITY_ADAPTER, GITHUB_RETROSPECTIVE_RECOVERY_MODE,
   parseGitHubRepositoryIdentity, validateFencedClaimBundle } from './github-authority.mjs';
 export const GITHUB_PROTECTION_PROJECTION_SCHEMA = 'agentic-os/github-protection-projection/v1';
 export const GITHUB_CANONICAL_REF_PROJECTION_SCHEMA = 'agentic-os/github-canonical-ref-projection/v1';
 export const GITHUB_PROTECTION_SNAPSHOT_SCHEMA = 'agentic-os/github-protection-snapshot/v1';
 export const GITHUB_TARGET_REPOSITORY_SCHEMA = 'agentic-os/github-target-repository-projection/v1';
+export const GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA = 'agentic-os/github-retrospective-target-proof/v1';
 export const GITHUB_STORED_AUTHORITY_BUNDLE_SCHEMA = 'agentic-os/github-stored-authority-bundle/v1';
 export const GITHUB_PUBLICATION_RECEIPT_SCHEMA = 'agentic-os/github-authority-publication-receipt/v1';
 export const GITHUB_AUTHORITY_ISSUANCE_SCHEMA = 'agentic-os/github-authority-issuance/v1';
-const DIGEST = /^[0-9a-f]{64}$/u;
-const REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const IDENTIFIER = /^[1-9][0-9]{0,18}$/u;
-const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
-const RULE_TYPE = /^[a-z][a-z0-9_]{0,63}$/u;
-const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const DIGEST = /^[0-9a-f]{64}$/u, REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const IDENTIFIER = /^[1-9][0-9]{0,18}$/u, LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
+const RULE_TYPE = /^[a-z][a-z0-9_]{0,63}$/u, REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const PROJECTION_KEYS = ['schema', 'repository', 'ref', 'rulesets', 'projectionDigest'];
-const TARGET_KEYS = [
-  'schema', 'repository', 'repositoryId', 'owner', 'canonicalBranch', 'canonicalRevision',
-  'candidateBranch', 'candidateHeadRevision', 'review', 'projectionDigest',
-];
+const TARGET_KEYS = ['schema', 'repository', 'repositoryId', 'owner', 'canonicalBranch',
+  'canonicalRevision', 'candidateBranch', 'candidateHeadRevision', 'review', 'projectionDigest'];
 const STORED_KEYS = ['schema', 'authorityBundle', 'targetRepository', 'preProtection', 'storedDigest'];
 const RECEIPT_INPUT_KEYS = ['storedBundle', 'publication', 'postProtection', 'receiptDigest'];
 const ISSUANCE_KEYS = ['schema', 'storedBundle', 'publicationReceipt', 'transitionReceipt', 'issuanceDigest'];
@@ -31,49 +26,38 @@ function exact(value, keys, label, required = true) {
     || (required && keys.some((key) => !Object.hasOwn(value, key)))) fail(`${label} fields are invalid`);
 }
 function requireKeys(value, keys, label) {
-  if (keys.some((key) => !Object.hasOwn(value, key))) fail(`${label} fields are invalid`);
-}
+  if (keys.some((key) => !Object.hasOwn(value, key))) fail(`${label} fields are invalid`); }
 function text(value, label) {
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
     || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`);
-  return value;
-}
+  return value; }
 function digest(value, label) {
-  if (typeof value !== 'string' || !DIGEST.test(value)) fail(`${label} must be a sha256 digest`);
-  return value;
-}
+  if (typeof value !== 'string' || !DIGEST.test(value)) fail(`${label} must be a sha256 digest`); return value; }
 function revision(value, label) {
-  if (typeof value !== 'string' || !REVISION.test(value)) fail(`${label} must be a full lowercase Git object identifier`);
-  return value;
-}
+  if (typeof value !== 'string' || !REVISION.test(value)) fail(`${label} must be a full lowercase Git object identifier`); return value; }
 function identifier(value, label) {
   const result = typeof value === 'number' ? String(value) : text(value, label);
   if (!IDENTIFIER.test(result)) fail(`${label} must be a canonical positive identifier`);
-  return result;
-}
+  return result; }
 function instant(value, label) {
   const result = text(value, label), parsed = Date.parse(result);
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== result) fail(`${label} must be an exact UTC instant`);
-  return result;
-}
+  return result; }
 function ref(value, label) {
   const result = text(value, label), prefix = 'refs/heads/';
   const parts = result.startsWith(prefix) ? result.slice(prefix.length).split('/') : [];
   if (!parts.length || parts.some((part) => !REF_PART.test(part)
     || part.endsWith('.') || part.endsWith('.lock'))) fail(`${label} must be a portable refs/heads ref`);
-  return result;
-}
+  return result; }
 function freeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.values(value).forEach(freeze);
-  return Object.freeze(value);
-}
+  return Object.freeze(value); }
 function stringSet(value, label, pattern) {
   if (!Array.isArray(value)) fail(`${label} must be an array`);
   const result = value.map((entry) => text(entry, label)).sort();
   if (new Set(result).size !== result.length || result.some((entry) => !pattern.test(entry))) fail(`${label} must be canonical and duplicate-free`);
-  return result;
-}
+  return result; }
 function ruleDescriptor(value) {
   const source = snap(value);
   exact(source, ['type', 'parameters'], 'GitHub rule descriptor');
@@ -82,8 +66,7 @@ function ruleDescriptor(value) {
   if (source.parameters !== null
     && (!source.parameters || typeof source.parameters !== 'object'
       || Array.isArray(source.parameters))) fail('GitHub rule parameters must be an object or null');
-  return { type, parameters: source.parameters };
-}
+  return { type, parameters: source.parameters }; }
 function ruleset(value) {
   const source = snap(value);
   exact(source, ['id', 'enforcement', 'rules', 'bypassActors'], 'GitHub ruleset projection');
@@ -92,8 +75,7 @@ function ruleset(value) {
     left.type.localeCompare(right.type));
   if (new Set(rules.map((entry) => entry.type)).size !== rules.length) fail('GitHub rule descriptors must have distinct types per ruleset');
   return { id: identifier(source.id, 'GitHub ruleset id'), enforcement: 'active', rules,
-    bypassActors: stringSet(source.bypassActors, 'GitHub bypass actor', /^\S{1,256}$/u) };
-}
+    bypassActors: stringSet(source.bypassActors, 'GitHub bypass actor', /^\S{1,256}$/u) }; }
 export function createGitHubProtectionProjection(value) {
   const source = snap(value);
   exact(source, PROJECTION_KEYS, 'GitHub protection projection input', false);
@@ -107,14 +89,11 @@ export function createGitHubProtectionProjection(value) {
   if (source.schema !== undefined && source.schema !== payload.schema) fail('GitHub protection projection schema is invalid');
   if (source.projectionDigest !== undefined
     && digest(source.projectionDigest, 'projectionDigest') !== projectionDigest) fail('GitHub protection projection digest is invalid');
-  return freeze({ ...payload, projectionDigest });
-}
+  return freeze({ ...payload, projectionDigest }); }
 function descriptors(projection, type) {
-  return projection.rulesets.flatMap((entry) => entry.rules).filter((entry) => entry.type === type);
-}
+  return projection.rulesets.flatMap((entry) => entry.rules).filter((entry) => entry.type === type); }
 function projectionIdentity(projection, repository, branch) {
-  if (projection.repository !== repository || projection.ref !== branch) fail('GitHub protection projection has the wrong repository or ref');
-}
+  if (projection.repository !== repository || projection.ref !== branch) fail('GitHub protection projection has the wrong repository or ref'); }
 function canonicalProtection(value, bundle) {
   const projection = createGitHubProtectionProjection(value), policy = bundle.policy;
   projectionIdentity(projection, policy.evidenceRepository, policy.canonicalRef);
@@ -134,8 +113,7 @@ function canonicalProtection(value, bundle) {
   const methods = descriptors(projection, 'pull_request')[0].parameters?.allowed_merge_methods;
   if (!Array.isArray(methods) || new Set(methods).size !== methods.length
     || canonicalJson([...methods].sort()) !== canonicalJson(policy.allowedMergeMethods)) fail('canonical allowed merge methods do not match policy');
-  return projection;
-}
+  return projection; }
 function evidenceProtection(value, bundle) {
   const projection = createGitHubProtectionProjection(value);
   projectionIdentity(projection, bundle.policy.evidenceRepository, bundle.evidenceRef);
@@ -150,8 +128,7 @@ function evidenceProtection(value, bundle) {
       !== canonicalJson({ update_allows_fetch_and_merge: false })) {
     fail('evidence protection must be one exact zero-bypass immutable ruleset');
   }
-  return projection;
-}
+  return projection; }
 function canonicalRefProjection(value, bundle) {
   const source = snap(value);
   const keys = ['schema', 'repository', 'ref', 'revision', 'projectionDigest'];
@@ -168,15 +145,13 @@ function canonicalRefProjection(value, bundle) {
   if (source.schema !== undefined && source.schema !== payload.schema
     || source.projectionDigest !== undefined
       && digest(source.projectionDigest, 'canonical ref projectionDigest') !== projectionDigest) fail('GitHub canonical ref projection is invalid');
-  return freeze({ ...payload, projectionDigest });
-}
+  return freeze({ ...payload, projectionDigest }); }
 export function createGitHubProtectionSnapshot(canonical, evidence, canonicalHead, bundle) {
   const payload = { schema: GITHUB_PROTECTION_SNAPSHOT_SCHEMA,
     canonical: canonicalProtection(canonical, bundle),
     evidence: evidenceProtection(evidence, bundle),
     canonicalHead: canonicalRefProjection(canonicalHead, bundle) };
-  return freeze({ ...payload, snapshotDigest: governanceDigest(payload) });
-}
+  return freeze({ ...payload, snapshotDigest: governanceDigest(payload) }); }
 function validateProtectionSnapshot(value, bundle) {
   const source = snap(value);
   exact(source, ['schema', 'canonical', 'evidence', 'canonicalHead', 'snapshotDigest'],
@@ -191,8 +166,7 @@ function validateProtectionSnapshot(value, bundle) {
 function authorityId(subject) {
   const match = text(subject, 'authoritySubject').match(/^github-user:([1-9][0-9]{0,18})$/u);
   if (!match) fail('authoritySubject must be github-user:<id>');
-  return match[1];
-}
+  return match[1]; }
 function reviewProjection(value, candidate, repository) {
   if (candidate.reviewLocator === null) {
     if (value !== null) fail('target review must be null when candidate reviewLocator is null');
@@ -215,9 +189,35 @@ function reviewProjection(value, candidate, repository) {
     || result.baseRevision !== candidate.canonicalRevision) fail('target review must bind the exact candidate head and canonical base');
   return result;
 }
+function retrospectiveProof(value, bundle, review) {
+  const mode = bundle.challenge.issuanceMode;
+  if (mode === undefined) {
+    if (value !== undefined) fail('normal target projection cannot carry retrospective proof');
+    return null; }
+  const source = snap(value);
+  exact(source, ['schema', 'mergeRevision', 'mergeEventId', 'mergedAt',
+    'historicalBaseRevision', 'liveCanonicalRevision', 'candidateTreeRevision',
+    'mergeTreeRevision'], 'GitHub retrospective target proof');
+  const result = {
+    schema: GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA,
+    mergeRevision: revision(source.mergeRevision, 'retrospective merge revision'),
+    mergeEventId: identifier(source.mergeEventId, 'retrospective merge event id'),
+    mergedAt: instant(source.mergedAt, 'retrospective merged time'),
+    historicalBaseRevision: revision(source.historicalBaseRevision, 'retrospective base revision'),
+    liveCanonicalRevision: revision(source.liveCanonicalRevision, 'retrospective live canonical'),
+    candidateTreeRevision: revision(source.candidateTreeRevision, 'retrospective candidate tree'),
+    mergeTreeRevision: revision(source.mergeTreeRevision, 'retrospective merge tree') };
+  if (mode !== GITHUB_RETROSPECTIVE_RECOVERY_MODE || review?.state !== 'merged'
+    || result.historicalBaseRevision !== bundle.candidate.canonicalRevision
+    || result.candidateTreeRevision !== result.mergeTreeRevision
+    || Date.parse(result.mergedAt) >= Date.parse(bundle.workflowRun.startedAt))
+    fail('retrospective target proof is not eligible for record-only recovery');
+  return result; }
 export function createGitHubTargetRepositoryProjection(value, bundle) {
   const source = snap(value);
-  exact(source, TARGET_KEYS, 'GitHub target repository projection input', false);
+  const retrospective = bundle.challenge.issuanceMode !== undefined;
+  const targetKeys = [...TARGET_KEYS, ...(retrospective ? ['retrospectiveProof'] : [])];
+  exact(source, targetKeys, 'GitHub target repository projection input', false);
   requireKeys(source, ['repository', 'repositoryId', 'owner', 'canonicalBranch', 'canonicalRevision',
     'candidateBranch', 'candidateHeadRevision', 'review'],
     'GitHub target repository projection input');
@@ -235,10 +235,12 @@ export function createGitHubTargetRepositoryProjection(value, bundle) {
     || canonicalBranch !== candidate.canonicalBranch
     || canonicalRevision !== candidate.canonicalRevision || candidateBranch !== candidate.branch
     || candidateHeadRevision !== candidate.headRevision) fail('target repository must be the exact same-owner authority target');
+  const review = reviewProjection(source.review, candidate, parsed.repository);
+  const recovery = retrospectiveProof(source.retrospectiveProof, bundle, review);
   const payload = { schema: GITHUB_TARGET_REPOSITORY_SCHEMA, repository: parsed.repository,
     repositoryId: identifier(source.repositoryId, 'target repository id'),
     owner, canonicalBranch, canonicalRevision, candidateBranch, candidateHeadRevision,
-    review: reviewProjection(source.review, candidate, parsed.repository) };
+    review, ...(recovery === null ? {} : { retrospectiveProof: recovery }) };
   const projectionDigest = governanceDigest(payload);
   if (source.schema !== undefined && source.schema !== payload.schema) fail('GitHub target repository projection schema is invalid');
   if (source.projectionDigest !== undefined
@@ -247,7 +249,8 @@ export function createGitHubTargetRepositoryProjection(value, bundle) {
 }
 function validateTargetRepositoryProjection(value, bundle) {
   const source = snap(value), normalized = createGitHubTargetRepositoryProjection(source, bundle);
-  exact(source, TARGET_KEYS, 'GitHub target repository projection');
+  exact(source, [...TARGET_KEYS, ...(bundle.challenge.issuanceMode === undefined
+    ? [] : ['retrospectiveProof'])], 'GitHub target repository projection');
   if (canonicalJson(source) !== canonicalJson(normalized)) fail('GitHub target repository projection is not canonical');
   return normalized;
 }

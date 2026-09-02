@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import { canonicalJson, claim } from '../src/governance.mjs';
 import { MAX_STRING_BYTES } from '../src/catalog-input.mjs';
 import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from '../src/recovery-candidate.mjs';
-import { deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
+import { deriveGitHubAuthorityInputDigest, GITHUB_RETROSPECTIVE_RECOVERY_MODE }
+  from '../src/github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from '../src/github-authority-issuer.mjs';
 import {
   createEffectPlan,
@@ -18,6 +19,7 @@ import {
   createGitHubAuthorityReadProvider,
   deriveGitHubAuthorityRunName,
   validateGitHubAuthorityLiveVerificationReceipt,
+  verifyGitHubAuthorityIssuanceLive,
 } from '../src/github-authority-client.mjs';
 import {
   MAX_AUTHORITY_EVENT_BYTES,
@@ -32,6 +34,7 @@ const hash = (value, length = 64) => value.repeat(length);
 const HEAD = hash('a', 40), WORKFLOW = HEAD, TARGET_BASE = hash('c', 40);
 const TARGET_HEAD = hash('d', 40), PARENT = hash('e', 40), BASE_TREE = hash('f', 40);
 const EVIDENCE_TREE = hash('1', 40), BLOB = hash('2', 40), PUBLICATION = hash('3', 40);
+const MERGE = hash('7', 40), LIVE_TARGET = hash('8', 40), TARGET_TREE = hash('9', 40);
 const STARTED = '2026-09-02T00:10:00.000Z', COMPLETED = '2026-09-02T00:10:30.000Z';
 const COMMITTED = '2026-09-02T00:11:00.000Z';
 const NOW = Date.parse('2026-09-02T00:20:00.000Z');
@@ -126,7 +129,9 @@ function rule(type, options = {}) {
 }
 function fixture(t, options = {}, root = sandbox(t)) {
   const source = options.source ?? dispatch(), staticPolicy = policy(), fullPolicy = effectivePolicy(staticPolicy);
-  const digest = options.digest ?? deriveGitHubAuthorityInputDigest({ request: source.request, candidate: source.candidate, policy: fullPolicy });
+  const digest = options.digest ?? deriveGitHubAuthorityInputDigest({ request: source.request,
+    candidate: source.candidate, policy: fullPolicy,
+    ...(source.issuanceMode === undefined ? {} : { issuanceMode: source.issuanceMode }) });
   const eventPath = join(root, 'event.json');
   writeFileSync(join(root, 'policy.json'), canonicalJson(staticPolicy));
   writeFileSync(eventPath, canonicalJson({ inputs: {
@@ -193,14 +198,34 @@ function fixture(t, options = {}, root = sandbox(t)) {
         type: 'User',
       },
     });
-    if (route === 'GET /repos/example/target/git/ref/heads/main') return response({ ref: 'refs/heads/main', object: { type: 'commit', sha: TARGET_BASE } });
+    if (route === 'GET /repos/example/target/git/ref/heads/main') return response({ ref: 'refs/heads/main', object: { type: 'commit', sha: options.liveTargetBase ?? TARGET_BASE } });
     if (route === 'GET /repos/example/target/git/ref/heads/agent/device/recovery') return response({ ref: 'refs/heads/agent/device/recovery', object: { type: 'commit', sha: options.targetHead ?? TARGET_HEAD } });
     if (route === 'GET /repos/example/target/pulls/7') return response({ number: 7, html_url: 'https://github.com/example/target/pull/7',
-      state: 'open', merged_at: null, draft: false,
+      state: options.retrospective ? 'closed' : 'open', merged: options.retrospective ? true : undefined,
+      merged_at: options.retrospective ? options.mergedAt ?? '2026-09-02T00:08:00Z' : null,
+      draft: false,
       head: { repo: { ...(options.ambientTargetReviewMetadata ? ambientMetadata(79) : {}), full_name: 'example/target' },
         ref: 'agent/device/recovery', sha: TARGET_HEAD },
       base: { repo: { ...(options.ambientTargetReviewMetadata ? ambientMetadata(79) : {}), full_name: 'example/target' },
-        ref: 'main', sha: TARGET_BASE } });
+        ref: 'main', sha: options.pullBase ?? TARGET_BASE } });
+    if (route === 'GET /repos/example/target/issues/7/events') {
+      const events = [{ id: 901, event: 'merged', commit_id: MERGE,
+        commit_url: `https://api.github.com/repos/example/target/commits/${MERGE}`,
+        created_at: options.mergedAt ?? '2026-09-02T00:08:00Z' }];
+      if (options.duplicateMergeEvent) events.push({ ...events[0], id: 902 });
+      return response(events, 200, options.eventNext
+        ? { link: '<https://api.github.com/next>; rel="next"' } : {});
+    }
+    if (route === `GET /repos/example/target/git/commits/${TARGET_HEAD}`)
+      return commit(TARGET_HEAD, [TARGET_BASE], options.candidateTree ?? TARGET_TREE,
+        '2026-09-02T00:07:00Z');
+    if (route === `GET /repos/example/target/git/commits/${MERGE}`)
+      return commit(MERGE, [options.mergeParent ?? TARGET_BASE],
+        options.mergeTree ?? TARGET_TREE, '2026-09-02T00:08:00Z');
+    if (route === `GET /repos/example/target/compare/${MERGE}...${LIVE_TARGET}`)
+      return response({ status: options.compareStatus ?? 'ahead', base_commit: { sha: MERGE },
+        merge_base_commit: { sha: options.mergeBase ?? MERGE },
+        head_commit: { sha: LIVE_TARGET } });
     if (route === 'GET /repos/example/evidence/rules/branches/release/2026') {
       assert.equal(parsed.searchParams.get('per_page'), '100');
       return options.rulesObject ? response({ rules: entries(canonicalRules, '11') }) : response(entries(canonicalRules, '11', { emptyChecks: options.emptyChecks }));
@@ -440,6 +465,67 @@ test('issues, replays, and live-verifies one GitHub-fenced authority issuance', 
   assert.equal(second.code, 0); assert.deepEqual(JSON.parse(second.stdout.values.join('')), issuance);
   assert.equal(api.calls.filter((call) => call.route === 'POST /repos/example/evidence/git/refs').length, 1);
 });
+
+test('explicit retrospective issuance binds an exact historical squash and current ancestry',
+  async (t) => {
+    const { source: prospective, planBytes } = laterVerificationInput();
+    const source = { ...prospective, issuanceMode: GITHUB_RETROSPECTIVE_RECOVERY_MODE };
+    const api = fixture(t, { source, retrospective: true, liveTargetBase: LIVE_TARGET });
+    const result = await api.run();
+    assert.equal(result.code, 0, result.stderr.values.join(''));
+    const issuance = validateGitHubAuthorityIssuance(JSON.parse(result.stdout.values.join('')));
+    assert.equal(issuance.storedBundle.authorityBundle.challenge.issuanceMode,
+      GITHUB_RETROSPECTIVE_RECOVERY_MODE);
+    assert.deepEqual(issuance.storedBundle.targetRepository.retrospectiveProof, {
+      schema: 'agentic-os/github-retrospective-target-proof/v1', mergeRevision: MERGE,
+      mergeEventId: '901', mergedAt: '2026-09-02T00:08:00.000Z',
+      historicalBaseRevision: TARGET_BASE, liveCanonicalRevision: LIVE_TARGET,
+      candidateTreeRevision: TARGET_TREE, mergeTreeRevision: TARGET_TREE,
+    });
+    assert.ok(api.calls.some((call) => call.route
+      === `GET /repos/example/target/compare/${MERGE}...${LIVE_TARGET}`));
+    assert.ok(api.calls.every((call) => call.init.headers['x-github-api-version']
+      === '2026-03-10'));
+    const reader = createGitHubAuthorityReadProvider({ issuance,
+      token: 'environment-secret', fetchImpl: api.fetchImpl });
+    assert.deepEqual(await verifyGitHubAuthorityIssuanceLive(issuance, reader,
+      { now: () => NOW }), issuance);
+    const reads = api.calls.length;
+    await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+      reader, { now: () => NOW }), /record-only/u);
+    assert.equal(api.calls.length, reads, 'record-only refusal performs no provider I/O');
+  });
+
+test('retrospective issuance fails closed on mode, review, event, squash, tree, time, or ancestry drift',
+  async (t) => {
+    const root = sandbox(t);
+    const modeSource = () => ({ ...dispatch(),
+      issuanceMode: GITHUB_RETROSPECTIVE_RECOVERY_MODE });
+    for (const options of [
+      { source: modeSource(), liveTargetBase: LIVE_TARGET },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        mergedAt: STARTED },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        pullBase: hash('0', 40) },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        duplicateMergeEvent: true },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        eventNext: true },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        mergeParent: hash('0', 40) },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        candidateTree: hash('0', 40) },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        compareStatus: 'diverged' },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        compareStatus: 'identical' },
+    ]) {
+      const api = fixture(t, options, root), result = await api.run();
+      assert.equal(result.code, 1, JSON.stringify(options));
+      assert.match(result.stderr.values.join(''), /retrospective/u);
+      assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
+    }
+  });
 
 test('owner-local issuance accepts the exact ref-qualified workflow API path', async (t) => {
   const api = fixture(t, { workflowPath: '.github/workflows/authority.yml@refs/heads/release/2026' });

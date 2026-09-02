@@ -24,9 +24,9 @@ artifact, or log authority. A transition takes exactly two required string input
 - `operation_payload`: exact canonical UTF-8 transition input bytes;
 - `operation_input_digest`: lowercase SHA-256 of those exact bytes.
 
-The payload is `{schema,request,plan,planByteDigest,predecessorIssuance}`. Integrate carries the exact initial
-issuance; retire uses `null` and locates the prior winner by its source fence. No result fields are inputs.
-The two-input object is bounded by GitHub's 65,535-character limit.
+Payload is `{schema,request,plan,planByteDigest,predecessorIssuance}`. Integrate carries initial issuance and
+may add `integrationMode:"retrospective-recovery"`; retire uses `null` and its source fence. No result fields
+are inputs. The two-input object is bounded by GitHub's 65,535-character limit.
 
 The exact run name is:
 
@@ -53,10 +53,11 @@ The coordinate is keyed only by evidence repository, target repository, source c
 excludes operation, plan, request, and run, so one source has only one successor. Exact-input replay returns
 the winner; different bytes conflict. Lost and non-201 create-ref responses trigger an immediate exact read.
 
-The winner binds run timing, policy, provider proof, and publication. Integrate revalidates initial issuance,
-PR head, canonical ancestry, exact checks, passing rule suite, ruleset versions, and merge method. Omitted
-bypass actors are unobserved, never zero. V1 supports merge and squash only. Retire revalidates and sources
-the exact integrate winner, including identities, scope, write set, candidate, snapshot, and repository.
+Winner binds run/policy/proof/publication. Integrate rechecks issuance, head, ancestry, rules/checks, suite,
+and merge. Recovery uses `retrospective-recovery` for a pre-authority merged squash
+with exact base/head/event, equal trees, live-main ancestry, and historical suite/check IDs. It rechecks current
+protection but does not claim those parameters existed at merge; bootstrap cannot authorize effects.
+Bypass omissions stay unobserved. Retire rechecks exact winner identity, scope, candidate, and repository.
 
 The deterministic receipt advances the lease by exactly one and uses the CAS coordinate as its fence. Live
 observation time is not hashed into the semantic receipt. Existing immutable winners can be reconstructed

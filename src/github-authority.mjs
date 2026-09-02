@@ -2,29 +2,25 @@ import { canonicalJson, deriveCoordinationClaimId, governanceDigest, validateCoo
 import { createExternalAuthorityEvidence, validateExternalAuthorityEvidence } from './authority-record.mjs';
 import { validateRecoveryCandidate } from './recovery-candidate.mjs';
 export const GITHUB_AUTHORITY_ADAPTER = Object.freeze({ id: 'github-actions-fenced-authority', version: '1' });
+export const GITHUB_RETROSPECTIVE_RECOVERY_MODE = 'retrospective-recovery';
 export const GITHUB_AUTHORITY_INPUT_SCHEMA = 'agentic-os/github-authority-input/v1';
 export const GITHUB_AUTHORITY_CLAIM_COORDINATE_SCHEMA = 'agentic-os/github-authority-claim-coordinate/v1';
 export const GITHUB_AUTHORITY_CHALLENGE_SCHEMA = 'agentic-os/github-authority-challenge/v1';
 export const FENCED_CLAIM_BUNDLE_SCHEMA = 'agentic-os/github-fenced-claim-bundle/v1';
 export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
-const DIGEST = /^[0-9a-f]{64}$/u;
-const EFFECT_PLAN = /^effect-plan:sha256:([0-9a-f]{64})$/u;
-const REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const USER_ID = /^[1-9][0-9]{0,18}$/u;
-const OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u;
-const REPOSITORY = /^[a-z0-9][a-z0-9._-]{0,99}$/u;
-const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const DIGEST = /^[0-9a-f]{64}$/u, EFFECT_PLAN = /^effect-plan:sha256:([0-9a-f]{64})$/u,
+  REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u, USER_ID = /^[1-9][0-9]{0,18}$/u,
+  OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u, REPOSITORY = /^[a-z0-9][a-z0-9._-]{0,99}$/u,
+  REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const POLICY_KEYS = [
   'evidenceRepository', 'targetRepositoryPrefix', 'canonicalRef', 'canonicalRevision',
   'workflowPath', 'workflowRef', 'workflowRevision', 'confirmationClass',
   'requiredStatusChecks', 'allowedMergeMethods', 'evidenceRefPrefix',
-  'evidencePathPrefix', 'validitySeconds',
-];
+  'evidencePathPrefix', 'validitySeconds'];
 const RUN_KEYS = [
   'id', 'locator', 'event', 'runAttempt', 'repository', 'ref', 'revision',
   'workflowPath', 'workflowRef', 'workflowRevision', 'startedAt', 'completedAt', 'authorityInputDigest',
-  'actor', 'triggeringActor',
-];
+  'actor', 'triggeringActor'];
 const CHALLENGE_KEYS = [
   'schema', 'requestDigest', 'authoritySubject', 'candidateDigest',
   'predecessorEvidenceDigest', 'targetRepository', 'policyDigest', 'authorityInputDigest',
@@ -39,8 +35,7 @@ const BUNDLE_KEYS = [
 const ALLOWED = ['descendant-commit', 'exact-revalidation', 'new-review', 'nonforce-push'];
 const FORBIDDEN = [
   'auto-merge', 'cleanup', 'deletion', 'deploy', 'force-push', 'merge', 'release',
-  'reset', 'retire', 'stash',
-];
+  'reset', 'retire', 'stash'];
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function exact(value, keys, label, required = true) {
@@ -136,6 +131,10 @@ function effectPlanDigest(request) {
   const matches = request.dependentWork.map((entry) => entry.match(EFFECT_PLAN)).filter(Boolean);
   if (matches.length !== 1) fail('claim requires exactly one digest-bound effect plan');
   return matches[0][1]; }
+function issuanceMode(value) {
+  if (value === undefined) return null;
+  if (value !== GITHUB_RETROSPECTIVE_RECOVERY_MODE) fail('GitHub authority issuanceMode is invalid');
+  return value; }
 export function validateGitHubAuthorityPolicy(value) {
   const source = snap(value);
   exact(source, POLICY_KEYS, 'GitHub authority policy');
@@ -174,12 +173,15 @@ function assertRequestCandidate(request, candidate, policy) {
   effectPlanDigest(request); }
 export function deriveGitHubAuthorityInputDigest(input) {
   const source = snap(input);
-  exact(source, ['request', 'candidate', 'policy'], 'GitHub authority input');
-  const request = validateCoordinationRequest(source.request);
-  const candidate = validateRecoveryCandidate(source.candidate);
-  const policy = validateGitHubAuthorityPolicy(source.policy);
+  const mode = issuanceMode(source.issuanceMode);
+  exact(source, ['request', 'candidate', 'policy', ...(mode === null ? [] : ['issuanceMode'])],
+    'GitHub authority input');
+  const request = validateCoordinationRequest(source.request),
+    candidate = validateRecoveryCandidate(source.candidate),
+    policy = validateGitHubAuthorityPolicy(source.policy);
   assertRequestCandidate(request, candidate, policy);
-  return governanceDigest({ schema: GITHUB_AUTHORITY_INPUT_SCHEMA, request, candidate, policy });
+  return governanceDigest({ schema: GITHUB_AUTHORITY_INPUT_SCHEMA, request, candidate, policy,
+    ...(mode === null ? {} : { issuanceMode: mode }) });
 }
 export function deriveGitHubAuthorityClaimCoordinate(requestValue) {
   const request = validateCoordinationRequest(requestValue);
@@ -214,9 +216,10 @@ function workflowRun(value) {
     triggeringActor: actor(source.triggeringActor, 'workflowRun.triggeringActor'),
   });
 }
-function checkedRun(value, request, candidate, policy) {
+function checkedRun(value, request, candidate, policy, mode = null) {
   const run = workflowRun(value), owner = subject(request.authoritySubject, 'request.authoritySubject');
-  const inputDigest = deriveGitHubAuthorityInputDigest({ request, candidate, policy });
+  const inputDigest = deriveGitHubAuthorityInputDigest({ request, candidate, policy,
+    ...(mode === null ? {} : { issuanceMode: mode }) });
   if (run.repository !== policy.evidenceRepository
     || run.ref !== policy.canonicalRef || run.revision !== policy.canonicalRevision
     || run.workflowPath !== policy.workflowPath || run.workflowRef !== policy.workflowRef
@@ -225,7 +228,7 @@ function checkedRun(value, request, candidate, policy) {
     || run.actor.id !== owner.id || run.authorityInputDigest !== inputDigest || Date.parse(run.completedAt) < Date.parse(run.startedAt)) fail('workflow run is not bound to the exact policy, authority input, and subject');
   return run;
 }
-function challengePayload(request, candidate, run, policy, expiresValue) {
+function challengePayload(request, candidate, run, policy, expiresValue, mode) {
   const issuedAt = run.startedAt, expiresAt = instant(expiresValue, 'challenge.expiresAt');
   const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt);
   if (expires <= issued || expires > issued + policy.validitySeconds * 1000
@@ -245,20 +248,21 @@ function challengePayload(request, candidate, run, policy, expiresValue) {
     workflowRunDigest: governanceDigest(run),
     issuedAt,
     expiresAt,
+    ...(mode === null ? {} : { issuanceMode: mode }),
   };
 }
 export function createGitHubAuthorityChallenge(input) {
   const source = snap(input);
   exact(source, ['request', 'candidate', 'workflowRun', 'policy', 'expiresAt',
-    'challengeDigest'], 'GitHub authority challenge input', false);
+    'challengeDigest', 'issuanceMode'], 'GitHub authority challenge input', false);
   requireKeys(source, ['request', 'candidate', 'workflowRun', 'policy', 'expiresAt'],
     'GitHub authority challenge input');
-  const request = validateCoordinationRequest(source.request);
-  const candidate = validateRecoveryCandidate(source.candidate);
-  const policy = validateGitHubAuthorityPolicy(source.policy);
+  const request = validateCoordinationRequest(source.request),
+    candidate = validateRecoveryCandidate(source.candidate),
+    policy = validateGitHubAuthorityPolicy(source.policy), mode = issuanceMode(source.issuanceMode);
   assertRequestCandidate(request, candidate, policy);
-  const run = checkedRun(source.workflowRun, request, candidate, policy);
-  const payload = challengePayload(request, candidate, run, policy, source.expiresAt);
+  const run = checkedRun(source.workflowRun, request, candidate, policy, mode);
+  const payload = challengePayload(request, candidate, run, policy, source.expiresAt, mode);
   const challengeDigest = governanceDigest(payload);
   if (source.challengeDigest !== undefined
     && digest(source.challengeDigest, 'challengeDigest') !== challengeDigest) {
@@ -268,7 +272,9 @@ export function createGitHubAuthorityChallenge(input) {
 }
 export function validateGitHubAuthorityChallenge(value) {
   const source = snap(value);
-  exact(source, CHALLENGE_KEYS, 'GitHub authority challenge');
+  const mode = issuanceMode(source.issuanceMode);
+  exact(source, [...CHALLENGE_KEYS, ...(mode === null ? [] : ['issuanceMode'])],
+    'GitHub authority challenge');
   if (source.schema !== GITHUB_AUTHORITY_CHALLENGE_SCHEMA
     || !['interactive-provider', 'delegated-provider'].includes(source.confirmationClass)) {
     fail('GitHub authority challenge schema or confirmationClass is invalid');
@@ -355,8 +361,9 @@ export function createFencedClaimBundle(input) {
   const candidate = validateRecoveryCandidate(source.candidate);
   const policy = validateGitHubAuthorityPolicy(source.policy);
   assertRequestCandidate(request, candidate, policy);
-  const run = checkedRun(source.workflowRun, request, candidate, policy);
   const challenge = validateGitHubAuthorityChallenge(source.challenge);
+  const run = checkedRun(source.workflowRun, request, candidate, policy,
+    challenge.issuanceMode ?? null);
   const evidence = boundParts(request, candidate, challenge, run, policy);
   const place = location(request, policy);
   const payload = {
@@ -380,16 +387,10 @@ export function validateFencedClaimBundle(value) {
   const source = snap(value);
   exact(source, BUNDLE_KEYS, 'GitHub fenced claim bundle');
   if (source.schema !== FENCED_CLAIM_BUNDLE_SCHEMA
-    || canonicalJson(source.adapter) !== canonicalJson(GITHUB_AUTHORITY_ADAPTER)) {
+    || canonicalJson(source.adapter) !== canonicalJson(GITHUB_AUTHORITY_ADAPTER))
     fail('GitHub fenced claim bundle schema or adapter is invalid');
-  }
-  const expected = createFencedClaimBundle({
-    request: source.request,
-    candidate: source.candidate,
-    challenge: source.challenge,
-    workflowRun: source.workflowRun,
-    policy: source.policy,
-  });
+  const expected = createFencedClaimBundle({ request: source.request, candidate: source.candidate,
+    challenge: source.challenge, workflowRun: source.workflowRun, policy: source.policy });
   if (digest(source.bundleDigest, 'bundleDigest') !== expected.bundleDigest
     || canonicalJson(source) !== canonicalJson(expected)) {
     fail('GitHub fenced claim bundle is not canonical or exact');
