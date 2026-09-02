@@ -18,7 +18,7 @@ import { governance, OPERATIONS } from '../src/governance.mjs';
 import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { sourceHeadTrailer } from '../src/patch-identity.mjs';
 import * as queue from '../src/queue.mjs';
-import { laneBranches, staleWorktrees } from '../src/worktree.mjs';
+import { laneBranchSummary, staleWorktrees } from '../src/worktree.mjs';
 
 const MAX_REQUEST_INPUT_BYTES = 500_000;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
@@ -94,7 +94,7 @@ export function assertProtectedRefCurrent(root, ref, revision) {
 export function observeLocalHealth(root, policy, profile) {
   const entries = worktrees(root);
   const canonical = entries.find((entry) => entry.branch === policy.protectedBranch)?.path ?? root;
-  const observed = profile ? observeRepository({ repository: root, profile, mode: 'deep' }) : null;
+  const observed = profile ? observeRepository({ repository: root, profile, mode: 'structural' }) : null;
   const projection = observed?.projections.find((entry) => entry.path === canonical);
   const localSha = headSha(`refs/heads/${policy.protectedBranch}`, canonical);
   const remoteTrackingSha = headSha(policy.protectedRef, canonical);
@@ -112,11 +112,16 @@ export function observeLocalHealth(root, policy, profile) {
   const tracked = projection ? [...new Set([
     ...projection.headToIndex.map((entry) => entry.path),
     ...projection.indexToWorkingTree.map((entry) => entry.path),
+    ...(projection.hiddenPaths ?? []),
     ...(projection.trackedByteDriftPaths ?? []),
   ])] : exact.tracked;
+  const branches = laneBranchSummary(root);
+  const canonicalDirty = projection ? projection.dirtyTracked
+      || projection.hiddenPaths.length > 0
+    : exact.dirtyTracked || exact.hidden.length > 0 || exact.tracked.length > 0;
   return {
-    canonicalDirty: projection ? !projection.operationallyClean
-      : exact.dirtyTracked || exact.hidden.length > 0 || exact.tracked.length > 0,
+    canonicalDirty,
+    canonicalCleanlinessDeferred: projection?.operationallyClean === null,
     hiddenPaths: projection?.hiddenPaths ?? exact.hidden,
     trackedRiskPaths: tracked,
     ownedPaths: projection?.ownedPaths ?? exact.owned,
@@ -124,7 +129,8 @@ export function observeLocalHealth(root, policy, profile) {
     protectedBranch: policy.protectedBranch, protectedRef: policy.protectedRef,
     localSha, remoteTrackingSha, relation, ahead, behind,
     staleWorktrees: staleWorktrees(root).map((entry) => entry.path),
-    worktreeCount: entries.length, laneBranches: laneBranches(root).length,
+    worktreeCount: entries.length, laneBranches: branches.count,
+    laneBranchesTruncated: branches.truncated,
   };
 }
 

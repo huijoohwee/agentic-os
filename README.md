@@ -46,7 +46,8 @@ npm run lane -- pricing-table   # worktree + branch at the profile's fetched can
 # ... author, commit ...
 npm run land                     # publish exact head; project the capability-selected review
 npm run status                   # registered lane projections and provider state
-npm run reap                     # classify exact integration; never cleans or retires authority
+npm run reap                     # classify all lanes within the strict inventory bound
+npm run reap -- --ref=agent/device/scope  # classify one exact lane; never clean or retire
 ```
 
 If the profile's canonical branch is behind with unstaged or untracked bytes, create a read-only
@@ -147,8 +148,10 @@ docs/BUDGETS.md      byte and module budgets
 docs/INVOCATION.md   exact slash, semantic, and binding grammar
 docs/MCP.md          backend MCP tool and transport contract
 docs/GOVERNANCE.md   provider-neutral records, trust boundary, and reference adapters
+docs/adlc-guidelines.md universal lifecycle principles for every consumer
 src/                 small responsibility-owned modules, 35 module cap
 catalog/             invocation and feature data with count and digest fences
+templates/           universal runtime prompt assets
 bin/                 CLI and stdio MCP entrypoints
 ```
 

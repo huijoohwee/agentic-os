@@ -1,7 +1,7 @@
 /** MCP protocol surface for the existing ADLC CLI. Zero dependencies, no shell. */
 
 import { readFileSync } from 'node:fs';
-import { assertScope } from './lane-id.mjs';
+import { assertScope, isLaneRef } from './lane-id.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSION = '2025-11-25';
@@ -36,6 +36,16 @@ const LANE_INPUT = {
     },
   },
   required: ['scope'],
+  additionalProperties: false,
+};
+const REAP_INPUT = {
+  type: 'object',
+  properties: {
+    ref: {
+      type: 'string',
+      description: 'Optional exact local agent/<device>/<scope> lane ref.',
+    },
+  },
   additionalProperties: false,
 };
 const CLI_OUTPUT = {
@@ -82,7 +92,7 @@ export const TOOLS = deepFreeze([
     name: 'reap',
     title: 'Survey integrated lanes',
     description: 'Survey exact integration identity; fetch may update remote-tracking refs.',
-    inputSchema: EMPTY_INPUT,
+    inputSchema: REAP_INPUT,
     outputSchema: CLI_OUTPUT,
     annotations: {
       readOnlyHint: false,
@@ -167,9 +177,16 @@ function validateEmptyArguments(args) {
 }
 
 export function toolArguments(name, args) {
-  if (name === 'doctor' || name === 'status' || name === 'reap') {
+  if (name === 'doctor' || name === 'status') {
     validateEmptyArguments(args);
     return [name];
+  }
+  if (name === 'reap') {
+    const value = args === undefined ? {} : args;
+    if (!plainObject(value) || !onlyKeys(value, ['ref'])
+      || value.ref !== undefined && (typeof value.ref !== 'string' || !isLaneRef(value.ref)))
+      invalidParams('reap arguments may contain only a valid string ref');
+    return value.ref === undefined ? ['reap'] : ['reap', `--ref=${value.ref}`];
   }
   if (name !== 'lane') invalidParams(`unknown tool "${String(name)}"`);
   if (!plainObject(args) || !onlyKeys(args, ['scope']) || typeof args.scope !== 'string') {

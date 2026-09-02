@@ -123,6 +123,8 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
     ['doctor', {}, ['doctor']],
     ['status', {}, ['status']],
     ['reap', {}, ['reap']],
+    ['reap', { ref: 'agent/device/pricing-table' },
+      ['reap', '--ref=agent/device/pricing-table']],
     ['lane', { scope: 'pricing-table' }, ['start', 'pricing-table']],
   ];
   for (const [name, args, expected] of cases) {
@@ -144,8 +146,11 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
 
 test('tool argument validation rejects escalation and shell-shaped scopes', async () => {
   assert.deepEqual(toolArguments('reap', {}), ['reap']);
+  assert.deepEqual(toolArguments('reap', { ref: 'agent/device/exact' }),
+    ['reap', '--ref=agent/device/exact']);
   for (const [name, args] of [
     ['reap', { apply: true }],
+    ['reap', { ref: '../escape' }],
     ['status', null],
     ['lane', { scope: 'ok', device: 'other' }],
     ['lane', { scope: 'x;rm-rf' }],

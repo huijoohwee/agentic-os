@@ -145,12 +145,15 @@ lifecycle controller.
 
 The Git adapter is read-only and binds every present registered worktree to the observed clone using
 direct-directory, realpath, inode, repository-root, and common-directory checks. It validates the
-configured fully qualified refs before passing them to Git. Default `shallow` observation checks the
-Git raw HEAD-to-index and index-to-working-tree status, mode, and object-ID fields plus hidden index
-flags without hashing every working-tree byte. These fields expose index-only additions, deletions,
-and Git-observed mode changes; an all-zero working-tree object field is not a byte identity, and Git
-configuration may suppress mode observation. Owned untracked and ignored paths are reported
-separately as a bounded sample, count, and digest but do not make `operationallyClean` false. Lane
+configured fully qualified refs before passing them to Git. Default `shallow` observation retains its
+v1 raw tracked-content contract and reports visible untracked ownership. `deep` additionally records
+exact drift paths and ignored ownership. Doctor uses the separate `structural` health mode: it checks
+raw HEAD-to-index state (including intent-to-add), structural deletion or mode/type changes, and hidden
+index flags without reading tracked content or executing checkout filters. Same-type content, symlink
+targets, and nested submodule state are deferred, so `operationallyClean` is `null` unless structural
+evidence already makes it `false`. Owned paths
+carry an explicit `ownedPathScope` and are a bounded sample, count, and digest; they do not make
+`operationallyClean` false. Lane
 publication separately rejects visible untracked paths while preserving and skipping ignored-only
 ownership such as dependency trees and caches. Opt-in
 `deep` mode performs the slower raw tracked-byte audit.

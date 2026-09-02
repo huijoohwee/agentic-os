@@ -19,14 +19,101 @@ const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function installPriorReleaseRuntime(selected, { authorityRelease = false } = {}) {
   const files = selected.files.map((file) => {
     let source = file.bytes.toString('utf8');
-    if (file.path === 'src/git.mjs') source = source.replace(
-      "/** Strict detailed worktree state for lifecycle decisions; includes head and retention flags. */\nexport function worktreeInventory(cwd = process.cwd()) {\n  return parseWorktreeList(observeGit([\n    'worktree', 'list', '--porcelain', '-z', '--expire=now',\n  ], { cwd, binary: true, maxBuffer: 16 * 1024 * 1024 }), { detailed: true });\n}\n\n", '\n');
+    if (file.path === 'src/git.mjs') source = source
+      .replace('decodeNulFields, dirtyTracked, shallowTrackedChanges, trackedChanges',
+        'decodeNulFields, dirtyTracked, trackedChanges')
+      .replace(
+        "/** Strict detailed worktree state for lifecycle decisions; includes head and retention flags. */\nexport function worktreeInventory(cwd = process.cwd()) {\n  return parseWorktreeList(observeGit([\n    'worktree', 'list', '--porcelain', '-z', '--expire=now',\n  ], { cwd, binary: true, maxBuffer: 16 * 1024 * 1024 }), { detailed: true });\n}\n\n", '\n');
     if (file.path === 'src/git-tracked.mjs') source = source
+      .replace('/** Sanitized Git execution plus exact tracked-byte observation. */\n',
+        '/** Sanitized Git execution plus exact tracked-byte observation. */\n\n')
+      .replace("import { TextDecoder } from 'node:util';\nexport class GitError",
+        "import { TextDecoder } from 'node:util';\n\nexport class GitError")
+      .replace('\nfunction mutationEnvironment(', '\n\nfunction mutationEnvironment(')
+      .replace('\nfunction observationEnvironment(', '\n\nfunction observationEnvironment(')
+      .replace('\n/** Execute a Git mutation', '\n\n/** Execute a Git mutation')
+      .replace('\n/** Local Git observation', '\n\n/** Local Git observation')
+      .replace('\nfunction outputLines(', '\n\nfunction outputLines(')
+      .replace('\nexport const TRACKED_FILE_LIMITS', '\n\nexport const TRACKED_FILE_LIMITS')
+      .replace('\nfunction childEnvironment(', '\n\nfunction childEnvironment(')
+      .replace('\nexport function rawTrackedFileMatches(',
+        '\n\nexport function rawTrackedFileMatches(')
+      .replace(/export function dirtyTracked[\s\S]+?\n\}\n\nconst UTF8/u,
+        `export function dirtyTracked(cwd = process.cwd()) {
+  const changes = trackedChanges(cwd);
+  return changes.headToIndex.length > 0 || changes.indexToWorkingTree.length > 0;
+}
+
+/** Conservative exact-byte risks; publication can skip ignored-only ownership enumeration. */
+export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = true } = {}) {
+  const hidden = strictGitPaths(['ls-files', '-v', '-z'], cwd).filter((record) => {
+    const tag = record[0];
+    return tag >= 'a' && tag <= 'z' || tag?.toUpperCase() === 'S';
+  }).map((record) => record.slice(2));
+  const tracked = [];
+  for (const record of strictGitPaths(['ls-tree', '-r', '-z', 'HEAD'], cwd)) {
+    const tab = record.indexOf('\\t');
+    if (tab < 0) { tracked.push('[malformed-tree-entry]'); continue; }
+    const [mode, , oid] = record.slice(0, tab).split(' ');
+    const path = record.slice(tab + 1);
+    if (!trackedEntryMatches({ mode, oid, path }, cwd, includeIgnored)) tracked.push(path);
+  }
+  return { dirtyTracked: dirtyTracked(cwd), hidden,
+    owned: untrackedPaths(cwd, { includeIgnored }), tracked };
+}
+
+const UTF8`)
+      .replace(/function parseRawDiff\(cwd, args, label\) \{[\s\S]+?\n\}\n\nfunction headToIndexChanges[\s\S]+?\n\}\n\n\/\*\* Raw local tracked projections/u,
+        `function parseRawDiff(cwd) {
+  const fields = decodeNulFields(observeGit([
+    'diff', '--cached', '--raw', '-z', '--no-renames', '--abbrev=64', 'HEAD', '--',
+  ], { cwd, binary: true, allowFail: true }));
+  if (!fields || fields.length % 2 !== 0) {
+    const error = new Error('Git HEAD-to-index projection is unavailable');
+    error.reason = 'blocked-invalid-path-inventory';
+    throw error;
+  }
+  const entries = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const match = fields[index].match(
+      /^:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40,64}) ([0-9a-f]{40,64}) ([A-Z])$/u,
+    );
+    if (!match) {
+      const error = new Error('Git HEAD-to-index projection is malformed');
+      error.reason = 'blocked-invalid-path-inventory';
+      throw error;
+    }
+    entries.push({ path: fields[index + 1], status: match[5], oldMode: match[1],
+      newMode: match[2], oldObject: match[3], newObject: match[4] });
+  }
+  return entries;
+}
+
+/** Raw local tracked projections`)
+      .replace('export function trackedChanges(cwd = process.cwd()) {\n  const indexToWorkingTree = [];\n  const entries = parseIndexEntries(cwd);\n  const headToIndex = headToIndexChanges(cwd);',
+        'export function trackedChanges(cwd = process.cwd()) {\n  const headToIndex = parseRawDiff(cwd);\n  const indexToWorkingTree = [];\n  const entries = parseIndexEntries(cwd);')
+      .replace('  const headToIndex = headToIndexChanges(cwd);\n  const hidden = strictGitPaths',
+        '  const hidden = strictGitPaths')
+      .replace(/  const headToIndexAfter = headToIndexChanges\(cwd\);[\s\S]+?  return \{ dirtyTracked: headToIndex.length > 0 \|\| tracked.length > 0, hidden,/u,
+        '  return { dirtyTracked: dirtyTracked(cwd), hidden,')
       .replace('export function parseWorktreeList(raw, { detailed = false } = {}) {',
         'export function parseWorktreeList(raw) {')
       .replace("    entries.push(detailed ? { ...current }\n      : { path: current.path, branch: current.branch, detached: current.detached });",
         '    entries.push({ path: current.path, branch: current.branch, detached: current.detached });');
     if (file.path === 'src/git-repository.mjs') source = source
+      .replace('  shallowTrackedChanges,\n', '')
+      .replace("  'structural-health-observation',\n", '')
+      .replace("  const { headToIndex, indexToWorkingTree } = mode === 'structural'\n    ? shallowTrackedChanges(path) : trackedChanges(path);",
+        '  const { headToIndex, indexToWorkingTree } = trackedChanges(path);')
+      .replace('    owned: exact?.owned ?? untrackedPaths(path, { includeIgnored: false }),',
+        '    owned: untrackedPaths(path),')
+      .replace('      ownedPathScope: null, ', '      ')
+      .replace(/  const knownRisk = observedRisks\.dirtyTracked[\s\S]+?observedRisks\.tracked\.length > 0;\n/u, '')
+      .replace("    operationallyClean: mode === 'structural' ? knownRisk ? false : null : !knownRisk,",
+        '    operationallyClean: !observedRisks.dirtyTracked && observedRisks.hidden.length === 0\n      && (observedRisks.tracked === null || observedRisks.tracked.length === 0),')
+      .replace("    ownedPathScope: mode === 'deep' ? 'visible-and-ignored' : 'visible',\n", '')
+      .replace("  if (!['shallow', 'deep', 'structural'].includes(mode))\n    throw new TypeError('observation mode is invalid');",
+        "  if (!['shallow', 'deep'].includes(mode)) throw new TypeError('observation mode is invalid');")
       .replace("import { governanceDigest, validateRepositoryProfile } from './governance.mjs';",
         "import {\n  RETAIN_ALL_CLEANUP,\n  governanceDigest,\n  validateRepositoryProfile,\n} from './governance.mjs';")
       .replace("  'quarantine-worktree-cleanup-opt-in',\n", '')
@@ -110,6 +197,8 @@ test('published files contain public JSON and adapters without deleted deep impo
     'src/git-repository.mjs',
     'src/github-provider.mjs',
     'docs/GOVERNANCE.md',
+    'docs/adlc-guidelines.md',
+    'templates/SYSTEM-PROMPT-RUNTIME.md',
   ]) assert.equal(files.has(path), true, `${path} must be packed`);
   assert.equal(files.has('src/bounded-read.mjs'), false);
   assert.equal(files.has('src/readiness-test-reporter.mjs'), false);

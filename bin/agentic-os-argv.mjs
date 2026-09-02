@@ -36,7 +36,7 @@ export function validateCommandArguments(command, argv) {
       return exact(argv, {});
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device'] });
     case 'status': return exact(argv, { options: ['device'] });
-    case 'reap': return exact(argv, { flags: ['apply'] });
+    case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });
     case 'observe': return exact(argv, { flags: ['provider', 'deep'] });

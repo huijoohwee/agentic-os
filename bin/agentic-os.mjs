@@ -27,7 +27,7 @@ import * as queue from '../src/queue.mjs';
 import {
   provision, assertProvisionable,
   inspect as inspectWorktree,
-  laneBranches,
+  reapLaneBranches,
   staleWorktrees,
 } from '../src/worktree.mjs';
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
@@ -119,13 +119,8 @@ function cmdDoctor(root, profile, policy) {
     (local.canonicalDirty ? 1 : 0) +
     (local.relation === 'equal' ? 0 : 1) +
     (local.staleWorktrees.length > 0 ? 1 : 0);
-  out('');
-  if (failures === 0) {
-    out('harness invariants hold.');
-    return 0;
-  }
-  out(`${failures} finding(s) need attention. Nothing was changed.`);
-  return 1;
+  out(''); out(report.formatDoctorConclusion(failures, local.canonicalCleanlinessDeferred));
+  return failures === 0 ? 0 : 1;
 }
 function cmdStart(root, argv, policy, profile) {
   requireCanonical(root, policy);
@@ -414,7 +409,7 @@ function cmdStatus(root, argv, profile, policy) {
     };
     let observedLane;
     try {
-      observedLane = inspectWorktree(ref, root, policy.protectedRef);
+      observedLane = inspectWorktree(ref, root, policy.protectedRef, { includeIgnored: false });
     } catch (error) {
       if (!existsSync(path)) return {
         ref, path, state, commits: '-', untracked: 0, next: [], stale: true,
@@ -448,13 +443,14 @@ function cmdReap(root, argv, policy, profile) {
     err('blocked-authenticated-cleanup-required: reap is classification-only');
     return 1;
   }
+  const branches = reapLaneBranches(option(argv, 'ref'), root);
   effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
   const baseSha = assertProfileCurrent(root, policy, profile);
   if (!baseSha) {
     err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
     return 1;
   }
-  const survey = surveyLanes(baseSha, laneBranches(root), { cwd: root });
+  const survey = surveyLanes(baseSha, branches, { cwd: root });
   const stale = staleWorktrees(root).map((entry) => entry.path);
   out(report.formatSurvey(survey));
   if (stale.length > 0) {
@@ -507,7 +503,7 @@ function cmdHelp() {
       '  npm run lane -- <scope>   open a lane at the fetched profile canonical ref',
       '  npm run land              publish the exact lane head and request provider handoff',
       '  npm run status            registered lane projections and provider state',
-      '  npm run reap             classify exact integration; never clean or retire authority',
+      '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  agentic-os observe        emit a shallow profile-bound repository observation',

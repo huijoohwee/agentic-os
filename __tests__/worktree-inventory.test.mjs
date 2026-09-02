@@ -4,7 +4,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { git } from '../src/git.mjs';
-import { LANE_BRANCH_LIMIT, laneBranches } from '../src/worktree.mjs';
+import {
+  LANE_BRANCH_LIMIT, laneBranches, laneBranchSummary, reapLaneBranches,
+} from '../src/worktree.mjs';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-lane-inventory-'));
@@ -30,8 +32,18 @@ test('lane inventory is bounded before reap can classify an unbounded legacy bra
 
   const overflow = `refs/heads/agent/device/${String(LANE_BRANCH_LIMIT).padStart(3, '0')}`;
   run(['update-ref', overflow, head]);
+  assert.deepEqual(laneBranchSummary(root), {
+    count: LANE_BRANCH_LIMIT + 1,
+    truncated: true,
+  });
+  assert.deepEqual(reapLaneBranches(`agent/device/${String(LANE_BRANCH_LIMIT).padStart(3, '0')}`,
+    root), [`agent/device/${String(LANE_BRANCH_LIMIT).padStart(3, '0')}`]);
   assert.throws(() => laneBranches(root), (error) => {
     assert.equal(error.reason, 'blocked-lane-inventory-over-budget');
+    return true;
+  });
+  assert.throws(() => reapLaneBranches('../escape', root), (error) => {
+    assert.equal(error.reason, 'blocked-invalid-lane-ref');
     return true;
   });
   assert.equal(run(['rev-parse', overflow]), head);

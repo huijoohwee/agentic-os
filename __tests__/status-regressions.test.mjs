@@ -8,13 +8,23 @@ import { fileURLToPath } from 'node:url';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { CACHE_LIMITS, load, save, SCHEMA } from '../src/lane-records.mjs';
-import { formatLocal, formatStatus } from '../bin/agentic-os-report.mjs';
+import {
+  formatDoctorConclusion, formatLocal, formatStatus,
+} from '../bin/agentic-os-report.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 const runGit = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
 test('local reporting requires explicit canonical identity', () => {
   assert.throws(() => formatLocal({}), /explicit canonical branch and remote-tracking ref/u);
+});
+
+test('doctor conclusion distinguishes structural health from exact cleanliness', () => {
+  assert.equal(formatDoctorConclusion(0, true),
+    'shallow harness invariants hold; tracked content identity was not evaluated.');
+  assert.equal(formatDoctorConclusion(0, false), 'harness invariants hold.');
+  assert.equal(formatDoctorConclusion(2, true),
+    '2 finding(s) need attention. Nothing was changed.');
 });
 
 test('status preserves a missing registered lane instead of inspecting its absent directory', (t) => {

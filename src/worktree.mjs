@@ -49,6 +49,34 @@ export function laneBranches(cwd = process.cwd()) {
   return branches;
 }
 
+/** Bounded normal-path count; deep reap retains the strict full-inventory stop. */
+export function laneBranchSummary(cwd = process.cwd()) {
+  const branches = observeGitLines([
+    'for-each-ref', '--format=%(refname:short)', 'refs/heads/agent',
+    `--count=${LANE_BRANCH_LIMIT + 1}`,
+  ], { cwd });
+  return Object.freeze({
+    count: branches.length,
+    truncated: branches.length > LANE_BRANCH_LIMIT,
+  });
+}
+
+/** One exact lane selection bypasses only the unrelated global inventory count. */
+export function reapLaneBranches(ref = null, cwd = process.cwd()) {
+  if (ref === null) return laneBranches(cwd);
+  if (!isLaneRef(ref)) {
+    const error = new TypeError(`invalid lane ref ${JSON.stringify(ref)}`);
+    error.reason = 'blocked-invalid-lane-ref';
+    throw error;
+  }
+  if (!refExists(`refs/heads/${ref}`, cwd)) {
+    const error = new Error(`lane branch does not exist: ${ref}`);
+    error.reason = 'blocked-lane-ref-missing';
+    throw error;
+  }
+  return [ref];
+}
+
 /** Lane refs with a registered worktree, including preserved stale projections. */
 export function registeredLaneBranches(cwd = process.cwd()) {
   return worktrees(cwd).map((entry) => entry.branch).filter(isLaneRef);
@@ -178,7 +206,7 @@ export function provision({ ref, scope, device, baseSha, cwd = process.cwd() }) 
 }
 
 /** Observed facts for the lane state machine. */
-export function inspect(ref, cwd = process.cwd(), baseRef) {
+export function inspect(ref, cwd = process.cwd(), baseRef, { includeIgnored = true } = {}) {
   if (typeof baseRef !== 'string' || baseRef.length === 0)
     throw new TypeError('lane inspection requires an explicit canonical base ref');
   const entry = worktreeFor(ref, cwd);
@@ -187,7 +215,7 @@ export function inspect(ref, cwd = process.cwd(), baseRef) {
   return {
     registered: true,
     path,
-    untracked: untrackedPaths(path),
+    untracked: untrackedPaths(path, { includeIgnored }),
     commits: observeGitLines(['rev-list', `${baseRef}..${ref}`], { cwd }).length,
   };
 }

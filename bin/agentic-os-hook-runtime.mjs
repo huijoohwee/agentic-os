@@ -19,6 +19,7 @@ const MAX_MANIFEST_BYTES = 64 * 1024;
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0',
   'v1-aeca6cdae21159346f98bbf744ae7a2b51d95b9040b048bb0cc64b40ea994c72',
+  'v1-3feb0c450d39fe8b492c953c1809c622ae9e455505ab3557a44c855b02506913',
 ]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
@@ -34,11 +35,11 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/guard-main.mjs', mode: 0o755,
     sha256: '74417d1754b6e2ed04fda07c0915b4cd37ffcb5047c9a043e8ec2be0353c57d8' }),
   Object.freeze({ path: 'src/git.mjs', mode: 0o644,
-    sha256: '9a41c6a4a43cb1de5294eecd19b4106cdc4de0c2b78c1ad1a3e0093a9d905453' }),
+    sha256: '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62' }),
   Object.freeze({ path: 'src/quarantine.mjs', mode: 0o644,
     sha256: 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d' }),
   Object.freeze({ path: 'src/git-repository.mjs', mode: 0o644,
-    sha256: '3db5e4e6dde6557ca328d57e5ab4cee8d420fa5d13dc74342a08f28669dddb27' }),
+    sha256: '293725c6285065e102ee55ef5890efe9eb204a29cb7f826d8d0ffb23f4814c26' }),
   Object.freeze({ path: 'src/catalog-input.mjs', mode: 0o644,
     sha256: '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667' }),
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,
@@ -48,7 +49,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
-    sha256: 'e9fd0cc21bcd6cd84ee80e49b1cdac99a3964fcc98b7dfc0b88e1e32feb8347c' }),
+    sha256: 'f67351f2b940dc6536d8ccd221662b85fedaa6fdd450efd9b2ca08c4087e2891' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,
     sha256: 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7' }),
 ]);

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync,
   symlinkSync, unlinkSync, utimesSync,
@@ -10,7 +11,8 @@ import { join } from 'node:path';
 import {
   TRACKED_FILE_LIMITS, tightenLegacyPrivateDirectory,
 } from '../src/file-integrity.mjs';
-import { git, trackedChanges, worktreeCleanupRisks } from '../src/git.mjs';
+import { git, shallowTrackedChanges, trackedChanges, worktreeCleanupRisks } from '../src/git.mjs';
+import { publicationByteRisks } from '../bin/agentic-os-auxiliary.mjs';
 
 function fixture(t, { filtered = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-tracked-integrity-'));
@@ -49,6 +51,40 @@ test('a transformed core.autocrlf checkout is conservatively reported as raw-byt
   const risks = worktreeCleanupRisks(root, { includeIgnored: false });
   assert.ok(risks.hidden.includes('tracked.txt'));
   assert.ok(risks.tracked.includes('tracked.txt'));
+});
+
+test('exact cleanup risk retains staged-only additions, edits, and deletions', (t) => {
+  const { root, run } = fixture(t);
+  writeFileSync(join(root, 'tracked.txt'), 'staged edit\n');
+  run(['add', 'tracked.txt']);
+  writeFileSync(join(root, 'tracked.txt'), 'first\nsecond\n');
+  let risks = worktreeCleanupRisks(root, { includeIgnored: false });
+  assert.equal(risks.dirtyTracked, true);
+  assert.deepEqual(risks.tracked, []);
+
+  writeFileSync(join(root, 'added.txt'), 'staged addition\n');
+  run(['add', 'added.txt']);
+  risks = worktreeCleanupRisks(root, { includeIgnored: false });
+  assert.equal(risks.dirtyTracked, true);
+
+  run(['reset', '--quiet', 'HEAD', '--', 'tracked.txt', 'added.txt']);
+  rmSync(join(root, 'added.txt'));
+  unlinkSync(join(root, 'tracked.txt'));
+  run(['add', '--all', '--', 'tracked.txt']);
+  risks = worktreeCleanupRisks(root, { includeIgnored: false });
+  assert.equal(risks.dirtyTracked, true);
+  assert.ok(risks.tracked.includes('tracked.txt'));
+});
+
+test('intent-to-add alone blocks exact publication admission', (t) => {
+  const { root, run } = fixture(t);
+  writeFileSync(join(root, 'intent.txt'), 'intent to add\n');
+  run(['add', '--intent-to-add', 'intent.txt']);
+  assert.deepEqual(shallowTrackedChanges(root).headToIndex.map(({ path, status }) => ({
+    path, status,
+  })), [{ path: 'intent.txt', status: 'A' }]);
+  assert.equal(worktreeCleanupRisks(root, { includeIgnored: false }).dirtyTracked, true);
+  assert.equal(publicationByteRisks(root).blocked, true);
 });
 
 test('raw tracked-byte observation never executes a configured checkout filter', (t) => {
@@ -120,11 +156,82 @@ test('tracked observation does not refresh or rewrite the Git index', (t) => {
   const beforeBytes = readFileSync(index);
   const before = statSync(index, { bigint: true });
   utimesSync(join(root, 'tracked.txt'), new Date(), new Date());
+  assert.deepEqual(shallowTrackedChanges(root), { headToIndex: [], indexToWorkingTree: [] });
   assert.deepEqual(trackedChanges(root), { headToIndex: [], indexToWorkingTree: [] });
   const after = statSync(index, { bigint: true });
   assert.deepEqual(readFileSync(index), beforeBytes);
   assert.equal(after.mtimeNs, before.mtimeNs);
   assert.equal(after.ctimeNs, before.ctimeNs);
+});
+
+test('structural observation defers same-type content without executing filter code', (t) => {
+  const { root, run } = fixture(t, { filtered: true });
+  const marker = join(root, 'filter-ran');
+  const filter = join(root, 'unsafe-filter.sh');
+  writeFileSync(filter, '#!/bin/sh\ntouch "$FILTER_MARKER"\nexit 1\n');
+  chmodSync(filter, 0o755);
+  run(['config', 'filter.identity.clean', filter]);
+  run(['config', 'filter.identity.process', filter]);
+  writeFileSync(join(root, 'tracked.txt'), 'same mode, different content\n');
+  const index = join(root, '.git', 'index');
+  const beforeBytes = readFileSync(index), before = statSync(index, { bigint: true });
+  const prior = process.env.FILTER_MARKER;
+  process.env.FILTER_MARKER = marker;
+  t.after(() => {
+    if (prior === undefined) delete process.env.FILTER_MARKER;
+    else process.env.FILTER_MARKER = prior;
+  });
+  assert.deepEqual(shallowTrackedChanges(root), { headToIndex: [], indexToWorkingTree: [] });
+  const after = statSync(index, { bigint: true });
+  assert.equal(existsSync(marker), false);
+  assert.deepEqual(readFileSync(index), beforeBytes);
+  assert.equal(after.mtimeNs, before.mtimeNs);
+  assert.equal(after.ctimeNs, before.ctimeNs);
+});
+
+test('exact cleanup fails closed when the index moves during byte observation', (t) => {
+  const { root } = fixture(t);
+  writeFileSync(join(root, 'raced.txt'), 'raced index state\n');
+  const support = join(root, 'wrapper-bin'), marker = join(root, 'first-projection');
+  mkdirSync(support);
+  const wrapper = join(support, 'git');
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  writeFileSync(wrapper, [
+    '#!/bin/sh', `real_git=${JSON.stringify(realGit)}`, `marker=${JSON.stringify(marker)}`,
+    'case " $* " in', '  *" --cached "*)',
+    '    if [ ! -e "$marker" ]; then', '      "$real_git" "$@"', '      status=$?',
+    '      : > "$marker"', '      "$real_git" add -- raced.txt', '      exit "$status"',
+    '    fi', '    ;;', 'esac', 'exec "$real_git" "$@"', '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const priorPath = process.env.PATH;
+  process.env.PATH = `${support}:${priorPath}`;
+  t.after(() => { process.env.PATH = priorPath; });
+  assert.throws(() => worktreeCleanupRisks(root, { includeIgnored: false }),
+    (error) => error?.reason === 'blocked-repository-observation-race');
+});
+
+test('exact cleanup fails closed when hidden index flags move during observation', (t) => {
+  const { root, run } = fixture(t);
+  const support = join(root, '.git', 'race-bin'), marker = join(root, '.git', 'hidden-projection');
+  mkdirSync(support);
+  const wrapper = join(support, 'git');
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  writeFileSync(wrapper, [
+    '#!/bin/sh', `real_git=${JSON.stringify(realGit)}`, `marker=${JSON.stringify(marker)}`,
+    'case " $* " in', '  *" ls-files -v -z "*)',
+    '    if [ ! -e "$marker" ]; then', '      "$real_git" "$@"', '      status=$?',
+    '      : > "$marker"',
+    '      "$real_git" update-index --assume-unchanged -- tracked.txt',
+    '      exit "$status"', '    fi', '    ;;', 'esac', 'exec "$real_git" "$@"', '',
+  ].join('\n'));
+  chmodSync(wrapper, 0o755);
+  const priorPath = process.env.PATH;
+  process.env.PATH = `${support}:${priorPath}`;
+  t.after(() => { process.env.PATH = priorPath; });
+  assert.throws(() => worktreeCleanupRisks(root, { includeIgnored: false }),
+    (error) => error?.reason === 'blocked-repository-observation-race');
+  assert.match(run(['ls-files', '-v', '--', 'tracked.txt']), /^h tracked\.txt$/u);
 });
 
 test('private-directory tightening reports the chmod effect before later path failure', (t) => {

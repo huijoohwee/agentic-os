@@ -11,6 +11,7 @@ import {
   isAncestor,
   observeGit,
   repoRoot,
+  shallowTrackedChanges,
   trackedChanges,
   untrackedPaths,
   worktreeCleanupRisks,
@@ -32,6 +33,7 @@ export const GIT_CAPABILITIES = Object.freeze([
   'retain-all-cleanup',
   'quarantine-worktree-cleanup-opt-in',
   'shallow-observation-default',
+  'structural-health-observation',
   'deep-byte-audit-opt-in',
 ]);
 const MAX_PROFILE_BYTES = 64 * 1024;
@@ -114,12 +116,13 @@ function pathSet(paths) {
 }
 
 function risks(path, mode) {
-  const { headToIndex, indexToWorkingTree } = trackedChanges(path);
+  const { headToIndex, indexToWorkingTree } = mode === 'structural'
+    ? shallowTrackedChanges(path) : trackedChanges(path);
   const exact = mode === 'deep' ? worktreeCleanupRisks(path) : null;
   return {
     dirtyTracked: headToIndex.length > 0 || indexToWorkingTree.length > 0,
     hidden: exact?.hidden ?? hiddenPaths(path),
-    owned: untrackedPaths(path),
+    owned: exact?.owned ?? untrackedPaths(path, { includeIgnored: false }),
     tracked: exact?.tracked ?? null,
     headToIndex,
     indexToWorkingTree,
@@ -133,25 +136,27 @@ function projection(entry, expectedCommon, mode) {
       path: resolve(entry.path), present: false, branch: entry.branch, detached: entry.detached,
       headRevision: null, operationallyClean: null, dirtyTracked: null, hiddenPaths: null,
       headToIndex: null, indexToWorkingTree: null, trackedByteDriftPaths: null,
-      ownedPathCount: null, ownedPathsDigest: null,
+      ownedPathScope: null, ownedPathCount: null, ownedPathsDigest: null,
       ownedPathsTruncated: null, ownedPaths: null,
     };
   }
   assertBinding(before, expectedCommon);
   const observedRisks = risks(before.path, mode);
+  const knownRisk = observedRisks.dirtyTracked || observedRisks.hidden.length > 0
+    || observedRisks.tracked !== null && observedRisks.tracked.length > 0;
   const result = {
     path: before.path,
     present: true,
     branch: entry.branch,
     detached: entry.detached,
     headRevision: headSha('HEAD', before.path),
-    operationallyClean: !observedRisks.dirtyTracked && observedRisks.hidden.length === 0
-      && (observedRisks.tracked === null || observedRisks.tracked.length === 0),
+    operationallyClean: mode === 'structural' ? knownRisk ? false : null : !knownRisk,
     dirtyTracked: observedRisks.dirtyTracked,
     hiddenPaths: observedRisks.hidden,
     headToIndex: observedRisks.headToIndex,
     indexToWorkingTree: observedRisks.indexToWorkingTree,
     trackedByteDriftPaths: observedRisks.tracked,
+    ownedPathScope: mode === 'deep' ? 'visible-and-ignored' : 'visible',
     ...pathSet(observedRisks.owned),
   };
   assertBinding(before, expectedCommon);
@@ -362,7 +367,8 @@ export function observeRepository({
     || profile.adapters.repository.version !== GIT_ADAPTER.version) {
     throw new TypeError('repository profile does not select git adapter version 1');
   }
-  if (!['shallow', 'deep'].includes(mode)) throw new TypeError('observation mode is invalid');
+  if (!['shallow', 'deep', 'structural'].includes(mode))
+    throw new TypeError('observation mode is invalid');
   const root = resolveRepositoryRoot(repository);
   const expectedCommon = realpathSync(commonDir(root));
   const localRef = ref(profile.canonical.localRef, 'refs/heads/', root);
