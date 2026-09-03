@@ -89,18 +89,15 @@ async function initialAuthorityProof(provider, input) {
 }
 function successorAuthorityProof(input) {
   const authority = input.predecessorAuthority;
-  return {
-    predecessorIssuanceDigest: authority.predecessorIssuanceDigest,
+  return { predecessorIssuanceDigest: authority.predecessorIssuanceDigest,
     predecessorTransitionReceiptDigest: authority.predecessorTransitionReceiptDigest,
-    successorAuthorityKind: authority.authorityKind,
-    successorAuthorityRef: authority.authorityRef,
+    successorAuthorityKind: authority.authorityKind, successorAuthorityRef: authority.authorityRef,
     adoptedTerminalClaimId: authority.adoptedTerminalClaimId,
     adoptedLineageDigest: authority.adoptedLineageDigest,
     adoptedIntegrationReceiptDigest: authority.integrationReceiptDigest,
     successorReviewRequestId: authority.reviewRequestId,
     successorRetirementReason: authority.retirementReason,
-    successorAdoptionDisposition: authority.adoptionDisposition,
-  };
+    successorAdoptionDisposition: authority.adoptionDisposition };
 }
 function checkRecord(entry, context, revision, mergedAt) {
   const completedAt = instant(entry?.completed_at, 'check completion time');
@@ -264,13 +261,12 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const issuance = input.predecessorIssuance;
   const successorAuthority = input.predecessorAuthority ?? null;
   const bundle = issuance?.storedBundle?.authorityBundle ?? null;
-  const candidate = issuance === null ? {
-    targetRepository: input.request.repository,
-    branch: successorAuthority.sourceBranch,
-    headRevision: successorAuthority.reviewedSourceHead,
-    canonicalRevision: successorAuthority.protectedBase,
-    reviewLocator: successorAuthority.reviewLocator,
-  } : bundle.candidate;
+  const candidate = issuance === null
+    ? { targetRepository: input.request.repository, branch: successorAuthority.sourceBranch,
+      headRevision: successorAuthority.reviewedSourceHead,
+      canonicalRevision: successorAuthority.protectedBase,
+      reviewLocator: successorAuthority.reviewLocator }
+    : bundle.candidate;
   const initialReview = issuance?.storedBundle?.targetRepository?.review ?? null;
   const initialRecovery = issuance?.storedBundle?.targetRepository?.retrospectiveProof ?? null;
   const retrospective = input.integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
@@ -315,11 +311,9 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     protectedTarget.allowedMethods);
   const suite = await ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
     protectedTarget.activeRuleTypes, protectedTarget.versions, retrospective, expectedProof);
-  const predecessorStartedAt = retrospective
-    ? issuance === null ? successorAuthority.issuedAt : bundle.challenge.issuedAt
-    : issuance === null ? successorAuthority.issuedAt : issuance.publicationReceipt.committedAt;
-  const predecessorExpiresAt = issuance === null
-    ? successorAuthority.expiresAt : bundle.challenge.expiresAt;
+  const predecessorStartedAt = issuance === null ? successorAuthority.issuedAt
+    : retrospective ? bundle.challenge.issuedAt : issuance.publicationReceipt.committedAt;
+  const predecessorExpiresAt = issuance === null ? successorAuthority.expiresAt : bundle.challenge.expiresAt;
   if (retrospective) {
     const retrospectiveMismatch = issuance === null
       ? successorAuthority.reviewLocator !== locator

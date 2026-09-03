@@ -307,9 +307,8 @@ export function createGitHubTransitionRestProvider({ repository: identity,
       if (input.request.repository !== target.repository
         || input.request.requestedTransition !== 'integrate')
         fail('integration proof preparation target or operation changed');
-      const initial = input.predecessorIssuance === null ? null
-        : createGitHubAuthorityReadProvider({ issuance: input.predecessorIssuance,
-          token, fetchImpl, timeoutMs });
+          const initial = input.predecessorIssuance === null ? null : createGitHubAuthorityReadProvider({
+            issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
       return observeGitHubIntegrationProof({ api: {
         call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
         rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true),
@@ -320,9 +319,8 @@ export function createGitHubTransitionRestProvider({ repository: identity,
       const input = validateGitHubTransitionInput(inputValue);
       if (input.request.repository !== target.repository) fail('transition proof target changed');
       if (input.request.requestedTransition === 'integrate') {
-        const initial = input.predecessorIssuance === null ? null
-          : createGitHubAuthorityReadProvider({ issuance: input.predecessorIssuance,
-            token, fetchImpl, timeoutMs });
+        const initial = input.predecessorIssuance === null ? null : createGitHubAuthorityReadProvider({
+          issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
         return { proof: await observeGitHubIntegrationProof({ api: {
           call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
           rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true),
@@ -338,10 +336,9 @@ export function createGitHubTransitionRestProvider({ repository: identity,
         fail('retire does not source one exact stored integrated successor');
       await workflow(call, repo, prior.stored.workflowRun,
         prior.stored.operationInputDigest, true, false, prior.stored.evidenceRef);
-      const initial = prior.stored.operationInput.predecessorIssuance === null ? null
-        : createGitHubAuthorityReadProvider({
-          issuance: prior.stored.operationInput.predecessorIssuance,
-          token, fetchImpl, timeoutMs });
+        const initial = prior.stored.operationInput.predecessorIssuance === null ? null
+          : createGitHubAuthorityReadProvider({ issuance: prior.stored.operationInput.predecessorIssuance,
+            token, fetchImpl, timeoutMs });
       const observedProof = await observeGitHubIntegrationProof({ api: {
         call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
         rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true),

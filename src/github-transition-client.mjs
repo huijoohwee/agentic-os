@@ -9,19 +9,15 @@ import { validateGitHubAuthorityIssuance } from './github-authority-issuer.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS,
   INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from './cleanup-records.mjs';
 import { assertGitHubTransitionPolicyTarget, validateGitHubTransitionPolicy,
-  validateGitHubTransitionPolicyExecution }
-  from './github-transition-policy.mjs';
-
+  validateGitHubTransitionPolicyExecution } from './github-transition-policy.mjs';
 export const GITHUB_TRANSITION_READ_ADAPTER = Object.freeze({
   id: 'github-transition-rest-cas-verifier', version: '1',
 });
 /** Opt in only to recording an exact merge that provider evidence predates current authority. */
 export const GITHUB_RETROSPECTIVE_INTEGRATION_MODE = GITHUB_RETROSPECTIVE_RECOVERY_MODE;
 export const GITHUB_TRANSITION_INPUT_SCHEMA = 'agentic-os/transition-operation-input/v1';
-export const GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA =
-  'agentic-os/github-successor-predecessor/v1';
-export const GITHUB_TRANSITION_COORDINATE_SCHEMA =
-  'agentic-os/github-transition-coordinate/v1';
+export const GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA = 'agentic-os/github-successor-predecessor/v1';
+export const GITHUB_TRANSITION_COORDINATE_SCHEMA = 'agentic-os/github-transition-coordinate/v1';
 export const GITHUB_STORED_TRANSITION_SCHEMA = 'agentic-os/github-stored-transition/v1';
 const API_ORIGIN = 'https://api.github.com';
 const MAX_WORKFLOW_INPUT_BYTES = 65_535;
@@ -30,8 +26,8 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const DIGEST = /^[0-9a-f]{64}$/u, REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const INPUT_KEYS = ['request', 'plan', 'planByteDigest',
-  'predecessorIssuance', 'predecessorAuthority'];
+const INPUT_KEYS = ['request', 'plan', 'planByteDigest', 'predecessorIssuance',
+  'predecessorAuthority'];
 const RECOVERY_INPUT_KEYS = [...INPUT_KEYS, 'integrationMode'];
 const OPERATION_INPUT_KEYS = ['schema', 'request', 'plan', 'planByteDigest',
   'predecessorIssuance', 'predecessorAuthority'];
@@ -43,14 +39,11 @@ const STORED_KEYS = ['schema', 'authorityRepository', 'targetRepository', 'coord
   'evidenceRef', 'evidencePath', 'operationInput', 'operationInputDigest', 'workflowRun',
   'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof',
   'providerProofDigest', 'storedDigest'];
-const SUCCESSOR_PREDECESSOR_KEYS = ['schema', 'authorityKind', 'authorityRef',
-  'reviewLocator', 'sourceBranch', 'immutableRevision', 'reviewedSourceHead',
-  'reviewedSourceTree', 'protectedBase', 'predecessorIssuanceDigest',
-  'predecessorTransitionReceiptDigest', 'adoptedTerminalClaimId',
-  'adoptedLineageDigest', 'integrationReceiptDigest', 'reviewRequestId',
-  'retirementReason', 'adoptionDisposition', 'cloudMutation', 'issuedAt',
-  'expiresAt'];
-
+const SUCCESSOR_PREDECESSOR_KEYS = ['schema', 'authorityKind', 'authorityRef', 'reviewLocator',
+  'sourceBranch', 'immutableRevision', 'reviewedSourceHead', 'reviewedSourceTree', 'protectedBase',
+  'predecessorIssuanceDigest', 'predecessorTransitionReceiptDigest', 'adoptedTerminalClaimId',
+  'adoptedLineageDigest', 'integrationReceiptDigest', 'reviewRequestId', 'retirementReason',
+  'adoptionDisposition', 'cloudMutation', 'issuedAt', 'expiresAt'];
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function exact(value, keys, label, required = true) {
@@ -58,37 +51,22 @@ function exact(value, keys, label, required = true) {
     || Object.keys(value).some((key) => !keys.includes(key))
     || required && keys.some((key) => !Object.hasOwn(value, key))) fail(`${label} fields are invalid`);
 }
-function text(value, label) {
-  if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
-    || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`);
-  return value;
-}
-function digest(value, label) {
-  if (typeof value !== 'string' || !DIGEST.test(value)) fail(`${label} must be a sha256 digest`);
-  return value;
-}
-function revision(value, label) {
-  if (typeof value !== 'string' || !REVISION.test(value)) fail(`${label} must be a full Git revision`);
-  return value;
-}
+function text(value, label) { if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
+  || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`); return value; }
+function digest(value, label) { if (typeof value !== 'string' || !DIGEST.test(value))
+  fail(`${label} must be a sha256 digest`); return value; }
+function revision(value, label) { if (typeof value !== 'string' || !REVISION.test(value))
+  fail(`${label} must be a full Git revision`); return value; }
 function instant(value, label) {
   const parsed = Date.parse(text(value, label));
   if (!Number.isFinite(parsed)) fail(`${label} must be a UTC instant`);
   return new Date(parsed).toISOString();
 }
-function identifier(value, label) {
-  const result = String(value);
-  if (!ID.test(result)) fail(`${label} must be a positive identifier`);
-  return result;
-}
-function boolean(value, label) {
-  if (typeof value !== 'boolean') fail(`${label} must be boolean`);
-  return value;
-}
-function freeze(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(freeze); return Object.freeze(value);
-}
+function identifier(value, label) { const result = String(value); if (!ID.test(result))
+  fail(`${label} must be a positive identifier`); return result; }
+function boolean(value, label) { if (typeof value !== 'boolean') fail(`${label} must be boolean`); return value; }
+function freeze(value) { if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.values(value).forEach(freeze); return Object.freeze(value); }
 function branch(value, label) {
   const result = text(value, label), prefix = 'refs/heads/';
   const parts = result.startsWith(prefix) ? result.slice(prefix.length).split('/') : [];
@@ -96,17 +74,13 @@ function branch(value, label) {
     || part.endsWith('.') || part.endsWith('.lock'))) fail(`${label} must be a portable branch ref`);
   return freeze(result);
 }
-function relative(value, label) {
-  const result = text(value, label), parts = result.split('/');
+function relative(value, label) { const result = text(value, label), parts = result.split('/');
   if (result.startsWith('/') || result.includes('\\')
     || parts.some((part) => !part || part === '.' || part === '..')) fail(`${label} is invalid`);
-  return result;
-}
+  return result; }
 function workflowPayload(value) {
-  if (typeof value !== 'string' || !value
-    || Buffer.byteLength(value, 'utf8') > MAX_OPERATION_PAYLOAD_BYTES
-    || /[\u0000-\u001f\u007f]/u.test(value))
-    fail('operation_payload must be a bounded UTF-8 JSON string');
+  if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > MAX_OPERATION_PAYLOAD_BYTES
+    || /[\u0000-\u001f\u007f]/u.test(value)) fail('operation_payload must be a bounded UTF-8 JSON string');
   return value;
 }
 function authoritySubject(value) {
@@ -119,10 +93,8 @@ function repository(value) {
   const result = parseGitHubRepositoryIdentity(value, 'transition repository');
   return { ...result, path: `/repos/${encodeURIComponent(result.owner)}/${encodeURIComponent(result.name)}` };
 }
-function operation(value) {
-  if (!['integrate', 'retire'].includes(value)) fail('requestedTransition must be integrate or retire');
-  return value;
-}
+function operation(value) { if (!['integrate', 'retire'].includes(value))
+  fail('requestedTransition must be integrate or retire'); return value; }
 function closedEffects(plan, requestedTransition) {
   const integrating = requestedTransition === 'integrate';
   const effectClass = integrating ? 'protected-integration-record'
@@ -144,41 +116,28 @@ function successorPredecessor(value, request, plan) {
   const expiresAt = instant(source.expiresAt, 'successorPredecessor.expiresAt');
   if (Date.parse(expiresAt) <= Date.parse(issuedAt))
     fail('GitHub successor predecessor authority window is invalid');
-  const authority = freeze({
-    schema: GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA,
-    authorityKind: text(source.authorityKind, 'successorPredecessor.authorityKind'),
+  const prefix = 'successorPredecessor.';
+  const authority = freeze({ schema: GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA,
+    authorityKind: text(source.authorityKind, `${prefix}authorityKind`),
     authorityRef: branch(source.authorityRef, 'successorPredecessor.authorityRef'),
     reviewLocator: text(source.reviewLocator, 'successorPredecessor.reviewLocator'),
     sourceBranch: text(source.sourceBranch, 'successorPredecessor.sourceBranch'),
-    immutableRevision: revision(source.immutableRevision,
-      'successorPredecessor.immutableRevision'),
-    reviewedSourceHead: revision(source.reviewedSourceHead,
-      'successorPredecessor.reviewedSourceHead'),
-    reviewedSourceTree: revision(source.reviewedSourceTree,
-      'successorPredecessor.reviewedSourceTree'),
-    protectedBase: revision(source.protectedBase, 'successorPredecessor.protectedBase'),
-    predecessorIssuanceDigest: digest(source.predecessorIssuanceDigest,
-      'successorPredecessor.predecessorIssuanceDigest'),
-    predecessorTransitionReceiptDigest: digest(source.predecessorTransitionReceiptDigest,
-      'successorPredecessor.predecessorTransitionReceiptDigest'),
-    adoptedTerminalClaimId: digest(source.adoptedTerminalClaimId,
-      'successorPredecessor.adoptedTerminalClaimId'),
-    adoptedLineageDigest: digest(source.adoptedLineageDigest,
-      'successorPredecessor.adoptedLineageDigest'),
-    integrationReceiptDigest: digest(source.integrationReceiptDigest,
-      'successorPredecessor.integrationReceiptDigest'),
-    reviewRequestId: text(source.reviewRequestId, 'successorPredecessor.reviewRequestId'),
-    retirementReason: text(source.retirementReason, 'successorPredecessor.retirementReason'),
-    adoptionDisposition: text(source.adoptionDisposition,
-      'successorPredecessor.adoptionDisposition'),
-    cloudMutation: boolean(source.cloudMutation, 'successorPredecessor.cloudMutation'),
-    issuedAt,
-    expiresAt,
-  });
-  if (authority.cloudMutation !== false
-    || authority.reviewLocator !== request.reviewLocator
-    || authority.immutableRevision !== request.immutableRevision
-    || plan.target.resource !== authority.reviewLocator
+    immutableRevision: revision(source.immutableRevision, `${prefix}immutableRevision`),
+    reviewedSourceHead: revision(source.reviewedSourceHead, `${prefix}reviewedSourceHead`),
+    reviewedSourceTree: revision(source.reviewedSourceTree, `${prefix}reviewedSourceTree`),
+    protectedBase: revision(source.protectedBase, `${prefix}protectedBase`),
+    predecessorIssuanceDigest: digest(source.predecessorIssuanceDigest, `${prefix}predecessorIssuanceDigest`),
+    predecessorTransitionReceiptDigest: digest(source.predecessorTransitionReceiptDigest, `${prefix}predecessorTransitionReceiptDigest`),
+    adoptedTerminalClaimId: digest(source.adoptedTerminalClaimId, `${prefix}adoptedTerminalClaimId`),
+    adoptedLineageDigest: digest(source.adoptedLineageDigest, `${prefix}adoptedLineageDigest`),
+    integrationReceiptDigest: digest(source.integrationReceiptDigest, `${prefix}integrationReceiptDigest`),
+    reviewRequestId: text(source.reviewRequestId, `${prefix}reviewRequestId`),
+    retirementReason: text(source.retirementReason, `${prefix}retirementReason`),
+    adoptionDisposition: text(source.adoptionDisposition, `${prefix}adoptionDisposition`),
+    cloudMutation: boolean(source.cloudMutation, `${prefix}cloudMutation`),
+    issuedAt, expiresAt });
+  if (authority.cloudMutation !== false || authority.reviewLocator !== request.reviewLocator
+    || authority.immutableRevision !== request.immutableRevision || plan.target.resource !== authority.reviewLocator
     || plan.target.immutableRevision !== authority.immutableRevision
     || plan.authority.predecessorDigest !== authority.predecessorTransitionReceiptDigest
     || Date.parse(request.observedAt) < Date.parse(authority.issuedAt)
@@ -188,13 +147,11 @@ function successorPredecessor(value, request, plan) {
   return authority;
 }
 function predecessor(source, request, plan) {
-  if (request.requestedTransition === 'retire') {
-    if (source.predecessorIssuance !== null || Object.hasOwn(source, 'predecessorAuthority'))
-      fail('retire locates its predecessor by the exact source fence');
-    return { predecessorIssuance: null, predecessorAuthority: null };
-  }
-  const hasIssuance = Object.hasOwn(source, 'predecessorIssuance')
-    && source.predecessorIssuance !== null;
+  if (request.requestedTransition === 'retire') return source.predecessorIssuance === null
+      && !Object.hasOwn(source, 'predecessorAuthority')
+    ? { predecessorIssuance: null, predecessorAuthority: null }
+    : fail('retire locates its predecessor by the exact source fence');
+  const hasIssuance = Object.hasOwn(source, 'predecessorIssuance') && source.predecessorIssuance !== null;
   const hasSuccessorAuthority = Object.hasOwn(source, 'predecessorAuthority');
   if (hasIssuance === hasSuccessorAuthority)
     fail('integrate requires exactly one predecessor source');
@@ -219,31 +176,26 @@ function predecessor(source, request, plan) {
     }
     return { predecessorIssuance: issuance, predecessorAuthority: null };
   }
-  return { predecessorIssuance: null,
-    predecessorAuthority: successorPredecessor(source.predecessorAuthority, request, plan) };
+  return { predecessorIssuance: null, predecessorAuthority:
+    successorPredecessor(source.predecessorAuthority, request, plan) };
 }
 function integrationMode(source, request, predecessorSource) {
   if (!Object.hasOwn(source, 'integrationMode')) return null;
-  if (source.integrationMode !== GITHUB_RETROSPECTIVE_INTEGRATION_MODE
-    || request.requestedTransition !== 'integrate') {
+  if (source.integrationMode !== GITHUB_RETROSPECTIVE_INTEGRATION_MODE || request.requestedTransition !== 'integrate')
     fail('retrospective recovery requires an integrate request whose initial review was already merged');
-  }
-  if (predecessorSource.predecessorIssuance !== null
-    && (predecessorSource.predecessorIssuance.storedBundle.authorityBundle.challenge.issuanceMode
-        !== GITHUB_RETROSPECTIVE_RECOVERY_MODE
-      || predecessorSource.predecessorIssuance.storedBundle.targetRepository.review?.state
-        !== 'merged')) {
+  if (predecessorSource.predecessorIssuance !== null && (predecessorSource.predecessorIssuance.storedBundle.authorityBundle.challenge.issuanceMode
+      !== GITHUB_RETROSPECTIVE_RECOVERY_MODE
+    || predecessorSource.predecessorIssuance.storedBundle.targetRepository.review?.state !== 'merged')) {
     fail('retrospective recovery requires an integrate request whose initial review was already merged');
   }
   return GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
-}
+  }
 export function validateGitHubTransitionWorkflowRun(value, authorityRepository) {
   const repo = repository(authorityRepository);
   const source = snap(value);
   exact(source, RUN_KEYS, 'transition workflow run');
   const id = identifier(source.id, 'workflowRun.id');
-  const result = {
-    id, url: text(source.url, 'workflowRun.url'), ref: branch(source.ref, 'workflowRun.ref'),
+  const result = { id, url: text(source.url, 'workflowRun.url'), ref: branch(source.ref, 'workflowRun.ref'),
     revision: revision(source.revision, 'workflowRun.revision'),
     workflowRef: branch(source.workflowRef, 'workflowRun.workflowRef'),
     workflowPath: relative(source.workflowPath, 'workflowRun.workflowPath'),
@@ -265,8 +217,7 @@ export function deriveGitHubTransitionRunName(value) {
 export function validateGitHubTransitionInput(value) {
   const source = snap(value);
   const recovery = Object.hasOwn(source, 'integrationMode');
-  exact(source, recovery ? RECOVERY_OPERATION_INPUT_KEYS : OPERATION_INPUT_KEYS,
-    'GitHub transition operation input', false);
+  exact(source, recovery ? RECOVERY_OPERATION_INPUT_KEYS : OPERATION_INPUT_KEYS, 'GitHub transition operation input', false);
   for (const key of ['schema', 'request', 'plan', 'planByteDigest', 'predecessorIssuance'])
     if (!Object.hasOwn(source, key)) fail('GitHub transition operation input fields are invalid');
   if (source.schema !== GITHUB_TRANSITION_INPUT_SCHEMA)
@@ -276,8 +227,7 @@ export function validateGitHubTransitionInput(value) {
   closedEffects(plan, requestedTransition);
   const planByteDigest = digest(source.planByteDigest, 'planByteDigest');
   const canonicalPlanByteDigest = createHash('sha256').update(canonicalJson(plan)).digest('hex');
-  const references = request.dependentWork.map((entry) => entry.match(
-    /^effect-plan:sha256:([0-9a-f]{64})$/u)).filter(Boolean);
+  const references = request.dependentWork.map((entry) => entry.match(/^effect-plan:sha256:([0-9a-f]{64})$/u)).filter(Boolean);
   if (plan.target.repository !== request.repository
     || plan.target.immutableRevision !== request.immutableRevision
     || authority.requestedTransition !== requestedTransition
@@ -292,10 +242,8 @@ export function validateGitHubTransitionInput(value) {
     fail('GitHub transition operation input does not bind one safe exact plan transition');
   const predecessorSource = predecessor(source, request, plan);
   const mode = integrationMode(source, request, predecessorSource);
-  const result = Object.freeze({ schema: GITHUB_TRANSITION_INPUT_SCHEMA, request, plan,
-    planByteDigest,
-    ...(predecessorSource.predecessorIssuance === null
-      ? { predecessorIssuance: null }
+  const result = Object.freeze({ schema: GITHUB_TRANSITION_INPUT_SCHEMA, request, plan, planByteDigest,
+    ...(predecessorSource.predecessorIssuance === null ? { predecessorIssuance: null }
       : { predecessorIssuance: predecessorSource.predecessorIssuance }),
     ...(predecessorSource.predecessorAuthority === null ? {}
       : { predecessorAuthority: predecessorSource.predecessorAuthority }),
@@ -346,32 +294,27 @@ export function validateGitHubTransitionDispatchEvent(value, context) {
   if (payload !== canonicalPayload || suppliedDigest !== operationInputDigest)
     fail('GitHub transition dispatch inputs do not match the exact operation payload');
   assertGitHubTransitionPolicyTarget(boundPolicy.policy, operationInput.request.repository);
-  return Object.freeze({ operationInput, operationPayload: canonicalPayload,
-    operationInputDigest, policy: boundPolicy.policy, execution: boundPolicy.execution });
+  return Object.freeze({ operationInput, operationPayload: canonicalPayload, operationInputDigest,
+    policy: boundPolicy.policy, execution: boundPolicy.execution });
 }
 function planInput(value) {
   const source = snap(value);
   const recovery = Object.hasOwn(source, 'integrationMode');
-  exact(source, recovery ? RECOVERY_INPUT_KEYS : INPUT_KEYS,
-    'GitHub transition verifier input', false);
+  exact(source, recovery ? RECOVERY_INPUT_KEYS : INPUT_KEYS, 'GitHub transition verifier input', false);
   for (const key of ['request', 'plan', 'planByteDigest', 'predecessorIssuance'])
     if (!Object.hasOwn(source, key)) fail('GitHub transition verifier input fields are invalid');
-  const payload = validateGitHubTransitionInput({ schema: GITHUB_TRANSITION_INPUT_SCHEMA,
-    request: source.request, plan: source.plan, planByteDigest: source.planByteDigest,
-    predecessorIssuance: source.predecessorIssuance,
-    ...(Object.hasOwn(source, 'predecessorAuthority')
-      ? { predecessorAuthority: source.predecessorAuthority } : {}),
+  const payload = validateGitHubTransitionInput({ schema: GITHUB_TRANSITION_INPUT_SCHEMA, request: source.request,
+    plan: source.plan, planByteDigest: source.planByteDigest, predecessorIssuance: source.predecessorIssuance,
+    ...(Object.hasOwn(source, 'predecessorAuthority') ? { predecessorAuthority: source.predecessorAuthority } : {}),
     ...(recovery ? { integrationMode: source.integrationMode } : {}) });
   const bytes = encodeGitHubTransitionInput(payload);
   return { ...payload, payload, operationInputDigest: deriveGitHubTransitionInputDigest(bytes) };
 }
 /** Build a normal input, or an explicit retrospective input whose predecessor review is already merged. */
 export function createGitHubTransitionInput(value) { return planInput(value).payload; }
-
 export function deriveGitHubTransitionCoordinate(value) {
   const source = snap(value);
-  exact(source, ['authorityRepository', 'targetRepository', 'operationInput'],
-    'GitHub transition coordinate input');
+  exact(source, ['authorityRepository', 'targetRepository', 'operationInput'], 'GitHub transition coordinate input');
   const authorityRepository = repository(source.authorityRepository).repository;
   const targetRepository = repository(source.targetRepository).repository;
   const operationInput = validateGitHubTransitionInput(source.operationInput);
@@ -382,13 +325,12 @@ export function deriveGitHubTransitionCoordinate(value) {
   return governanceDigest({ schema: GITHUB_TRANSITION_COORDINATE_SCHEMA,
     authorityRepository, targetRepository, sourceClaimId: request.claimId,
     sourceLeaseEpoch: request.leaseEpoch, sourceFenceRevision: request.fenceRevision });
-}
-
+  }
 function validatedProviderProof(value, operationName) {
   const source = snap(value);
   if (!source || typeof source !== 'object' || Array.isArray(source)
-    || Object.keys(source).some((key) => key !== 'proofDigest' && key !== 'schema'
-      && !/^[a-z][A-Za-z0-9]{0,63}$/u.test(key))) fail('GitHub transition provider proof fields are invalid');
+    || Object.keys(source).some((key) => key !== 'proofDigest' && key !== 'schema' && !/^[a-z][A-Za-z0-9]{0,63}$/u.test(key)))
+    fail('GitHub transition provider proof fields are invalid');
   if (source.schema !== `agentic-os/github-${operationName}-provider-proof/v1`)
     fail('GitHub transition provider proof schema is invalid');
   const { proofDigest, ...payload } = source;
@@ -396,13 +338,10 @@ function validatedProviderProof(value, operationName) {
     || digest(proofDigest, 'providerProof.proofDigest') !== governanceDigest(payload))
     fail('GitHub transition provider proof digest is invalid');
   return freeze(source);
-}
-
+  }
 function transitionLocation(coordinate) {
-  return { evidenceRef: `refs/heads/adlc/authority/${coordinate}`,
-    evidencePath: `.agentic-os/authority/transitions/${coordinate}.json` };
-}
-
+  return { evidenceRef: `refs/heads/adlc/authority/${coordinate}`, evidencePath: `.agentic-os/authority/transitions/${coordinate}.json` };
+  }
 export function createGitHubStoredTransition(value) {
   const source = snap(value);
   exact(source, STORED_KEYS, 'GitHub stored transition input', false);
@@ -412,23 +351,20 @@ export function createGitHubStoredTransition(value) {
   const authorityRepository = repository(source.authorityRepository).repository;
   const targetRepository = repository(source.targetRepository).repository;
   const operationInput = validateGitHubTransitionInput(source.operationInput);
-  const workflowRun = validateGitHubTransitionWorkflowRun(source.workflowRun,
-    authorityRepository);
+  const workflowRun = validateGitHubTransitionWorkflowRun(source.workflowRun, authorityRepository);
   const workflowStartedAt = instant(source.workflowStartedAt, 'workflowStartedAt');
   const workflowCompletedAt = instant(source.workflowCompletedAt, 'workflowCompletedAt');
   if (Date.parse(workflowCompletedAt) < Date.parse(workflowStartedAt))
     fail('workflow completion precedes workflow start');
   const coordinate = deriveGitHubTransitionCoordinate({ authorityRepository,
     targetRepository, operationInput });
-  const policy = assertGitHubTransitionPolicyTarget(
-    validateGitHubTransitionPolicy(source.policy), targetRepository);
+  const policy = assertGitHubTransitionPolicyTarget(validateGitHubTransitionPolicy(source.policy), targetRepository);
   if (policy.authorityRepository !== authorityRepository || policy.authorityRef !== workflowRun.ref
     || policy.workflowPath !== workflowRun.workflowPath)
     fail('GitHub stored transition is not joined to committed transition policy');
   const location = transitionLocation(coordinate);
   const operationInputDigest = deriveGitHubTransitionInputDigest(operationInput);
-  const providerProof = validatedProviderProof(source.providerProof,
-    operationInput.request.requestedTransition);
+  const providerProof = validatedProviderProof(source.providerProof, operationInput.request.requestedTransition);
   const providerProofDigest = providerProof.proofDigest;
   if (workflowRun.authoritySubject !== operationInput.request.authoritySubject)
     fail('GitHub stored transition workflow authority does not match the operation');
@@ -441,10 +377,9 @@ export function createGitHubStoredTransition(value) {
     && operationInput.predecessorAuthority !== undefined
     && operationInput.predecessorAuthority.authorityRef !== policy.authorityRef)
     fail('GitHub stored transition successor predecessor policy anchor changed');
-  const payload = { schema: GITHUB_STORED_TRANSITION_SCHEMA, authorityRepository,
-    targetRepository, coordinate, ...location, operationInput, operationInputDigest,
-    workflowRun, workflowStartedAt, workflowCompletedAt, policy,
-    providerProof, providerProofDigest };
+  const payload = { schema: GITHUB_STORED_TRANSITION_SCHEMA, authorityRepository, targetRepository,
+    coordinate, ...location, operationInput, operationInputDigest, workflowRun, workflowStartedAt,
+    workflowCompletedAt, policy, providerProof, providerProofDigest };
   const storedDigest = governanceDigest(payload), result = freeze({ ...payload, storedDigest });
   for (const key of ['schema', 'coordinate', 'evidenceRef', 'evidencePath',
     'operationInputDigest', 'storedDigest']) {
@@ -452,8 +387,7 @@ export function createGitHubStoredTransition(value) {
       fail(`GitHub stored transition ${key} does not match`);
   }
   return result;
-}
-
+  }
 export function validateGitHubStoredTransition(value) {
   const source = snap(value), result = createGitHubStoredTransition(source);
   exact(source, STORED_KEYS, 'GitHub stored transition');
