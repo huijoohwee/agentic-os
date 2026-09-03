@@ -10,7 +10,7 @@ import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from 
 import { createFencedClaimBundle, createGitHubAuthorityChallenge, deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
 import { GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA, createGitHubAuthorityIssuance, createGitHubProtectionProjection, createGitHubProtectionSnapshot, createGitHubPublicationReceipt, createGitHubStoredAuthorityBundle, createGitHubTargetRepositoryProjection } from '../src/github-authority-issuer.mjs';
 import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
-import { GITHUB_RETROSPECTIVE_INTEGRATION_MODE, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
+import { GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, prepareGitHubIntegrationProviderProof, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_TRANSITION_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from '../src/cleanup-records.mjs';
@@ -149,6 +149,36 @@ function integrationDraft(issuance, parametersDigest = hex('0'), integrationMode
     observedAt: '2026-09-02T00:10:00.000Z', expiresAt: '2026-09-02T00:50:00.000Z' });
   return { request, plan, planBytes, planByteDigest, predecessorIssuance: issuance,
     ...(integrationMode === null ? {} : { integrationMode }) };
+}
+function successorPredecessorAuthority(issuance, {
+  authorityRef = 'refs/heads/main',
+  issuedAt = '2026-09-02T00:10:00.000Z',
+  expiresAt = '2026-09-02T00:50:00.000Z',
+} = {}) {
+  const bundle = issuance.storedBundle.authorityBundle;
+  const retrospective = issuance.storedBundle.targetRepository.retrospectiveProof;
+  return {
+    schema: GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA,
+    authorityKind: 'append-only-replacement-transition-authority',
+    authorityRef,
+    reviewLocator: bundle.request.reviewLocator,
+    sourceBranch: bundle.candidate.branch,
+    immutableRevision: retrospective.mergeRevision,
+    reviewedSourceHead: bundle.candidate.headRevision,
+    reviewedSourceTree: retrospective.candidateTreeRevision,
+    protectedBase: retrospective.historicalBaseRevision,
+    predecessorIssuanceDigest: issuance.issuanceDigest,
+    predecessorTransitionReceiptDigest: issuance.transitionReceipt.receiptDigest,
+    adoptedTerminalClaimId: hex('4'),
+    adoptedLineageDigest: hex('5'),
+    integrationReceiptDigest: hex('6'),
+    reviewRequestId: 'github-pull-request:PR_fixture',
+    retirementReason: 'integrated',
+    adoptionDisposition: 'response-loss-adopted',
+    cloudMutation: false,
+    issuedAt,
+    expiresAt,
+  };
 }
 function workflowRun(id = '201') {
   return { id, url: `https://api.github.com/repos/example/evidence/actions/runs/${id}`,
@@ -419,6 +449,42 @@ async function integrationFixture(configure = () => {}, {
   api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
   return { issuance, api, final, operationInput, common: { ...common, operationInput } };
 }
+async function successorFixture(configure = () => {}, authorityOverrides = {}) {
+  const issuance = predecessorIssuance('merged', GITHUB_RETROSPECTIVE_INTEGRATION_MODE);
+  const api = apiFixture(issuance);
+  configure(api.state);
+  const draft = integrationDraft(issuance, hex('0'), GITHUB_RETROSPECTIVE_INTEGRATION_MODE);
+  const predecessorAuthority = successorPredecessorAuthority(issuance, authorityOverrides);
+  const draftInput = createGitHubTransitionInput({
+    request: draft.request,
+    plan: draft.plan,
+    planByteDigest: draft.planByteDigest,
+    predecessorIssuance: null,
+    predecessorAuthority,
+    integrationMode: GITHUB_RETROSPECTIVE_INTEGRATION_MODE,
+  });
+  const common = { repository: 'github.com/example/evidence',
+    targetRepository: 'github.com/example/target', workflowRun: workflowRun(),
+    operationInput: draftInput, policy: TRANSITION_POLICY,
+    token: 'secret', fetchImpl: api.fetchImpl, now: () => NOW };
+  const { workflowRun: unusedWorkflowRun, ...preparation } = common;
+  assert.equal(unusedWorkflowRun.id, '201');
+  const proof = await prepareGitHubIntegrationProviderProof({ ...preparation,
+    workflowRevision: TRANSITION_BASE });
+  const final = integrationDraft(issuance, proof.proofDigest,
+    GITHUB_RETROSPECTIVE_INTEGRATION_MODE);
+  const operationInput = createGitHubTransitionInput({
+    request: final.request,
+    plan: final.plan,
+    planByteDigest: final.planByteDigest,
+    predecessorIssuance: null,
+    predecessorAuthority,
+    integrationMode: GITHUB_RETROSPECTIVE_INTEGRATION_MODE,
+  });
+  api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
+  return { issuance, api, final, operationInput, predecessorAuthority,
+    common: { ...common, operationInput } };
+}
 function inputWithExpiry(fixture, expiresAt) {
   const { requestDigest: omitted, ...source } = fixture.final.request;
   assert.match(omitted, /^[0-9a-f]{64}$/u);
@@ -526,6 +592,39 @@ test('explicit retrospective recovery records an already-merged exact squash wit
     assert.deepEqual(await replayAuthenticatedTransitionOperationReceipt({
       request: fixture.final.request, planBytes: fixture.final.planBytes,
     }, verifier), receipt);
+  });
+
+test('successor predecessor authority records an already-merged exact squash', async () => {
+  const fixture = await successorFixture((state) => historicalSquash(state, {
+    rulesUpdatedAfterMerge: true,
+  }));
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.equal(winner.stored.operationInput.predecessorIssuance, null);
+  assert.deepEqual(winner.stored.operationInput.predecessorAuthority,
+    fixture.predecessorAuthority);
+  assert.equal(winner.stored.providerProof.integrationMode,
+    GITHUB_RETROSPECTIVE_INTEGRATION_MODE);
+  assert.equal(winner.stored.providerProof.successorAuthorityKind,
+    'append-only-replacement-transition-authority');
+  assert.equal(winner.stored.providerProof.predecessorTransitionReceiptDigest,
+    fixture.issuance.transitionReceipt.receiptDigest);
+  const verifier = createGitHubTransitionAuthorityVerifier(fixture.common);
+  const receipt = await createAuthenticatedTransitionOperationReceipt({
+    request: fixture.final.request, planBytes: fixture.final.planBytes,
+  }, verifier, { now: () => NOW });
+  assert.deepEqual(await replayAuthenticatedTransitionOperationReceipt({
+    request: fixture.final.request, planBytes: fixture.final.planBytes,
+  }, verifier), receipt);
+});
+
+test('successor predecessor authority fails closed on policy-anchor and source-tree drift',
+  async () => {
+    await assert.rejects(successorFixture((state) => historicalSquash(state), {
+      authorityRef: 'refs/heads/other',
+    }), /policy is not anchored to the successor predecessor authority ref/u);
+    await assert.rejects(successorFixture((state) => historicalSquash(state), {
+      issuedAt: '2026-09-02T00:03:00.000Z',
+    }), /retrospective integration was not provider-observed before recovery authority/u);
   });
 
 test('retrospective recovery is closed to merged-source, chronology, squash, tree, and base drift',
