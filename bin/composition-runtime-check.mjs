@@ -71,7 +71,7 @@ const CONTRACT = Object.freeze({
   'agentic-graph': Object.freeze([
     requirement('.agentic-os.json', [
       'agentic-os/repository-profile/v1',
-      'github.com/huijoohwee/knowgrph',
+      'github.com/huijoohwee/agentic-graph',
       'Integration Gate',
       'quarantine-worktree-cleanup-opt-in',
     ]),
@@ -225,7 +225,7 @@ const COMPONENTS = Object.freeze(Object.keys(CONTRACT));
 const REPOSITORY_IDENTITIES = Object.freeze({
   'agentic-os': 'huijoohwee/agentic-os',
   'agentic-canvas-os': 'huijoohwee/agentic-canvas-os',
-  'agentic-graph': 'huijoohwee/knowgrph',
+  'agentic-graph': 'huijoohwee/agentic-graph',
   'agentic-commerce-os': 'huijoohwee/agentic-commerce-os',
 });
 

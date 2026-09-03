@@ -26,7 +26,7 @@ const files = Object.freeze({
     'scripts/acos-production-release-controller.mjs': 'baseline_unmanaged_binding_drift createPreserveReceipt rollbackIfBaseline',
   },
   'agentic-graph': {
-    '.agentic-os.json': 'agentic-os/repository-profile/v1 github.com/huijoohwee/knowgrph Integration Gate quarantine-worktree-cleanup-opt-in',
+    '.agentic-os.json': 'agentic-os/repository-profile/v1 github.com/huijoohwee/agentic-graph Integration Gate quarantine-worktree-cleanup-opt-in',
     'package.json': '"land": "agentic-os land" "status": "agentic-os status" "queue:show": "agentic-os queue show" 89256623e4a09a4b8e337c9d3572593c0d188700',
     'docs/collaboration-runtime-contract.md': 'informational current-device projection delete_branch_on_merge:false',
     'cloudflare/workers/commerce-provider-contract.ts': 'commerce.discovery-provider/v1 commerce.checkout-provider/v1 commerce.marketplace-provider/v1 commerce.upstream-runtime-evidence/v1 x-commerce-provider-binding-digest AUTHORING_MUTATION_HEADER_NAMES x-authoring-reserved-at-ms agentic-graph-authoring-mutation-permit/v2 authoring_fence_atomic',
@@ -75,7 +75,7 @@ function fixture() {
 const repositoryIdentity = Object.freeze({
   'agentic-os': 'huijoohwee/agentic-os',
   'agentic-canvas-os': 'huijoohwee/agentic-canvas-os',
-  'agentic-graph': 'huijoohwee/knowgrph',
+  'agentic-graph': 'huijoohwee/agentic-graph',
   'agentic-commerce-os': 'huijoohwee/agentic-commerce-os',
 });
 const cleanGit = (root, component) => ({
@@ -135,7 +135,7 @@ test('observes exact four-component source and protected-boundary contracts with
     assert.deepEqual(Object.keys(report.components), [
       'agentic-os', 'agentic-canvas-os', 'agentic-graph', 'agentic-commerce-os',
     ]);
-    assert.equal(report.components['agentic-graph'].repositoryIdentity, 'huijoohwee/knowgrph');
+    assert.equal(report.components['agentic-graph'].repositoryIdentity, 'huijoohwee/agentic-graph');
     assert.deepEqual(report.findings, []);
   } finally { rmSync(value.base, { recursive: true, force: true }); }
 });

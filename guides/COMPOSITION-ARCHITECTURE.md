@@ -127,7 +127,8 @@ does not infer demand from mechanism readiness.
 - The component name is **`agentic-graph`**, the primary B2C Marketplace Storefront and
   Orchestration Hub. Architecture keys use `AG_*`; physical repository and runtime service identifiers
   remain revision-bound source identities rather than architecture component names.
-- `AG_REPO` is the revision-bound source alias defined below; it is not a repository rename or runtime id.
+- `AG_REPO` is the revision-bound source alias for GitHub repository
+  `huijoohwee/agentic-graph`; it identifies source provenance, not a runtime id.
 - Shared invocation tokens and repository-specific machine contracts remain separate: ACOS owns its
   shared dictionary/safety interfaces, while `agentic-graph` owns its collaboration frontmatter, PR grammar,
   domain schemas, and runtime contracts.
@@ -142,7 +143,7 @@ claim at the named revision; it does not grant lifecycle authority or raise deli
 | Imported TAD | `sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418` | Untracked input; no committed source revision |
 | `agentic-os` | `99dd3d18d573c2ccf7616e29dad15aad94359b84` | Clean canonical checkout; repository-local ADLC contracts and the released document baseline |
 | `agentic-canvas-os` | `3c597227dbb1101a2d5d75cb83a8496e22357a0e` | Clean canonical checkout; invocation and composition contracts grounded there |
-| `AG_REPO` | `9ba90b95bcde38db9f25f6b945ba66cfd264e735` | `agentic-graph` source at the immutable [Git locator](https://github.com/huijoohwee/knowgrph/tree/9ba90b95bcde38db9f25f6b945ba66cfd264e735); legacy slug retained only as source identity |
+| `AG_REPO` | `9ba90b95bcde38db9f25f6b945ba66cfd264e735` | `agentic-graph` source at the immutable [Git locator](https://github.com/huijoohwee/agentic-graph/tree/9ba90b95bcde38db9f25f6b945ba66cfd264e735); GitHub repository identity is `huijoohwee/agentic-graph` |
 | `agentic-commerce-os` | `d5323bc35a62cf2dace300990d5ee0db228897d8` | Clean canonical checkout; provider contracts and receipt gates inspected |
 | Mercur | `3c4b3cc04d0fa4bba597013ab7528c12acdd4013` | Reference input only |
 | x402 / Cloudflare integration guide | `eb0d899ead358a88eb3899dd3f5051e990e02299` / `37b9c206ecbb92a87eeab0c6869a1e70675e7154` | Sources checked against the existing `agentic-graph` implementation |

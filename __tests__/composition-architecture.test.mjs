@@ -33,14 +33,14 @@ test('composition architecture is discoverable and bounded', () => {
 
 test('composition architecture binds its source and repository evidence', () => {
   const guide = read(GUIDE_PATH);
-  const legacySlug = ['know', 'grph'].join('');
+  const repositorySlug = ['agentic', 'graph'].join('-');
   const requiredEvidence = [
     'sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418',
     '99dd3d18d573c2ccf7616e29dad15aad94359b84',
     '3c597227dbb1101a2d5d75cb83a8496e22357a0e',
     '9ba90b95bcde38db9f25f6b945ba66cfd264e735',
     'd5323bc35a62cf2dace300990d5ee0db228897d8',
-    `https://github.com/huijoohwee/${legacySlug}/tree/9ba90b95bcde38db9f25f6b945ba66cfd264e735`,
+    `https://github.com/huijoohwee/${repositorySlug}/tree/9ba90b95bcde38db9f25f6b945ba66cfd264e735`,
   ];
 
   for (const evidence of requiredEvidence) assert.ok(guide.includes(evidence), evidence);
@@ -59,7 +59,7 @@ test('composition architecture keeps product terminology canonical', () => {
   assert.doesNotMatch(`${readme}\n${guide}`, /AgenticGraph/);
   assert.match(guide, /primary B2C Marketplace Storefront and\s+Orchestration Hub/);
   assert.doesNotMatch(`${readme}\n${guide}`, /\bKG(?:_|\b)/);
-  assert.equal(legacySlugs.length, 1, 'only the immutable source locator may retain the legacy slug');
+  assert.equal(legacySlugs.length, 0, 'canonical architecture must not retain the legacy repository slug');
 });
 
 test('composition architecture carries the publication and runtime acceptance contracts', () => {
