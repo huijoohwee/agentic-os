@@ -53,6 +53,34 @@ function selectedManifest(root, names, limits, { allowMissing = false, label } =
   return frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1',
     label, mode: (rootBefore.mode & 0o7777n).toString(8), items }), bytes, entries });
 }
+function observeRegistrationManifest(root, limits) {
+  const ignored = new Set(['fsmonitor--daemon', 'fsmonitor--daemon.ipc']);
+  const names = boundedDirectoryEntries(root, limits.entryCeiling, 'worktree registration')
+    .map((entry) => entry.name)
+    .filter((name) => !ignored.has(name));
+  return selectedManifest(root, names, limits, { label: 'worktree-registration' });
+}
+function peerRegistrationManifest(root, names, limits) {
+  const rootBefore = strictStat(root, 'peer-worktree-admin-root');
+  let bytes = 0, entries = names.length;
+  const items = [...names].sort().map((name) => {
+    const path = join(root, name), stat = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    if (!stat) fail('blocked-cleanup-manifest', 'peer worktree admin path is absent');
+    const manifest = observeRegistrationManifest(path, limits);
+    bytes += manifest.bytes;
+    entries += manifest.entries;
+    if (!Number.isSafeInteger(bytes) || bytes > limits.byteCeiling
+      || !Number.isSafeInteger(entries) || entries > limits.entryCeiling)
+      fail('blocked-cleanup-manifest', 'peer worktree admin ceiling exceeded');
+    return { name, manifest };
+  });
+  const rootAfter = lstatSync(root, { bigint: true, throwIfNoEntry: false });
+  if (!sameNode(rootBefore, rootAfter))
+    fail('blocked-cleanup-manifest', 'peer worktree admin root changed during observation');
+  return frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1',
+    label: 'peer-worktree-admin', mode: (rootBefore.mode & 0o7777n).toString(8), items }),
+  bytes, entries });
+}
 function sharedState(common, worktrees, excludedAdminId, plan) {
   if (process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES)
     fail('blocked-cleanup-object-alternate', 'alternate object environment is unsupported');
@@ -68,8 +96,7 @@ function sharedState(common, worktrees, excludedAdminId, plan) {
   const adminNames = boundedDirectoryEntries(adminRoot, limits.entryCeiling,
     'peer worktree admin').map((entry) => entry.name)
     .filter((name) => name !== excludedAdminId);
-  const peerPhysical = selectedManifest(adminRoot, adminNames, limits,
-    { label: 'peer-worktree-admin' });
+  const peerPhysical = peerRegistrationManifest(adminRoot, adminNames, limits);
   const refs = selectedManifest(common, ['AUTO_MERGE', 'BISECT_HEAD', 'CHERRY_PICK_HEAD',
     'FETCH_HEAD', 'HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'REBASE_HEAD', 'REVERT_HEAD',
     'logs', 'packed-refs', 'refs', 'reftable'],
@@ -160,7 +187,7 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd() } = {})
   const projectionManifest = observeQuarantineManifest(plan.targetPath, {
     byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling,
   });
-  const registrationManifest = observeQuarantineManifest(admin.adminPath, {
+  const registrationManifest = observeRegistrationManifest(admin.adminPath, {
     byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
   });
   const shared = sharedState(common, entries, admin.id, plan);
@@ -219,7 +246,7 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   const projectionManifest = observeQuarantineManifest(projectionPath, {
     byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling,
   });
-  const registrationManifest = observeQuarantineManifest(registrationPath, {
+  const retainedRegistrationManifest = observeRegistrationManifest(registrationPath, {
     byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
   });
   const entries = worktreeInventory(controller), policy = trustedState(plan, controller);
@@ -228,9 +255,9 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
     || projectionManifest.digest !== eligibility.projectionManifestDigest
     || projectionManifest.bytes !== eligibility.projectionBytes
     || projectionManifest.entries !== eligibility.projectionEntries
-    || registrationManifest.digest !== eligibility.registrationManifestDigest
-    || registrationManifest.bytes !== eligibility.registrationBytes
-    || registrationManifest.entries !== eligibility.registrationEntries
+    || retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
+    || retainedRegistrationManifest.bytes !== eligibility.registrationBytes
+    || retainedRegistrationManifest.entries !== eligibility.registrationEntries
     || shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest
     || shared.sharedRefDigest !== eligibility.sharedRefDigest
     || shared.objectInventoryDigest !== eligibility.objectInventoryDigest
@@ -286,7 +313,7 @@ export function quarantineWorktreeTarget(plan, before, {
       || detached.head !== plan.expectedHeadRevision || detached.branch !== plan.expectedBranch)
       fail('blocked-clean-detachment-unproven', 'target registration is not exactly prunable');
     const admin = adminFor(plan.targetPath, common, plan.sharedStateEntryCeiling);
-    const liveRegistration = observeQuarantineManifest(admin.adminPath, {
+    const liveRegistration = observeRegistrationManifest(admin.adminPath, {
       byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
     });
     if (admin.id !== before.worktreeId || !same(liveRegistration, before.registrationManifest))
@@ -298,7 +325,7 @@ export function quarantineWorktreeTarget(plan, before, {
     const projectionManifest = observeQuarantineManifest(projectionPath, {
       byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling,
     });
-    const registrationManifest = observeQuarantineManifest(registrationPath, {
+    const retainedRegistrationManifest = observeRegistrationManifest(registrationPath, {
       byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
     });
     const policy = trustedState(plan, controller);
@@ -307,7 +334,7 @@ export function quarantineWorktreeTarget(plan, before, {
       || !absent(plan.targetPath, 'target-detachment')
       || !absent(admin.adminPath, 'worktree-admin-detachment')
       || !same(projectionManifest, before.projectionManifest)
-      || !same(registrationManifest, before.registrationManifest)
+      || !same(retainedRegistrationManifest, before.registrationManifest)
       || shared.sharedRefDigest !== before.sharedRefDigest
       || shared.objectInventoryDigest !== before.objectInventoryDigest
       || shared.sharedStateBytes !== before.sharedStateBytes

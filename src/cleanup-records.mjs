@@ -5,41 +5,32 @@ import { canonicalJson, governanceDigest } from './governance.mjs';
 
 export const WORKTREE_CLEANUP_PLAN_SCHEMA = 'agentic-os/worktree-cleanup-plan/v1';
 export const CLEANUP_EVIDENCE_SCHEMA = 'agentic-os/cleanup-evidence-receipt/v1';
-export const WORKTREE_CLEANUP_ELIGIBILITY_SCHEMA =
-  'agentic-os/worktree-cleanup-eligibility/v1';
+export const WORKTREE_CLEANUP_CONTINUATION_SCHEMA = 'agentic-os/worktree-cleanup-continuation/v1';
+export const WORKTREE_CLEANUP_ELIGIBILITY_SCHEMA = 'agentic-os/worktree-cleanup-eligibility/v1';
 export const WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v1';
-export const WORKTREE_CLEANUP_ADAPTER = Object.freeze({
-  id: 'git-worktree-quarantine', version: '1',
-});
-export const CLEANUP_EFFECTS = Object.freeze([
-  'quarantine-worktree-projection', 'quarantine-worktree-registration',
-]);
-export const RETAINED_EFFECTS = Object.freeze([
-  'delete-branch', 'delete-object', 'delete-ref', 'delete-reflog', 'force-push',
-  'prune-peer-registration', 'remove-directory-bytes',
-]);
-export const INTEGRATION_RECORD_EFFECTS = Object.freeze([
-  'record-integration', 'verify-exact-integration',
-]);
-export const INTEGRATION_RECORD_RETAINED_EFFECTS = Object.freeze([
-  'cleanup', 'delete-branch', 'delete-object', 'delete-ref', 'delete-reflog', 'deploy',
-  'force-push', 'merge', 'prune-peer-registration', 'remove-directory-bytes',
-]);
+export const WORKTREE_CLEANUP_ADAPTER = Object.freeze({ id: 'git-worktree-quarantine', version: '1' });
+export const CLEANUP_EFFECTS = Object.freeze(['quarantine-worktree-projection', 'quarantine-worktree-registration']);
+export const RETAINED_EFFECTS = Object.freeze(['delete-branch', 'delete-object', 'delete-ref',
+  'delete-reflog', 'force-push', 'prune-peer-registration', 'remove-directory-bytes']);
+export const INTEGRATION_RECORD_EFFECTS = Object.freeze(['record-integration', 'verify-exact-integration']);
+export const INTEGRATION_RECORD_RETAINED_EFFECTS = Object.freeze(['cleanup', 'delete-branch',
+  'delete-object', 'delete-ref', 'delete-reflog', 'deploy', 'force-push', 'merge',
+  'prune-peer-registration', 'remove-directory-bytes']);
 const DIGEST = /^[0-9a-f]{64}$/u;
 const REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const PLAN_KEYS = Object.freeze([
-  'schema', 'repository', 'targetPath', 'expectedBranch', 'expectedHeadRevision',
-  'expectedCanonicalRef', 'expectedCanonicalRevision', 'integratedResource',
-  'integratedImmutableRevision',
-  'candidateDigest', 'snapshotDigest', 'integrationProofDigest', 'profileDigest',
-  'recoveryInventoryDigest', 'ownerStateDigest',
-  'recoveryInventoryContentEntries',
-  'integrationReceiptDigest', 'integrationPlanByteDigest', 'integrationPredecessorDigest',
-  'preservationReceiptDigest', 'noRemainingValueReceiptDigest',
-  'projectionByteCeiling', 'projectionEntryCeiling', 'registrationByteCeiling',
-  'registrationEntryCeiling', 'sharedStateByteCeiling', 'sharedStateEntryCeiling',
-  'authorizedEffects', 'retainedEffects', 'expiresAt', 'planDigest',
-]);
+const PLAN_KEYS = Object.freeze(['schema', 'repository', 'targetPath', 'expectedBranch',
+  'expectedHeadRevision', 'expectedCanonicalRef', 'expectedCanonicalRevision',
+  'integratedResource', 'integratedImmutableRevision', 'candidateDigest', 'snapshotDigest',
+  'integrationProofDigest', 'profileDigest', 'recoveryInventoryDigest', 'ownerStateDigest',
+  'recoveryInventoryContentEntries', 'integrationReceiptDigest', 'integrationPlanByteDigest',
+  'integrationPredecessorDigest', 'preservationReceiptDigest',
+  'noRemainingValueReceiptDigest', 'projectionByteCeiling', 'projectionEntryCeiling',
+  'registrationByteCeiling', 'registrationEntryCeiling', 'sharedStateByteCeiling',
+  'sharedStateEntryCeiling', 'authorizedEffects', 'retainedEffects', 'expiresAt', 'planDigest']);
+const CONTINUATION_KEYS = Object.freeze(['schema', 'authorityKind', 'repository', 'targetPath',
+  'integratedImmutableRevision', 'candidateDigest', 'snapshotDigest', 'ownerStateDigest',
+  'retirementReceiptDigest', 'priorCleanupPlanByteDigest', 'cleanupPlanDigest',
+  'cleanupPlanByteDigest', 'issuedAt', 'expiresAt', 'authorityDigest']);
 const MAX_PROJECTION_BYTES = 4 * 1024 ** 4;
 const MAX_PROJECTION_ENTRIES = 1_000_000;
 const MAX_REGISTRATION_BYTES = 64 * 1024 ** 2;
@@ -50,8 +41,8 @@ function snap(value) { return JSON.parse(canonicalJson(value)); }
 function exact(value, keys, label, required = true) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   const found = Object.keys(value);
-  if (found.some((key) => !keys.includes(key))
-    || required && keys.some((key) => !Object.hasOwn(value, key))) fail(`${label} fields are invalid`);
+  if (found.some((key) => !keys.includes(key)) || required && keys.some((key) => !Object.hasOwn(value, key)))
+    fail(`${label} fields are invalid`);
 }
 function text(value, label, nullable = false) {
   if (nullable && value === null) return null;
@@ -92,8 +83,7 @@ function count(value, label) {
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
 function frozen(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(frozen);
-  return Object.freeze(value);
+  Object.values(value).forEach(frozen); return Object.freeze(value);
 }
 function exactSet(value, expected, label) {
   if (!Array.isArray(value) || !same(value, expected)) fail(`${label} must equal its closed effect set`);
@@ -104,23 +94,21 @@ function canonicalRef(value) {
   if (!result.startsWith('refs/heads/')) fail('expectedCanonicalRef must be a local branch ref');
   return result;
 }
-
 export function deriveCleanupOwnerStateDigest(value) {
   const source = snap(value);
   exact(source, ['claimId', 'leaseEpoch', 'fenceRevision', 'state'], 'cleanup owner state');
   if (!Number.isSafeInteger(source.leaseEpoch) || source.leaseEpoch < 1)
     fail('cleanup owner-state leaseEpoch is invalid');
-  return governanceDigest({ schema: 'agentic-os/cleanup-owner-state/v1',
-    claimId: digest(source.claimId, 'owner-state claimId'), leaseEpoch: source.leaseEpoch,
-    fenceRevision: digest(source.fenceRevision, 'owner-state fenceRevision'),
-    state: text(source.state, 'owner-state state') });
+  return governanceDigest({ schema: 'agentic-os/cleanup-owner-state/v1', leaseEpoch: source.leaseEpoch,
+    claimId: digest(source.claimId, 'owner-state claimId'),
+    fenceRevision: digest(source.fenceRevision, 'owner-state fenceRevision'), state: text(source.state, 'owner-state state') });
 }
 
 export function createCleanupEvidenceReceipt(input) {
-  const source = snap(input), keys = ['schema', 'kind', 'repository', 'targetPath',
-    'candidateDigest', 'snapshotDigest', 'integrationReceiptDigest', 'recoveryInventoryDigest',
-    'recoveryInventoryContentEntries', 'ownerStateDigest', 'archiveDigest',
-    'preservationComplete', 'reachableFromRetainedRefs', 'unpreservedValueCount', 'receiptDigest'];
+  const source = snap(input), keys = ['schema', 'kind', 'repository', 'targetPath', 'candidateDigest',
+    'snapshotDigest', 'integrationReceiptDigest', 'recoveryInventoryDigest',
+    'recoveryInventoryContentEntries', 'ownerStateDigest', 'archiveDigest', 'preservationComplete',
+    'reachableFromRetainedRefs', 'unpreservedValueCount', 'receiptDigest'];
   exact(source, keys, 'cleanup evidence input', false);
   if (source.schema !== undefined && source.schema !== CLEANUP_EVIDENCE_SCHEMA)
     fail('cleanup evidence schema is invalid');
@@ -226,21 +214,56 @@ export function validateWorktreeCleanupPlan(value) {
 }
 export const encodeWorktreeCleanupPlan = (value) =>
   Buffer.from(canonicalJson(validateWorktreeCleanupPlan(value)), 'utf8');
-export function worktreeCleanupPlanByteDigest(value) {
-  return createHash('sha256').update(encodeWorktreeCleanupPlan(value)).digest('hex');
+export const worktreeCleanupPlanByteDigest = (value) =>
+  createHash('sha256').update(encodeWorktreeCleanupPlan(value)).digest('hex');
+
+export function createWorktreeCleanupContinuation(input) {
+  const source = snap(input); exact(source, CONTINUATION_KEYS, 'worktree cleanup continuation input', false);
+  if (source.schema !== undefined && source.schema !== WORKTREE_CLEANUP_CONTINUATION_SCHEMA)
+    fail('worktree cleanup continuation schema is invalid');
+  const payload = { schema: WORKTREE_CLEANUP_CONTINUATION_SCHEMA,
+    authorityKind: text(source.authorityKind, 'cleanup authorityKind'),
+    repository: text(source.repository, 'cleanup continuation repository'),
+    targetPath: absolute(source.targetPath, 'cleanup continuation targetPath'),
+    integratedImmutableRevision: revision(source.integratedImmutableRevision,
+      'cleanup continuation integratedImmutableRevision'),
+    candidateDigest: digest(source.candidateDigest, 'cleanup continuation candidateDigest'),
+    snapshotDigest: digest(source.snapshotDigest, 'cleanup continuation snapshotDigest'),
+    ownerStateDigest: digest(source.ownerStateDigest, 'cleanup continuation ownerStateDigest'),
+    retirementReceiptDigest: digest(source.retirementReceiptDigest,
+      'cleanup continuation retirementReceiptDigest'),
+    priorCleanupPlanByteDigest: digest(source.priorCleanupPlanByteDigest,
+      'cleanup continuation priorCleanupPlanByteDigest'),
+    cleanupPlanDigest: digest(source.cleanupPlanDigest, 'cleanup continuation cleanupPlanDigest'),
+    cleanupPlanByteDigest: digest(source.cleanupPlanByteDigest,
+      'cleanup continuation cleanupPlanByteDigest'),
+    issuedAt: instant(source.issuedAt, 'cleanup continuation issuedAt'),
+    expiresAt: instant(source.expiresAt, 'cleanup continuation expiresAt') };
+  if (Date.parse(payload.expiresAt) <= Date.parse(payload.issuedAt))
+    fail('cleanup continuation window is invalid');
+  const authorityDigest = governanceDigest(payload);
+  if (source.authorityDigest !== undefined
+    && digest(source.authorityDigest, 'cleanup continuation authorityDigest') !== authorityDigest)
+    fail('cleanup continuation digest is invalid');
+  return frozen({ ...payload, authorityDigest });
 }
 
+export function validateWorktreeCleanupContinuation(value) {
+  const source = snap(value), result = createWorktreeCleanupContinuation(source); exact(source,
+    Object.keys(result), 'worktree cleanup continuation');
+  if (!same(source, result)) fail('worktree cleanup continuation is not canonical');
+  return result;
+}
 export function createWorktreeCleanupEligibility(input) {
   const source = snap(input), keys = ['schema', 'cleanupPlanDigest', 'cleanupPlanByteDigest',
     'integrationReceiptDigest', 'integrationPlanByteDigest', 'retirementReceiptDigest',
-    'preservationReceiptDigest',
-    'noRemainingValueReceiptDigest', 'retirementPlanByteDigest', 'recoveryInventoryDigest',
-    'recoveryInventoryContentEntries', 'ownerStateDigest', 'profileDigest', 'canonicalRevision',
-    'targetObservationDigest', 'projectionManifestDigest', 'projectionBytes',
-    'projectionEntries', 'registrationManifestDigest', 'registrationBytes',
+    'preservationReceiptDigest', 'noRemainingValueReceiptDigest', 'retirementPlanByteDigest',
+    'recoveryInventoryDigest', 'recoveryInventoryContentEntries', 'ownerStateDigest',
+    'profileDigest', 'canonicalRevision', 'targetObservationDigest', 'projectionManifestDigest',
+    'projectionBytes', 'projectionEntries', 'registrationManifestDigest', 'registrationBytes',
     'registrationEntries', 'peerRegistrationDigest', 'sharedRefDigest', 'objectInventoryDigest',
-    'sharedStateBytes', 'sharedStateEntries',
-    'eligibleEffects', 'evaluatedAt', 'expiresAt', 'eligibilityDigest'];
+    'sharedStateBytes', 'sharedStateEntries', 'eligibleEffects', 'evaluatedAt', 'expiresAt',
+    'eligibilityDigest'];
   exact(source, keys, 'worktree cleanup eligibility input', false);
   if (source.schema !== undefined && source.schema !== WORKTREE_CLEANUP_ELIGIBILITY_SCHEMA)
     fail('worktree cleanup eligibility schema is invalid');
@@ -291,24 +314,22 @@ export function createWorktreeCleanupEligibility(input) {
 }
 
 export function validateWorktreeCleanupEligibility(value) {
-  const source = snap(value), result = createWorktreeCleanupEligibility(source);
-  exact(source, Object.keys(result), 'worktree cleanup eligibility');
+  const source = snap(value), result = createWorktreeCleanupEligibility(source); exact(source,
+    Object.keys(result), 'worktree cleanup eligibility');
   if (!same(source, result)) fail('cleanup eligibility is not canonical');
   return result;
 }
-
 export function createWorktreeCleanupReceipt(input) {
-  const source = snap(input), keys = ['schema', 'adapter', 'cleanupPlanDigest',
-    'eligibilityDigest', 'integrationPlanByteDigest', 'targetPath', 'projectionQuarantinePath',
-    'registrationQuarantinePath', 'projectionManifestDigest', 'projectionBytes',
-    'projectionEntries', 'registrationManifestDigest', 'registrationBytes',
-    'registrationEntries', 'recoveryInventoryDigest', 'profileDigest', 'canonicalRevision',
-    'recoveryInventoryContentEntries',
+  const source = snap(input), keys = ['schema', 'adapter', 'cleanupPlanDigest', 'eligibilityDigest',
+    'integrationPlanByteDigest', 'targetPath', 'projectionQuarantinePath',
+    'registrationQuarantinePath', 'projectionManifestDigest', 'projectionBytes', 'projectionEntries',
+    'registrationManifestDigest', 'registrationBytes', 'registrationEntries',
+    'recoveryInventoryDigest', 'profileDigest', 'canonicalRevision', 'recoveryInventoryContentEntries',
     'peerRegistrationDigest', 'sharedRefDigest', 'objectInventoryDigest', 'sharedStateBytes',
-    'sharedStateEntries', 'registeredBefore',
-    'registeredAfter', 'targetPathExistsBefore', 'targetPathExistsAfter', 'adminBytesRetained',
-    'branchMutationAttempted', 'objectMutationAttempted', 'directoryByteRemovalAttempted',
-    'operatingSystemExclusivityProven', 'result', 'executedAt', 'receiptDigest'];
+    'sharedStateEntries', 'registeredBefore', 'registeredAfter', 'targetPathExistsBefore',
+    'targetPathExistsAfter', 'adminBytesRetained', 'branchMutationAttempted',
+    'objectMutationAttempted', 'directoryByteRemovalAttempted', 'operatingSystemExclusivityProven',
+    'result', 'executedAt', 'receiptDigest'];
   exact(source, keys, 'worktree cleanup receipt input', false);
   if (source.schema !== undefined && source.schema !== WORKTREE_CLEANUP_RECEIPT_SCHEMA)
     fail('worktree cleanup receipt schema is invalid');
@@ -371,8 +392,8 @@ export function createWorktreeCleanupReceipt(input) {
 }
 
 export function validateWorktreeCleanupReceipt(value) {
-  const source = snap(value), result = createWorktreeCleanupReceipt(source);
-  exact(source, Object.keys(result), 'worktree cleanup receipt');
+  const source = snap(value), result = createWorktreeCleanupReceipt(source); exact(source,
+    Object.keys(result), 'worktree cleanup receipt');
   if (!same(source, result)) fail('cleanup receipt is not canonical');
   return result;
 }

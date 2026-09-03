@@ -238,6 +238,8 @@ function apiFixture(issuance) {
     compareHeadCommitMissing: false, runStartedAtById: {}, runUpdatedAtById: {},
     retirePublicationCommittedAt: '2026-09-02T00:23:00Z' };
   const initialStored = issuance.storedBundle, bundle = initialStored.authorityBundle;
+  const authorityBranch = () => state.transitionPolicy.authorityRef.slice('refs/heads/'.length);
+  const runBranch = (id) => state.runBranchesById?.[id] ?? 'main';
   const ruleDetail = (id, rows, bypass = []) => ({ id, enforcement: 'active',
     created_at: '2026-09-02T00:00:00Z', updated_at: '2026-09-02T00:01:00Z',
     rules: rows.map(({ type, parameters }) => ({ type, parameters })), bypass_actors: bypass });
@@ -365,16 +367,17 @@ function apiFixture(issuance) {
         repository: { full_name: 'example/evidence' }, event: 'workflow_dispatch', run_attempt: 1,
         status: state.transitionStatus, conclusion: state.transitionStatus === 'completed' ? 'success' : null,
         display_title: deriveGitHubTransitionRunName({ operationInputDigest: digest,
-          workflowRevision: TRANSITION_BASE }), workflow_id: 601, head_branch: 'main',
-        head_sha: TRANSITION_BASE, path: `${WORKFLOW_PATH}@main`,
+          workflowRevision: TRANSITION_BASE }), workflow_id: 601, head_branch: runBranch(id),
+        head_sha: TRANSITION_BASE, path: `${WORKFLOW_PATH}@${runBranch(id)}`,
         actor: { id: 42, login: 'example' }, triggering_actor: { id: 42, login: 'example' },
         run_started_at: startedAt,
         updated_at: updatedAt });
     }
     if (route === 'GET /repos/example/evidence/actions/workflows/601')
       return response({ id: 601, path: WORKFLOW_PATH, state: 'active' });
-    if (route === 'GET /repos/example/evidence/git/ref/heads/main')
-      return response({ ref: 'refs/heads/main', object: { type: 'commit', sha: state.authorityHead } });
+    if (route === `GET /repos/example/evidence/git/ref/heads/${authorityBranch()}`)
+      return response({ ref: state.transitionPolicy.authorityRef,
+        object: { type: 'commit', sha: state.authorityHead } });
     if (route === 'GET /repos/example/evidence/contents/.agentic-os/github-transition-policy.json')
       return response({ type: 'file', encoding: 'base64',
         content: encodeGitHubTransitionPolicy(state.transitionPolicy).toString('base64') });
@@ -1065,6 +1068,74 @@ test('retire accepts a fresh successor predecessor authority window', async () =
   fixture.api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
   const common = { ...fixture.common, workflowRun: workflowRun('202'), operationInput,
     now: () => Date.parse('2026-09-02T00:56:00.000Z') };
+  await publishGitHubTransitionAuthority(common);
+  const verify = createGitHubTransitionAuthorityVerifier(common);
+  const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,
+    { now: () => Date.parse('2026-09-02T00:56:00.000Z') });
+  assert.equal(retired.transitionReceipt.resultState, 'retired');
+  assert.equal(fixture.api.publications.size, 2);
+});
+
+test('retire accepts successor-bound policy drift limited to authorityRef', async () => {
+  const fixture = await integrationFixture();
+  await publishGitHubTransitionAuthority(fixture.common);
+  fixture.api.state.transitionStatus = 'completed';
+  const integrationVerifier = createGitHubTransitionAuthorityVerifier(fixture.common);
+  const integrated = await createAuthenticatedTransitionOperationReceipt({
+    request: fixture.final.request, planBytes: fixture.final.planBytes,
+  }, integrationVerifier, { now: () => NOW });
+  const prior = integrated.transitionReceipt;
+  const plan = createEffectPlan({ target: { repository: 'github.com/example/target',
+    resource: '/exact/dirty/worktree', immutableRevision: MERGE }, authority: {
+    requestedTransition: 'retire', authoritySubject: 'github-user:42', ownerSubject: 'github-user:42',
+    claimId: prior.resultClaimId, leaseEpoch: prior.resultLeaseEpoch,
+    fenceRevision: prior.resultFenceRevision, writeSetDigest: fixture.final.request.writeSetDigest,
+    reviewLocator: null, predecessorDigest: integrated.receiptDigest },
+    candidateDigest: fixture.final.plan.candidateDigest, snapshotDigest: fixture.final.plan.snapshotDigest,
+    effectClass: 'claim-retirement-with-cleanup',
+    allowedEffects: [...CLEANUP_EFFECTS, 'retire-claim'], forbiddenEffects: RETAINED_EFFECTS,
+    parametersDigest: governanceDigest('cleanup-plan-bytes') });
+  const planBytes = encodeEffectPlan(plan), planByteDigest = effectPlanByteDigest(planBytes);
+  const predecessorAuthority = {
+    schema: GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA,
+    authorityKind: 'append-only-retire-successor-predecessor',
+    authorityRef: 'refs/heads/main',
+    reviewLocator: fixture.final.request.reviewLocator,
+    sourceBranch: fixture.issuance.storedBundle.authorityBundle.candidate.branch,
+    immutableRevision: MERGE,
+    reviewedSourceHead: fixture.issuance.storedBundle.authorityBundle.candidate.headRevision,
+    reviewedSourceTree: fixture.api.state.candidateTree,
+    protectedBase: TARGET_BASE,
+    predecessorIssuanceDigest: fixture.issuance.issuanceDigest,
+    predecessorTransitionReceiptDigest: integrated.receiptDigest,
+    adoptedTerminalClaimId: hex('4'),
+    adoptedLineageDigest: hex('5'),
+    integrationReceiptDigest: integrated.receiptDigest,
+    reviewRequestId: 'github-pull-request:PR_fixture',
+    retirementReason: 'integrated-successor-retire-continuation',
+    adoptionDisposition: 'response-loss-adopted',
+    cloudMutation: false,
+    issuedAt: '2026-09-02T00:55:00.000Z',
+    expiresAt: '2026-09-02T01:05:00.000Z',
+  };
+  const request = retire({ repository: plan.target.repository, authoritySubject: 'github-user:42',
+    ownerSubject: 'github-user:42', scope: ['src/feature.mjs'], claimId: prior.resultClaimId,
+    leaseEpoch: prior.resultLeaseEpoch, fenceRevision: prior.resultFenceRevision,
+    immutableRevision: MERGE, dependentWork: [`effect-plan:sha256:${planByteDigest}`],
+    observedAt: '2026-09-02T00:55:00.000Z', expiresAt: '2026-09-02T01:00:00.000Z' });
+  const operationInput = createGitHubTransitionInput({ request, plan, planByteDigest,
+    predecessorIssuance: null, predecessorAuthority });
+  fixture.api.state.runStartedAtById['202'] = '2026-09-02T00:55:10Z';
+  fixture.api.state.runUpdatedAtById['202'] = '2026-09-02T00:55:30Z';
+  fixture.api.state.retirePublicationCommittedAt = '2026-09-02T00:55:40Z';
+  fixture.api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
+  fixture.api.state.runBranchesById = { 202: 'feature' };
+  fixture.api.state.transitionPolicy = { ...fixture.api.state.transitionPolicy,
+    authorityRef: 'refs/heads/feature' };
+  const common = { ...fixture.common, policy: fixture.api.state.transitionPolicy,
+    workflowRun: { ...workflowRun('202'), ref: 'refs/heads/feature',
+      workflowRef: 'refs/heads/feature' },
+    operationInput, now: () => Date.parse('2026-09-02T00:56:00.000Z') };
   await publishGitHubTransitionAuthority(common);
   const verify = createGitHubTransitionAuthorityVerifier(common);
   const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,

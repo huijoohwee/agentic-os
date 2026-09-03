@@ -129,6 +129,11 @@ function publicationWindow(state) {
     || committed >= Date.parse(input.request.expiresAt))
     fail('GitHub transition publication is not an in-window canonical child');
 }
+function retirementPolicyMatches(current, prior, predecessorAuthority) {
+  if (same(current, prior)) return true;
+  if (predecessorAuthority === undefined) return false;
+  return same({ ...current, authorityRef: prior.authorityRef }, prior);
+}
 function sourceWindow(input, workflowStartedAt, providerProof, predecessor = null,
   committedAt = null) {
   let sourceStart, sourceExpiresAt;
@@ -190,7 +195,7 @@ async function bindRetirement(input, observation, policy) {
   if (input.plan.authority.predecessorDigest !== receipt.receiptDigest
     || input.predecessorAuthority !== undefined
       && input.predecessorAuthority.predecessorTransitionReceiptDigest !== receipt.receiptDigest
-    || !same(policy, prior.stored.policy)
+    || !retirementPolicyMatches(policy, prior.stored.policy, input.predecessorAuthority)
     || result.resultClaimId !== input.request.claimId
     || result.resultLeaseEpoch !== input.request.leaseEpoch
     || result.resultFenceRevision !== input.request.fenceRevision

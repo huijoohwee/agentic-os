@@ -49,7 +49,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
-    sha256: 'f67351f2b940dc6536d8ccd221662b85fedaa6fdd450efd9b2ca08c4087e2891' }),
+    sha256: 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,
     sha256: 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7' }),
 ]);
