@@ -57,13 +57,19 @@ function configured(value) {
     || operationInput.plan.target.repository !== targetRepository)
     fail('GitHub transition configured target repository changed');
   if (operationInput.request.requestedTransition === 'integrate'
+    && operationInput.predecessorIssuance !== null
     && operationInput.predecessorIssuance.storedBundle.authorityBundle.policy.evidenceRepository
       !== authorityRepository)
     fail('GitHub transition predecessor evidence repository changed');
   if (operationInput.request.requestedTransition === 'integrate'
+    && operationInput.predecessorIssuance !== null
     && policy.authorityRef
       !== operationInput.predecessorIssuance.storedBundle.authorityBundle.policy.canonicalRef)
     fail('GitHub transition policy is not anchored to the predecessor canonical ref');
+  if (operationInput.request.requestedTransition === 'integrate'
+    && operationInput.predecessorAuthority !== undefined
+    && policy.authorityRef !== operationInput.predecessorAuthority.authorityRef)
+    fail('GitHub transition policy is not anchored to the successor predecessor authority ref');
   const coordinate = deriveGitHubTransitionCoordinate({ authorityRepository,
     targetRepository, operationInput });
   return { authorityRepository, targetRepository, operationInput, workflowRun, policy, coordinate };
@@ -81,13 +87,19 @@ function preparationConfigured(value) {
   assertGitHubTransitionPolicyTarget(policy, targetRepository);
   if (operationInput.request.requestedTransition !== 'integrate'
     || operationInput.request.repository !== targetRepository
-    || operationInput.plan.target.repository !== targetRepository
-    || operationInput.predecessorIssuance.storedBundle.authorityBundle.policy.evidenceRepository
+    || operationInput.plan.target.repository !== targetRepository)
+    fail('GitHub transition proof preparation repositories or operation changed');
+  if (operationInput.predecessorIssuance !== null
+    && operationInput.predecessorIssuance.storedBundle.authorityBundle.policy.evidenceRepository
       !== authorityRepository)
     fail('GitHub transition proof preparation repositories or operation changed');
-  if (policy.authorityRef
-    !== operationInput.predecessorIssuance.storedBundle.authorityBundle.policy.canonicalRef)
+  if (operationInput.predecessorIssuance !== null
+    && policy.authorityRef
+      !== operationInput.predecessorIssuance.storedBundle.authorityBundle.policy.canonicalRef)
     fail('GitHub transition proof policy is not anchored to the predecessor canonical ref');
+  if (operationInput.predecessorAuthority !== undefined
+    && policy.authorityRef !== operationInput.predecessorAuthority.authorityRef)
+    fail('GitHub transition proof policy is not anchored to the successor predecessor authority ref');
   return { authorityRepository, targetRepository, operationInput, policy,
     workflowRevision: value.workflowRevision };
 }
@@ -121,8 +133,13 @@ function sourceWindow(input, workflowStartedAt, providerProof, predecessor = nul
   committedAt = null) {
   let sourceStart, sourceExpiresAt;
   if (input.request.requestedTransition === 'integrate') {
-    sourceStart = input.predecessorIssuance.publicationReceipt.committedAt;
-    sourceExpiresAt = input.predecessorIssuance.storedBundle.authorityBundle.challenge.expiresAt;
+    if (input.predecessorIssuance !== null) {
+      sourceStart = input.predecessorIssuance.publicationReceipt.committedAt;
+      sourceExpiresAt = input.predecessorIssuance.storedBundle.authorityBundle.challenge.expiresAt;
+    } else {
+      sourceStart = input.predecessorAuthority.issuedAt;
+      sourceExpiresAt = input.predecessorAuthority.expiresAt;
+    }
   } else {
     if (predecessor === null) fail('retirement lacks its exact integrated source window');
     sourceStart = predecessor.committedAt;
@@ -242,6 +259,8 @@ export function createGitHubTransitionAuthorityVerifier(value) {
     const supplied = validateGitHubTransitionInput({ ...inputValue,
       schema: expected.operationInput.schema,
       predecessorIssuance: expected.operationInput.predecessorIssuance,
+      ...(expected.operationInput.predecessorAuthority === undefined ? {}
+        : { predecessorAuthority: expected.operationInput.predecessorAuthority }),
       ...(expected.operationInput.integrationMode === undefined ? {}
         : { integrationMode: expected.operationInput.integrationMode }) });
     if (!same(supplied, expected.operationInput))
