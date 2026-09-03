@@ -109,30 +109,30 @@ const CONTRACT = Object.freeze({
       'approved',
       'authoring_mutation_reconciliation_required',
     ]),
-    requirement('cloudflare/workers/agenticgraph-mcp/commerce-discovery-provider.ts', [
+    requirement('cloudflare/workers/agentic-graph-mcp/commerce-discovery-provider.ts', [
       'commerce.discovery-receipt/v1',
       'discovery_projection_unsupported',
     ]),
-    requirement('cloudflare/workers/agenticgraph-travel-commerce/src/commerce-checkout-provider.ts', [
+    requirement('cloudflare/workers/agentic-graph-travel-commerce/src/commerce-checkout-provider.ts', [
       '/internal/v1/checkouts/prepare',
       '/internal/v1/checkouts/confirm',
       'operational_evidence_binding_invalid',
     ]),
-    requirement('cloudflare/workers/agenticgraph-marketplace/src/commerce-provider.ts', [
+    requirement('cloudflare/workers/agentic-graph-marketplace/src/commerce-provider.ts', [
       'vendor-transition-fenced',
       'settlement-read',
       'authoring_mutation_payload_mismatch',
       'verifyCommerceProviderRequestAuthentication',
       'MARKETPLACE_PROVIDER_AUTH_SECRET',
     ]),
-    requirement('cloudflare/workers/agenticgraph-marketplace/wrangler.jsonc', [
+    requirement('cloudflare/workers/agentic-graph-marketplace/wrangler.jsonc', [
       'MARKETPLACE_PROVIDER_AUTH_SECRET',
     ]),
-    requirement('cloudflare/workers/agenticgraph-travel-commerce/wrangler.jsonc', [
+    requirement('cloudflare/workers/agentic-graph-travel-commerce/wrangler.jsonc', [
       'CHECKOUT_PROVIDER_AUTH_SECRET',
       'MARKETPLACE_PROVIDER_AUTH_SECRET',
     ]),
-    requirement('cloudflare/workers/agenticgraph-travel-commerce/src/provider-runtime-proof.ts', [
+    requirement('cloudflare/workers/agentic-graph-travel-commerce/src/provider-runtime-proof.ts', [
       'authenticateCommerceProviderControlRequest',
       'CHECKOUT_PROVIDER_AUTH_SECRET',
       'MARKETPLACE_PROVIDER_AUTH_SECRET',

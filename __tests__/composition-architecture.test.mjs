@@ -53,10 +53,13 @@ test('composition architecture keeps product terminology canonical', () => {
   const readme = read(README_PATH);
   const guide = read(GUIDE_PATH);
   const legacySlug = ['know', 'grph'].join('');
+  const compactGraphSlug = ['agentic', 'graph'].join('');
+  const legacyGraphDisplayName = ['Agentic', 'Graph'].join('');
   const legacySlugs = guide.match(new RegExp(legacySlug, 'gi')) ?? [];
 
   assert.match(readme, /`agentic-graph`/);
-  assert.doesNotMatch(`${readme}\n${guide}`, /AgenticGraph/);
+  assert.doesNotMatch(`${readme}\n${guide}`, new RegExp(legacyGraphDisplayName));
+  assert.doesNotMatch(`${readme}\n${guide}`, new RegExp(compactGraphSlug, 'i'));
   assert.match(guide, /primary B2C Marketplace Storefront and\s+Orchestration Hub/);
   assert.doesNotMatch(`${readme}\n${guide}`, /\bKG(?:_|\b)/);
   assert.equal(legacySlugs.length, 0, 'canonical architecture must not retain the legacy repository slug');
