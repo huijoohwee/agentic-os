@@ -46,8 +46,9 @@ only for delivery planning or when execution stalls/repeats a mechanical failure
 always-load set.
 
 The lazy-loaded [composition architecture](guides/COMPOSITION-ARCHITECTURE.md) records the grounded
-ownership and provider boundaries among `agentic-os`, `agentic-canvas-os`, AgenticGraph, and
-`agentic-commerce-os`. It documents no cross-repository authority or runtime implementation grant.
+ownership and provider boundaries among `agentic-os`, `agentic-canvas-os`, `agentic-graph`, and
+`agentic-commerce-os`. It carries executable source-acceptance checks, but grants no cross-repository
+promotion or deployed-runtime authority.
 
 Open a lane, work, land it:
 
