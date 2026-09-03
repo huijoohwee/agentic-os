@@ -18,7 +18,8 @@ import {
 import {
   CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS,
   RETAINED_EFFECTS, assessWorktreeCleanupEligibility,
-  createCleanupEvidenceReceipt, createWorktreeCleanupPlan, deriveCleanupOwnerStateDigest,
+  createCleanupEvidenceReceipt, createWorktreeCleanupContinuation,
+  createWorktreeCleanupPlan, deriveCleanupOwnerStateDigest,
   executeWorktreeCleanup, validateWorktreeCleanupReceipt, worktreeCleanupPlanByteDigest,
 } from '../src/cleanup.mjs';
 
@@ -348,6 +349,46 @@ test('cleanup requires live provider replay and retains partial quarantine coord
     assert.equal(existsSync(fixture.repo.target), !projectionOnly);
   }
 });
+
+test('cleanup accepts a fresh local continuation after the retired winner window expires',
+  async (t) => {
+    const fixture = await lifecycle(t);
+    const { planDigest: omittedPlanDigest, ...planSource } = fixture.input.plan;
+    assert.match(omittedPlanDigest, /^[0-9a-f]{64}$/u);
+    const continuedPlan = createWorktreeCleanupPlan({
+      ...planSource,
+      expiresAt: '2026-09-02T01:30:00.000Z',
+    });
+    const cleanupContinuation = createWorktreeCleanupContinuation({
+      authorityKind: 'retired-cleanup-continuation',
+      repository: continuedPlan.repository,
+      targetPath: continuedPlan.targetPath,
+      integratedImmutableRevision: continuedPlan.integratedImmutableRevision,
+      candidateDigest: continuedPlan.candidateDigest,
+      snapshotDigest: continuedPlan.snapshotDigest,
+      ownerStateDigest: continuedPlan.ownerStateDigest,
+      retirementReceiptDigest: fixture.input.retirementReceipt.receiptDigest,
+      priorCleanupPlanByteDigest: worktreeCleanupPlanByteDigest(fixture.input.plan),
+      cleanupPlanDigest: continuedPlan.planDigest,
+      cleanupPlanByteDigest: worktreeCleanupPlanByteDigest(continuedPlan),
+      issuedAt: '2026-09-02T01:05:00.000Z',
+      expiresAt: '2026-09-02T01:30:00.000Z',
+    });
+    const continuedInput = {
+      ...fixture.input,
+      plan: continuedPlan,
+      cleanupContinuation,
+    };
+    const eligibility = await assessWorktreeCleanupEligibility(continuedInput,
+      cleanupOptions(fixture, { now: () => Date.parse('2026-09-02T01:10:00.000Z') }));
+    const receipt = await executeWorktreeCleanup({
+      ...continuedInput,
+      eligibility,
+      authorizationDigest: eligibility.eligibilityDigest,
+    }, cleanupOptions(fixture, { now: () => Date.parse('2026-09-02T01:10:00.000Z') }));
+    assert.deepEqual(validateWorktreeCleanupReceipt(receipt), receipt);
+    assert.equal(existsSync(fixture.repo.target), false);
+  });
 
 test('post-eligibility canonical, peer, ref, or object drift retains the exact target', async (t) => {
   const cases = [

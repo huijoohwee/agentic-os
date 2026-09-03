@@ -9,6 +9,7 @@ import { acquireOperationLock, finishOperationLock } from './git.mjs';
 import {
   CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS,
   RETAINED_EFFECTS, createWorktreeCleanupEligibility,
+  validateWorktreeCleanupContinuation,
   createWorktreeCleanupReceipt, deriveCleanupOwnerStateDigest,
   validateCleanupEvidenceReceipt, validateWorktreeCleanupEligibility,
   validateWorktreeCleanupPlan, worktreeCleanupPlanByteDigest,
@@ -23,6 +24,25 @@ export { observeQuarantineManifest } from './cleanup-quarantine.mjs';
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function typeFail(message) { throw new TypeError(message); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
+
+function cleanupContinuation(value, plan, retirement, retirementPlan, ownerStateDigest) {
+  if (value === undefined) return null;
+  const authority = validateWorktreeCleanupContinuation(value);
+  if (authority.repository !== plan.repository
+    || authority.targetPath !== plan.targetPath
+    || authority.integratedImmutableRevision !== plan.integratedImmutableRevision
+    || authority.candidateDigest !== plan.candidateDigest
+    || authority.snapshotDigest !== plan.snapshotDigest
+    || authority.ownerStateDigest !== ownerStateDigest
+    || authority.retirementReceiptDigest !== retirement.receiptDigest
+    || authority.priorCleanupPlanByteDigest !== retirementPlan.parametersDigest
+    || authority.cleanupPlanDigest !== plan.planDigest
+    || authority.cleanupPlanByteDigest !== worktreeCleanupPlanByteDigest(plan)) {
+    fail('blocked-cleanup-authority-unjoined',
+      'cleanup continuation does not authorize this exact cleanup plan');
+  }
+  return authority;
+}
 
 function evidenceJoin(input) {
   const plan = validateWorktreeCleanupPlan(input.plan);
@@ -74,9 +94,14 @@ function evidenceJoin(input) {
     || retirement.transitionReceipt.sourceFenceRevision !== integration.transitionReceipt.resultFenceRevision)
     fail('blocked-not-retired', 'exact authenticated retirement does not follow integration');
   const retirementPlanByteDigest = effectPlanByteDigest(input.retirementPlanBytes);
+  const continuation = cleanupContinuation(input.cleanupContinuation, plan, retirement,
+    retirementPlan, ownerStateDigest);
+  const joinedCleanupPlan = continuation === null
+    ? retirementPlan.parametersDigest === worktreeCleanupPlanByteDigest(plan)
+    : true;
   if (retirement.planByteDigest !== retirementPlanByteDigest
     || retirement.planDigest !== retirementPlan.planDigest
-    || retirementPlan.parametersDigest !== worktreeCleanupPlanByteDigest(plan)
+    || !joinedCleanupPlan
     || retirementPlan.target.repository !== plan.repository
     || retirementPlan.target.resource !== plan.targetPath
     || retirementPlan.target.immutableRevision !== plan.integratedImmutableRevision
@@ -115,11 +140,14 @@ function evidenceJoin(input) {
     || noValue.unpreservedValueCount !== 0)
     fail('blocked-remaining-value-unproven',
       'every dirty byte must be preserved and no remaining value must be proven');
-  const expiresAt = new Date(Math.min(Date.parse(plan.expiresAt),
-    Date.parse(integration.authorityOperation.expiresAt),
-    Date.parse(retirement.authorityOperation.expiresAt))).toISOString();
+  const expiresAt = continuation === null
+    ? new Date(Math.min(Date.parse(plan.expiresAt),
+      Date.parse(integration.authorityOperation.expiresAt),
+      Date.parse(retirement.authorityOperation.expiresAt))).toISOString()
+    : new Date(Math.min(Date.parse(plan.expiresAt),
+      Date.parse(continuation.expiresAt))).toISOString();
   return { plan, integration, integrationPlan, integrationPlanByteDigest, retirement,
-    preservation, noValue, ownerStateDigest, retirementPlanByteDigest, expiresAt };
+    preservation, noValue, ownerStateDigest, retirementPlanByteDigest, continuation, expiresAt };
 }
 
 async function liveEvidenceJoin(input, options) {
@@ -208,10 +236,13 @@ export async function assessWorktreeCleanupEligibility(input, options) {
 export async function executeWorktreeCleanup(input, options) {
   const keys = ['plan', 'integrationReceipt', 'integrationPlanBytes', 'retirementReceipt',
     'retirementPlanBytes', 'integrationRequest', 'retirementRequest', 'preservationReceipt',
+    'noRemainingValueReceipt', 'cleanupContinuation', 'eligibility', 'authorizationDigest'];
+  const requiredKeys = ['plan', 'integrationReceipt', 'integrationPlanBytes', 'retirementReceipt',
+    'retirementPlanBytes', 'integrationRequest', 'retirementRequest', 'preservationReceipt',
     'noRemainingValueReceipt', 'eligibility', 'authorizationDigest'];
   if (!input || typeof input !== 'object' || Array.isArray(input)
     || Object.keys(input).some((key) => !keys.includes(key))
-    || keys.some((key) => !Object.hasOwn(input, key)))
+    || requiredKeys.some((key) => !Object.hasOwn(input, key)))
     typeFail('worktree cleanup execution input fields are invalid');
   const eligibility = validateWorktreeCleanupEligibility(input.eligibility);
   if (input.authorizationDigest !== eligibility.eligibilityDigest)

@@ -30,6 +30,7 @@ function installPriorReleaseRuntime(selected, { authorityRelease = false } = {})
       .replace("import { TextDecoder } from 'node:util';\nexport class GitError",
         "import { TextDecoder } from 'node:util';\n\nexport class GitError")
       .replace('\nfunction mutationEnvironment(', '\n\nfunction mutationEnvironment(')
+      .replace("  if (typeof process.env.PATH === 'string' && process.env.PATH.length > 0) environment.PATH = process.env.PATH; return environment;\n", '  return environment;\n')
       .replace('\nfunction observationEnvironment(', '\n\nfunction observationEnvironment(')
       .replace('\n/** Execute a Git mutation', '\n\n/** Execute a Git mutation')
       .replace('\n/** Local Git observation', '\n\n/** Local Git observation')

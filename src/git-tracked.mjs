@@ -39,7 +39,7 @@ function inheritedEnvironment({ preserveGit = false, preserveGlobalConfig = fals
       || preserveGlobalConfig && upper === 'GIT_CONFIG_GLOBAL')
       environment[key] = value;
   }
-  return environment;
+  if (typeof process.env.PATH === 'string' && process.env.PATH.length > 0) environment.PATH = process.env.PATH; return environment;
 }
 function mutationEnvironment(extra = null, { preserveGlobalConfig = false } = {}) {
   const environment = { ...inheritedEnvironment({ preserveGit: true, preserveGlobalConfig }), ...(extra ?? {}) };

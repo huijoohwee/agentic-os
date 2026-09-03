@@ -3,6 +3,7 @@ import { canonicalJson, governanceDigest } from './governance.mjs';
 import { GITHUB_ACTIONS_INTEGRATION_ID } from './github-authority.mjs';
 import { createGitHubProtectionProjection } from './github-authority-issuer.mjs';
 import { GITHUB_RETROSPECTIVE_INTEGRATION_MODE } from './github-transition-client.mjs';
+import { latestSuccessfulRequiredCheck, parseClassicBranchProtection } from './github-transition-policy.mjs';
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REDACTED_BYPASS = 'unobserved:provider-redacted:read-only';
 const PROVIDER_EVENT_SKEW_MS = 5_000;
@@ -99,12 +100,12 @@ function checkRecord(entry, context, revision, mergedAt) {
   return { context, checkRunId: id(entry.id, 'check run id'), appId: String(GITHUB_ACTIONS_INTEGRATION_ID),
     status: 'completed', conclusion: 'success', completedAt, revision };
 }
-function latestSuccessfulRequiredCheck(entries, mapEntry) {
-  const matches = entries.flatMap((entry) => { try { return [mapEntry(entry)]; } catch { return []; } });
-  if (matches.length === 0) return null;
-  matches.sort((left, right) => Date.parse(right.completedAt) - Date.parse(left.completedAt)
-    || (BigInt(right.checkRunId) > BigInt(left.checkRunId) ? 1 : BigInt(right.checkRunId) < BigInt(left.checkRunId) ? -1 : 0));
-  return matches[0];
+async function classicBranchProtection(api, target, branch) {
+  const response = await api.call('GET',
+    `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
+  if (response.status === 404) return null;
+  return parseClassicBranchProtection(api.exact(response, [200], 'GitHub branch protection'),
+    GITHUB_ACTIONS_INTEGRATION_ID);
 }
 async function checks(api, target, revision, contexts, mergedAt, expected = null) {
   if (expected !== null) {
@@ -146,9 +147,9 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
   let suiteId;
   if (expected === null) {
     const response = await api.call('GET', `${target.path}/rulesets/rule-suites?ref=${
-      encodeURIComponent(canonicalRef)}&time_period=day&rule_suite_result=pass&per_page=100`);
+      encodeURIComponent(canonicalRef)}&time_period=${retrospective ? 'week' : 'day'}&rule_suite_result=pass&per_page=100`);
     const suites = api.exact(response, [200], 'GitHub integration rule suites');
-    if (!Array.isArray(suites) || response.headers?.get?.('link')?.includes('rel="next"'))
+    if (!Array.isArray(suites) || !retrospective && response.headers?.get?.('link')?.includes('rel="next"'))
       fail('GitHub integration rule suites are incomplete');
     const matches = suites.filter((entry) => entry?.after_sha === input.plan.target.immutableRevision
       && entry?.ref === canonicalRef && entry?.result === 'pass');
@@ -174,6 +175,7 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
   const versionIds = new Set(rulesetVersions.map((entry) => entry.id));
   for (const evaluation of detail.rule_evaluations) {
     if (evaluation?.rule_source?.type === 'ruleset'
+      && (!retrospective || evaluation?.enforcement === 'active')
       && !versionIds.has(String(evaluation.rule_source.id)))
       fail('rule suite evaluation does not source the observed target rulesets');
   }
@@ -189,7 +191,7 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
     rulesetVersions };
   return { ...payload, ruleSuiteDigest: governanceDigest(payload) };
 }
-function targetProtection(observation, target, ref) {
+function targetProtection(observation, target, ref, classicProtection = null, retrospective = false) {
   const projection = object(observation, 'target protection observation').projection;
   const versions = observation.versions;
   if (projection.repository !== target.repository || projection.ref !== ref
@@ -215,13 +217,16 @@ function targetProtection(observation, target, ref) {
     || !Array.isArray(methods) || methods.length === 0
     || methods.some((entry) => !['merge', 'squash'].includes(entry)))
     fail('target canonical protection does not expose exact checks and merge methods');
-  const requiredContexts = contexts.map((entry) => entry.context).sort();
+  const projectedContexts = contexts.map((entry) => entry.context).sort();
   const allowedMethods = [...methods].sort();
-  if (new Set(requiredContexts).size !== requiredContexts.length
+  if (new Set(projectedContexts).size !== projectedContexts.length
     || new Set(allowedMethods).size !== allowedMethods.length)
     fail('target canonical protection checks and merge methods are not unique');
+  const requiredContexts = retrospective && classicProtection !== null
+    ? classicProtection.requiredContexts : projectedContexts;
   const activeRuleTypes = [...new Set(projection.rulesets.flatMap((entry) =>
-    entry.rules.map((descriptor) => descriptor.type)))].sort();
+    entry.rules.map((descriptor) => descriptor.type))
+    .concat(retrospective && classicProtection !== null ? classicProtection.activeRuleTypes : []))].sort();
   return { projection, versions, requiredContexts, allowedMethods, activeRuleTypes,
     bypassActorsObserved: projection.rulesets.every((entry) =>
       !entry.bypassActors.includes(REDACTED_BYPASS)) };
@@ -241,8 +246,8 @@ async function descendant(api, target, base, head) {
   const response = await api.call('GET', `${target.path}/compare/${base}...${head}`);
   const value = object(api.exact(response, [200], 'GitHub canonical inclusion'),
     'GitHub canonical inclusion');
-  if (value.status !== 'ahead' || value.base_commit?.sha !== base
-    || value.merge_base_commit?.sha !== base || value.head_commit?.sha !== head)
+  if (value.status !== 'ahead' || value.base_commit?.sha !== base || value.merge_base_commit?.sha !== base
+    || (value.head_commit?.sha ?? value.commits?.at(-1)?.sha) !== head)
     fail('integrated revision is not contained by the protected canonical ref');
   return 'ancestor';
 }
@@ -266,22 +271,22 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const initialReview = issuance?.storedBundle?.targetRepository?.review ?? null;
   const initialRecovery = issuance?.storedBundle?.targetRepository?.retrospectiveProof ?? null;
   const retrospective = input.integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
-  const [pullResponse, targetResponse] = await Promise.all([
-    api.call('GET', `${target.path}/pulls/${number}`),
-    api.call('GET', target.path),
-  ]);
+  const [pullResponse, targetResponse] = await Promise.all([api.call('GET',
+    `${target.path}/pulls/${number}`), api.call('GET', target.path)]);
   const pull = object(api.exact(pullResponse, [200], 'GitHub integration review'),
     'GitHub integration review');
   const canonicalBranch = text(pull.base?.ref, 'review base branch');
   const canonicalRef = `refs/heads/${canonicalBranch}`;
   const [predecessor, mergeEventsResponse, candidateHead, currentCanonicalHead,
-    protectionObservation, mergedCommit, candidateCommit] = await Promise.all([
+    protectionObservation, mergedCommit, candidateCommit, classicProtection] = await Promise.all([
     issuance === null ? successorAuthorityProof(input) : initialAuthorityProof(initialProvider, input),
     api.call('GET', `${target.path}/issues/${number}/events?per_page=100`),
     api.gitRef(target, `refs/heads/${candidate.branch}`), api.gitRef(target, canonicalRef),
     expectedProof === null ? api.rules(target, canonicalRef) : Promise.resolve(null),
     api.commit(target, input.plan.target.immutableRevision),
     retrospective ? api.commit(target, candidate.headRevision) : Promise.resolve(null),
+    retrospective && expectedProof === null
+      ? classicBranchProtection(api, target, canonicalBranch) : Promise.resolve(null),
   ]);
   const targetIdentity = targetRepositoryIdentity(api.exact(targetResponse, [200],
     'GitHub target repository'), target, issuance?.storedBundle?.targetRepository ?? null);
@@ -294,7 +299,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const mergeEventId = id(mergeEvent.id, 'merge event id');
   const mergedAt = instant(pull.merged_at, 'review merged time');
   const protectedTarget = expectedProof === null
-    ? targetProtection(protectionObservation, target, canonicalRef)
+    ? targetProtection(protectionObservation, target, canonicalRef, classicProtection, retrospective)
     : { projection: { projectionDigest: expectedProof.targetProtectionDigest },
       versions: expectedProof.targetRulesetVersions,
       requiredContexts: expectedProof.targetRequiredContexts,
@@ -340,8 +345,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   await descendant(api, target, storedCanonicalHead, currentCanonicalHead);
   if (retrospective && issuance !== null) await descendant(api, target,
     initialRecovery.liveCanonicalRevision, currentCanonicalHead);
-  const reviewBaseRevision = retrospective
-    ? api.sha(pull.base?.sha, 'review base revision') : null;
+  const reviewBaseRevision = retrospective ? api.sha(pull.base?.sha, 'review base revision') : null;
   const projection = { ...predecessor, targetRepository: target.repository,
     targetRepositoryIdentity: targetIdentity,
     reviewLocator: locator, reviewNumber: number, state: 'merged',

@@ -129,6 +129,11 @@ function publicationWindow(state) {
     || committed >= Date.parse(input.request.expiresAt))
     fail('GitHub transition publication is not an in-window canonical child');
 }
+function retirementPolicyMatches(current, prior, predecessorAuthority) {
+  if (same(current, prior)) return true;
+  if (predecessorAuthority === undefined) return false;
+  return same({ ...current, authorityRef: prior.authorityRef }, prior);
+}
 function sourceWindow(input, workflowStartedAt, providerProof, predecessor = null,
   committedAt = null) {
   let sourceStart, sourceExpiresAt;
@@ -141,9 +146,14 @@ function sourceWindow(input, workflowStartedAt, providerProof, predecessor = nul
       sourceExpiresAt = input.predecessorAuthority.expiresAt;
     }
   } else {
-    if (predecessor === null) fail('retirement lacks its exact integrated source window');
-    sourceStart = predecessor.committedAt;
-    sourceExpiresAt = predecessor.stored.operationInput.request.expiresAt;
+    if (input.predecessorAuthority !== undefined) {
+      sourceStart = input.predecessorAuthority.issuedAt;
+      sourceExpiresAt = input.predecessorAuthority.expiresAt;
+    } else {
+      if (predecessor === null) fail('retirement lacks its exact integrated source window');
+      sourceStart = predecessor.committedAt;
+      sourceExpiresAt = predecessor.stored.operationInput.request.expiresAt;
+    }
   }
   const started = Date.parse(workflowStartedAt);
   if (Date.parse(input.request.expiresAt) > Date.parse(sourceExpiresAt)
@@ -183,7 +193,9 @@ async function bindRetirement(input, observation, policy) {
   const receipt = await integrationReceipt(prior), result = receipt.transitionReceipt;
   const priorInput = prior.stored.operationInput;
   if (input.plan.authority.predecessorDigest !== receipt.receiptDigest
-    || !same(policy, prior.stored.policy)
+    || input.predecessorAuthority !== undefined
+      && input.predecessorAuthority.predecessorTransitionReceiptDigest !== receipt.receiptDigest
+    || !retirementPolicyMatches(policy, prior.stored.policy, input.predecessorAuthority)
     || result.resultClaimId !== input.request.claimId
     || result.resultLeaseEpoch !== input.request.leaseEpoch
     || result.resultFenceRevision !== input.request.fenceRevision
