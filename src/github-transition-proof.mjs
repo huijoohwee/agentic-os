@@ -3,7 +3,6 @@ import { canonicalJson, governanceDigest } from './governance.mjs';
 import { GITHUB_ACTIONS_INTEGRATION_ID } from './github-authority.mjs';
 import { createGitHubProtectionProjection } from './github-authority-issuer.mjs';
 import { GITHUB_RETROSPECTIVE_INTEGRATION_MODE } from './github-transition-client.mjs';
-
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REDACTED_BYPASS = 'unobserved:provider-redacted:read-only';
 const PROVIDER_EVENT_SKEW_MS = 5_000;
@@ -34,10 +33,8 @@ function freeze(value) {
 function targetRepositoryIdentity(value, target, expected) {
   const source = object(value, 'target repository identity');
   const sourceOwner = object(source.owner, 'target repository owner');
-  const live = { repository: `github.com/${text(source.full_name,
-    'target repository full name')}`, repositoryId: id(source.id, 'target repository id'),
-  owner: { id: id(sourceOwner.id, 'target repository owner id'),
-    login: text(sourceOwner.login, 'target repository owner login').toLowerCase() } };
+  const live = { repository: `github.com/${text(source.full_name, 'target repository full name')}`, repositoryId: id(source.id, 'target repository id'),
+    owner: { id: id(sourceOwner.id, 'target repository owner id'), login: text(sourceOwner.login, 'target repository owner login').toLowerCase() } };
   if (live.repository !== target.repository)
     fail('target repository numeric identity or owner changed');
   if (expected === null) return live;
@@ -65,12 +62,10 @@ async function initialAuthorityProof(provider, input) {
   ]);
   const rules = createGitHubProtectionProjection(evidenceRules);
   const canonical = createGitHubProtectionProjection(canonicalRules);
-  const expectedPublication = {
-    repository: publication.evidenceRepository, ref: publication.evidenceRef,
+  const expectedPublication = { repository: publication.evidenceRepository, ref: publication.evidenceRef,
     path: publication.evidencePath, revision: publication.publicationRevision,
     parentRevision: publication.parentRevision, committedAt: publication.committedAt,
-    storedDigest: publication.storedDigest,
-  };
+    storedDigest: publication.storedDigest };
   if (!same(run, bundle.workflowRun) || actorValue.subject !== input.request.authoritySubject
     || !same(foundBundle, stored) || foundPublication === null
     || !same(foundPublication, expectedPublication)
@@ -89,13 +84,9 @@ async function initialAuthorityProof(provider, input) {
 }
 function successorAuthorityProof(input) {
   const authority = input.predecessorAuthority;
-  return { predecessorIssuanceDigest: authority.predecessorIssuanceDigest,
-    predecessorTransitionReceiptDigest: authority.predecessorTransitionReceiptDigest,
-    successorAuthorityKind: authority.authorityKind, successorAuthorityRef: authority.authorityRef,
-    adoptedTerminalClaimId: authority.adoptedTerminalClaimId,
-    adoptedLineageDigest: authority.adoptedLineageDigest,
-    adoptedIntegrationReceiptDigest: authority.integrationReceiptDigest,
-    successorReviewRequestId: authority.reviewRequestId,
+  return { predecessorIssuanceDigest: authority.predecessorIssuanceDigest, predecessorTransitionReceiptDigest: authority.predecessorTransitionReceiptDigest,
+    successorAuthorityKind: authority.authorityKind, successorAuthorityRef: authority.authorityRef, adoptedTerminalClaimId: authority.adoptedTerminalClaimId,
+    adoptedLineageDigest: authority.adoptedLineageDigest, adoptedIntegrationReceiptDigest: authority.integrationReceiptDigest, successorReviewRequestId: authority.reviewRequestId,
     successorRetirementReason: authority.retirementReason,
     successorAdoptionDisposition: authority.adoptionDisposition };
 }
@@ -105,9 +96,15 @@ function checkRecord(entry, context, revision, mergedAt) {
     || entry.status !== 'completed' || entry.conclusion !== 'success'
     || entry.head_sha !== revision || Date.parse(completedAt) > Date.parse(mergedAt))
     fail('GitHub integration required checks are not exactly successful');
-  return { context, checkRunId: id(entry.id, 'check run id'),
-    appId: String(GITHUB_ACTIONS_INTEGRATION_ID), status: 'completed',
-    conclusion: 'success', completedAt, revision };
+  return { context, checkRunId: id(entry.id, 'check run id'), appId: String(GITHUB_ACTIONS_INTEGRATION_ID),
+    status: 'completed', conclusion: 'success', completedAt, revision };
+}
+function latestSuccessfulRequiredCheck(entries, mapEntry) {
+  const matches = entries.flatMap((entry) => { try { return [mapEntry(entry)]; } catch { return []; } });
+  if (matches.length === 0) return null;
+  matches.sort((left, right) => Date.parse(right.completedAt) - Date.parse(left.completedAt)
+    || (BigInt(right.checkRunId) > BigInt(left.checkRunId) ? 1 : BigInt(right.checkRunId) < BigInt(left.checkRunId) ? -1 : 0));
+  return matches[0];
 }
 async function checks(api, target, revision, contexts, mergedAt, expected = null) {
   if (expected !== null) {
@@ -134,11 +131,11 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
     || !Number.isSafeInteger(value.total_count) || value.total_count !== value.check_runs?.length)
     fail('GitHub integration checks are incomplete');
   const required = contexts.map((context) => {
-    const matches = value.check_runs.filter((entry) => entry?.name === context
-      && String(entry?.app?.id) === String(GITHUB_ACTIONS_INTEGRATION_ID));
-    if (matches.length !== 1)
-      fail('GitHub integration required checks are not exactly successful');
-    return checkRecord(matches[0], context, revision, mergedAt);
+    const record = latestSuccessfulRequiredCheck(value.check_runs.filter((entry) =>
+      entry?.name === context && String(entry?.app?.id) === String(GITHUB_ACTIONS_INTEGRATION_ID)),
+    (entry) => checkRecord(entry, context, revision, mergedAt));
+    if (record === null) fail('GitHub integration required checks are not exactly successful');
+    return record;
   });
   return { required, checksDigest: governanceDigest({
     schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
@@ -249,7 +246,6 @@ async function descendant(api, target, base, head) {
     fail('integrated revision is not contained by the protected canonical ref');
   return 'ancestor';
 }
-
 export async function observeGitHubIntegrationProof({ api, target, input, initialProvider,
   expectedProof = null, requirePlanBinding = true }) {
   const locator = input.request.reviewLocator;
