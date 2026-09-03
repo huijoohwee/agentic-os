@@ -3,13 +3,10 @@ import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest, validateCoordinationRequest } from './governance.mjs';
 import { validateEffectPlan } from './completion.mjs';
-import { GITHUB_RETROSPECTIVE_RECOVERY_MODE,
-  parseGitHubRepositoryIdentity } from './github-authority.mjs';
+import { GITHUB_RETROSPECTIVE_RECOVERY_MODE, parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from './github-authority-issuer.mjs';
-import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS,
-  INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from './cleanup-records.mjs';
-import { assertGitHubTransitionPolicyTarget, validateGitHubTransitionPolicy,
-  validateGitHubTransitionPolicyExecution } from './github-transition-policy.mjs';
+import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from './cleanup-records.mjs';
+import { assertGitHubTransitionPolicyTarget, validateGitHubTransitionPolicy, validateGitHubTransitionPolicyExecution } from './github-transition-policy.mjs';
 export const GITHUB_TRANSITION_READ_ADAPTER = Object.freeze({
   id: 'github-transition-rest-cas-verifier', version: '1',
 });
@@ -26,24 +23,14 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const DIGEST = /^[0-9a-f]{64}$/u, REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const INPUT_KEYS = ['request', 'plan', 'planByteDigest', 'predecessorIssuance',
-  'predecessorAuthority'];
+const INPUT_KEYS = ['request', 'plan', 'planByteDigest', 'predecessorIssuance', 'predecessorAuthority'];
 const RECOVERY_INPUT_KEYS = [...INPUT_KEYS, 'integrationMode'];
-const OPERATION_INPUT_KEYS = ['schema', 'request', 'plan', 'planByteDigest',
-  'predecessorIssuance', 'predecessorAuthority'];
+const OPERATION_INPUT_KEYS = ['schema', 'request', 'plan', 'planByteDigest', 'predecessorIssuance', 'predecessorAuthority'];
 const RECOVERY_OPERATION_INPUT_KEYS = [...OPERATION_INPUT_KEYS, 'integrationMode'];
 const EVENT_INPUT_KEYS = ['operation_payload', 'operation_input_digest'];
-const RUN_KEYS = ['id', 'url', 'ref', 'revision', 'workflowRef', 'workflowPath',
-  'workflowRevision', 'authoritySubject'];
-const STORED_KEYS = ['schema', 'authorityRepository', 'targetRepository', 'coordinate',
-  'evidenceRef', 'evidencePath', 'operationInput', 'operationInputDigest', 'workflowRun',
-  'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof',
-  'providerProofDigest', 'storedDigest'];
-const SUCCESSOR_PREDECESSOR_KEYS = ['schema', 'authorityKind', 'authorityRef', 'reviewLocator',
-  'sourceBranch', 'immutableRevision', 'reviewedSourceHead', 'reviewedSourceTree', 'protectedBase',
-  'predecessorIssuanceDigest', 'predecessorTransitionReceiptDigest', 'adoptedTerminalClaimId',
-  'adoptedLineageDigest', 'integrationReceiptDigest', 'reviewRequestId', 'retirementReason',
-  'adoptionDisposition', 'cloudMutation', 'issuedAt', 'expiresAt'];
+const RUN_KEYS = ['id', 'url', 'ref', 'revision', 'workflowRef', 'workflowPath', 'workflowRevision', 'authoritySubject'];
+const STORED_KEYS = ['schema', 'authorityRepository', 'targetRepository', 'coordinate', 'evidenceRef', 'evidencePath', 'operationInput', 'operationInputDigest', 'workflowRun', 'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof', 'providerProofDigest', 'storedDigest'];
+const SUCCESSOR_PREDECESSOR_KEYS = ['schema', 'authorityKind', 'authorityRef', 'reviewLocator', 'sourceBranch', 'immutableRevision', 'reviewedSourceHead', 'reviewedSourceTree', 'protectedBase', 'predecessorIssuanceDigest', 'predecessorTransitionReceiptDigest', 'adoptedTerminalClaimId', 'adoptedLineageDigest', 'integrationReceiptDigest', 'reviewRequestId', 'retirementReason', 'adoptionDisposition', 'cloudMutation', 'issuedAt', 'expiresAt'];
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function exact(value, keys, label, required = true) {
@@ -57,11 +44,8 @@ function digest(value, label) { if (typeof value !== 'string' || !DIGEST.test(va
   fail(`${label} must be a sha256 digest`); return value; }
 function revision(value, label) { if (typeof value !== 'string' || !REVISION.test(value))
   fail(`${label} must be a full Git revision`); return value; }
-function instant(value, label) {
-  const parsed = Date.parse(text(value, label));
-  if (!Number.isFinite(parsed)) fail(`${label} must be a UTC instant`);
-  return new Date(parsed).toISOString();
-}
+function instant(value, label) { const parsed = Date.parse(text(value, label));
+  if (!Number.isFinite(parsed)) fail(`${label} must be a UTC instant`); return new Date(parsed).toISOString(); }
 function identifier(value, label) { const result = String(value); if (!ID.test(result))
   fail(`${label} must be a positive identifier`); return result; }
 function boolean(value, label) { if (typeof value !== 'boolean') fail(`${label} must be boolean`); return value; }
@@ -136,21 +120,38 @@ function successorPredecessor(value, request, plan) {
     adoptionDisposition: text(source.adoptionDisposition, `${prefix}adoptionDisposition`),
     cloudMutation: boolean(source.cloudMutation, `${prefix}cloudMutation`),
     issuedAt, expiresAt });
-  if (authority.cloudMutation !== false || authority.reviewLocator !== request.reviewLocator
-    || authority.immutableRevision !== request.immutableRevision || plan.target.resource !== authority.reviewLocator
+  const inAuthorityWindow = Date.parse(request.observedAt) >= Date.parse(authority.issuedAt)
+    && Date.parse(request.expiresAt) <= Date.parse(authority.expiresAt);
+  if (authority.cloudMutation !== false || !inAuthorityWindow)
+    fail(`${request.requestedTransition} does not bind the exact successor predecessor authority`);
+  if (request.requestedTransition === 'integrate') {
+    if (authority.reviewLocator !== request.reviewLocator
+      || authority.immutableRevision !== request.immutableRevision
+      || plan.target.resource !== authority.reviewLocator
+      || plan.target.immutableRevision !== authority.immutableRevision
+      || plan.authority.predecessorDigest !== authority.predecessorTransitionReceiptDigest) {
+      fail('integrate does not bind the exact successor predecessor authority');
+    }
+    return authority;
+  }
+  if (authority.immutableRevision !== request.immutableRevision
     || plan.target.immutableRevision !== authority.immutableRevision
-    || plan.authority.predecessorDigest !== authority.predecessorTransitionReceiptDigest
-    || Date.parse(request.observedAt) < Date.parse(authority.issuedAt)
-    || Date.parse(request.expiresAt) > Date.parse(authority.expiresAt)) {
-    fail('integrate does not bind the exact successor predecessor authority');
+    || plan.authority.predecessorDigest !== authority.predecessorTransitionReceiptDigest) {
+    fail('retire does not bind the exact successor predecessor authority');
   }
   return authority;
 }
 function predecessor(source, request, plan) {
-  if (request.requestedTransition === 'retire') return source.predecessorIssuance === null
-      && !Object.hasOwn(source, 'predecessorAuthority')
-    ? { predecessorIssuance: null, predecessorAuthority: null }
-    : fail('retire locates its predecessor by the exact source fence');
+  if (request.requestedTransition === 'retire') {
+    const hasIssuance = Object.hasOwn(source, 'predecessorIssuance')
+      && source.predecessorIssuance !== null;
+    const hasSuccessorAuthority = Object.hasOwn(source, 'predecessorAuthority');
+    if (hasIssuance) fail('retire does not accept a predecessor issuance');
+    return hasSuccessorAuthority
+      ? { predecessorIssuance: null, predecessorAuthority:
+        successorPredecessor(source.predecessorAuthority, request, plan) }
+      : { predecessorIssuance: null, predecessorAuthority: null };
+  }
   const hasIssuance = Object.hasOwn(source, 'predecessorIssuance') && source.predecessorIssuance !== null;
   const hasSuccessorAuthority = Object.hasOwn(source, 'predecessorAuthority');
   if (hasIssuance === hasSuccessorAuthority)

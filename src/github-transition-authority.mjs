@@ -141,9 +141,14 @@ function sourceWindow(input, workflowStartedAt, providerProof, predecessor = nul
       sourceExpiresAt = input.predecessorAuthority.expiresAt;
     }
   } else {
-    if (predecessor === null) fail('retirement lacks its exact integrated source window');
-    sourceStart = predecessor.committedAt;
-    sourceExpiresAt = predecessor.stored.operationInput.request.expiresAt;
+    if (input.predecessorAuthority !== undefined) {
+      sourceStart = input.predecessorAuthority.issuedAt;
+      sourceExpiresAt = input.predecessorAuthority.expiresAt;
+    } else {
+      if (predecessor === null) fail('retirement lacks its exact integrated source window');
+      sourceStart = predecessor.committedAt;
+      sourceExpiresAt = predecessor.stored.operationInput.request.expiresAt;
+    }
   }
   const started = Date.parse(workflowStartedAt);
   if (Date.parse(input.request.expiresAt) > Date.parse(sourceExpiresAt)
@@ -183,6 +188,8 @@ async function bindRetirement(input, observation, policy) {
   const receipt = await integrationReceipt(prior), result = receipt.transitionReceipt;
   const priorInput = prior.stored.operationInput;
   if (input.plan.authority.predecessorDigest !== receipt.receiptDigest
+    || input.predecessorAuthority !== undefined
+      && input.predecessorAuthority.predecessorTransitionReceiptDigest !== receipt.receiptDigest
     || !same(policy, prior.stored.policy)
     || result.resultClaimId !== input.request.claimId
     || result.resultLeaseEpoch !== input.request.leaseEpoch

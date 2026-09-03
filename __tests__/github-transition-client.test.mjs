@@ -40,16 +40,34 @@ function canonicalRuleRows(id = 11) {
       context: 'Initial Gate', integration_id: 15368 }],
     strict_required_status_checks_policy: false })];
 }
-function targetRuleRows(id = 21, methods = ['merge']) {
+function targetRuleRows(id = 21, methods = ['merge'], contexts = ['Integration Gate']) {
   return [rule('deletion', id), rule('non_fast_forward', id), rule('required_linear_history', id),
     rule('pull_request', id, { allowed_merge_methods: methods }),
-    rule('required_status_checks', id, { required_status_checks: [{
-      context: 'Integration Gate', integration_id: 15368 }],
+    rule('required_status_checks', id, { required_status_checks: contexts.map((context) => ({
+      context, integration_id: 15368,
+    })),
     strict_required_status_checks_policy: false })];
 }
 function evidenceRuleRows(id) {
   return [rule('deletion', id), rule('non_fast_forward', id), rule('update', id,
     { update_allows_fetch_and_merge: false })];
+}
+function classicProtection(contexts = ['Integration Gate'], {
+  conversationResolution = false,
+  linearHistory = true,
+} = {}) {
+  return {
+    required_status_checks: {
+      strict: false,
+      contexts,
+      checks: contexts.map((context) => ({ context, app_id: 15368 })),
+    },
+    required_pull_request_reviews: { required_approving_review_count: 0 },
+    required_linear_history: { enabled: linearHistory },
+    required_conversation_resolution: { enabled: conversationResolution },
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+  };
 }
 function projection(repository, ref, id, rows, bypassActors = []) {
   return createGitHubProtectionProjection({ repository, ref, rulesets: [{ id: String(id),
@@ -206,13 +224,19 @@ function apiFixture(issuance) {
     authorityHead: TRANSITION_BASE, runUpdatedAt: null, transitionPolicy: TRANSITION_POLICY,
     transitionRulesUpdatedAt: '2026-09-02T00:01:00Z', targetBypassActors: null,
     mergedAt: '2026-09-02T00:15:00Z', targetRepositoryId: 77,
-    targetMergeMethods: ['merge'], ruleSuiteQuery: null, mergeEventRevisions: [MERGE],
+    targetMergeMethods: ['merge'], targetRulesetContexts: ['Integration Gate'],
+    targetClassicProtectionContexts: ['Integration Gate'],
+    targetClassicConversationResolution: false, ruleSuiteQuery: null,
+    ruleSuiteHeaders: {},
+    mergeEventRevisions: [MERGE],
     mergeEventCreatedAt: null, mergeEventHeaders: {},
     ruleSuitePushedAt: '2026-09-02T00:14:59Z', targetRulesUpdatedAt: '2026-09-02T00:13:00Z',
     mergeParents: [TARGET_BASE, CANDIDATE], mergeCommittedAt: '2026-09-02T00:15:00Z',
     candidateTree: hex('a', 40), mergeTree: hex('a', 40), pullBaseRevision: TARGET_BASE,
     targetOwner: { id: 42, login: 'example' }, absentRefBarrier: null,
-    refCreateStatuses: [], concurrentRunTimes: false, runDigests: {} };
+    refCreateStatuses: [], concurrentRunTimes: false, runDigests: {},
+    compareHeadCommitMissing: false, runStartedAtById: {}, runUpdatedAtById: {},
+    retirePublicationCommittedAt: '2026-09-02T00:23:00Z' };
   const initialStored = issuance.storedBundle, bundle = initialStored.authorityBundle;
   const ruleDetail = (id, rows, bypass = []) => ({ id, enforcement: 'active',
     created_at: '2026-09-02T00:00:00Z', updated_at: '2026-09-02T00:01:00Z',
@@ -278,39 +302,44 @@ function apiFixture(issuance) {
     if (route === `GET /repos/example/target/git/commits/${CANDIDATE}`)
       return response(commit(CANDIDATE, [TARGET_BASE], state.candidateTree,
         '2026-09-02T00:04:00Z'));
+    if (route === 'GET /repos/example/target/branches/main/protection')
+      return response(classicProtection(state.targetClassicProtectionContexts, {
+        conversationResolution: state.targetClassicConversationResolution,
+      }));
     if (route === 'GET /repos/example/target/rules/branches/main')
-      return response(targetRuleRows(21, state.targetMergeMethods));
+      return response(targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts));
     if (route === 'GET /repos/example/target/rulesets/21') {
-      const detail = { ...ruleDetail(21, targetRuleRows(21, state.targetMergeMethods)),
+      const detail = { ...ruleDetail(21,
+        targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts)),
         created_at: '2026-09-02T00:00:00Z', updated_at: state.targetRulesUpdatedAt };
       if (state.targetBypassActors === null) delete detail.bypass_actors;
       else detail.bypass_actors = state.targetBypassActors;
       return response(detail);
     }
-      const listedCheckRuns = state.checkRuns
-        ?? [checkRun(state.latestCheckId, state.checkCompletedAt)];
-      if (route === `GET /repos/example/target/commits/${CANDIDATE}/check-runs`)
-        return response({ total_count: listedCheckRuns.length, check_runs: listedCheckRuns });
-      const checkRunMatch = route.match(/^GET \/repos\/example\/target\/check-runs\/(\d+)$/u);
-      if (checkRunMatch) {
-        const record = state.checkRuns?.find((entry) => String(entry.id) === checkRunMatch[1])
-          ?? checkRun(checkRunMatch[1], state.checkCompletedAt);
-        return response(record);
-      }
+    const listedCheckRuns = state.checkRuns
+      ?? [checkRun(state.latestCheckId, state.checkCompletedAt)];
+    if (route === `GET /repos/example/target/commits/${CANDIDATE}/check-runs`)
+      return response({ total_count: listedCheckRuns.length, check_runs: listedCheckRuns });
+    const checkRunMatch = route.match(/^GET \/repos\/example\/target\/check-runs\/(\d+)$/u);
+    if (checkRunMatch) {
+      const record = state.checkRuns?.find((entry) => String(entry.id) === checkRunMatch[1])
+        ?? checkRun(checkRunMatch[1], state.checkCompletedAt);
+      return response(record);
+    }
     if (route === 'GET /repos/example/target/rulesets/rule-suites') {
       state.ruleSuiteQuery = parsed.search;
       return response([{
         id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
         ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
         pushed_at: state.ruleSuitePushedAt, result: state.ruleSuiteResult,
-      }]);
+      }], 200, state.ruleSuiteHeaders);
     }
     if (route === 'GET /repos/example/target/rulesets/rule-suites/801') return response({
       id: 801, actor_id: 42, actor_name: 'example', before_sha: TARGET_BASE, after_sha: MERGE,
       ref: 'refs/heads/main', repository_id: 77, repository_name: 'target',
       pushed_at: state.ruleSuitePushedAt, result: state.ruleSuiteResult,
       evaluation_result: state.ruleEvaluation,
-      rule_evaluations: ['deletion', 'non_fast_forward', 'pull_request',
+      rule_evaluations: state.ruleEvaluations ?? ['deletion', 'non_fast_forward', 'pull_request',
         'required_linear_history', 'required_status_checks'].map((rule_type) => ({
         rule_source: { type: 'ruleset', id: 21, name: 'protected main' },
         enforcement: 'active', result: state.ruleEvaluation, rule_type,
@@ -319,13 +348,19 @@ function apiFixture(issuance) {
     if (route === `GET /repos/example/target/compare/${MERGE}...${state.targetHead}`)
       return response({ status: state.compareStatus, base_commit: { sha: MERGE },
         merge_base_commit: { sha: state.compareStatus === 'diverged' ? TARGET_BASE : MERGE },
-        head_commit: { sha: state.targetHead } });
+        ...(state.compareHeadCommitMissing ? {} : { head_commit: { sha: state.targetHead } }),
+        commits: [{ sha: state.targetHead }] });
     const runMatch = route.match(/^GET \/repos\/example\/evidence\/actions\/runs\/(\d+)$/u);
     if (runMatch) {
       const id = runMatch[1], input = [...publications.values()].find((entry) =>
         entry.stored.workflowRun.id === id)?.stored.operationInput;
       const digest = input ? deriveGitHubTransitionInputDigest(input)
         : state.runDigests[id] ?? state.currentDigest;
+      const startedAt = state.runStartedAtById[id] ?? (id === '202' && !state.concurrentRunTimes
+        ? '2026-09-02T00:22:08Z'
+        : '2026-09-02T00:20:08Z');
+      const updatedAt = state.runUpdatedAtById[id] ?? state.runUpdatedAt ?? (id === '202'
+        && !state.concurrentRunTimes ? '2026-09-02T00:22:30Z' : '2026-09-02T00:20:30Z');
       return response({ id: Number(id), url: `https://api.github.com/repos/example/evidence/actions/runs/${id}`,
         repository: { full_name: 'example/evidence' }, event: 'workflow_dispatch', run_attempt: 1,
         status: state.transitionStatus, conclusion: state.transitionStatus === 'completed' ? 'success' : null,
@@ -333,10 +368,8 @@ function apiFixture(issuance) {
           workflowRevision: TRANSITION_BASE }), workflow_id: 601, head_branch: 'main',
         head_sha: TRANSITION_BASE, path: `${WORKFLOW_PATH}@main`,
         actor: { id: 42, login: 'example' }, triggering_actor: { id: 42, login: 'example' },
-        run_started_at: id === '202' && !state.concurrentRunTimes ? '2026-09-02T00:22:08Z'
-          : '2026-09-02T00:20:08Z',
-        updated_at: state.runUpdatedAt ?? (id === '202' && !state.concurrentRunTimes ? '2026-09-02T00:22:30Z'
-          : '2026-09-02T00:20:30Z') });
+        run_started_at: startedAt,
+        updated_at: updatedAt });
     }
     if (route === 'GET /repos/example/evidence/actions/workflows/601')
       return response({ id: 601, path: WORKFLOW_PATH, state: 'active' });
@@ -370,7 +403,7 @@ function apiFixture(issuance) {
     if (publishedCommit) return response(commit(publishedCommit.publication,
       [TRANSITION_BASE], publishedCommit.tree,
       publishedCommit.stored.operationInput.request.requestedTransition === 'retire'
-        ? '2026-09-02T00:23:00Z' : COMMITTED));
+        ? state.retirePublicationCommittedAt : COMMITTED));
     if (route === `GET /repos/example/evidence/git/trees/${TRANSITION_BASE_TREE}`)
       return response({ sha: TRANSITION_BASE_TREE, truncated: false, tree: [] });
     const publishedTree = [...publications.values()].find((entry) =>
@@ -641,6 +674,62 @@ test('retrospective proof selects the latest successful required check rerun', a
     completedAt: '2026-09-02T00:04:00.000Z',
     revision: CANDIDATE,
   }]);
+});
+
+test('retrospective proof uses classic branch checks and ignores deleted rulesets', async () => {
+  const fixture = await successorFixture((state) => {
+    historicalSquash(state, { rulesUpdatedAfterMerge: true });
+    state.targetRulesetContexts = ['Budgets', 'Integration Gate'];
+    state.targetClassicProtectionContexts = ['Integration Gate'];
+    state.targetClassicConversationResolution = true;
+    state.ruleEvaluations = [
+      'deletion',
+      'non_fast_forward',
+      'pull_request',
+      'required_linear_history',
+      'required_review_thread_resolution',
+      'required_status_checks',
+    ].map((rule_type) => ({
+      rule_source: { type: 'protected_branch' },
+      enforcement: 'active',
+      result: state.ruleEvaluation,
+      rule_type,
+    })).concat([{
+      rule_source: { type: 'ruleset', name: 'deleted budget ruleset' },
+      enforcement: 'deleted ruleset',
+      result: state.ruleEvaluation,
+      rule_type: 'required_status_checks',
+    }]);
+  });
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.deepEqual(winner.stored.providerProof.targetRequiredContexts, ['Integration Gate']);
+  assert.ok(winner.stored.providerProof.targetActiveRuleTypes.includes(
+    'required_review_thread_resolution'));
+});
+
+test('retrospective proof widens rule suite lookup for older merges', async () => {
+  const fixture = await successorFixture((state) => {
+    historicalSquash(state, { rulesUpdatedAfterMerge: true });
+    state.mergedAt = '2026-08-30T20:20:22Z';
+    state.checkCompletedAt = '2026-08-30T20:20:00Z';
+    state.ruleSuitePushedAt = '2026-08-30T20:20:21Z';
+    state.ruleSuiteHeaders = { link: '<https://api.github.com/example?page=2>; rel=\"next\"' };
+    state.mergeCommittedAt = '2026-08-30T20:20:21Z';
+    state.targetRulesUpdatedAt = '2026-09-02T00:07:00Z';
+  });
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.equal(fixture.api.state.ruleSuiteQuery,
+    '?ref=refs%2Fheads%2Fmain&time_period=week&rule_suite_result=pass&per_page=100');
+  assert.equal(winner.stored.providerProof.ruleSuiteId, '801');
+});
+
+test('canonical containment accepts compare payloads without head_commit', async () => {
+  const fixture = await successorFixture((state) => {
+    historicalSquash(state, { rulesUpdatedAfterMerge: true });
+    state.compareHeadCommitMissing = true;
+  });
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.equal(winner.stored.providerProof.observedCanonicalHead, MERGE);
 });
 
 test('successor predecessor authority fails closed on policy-anchor and source-tree drift',
@@ -917,6 +1006,69 @@ test('retire sources and replays the exact authenticated integration winner', as
   const verify = createGitHubTransitionAuthorityVerifier(common);
   const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,
     { now: () => NOW });
+  assert.equal(retired.transitionReceipt.resultState, 'retired');
+  assert.equal(fixture.api.publications.size, 2);
+});
+
+test('retire accepts a fresh successor predecessor authority window', async () => {
+  const fixture = await integrationFixture();
+  await publishGitHubTransitionAuthority(fixture.common);
+  fixture.api.state.transitionStatus = 'completed';
+  const integrationVerifier = createGitHubTransitionAuthorityVerifier(fixture.common);
+  const integrated = await createAuthenticatedTransitionOperationReceipt({
+    request: fixture.final.request, planBytes: fixture.final.planBytes,
+  }, integrationVerifier, { now: () => NOW });
+  const prior = integrated.transitionReceipt;
+  const plan = createEffectPlan({ target: { repository: 'github.com/example/target',
+    resource: '/exact/dirty/worktree', immutableRevision: MERGE }, authority: {
+    requestedTransition: 'retire', authoritySubject: 'github-user:42', ownerSubject: 'github-user:42',
+    claimId: prior.resultClaimId, leaseEpoch: prior.resultLeaseEpoch,
+    fenceRevision: prior.resultFenceRevision, writeSetDigest: fixture.final.request.writeSetDigest,
+    reviewLocator: null, predecessorDigest: integrated.receiptDigest },
+    candidateDigest: fixture.final.plan.candidateDigest, snapshotDigest: fixture.final.plan.snapshotDigest,
+    effectClass: 'claim-retirement-with-cleanup',
+    allowedEffects: [...CLEANUP_EFFECTS, 'retire-claim'], forbiddenEffects: RETAINED_EFFECTS,
+    parametersDigest: governanceDigest('cleanup-plan-bytes') });
+  const planBytes = encodeEffectPlan(plan), planByteDigest = effectPlanByteDigest(planBytes);
+  const predecessorAuthority = {
+    schema: GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA,
+    authorityKind: 'append-only-retire-successor-predecessor',
+    authorityRef: 'refs/heads/main',
+    reviewLocator: fixture.final.request.reviewLocator,
+    sourceBranch: fixture.issuance.storedBundle.authorityBundle.candidate.branch,
+    immutableRevision: MERGE,
+    reviewedSourceHead: fixture.issuance.storedBundle.authorityBundle.candidate.headRevision,
+    reviewedSourceTree: fixture.api.state.candidateTree,
+    protectedBase: TARGET_BASE,
+    predecessorIssuanceDigest: fixture.issuance.issuanceDigest,
+    predecessorTransitionReceiptDigest: integrated.receiptDigest,
+    adoptedTerminalClaimId: hex('4'),
+    adoptedLineageDigest: hex('5'),
+    integrationReceiptDigest: integrated.receiptDigest,
+    reviewRequestId: 'github-pull-request:PR_fixture',
+    retirementReason: 'integrated-successor-retire-continuation',
+    adoptionDisposition: 'response-loss-adopted',
+    cloudMutation: false,
+    issuedAt: '2026-09-02T00:55:00.000Z',
+    expiresAt: '2026-09-02T01:05:00.000Z',
+  };
+  const request = retire({ repository: plan.target.repository, authoritySubject: 'github-user:42',
+    ownerSubject: 'github-user:42', scope: ['src/feature.mjs'], claimId: prior.resultClaimId,
+    leaseEpoch: prior.resultLeaseEpoch, fenceRevision: prior.resultFenceRevision,
+    immutableRevision: MERGE, dependentWork: [`effect-plan:sha256:${planByteDigest}`],
+    observedAt: '2026-09-02T00:55:00.000Z', expiresAt: '2026-09-02T01:00:00.000Z' });
+  const operationInput = createGitHubTransitionInput({ request, plan, planByteDigest,
+    predecessorIssuance: null, predecessorAuthority });
+  fixture.api.state.runStartedAtById['202'] = '2026-09-02T00:55:10Z';
+  fixture.api.state.runUpdatedAtById['202'] = '2026-09-02T00:55:30Z';
+  fixture.api.state.retirePublicationCommittedAt = '2026-09-02T00:55:40Z';
+  fixture.api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
+  const common = { ...fixture.common, workflowRun: workflowRun('202'), operationInput,
+    now: () => Date.parse('2026-09-02T00:56:00.000Z') };
+  await publishGitHubTransitionAuthority(common);
+  const verify = createGitHubTransitionAuthorityVerifier(common);
+  const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,
+    { now: () => Date.parse('2026-09-02T00:56:00.000Z') });
   assert.equal(retired.transitionReceipt.resultState, 'retired');
   assert.equal(fixture.api.publications.size, 2);
 });

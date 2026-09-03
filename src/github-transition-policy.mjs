@@ -89,3 +89,42 @@ export function validateGitHubTransitionPolicyExecution(policyValue, execution) 
     authorityRef: policy.authorityRef, workflowPath: policy.workflowPath,
     workflowRevision: source.workflowRevision } });
 }
+export function latestSuccessfulRequiredCheck(entries, mapEntry) {
+  const matches = entries.flatMap((entry) => { try { return [mapEntry(entry)]; } catch { return []; } });
+  if (matches.length === 0) return null;
+  matches.sort((left, right) => Date.parse(right.completedAt) - Date.parse(left.completedAt)
+    || (BigInt(right.checkRunId) > BigInt(left.checkRunId) ? 1 : BigInt(right.checkRunId) < BigInt(left.checkRunId) ? -1 : 0));
+  return matches[0];
+}
+export function parseClassicBranchProtection(value, integrationId) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    fail('GitHub branch protection must be an object');
+  const requiredStatusChecks = value.required_status_checks;
+  if (!requiredStatusChecks || typeof requiredStatusChecks !== 'object'
+    || Array.isArray(requiredStatusChecks))
+    fail('GitHub branch protection required checks are invalid');
+  const checks = Array.isArray(requiredStatusChecks.checks) ? requiredStatusChecks.checks : [];
+  const contexts = checks.length > 0
+    ? checks.map((entry) => {
+      if (entry?.app_id !== integrationId || typeof entry.context !== 'string' || !entry.context)
+        fail('GitHub branch protection required checks are invalid');
+      return entry.context;
+    })
+    : Array.isArray(requiredStatusChecks.contexts) ? requiredStatusChecks.contexts : [];
+  if (contexts.length === 0 || requiredStatusChecks.strict !== false
+    || contexts.some((entry) => typeof entry !== 'string' || !entry))
+    fail('GitHub branch protection required checks are invalid');
+  const requiredContexts = [...new Set(contexts)].sort();
+  if (requiredContexts.length !== contexts.length)
+    fail('GitHub branch protection required checks are not unique');
+  const activeRuleTypes = [
+    value.allow_deletions?.enabled === false ? 'deletion' : null,
+    value.allow_force_pushes?.enabled === false ? 'non_fast_forward' : null,
+    value.required_pull_request_reviews != null ? 'pull_request' : null,
+    value.required_linear_history?.enabled === true ? 'required_linear_history' : null,
+    value.required_conversation_resolution?.enabled === true
+      ? 'required_review_thread_resolution' : null,
+    'required_status_checks',
+  ].filter(Boolean).sort();
+  return { requiredContexts, activeRuleTypes };
+}
