@@ -193,6 +193,11 @@ function commit(revision, parents, tree, date = COMMITTED) {
   return { sha: revision, parents: parents.map((sha) => ({ sha })), tree: { sha: tree },
     committer: { date } };
 }
+function checkRun(id, completedAt, overrides = {}) {
+  return { id, name: 'Integration Gate', app: { id: 15368 },
+    status: 'completed', conclusion: 'success', head_sha: CANDIDATE,
+    completed_at: completedAt, ...overrides };
+}
 function apiFixture(issuance) {
   const calls = [], publications = new Map(), blobs = new Map(), trees = new Map(), commits = new Map();
   const state = { transitionStatus: 'completed', targetHead: MERGE, compareStatus: 'ahead',
@@ -282,15 +287,16 @@ function apiFixture(issuance) {
       else detail.bypass_actors = state.targetBypassActors;
       return response(detail);
     }
-    if (route === `GET /repos/example/target/commits/${CANDIDATE}/check-runs`)
-      return response({ total_count: 1, check_runs: [{ id: state.latestCheckId,
-        name: 'Integration Gate',
-        app: { id: 15368 }, status: 'completed', conclusion: 'success', head_sha: CANDIDATE,
-        completed_at: state.checkCompletedAt }] });
-    if (route === 'GET /repos/example/target/check-runs/701')
-      return response({ id: 701, name: 'Integration Gate', app: { id: 15368 },
-        status: 'completed', conclusion: 'success', head_sha: CANDIDATE,
-        completed_at: state.checkCompletedAt });
+      const listedCheckRuns = state.checkRuns
+        ?? [checkRun(state.latestCheckId, state.checkCompletedAt)];
+      if (route === `GET /repos/example/target/commits/${CANDIDATE}/check-runs`)
+        return response({ total_count: listedCheckRuns.length, check_runs: listedCheckRuns });
+      const checkRunMatch = route.match(/^GET \/repos\/example\/target\/check-runs\/(\d+)$/u);
+      if (checkRunMatch) {
+        const record = state.checkRuns?.find((entry) => String(entry.id) === checkRunMatch[1])
+          ?? checkRun(checkRunMatch[1], state.checkCompletedAt);
+        return response(record);
+      }
     if (route === 'GET /repos/example/target/rulesets/rule-suites') {
       state.ruleSuiteQuery = parsed.search;
       return response([{
@@ -615,6 +621,26 @@ test('successor predecessor authority records an already-merged exact squash', a
   assert.deepEqual(await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
   }, verifier), receipt);
+});
+
+test('retrospective proof selects the latest successful required check rerun', async () => {
+  const fixture = await successorFixture((state) => {
+    historicalSquash(state, { rulesUpdatedAfterMerge: true });
+    state.checkRuns = [
+      checkRun(700, '2026-09-02T00:03:00Z'),
+      checkRun(701, '2026-09-02T00:04:00Z'),
+    ];
+  });
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.deepEqual(winner.stored.providerProof.requiredChecks, [{
+    context: 'Integration Gate',
+    checkRunId: '701',
+    appId: '15368',
+    status: 'completed',
+    conclusion: 'success',
+    completedAt: '2026-09-02T00:04:00.000Z',
+    revision: CANDIDATE,
+  }]);
 });
 
 test('successor predecessor authority fails closed on policy-anchor and source-tree drift',

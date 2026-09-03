@@ -109,6 +109,14 @@ function checkRecord(entry, context, revision, mergedAt) {
     appId: String(GITHUB_ACTIONS_INTEGRATION_ID), status: 'completed',
     conclusion: 'success', completedAt, revision };
 }
+function laterCheck(left, right) {
+  const completedDelta = Date.parse(right.completedAt) - Date.parse(left.completedAt);
+  if (completedDelta !== 0) return completedDelta;
+  const leftId = BigInt(left.checkRunId), rightId = BigInt(right.checkRunId);
+  if (rightId > leftId) return 1;
+  if (rightId < leftId) return -1;
+  return 0;
+}
 async function checks(api, target, revision, contexts, mergedAt, expected = null) {
   if (expected !== null) {
     if (!Array.isArray(expected) || expected.length !== contexts.length)
@@ -135,10 +143,15 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
     fail('GitHub integration checks are incomplete');
   const required = contexts.map((context) => {
     const matches = value.check_runs.filter((entry) => entry?.name === context
-      && String(entry?.app?.id) === String(GITHUB_ACTIONS_INTEGRATION_ID));
-    if (matches.length !== 1)
+        && String(entry?.app?.id) === String(GITHUB_ACTIONS_INTEGRATION_ID))
+      .flatMap((entry) => {
+        try { return [checkRecord(entry, context, revision, mergedAt)]; }
+        catch { return []; }
+      })
+      .sort(laterCheck);
+    if (matches.length === 0)
       fail('GitHub integration required checks are not exactly successful');
-    return checkRecord(matches[0], context, revision, mergedAt);
+    return matches[0];
   });
   return { required, checksDigest: governanceDigest({
     schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
