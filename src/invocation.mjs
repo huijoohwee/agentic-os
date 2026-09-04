@@ -30,6 +30,7 @@ export const ENTRY_CONTRACTS = deepFreeze({
   '/land': { kind: 'command', action: 'land', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/status': { kind: 'command', action: 'status', argv: [], semantic: 'read-only', accepts: ['device'], requires: [] },
   '/reap': { kind: 'command', action: 'reap', argv: [], semantic: 'mutating', accepts: [], requires: [] },
+  '/reconcile': { kind: 'command', action: 'reconcile', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/queue.show': { kind: 'command', action: 'queue', argv: ['show'], semantic: 'read-only', accepts: [], requires: [] },
   '/help': { kind: 'command', action: 'help', argv: [], semantic: 'read-only', accepts: [], requires: [] },
   '#read-only': { kind: 'semantic', value: 'read-only' },

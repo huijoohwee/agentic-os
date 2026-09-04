@@ -40,6 +40,7 @@ import {
 import {
   runAutonomyClass,
   runCanonicalSync,
+  runReconcile,
   assertPublicationPreflight, classifyPromotion, observeLocalHealth, publicationByteRisks,
   runObserve,
   runRequest,
@@ -505,6 +506,7 @@ function cmdHelp() {
       '  npm run status            registered lane projections and provider state',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
+      '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
       '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
@@ -573,6 +575,9 @@ function main() {
       return cmdReap(root, argv, policy, profile);
     case 'canonical-sync':
       return runCanonicalSync(root, argv, policy);
+    case 'reconcile':
+      requireCanonical(root, policy);
+      return runReconcile(root, argv, policy);
     case 'queue':
       return cmdQueue(root, argv, profile);
     case 'autonomy-class':
