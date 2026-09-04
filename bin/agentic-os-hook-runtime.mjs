@@ -20,6 +20,9 @@ const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0',
   'v1-aeca6cdae21159346f98bbf744ae7a2b51d95b9040b048bb0cc64b40ea994c72',
   'v1-3feb0c450d39fe8b492c953c1809c622ae9e455505ab3557a44c855b02506913',
+  'v1-d6b4113a4c70756dfba87441fce13d03c62f4198be3e2e1c37ce4d809f86b7c1',
+  'v1-9e6ebefda47219dfe8742a3918f8135ad5d16b572683c96c028c355141e63eeb',
+  'v1-9eebc670a00c5682e090b633d7b722b7ce691b70a30fac1e9b89f459956ff05e',
 ]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
@@ -33,7 +36,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: '.githooks/pre-push', mode: 0o755,
     sha256: '4e0d3796876b900f9d54750e2c537220bf26b15877aaede0096d0dc0838c5af7' }),
   Object.freeze({ path: 'src/guard-main.mjs', mode: 0o755,
-    sha256: '74417d1754b6e2ed04fda07c0915b4cd37ffcb5047c9a043e8ec2be0353c57d8' }),
+    sha256: '54f5181203b72c73773e4338524baad8e805b155521ccf07f4f2c07189453e8b' }),
   Object.freeze({ path: 'src/git.mjs', mode: 0o644,
     sha256: '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62' }),
   Object.freeze({ path: 'src/quarantine.mjs', mode: 0o644,

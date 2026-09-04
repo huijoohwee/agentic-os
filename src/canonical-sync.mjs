@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publishCanonicalIndex, removeStagedTree, stageTreeEntries } from './canonical-staging.mjs';
 import { captureCanonicalRecovery, CanonicalSyncError, createCanonicalArtifacts, recordCanonicalFailureEffects, retainCanonicalEffect } from './canonical-recovery.mjs';
-import { assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
+import { assertCanonicalReconciliationPlan, assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, canonicalReconciliation, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
 import { snapshotWorktreeEntry } from './file-integrity.mjs';
 import { acquireOperationLock, assertDirectoryAncestors, atomicAdvanceRef, currentBranch, decodeNulFields as decodeGitNul, finishOperationLock, git, isAncestor, quarantineWorktreeEntries, repoRoot, retireCleanProjectionUnderExclusiveContract } from './git.mjs';
 export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2'; export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v2';
@@ -117,7 +117,7 @@ function canonicalIdentity(branch, targetRef) {
     refuse('blocked-canonical-identity', { branch, targetRef });
   return `refs/heads/${branch}`;
 }
-function observed(cwd, targetRef, expectedBranch) {
+function observed(cwd, targetRef, expectedBranch, { integrationReceiptDigest = null } = {}) {
   const root = realpathSync(repoRoot(cwd));
   const branch = currentBranch(root);
   if (branch !== expectedBranch) refuse('blocked-not-canonical-branch', { branch, expectedBranch });
@@ -127,7 +127,8 @@ function observed(cwd, targetRef, expectedBranch) {
   if (headSha !== localSha) refuse('blocked-head-ref-mismatch', { headSha, localSha });
   const targetSha = git(['rev-parse', '--verify', targetRef], { cwd: root, allowFail: true });
   if (!targetSha) refuse('blocked-target-ref-missing', { targetRef });
-  if (!isAncestor(localSha, targetSha, root)) refuse('blocked-non-fast-forward', { localSha, targetSha });
+  const { relation, reconciliation } = resource(() =>
+    canonicalReconciliation(localSha, targetSha, integrationReceiptDigest, root));
   const targetTree = treeEntries(targetSha, root), localTree = treeEntries(localSha, root);
   if ([...localTree.values(), ...targetTree.values()]
     .some((entry) => entry.type !== 'blob')) refuse('blocked-submodule-topology');
@@ -138,18 +139,21 @@ function observed(cwd, targetRef, expectedBranch) {
   const ignored = ignoredPaths(root);
   resource(() => assertIgnoredProjectionSafe(localTree, targetTree, ignored));
   const inventory = snapshotInventory(root, localSha);
-  return { root, localSha, targetSha, inventory, ignoredPathsDigest: sha256(JSON.stringify(ignored)),
-    ignoredPathCount: ignored.length };
+  return { root, localSha, targetSha, inventory, relation, reconciliation,
+    ignoredPathsDigest: sha256(JSON.stringify(ignored)), ignoredPathCount: ignored.length };
 }
-export function planCanonicalSync({ cwd = process.cwd(), targetRef, branch } = {}) {
+export function planCanonicalSync({
+  cwd = process.cwd(), targetRef, branch, integrationReceiptDigest = null,
+} = {}) {
   canonicalIdentity(branch, targetRef);
-  const state = observed(cwd, targetRef, branch);
+  const state = observed(cwd, targetRef, branch, { integrationReceiptDigest });
   const inventoryDigest = sha256(JSON.stringify(state.inventory));
   const plan = {
     schema: PLAN_SCHEMA, repository: state.root, branch, targetRef,
     expectedLocalSha: state.localSha, expectedTargetSha: state.targetSha,
     inventoryDigest, inventory: state.inventory,
     ignoredPathsDigest: state.ignoredPathsDigest, ignoredPathCount: state.ignoredPathCount,
+    relation: state.relation, reconciliation: state.reconciliation,
   };
   plan.planDigest = calculatePlanDigest(plan);
   plan.authorization = `agentic-os:canonical-sync:${plan.planDigest}`;
@@ -160,6 +164,7 @@ export function planCanonicalSync({ cwd = process.cwd(), targetRef, branch } = {
 function assertPlan(value) {
   const plan = resource(() => boundedCanonicalPlan(value, CANONICAL_SYNC_LIMITS));
   if (!plan || plan.schema !== PLAN_SCHEMA) refuse('blocked-invalid-plan-schema');
+  resource(() => assertCanonicalReconciliationPlan(plan));
   canonicalIdentity(plan.branch, plan.targetRef);
   const inventoryDigest = sha256(JSON.stringify(plan.inventory));
   if (plan.inventoryDigest !== inventoryDigest) refuse('blocked-inventory-digest-mismatch',
@@ -176,14 +181,18 @@ function assertPlan(value) {
   return plan;
 }
 function assertUnchanged(plan, cwd, { recoveryCommit = null } = {}) {
-  const state = observed(cwd, plan.targetRef, plan.branch);
+  const state = observed(cwd, plan.targetRef, plan.branch, {
+    integrationReceiptDigest: plan.reconciliation?.integrationReceiptDigest ?? null,
+  });
   const digest = sha256(JSON.stringify(state.inventory));
   const facts = { repository: state.root, localSha: state.localSha, targetSha: state.targetSha,
     inventoryDigest: digest, ignoredPathsDigest: state.ignoredPathsDigest,
-    ignoredPathCount: state.ignoredPathCount };
+    ignoredPathCount: state.ignoredPathCount, relation: state.relation,
+    reconciliation: state.reconciliation };
   const expected = { repository: plan.repository, localSha: plan.expectedLocalSha,
     targetSha: plan.expectedTargetSha, inventoryDigest: plan.inventoryDigest,
-    ignoredPathsDigest: plan.ignoredPathsDigest, ignoredPathCount: plan.ignoredPathCount };
+    ignoredPathsDigest: plan.ignoredPathsDigest, ignoredPathCount: plan.ignoredPathCount,
+    relation: plan.relation, reconciliation: plan.reconciliation };
   if (JSON.stringify(facts) !== JSON.stringify(expected))
     refuse('blocked-plan-drift', { expected, actual: facts });
   const symbolicTarget = git(['symbolic-ref', '-q', plan.recoveryRef], { cwd, allowFail: true }); if (symbolicTarget) refuse('blocked-recovery-ref-symbolic', { recoveryRef: plan.recoveryRef, symbolicTarget });

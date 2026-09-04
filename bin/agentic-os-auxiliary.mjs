@@ -7,7 +7,11 @@ import {
   applyCanonicalSync, CANONICAL_SYNC_LIMITS, planCanonicalSync,
 } from '../src/canonical-sync.mjs';
 import { readBoundedFile } from '../src/catalog-input.mjs';
-import { gitLines, headSha, observeGit, worktreeCleanupRisks, worktrees } from '../src/git.mjs';
+import { classifyCanonicalReconciliation } from '../src/canonical-resources.mjs';
+import {
+  configuredRemote, fetch as gitFetch, gitLines, headSha, observeGit,
+  worktreeCleanupRisks, worktrees,
+} from '../src/git.mjs';
 import {
   observeRepositoryProfileAtRef,
   observeRepository,
@@ -184,6 +188,7 @@ export function runCanonicalSync(root, argv, policy) {
   if (action === 'plan') {
     out(JSON.stringify(planCanonicalSync({
       cwd: root, branch: policy.protectedBranch, targetRef: policy.protectedRef,
+      integrationReceiptDigest: option(argv, 'integration-receipt'),
     }), null, 2));
     return 0;
   }
@@ -211,6 +216,33 @@ export function runCanonicalSync(root, argv, policy) {
   }
   err(`unknown canonical-sync action "${action}". use: plan | apply`);
   return 1;
+}
+
+export function runReconcile(root, argv, policy) {
+  const [action = 'plan'] = positional(argv);
+  if (action === 'apply') return runCanonicalSync(root, argv, policy);
+  const remoteName = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
+  if (!remoteName) throw new TypeError('repository profile remote-tracking ref has no remote name');
+  gitFetch(configuredRemote(remoteName, root), root);
+  const diagnosis = classifyCanonicalReconciliation({
+    cwd: root, branch: policy.protectedBranch, targetRef: policy.protectedRef,
+    scope: option(argv, 'scope'),
+  });
+  if (diagnosis.status === 'synced') {
+    out(JSON.stringify(diagnosis, null, 2));
+    return 0;
+  }
+  const integrationReceiptDigest = option(argv, 'integration-receipt');
+  if (diagnosis.status === 'behind-fast-forwardable'
+      || diagnosis.status === 'squash-integrated-divergence' && integrationReceiptDigest) {
+    out(JSON.stringify(planCanonicalSync({
+      cwd: root, branch: policy.protectedBranch, targetRef: policy.protectedRef,
+      integrationReceiptDigest,
+    }), null, 2));
+    return 0;
+  }
+  out(JSON.stringify(diagnosis, null, 2));
+  return 2;
 }
 
 export function runAutonomyClass(root, argv, policy) {
