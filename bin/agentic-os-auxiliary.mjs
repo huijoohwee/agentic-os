@@ -1,6 +1,8 @@
 /** Bounded evidence, request-construction, and protected-maintenance CLI commands. */
 
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { classifyWriteSet, collectWriteSet } from '../src/autonomy-class.mjs';
 import {
@@ -18,11 +20,14 @@ import {
   loadRepositoryTrust,
   REPOSITORY_PROFILE_FILENAME,
 } from '../src/git-repository.mjs';
-import { governance, OPERATIONS } from '../src/governance.mjs';
+import { canonicalJson, governance, OPERATIONS } from '../src/governance.mjs';
 import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import { sourceHeadTrailer } from '../src/patch-identity.mjs';
+import { integrationProof, sourceHeadTrailer } from '../src/patch-identity.mjs';
 import * as queue from '../src/queue.mjs';
 import { laneBranchSummary, staleWorktrees } from '../src/worktree.mjs';
+import { providerAdapterRequired } from '../src/lane-state.mjs';
+import { hookDoctorEntries } from './agentic-os-hooks.mjs';
+import * as report from './agentic-os-report.mjs';
 
 const MAX_REQUEST_INPUT_BYTES = 500_000;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
@@ -146,10 +151,12 @@ export function publicationByteRisks(root) {
 }
 
 /** Bind one clean lane HEAD before and after a local publication inspection. */
-export function assertPublicationPreflight(root, expectedHead = null) {
+export function assertPublicationPreflight(root, expectedHead = null, expectedRequirements = undefined) {
+  const requirements = assertFlightRequirements(root, 'pre', expectedRequirements);
   const before = headSha('HEAD', root);
   const risks = publicationByteRisks(root);
   const after = headSha('HEAD', root);
+  assertFlightRequirements(root, 'in', requirements);
   if (!before || after !== before || expectedHead !== null && after !== expectedHead)
     throw Object.assign(new Error('lane HEAD moved during publication preflight'), {
       reason: 'blocked-lane-head-moved-before-publish',
@@ -309,4 +316,221 @@ export function runRequest(argv) {
   const request = governance[operation](JSON.parse(text));
   out(JSON.stringify(request, null, 2));
   return 0;
+}
+
+// Flight reports are observations, never authority or authenticated runtime verdicts.
+export const FLIGHT_SCHEMA = 'agentic-os/flight-observation/v1';
+const FLIGHT_FILE = '.agentic-os-flight.json', FLIGHT_BYTES = 65_536;
+const flightHash = (value) => createHash('sha256').update(value).digest('hex');
+const flightFail = (reason) => { throw Object.assign(new Error(reason), { reason }); };
+function flightPathPresent(file) {
+  try { lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+}
+const exactFields = (value, fields) => value && typeof value === 'object' && !Array.isArray(value)
+  && Object.keys(value).sort().join(',') === fields.split(',').sort().join(',');
+const flightText = (value) => typeof value === 'string' && value.length > 0 && value.length <= 240
+  && !/[\u0000-\u001f\u007f]/u.test(value);
+function flightJson(file) {
+  return JSON.parse(UTF8.decode(readBoundedFile(resolve(file), FLIGHT_BYTES, 'flight input')));
+}
+function flightRequirements(root, profile, file = null, ref = profile.canonical.localRef) {
+  let bytes;
+  if (file) bytes = readBoundedFile(resolve(file), FLIGHT_BYTES, 'flight requirements');
+  else {
+    const revision = headSha(ref, root);
+    if (!revision) flightFail('blocked-flight-canonical-missing');
+    const entry = observeGit(['ls-tree', '-z', revision, '--', FLIGHT_FILE], { cwd: root });
+    if (!entry) return null;
+    const match = entry.match(/^100644 blob ([0-9a-f]{40,64})\t\.agentic-os-flight\.json\0$/u);
+    if (!match) flightFail('blocked-flight-manifest-kind');
+    const size = Number(observeGit(['cat-file', '-s', match[1]], { cwd: root }));
+    if (!Number.isSafeInteger(size) || size > FLIGHT_BYTES) flightFail('blocked-flight-manifest-budget');
+    bytes = observeGit(['cat-file', 'blob', match[1]], { cwd: root, binary: true, maxBuffer: FLIGHT_BYTES });
+  }
+  const value = JSON.parse(UTF8.decode(bytes));
+  if (!exactFields(value, 'schema,maxAgeSeconds,requirements')
+    || value.schema !== 'agentic-os/flight-requirements/v1'
+    || !Number.isSafeInteger(value.maxAgeSeconds) || value.maxAgeSeconds < 1 || value.maxAgeSeconds > 3600
+    || !Array.isArray(value.requirements) || value.requirements.length > 32
+    || canonicalJson(value) + '\n' !== UTF8.decode(bytes)) flightFail('blocked-flight-manifest-invalid');
+  const ids = new Set();
+  for (const item of value.requirements) {
+    if (!exactFields(item, 'id,owner,kind,input,sha256,expiresAt,phases,remedy')
+      || typeof item.id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/u.test(item.id) || ids.has(item.id)
+      || !flightText(item.owner) || !flightText(item.remedy)
+      || typeof item.input !== 'string' || !/^[A-Z][A-Z0-9_]{0,127}$/u.test(item.input)
+      || !['environment', 'evidence'].includes(item.kind)
+      || !Array.isArray(item.phases) || item.phases.length < 1 || item.phases.length > 3
+      || new Set(item.phases).size !== item.phases.length
+      || item.phases.some((phase) => !['pre', 'in', 'post'].includes(phase)))
+      flightFail('blocked-flight-requirement-invalid');
+    if (item.kind === 'environment' ? item.sha256 !== null || item.expiresAt !== null
+      : typeof item.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(item.sha256)
+        || typeof item.expiresAt !== 'string' || !Number.isFinite(Date.parse(item.expiresAt))
+        || new Date(item.expiresAt).toISOString() !== item.expiresAt)
+      flightFail('blocked-flight-evidence-pin-invalid');
+    ids.add(item.id);
+  }
+  return { ...value, digest: flightHash(bytes) };
+}
+function flightInputs(root, requirements, phase, now) {
+  const roots = worktrees(root).map((entry) => resolve(entry.path));
+  return requirements.requirements.filter((item) => item.phases.includes(phase)).map((item) => {
+    const value = process.env[item.input];
+    let code = typeof value === 'string' && value.trim().length > 0 ? null : 'input-missing';
+    if (!code && item.kind === 'evidence') {
+      try {
+        const file = realpathSync(value);
+        if (!isAbsolute(value) || roots.some((rootPath) => {
+          const tail = relative(rootPath, file);
+          return tail === '' || tail !== '..' && !tail.startsWith('../') && !isAbsolute(tail);
+        })) code = 'evidence-location-invalid';
+        else if (Date.parse(item.expiresAt) <= now) code = 'evidence-expired';
+        else if (flightHash(readBoundedFile(value, 131_072, 'public flight evidence', { expectedPath: file }))
+          !== item.sha256) code = 'evidence-digest-mismatch';
+      } catch { code = 'evidence-unavailable'; }
+    }
+    return { id: item.id, owner: item.owner, input: item.input, satisfied: code === null, code,
+      remedy: code === null ? null : item.remedy };
+  });
+}
+/** Enrolled prerequisites are read from the trusted canonical commit, not candidate bytes. */
+export function assertFlightRequirements(root, phase, expected = undefined) {
+  const { profile } = trustedRepositoryProfile(root);
+  let requirements;
+  try {
+    requirements = flightRequirements(root, profile);
+    if (headSha(profile.canonical.remoteRef, root)) {
+      const remote = flightRequirements(root, profile, null, profile.canonical.remoteRef);
+      if ((remote?.digest ?? null) !== (requirements?.digest ?? null))
+        flightFail('blocked-flight-requirements-stale');
+    }
+  }
+  catch (error) { flightFail(error.reason ?? 'blocked-flight-manifest-invalid'); }
+  if (expected !== undefined && (expected?.digest ?? null) !== (requirements?.digest ?? null))
+    flightFail('blocked-flight-requirements-drift');
+  if (requirements) {
+    const missing = flightInputs(root, requirements, phase, Date.now()).filter((item) => !item.satisfied);
+    if (missing.length) throw Object.assign(new Error(JSON.stringify(missing)), {
+      reason: 'blocked-flight-prerequisites',
+    });
+  }
+  return requirements;
+}
+export function observeFlight(root, argv, profile) {
+  const [phase] = positional(argv), now = Date.now(), findings = [];
+  const add = (code, owner, remedy) => findings.push({ code, owner, remedy });
+  const file = option(argv, 'requirements'), requirements = flightRequirements(root, profile, file);
+  if (!requirements) flightFail('blocked-flight-requirements-unconfigured');
+  const ref = option(argv, 'ref') ?? observeGit(['branch', '--show-current'], { cwd: root });
+  if (!isLaneRef(ref)) flightFail('blocked-flight-lane-required');
+  const sourceRef = `refs/heads/${ref}`, head = headSha(sourceRef, root);
+  if (!head) flightFail('blocked-flight-source-missing');
+  const before = worktrees(root), entry = before.find((item) => item.branch === ref);
+  const canonicalPath = before.find((item) => `refs/heads/${item.branch}` === profile.canonical.localRef)?.path;
+  const source = { repository: profile.repository, ref, head,
+    tree: observeGit(['rev-parse', `${head}^{tree}`], { cwd: root }),
+    canonicalPath, profileDigest: profile.profileDigest, requirementsDigest: requirements.digest };
+  const base = headSha(profile.canonical.remoteRef, root);
+  const local = headSha(profile.canonical.localRef, root);
+  const inputs = flightInputs(root, requirements, phase, now);
+  inputs.filter((item) => !item.satisfied).forEach((item) => add(item.code, item.owner, item.remedy));
+  let checkpoint = null;
+  if (phase !== 'pre') {
+    checkpoint = flightJson(option(argv, 'checkpoint'));
+    const { digest, ...payload } = checkpoint;
+    if (!exactFields(checkpoint, 'schema,phase,observedAt,observationOnly,authorizesEffects,ok,source,base,worktreePath,inputs,completion,findings,digest')
+      || digest !== flightHash(canonicalJson(payload)) || checkpoint.schema !== FLIGHT_SCHEMA
+      || !['pre', 'in'].includes(checkpoint.phase) || checkpoint.ok !== true
+      || checkpoint.observationOnly !== true || checkpoint.authorizesEffects !== false)
+      flightFail('blocked-flight-checkpoint-invalid');
+    const age = now - Date.parse(checkpoint.observedAt);
+    if (!Number.isFinite(age) || age < 0 || age > requirements.maxAgeSeconds * 1000)
+      add('checkpoint-expired', 'orchestrator', 'Capture a fresh pre-flight observation.');
+    if (canonicalJson(source) !== canonicalJson(checkpoint.source)
+      || phase === 'in' && base !== checkpoint.base
+      || entry && entry.path !== checkpoint.worktreePath)
+      add('checkpoint-drift', 'orchestrator', 'Revalidate the changed candidate, profile, or requirements.');
+  }
+  if (phase !== 'post' && !entry) add('worktree-missing', 'lane-owner', 'Restore the registered lane.');
+  if (entry && (!existsSync(entry.path) || headSha('HEAD', entry.path) !== head
+    || publicationByteRisks(entry.path).blocked))
+    add('candidate-byte-risk', 'lane-owner', 'Preserve changes and check the committed candidate again.');
+  if (!base || !canonicalPath) add('canonical-unavailable', 'repository-owner', 'Restore canonical identity.');
+  if (phase !== 'post' && base !== local)
+    add('canonical-drift', 'repository-owner', 'Reconcile the canonical checkout before recording a checkpoint.');
+  const completion = phase !== 'post' ? null : {
+    integration: base ? integrationProof(base, head, { cwd: root }) : null,
+    worktreeAbsent: !entry && typeof checkpoint.worktreePath === 'string'
+      && !flightPathPresent(checkpoint.worktreePath),
+    canonicalSynchronized: Boolean(base && base === local),
+    canonicalClean: Boolean(canonicalPath && headSha('HEAD', canonicalPath) === local
+      && !publicationByteRisks(canonicalPath).blocked),
+    authorityRetirementVerified: false, runtimeEvidenceVerified: false,
+  };
+  if (completion) {
+    for (const [key, code, remedy] of [
+      ['integration', 'integration-unproved', 'Complete protected integration and refresh the canonical remote ref.'],
+      ['worktreeAbsent', 'cleanup-pending', 'Use the authorized finish/cleanup command for this lane.'],
+      ['canonicalSynchronized', 'canonical-sync-pending', 'Fast-forward a clean canonical checkout.'],
+      ['canonicalClean', 'canonical-byte-risk', 'Preserve authored canonical bytes before synchronization.'],
+    ]) if (!completion[key]) add(code, 'repository-owner', remedy);
+  }
+  if (headSha(sourceRef, root) !== head || headSha(profile.canonical.remoteRef, root) !== base
+    || headSha(profile.canonical.localRef, root) !== local
+    || entry && (headSha('HEAD', entry.path) !== head || publicationByteRisks(entry.path).blocked)
+    || completion?.canonicalClean && publicationByteRisks(canonicalPath).blocked
+    || canonicalJson(worktrees(root)) !== canonicalJson(before)
+    || flightRequirements(root, profile, file)?.digest !== requirements.digest
+    || canonicalJson(flightInputs(root, requirements, phase, Date.now())) !== canonicalJson(inputs))
+    add('observation-drift', 'orchestrator', 'Repeat observation after concurrent changes settle.');
+  const payload = { schema: FLIGHT_SCHEMA, phase, observedAt: new Date(now).toISOString(),
+    observationOnly: true, authorizesEffects: false, ok: findings.length === 0,
+    source, base, worktreePath: entry?.path ?? checkpoint?.worktreePath ?? null, inputs, completion, findings };
+  return { ...payload, digest: flightHash(canonicalJson(payload)) };
+}
+export function runFlight(root, argv, profile) {
+  try {
+    const observed = observeFlight(root, argv, profile);
+    out(JSON.stringify(observed, null, 2));
+    return observed.ok ? 0 : 1;
+  } catch (error) {
+    out(JSON.stringify({ schema: FLIGHT_SCHEMA, ok: false, observationOnly: true,
+      authorizesEffects: false, code: error.reason ?? 'blocked-flight-input-invalid' }));
+    return 1;
+  }
+}
+
+export function cmdDoctor(root, profile, policy) {
+  let prerequisiteFailures = 0;
+  try { assertFlightRequirements(root, 'pre'); } catch (error) {
+    prerequisiteFailures = 1;
+    err(`${error.reason ?? 'blocked-flight-input-invalid'}: ${error.message}`);
+  }
+  const configEntries = hookDoctorEntries(root);
+  const local = observeLocalHealth(root, policy, profile);
+  out(report.formatConfig(configEntries));
+  out('');
+  out(report.formatLocal(local));
+  out('');
+  const kind = providerKind(profile);
+  const observed = kind === 'github'
+    ? queue.observe({ cwd: root, profile }) : null;
+  const providerRequired = providerAdapterRequired(policy);
+  const findings = kind === 'github' ? queue.audit(observed, profile) : [{
+    id: 'provider-adapter', ok: kind === 'none' && !providerRequired,
+    detail: kind === 'none' ? providerRequired
+      ? 'selected capabilities require a provider adapter' : 'no provider selected'
+      : 'selected provider adapter is unsupported',
+    remedy: kind === 'none' && !providerRequired ? null : 'select a supported provider adapter',
+  }];
+  out(report.formatFindings('remote configuration', findings));
+  const failures =
+    prerequisiteFailures + configEntries.filter((entry) => !entry.ok).length +
+    findings.filter((finding) => !finding.ok).length +
+    (local.canonicalDirty ? 1 : 0) +
+    (local.relation === 'equal' ? 0 : 1) +
+    (local.staleWorktrees.length > 0 ? 1 : 0);
+  out(''); out(report.formatDoctorConclusion(failures, local.canonicalCleanlinessDeferred));
+  return failures === 0 ? 0 : 1;
 }

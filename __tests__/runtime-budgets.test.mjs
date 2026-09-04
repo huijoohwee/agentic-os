@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40_936, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40_847, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -240,7 +240,7 @@ test('this repository is inside its own module budget', () => {
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, { modules: 46, totalLines: 15_000, perModuleLines: 400 });
   assert.equal(entries.length, 46);
-  assert.equal(total, 13_840, 'update this exact cost to expose every source-line delta');
+  assert.equal(total, 13_841, 'update this exact cost to expose every source-line delta');
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
   for (const path of [

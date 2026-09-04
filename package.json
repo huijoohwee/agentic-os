@@ -66,6 +66,7 @@
     "feature:rank": "node src/rank.mjs",
     "autonomy:class": "node bin/agentic-os.mjs autonomy-class",
     "observe": "node bin/agentic-os.mjs observe",
+    "flight": "node bin/agentic-os.mjs flight",
     "governance:request": "node bin/agentic-os.mjs request",
     "authority": "node bin/agentic-os-authority.mjs",
     "transition:validate": "node bin/agentic-os-transition.mjs validate-event",

@@ -52,18 +52,11 @@ function fixture(t) {
   const wrapper = join(support, 'git');
   writeFileSync(wrapper, `#!/bin/sh
 if [ "$AGENTIC_OS_TEST_RACE_MODE" = publication ] &&
-   [ "$1" = rev-parse ] && [ "$2" = --verify ] &&
-   [ "$3" = refs/remotes/origin/main ]; then
-  count=0
-  if [ -f "$AGENTIC_OS_TEST_RACE_MARKER" ]; then
-    count=$(sed -n '1p' "$AGENTIC_OS_TEST_RACE_MARKER")
-  fi
-  count=$((count + 1))
-  printf '%s\n' "$count" > "$AGENTIC_OS_TEST_RACE_MARKER"
-  if [ "$count" -eq 2 ]; then
-    "$AGENTIC_OS_REAL_GIT" -C "$AGENTIC_OS_TEST_ROOT" update-ref \
-      refs/remotes/origin/main "$AGENTIC_OS_TEST_MOVED" "$AGENTIC_OS_TEST_BASE" || exit
-  fi
+   [ "$1" = ls-remote ] && [ "$5" = refs/heads/agent/test/protected-race ] &&
+   [ ! -f "$AGENTIC_OS_TEST_RACE_MARKER" ]; then
+  : > "$AGENTIC_OS_TEST_RACE_MARKER"
+  "$AGENTIC_OS_REAL_GIT" -C "$AGENTIC_OS_TEST_ROOT" update-ref \
+    refs/remotes/origin/main "$AGENTIC_OS_TEST_MOVED" "$AGENTIC_OS_TEST_BASE" || exit
 fi
 if [ "$AGENTIC_OS_TEST_RACE_MODE" = lane-ref ] && [ "$1" = rev-parse ] &&
    [ "$2" = --verify ] && [ "$3" = refs/heads/agent/test/protected-race ] &&
