@@ -42,6 +42,14 @@ export function validateCommandArguments(command, argv) {
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });
     case 'observe': return exact(argv, { flags: ['provider', 'deep'] });
+    case 'flight': {
+      const error = exact(argv, { min: 1, options: ['requirements', 'checkpoint', 'ref'] });
+      if (error) return error;
+      const phase = argv.find((token) => !token.startsWith('--'));
+      if (!['pre', 'in', 'post'].includes(phase)) return 'flight requires pre, in, or post';
+      const checkpoint = argv.some((token) => token.startsWith('--checkpoint='));
+      return checkpoint === (phase !== 'pre') ? null : 'in/post require a checkpoint; pre forbids one';
+    }
     case 'request': {
       const error = exact(argv, { min: 1, max: 1, options: ['input'],
         requiredOptions: ['input'] });
@@ -74,4 +82,41 @@ export function validateCommandArguments(command, argv) {
     }
     default: return `unknown command ${JSON.stringify(command)}`;
   }
+}
+
+export function cmdHelp() {
+  process.stdout.write(
+    [
+      'agentic-os — ADLC harness',
+      '',
+      '  npm run setup             write config and select packaged hooks without clobbering',
+      '  npm run doctor            report harness and remote drift, change nothing',
+      '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
+      '  npm run land              publish the exact lane head and request provider handoff',
+      '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
+      '  npm run status            registered lane projections and provider state',
+      '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
+      '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
+      '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
+      '  npm run autonomy:class    compute the committed candidate promotion ceiling',
+      '  agentic-os flight pre|in|post  inspect prerequisites, drift, and completion',
+      '  agentic-os observe        emit a shallow profile-bound repository observation',
+      '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
+      '  npm run queue:show        inspect the required remote configuration',
+      '  npm run queue:apply -- --yes  fail closed; provider policy is repository-owned',
+      '',
+    ].join('\n'),
+  );
+  return 0;
+}
+
+export function flag(argv, name) {
+  return argv.includes(`--${name}`);
+}
+export function option(argv, name, fallback = null) {
+  const hit = argv.find((arg) => arg.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : fallback;
+}
+export function positional(argv) {
+  return argv.filter((arg) => !arg.startsWith('--'));
 }

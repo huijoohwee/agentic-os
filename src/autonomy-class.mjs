@@ -29,6 +29,7 @@ export const ESCALATING_CLASSES = Object.freeze([CLASS_AUTHORITY_CONTROLLING]);
 /** Executable agentic-os surfaces that can widen who may write, land, or retire. */
 export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   '.agentic-os.json',
+  '.agentic-os-flight.json',
   '.gitattributes',
   '.gitignore',
   'AGENTS.md',

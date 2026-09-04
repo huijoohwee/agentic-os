@@ -44,7 +44,7 @@ import {
   runCanonicalSync,
   runReconcile,
   assertPublicationPreflight, classifyPromotion, observeLocalHealth, publicationByteRisks,
-  runObserve,
+  runObserve, runFlight, cmdDoctor, assertFlightRequirements,
   runRequest,
   pullRequestText,
   providerKind,
@@ -53,8 +53,8 @@ import {
   assertProtectedRefCurrent,
   trustedRepositoryProfile,
 } from './agentic-os-auxiliary.mjs';
-import { hookDoctorEntries, runHookSetup } from './agentic-os-hooks.mjs';
-import { validateCommandArguments } from './agentic-os-argv.mjs';
+import { runHookSetup } from './agentic-os-hooks.mjs';
+import { validateCommandArguments, cmdHelp, flag, option, positional } from './agentic-os-argv.mjs';
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
 function projectCache(record, root) {
@@ -70,16 +70,6 @@ function effectReceipt(operation, receipt) {
   if (rendered) err(rendered);
   return receipt;
 }
-function flag(argv, name) {
-  return argv.includes(`--${name}`);
-}
-function option(argv, name, fallback = null) {
-  const hit = argv.find((arg) => arg.startsWith(`--${name}=`));
-  return hit ? hit.slice(name.length + 3) : fallback;
-}
-function positional(argv) {
-  return argv.filter((arg) => !arg.startsWith('--'));
-}
 function remoteName(policy, root) {
   const name = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   if (!name) throw new TypeError('repository profile remote-tracking ref has no remote name');
@@ -93,37 +83,6 @@ function requireCanonical(root, policy) {
       `current branch: ${branch ?? 'detached'}`,
   );
   process.exit(1);
-}
-function cmdSetup(root, policy, profile, allowTrustCreation) {
-  return runHookSetup(root, policy, profile, out, { allowTrustCreation });
-}
-function cmdDoctor(root, profile, policy) {
-  const configEntries = hookDoctorEntries(root);
-  const local = observeLocalHealth(root, policy, profile);
-  out(report.formatConfig(configEntries));
-  out('');
-  out(report.formatLocal(local));
-  out('');
-  const kind = providerKind(profile);
-  const observed = kind === 'github'
-    ? queue.observe({ cwd: root, profile }) : null;
-  const providerRequired = providerAdapterRequired(policy);
-  const findings = kind === 'github' ? queue.audit(observed, profile) : [{
-    id: 'provider-adapter', ok: kind === 'none' && !providerRequired,
-    detail: kind === 'none' ? providerRequired
-      ? 'selected capabilities require a provider adapter' : 'no provider selected'
-      : 'selected provider adapter is unsupported',
-    remedy: kind === 'none' && !providerRequired ? null : 'select a supported provider adapter',
-  }];
-  out(report.formatFindings('remote configuration', findings));
-  const failures =
-    configEntries.filter((entry) => !entry.ok).length +
-    findings.filter((finding) => !finding.ok).length +
-    (local.canonicalDirty ? 1 : 0) +
-    (local.relation === 'equal' ? 0 : 1) +
-    (local.staleWorktrees.length > 0 ? 1 : 0);
-  out(''); out(report.formatDoctorConclusion(failures, local.canonicalCleanlinessDeferred));
-  return failures === 0 ? 0 : 1;
 }
 function cmdStart(root, argv, policy, profile) {
   requireCanonical(root, policy);
@@ -218,6 +177,7 @@ function cmdLand(cwd, argv, profile, policy) {
   }
   const laneStore = store.load(root);
   const record = laneStore.lanes[ref];
+  const configuredFlight = assertFlightRequirements(root, 'pre');
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   const message = option(argv, 'message');
   if (message !== null) {
@@ -239,7 +199,7 @@ function cmdLand(cwd, argv, profile, policy) {
   const capturedRemote = remoteTransport(remote, root);
   // A present invalid optional cache must fail before fetch mutates local provider evidence.
   store.load(root);
-  const laneHeadSha = assertPublicationPreflight(root);
+  const laneHeadSha = assertPublicationPreflight(root, null, configuredFlight);
   effectReceipt('fetch', gitFetch(remote, root, capturedRemote.fetchUrl));
   const baseSha = assertProfileCurrent(root, policy, profile);
   if (!baseSha) {
@@ -248,7 +208,7 @@ function cmdLand(cwd, argv, profile, policy) {
   }
   const commits = gitLines(['rev-list', `${baseSha}..${laneHeadSha}`], { cwd: root }).length;
   const publishedHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
-  assertPublicationPreflight(root, laneHeadSha);
+  assertPublicationPreflight(root, laneHeadSha, configuredFlight);
 
   if (integrationProof(baseSha, laneHeadSha, { cwd: root })) {
     err('blocked-already-integrated: do not republish; reap can classify for public governance');
@@ -287,6 +247,7 @@ function cmdLand(cwd, argv, profile, policy) {
   }
 
   if (state === 'active') {
+    assertFlightRequirements(root, 'in', configuredFlight);
     assertProtectedRefCurrent(root, policy.protectedRef, baseSha);
     effectReceipt('publish-exact-new-ref',
       publishExactNewRef(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl));
@@ -337,7 +298,10 @@ function cmdLand(cwd, argv, profile, policy) {
     expectedHead: laneHeadSha,
     expectedRepository: observed.repo,
     baseBranch: policy.protectedBranch,
-    assertSourceHead: () => remoteRefSha(remote, ref, root, capturedRemote.fetchUrl) === laneHeadSha,
+    assertSourceHead: () => {
+      assertFlightRequirements(root, 'in', configuredFlight);
+      return remoteRefSha(remote, ref, root, capturedRemote.fetchUrl) === laneHeadSha;
+    },
     ...pullRequestText(root, ref, laneHeadSha, baseSha),
   });
   let finalObserved;
@@ -548,30 +512,6 @@ function cmdQueue(root, argv, profile) {
   err(`unknown queue action "${action}". use: show | apply`);
   return 1;
 }
-function cmdHelp() {
-  out(
-    [
-      'agentic-os — ADLC harness',
-      '',
-      '  npm run setup             write config and select packaged hooks without clobbering',
-      '  npm run doctor            report harness and remote drift, change nothing',
-      '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
-      '  npm run land              publish the exact lane head and request provider handoff',
-      '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
-      '  npm run status            registered lane projections and provider state',
-      '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
-      '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
-      '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
-      '  npm run autonomy:class    compute the committed candidate promotion ceiling',
-      '  agentic-os observe        emit a shallow profile-bound repository observation',
-      '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
-      '  npm run queue:show        inspect the required remote configuration',
-      '  npm run queue:apply -- --yes  fail closed; provider policy is repository-owned',
-      '',
-    ].join('\n'),
-  );
-  return 0;
-}
 function main() {
   const supplied = process.argv.slice(2);
   let [command, ...argv] = supplied;
@@ -617,7 +557,7 @@ function main() {
     case 'setup':
     case 'git-configure':
     case 'guard-install':
-      return cmdSetup(root, policy, profile, trustedProfile.trust === null);
+      return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
     case 'doctor':
       return cmdDoctor(root, profile, policy);
     case 'start':
@@ -639,6 +579,8 @@ function main() {
       return cmdQueue(root, argv, profile);
     case 'autonomy-class':
       return runAutonomyClass(root, argv, policy);
+    case 'flight':
+      return runFlight(root, argv, profile);
     case 'observe':
       return runObserve(root, argv, profile);
     default:
