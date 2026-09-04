@@ -32,9 +32,10 @@ function exact(argv, {
 export function validateCommandArguments(command, argv) {
   switch (command) {
     case 'help': case '--help': return exact(argv, {});
-    case 'setup': case 'git-configure': case 'guard-install': case 'doctor': case 'land':
+    case 'setup': case 'git-configure': case 'guard-install': case 'doctor':
       return exact(argv, {});
-    case 'start': return exact(argv, { min: 1, max: 1, options: ['device'] });
+    case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
+    case 'land': return exact(argv, { options: ['message'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });

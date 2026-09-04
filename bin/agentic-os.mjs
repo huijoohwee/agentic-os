@@ -27,10 +27,10 @@ import * as queue from '../src/queue.mjs';
 import {
   provision, assertProvisionable,
   inspect as inspectWorktree,
-  registeredLaneBranches,
   reapLaneBranches,
   staleWorktrees,
   worktreeFor,
+  assertDisjointReservation, commitReservedChanges, parseWritePaths,
 } from '../src/worktree.mjs';
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
@@ -129,12 +129,14 @@ function cmdStart(root, argv, policy, profile) {
   requireCanonical(root, policy);
   const [scope] = positional(argv);
   if (!scope) {
-    err('usage: npm run lane -- <scope>   e.g. npm run lane -- pricing-table');
+    err('usage: npm run lane -- <scope> --write=<path[,path...]>');
     return 1;
   }
   const device = assertDevice(option(argv, 'device') ?? deviceSegment());
   const ref = laneRef(scope, device);
-  store.load(root); // A present invalid cache must fail before fetch or lane creation.
+  const laneStore = store.load(root); // Present invalid state must fail before effects.
+  const writeOption = option(argv, 'write');
+  const writePaths = writeOption === null ? [] : parseWritePaths(writeOption);
   const lock = acquireOperationLock('agentic-os-start', root);
   if (!lock) {
     err('blocked-concurrent-start: another lane admission owns the clone-wide start lock');
@@ -154,13 +156,8 @@ function cmdStart(root, argv, policy, profile) {
         effectsRetained: fetched.effectsRetained,
         fetchedProtectedSha: headSha(policy.protectedRef, root) });
       const baseSha = assertProfileCurrent(root, policy, profile);
-      const active = registeredLaneBranches(root);
-      if (active.length > 0) {
-        throw Object.assign(new Error(
-          `finish the active lane before starting another: ${active.join(', ')}`), {
-          reason: 'blocked-active-lane-sprawl',
-        });
-      }
+      assertDisjointReservation({ cwd: root, ref, writePaths,
+        protectedRef: policy.protectedRef, records: laneStore.lanes });
       artifacts.baseSha = baseSha;
       if (!baseSha) {
         err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
@@ -182,12 +179,13 @@ function cmdStart(root, argv, policy, profile) {
       projectCache({
         ...store.newRecord({
           ref, device, scope, base: policy.protectedRef, baseSha, worktree: created.path,
+          writePaths,
         }), state: 'active',
       }, root);
       out('');
       out(`  cd ${created.path}`);
-      out('  # author, commit, then:');
-      out('  npm run land');
+      out('  # author, then stage, commit, and push autonomously:');
+      out('  npm run land -- --message="<commit message>"');
       return 0;
     })();
   } catch (error) {
@@ -206,7 +204,7 @@ function cmdStart(root, argv, policy, profile) {
     label: 'start', result: operationResult, error: operationError, artifacts,
   });
 }
-function cmdLand(cwd, profile, policy) {
+function cmdLand(cwd, argv, profile, policy) {
   const root = repoRoot(cwd);
   const ref = currentBranch(root);
   if (!ref || !isLaneRef(ref)) {
@@ -217,6 +215,20 @@ function cmdLand(cwd, profile, policy) {
   if (!isBoundLane(ref, root)) {
     err('blocked-unbound-lane: land requires the registered linked worktree for this lane');
     return 1;
+  }
+  const laneStore = store.load(root);
+  const record = laneStore.lanes[ref];
+  const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
+  const message = option(argv, 'message');
+  if (message !== null) {
+    if (writePaths.length === 0) {
+      err('blocked-write-scope-missing: autonomous land requires an admitted --write reservation');
+      return 1;
+    }
+    assertDisjointReservation({ cwd: root, ref, writePaths,
+      protectedRef: policy.protectedRef, records: laneStore.lanes });
+    const committed = commitReservedChanges({ cwd: root, writePaths, message });
+    if (committed) out(`committed ${committed.head.slice(0, 9)} (${committed.paths.length} path(s))`);
   }
   const kind = providerKind(profile);
   if (providerAdapterRequired(policy) && kind !== 'github') {
@@ -543,7 +555,7 @@ function cmdHelp() {
       '',
       '  npm run setup             write config and select packaged hooks without clobbering',
       '  npm run doctor            report harness and remote drift, change nothing',
-      '  npm run lane -- <scope>   open a lane at the fetched profile canonical ref',
+      '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
       '  npm run land              publish the exact lane head and request provider handoff',
       '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
       '  npm run status            registered lane projections and provider state',
@@ -611,7 +623,7 @@ function main() {
     case 'start':
       return cmdStart(root, argv, policy, profile);
     case 'land':
-      return cmdLand(cwd, profile, policy);
+      return cmdLand(cwd, argv, profile, policy);
     case 'status':
       return cmdStatus(root, argv, profile, policy);
     case 'reap':

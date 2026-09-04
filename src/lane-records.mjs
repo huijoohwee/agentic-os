@@ -30,7 +30,7 @@ const CACHE_LOCK_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const RECORD_FIELDS = new Set([
   'ref', 'device', 'scope', 'state', 'base', 'baseSha', 'worktree', 'pr', 'createdAt',
-  'head', 'handoff', 'mode',
+  'head', 'handoff', 'mode', 'writePaths',
 ]);
 const RECORD_STATES = new Set(['planned', 'active', 'published', 'queued', 'integrated']);
 const STRING_FIELDS = new Set([
@@ -148,6 +148,11 @@ function normalizeStore(value) {
     if (handoff && (!handoff.enumerable || !Object.hasOwn(handoff, 'value')
       || handoff.value !== null && !plainObject(handoff.value)))
       throw invalid(`record handoff is invalid for ${ref}`);
+    const writePaths = Object.getOwnPropertyDescriptor(record, 'writePaths');
+    if (writePaths && (!writePaths.enumerable || !Object.hasOwn(writePaths, 'value')
+      || !Array.isArray(writePaths.value) || writePaths.value.some((path) =>
+        typeof path !== 'string' || path.length === 0)))
+      throw invalid(`record writePaths is invalid for ${ref}`);
     normalized.lanes[ref] = cloneJson(record, state);
   }
   return normalized;
@@ -328,10 +333,7 @@ function publish(value, cwd, expected, artifacts = null) {
   return Object.freeze({ ref: CACHE_REF, oid: candidateOid });
 }
 
-export function save(value, cwd = process.cwd()) {
-  return publish(value, cwd, loadSnapshot(cwd).cursor);
-}
-
+export function save(value, cwd = process.cwd()) { return publish(value, cwd, loadSnapshot(cwd).cursor); }
 export function get(ref, cwd = process.cwd()) {
   return load(cwd).lanes[ref] ?? null;
 }
@@ -391,9 +393,7 @@ export function list(cwd = process.cwd()) {
   return Object.values(load(cwd).lanes);
 }
 
-export function newRecord({ ref, device, scope, base, baseSha, worktree }) {
-  return {
-    ref, device, scope, state: 'planned', base, baseSha, worktree, pr: null,
-    createdAt: new Date().toISOString(),
-  };
+export function newRecord({ ref, device, scope, base, baseSha, worktree, writePaths = [] }) {
+  return { ref, device, scope, state: 'planned', base, baseSha, worktree, pr: null,
+    createdAt: new Date().toISOString(), writePaths };
 }

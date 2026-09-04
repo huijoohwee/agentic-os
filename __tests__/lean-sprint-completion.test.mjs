@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
-import { provision, registeredLaneBranches } from '../src/worktree.mjs';
+import { parseWritePaths, provision, registeredLaneBranches, worktreeFor } from '../src/worktree.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
@@ -45,23 +45,83 @@ function createLane(t, root, ref, scope) {
   return created;
 }
 
-test('start refuses a second registered lane after upstream validation and before branch creation', (t) => {
+test('write reservations reject traversal and Git pathspec magic', () => {
+  assert.deepEqual(parseWritePaths('src/a.mjs,docs/guide.md'), ['docs/guide.md', 'src/a.mjs']);
+  for (const path of ['../outside', '/absolute', 'src/*', ':(top)**', 'src\\file'])
+    assert.throws(() => parseWritePaths(path), /write scope/u);
+});
+
+test('start admits a disjoint second lane without interrupting the active lane', (t) => {
   const { parent, root, run } = fixture(t);
   const bare = join(parent, 'remote.git');
   git(['init', '--quiet', '--bare', bare], { cwd: parent });
   run(['remote', 'add', 'origin', bare]);
   run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
-  createLane(t, root, 'agent/test-device/active', 'active');
+  const active = createLane(t, root, 'agent/test-device/active', 'active');
+  writeFileSync(join(active.path, 'active.txt'), 'active\n');
 
-  const result = spawnSync(process.execPath, [CLI, 'start', 'next', '--device=test-device'], {
+  const result = spawnSync(process.execPath, [CLI, 'start', 'next', '--device=test-device',
+    '--write=next.txt'], {
     cwd: root,
     encoding: 'utf8',
   });
 
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(registeredLaneBranches(root), [
+    'agent/test-device/active', 'agent/test-device/next',
+  ]);
+  const next = worktreeFor('agent/test-device/next', root);
+  t.after(() => {
+    if (next && existsSync(next.path)) git(['worktree', 'remove', '--force', next.path], { cwd: root });
+  });
+  assert.equal(run(['branch', '--show-current'], { cwd: active.path }), 'agent/test-device/active');
+});
+
+test('start refuses an overlapping active-lane write reservation', (t) => {
+  const { parent, root, run } = fixture(t);
+  const bare = join(parent, 'remote.git');
+  git(['init', '--quiet', '--bare', bare], { cwd: parent });
+  run(['remote', 'add', 'origin', bare]);
+  run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
+  const active = createLane(t, root, 'agent/test-device/active', 'active');
+  writeFileSync(join(active.path, 'shared.txt'), 'active\n');
+
+  const result = spawnSync(process.execPath, [CLI, 'start', 'next', '--device=test-device',
+    '--write=shared.txt'], { cwd: root, encoding: 'utf8' });
+
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /blocked-active-lane-sprawl/u);
-  assert.deepEqual(registeredLaneBranches(root), ['agent/test-device/active']);
+  assert.match(result.stderr, /blocked-write-scope-overlap/u);
   assert.equal(run(['branch', '--list', 'agent/test-device/next']), '');
+});
+
+test('land autonomously stages, commits, and publishes only its reserved path', (t) => {
+  const { parent, root, run } = fixture(t);
+  const bare = join(parent, 'remote.git');
+  git(['init', '--quiet', '--bare', bare], { cwd: parent });
+  run(['remote', 'add', 'origin', bare]);
+  run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
+
+  const started = spawnSync(process.execPath, [CLI, 'start', 'autonomous',
+    '--device=test-device', '--write=change.txt'], { cwd: root, encoding: 'utf8' });
+  assert.equal(started.status, 0, started.stderr);
+  const lane = worktreeFor('agent/test-device/autonomous', root);
+  assert.ok(lane);
+  t.after(() => {
+    if (existsSync(lane.path)) git(['worktree', 'remove', '--force', lane.path], { cwd: root });
+  });
+  writeFileSync(join(lane.path, 'change.txt'), 'delivered\n');
+
+  const landed = spawnSync(process.execPath, [CLI, 'land', '--message=docs: autonomous'], {
+    cwd: lane.path, encoding: 'utf8',
+  });
+
+  assert.equal(landed.status, 0, landed.stderr);
+  assert.match(landed.stdout, /committed [0-9a-f]{9} \(1 path\(s\)\)/u);
+  assert.match(landed.stdout, /pushed agent\/test-device\/autonomous/u);
+  const local = run(['rev-parse', 'agent/test-device/autonomous']);
+  const advertised = run(['ls-remote', '--refs', bare,
+    'refs/heads/agent/test-device/autonomous']).split(/\s+/u)[0];
+  assert.equal(advertised, local);
 });
 
 test('finish removes one clean integrated worktree and retains its branch history', (t) => {

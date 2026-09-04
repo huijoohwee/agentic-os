@@ -10,11 +10,13 @@ import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   git,
+  gitLines,
   headSha,
   observeGit,
   observeGitLines,
   repoRoot,
   worktrees,
+  worktreeCleanupRisks,
   refExists,
   untrackedPaths,
 } from './git.mjs';
@@ -229,4 +231,73 @@ export function retire() {
   const error = new Error('retirement requires an authenticated authority-transition receipt');
   error.reason = 'blocked-authenticated-cleanup-required';
   throw error;
+}
+
+function writeScopeError(reason, message, detail = {}) {
+  return Object.assign(new Error(message), { reason, ...detail });
+}
+
+export function parseWritePaths(value) {
+  if (typeof value !== 'string' || value.length === 0)
+    throw new TypeError('at least one --write=<path[,path...]> reservation is required');
+  const paths = [...new Set(value.split(',').map((path) => path.trim()))].sort();
+  for (const path of paths) {
+    const segments = path.split('/');
+    if (!path || path.startsWith('/') || path.endsWith('/') || path.startsWith(':')
+      || /[*?[]/u.test(path) || path.includes('\\') || path.includes('\0')
+      || segments.some((part) => !part || part === '.' || part === '..'))
+      throw writeScopeError('blocked-invalid-write-scope', `invalid Git write scope: ${path}`);
+  }
+  return paths;
+}
+
+const pathsOverlap = (left, right) => left === right
+  || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+const pathIsReserved = (path, reservations) => reservations.some((reservation) =>
+  path === reservation || path.startsWith(`${reservation}/`));
+
+function observedLanePaths(entry, record, protectedRef, cwd) {
+  const observed = worktreeCleanupRisks(entry.path, { includeIgnored: false });
+  const dirty = [...new Set([...observed.tracked, ...observed.owned, ...observed.hidden])];
+  const committed = gitLines(['diff', '--name-only',
+    `${record?.baseSha ?? protectedRef}...refs/heads/${entry.branch}`], { cwd, allowFail: true });
+  const reserved = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
+  return [...new Set([...reserved, ...dirty, ...committed])].sort();
+}
+
+export function assertDisjointReservation({ cwd, ref, writePaths, protectedRef, records }) {
+  const active = worktrees(cwd).filter((entry) => isLaneRef(entry.branch) && entry.branch !== ref);
+  if (active.length > 0 && writePaths.length === 0) throw writeScopeError(
+    'blocked-write-scope-missing', 'concurrent admission requires --write=<path[,path...]>');
+  for (const entry of active) {
+    const occupied = observedLanePaths(entry, records[entry.branch], protectedRef, cwd);
+    if (occupied.length === 0) throw writeScopeError('blocked-unproven-write-scope',
+      `active lane has no declared or observable write scope: ${entry.branch}`, { ref: entry.branch });
+    for (const requested of writePaths) for (const path of occupied) {
+      if (pathsOverlap(requested, path)) throw writeScopeError('blocked-write-scope-overlap',
+        `${ref} overlaps ${entry.branch}: ${requested} <> ${path}`,
+        { ref: entry.branch, requested, occupied: path });
+    }
+  }
+  return writePaths;
+}
+
+export function commitReservedChanges({ cwd, writePaths, message }) {
+  if (typeof message !== 'string' || message.trim().length === 0 || message.length > 500)
+    throw writeScopeError('blocked-invalid-commit-message', '--message must contain 1-500 characters');
+  const before = worktreeCleanupRisks(cwd, { includeIgnored: false });
+  const changed = [...new Set([...before.tracked, ...before.owned, ...before.hidden])].sort();
+  if (changed.length === 0) return null;
+  const outside = changed.filter((path) => !pathIsReserved(path, writePaths));
+  if (outside.length > 0) throw writeScopeError('blocked-write-outside-reservation',
+    `preserve ${outside.length} path(s) outside this lane reservation`, { paths: outside });
+  git(['add', '--', ...writePaths], { cwd });
+  const staged = gitLines(['diff', '--cached', '--name-only'], { cwd });
+  if (staged.length === 0) throw writeScopeError('blocked-empty-commit', 'no reserved changes were staged');
+  const stagedOutside = staged.filter((path) => !pathIsReserved(path, writePaths));
+  if (stagedOutside.length > 0) throw writeScopeError('blocked-staged-outside-reservation',
+    `index contains ${stagedOutside.length} path(s) outside this lane reservation`,
+    { paths: stagedOutside });
+  git(['commit', '--message', message], { cwd });
+  return Object.freeze({ head: git(['rev-parse', 'HEAD'], { cwd }), paths: staged });
 }
