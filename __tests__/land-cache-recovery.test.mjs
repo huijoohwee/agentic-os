@@ -12,7 +12,7 @@ import { CACHE_LIMITS, get, load, save, SCHEMA, storePath } from '../src/lane-re
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
-function fixture(t, scope = 'cache-recovery') {
+function fixture(t, scope = 'cache-recovery', { withLane = true } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-land-cache-'));
   const root = join(parent, 'repo');
   const bare = join(parent, 'origin.git');
@@ -36,11 +36,14 @@ function fixture(t, scope = 'cache-recovery') {
   run(['remote', 'add', 'origin', bare]);
   run(['push', '--quiet', 'origin', 'main']);
   const ref = `agent/device/${scope}`;
-  run(['worktree', 'add', '--quiet', '-b', ref, lane, 'main']);
-  writeFileSync(join(lane, 'candidate.txt'), 'candidate\n');
-  run(['add', 'candidate.txt'], lane);
-  run(['commit', '--quiet', '--message', 'candidate'], lane);
-  const head = run(['rev-parse', 'HEAD'], lane);
+  let head = run(['rev-parse', 'HEAD']);
+  if (withLane) {
+    run(['worktree', 'add', '--quiet', '-b', ref, lane, 'main']);
+    writeFileSync(join(lane, 'candidate.txt'), 'candidate\n');
+    run(['add', 'candidate.txt'], lane);
+    run(['commit', '--quiet', '--message', 'candidate'], lane);
+    head = run(['rev-parse', 'HEAD'], lane);
+  }
   return { root, bare, lane, run, ref, head };
 }
 
@@ -87,7 +90,7 @@ test('cache saturation after publication cannot turn the authoritative effect in
 });
 
 test('cache saturation after start retains the full base and created worktree projection', (t) => {
-  const subject = fixture(t, 'start-cache-receipt');
+  const subject = fixture(t, 'start-cache-receipt', { withLane: false });
   const lanes = Object.fromEntries(Array.from({ length: CACHE_LIMITS.lanes }, (_, index) => {
     const ref = `agent/cache-device/start-filler-${index}`;
     return [ref, { ref, state: 'active' }];

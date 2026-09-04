@@ -54,6 +54,7 @@
     "land": "node bin/agentic-os.mjs land",
     "status": "node bin/agentic-os.mjs status",
     "reap": "node bin/agentic-os.mjs reap",
+    "finish": "node bin/agentic-os.mjs finish",
     "sync:canonical": "node bin/agentic-os.mjs canonical-sync",
     "reconcile": "node bin/agentic-os.mjs reconcile",
     "queue:show": "node bin/agentic-os.mjs queue show",
