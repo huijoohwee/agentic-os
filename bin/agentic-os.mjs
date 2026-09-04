@@ -27,8 +27,10 @@ import * as queue from '../src/queue.mjs';
 import {
   provision, assertProvisionable,
   inspect as inspectWorktree,
+  registeredLaneBranches,
   reapLaneBranches,
   staleWorktrees,
+  worktreeFor,
 } from '../src/worktree.mjs';
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
@@ -152,6 +154,13 @@ function cmdStart(root, argv, policy, profile) {
         effectsRetained: fetched.effectsRetained,
         fetchedProtectedSha: headSha(policy.protectedRef, root) });
       const baseSha = assertProfileCurrent(root, policy, profile);
+      const active = registeredLaneBranches(root);
+      if (active.length > 0) {
+        throw Object.assign(new Error(
+          `finish the active lane before starting another: ${active.join(', ')}`), {
+          reason: 'blocked-active-lane-sprawl',
+        });
+      }
       artifacts.baseSha = baseSha;
       if (!baseSha) {
         err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
@@ -465,6 +474,39 @@ function cmdReap(root, argv, policy, profile) {
   }
   return 0;
 }
+function cmdFinish(root, argv, policy, profile) {
+  requireCanonical(root, policy);
+  const ref = option(argv, 'ref');
+  if (!ref || !isLaneRef(ref)) {
+    err('blocked-invalid-lane-ref: finish requires --ref=<lane>');
+    return 1;
+  }
+  const lane = worktreeFor(ref, root);
+  if (!lane || !existsSync(lane.path)) {
+    err(`blocked-unbound-lane: no registered worktree exists for ${ref}`);
+    return 1;
+  }
+  if (git(['status', '--porcelain'], { cwd: lane.path }).trim()) {
+    err(`blocked-dirty-lane: preserve and commit or remove authored bytes in ${lane.path}`);
+    return 1;
+  }
+  effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
+  const baseSha = assertProfileCurrent(root, policy, profile);
+  const laneHead = headSha(`refs/heads/${ref}`, root);
+  if (!baseSha || !integrationProof(baseSha, laneHead, { cwd: root })) {
+    err(`blocked-not-integrated: ${ref} is not exactly projected into ${policy.protectedRef}`);
+    return 1;
+  }
+  git(['worktree', 'remove', lane.path], { cwd: root });
+  if (worktreeFor(ref, root) || existsSync(lane.path)) {
+    err(`blocked-finish-postcondition: ${ref} worktree removal is incomplete`);
+    return 1;
+  }
+  out(JSON.stringify({ schema: 'agentic-os/sprint-finish/v1', ref, laneHead,
+    integratedRevision: baseSha, worktree: lane.path, worktreeRemoved: true,
+    branchRetained: true }));
+  return 0;
+}
 function cmdQueue(root, argv, profile) {
   const [action = 'show'] = positional(argv);
   const kind = providerKind(profile);
@@ -503,6 +545,7 @@ function cmdHelp() {
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope>   open a lane at the fetched profile canonical ref',
       '  npm run land              publish the exact lane head and request provider handoff',
+      '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
       '  npm run status            registered lane projections and provider state',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
@@ -573,6 +616,8 @@ function main() {
       return cmdStatus(root, argv, profile, policy);
     case 'reap':
       return cmdReap(root, argv, policy, profile);
+    case 'finish':
+      return cmdFinish(root, argv, policy, profile);
     case 'canonical-sync':
       return runCanonicalSync(root, argv, policy);
     case 'reconcile':
