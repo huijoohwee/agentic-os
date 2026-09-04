@@ -1,0 +1,29 @@
+name: ADLC transition
+
+run-name: ADLC transition ${{ inputs.operation_input_digest }} @ ${{ github.workflow_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation_payload:
+        description: Exact canonical transition operation JSON.
+        required: true
+        type: string
+      operation_input_digest:
+        description: SHA-256 digest of operation_payload.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node bin/agentic-os-transition.mjs validate-event
