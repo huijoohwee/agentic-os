@@ -22,9 +22,9 @@ export const READINESS_PROOF = Object.freeze({
 
 const clone = (value) => structuredClone(value);
 
-test('the packaged catalog has twelve unique entries behind count and digest fences', () => {
+test('the packaged catalog has thirteen unique entries behind count and digest fences', () => {
   const catalog = loadCatalog();
-  assert.equal(catalog.entryCount, 12);
+  assert.equal(catalog.entryCount, 13);
   assert.equal(catalog.digest, catalogDigest(catalog.entries));
   assert.deepEqual(validateCatalog(catalog), { ok: true, findings: [] });
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));

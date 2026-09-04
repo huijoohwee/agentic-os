@@ -49,7 +49,16 @@ export function validateCommandArguments(command, argv) {
     }
     case 'canonical-sync': {
       const action = argv.find((token) => !token.startsWith('--')) ?? 'plan';
-      return action === 'plan' ? exact(argv, { min: argv.length === 0 ? 0 : 1, max: 1 })
+      return action === 'plan' ? exact(argv, { min: argv.length === 0 ? 0 : 1, max: 1,
+        options: ['integration-receipt'] })
+        : action === 'apply' ? exact(argv, { min: 1, max: 1,
+          options: ['plan', 'authorize', 'exclusive'],
+          requiredOptions: ['plan', 'authorize', 'exclusive'] }) : `unknown action ${action}`;
+    }
+    case 'reconcile': {
+      const action = argv.find((token) => !token.startsWith('--')) ?? 'plan';
+      return action === 'plan' ? exact(argv, { min: argv.length === 0 ? 0 : 1, max: 1,
+        options: ['scope', 'integration-receipt'] })
         : action === 'apply' ? exact(argv, { min: 1, max: 1,
           options: ['plan', 'authorize', 'exclusive'],
           requiredOptions: ['plan', 'authorize', 'exclusive'] }) : `unknown action ${action}`;

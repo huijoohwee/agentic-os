@@ -156,8 +156,8 @@ const UTF8`)
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
   assert.equal(runtimeId, authorityRelease
-    ? 'v1-aeca6cdae21159346f98bbf744ae7a2b51d95b9040b048bb0cc64b40ea994c72'
-    : 'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0');
+    ? 'v1-9eebc670a00c5682e090b633d7b722b7ce691b70a30fac1e9b89f459956ff05e'
+    : 'v1-9e6ebefda47219dfe8742a3918f8135ad5d16b572683c96c028c355141e63eeb');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
   mkdirSync(path, { mode: 0o700 });

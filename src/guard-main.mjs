@@ -38,7 +38,8 @@ export function evaluate({ branch, phase, override, protectedBranch }) {
         '',
         '  npm run lane -- <scope>',
         '',
-        'If bytes are already here, preserve the checkout and use the repository-owned recovery flow.',
+        'If bytes are already here, preserve them with: npm run reconcile -- plan --scope=<scope>',
+        'Do not retry pull or push until reconcile classifies the protected-main state.',
         `Override only for a repository-owned operation: ${OVERRIDE_ENV}=1`,
       ].join('\n'),
     };

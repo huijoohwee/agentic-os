@@ -1,7 +1,10 @@
 /** Bounded tree projections and recovery-manifest serialization for canonical sync. */
 
 import { snapshotBoundedJson } from './catalog-input.mjs';
-import { worktreePreservationEntries } from './git.mjs';
+import {
+  currentBranch, decodeNulFields, headSha, isAncestor, observeGit, worktreePreservationEntries,
+} from './git.mjs';
+import { integrationProof } from './patch-identity.mjs';
 
 export class CanonicalResourceError extends Error {
   constructor(code, detail = {}) {
@@ -11,14 +14,98 @@ export class CanonicalResourceError extends Error {
 }
 
 function reject(code, detail) { throw new CanonicalResourceError(code, detail); }
+function reconcileReject(code, detail = {}) {
+  const reason = `blocked-${code}`;
+  throw Object.assign(new Error(reason), { reason, detail });
+}
 
-const PLAN_KEYS = Object.freeze('authorization branch exclusiveAuthorization expectedLocalSha expectedTargetSha ignoredPathCount ignoredPathsDigest inventory inventoryDigest planDigest recoveryRef repository schema targetRef'.split(' '));
+const PLAN_KEYS = Object.freeze('authorization branch exclusiveAuthorization expectedLocalSha expectedTargetSha ignoredPathCount ignoredPathsDigest inventory inventoryDigest planDigest reconciliation recoveryRef relation repository schema targetRef'.split(' '));
+const SHA256 = /^[0-9a-f]{64}$/u;
+const RELATIONS = new Set(['equal', 'behind-fast-forwardable', 'squash-integrated-divergence']);
+const SEMANTIC_SCOPE = /^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])?$/u;
+export const RECONCILIATION_STATUS_SCHEMA = 'agentic-os-reconciliation-status/v1';
+
+const byteCompare = (left, right) => Buffer.from(left).compare(Buffer.from(right));
+function repositoryPath(value) {
+  const path = String(value ?? ''), components = path.split('/');
+  if (!path || path.startsWith('/') || path.includes('\\')
+      || components.some((part) => !part || part === '.' || part === '..'))
+    reconcileReject('invalid-claim-path', { path });
+  return path;
+}
+export function canonicalClaimScope(scope, paths) {
+  if (!SEMANTIC_SCOPE.test(scope ?? '')) reconcileReject('invalid-semantic-scope', { scope });
+  if (!Array.isArray(paths)) reconcileReject('invalid-claim-paths');
+  const normalized = [...new Set(paths.map(repositoryPath))].sort(byteCompare);
+  if (normalized.length === 0) reconcileReject('empty-claim-paths');
+  return Object.freeze([...normalized.map((path) => `path:${path}`),
+    `semantic:${scope}`].sort(byteCompare));
+}
+function changedPaths(cwd, localSha, targetSha) {
+  const base = observeGit(['merge-base', localSha, targetSha], { cwd, allowFail: true });
+  if (!base) return [];
+  const raw = observeGit(['diff', '--name-only', '-z', '--no-renames', base, localSha],
+    { cwd, binary: true, allowFail: true });
+  return [...new Set(decodeNulFields(raw))].sort(byteCompare);
+}
+export function canonicalReconciliation(localSha, targetSha, receiptDigest, cwd) {
+  if (isAncestor(localSha, targetSha, cwd)) return {
+    relation: localSha === targetSha ? 'equal' : 'behind-fast-forwardable', reconciliation: null,
+  };
+  if (!SHA256.test(receiptDigest ?? '')) reject('non-fast-forward', { localSha, targetSha,
+    remedy: 'run agentic-os reconcile plan with an exact integration receipt' });
+  const proof = integrationProof(targetSha, localSha, { cwd });
+  if (proof?.kind !== 'exact-tree-projection') reject('non-fast-forward', { localSha, targetSha,
+    remedy: 'local commits are not exactly represented by the protected target' });
+  return { relation: 'squash-integrated-divergence', reconciliation: Object.freeze({
+    schema: 'agentic-os-canonical-reconciliation/v1', integrationReceiptDigest: receiptDigest,
+    proof: Object.freeze({ kind: proof.kind, baseHead: proof.baseHead,
+      head: proof.head, pathCount: proof.pathCount }),
+  }) };
+}
+export function assertCanonicalReconciliationPlan(plan) {
+  if (!RELATIONS.has(plan.relation)) reject('invalid-plan-relation');
+  const proof = plan.reconciliation?.proof;
+  if (plan.relation === 'squash-integrated-divergence'
+    ? plan.reconciliation?.schema !== 'agentic-os-canonical-reconciliation/v1'
+      || !SHA256.test(plan.reconciliation?.integrationReceiptDigest ?? '')
+      || proof?.kind !== 'exact-tree-projection'
+      || proof.baseHead !== plan.expectedTargetSha || proof.head !== plan.expectedLocalSha
+      || !Number.isSafeInteger(proof.pathCount) || proof.pathCount < 1
+    : plan.reconciliation !== null) reject('invalid-reconciliation-proof');
+}
+export function classifyCanonicalReconciliation({ cwd = process.cwd(), branch, targetRef, scope = null } = {}) {
+  const observedBranch = currentBranch(cwd);
+  if (observedBranch !== branch) reconcileReject('not-canonical-branch', { observedBranch, branch });
+  const localSha = headSha(`refs/heads/${branch}`, cwd), targetSha = headSha(targetRef, cwd);
+  if (!localSha || !targetSha) reconcileReject('canonical-ref-missing', { localSha, targetSha });
+  let status, proof = null;
+  if (localSha === targetSha) status = 'synced';
+  else if (isAncestor(localSha, targetSha, cwd)) status = 'behind-fast-forwardable';
+  else if (isAncestor(targetSha, localSha, cwd)) status = 'ahead-needs-pr';
+  else {
+    proof = integrationProof(targetSha, localSha, { cwd });
+    status = proof?.kind === 'exact-tree-projection' ? 'squash-integrated-divergence' : 'true-conflict';
+  }
+  const paths = changedPaths(cwd, localSha, targetSha);
+  const nextAction = { synced: 'none-push-unnecessary',
+    'behind-fast-forwardable': 'apply-recovery-backed-canonical-sync',
+    'ahead-needs-pr': 'preserve-local-main-into-admitted-lane',
+    'squash-integrated-divergence': 'join-integration-receipt-and-sync',
+    'true-conflict': 'reconcile-authored-differences-in-a-lane' }[status];
+  return Object.freeze({ schema: RECONCILIATION_STATUS_SCHEMA, status, branch, targetRef,
+    localSha, targetSha, changedPaths: Object.freeze(paths),
+    claimScope: scope && paths.length > 0 ? canonicalClaimScope(scope, paths) : null,
+    proof: proof ? Object.freeze({ kind: proof.kind, baseHead: proof.baseHead,
+      head: proof.head, pathCount: proof.pathCount }) : null, nextAction });
+}
 
 export function canonicalPlanBody(plan) { return {
   schema: plan.schema, repository: plan.repository, branch: plan.branch, targetRef: plan.targetRef,
   expectedLocalSha: plan.expectedLocalSha, expectedTargetSha: plan.expectedTargetSha,
   inventoryDigest: plan.inventoryDigest, inventory: plan.inventory,
   ignoredPathsDigest: plan.ignoredPathsDigest, ignoredPathCount: plan.ignoredPathCount,
+  relation: plan.relation, reconciliation: plan.reconciliation,
 }; }
 
 /** Snapshot one exact-shape canonical plan inside its resource ceilings. */
