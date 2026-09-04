@@ -45,8 +45,12 @@ function createLane(t, root, ref, scope) {
   return created;
 }
 
-test('start refuses a second registered lane before fetch or branch creation', (t) => {
-  const { root, run } = fixture(t);
+test('start refuses a second registered lane after upstream validation and before branch creation', (t) => {
+  const { parent, root, run } = fixture(t);
+  const bare = join(parent, 'remote.git');
+  git(['init', '--quiet', '--bare', bare], { cwd: parent });
+  run(['remote', 'add', 'origin', bare]);
+  run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
   createLane(t, root, 'agent/test-device/active', 'active');
 
   const result = spawnSync(process.execPath, [CLI, 'start', 'next', '--device=test-device'], {

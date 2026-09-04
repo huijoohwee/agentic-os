@@ -149,6 +149,11 @@ function cmdStart(root, argv, policy, profile) {
   try {
     operationResult = (() => {
       assertProvisionable({ ref, scope, device, cwd: root });
+      const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
+      Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true,
+        effectsRetained: fetched.effectsRetained,
+        fetchedProtectedSha: headSha(policy.protectedRef, root) });
+      const baseSha = assertProfileCurrent(root, policy, profile);
       const active = registeredLaneBranches(root);
       if (active.length > 0) {
         throw Object.assign(new Error(
@@ -156,11 +161,6 @@ function cmdStart(root, argv, policy, profile) {
           reason: 'blocked-active-lane-sprawl',
         });
       }
-      const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
-      Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true,
-        effectsRetained: fetched.effectsRetained,
-        fetchedProtectedSha: headSha(policy.protectedRef, root) });
-      const baseSha = assertProfileCurrent(root, policy, profile);
       artifacts.baseSha = baseSha;
       if (!baseSha) {
         err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
