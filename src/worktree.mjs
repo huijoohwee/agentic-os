@@ -24,12 +24,12 @@ import { isLaneRef, laneDirName } from './lane-id.mjs';
 
 export const LANE_BRANCH_LIMIT = 256;
 
-/** `<parent>/.worktrees/<repo>` by default; override with AGENTIC_OS_WORKTREE_ROOT. */
+/** One registry parent, then one repository directory; override only the parent. */
 export function worktreeRoot(cwd = process.cwd()) {
   const override = process.env.AGENTIC_OS_WORKTREE_ROOT;
   const root = repoRoot(cwd);
-  if (override) return resolve(override);
-  return join(dirname(root), '.worktrees', basename(root));
+  const registry = override ? resolve(override) : join(dirname(root), '.worktrees');
+  return join(registry, basename(root));
 }
 
 export function lanePath(scope, device, cwd = process.cwd()) {

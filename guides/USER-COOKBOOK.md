@@ -3,6 +3,28 @@
 Use the smallest path that preserves source ownership, reviewability, and protected integration. Substitute
 the repository's configured remote, canonical branch, checks, and review provider.
 
+## Worktree registry
+
+Managed lanes use one parent registry and two isolation levels:
+
+```text
+<registry>/<repository>/<device>--<lane>/
+```
+
+The default registry is `.worktrees` beside the repository. Set `AGENTIC_OS_WORKTREE_ROOT` only to move
+that parent; the repository directory is always retained. Every lane directory is a Git-registered worktree,
+not a loose file copy. Edit the owning file in that lane and let protected integration update canonical.
+
+Keep review identifiers and timestamps in lane records; do not rename a live worktree when either changes.
+Only an immutable evidence export placed in a flat archive needs a collision-resistant artifact name:
+
+```text
+<archive>/<repository>/PR<review>-<YYYYMMDDTHHmmZ>-<device>--<lane>.json
+```
+
+Omit fields already represented by archive folders. A provider without pull requests substitutes its neutral
+review identifier; the live worktree layout remains provider-agnostic.
+
 ## Autonomous default
 
 Declare the exact files or directories the lane may write. Disjoint lanes run concurrently; overlaps wait

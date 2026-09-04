@@ -47,6 +47,8 @@ always-load set.
 
 For direct, small source changes, see the lazy-loaded [user cookbook](guides/USER-COOKBOOK.md): autonomous
 path-scoped admission and stage-to-push delivery are the default; manual Git is the fallback.
+Managed lanes share `<registry>/<repository>/<device>--<lane>`; `AGENTIC_OS_WORKTREE_ROOT` configures only
+the registry parent, so repository and lane isolation remain intact.
 
 The lazy-loaded [composition architecture](guides/COMPOSITION-ARCHITECTURE.md) records the grounded
 ownership and provider boundaries among `agentic-os`, `agentic-canvas-os`, `agentic-graph`, and
