@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Composition Architecture: agentic-os, agentic-canvas-os, agentic-graph, and agentic-commerce-os"
 doc_type: "PRD-TAD-ADR"
-version: "1.1.0"
-date: "2026-09-03"
+version: "1.4.2"
+date: "2026-09-04"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Solo Founder / AI Orchestrator"
@@ -13,9 +13,10 @@ universal_scope: "false"
 continuity_id: "TAD-COMPOSE-ARCH-001"
 prd_revision: "1.1.0"
 tad_revision: "1.1.0"
-adr_revision: "1.1.0"
+adr_revision: "1.4.2"
 source_input_digest: "sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418"
-execution_gate: "runtime-source-authorized"
+amendment_input_digest: "sha256:4abee8d5d6aafcc71919d95e222b2d3dea6ebd4fe3cd6d115a361d32009b7a7e"
+execution_gate: "static-source-observation-authorized"
 publication_gate: "per-repository-protected-integration-required"
 worktree_id: "composition-runtime-baseline"
 agent_id: "codex-orchestrator"
@@ -23,17 +24,14 @@ agent_id: "codex-orchestrator"
 
 # Reference implementation — composition architecture
 
-This lazy-loaded combined PRD/TAD/ADR records four independently governed repositories. It replaces the imported
-draft's memory-derived implementation claims with revision-bound evidence. It is an observer and
-acceptance contract, not a multi-repository controller or promotion authority.
+This lazy-loaded combined PRD/TAD/ADR records four independently governed repositories. It replaces the imported draft's memory-derived implementation claims with revision-bound evidence. It is an observer and acceptance contract, not a multi-repository controller or promotion authority.
 
-The source input was an uncommitted external artifact identified by the frontmatter digest. Its
-stated outcome was a published Division of Work, composition diagram, selection record, and known
-gaps. Those document-level outcomes and their publication acceptance contract are implemented here.
+The source input was an uncommitted external artifact identified by the frontmatter digest. Its stated outcome was a published Division of Work, composition diagram, selection record, and known gaps. Those document-level outcomes and their publication acceptance contract are implemented here.
 The cross-repository runtime contract is explicit. The runtime-source directive authorizes bounded
-implementation in one owner lane per repository. Source candidates now implement the owner contracts;
-mirror and delivery mutation remain closed until independent repository evidence, authenticated release
-authority, exact candidate pins, and lifecycle joins are satisfied.
+implementation in one owner lane per repository. `agentic-os` observes exact source identity and static
+interfaces; it never imports or executes sibling candidate code. Mirror and delivery mutation remain closed
+until independent owner evidence, authenticated release authority, exact candidate pins, and lifecycle joins
+are satisfied.
 
 ## Opening directive
 
@@ -57,18 +55,16 @@ directive_id: "DIR-RUNTIME-READY-01"
 operator_request: "IMPLEMENT production runtime ready"
 context: "At agentic-os 99dd3d18, agentic-canvas-os 3c597227, agentic-graph 9ba90b95, and agentic-commerce-os d5323bc3, provider joins were absent or unverified; Commerce admission v1 could not bind its authorized full intent to the four-field provider effect"
 intent: "Reach production-verifiable composition through the smallest owner-published contracts without duplicating admission, discovery, money movement, settlement, or marketplace state"
-directive: "Implement admission provider v3 and the three evidence-bound provider adapters in independent owner lanes, prove them with cross-repository contract checks, and keep promotion closed until exact authenticated release inputs exist"
+directive: "Implement admission provider v3 and the three evidence-bound provider adapters in independent owner lanes, bind their exact source artifacts without executing sibling code, and keep promotion closed until exact authenticated release inputs exist"
 role: "solo-founder-ai-orchestrator"
 action: "coordinate owner-scoped runtime implementation and independent verification"
-outcome: "exact reviewable source candidates prove the owner joins while release and paid-runtime VCCs expose typed external blockers without partial deployment"
+outcome: "exact reviewable source candidates bind the intended joins while owner behavior, release, and paid-runtime VCCs remain separately evidenced and fail closed"
 subject: "agent"
 verb: "implement"
 object: "production-runtime-composition"
 ```
 
-The source sprint is capped at four owner lanes, files below 600 lines, and zero mirror or delivery
-mutations before their registered gates. External payee, provider, review, and protected-environment
-waits have condition-based rechecks rather than inferred completion times.
+The source sprint is capped at four owner lanes, files below 600 lines, and zero mirror or delivery mutations before their registered gates. External payee, provider, review, and protected-environment waits have condition-based rechecks rather than inferred completion times.
 
 ## Product requirements
 
@@ -113,15 +109,15 @@ waits have condition-based rechecks rather than inferred completion times.
 | Confirm | 30 s | Replay the same confirmation and show the identical receipt with no second effect |
 | Close | 30 s | Read marketplace settlement and runtime evidence from zero-token routes |
 
-The monetization mechanism is `mechanism-proven` only after the local cross-repository suite passes;
-it becomes `demand-validated` only after a named real payer completes the production flow. This increment
-does not infer demand from mechanism readiness.
+The monetization mechanism is `mechanism-proven` only after exact local owner suites and static source alignment pass; it becomes `demand-validated` only after a named real payer completes the production flow. This increment does not infer demand from mechanism readiness.
 
 ## Constraints
 
 - Each capability has one owner; consumers use its versioned contract instead of duplicating logic.
 - Each repository keeps its own claim, lane, review, integration, release, and cleanup evidence.
   `agentic-os` supplies repository-local primitives, not cross-repository authority.
+- `agentic-os` is the lifecycle/orchestration, admission-vocabulary, and composition source-lock SSOT. Consumers pin its package and vocabulary; they do not copy or fork its workflows.
+- ACOS, Commerce, and Graph remain separate runtime, state, and deployment owners. This architecture does not physically migrate any of those repositories or their deployable assets into `agentic-os`.
 - Provider extensions require an owner-published contract. Protocol mentions and non-binding
   references are not adapters, deployments, dependencies, or receipts.
 - The component name is **`agentic-graph`**, the primary B2C Marketplace Storefront and
@@ -135,17 +131,19 @@ does not infer demand from mechanism readiness.
 
 ## Codebase Grounding Record
 
-Grounding was read-only on 2026-09-03. A `confirmed` disposition proves only the cited current-state
-claim at the named revision; it does not grant lifecycle authority or raise delivery readiness.
+Baseline grounding was read-only on 2026-09-03; the admission/marketplace refresh below is 2026-09-04.
+A `confirmed` disposition proves only the cited revision and grants no lifecycle or delivery authority.
 
 | Input | Bound revision or digest | Observation |
 |---|---|---|
-| Imported TAD | `sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418` | Untracked input; no committed source revision |
+| Imported TAD and amendment | `sha256:5e646e…39418` / `sha256:4abee8…b7a7e` | Untracked inputs; no committed source revision |
 | `agentic-os` | `99dd3d18d573c2ccf7616e29dad15aad94359b84` | Clean canonical checkout; repository-local ADLC contracts and the released document baseline |
 | `agentic-canvas-os` | `3c597227dbb1101a2d5d75cb83a8496e22357a0e` | Clean canonical checkout; invocation and composition contracts grounded there |
 | `AG_REPO` | `9ba90b95bcde38db9f25f6b945ba66cfd264e735` | `agentic-graph` source at the immutable [Git locator](https://github.com/huijoohwee/agentic-graph/tree/9ba90b95bcde38db9f25f6b945ba66cfd264e735); GitHub repository identity is `huijoohwee/agentic-graph` |
 | `agentic-commerce-os` | `d5323bc35a62cf2dace300990d5ee0db228897d8` | Clean canonical checkout; provider contracts and receipt gates inspected |
-| Mercur | `3c4b3cc04d0fa4bba597013ab7528c12acdd4013` | Reference input only |
+| Runtime refresh baseline | `agentic-os` `499296c7830ca62f30a6b6ac4181474e2511bae9`; ACOS `8e4d934123c01380059e1b1894c520c472fd4e23`; `AG_REPO` `286b00b5c229605547abfa3cfb127e433f8362f9`; Commerce `2857054241ba5bb5f35ffeba4e668590bbd8fb86` | Exact clean baseline revisions observed on 2026-09-04; no candidate, integration, or delivery authority inferred |
+| Composition source lock | `agentic-os:catalog/composition-source-lock.json` | Candidate-local canonical lock binds exact owner origins, revisions, trees, tracked contract/fixture blobs, and the Commerce production topology manifest; it grants no runtime authority |
+| External marketplace reference | `3c4b3cc04d0fa4bba597013ab7528c12acdd4013` | Private grounding-log reference only; no composed component |
 | x402 / Cloudflare integration guide | `eb0d899ead358a88eb3899dd3f5051e990e02299` / `37b9c206ecbb92a87eeab0c6869a1e70675e7154` | Sources checked against the existing `agentic-graph` implementation |
 
 | Material claim | Disposition | Evidence and consequence |
@@ -154,37 +152,37 @@ claim at the named revision; it does not grant lifecycle authority or raise deli
 | ACOS is the sole owner of `/`, `#`, `@`, and all frontmatter semantics | `contradicted` | ACOS owns shared dictionaries and safety contracts; `AG_REPO:docs/collaboration-runtime-contract.md` is `agentic-graph`'s machine SSOT for its collaboration frontmatter and PR grammar |
 | ACOS provides a native external Agents SDK | `contradicted` | It has a provider-neutral facade and blocked native skill harness; `docs/PROGRESSIVE-AGENTS.md` rejects emulating an external SDK |
 | `agentic-graph` uses no external Agents SDK | `contradicted` | `AG_REPO:cloudflare/workers/agentic-graph-mcp/package.json` depends on Cloudflare's `agents` package for its MCP Worker |
-| Commerce consumes a live ACOS admission contract | `contradicted` | Config targets ACOS but pins `415e914d...`, not current ACOS `3c597227...`; provider v1 also lacks a wire-verifiable authorized-effect digest |
+| Commerce consumes a live ACOS admission contract | `static-source-confirmed; runtime-unverified` | Exact provider/consumer artifact blobs and identical canonical v3 / receipt v2 fixtures align; behavior is owner-suite evidence and protected deployment readback is still required |
 | `agentic-graph` owns its domain graph and native marketplace/ledger behavior | `confirmed` | `AG_REPO:contracts/kgc-document.schema.js`, `ecs/kgcNodeContract.js`, `src/{ledger,marketplace,payout}`, and D1 migration `0016_native_marketplace_settlement.sql` contain the current owners |
 | `agentic-graph` implements StraitsX and Avalanche as equivalent production payment rails | `contradicted` | StraitsX has an implemented rail and persisted schema; Avalanche appears in verification/configuration and planning surfaces, not as an equivalent rail in the current payment contract |
 | Commerce discovery, checkout, marketplace, and receipt seams exist | `confirmed` | `agentic-commerce-os:src/core` owns all three provider contracts, clients, receipts, and fail-closed evidence joins |
 | Marketplace binding names are interchangeable across repositories | `contradicted` | Commerce consumes `MARKETPLACE_PROVIDER`; `agentic-graph` travel commerce separately consumes `MARKETPLACE_SERVICE` |
-| No code exists for the composition | `contradicted` | Product repositories implement most seams, including an `agentic-graph` x402 Worker path; the four-repository contract join is missing |
-| `agentic-graph` x402 implements `commerce.checkout-provider/v1` | `absent` | `agentic-graph` has x402 middleware, routes, dependencies, configuration, and readiness gates, but not the commerce contract identifier or adapter; `agentic-commerce-os` has no x402-specific code |
-| Commerce ACOS permit binds the provider POST payload | `contradicted` | Commerce hashes the full registration intent but sends only its four admission inputs; ACOS cannot recompute the authorized effect, so provider v1 cannot safely persist it |
-| Commerce discovery constraints map to the live owner input | `unverified` | Commerce accepts a generic constraint record while the current live travel discovery owner requires a structured route intent; an adapter must validate one explicit supported projection and fail closed otherwise |
+| No code exists for the composition | `contradicted` | Owner lanes implement all four source joins and fail-closed evidence gates; the central observer binds their source but does not execute it, and protected integration remains separate |
+| `agentic-graph` x402 implements `commerce.checkout-provider/v1` | `owner-suite-evidenced; delivery-unverified` | The exact owner candidate's adapter, route, settlement-readback, and replay suites pass locally; a nonzero operator payee and paid production receipt remain external |
+| Commerce ACOS permit binds the provider POST payload | `owner-suite-evidenced` | Owner suites cover Commerce translation and ACOS full-intent digest enforcement; the central observer attests only their exact artifacts and identical fixture |
+| Commerce discovery constraints map to the live owner input | `owner-suite-evidenced` | The owner suite covers one structured route projection and generic-synthesis rejection; protected deployed-version readback remains pending |
 
 ## Division of Work
 
 | Component | Sole owned capability | Consumes | Explicit exclusion |
 |---|---|---|---|
-| `agentic-os` | Repository-local ADLC records, lane projection, provider observation, exact integration classification | Consumer repository profile and external authority receipts | No cross-repository claim service or product runtime |
+| `agentic-os` | Lifecycle/orchestration, admission-vocabulary, and source-lock SSOT: repository-local ADLC records, static composition observation, exact integration classification | Exact owner Git identities, tracked artifacts, canonical fixtures/topology, and external authority receipts | No sibling candidate execution, cross-repository claim service, product runtime, or ownership migration |
 | `agentic-canvas-os` | Shared invocation dictionaries, composition/safety interfaces, and provider-neutral agent facade | `agentic-graph` runtime catalogs and executors | No ownership of `agentic-graph`'s repository-specific collaboration grammar, payment rails, settlement persistence, or external Agents SDK dependency |
 | `agentic-graph` | Repository collaboration grammar, KGC/domain schemas, B2C marketplace storefront/orchestration, domain execution/state, payment rails, bundle/vendor splits, and payouts | ACOS shared invocation/safety interfaces and configured providers | D1 marketplace projections are not the authoritative bundle ledger |
 | `agentic-commerce-os` | Edge coordination, admission-receipt validation, local projection, provider routing, derived markup, and evidence gates | ACOS admission plus discovery, checkout, and marketplace provider bindings | No ownership of upstream admission, discovery execution, money movement, settlement ledger, or payout execution |
-| Mercur | None; non-binding schema/workflow reference only | Nothing | No import, fork, service, store, or compatibility promise |
-| x402 | External protocol packages; the current adapter and paid-resource routes are owned by `agentic-graph` | `agentic-graph` PRD/TAD, configuration, and readiness gates | No commerce-local adapter and no proven checkout-provider contract join |
+| x402 | External protocol packages; the current adapter and paid-resource routes are owned by `agentic-graph` | `agentic-graph` PRD/TAD, configuration, and readiness gates | No Commerce-owned payment rail and no delivered paid-runtime proof |
 
 ## Architecture composition
 
-Solid edges are current runtime/dependency relationships. Dotted edges are lifecycle guidance,
-non-binding input, or an unverified deployment/contract join and must not be read as proven runtime calls.
+Edges describe owned or intended relationships; the companion join state distinguishes static source from
+deployed runtime. Dotted edges are lifecycle guidance, non-binding input, or an unverified deployment join
+and must not be read as observed runtime calls.
 
-**Diagram COMP-1** · Class: Component topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 9 — 2026-09-03
+**Diagram COMP-1** · Class: Component topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 10 — 2026-09-04
 **Caption**: Product repositories retain their current owners; commerce coordinates three upstream
 provider classes, but their deployment-selected service joins are not proved. `agentic-graph` already
-owns an x402 implementation; Mercur remains reference-only.
-**Version note**: v9 adds the runtime-source directive and separates ACOS shared interfaces from `agentic-graph` repository-owned machine contracts.
+owns an x402 implementation; external marketplace research is not a composed component.
+**Version note**: v10 binds static source observation to exact owner artifacts without changing runtime ownership.
 
 ```mermaid
 flowchart TB
@@ -195,7 +193,6 @@ flowchart TB
     DISCOVERY["Discovery provider<br/>Gateway · upstream service"]
     CHECKOUT["Checkout provider<br/>Gateway · upstream service"]
     MARKET["Marketplace provider<br/>Gateway · upstream service"]
-    MERCUR["Mercur<br/>Observer · reference only"]
     X402["x402<br/>Observer · external protocol dependency"]
 
     AOS -.->|"batch · lifecycle advisory"| CANVAS
@@ -209,7 +206,6 @@ flowchart TB
     COMMERCE -.->|"sync request · service binding"| DISCOVERY
     COMMERCE -.->|"sync request · service binding"| CHECKOUT
     COMMERCE -.->|"sync request · service binding"| MARKET
-    MERCUR -.->|"batch · non-binding reference"| COMMERCE
     X402 -->|"batch · package dependency"| AG
 ```
 
@@ -224,7 +220,6 @@ flowchart TB
 | Provider | `agentic-graph` discovery | `DISCOVERY` | `AG_REPO:cloudflare/workers/agentic-graph-mcp` | Gateway · upstream service | `dev-proven` | `undocumented` |
 | Provider | `agentic-graph` checkout | `CHECKOUT` | `AG_REPO:cloudflare/workers/agentic-graph-travel-commerce` | Gateway · upstream service | `dev-proven` | `undocumented` |
 | Provider | `agentic-graph` marketplace | `MARKET` | `AG_REPO:cloudflare/workers/agentic-graph-marketplace` | Gateway · upstream service | `dev-proven` | `undocumented` |
-| Reference | Mercur | `MERCUR` | Pinned external README/license | Observer · reference only | `undocumented` | `undocumented` |
 | Protocol | x402 | `X402` | `AG_REPO:cloudflare/workers/agentic-graph-payment/agenticCommerceX402.ts` | Observer · external protocol dependency | `spec-complete` | `undocumented` |
 
 ### Connection inventory — Diagram COMP-1
@@ -235,22 +230,21 @@ flowchart TB
 | `AOS` | `AG` | batch · lifecycle advisory | repository-local only |
 | `AOS` | `COMMERCE` | batch · lifecycle advisory | repository-local only |
 | `CANVAS` | `AG` | batch · shared invocation/safety contract | `agentic-graph` pins ACOS `087c7246...`; grounded `3c597227...` join unverified |
-| `COMMERCE` | `CANVAS` | sync request · admission | provider v3 / receipt v2 source contract and real cross-lane invocation pass; protected deployed revision unverified |
-| `AG` | `DISCOVERY` | batch · owner mapping | source adapter and owner tests pass; deployed revision unverified |
-| `AG` | `CHECKOUT` | batch · owner mapping | source adapter and owner tests pass; deployed revision unverified |
-| `AG` | `MARKET` | batch · owner mapping | source adapter and owner tests pass; deployed revision unverified |
-| `COMMERCE` | `DISCOVERY` | sync request · service binding | evidence-bound source join passes; protected binding/pin unverified |
-| `COMMERCE` | `CHECKOUT` | sync request · service binding | evidence-bound source join passes; protected binding/pin unverified |
-| `COMMERCE` | `MARKET` | sync request · service binding | evidence/fence-bound source join passes; protected binding/pin unverified |
-| `MERCUR` | `COMMERCE` | batch · non-binding reference | non-binding |
+| `COMMERCE` | `CANVAS` | sync request · admission | exact artifact blobs and canonical v3 / receipt v2 fixture align; owner behavior and protected readback are separate |
+| `AG` | `DISCOVERY` | batch · owner mapping | exact source artifact is locked and owner-suite evidence is recorded; deployed revision unverified |
+| `AG` | `CHECKOUT` | batch · owner mapping | exact source artifact is locked and owner-suite evidence is recorded; deployed revision unverified |
+| `AG` | `MARKET` | batch · owner mapping | exact source artifact is locked and owner-suite evidence is recorded; deployed revision unverified |
+| `COMMERCE` | `DISCOVERY` | sync request · service binding | source artifacts are locked; owner-suite behavior and protected binding readback are separate |
+| `COMMERCE` | `CHECKOUT` | sync request · service binding | source artifacts are locked; owner-suite behavior and protected binding readback are separate |
+| `COMMERCE` | `MARKET` | sync request · service binding | source artifacts are locked; owner-suite behavior and protected binding readback are separate |
 | `X402` | `AG` | batch · package dependency | confirmed at bound `agentic-graph` revision |
 
 ## Runtime topology
 
-**Diagram TOP-1** · Class: Runtime topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 6 — 2026-09-03
-**Caption**: The Topology pattern specifies four trust boundaries in the Authoring lane. Configured
-service names and release code do not prove that their deployed revisions implement the contracts.
-**Version note**: v6 adds Commerce's private three-Worker release tuple and public prefix boundary.
+**Diagram TOP-1** · Class: Runtime topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 7 — 2026-09-04
+**Caption**: The Topology pattern specifies four trust boundaries in the Authoring lane. The tracked
+Commerce manifest fixes expected binding names; neither that manifest nor release code proves deployment.
+**Version note**: v7 makes the canonical topology manifest and separate deployment readback explicit.
 **Boundaries**: admission trust; commerce trust; `agentic-graph` payment trust; provider trust external to commerce.
 
 ```mermaid
@@ -307,10 +301,10 @@ flowchart TB
 |---|---|---|---|
 | `COMMERCE_EDGE` | `COMMERCE_CORE` | sync request · private binding | source prefix/router and exact-version proof pass; deployment unverified |
 | `COMMERCE_CORE` | `COMMERCE_SANDBOX` | sync request · private binding | bounded source and container dry bundle pass; rollout unverified |
-| `COMMERCE_CORE` | `ACOS_ADM` | sync request · admission | exact provider v3 / receipt v2 source join and deployed-identity pin pass; protected deployed revision unverified |
-| `COMMERCE_CORE` | `DISCOVERY_RT` | sync request · discovery | exact evidence-bound source join passes; deployment unverified |
-| `COMMERCE_CORE` | `CHECKOUT_RT` | sync request · checkout | exact replay-safe source join passes; deployment unverified |
-| `COMMERCE_CORE` | `MARKET_RT` | sync request · marketplace | exact evidence/fence-bound source join passes; deployment unverified |
+| `COMMERCE_CORE` | `ACOS_ADM` | sync request · admission | exact artifacts and identical canonical fixtures align; owner-route behavior and protected readback remain separate |
+| `COMMERCE_CORE` | `DISCOVERY_RT` | sync request · discovery | exact artifacts and manifest binding are locked; deployment unverified |
+| `COMMERCE_CORE` | `CHECKOUT_RT` | sync request · checkout | exact artifacts and manifest binding are locked; deployment unverified |
+| `COMMERCE_CORE` | `MARKET_RT` | sync request · marketplace | exact artifacts and manifest binding are locked; deployment unverified |
 | `CHECKOUT_RT` | `MARKET_RT` | sync request · `MARKETPLACE_SERVICE` | protected-plan source binding exists; deployed revision unverified |
 | `COMMERCE_CORE` | `COMMERCE_STORE` | sync request · local persistence | confirmed source relationship |
 | `AG_PAY` | `AG_STORE` | sync request · D1 persistence | confirmed source relationship |
@@ -339,8 +333,8 @@ node/edge completeness is carried by each companion inventory.
 
 | Diagram | Class | Notation | Surface | Projects | Nodes | Edges | Clusters | Version |
 |---|---|---|---|---|---|---|---|---|
-| `COMP-1` | Component topology | `flowchart TB` | Markdown source | no | 0 | 0 | 0 | 9 |
-| `TOP-1` | Runtime topology | `flowchart TB` | Markdown source | no | 0 | 0 | 0 | 6 |
+| `COMP-1` | Component topology | `flowchart TB` | Markdown source | no | 0 | 0 | 0 | 10 |
+| `TOP-1` | Runtime topology | `flowchart TB` | Markdown source | no | 0 | 0 | 0 | 7 |
 | `LANE-1` | Lane & deploy boundary | `flowchart LR` | Markdown source | no | 0 | 0 | 0 | 3 |
 
 ## Interface invariants
@@ -362,15 +356,12 @@ node/edge completeness is carried by each companion inventory.
 
 ## Embedded decision records
 
-### DR-1 — Mercur is reference-only
+### DR-1 — External marketplace research is reference-only
 
-Mercur core is MIT-licensed and documents seller, commission, split-order, and payout concepts. Its
-first-party deployment uses Node.js, PostgreSQL, and Redis; no first-party Workers path was found.
-Decision: use public workflow concepts as non-binding input only. Do not import, fork, deploy, or claim
-schema compatibility. Automated split payouts are not treated as an MIT-core capability.
-
-Primary evidence: [Mercur license](https://github.com/mercurjs/mercur/blob/3c4b3cc04d0fa4bba597013ab7528c12acdd4013/LICENSE)
-and [architecture and deployment](https://github.com/mercurjs/mercur/blob/3c4b3cc04d0fa4bba597013ab7528c12acdd4013/README.md#architecture).
+An external MIT-licensed marketplace project informed seller, commission, split-order, and payout
+concepts, but its first-party Node.js/PostgreSQL/Redis deployment supplies no Workers contract.
+Decision: do not import, fork, deploy, name, or claim compatibility with that reference; its identity
+remains only in the private grounding log.
 
 ### DR-2 — Retain upstream x402 and join through the checkout owner
 
@@ -395,14 +386,16 @@ Primary evidence: [x402 principles](https://github.com/x402-foundation/x402/blob
 
 Admission v1 authorized the complete Commerce intent but transmitted only four projections, so
 `agentic-canvas-os` could not recompute the permitted effect. Decision: use
-`commerce.acos-admission-provider/v3` with `acos-adapter-registration/v2`, retain
-`authoring_mutation_intent` as the fifth exact v2 request-body field, bind the receipt and private readiness
-envelope to `acos-cloudflare-deployment-identity/v1`, canonicalize
-`{schema, semanticScope, writeTarget, payload}`, and require all twelve fence headers to echo. The provider
-persists one atomic high-water fence and immutable outcome, exact replay returns the stored receipt, and
-stale/conflicting permits make no owner-state write. The operator instruction is the exact
-`operator://agentic-graph/commerce-adapter-admission/2026-09-03` reference; caller-specific provenance stays
-inside the signed intent.
+`commerce.agentic-os-admission-provider/v3` with `agentic-os-adapter-registration/v2`, retain
+`authoring_mutation_intent` as the fifth exact request-body field, and bind it to a signed
+`agentic-graph-commerce-admission-authority/v1` configuration envelope. The provider independently digests
+inputs, operation, and permit, persists one atomic high-water fence plus immutable outcome, returns the exact
+stored receipt on replay, and makes no owner-state write for stale, conflicting, or unauthorized permits.
+The immutable receipt carries the effect-writer's `acos-cloudflare-deployment-identity/v1`. Every successful POST
+separately returns the canonical current identity in `x-agentic-os-serving-deployment-identity`; Commerce exact-key
+parses it against the current source/candidate pin, so a post-cutover replay keeps the old receipt bytes while proving
+the new serving Worker. Authenticated `readyz` reports that same current identity. Graph authority proves who
+authorized the effect; current ACOS serving identity proves which owner bytes served the response. Both are required.
 
 ### DR-4 — Reuse owner state and typed service bindings
 
@@ -414,31 +407,49 @@ binding digest; request bodies are bounded to 65,536 bytes before replay.
 
 ### DR-5 — Authenticate private service-binding operations
 
-A service binding provides private transport, not caller authority. Decision: Commerce signs ACOS admission
-with `commerce-acos-admission-auth/v1` over the exact URL, method, body digest, and twelve authoring headers.
+A service binding provides private transport, not caller authority. Decision: Commerce signs admission
+with `commerce-agentic-os-admission-auth/v1` over the exact URL, method, body digest, and twelve authoring headers.
 It signs checkout and marketplace calls with `commerce-provider-auth/v1` over the independently recomputed
 request and evidence-binding digests. Each owner verifies a distinct protected HMAC secret before capability
 disclosure, permit parsing, or mutation. Secrets are required release topology but never receipt fields;
 runtime-evidence routes alone remain public and non-mutating.
 
-### DR-6 — Release the Commerce tuple with authenticated forward recovery
+### DR-6 — Release each owner with authenticated forward recovery
 
-Cloudflare cannot atomically activate a container rollout plus two versioned Workers. Decision: the
-protected Commerce controller uploads core and edge inactive, deploys and proves the private sandbox
-Worker/container, compare-and-swaps the active three-Worker tuple before each activation, and proves the
-exact `airvio.co/agentic-commerce-os*` prefix. Bootstrap requires absence; steady state requires an
-authenticated predecessor receipt; any ambiguous effect yields a preserve-required artifact that only an
-independently authenticated forward-recovery run may consume. No path claims transactional rollback.
+Decision: ACOS uses its own protected production controller to seal the exact protected-main source, artifact, manifest, and Graph authority; upload one inactive tagged version; compare-and-swap the exact 100% active baseline while preserving unmanaged bindings; activate that version; and authenticate `readyz` readback against its deployment identity and Graph authority. Ambiguous upload, activation, or readback produces a preserve-required receipt for an independently authenticated forward-recovery run.
+
+Commerce separately seals its tracked `config/production-core-services.json`, uploads core and edge inactive, deploys and proves the private sandbox Worker/container, compare-and-swaps the active sandbox/core/edge tuple before each activation, and proves the exact `airvio.co/agentic-commerce-os*` prefix. Bootstrap requires absence; steady state requires an authenticated predecessor receipt. Cloudflare cannot atomically activate this tuple and container rollout, so ambiguous effects are preserved for forward recovery and no path claims transactional rollback.
+
+### DR-7 — Keep orchestration native to the harness
+
+No composed repository may add an external agent-orchestration SDK as a build dependency. Existing
+Cloudflare platform primitives remain repository-owned implementation details; other model providers are
+inference endpoints behind an owned gateway, never a second orchestration layer.
+
+### DR-8 — Specify future ownership transfer without migrating repositories
+
+`agentic-os` remains the executable lifecycle/orchestration and admission-vocabulary SSOT; consumers use an exact pinned package rather than copied workflows. ACOS retains shared invocation/safety interfaces and its Worker/state, Commerce retains its control plane, and Graph retains domain/payment runtimes. No repository, deployable asset, or state is physically migrated by this decision. A future native Worker and per-agent Durable Object memory tier is specification-only: identity, authorization, storage transfer, idempotent `@mem-` export, rehydration, and rollback require a separate owner-approved design and executable VCC/RAO.
+
+### DR-9 — Gate merchant and shopping roles on demand
+
+Future MCP/WebMCP merchant and shopping roles may compose `agentic-os` runtime with the existing Commerce
+control plane, but no endpoint is admissible before real micro-SME interviews and willingness-to-pay evidence.
+Merchant writes remain staged for approval; checkout remains with the existing owner. No external-reference
+code, prompt, schema, skill, or test may be copied.
 
 ## Cross-repository acceptance contract
 
 This section separates publication, source acceptance, protected integration, and public delivery.
 `DE-DOC-PUBLISH-01` is the discoverable combined PRD/TAD/ADR and focused conformance test.
-`DE-RUNTIME-COMPOSE-01` is admission provider v3 / receipt v2, the three owner provider adapters, the bounded four-component
-observer, and protected release-plan metadata injection. The observer requires four distinct exact GitHub
-repository identities, consumes the checked-in Commerce producer fixture through the real ACOS provider,
-and proves restart-safe byte-identical replay with zero replay writes. It does not acquire claims, mutate
-sibling repositories, authenticate a human, or deploy.
+`DE-RUNTIME-COMPOSE-01` is admission provider v3 / receipt v2, three owner adapters, the bounded four-component observer, and release-plan metadata injection. The observer requires four distinct canonical Git identities and binds every pass-contributing source read to its exact `HEAD` blob; it also binds each owner's singular package/lockfile resolution to an exact ancestor of the harness candidate, while selected cross-owner blobs are named by `catalog/composition-source-lock.json`. It compares the provider and consumer canonical admission fixtures byte-for-byte and verifies the tracked Commerce topology manifest and digest. It never imports, evaluates, spawns, or otherwise executes sibling candidate code. Owner suites remain the authority for HMAC, mutation, durability, replay, settlement, and route behavior; their local results may be recorded here but are not machine-bound or protected evidence in the observer report.
+
+| Report field | Meaning |
+|---|---|
+| `sourceInterfaceContractsReady` | Exact static source identities, trees, blobs, canonical fixtures, and topology align |
+| `sourceCandidateReviewReady` | The locked source candidate is clean and statically reviewable; no owner behavior or deployment is implied |
+| `candidateCodeExecuted` | Always false; the observer has no sibling-code execution path |
+| `ownerSuiteEvidenceObserved` / `protectedOwnerEvidenceObserved` | False until separately authenticated, exact-candidate receipts are joined |
+| `productionRuntimeReady` | False until protected integration, required secrets, nonzero operator x402 payee, Cloudflare activation/readback, and one paid-route receipt all exist |
 
 ### Operator decision
 
@@ -451,21 +462,21 @@ credential, consumed release receipt, product-deployment authority, retirement a
 
 | Criterion | Given / When / Then | VCC and check | Constraint | Local result |
 |---|---|---|---|---|
-| `AC-DOC-PUBLISH-01` | Given the imported draft and four pinned repositories, when the candidate is evaluated, then the README link resolves, grounding and required architecture sections exist, terminology is canonical, and every unproved runtime join remains visibly unverified or absent | `VCC-DOC-PUBLISH-01`: focused tests, full repository check, and exact-base autonomy classification all pass | This repository candidate is bounded to README, this TAD, the package entrypoints, two composition tests, and two read-only composition CLIs; sibling runtime implementation remains in its owner lanes | Pending final committed-scope classification; the working-tree inventory matches the declared seven-file scope |
+| `AC-DOC-PUBLISH-01` | Given the imported draft and four pinned repositories, when the candidate is evaluated, then the README link resolves, grounding and required architecture sections exist, terminology is canonical, and every unproved runtime join remains visibly unverified or absent | `VCC-DOC-PUBLISH-01`: focused tests and the full repository check pass; exact-base classification records the authority-controlling scope | This candidate is bounded to this TAD, one canonical source lock, two public composition CLIs, two internal static inspectors, one trusted-Git helper, and three composition tests; sibling runtime implementation remains in owner lanes | Satisfied by final committed-scope classification; the exact ten-file scope contains no sibling-code execution helper |
 
 ### Runtime-composition criteria
 
 | Criterion | VCC end state and independent check | Current result |
 |---|---|---|
-| `AC-RUNTIME-OWNERSHIP-01` | `VCC-RUNTIME-OWNERSHIP-01`: exact candidates for `agentic-canvas-os`, `agentic-graph`, and `agentic-commerce-os` pass owner suites and every consumer/provider join resolves to one versioned contract | Source acceptance passes at ACOS `6dbb069d`, `agentic-graph` `6ab5cf90`, and Commerce `ea322141`; unsatisfied because protected-main revisions and deployed evidence pins do not yet exist |
-| `AC-RUNTIME-AUTHORITY-02` | `VCC-RUNTIME-AUTHORITY-02`: every changed repository independently yields current claim, review, integration, release, and cleanup-boundary receipts joined to its exact candidate | Unsatisfied; ACOS PR #874 and Commerce PR #6 are exact-head, clean, and green, but both land attempts require external promotion authority; `agentic-graph` reports its canonical-main repository trust anchor missing; no consumed release or integration receipt exists |
+| `AC-RUNTIME-OWNERSHIP-01` | `VCC-RUNTIME-OWNERSHIP-01`: exact candidates for `agentic-canvas-os`, `agentic-graph`, and `agentic-commerce-os` pass owner suites and every consumer/provider join resolves to one versioned contract | Source-review ready when the static lock passes and exact local owner-suite evidence is recorded; delivery remains unsatisfied without protected integration, active versions, binding pins, and live readback |
+| `AC-RUNTIME-AUTHORITY-02` | `VCC-RUNTIME-AUTHORITY-02`: every changed repository independently yields current claim, review, integration, release, and cleanup-boundary receipts joined to its exact candidate | Unsatisfied; no current exact-candidate integration, release, retirement, or cleanup receipt is joined across the independently owned repositories |
 | `AC-RUNTIME-X402-03` | `VCC-RUNTIME-X402-03`: `agentic-graph` production configuration has a non-placeholder payee and its checkout-provider adapter passes owner, Commerce, paid-resource, settlement-readback, and exact-replay checks | Unsatisfied; the source adapter passes, but the production payee and paid deployment receipt are absent |
 
 ### Publication RAO
 
 | RAO Step | Depends on | Directive / criterion / design join | Role | Atomic action | Measurable outcome |
 |---|---|---|---|---|---|
-| `RAO-DOC-01` | none | `DIR-DOC-PUBLISH-01` / `AC-DOC-PUBLISH-01` / `DE-DOC-PUBLISH-01` | Implementer | Produce the bounded README, TAD, and additive focused test | One clean candidate within the declared write scope |
+| `RAO-DOC-01` | none | `DIR-DOC-PUBLISH-01` / `AC-DOC-PUBLISH-01` / `DE-DOC-PUBLISH-01` | Implementer | Produce the bounded TAD, canonical source lock, static admission/topology observers, four-root observer, and focused tests | One clean candidate within the declared write scope and no sibling-code execution path |
 | `RAO-DOC-02` | `RAO-DOC-01` | `DIR-DOC-PUBLISH-01` / `AC-DOC-PUBLISH-01` / `DE-DOC-PUBLISH-01` | Evaluator | Evaluate `VCC-DOC-PUBLISH-01` with its three named authoring checks | All checks exit 0 with surfaced counts and scope |
 | `RAO-DOC-03` | `RAO-DOC-02` | `DIR-DOC-PUBLISH-01` / `AC-DOC-PUBLISH-01` / `DE-DOC-PUBLISH-01` | Publisher | Run `agentic-os land` for the exact clean candidate | Immutable remote head and source-head-bound PR are projected |
 | `RAO-DOC-04` | `RAO-DOC-03`, `OP-20260903-FIX-RELEASE` | `DIR-DOC-PUBLISH-01` / `AC-DOC-PUBLISH-01` / `DE-DOC-PUBLISH-01` | Integrator | Squash-merge the exact PR head after required checks pass | Protected main contains the candidate tree without bypass |
@@ -474,10 +485,10 @@ credential, consumed release receipt, product-deployment authority, retirement a
 
 | RAO Step | Depends on | Role | Atomic action | Measurable outcome |
 |---|---|---|---|---|
-| `RAO-RUNTIME-01` | none | `agentic-canvas-os` owner | Publish admission provider v3 / receipt v2, exact deployed identity, instruction resolution, and durable fence/outcome journal | Native provider suite and Commerce cross-lane request pass |
+| `RAO-RUNTIME-01` | none | `agentic-canvas-os` owner | Publish admission provider v3 / receipt v2, signed Graph authority validation, instruction resolution, and durable fence/outcome journal | Native provider suite and Commerce cross-lane request pass |
 | `RAO-RUNTIME-02` | none | `agentic-graph` owner | Publish discovery, checkout, and marketplace provider adapters | Owner suites prove exact contracts, zero-model discovery, one settlement effect, and fenced marketplace mutation |
-| `RAO-RUNTIME-03` | `RAO-RUNTIME-01`, `RAO-RUNTIME-02` | `agentic-commerce-os` owner | Consume admission provider v3 / receipt v2, exact ACOS deployment pins, authenticated discovery, bounded evidence bindings, and exact operator reference; stage its core, edge, and private-sandbox Workers behind `airvio.co/agentic-commerce-os*` | Consumer domain/Worker suites, real cross-lane admission, release-controller recovery, and three-Worker dry bundles pass |
-| `RAO-RUNTIME-04` | `RAO-RUNTIME-01`–`03` | `agentic-os` evaluator | Run `npm run composition:runtime:check -- <four exact roots>` | One v1 report names four canonical components and no contract-drift finding |
+| `RAO-RUNTIME-03` | `RAO-RUNTIME-01`, `RAO-RUNTIME-02` | `agentic-commerce-os` owner | Consume the exact owner-published admission generation and signed Graph authority, plus authenticated discovery and bounded evidence bindings; stage its core, edge, and private-sandbox Workers behind `airvio.co/agentic-commerce-os*` | Consumer domain/Worker suites, owner-scoped contract checks, release-controller recovery, and three-Worker dry bundles pass |
+| `RAO-RUNTIME-04` | `RAO-RUNTIME-01`–`03` | `agentic-os` evaluator | Run `npm run composition:runtime:check -- <four exact roots>` | One v2 static-source report names four canonical components, sets `sourceCandidateReviewReady`, and keeps `productionRuntimeReady` false |
 | `RAO-RUNTIME-05` | `RAO-RUNTIME-04` | Repository publishers | Create exact source commits and protected reviews independently | Four immutable review heads and current required checks |
 | `RAO-RUNTIME-06` | `RAO-RUNTIME-05` | Repository integrators | Consume each repository's authenticated integration authority in dependency order | Protected main revisions and integration receipts match reviewed trees |
 | `RAO-RUNTIME-07` | `RAO-RUNTIME-06` | `agentic-graph` operator | Supply protected evidence metadata, provider credential, and operator-owned x402 payee | Configuration preflight contains no placeholder, missing secret, or sentinel |
@@ -493,47 +504,51 @@ actions; `RAO-RUNTIME-05`–`10` remain conditioned on repository and external a
 | ID | Invocable check | Recorded result | Surface | Scope |
 |---|---|---|---|---|
 | `ER-GROUND-001` | Exact-revision source inspection named in the grounding record | Claim dispositions recorded on 2026-09-03 | Authoring | Establishes document inputs only |
-| `ER-DOC-001` | `node --test __tests__/composition-architecture.test.mjs` | 4 focused tests passed on 2026-09-03 | Authoring | Satisfies the document-specific assertions in `VCC-DOC-PUBLISH-01` |
-| `ER-CROSS-REPO-001` | `npm run composition:runtime:check -- --agentic-os-root=… --agentic-canvas-os-root=… --agentic-graph-root=… --agentic-commerce-os-root=… --allow-dirty` | `sourceContractsReady:true`; clean sibling candidates `6dbb069d`, `6ab5cf90`, and `ea322141` match their repository identities; fixture `068279…aea44` executes Commerce→ACOS auth/restart/replay and a real Commerce→`agentic-graph` marketplace request, exact 12-header grammar, response parity, HMAC checks, and tamper rejection; only this authoring lane is dirty | Authoring | Executable source acceptance supersedes substring-only markers; `authenticatedReleaseAuthorityObserved:false` and `productionRuntimeReady:false` remain explicit |
-| `ER-ADMISSION-001` | ACOS commit `6dbb069d` owner suite plus the Commerce-to-provider probe; PR #874 checks | Admission provider v3 / receipt v2, exact deployment identity, durable restart/concurrency, consumer digest/receipt join, and protected-review checks pass | Authoring | Source evidence for `RAO-RUNTIME-01` and `03`; land remains closed on external promotion authority |
-| `ER-PROVIDERS-001` | `agentic-graph` commit `6ab5cf90` full affected CI after a clean install | Discovery, checkout, and marketplace adapters pass bounded evidence, exact replay, fencing, authenticated mutation, response parity, zero-model assertions, four zero-vulnerability audits, 2,209 runtime tests, the 320 px browser proof, and production-shaped dry bundles | Authoring | Source evidence for `RAO-RUNTIME-02`; repository trust bootstrap and deployment remain absent |
-| `ER-COMMERCE-001` | Commerce commit `ea322141` `npm run check:implementation`, production core/edge dry bundles, pinned sandbox-container dry run, and PR #6 Integration Gate | 52 domain, 221 unit, 51 Worker, 11 browser, and 100 task-bound checks pass; production bundles remain below 500 kB; the container image and binding build | Authoring | Source evidence for `RAO-RUNTIME-03`; land remains closed on external promotion authority |
+| `ER-DOC-001` | `node --test __tests__/composition-architecture.test.mjs` | Final focused result recorded at handoff | Authoring | Satisfies the document-specific assertions in `VCC-DOC-PUBLISH-01` |
+| `ER-CROSS-REPO-001` | `npm run composition:runtime:check -- --agentic-os-root=… --agentic-canvas-os-root=… --agentic-graph-root=… --agentic-commerce-os-root=…` | Exact Git origins/revisions/trees, locked artifact blobs, identical admission fixtures, and the canonical Commerce topology manifest align at clean candidates | Authoring | Establishes static `sourceCandidateReviewReady`; candidate code was not executed and owner/protected/runtime evidence remains false |
+| `ER-ADMISSION-001` | Native ACOS and Commerce owner suites for the exact source-lock candidates | HMAC-before-parse, zero-write rejection, Graph authority, ACOS deployment identity, durable outcome, and restart replay behaviors pass locally | Owner authoring lanes | Separately recorded owner-suite evidence for `RAO-RUNTIME-01`; it is not machine-bound by the central observer and authorizes no integration or deployment |
+| `ER-PROVIDERS-001` | `agentic-graph` commit `fcf29326` full affected CI and production-shaped dry bundles | Discovery, checkout, and marketplace adapters pass bounded evidence, exact replay, fencing, authenticated mutation, response parity, zero-model assertions, 2,209 runtime tests, storage and package gates | Owner authoring lane | Separately recorded owner-suite evidence for `RAO-RUNTIME-02`; npm's retiring audit endpoint returned HTTP 400 and deployment remains absent |
+| `ER-COMMERCE-001` | Exact source-lock Commerce candidate `npm run check:implementation` and production dry bundles | Domain, unit, Worker, persistence-compatibility, exact ACOS identity, named checks, and bounded production bundles pass locally | Owner authoring lane | Owner-suite evidence for `RAO-RUNTIME-03`; the central observer does not execute it and protected integration remains closed |
 | `ER-AUTHORING-001` | `npm run check` | Final repository result recorded at handoff | Authoring | Satisfies the repository-wide assertion in `VCC-DOC-PUBLISH-01`; satisfies no delivered-runtime VCC |
-| `ER-SCOPE-002` | `npm run autonomy:class -- --base=origin/main --head=HEAD --json` plus exact committed name-only diff | Pending final immutable candidate; working tree contains exactly `README.md`, `package.json`, this TAD, two composition tests, and two composition CLIs under `bin/` | Authoring | Exact seven-file committed write-scope check for `VCC-DOC-PUBLISH-01`; no sibling-repository authority claim |
+| `ER-SCOPE-002` | `npm run autonomy:class -- --base=origin/main --head=HEAD --json` plus exact committed name-only diff | Final immutable candidate: this TAD, one lock, one trusted-Git helper, two public composition CLIs, two internal static inspectors, and three composition tests | Authoring | Exact ten-file committed write-scope check for `VCC-DOC-PUBLISH-01`; removed marketplace/module-loader helpers contribute no final diff |
 
 ## Verification conditions
 
 | VCC | Condition | Independent check | Current result |
 |---|---|---|---|
-| `VCC-DOC-PUBLISH-01` | The bounded document-and-observer candidate is discoverable, grounded, complete for its declared scope, terminology-safe, and explicit about every open runtime join | Focused tests, full repository check, and exact-base committed-scope classification | Pending the immutable candidate and final `ER-SCOPE-002`; focused source checks pass |
-| `VCC-RUNTIME-OWNERSHIP-01` | Every intended runtime consumer/provider join in Diagram `COMP-1` resolves to exactly one owner-published versioned contract at exact passing candidates | Owner suites, real admission invocation, four-root observer, and protected evidence-pin readback | Unsatisfied; source contracts pass, but immutable integrated/deployed revisions and pins are absent |
-| `VCC-RUNTIME-AUTHORITY-02` | Each changed repository has its own current claim, lane, review, integration proof, and release boundary | Authenticated consumer lifecycle evaluator | Unsatisfied; source authority contracts pass, but no exact consumed release/integration receipt exists |
+| `VCC-DOC-PUBLISH-01` | The bounded document-and-observer candidate is discoverable, grounded, complete for its declared scope, terminology-safe, and explicit about every open runtime join | Focused tests, full repository check, and exact-base committed-scope classification | Satisfied by the immutable ten-file candidate and final `ER-SCOPE-002` |
+| `VCC-RUNTIME-OWNERSHIP-01` | Every intended runtime consumer/provider join in Diagram `COMP-1` resolves to exactly one owner-published versioned contract at exact passing candidates | Exact owner suites, static four-root source lock, and protected evidence-pin readback | Unsatisfied for delivery; static source and separately recorded local owner suites converge, but integrated/deployed revisions, pins, and live readback are absent |
+| `VCC-RUNTIME-AUTHORITY-02` | Each changed repository has its own current claim, lane, review, integration proof, and release boundary | Authenticated consumer lifecycle evaluator | Unsatisfied; no exact consumed integration or release receipt exists for the refreshed candidates |
 | `VCC-RUNTIME-X402-03` | The existing `agentic-graph` x402 path satisfies production configuration and the checkout-provider adapter preserves Commerce receipt/evidence semantics | Owner/Commerce suites plus paid production and exact-replay probes | Unsatisfied; adapter source passes, but operator payee and paid delivery evidence are absent |
 
-`local_rung: dev-proven` follows from the documentation and source-contract evidence. The delivered
-runtime-composition surface remains below production because all three runtime VCCs require immutable
-integration or delivery evidence.
+`local_rung: dev-proven` follows from the documentation, static source lock, and separately recorded exact
+owner-suite evidence. The central observer itself claims no behavior execution. The delivered runtime
+remains below production because all three runtime VCCs require immutable integration or delivery evidence.
 `delivered_rung: undocumented` remains unchanged because no protected integration or delivery-surface
 evidence exists for this TAD.
 
 ## Known gaps
 
-- The combined PRD/TAD/ADR, coverage criteria, and runtime RAO now exist; no immutable four-repository
-  integration receipt exists yet.
-- Authenticated release authority is repository-scoped by design. No cross-repository super-claim or
-  atomic multi-repository merge controller is introduced; each exact candidate must integrate independently.
-- `agentic-canvas-os` admission provider v3 / receipt v2 and `agentic-commerce-os` consumption pass at exact clean source
-  candidates, but their protected deployed service revisions are unverified and therefore remain dotted in Diagrams `COMP-1` and `TOP-1`.
+- The combined PRD/TAD/ADR, coverage criteria, and runtime RAO now exist; no immutable four-repository integration receipt exists yet.
+- Authenticated release authority is repository-scoped; no cross-repository super-claim or atomic multi-repository merge controller is introduced.
+- ACOS and Commerce now converge on Agentic OS admission vocabulary, provider v3, receipt v2, Graph authority, and exact identity. `agentic-os` remains the lifecycle/orchestration/admission-vocabulary/source-lock SSOT; ACOS remains the independent Worker and state owner, with no repository migration.
+- The central observer never executes sibling candidate code. It can establish static source review readiness,
+  not HMAC behavior, durable replay, marketplace effects, owner-suite provenance, or protected runtime evidence.
 - Provider source evidence exists; deployed version IDs, storage revisions, receipt digests, and runtime
   evidence pins require the protected release controller and are not inferred.
-- Commerce's `MARKETPLACE_PROVIDER` and `agentic-graph`'s `MARKETPLACE_SERVICE` are separately owned joins;
-  the release-plan source binds both, but only deployment readback can prove the active versions.
-- `ACOS_ADMISSION_AUTH_SECRET`, `CHECKOUT_PROVIDER_AUTH_SECRET`, `MARKETPLACE_PROVIDER_AUTH_SECRET`,
+- Graph's vendor-list, identifier, settlement, route, and evidence contracts have exact local owner-suite evidence; active Cloudflare version and route bindings still require protected live readback.
+- `MARKETPLACE_PROVIDER` and `MARKETPLACE_SERVICE` remain separately owned bindings; only deployment readback can prove their active versions.
+- `sourceCandidateReviewReady` does not set `productionRuntimeReady`. Protected integration, authenticated
+  release authority, required secrets, nonzero operator x402 payee, Cloudflare activation/readback, and one
+  paid route with settlement and replay receipts remain mandatory.
+- `AGENTIC_OS_ADMISSION_AUTH_SECRET`, `AGENTIC_OS_ADMISSION_AUTHORITY_HMAC_SECRET`, `CHECKOUT_PROVIDER_AUTH_SECRET`, `MARKETPLACE_PROVIDER_AUTH_SECRET`,
   `DISCOVERY_PROVIDER_BEARER_TOKEN`, other upstream provider secrets, an operator-owned `X402_PAY_TO_ADDRESS`, and
   an exact consumed human-authorization receipt are external protected inputs and are intentionally absent.
 - Avalanche appears in `agentic-graph` verification and planning surfaces, but this grounding did not prove it
   as a production payment rail equivalent to the implemented StraitsX rail.
-- No Mercur schema import, wallet creation, provider bypass, or synthetic x402 payment is authorized here.
+- DR-8's native Worker/Durable Object live-memory tier is unbuilt and has no resource, schema, or executable VCC/RAO.
+- DR-9's MCP/WebMCP roles remain blocked on external micro-SME pain and willingness-to-pay evidence.
+- No external-reference schema import, wallet creation, provider bypass, or synthetic x402 payment is authorized here.
 
 ## Lane topology and deploy boundaries
 

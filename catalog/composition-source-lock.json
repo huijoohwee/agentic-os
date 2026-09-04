@@ -1,0 +1,102 @@
+{
+  "admission": {
+    "contract": "commerce.agentic-os-admission-provider/v3",
+    "fixtureSchema": "commerce.agentic-os-admission-v2-request-fixture/v1",
+    "fixtureSha256": "a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0",
+    "servingIdentityHeader": "x-agentic-os-serving-deployment-identity",
+    "storedEffectWriterIdentitySchema": "acos-cloudflare-deployment-identity/v1"
+  },
+  "artifacts": {
+    "admissionConsumerContract": {
+      "blob": "a72a94de974bf838bb80e30de6054ac083ace928",
+      "owner": "agentic-commerce-os",
+      "path": "src/core/acos-admission.ts"
+    },
+    "admissionConsumerFixture": {
+      "blob": "227ff0fa2c64fa0bf2ec0af67132deb3ab038086",
+      "owner": "agentic-commerce-os",
+      "path": "test/contracts/acos-admission-v2.fixture.json"
+    },
+    "admissionProviderContract": {
+      "blob": "4eea00aa24d94a9f7b8f12c11570b2fbd9f99d5e",
+      "owner": "agentic-canvas-os",
+      "path": "agent-api/src/commerce-admission-contract.js"
+    },
+    "admissionProviderFixture": {
+      "blob": "227ff0fa2c64fa0bf2ec0af67132deb3ab038086",
+      "owner": "agentic-canvas-os",
+      "path": "test/contracts/agentic-os-admission-v2.fixture.json"
+    },
+    "marketplaceConsumerAuthoringHeaders": {
+      "blob": "d20e82752cd51964c4e84581133c8d1290341057",
+      "owner": "agentic-commerce-os",
+      "path": "src/core/authoring-mutation-headers.ts"
+    },
+    "marketplaceConsumerContract": {
+      "blob": "ec5ab0be2614ccc2d31c3f6c3df0980d7e3136e5",
+      "owner": "agentic-commerce-os",
+      "path": "src/core/provider-contract.ts"
+    },
+    "marketplaceConsumerResponse": {
+      "blob": "7f7f47f98f78da691c0ae3c18fda9c6e7c178d98",
+      "owner": "agentic-commerce-os",
+      "path": "src/core/marketplace-provider-response-contract.ts"
+    },
+    "marketplaceProviderContract": {
+      "blob": "f6bc758335d411a8279553ce2ff77513ab9f2838",
+      "owner": "agentic-graph",
+      "path": "cloudflare/workers/commerce-provider-contract.ts"
+    },
+    "marketplaceProviderResponse": {
+      "blob": "7f7f47f98f78da691c0ae3c18fda9c6e7c178d98",
+      "owner": "agentic-graph",
+      "path": "cloudflare/workers/commerce-marketplace-provider-response-contract.ts"
+    },
+    "topologyManifest": {
+      "blob": "1b0241da6a9e82501167b524d842d8b59c8ed545",
+      "owner": "agentic-commerce-os",
+      "path": "config/production-core-services.json"
+    }
+  },
+  "marketplace": {
+    "authoringHeaders": [
+      "x-authoring-mutation-contract",
+      "x-authoring-mutation-id",
+      "x-authoring-operation-id",
+      "x-authoring-request-digest",
+      "x-authoring-mutation-sequence",
+      "x-authoring-semantic-scope",
+      "x-authoring-claim-id",
+      "x-authoring-lease-epoch",
+      "x-authoring-lease-expires-at-ms",
+      "x-authoring-fence-revision",
+      "x-authoring-write-target",
+      "x-authoring-reserved-at-ms"
+    ],
+    "contract": "commerce.marketplace-provider/v1",
+    "responseSchema": "commerce.marketplace-provider-response/v1"
+  },
+  "owners": {
+    "agentic-canvas-os": {
+      "repository": "huijoohwee/agentic-canvas-os",
+      "revision": "0dafcbf076d5112d47caab4a5719c0c8b943ddb0",
+      "tree": "4dbc04ec022625c7f0afe75600f0b51a65e8c3e6"
+    },
+    "agentic-commerce-os": {
+      "repository": "huijoohwee/agentic-commerce-os",
+      "revision": "31396a868670fc16e743913aac3c2eca55eb6356",
+      "tree": "d79d1d5d379ae00e27488baadfd155443d02f153"
+    },
+    "agentic-graph": {
+      "repository": "huijoohwee/agentic-graph",
+      "revision": "fcf293265a7c7aa1cef6493515b0dd717cefcd82",
+      "tree": "441a5729a7863b0bff729611840bef07daa5c0dd"
+    }
+  },
+  "schema": "agentic-os/composition-source-lock/v1",
+  "topology": {
+    "manifestBlob": "1b0241da6a9e82501167b524d842d8b59c8ed545",
+    "manifestPath": "config/production-core-services.json",
+    "manifestSha256": "fbd529714b6d236aa85a0f12fffd3a71c19eefbb83850c5a4e34dc6fda3ff9c4"
+  }
+}

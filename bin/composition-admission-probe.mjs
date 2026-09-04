@@ -1,430 +1,234 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { compositionOriginUrl, compositionRevision, observeCompositionGit,
+  readCompositionHeadFile } from './composition-git.mjs';
 
-export const COMPOSITION_ADMISSION_PROBE_SCHEMA = 'agentic-os/composition-cross-repository-probe/v1';
-const FIXTURE_SCHEMA = 'commerce.acos-admission-v2-request-fixture/v1';
-const FIXTURE_DIGEST = '06827913f1f21a62fb31e028b41121e83cef1c09a11fcaf8fba84657cddaea44';
+export const COMPOSITION_ADMISSION_PROBE_SCHEMA =
+  'agentic-os/composition-static-admission-interface/v1';
+export const REQUIRED_ADMISSION_CONTRACT = 'commerce.agentic-os-admission-provider/v3';
+export const REQUIRED_FIXTURE_SCHEMA =
+  'commerce.agentic-os-admission-v2-request-fixture/v1';
+export const REQUIRED_FIXTURE_DIGEST =
+  'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0';
+const PROVIDER_FIXTURE = 'test/contracts/agentic-os-admission-v2.fixture.json';
+const CONSUMER_FIXTURE = 'test/contracts/acos-admission-v2.fixture.json';
 const MAX_FIXTURE_BYTES = 65_536;
+const SUCCESS_KEYS = Object.freeze([
+  'consumerContractBlob', 'consumerFixtureBlob', 'effectWriterIdentitySchema', 'fixtureDigest',
+  'fixtureSchema', 'governingContract', 'ok', 'providerContractBlob', 'providerFixtureBlob',
+  'schema', 'servingIdentityHeader', 'sourceArtifactsBound', 'staticInterfaceObserved',
+]);
+const FAILURE_CODES = Object.freeze([
+  'composition_admission_arguments_invalid', 'composition_admission_artifact_bytes_unbound',
+  'composition_admission_artifact_unreadable', 'composition_admission_artifact_untracked',
+  'composition_admission_consumer_fixture_invalid',
+  'composition_admission_fixture_digest_invalid', 'composition_admission_fixture_json_invalid',
+  'composition_admission_fixture_not_owner_published', 'composition_admission_fixture_shape_invalid',
+  'composition_admission_fixture_unreadable', 'composition_admission_owner_changed',
+  'composition_admission_owner_root_invalid',
+]);
 
-export async function runCompositionAdmissionProbe({ acosRoot, commerceRoot, graphRoot, fixturePath }) {
-  const root = realpathSync(acosRoot);
-  const consumerRoot = realpathSync(commerceRoot);
-  const marketplaceRoot = realpathSync(graphRoot);
-  const fixtureTarget = realpathSync(fixturePath);
-  exact(inside(consumerRoot, fixtureTarget), 'fixture_path_escaped');
-  const bytes = readFileSync(fixtureTarget);
-  exact(bytes.byteLength > 0 && bytes.byteLength <= MAX_FIXTURE_BYTES, 'fixture_size_invalid');
-  const fixtureDigest = createHash('sha256').update(bytes).digest('hex');
-  exact(fixtureDigest === FIXTURE_DIGEST, 'fixture_digest_invalid');
-  const fixture = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-  validateFixture(fixture);
-
-  const adapter = await load(root, 'agent-api/src/adapter-registration.js');
-  const contract = await load(root, 'agent-api/src/commerce-admission-contract.js');
-  const providerModule = await load(root, 'agent-api/src/commerce-admission-provider.js');
-  const definitions = await load(root, 'agent-api/src/agent-definitions.js');
-  const durable = await load(root, 'agent-api/src/durable-object-state-store.js');
-  const worker = await load(root, 'worker/agent-state.js');
-  const consumer = await load(consumerRoot, 'src/core/acos-admission.ts');
-  const authenticationSecret = 'acos-admission-dev-secret-rotate-before-production';
-  const projectedDefinition = consumer.projectCommerceAgentDefinitionForAcos(
-    fixture.commerceAgentDefinition,
-  );
-  exact(projectedDefinition && canonical(projectedDefinition)
-    === canonical(fixture.request.body.agent_definition), 'consumer_production_projection_mismatch');
-  exact(canonical(fixture.request.body.authoring_mutation_intent.admissionInputs.agentDefinition)
-    === canonical(projectedDefinition), 'consumer_intent_projection_mismatch');
-  const namespace = createNamespace(worker.AgentState);
-  const nowMs = Number(fixture.request.headers['x-authoring-reserved-at-ms']) + 1;
-  const deploymentIdentity = fixture.expectedReceiptIdentity.deployment_identity;
-  const deploymentPin = Object.freeze({
-    sourceRevision: deploymentIdentity.sourceRevision,
-    candidateDigest: deploymentIdentity.candidateDigest,
-  });
-  const createRuntime = () => {
-    const registry = definitions.createAgentDefinitionRegistry();
-    const resolver = providerModule.createCommerceOperatorInstructionResolver(
-      contract.COMMERCE_ADMISSION_OPERATOR_INSTRUCTION_REF,
-    );
-    const registrationInterface = adapter.createAdapterRegistrationInterface({
-      agentDefinitionRegistry: registry,
-      toolAllowlist: providerModule.createCommerceToolAllowlistProjection(),
-      invocationRegister: providerModule.createCommerceInvocationRegister(),
-      resolveOperatorInstruction: resolver.resolveOperatorInstruction,
-      now: () => nowMs,
-    });
-    return providerModule.createCommerceAdmissionProvider({
-      store: durable.createDurableObjectCommerceAdmissionStore({ namespace }),
-      registrationInterface,
-      deploymentIdentity,
-      authSecret: authenticationSecret,
-      now: () => nowMs,
-    });
-  };
-
-  const inputs = admissionInputs(fixture.request.body);
-  const intent = fixture.request.body.authoring_mutation_intent;
-  const permit = permitFromHeaders(fixture.request.headers);
-  const provider = createRuntime();
-  const firstCapture = {};
-  const first = await consumer.requestAcosAdmission(
-    capturingBinding(provider, fixture, firstCapture), inputs, intent, permit, deploymentPin,
-    authenticationSecret,
-  );
-  exact(first.ok === true, 'consumer_rejected_provider_response');
-  exactReceipt(first.receipt, fixture.expectedReceiptIdentity);
-  await assertConsumerRejectsExtraKeys(
-    consumer, inputs, intent, permit, deploymentPin, authenticationSecret, fixture, firstCapture.text,
-  );
-  const writesAfterFirst = namespace.writes();
-  exact(writesAfterFirst > 0, 'provider_effect_missing');
-
-  namespace.restart();
-  const restarted = createRuntime();
-  const ready = await consumer.probeAcosAdmission(Object.freeze({
-    fetch: request => restarted.handle(request),
-  }), deploymentPin, authenticationSecret);
-  exact(ready.ok === true, 'provider_restart_not_ready');
-  exact(canonical(ready.deploymentIdentity) === canonical(deploymentIdentity),
-    'provider_ready_deployment_identity_mismatch');
-  const writesBeforeReplay = namespace.writes();
-  const replayCapture = {};
-  const replay = await consumer.requestAcosAdmission(
-    capturingBinding(restarted, fixture, replayCapture), inputs, intent, permit, deploymentPin,
-    authenticationSecret,
-  );
-  exact(replay.ok === true, 'consumer_rejected_provider_replay');
-  exact(canonical(replay.receipt) === canonical(first.receipt), 'provider_replay_receipt_mismatch');
-  exact(replayCapture.text === firstCapture.text, 'provider_replay_bytes_mismatch');
-  exact(namespace.writes() === writesBeforeReplay, 'provider_replay_wrote_state');
-  const marketplace = await probeMarketplaceJoin(consumerRoot, marketplaceRoot);
-
+/** Compare index-bound owner artifacts without evaluating either owner's code. */
+export function runCompositionAdmissionProbe({
+  acosRoot, commerceRoot, fixturePath, acosRevision = null, commerceRevision = null,
+} = {}) {
+  let provider, consumer;
+  try { provider = exactRoot(acosRoot, 'huijoohwee/agentic-canvas-os', acosRevision); }
+  catch { return failure('composition_admission_owner_root_invalid', 'agentic-canvas-os', null); }
+  try { consumer = exactRoot(commerceRoot, 'huijoohwee/agentic-commerce-os', commerceRevision); }
+  catch { return failure('composition_admission_owner_root_invalid', 'agentic-commerce-os', null); }
+  const providerRoot = provider.root, consumerRoot = consumer.root;
+  const providerRelative = fixturePath
+    ? relativeOwnerPath(providerRoot, fixturePath) : PROVIDER_FIXTURE;
+  if (providerRelative !== PROVIDER_FIXTURE) {
+    return failure('composition_admission_fixture_not_owner_published', 'agentic-canvas-os',
+      PROVIDER_FIXTURE);
+  }
+  let providerFixture, consumerFixture;
+  try { providerFixture = trackedFile(providerRoot, provider.revision,
+    PROVIDER_FIXTURE, MAX_FIXTURE_BYTES, 'fixture'); }
+  catch (error) { return failure(error.code ?? 'composition_admission_fixture_unreadable',
+    'agentic-canvas-os', PROVIDER_FIXTURE); }
+  try { consumerFixture = trackedFile(consumerRoot, consumer.revision,
+    CONSUMER_FIXTURE, MAX_FIXTURE_BYTES, 'fixture'); }
+  catch (error) { return failure(error.code ?? 'composition_admission_fixture_unreadable',
+    'agentic-commerce-os', CONSUMER_FIXTURE); }
+  if (!providerFixture.bytes.equals(consumerFixture.bytes)) {
+    return failure('composition_admission_consumer_fixture_invalid', 'agentic-commerce-os',
+      CONSUMER_FIXTURE);
+  }
+  const fixtureDigest = sha256(providerFixture.bytes);
+  if (fixtureDigest !== REQUIRED_FIXTURE_DIGEST) {
+    return failure('composition_admission_fixture_digest_invalid', 'agentic-canvas-os', PROVIDER_FIXTURE);
+  }
+  let fixture;
+  try {
+    fixture = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(providerFixture.bytes));
+  } catch { return failure('composition_admission_fixture_json_invalid', 'agentic-canvas-os',
+    PROVIDER_FIXTURE); }
+  if (!validFixture(fixture)) return failure('composition_admission_fixture_shape_invalid',
+    'agentic-canvas-os', PROVIDER_FIXTURE);
+  let providerContract, consumerContract;
+  try { providerContract = trackedFile(providerRoot, provider.revision,
+    'agent-api/src/commerce-admission-contract.js', 500_000, 'artifact'); }
+  catch (error) { return failure(error.code ?? 'composition_admission_artifact_untracked',
+    'agentic-canvas-os', 'agent-api/src/commerce-admission-contract.js'); }
+  try { consumerContract = trackedFile(consumerRoot, consumer.revision,
+    'src/core/acos-admission.ts', 500_000, 'artifact'); }
+  catch (error) { return failure(error.code ?? 'composition_admission_artifact_untracked',
+    'agentic-commerce-os', 'src/core/acos-admission.ts'); }
+  if (compositionRevision(providerRoot) !== provider.revision) {
+    return failure('composition_admission_owner_changed', 'agentic-canvas-os', null);
+  }
+  if (compositionRevision(consumerRoot) !== consumer.revision) {
+    return failure('composition_admission_owner_changed', 'agentic-commerce-os', null);
+  }
   return Object.freeze({
     schema: COMPOSITION_ADMISSION_PROBE_SCHEMA,
     ok: true,
-    fixtureSchema: FIXTURE_SCHEMA,
+    staticInterfaceObserved: true,
+    sourceArtifactsBound: true,
+    fixtureSchema: fixture.$schema,
     fixtureDigest,
-    providerContract: contract.COMMERCE_ADMISSION_PROVIDER_CONTRACT,
-    consumerContract: consumer.ACOS_ADMISSION_PROVIDER_CONTRACT,
-    consumerValidated: true,
-    productionProjectionValidated: true,
-    admissionAuthenticationValidated: true,
-    extraKeyDriftRejected: true,
-    deploymentIdentityValidated: true,
-    receiptSchema: fixture.expectedReceiptIdentity.schema,
-    requestDigest: fixture.request.headers['x-authoring-request-digest'],
-    firstWriteCount: writesAfterFirst,
-    replayWriteCount: 0,
-    restartReady: true,
-    ...marketplace,
+    providerFixtureBlob: providerFixture.oid,
+    consumerFixtureBlob: consumerFixture.oid,
+    governingContract: REQUIRED_ADMISSION_CONTRACT,
+    providerContractBlob: providerContract.oid,
+    consumerContractBlob: consumerContract.oid,
+    effectWriterIdentitySchema: fixture.expectedReceiptIdentity.deployment_identity.schema,
+    servingIdentityHeader: 'x-agentic-os-serving-deployment-identity',
   });
 }
 
-async function probeMarketplaceJoin(commerceRoot, graphRoot) {
-  const producer = await load(commerceRoot, 'src/core/marketplace-transition-request.ts');
-  const commerceHeaders = await load(commerceRoot, 'src/core/authoring-mutation-headers.ts');
-  const commerceResponse = await load(commerceRoot, 'src/core/marketplace-provider-response-contract.ts');
-  const graph = await load(graphRoot, 'cloudflare/workers/commerce-provider-contract.ts');
-  const graphAuth = await load(graphRoot, 'cloudflare/workers/commerce-provider-auth.ts');
-  const graphResponse = await load(
-    graphRoot, 'cloudflare/workers/commerce-marketplace-provider-response-contract.ts',
-  );
-  const providerEnv = Object.freeze({
-    COMMERCE_PROVIDER_SOURCE_REVISION: '1234567890abcdef1234567890abcdef12345678',
-    COMMERCE_PROVIDER_STORAGE_REVISION: 'marketplace-d1-0017',
-    COMMERCE_PROVIDER_VERSION_ID: 'cross-repo-v1',
-  });
-  const pin = await graph.runtimeEvidencePin(providerEnv, graph.MARKETPLACE_EVIDENCE_CHECKS);
-  exact(pin, 'marketplace_evidence_pin_invalid');
-  const secret = 'cross-repo-marketplace-provider-secret';
-  const actorId = 'operator-cross-repo';
-  const vendorId = 'agent-flight';
-  const state = 'suspended';
-  const semanticScope = `vendor:${vendorId}`;
-  const requestDigest = await graph.sha256Hex(graph.canonicalJson({
-    schema: 'agentic-graph-authoring-operation/v1',
-    semanticScope,
-    writeTarget: semanticScope,
-    payload: { vendorId, actorId, state },
-  }));
-  const reservedAtMs = Date.now();
-  const permit = Object.freeze({
-    schema: 'agentic-graph-authoring-mutation-permit/v2',
-    mutationId: `mutation:17:1:${requestDigest.slice(0, 32)}`,
-    operationId: `operation:${requestDigest}`,
-    requestDigest,
-    mutationSequence: 1,
-    semanticScope,
-    claimId: 'claim-cross-repo-v17',
-    leaseEpoch: 17,
-    leaseExpiresAtMs: reservedAtMs + 60_000,
-    fenceRevision: 'fence-cross-repo-v17',
-    requiredWriteTarget: semanticScope,
-    reservedAtMs,
-  });
-  let controlAuthenticationValidated = false;
-  const env = Object.freeze({
-    MARKETPLACE_PROVIDER: Object.freeze({
-      async fetch(request) {
-        controlAuthenticationValidated = await graphAuth.verifyCommerceProviderControlRequest(
-          request, graph.MARKETPLACE_PROVIDER_CONTRACT, secret,
-        );
-        exact(controlAuthenticationValidated, 'marketplace_control_authentication_invalid');
-        return graph.runtimeEvidenceResponse(
-          providerEnv, graph.MARKETPLACE_PROVIDER_CONTRACT, graph.MARKETPLACE_EVIDENCE_CHECKS,
-        );
-      },
-    }),
-    MARKETPLACE_PROVIDER_EVIDENCE_PIN_JSON: JSON.stringify(pin),
-    MARKETPLACE_PROVIDER_AUTH_SECRET: secret,
-  });
-  const produced = await producer.prepareAuthenticatedMarketplaceVendorTransitionRequest(
-    env, { vendorId, actorId, state, permit },
-  );
-  exact(produced?.ok === true, 'marketplace_producer_rejected_vector');
-  const tamperSource = produced.request.clone();
-  const consumed = await graph.readBoundProviderRequest(
-    produced.request, providerEnv, graph.MARKETPLACE_EVIDENCE_CHECKS,
-  );
-  exact(consumed, 'marketplace_consumer_rejected_vector');
-  const operationAuthenticationValidated = await graphAuth.verifyCommerceProviderRequestAuthentication(
-    consumed.request,
-    {
-      contract: graph.MARKETPLACE_PROVIDER_CONTRACT,
-      requestDigest: consumed.binding.requestDigest,
-      bindingDigest: consumed.binding.bindingDigest,
-    },
-    secret,
-  );
-  exact(operationAuthenticationValidated, 'marketplace_operation_authentication_invalid');
-  const graphHeaderNames = [...graph.AUTHORING_MUTATION_HEADER_NAMES];
-  const commerceHeaderNames = [...commerceHeaders.AUTHORING_MUTATION_HEADER_NAMES];
-  exact(graphHeaderNames.length === 12
-    && canonical(graphHeaderNames) === canonical(commerceHeaderNames),
-  'marketplace_authoring_header_grammar_mismatch');
-  const expectedHeaders = commerceHeaders.authoringMutationHeaders(permit);
-  exact(Object.entries(expectedHeaders).every(([name, value]) => consumed.request.headers.get(name) === value),
-    'marketplace_authoring_header_value_mismatch');
-  exactResponseContract(commerceResponse, graphResponse);
-  const tamperedHeaders = new Headers(tamperSource.headers);
-  tamperedHeaders.set('x-authoring-lease-epoch', '18');
-  const tampered = await graph.readBoundProviderRequest(
-    new Request(tamperSource, { headers: tamperedHeaders }),
-    providerEnv,
-    graph.MARKETPLACE_EVIDENCE_CHECKS,
-  );
-  exact(tampered === null, 'marketplace_post_signature_tamper_accepted');
-  return Object.freeze({
-    marketplaceContract: graph.MARKETPLACE_PROVIDER_CONTRACT,
-    marketplaceProducerConsumerValidated: true,
-    marketplaceControlAuthenticationValidated: controlAuthenticationValidated,
-    marketplaceOperationAuthenticationValidated: operationAuthenticationValidated,
-    marketplaceAuthoringHeaderCount: graphHeaderNames.length,
-    marketplaceResponseContractValidated: true,
-    marketplaceTamperRejected: true,
-    marketplaceRequestDigest: consumed.binding.requestDigest,
-    marketplaceBindingDigest: consumed.binding.bindingDigest,
-  });
+export function isValidCompositionAdmissionInterfaceReport(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value.ok === false) return exactKeys(value,
+    ['code', 'file', 'ok', 'owner', 'schema', 'staticInterfaceObserved'])
+    && value.schema === COMPOSITION_ADMISSION_PROBE_SCHEMA
+    && value.staticInterfaceObserved === false && FAILURE_CODES.includes(value.code)
+    && validFailureTarget(value.owner, value.file);
+  if (value.ok !== true || !exactKeys(value, SUCCESS_KEYS)) return false;
+  return value.schema === COMPOSITION_ADMISSION_PROBE_SCHEMA
+    && value.staticInterfaceObserved === true
+    && value.sourceArtifactsBound === true
+    && value.fixtureSchema === REQUIRED_FIXTURE_SCHEMA
+    && value.fixtureDigest === REQUIRED_FIXTURE_DIGEST
+    && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.providerFixtureBlob)
+    && value.consumerFixtureBlob === value.providerFixtureBlob
+    && value.governingContract === REQUIRED_ADMISSION_CONTRACT
+    && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.providerContractBlob)
+    && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.consumerContractBlob)
+    && value.effectWriterIdentitySchema === 'acos-cloudflare-deployment-identity/v1'
+    && value.servingIdentityHeader === 'x-agentic-os-serving-deployment-identity';
 }
 
-function exactResponseContract(commerce, graph) {
-  for (const name of [
-    'MARKETPLACE_PROVIDER_RESPONSE_SCHEMA',
-    'MARKETPLACE_VENDOR_STATES',
-    'MARKETPLACE_TERMINAL_409_CODES',
-    'MARKETPLACE_RECOVERY_409_CODES',
-    'MARKETPLACE_PROVIDER_RESPONSE_KEYS',
-  ]) exact(canonical(commerce[name]) === canonical(graph[name]), `marketplace_response_${name}_mismatch`);
+function validFixture(value) {
+  if (!exactKeys(value, ['$schema', 'commerceAgentDefinition', 'expectedReceiptIdentity', 'request'])
+    || value.$schema !== REQUIRED_FIXTURE_SCHEMA) return false;
+  const request = value.request, receipt = value.expectedReceiptIdentity;
+  return exactKeys(request, ['body', 'headers', 'method', 'url'])
+    && request.url === 'https://agentic-os-admission.internal/agentic-os/internal/v2/adapter-registrations'
+    && request.method === 'POST'
+    && request.headers?.['x-agentic-os-admission-auth-schema']
+      === 'commerce-agentic-os-admission-auth/v1'
+    && /^[0-9a-f]{64}$/u.test(request.headers?.['x-agentic-os-admission-auth-signature'] ?? '')
+    && exactKeys(request.body, ['agent_definition', 'authoring_mutation_intent',
+      'invocation_register_entry', 'operator_instruction_ref', 'tool_allowlist_entry'])
+    && receipt?.schema === 'agentic-os-adapter-registration/v2'
+    && receipt?.agentic_graph_authority?.schema
+      === 'agentic-graph-commerce-admission-authority-projection/v1'
+    && receipt?.deployment_identity?.schema === 'acos-cloudflare-deployment-identity/v1';
 }
 
-async function load(root, relative) {
-  const target = path.resolve(root, relative);
-  exact(inside(root, target), 'module_path_escaped');
-  return import(pathToFileURL(target).href);
-}
-
-function createNamespace(AgentState) {
-  const instances = new Map();
-  const storages = new Map();
-  function instance(id) {
-    if (!storages.has(id)) storages.set(id, new MemoryStorage());
-    if (!instances.has(id)) instances.set(id, new AgentState({ storage: storages.get(id) }));
-    return instances.get(id);
+function exactRoot(value, expectedIdentity, expectedRevision) {
+  if (typeof value !== 'string' || value === '') throw new TypeError('root invalid');
+  const root = realpathSync(value);
+  if (!lstatSync(root).isDirectory()) throw new TypeError('root invalid');
+  const top = observeCompositionGit(['rev-parse', '--show-toplevel'], {
+    cwd: root, allowFail: true,
+  });
+  const origin = normalizeRepositoryIdentity(compositionOriginUrl(root));
+  const revision = compositionRevision(root);
+  if (!top || realpathSync(top) !== root || origin !== expectedIdentity) {
+    throw new TypeError('root invalid');
   }
-  return Object.freeze({
-    idFromName: name => name,
-    get: id => Object.freeze({
-      fetch: (input, init) => instance(id).fetch(input instanceof Request ? input : new Request(input, init)),
-    }),
-    restart: () => instances.clear(),
-    writes: () => [...storages.values()].reduce((total, storage) => total + storage.writes, 0),
-  });
-}
-
-class MemoryStorage {
-  constructor() {
-    this.records = new Map();
-    this.transactionTail = Promise.resolve();
-    this.writes = 0;
+  if (revision === null || expectedRevision !== null && revision !== expectedRevision) {
+    throw new TypeError('root invalid');
   }
-
-  async transaction(operation) {
-    const result = this.transactionTail.then(() => operation(this));
-    this.transactionTail = result.catch(() => {});
-    return result;
-  }
-
-  async get(key) { return this.records.get(key); }
-  async put(key, value) { this.writes += 1; this.records.set(key, structuredClone(value)); }
-  async delete(key) { this.writes += 1; return this.records.delete(key); }
-  async getAlarm() { return null; }
-  async setAlarm() { this.writes += 1; }
-  async deleteAlarm() { this.writes += 1; }
+  return Object.freeze({ root, revision });
 }
 
-function capturingBinding(provider, fixture, capture) {
-  return Object.freeze({
-    async fetch(request) {
-      exact(request.url === fixture.request.url && request.method === fixture.request.method,
-        'consumer_request_target_mismatch');
-      for (const [name, value] of Object.entries(fixture.request.headers)) {
-        exact(request.headers.get(name) === value, 'consumer_request_header_mismatch');
-      }
-      const body = JSON.parse(await request.clone().text());
-      exact(canonical(body) === canonical(fixture.request.body), 'consumer_request_body_mismatch');
-      const response = await provider.handle(request);
-      capture.status = response.status;
-      capture.text = await response.clone().text();
-      return response;
-    },
-  });
+function relativeOwnerPath(root, value) {
+  try {
+    const target = realpathSync(value), relative = path.relative(root, target);
+    return inside(root, target) ? relative.split(path.sep).join('/') : null;
+  } catch { return null; }
 }
 
-function exactReceipt(record, expected) {
-  exact(record && typeof record === 'object', 'provider_receipt_missing');
-  for (const [key, value] of Object.entries(expected)) {
-    exact(canonical(record[key]) === canonical(value), `provider_receipt_${key}_mismatch`);
-  }
-  exact(Number.isSafeInteger(record.registered_at_ms) && record.registered_at_ms >= 0,
-    'provider_receipt_time_invalid');
-}
-
-function admissionInputs(body) {
-  return Object.freeze({
-    agentDefinition: body.agent_definition,
-    toolAllowlistEntry: body.tool_allowlist_entry,
-    invocationRegisterEntry: body.invocation_register_entry,
-    operatorInstructionRef: body.operator_instruction_ref,
-  });
-}
-
-function permitFromHeaders(headers) {
-  return Object.freeze({
-    schema: headers['x-authoring-mutation-contract'],
-    mutationId: headers['x-authoring-mutation-id'],
-    operationId: headers['x-authoring-operation-id'],
-    requestDigest: headers['x-authoring-request-digest'],
-    mutationSequence: Number(headers['x-authoring-mutation-sequence']),
-    semanticScope: headers['x-authoring-semantic-scope'],
-    claimId: headers['x-authoring-claim-id'],
-    leaseEpoch: Number(headers['x-authoring-lease-epoch']),
-    leaseExpiresAtMs: Number(headers['x-authoring-lease-expires-at-ms']),
-    fenceRevision: headers['x-authoring-fence-revision'],
-    requiredWriteTarget: headers['x-authoring-write-target'],
-    reservedAtMs: Number(headers['x-authoring-reserved-at-ms']),
-  });
-}
-
-async function assertConsumerRejectsExtraKeys(
-  consumer, inputs, intent, permit, deploymentPin, authenticationSecret, fixture, responseText,
-) {
-  const original = JSON.parse(responseText);
-  for (const drifted of [
-    { ...original, unexpected: true },
-    { ...original, record: { ...original.record, unexpected: true } },
-    { ...original, record: {
-      ...original.record,
-      deployment_identity: { ...original.record.deployment_identity, unexpected: true },
-    } },
-  ]) {
-    const binding = Object.freeze({
-      async fetch() {
-        return new Response(JSON.stringify(drifted), {
-          status: 200,
-          headers: fixture.request.headers,
-        });
-      },
-    });
-    const result = await consumer.requestAcosAdmission(
-      binding, inputs, intent, permit, deploymentPin, authenticationSecret,
-    );
-    exact(result.ok === false && result.code === 'acos_admission_receipt_invalid',
-      'consumer_extra_key_drift_accepted');
+function trackedFile(root, revision, relative, maximum, kind) {
+  try { return readCompositionHeadFile(
+    root, revision, relative, maximum, 'composition admission artifact',
+  ); }
+  catch (error) {
+    if (error?.code === 'composition_head_file_untracked') {
+      throw coded('composition_admission_artifact_untracked');
+    }
+    if (error?.code === 'composition_head_file_bytes_unbound') {
+      throw coded('composition_admission_artifact_bytes_unbound');
+    }
+    throw coded(kind === 'fixture' ? 'composition_admission_fixture_unreadable'
+      : 'composition_admission_artifact_unreadable');
   }
 }
 
-function validateFixture(value) {
-  exact(value && typeof value === 'object' && value.$schema === FIXTURE_SCHEMA,
-    'fixture_schema_invalid');
-  exact(canonical(Object.keys(value).sort()) === canonical([
-    '$schema', 'commerceAgentDefinition', 'expectedReceiptIdentity', 'request',
-  ]), 'fixture_shape_invalid');
-  exact(value.commerceAgentDefinition && typeof value.commerceAgentDefinition === 'object'
-    && value.commerceAgentDefinition.executableTarget
-    && typeof value.commerceAgentDefinition.executableTarget === 'object',
-  'fixture_commerce_agent_definition_invalid');
-  exact(value.request && typeof value.request === 'object'
-    && value.request.url === 'https://acos-admission.internal/internal/v2/adapter-registrations'
-    && value.request.method === 'POST', 'fixture_request_invalid');
-  exact(value.request.headers && typeof value.request.headers === 'object'
-    && value.request.headers['content-type'] === 'application/json'
-    && value.request.headers['x-acos-admission-auth-schema'] === 'commerce-acos-admission-auth/v1'
-    && /^[0-9a-f]{64}$/u.test(value.request.headers['x-acos-admission-auth-signature'] ?? ''),
-  'fixture_headers_invalid');
-  exact(value.request.body && typeof value.request.body === 'object'
-    && canonical(Object.keys(value.request.body).sort()) === canonical([
-      'agent_definition', 'authoring_mutation_intent', 'invocation_register_entry',
-      'operator_instruction_ref', 'tool_allowlist_entry',
-    ]), 'fixture_body_shape_invalid');
-  exact(value.expectedReceiptIdentity && typeof value.expectedReceiptIdentity === 'object',
-    'fixture_receipt_identity_invalid');
+function exactKeys(value, expected) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort(), sorted = [...expected].sort();
+  return actual.length === sorted.length && actual.every((key, index) => key === sorted[index]);
 }
-
-function canonical(value) {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.keys(value).sort()
-    .map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
-  return JSON.stringify(value);
+function inside(root, target) { const relative = path.relative(root, target);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); }
+function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+function coded(code) { return Object.assign(new Error(code), { code }); }
+function normalizeRepositoryIdentity(value) {
+  if (typeof value !== 'string' || value.trim() !== value || value === '') return null;
+  const scp = value.match(/^(?:[^@/\s:]+@)?github\.com:([^\s]+)$/iu);
+  let repository = scp?.[1] ?? null;
+  if (repository === null) {
+    let parsed;
+    try { parsed = new URL(value); } catch { return null; }
+    if (!['https:', 'http:', 'ssh:', 'git:'].includes(parsed.protocol)
+      || parsed.hostname.toLowerCase() !== 'github.com' || parsed.port !== ''
+      || parsed.search !== '' || parsed.hash !== '') return null;
+    repository = parsed.pathname.replace(/^\//u, '');
+  }
+  const parts = repository.replace(/\.git$/iu, '').split('/');
+  return parts.length === 2 && parts.every(part => /^[A-Za-z0-9_.-]+$/u.test(part))
+    ? `${parts[0]}/${parts[1]}`.toLowerCase() : null;
 }
-
-function inside(root, target) {
-  const relative = path.relative(root, target);
-  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+function validFailureTarget(owner, file) {
+  const targets = {
+    'agentic-os': [null, 'bin/composition-admission-probe.mjs'],
+    'agentic-canvas-os': [null, PROVIDER_FIXTURE,
+      'agent-api/src/commerce-admission-contract.js'],
+    'agentic-commerce-os': [null, CONSUMER_FIXTURE, 'src/core/acos-admission.ts'],
+  };
+  return targets[owner]?.includes(file) === true;
 }
+function failure(code, owner = 'agentic-os', file = null) { return Object.freeze({
+  schema: COMPOSITION_ADMISSION_PROBE_SCHEMA, ok: false, code, owner, file,
+  staticInterfaceObserved: false,
+}); }
 
-function exact(condition, code) {
-  if (!condition) throw new Error(`composition_admission_probe:${code}`);
-}
-
+function realpathOrNull(value) { try { return realpathSync(value); } catch { return null; } }
 const invoked = process.argv[1] && realpathOrNull(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
-  const [acosRoot, commerceRoot, graphRoot, fixturePath, ...extra] = process.argv.slice(2);
-  if (extra.length || !acosRoot || !commerceRoot || !graphRoot || !fixturePath) {
-    process.stderr.write('composition_admission_probe:arguments_invalid\n');
-    process.exitCode = 1;
-  } else {
-    runCompositionAdmissionProbe({ acosRoot, commerceRoot, graphRoot, fixturePath }).then(
-      report => process.stdout.write(`${JSON.stringify(report)}\n`),
-      error => {
-        process.stderr.write(`${error instanceof Error ? error.message : 'composition_admission_probe:unknown'}\n`);
-        process.exitCode = 1;
-      },
-    );
-  }
-}
-
-function realpathOrNull(value) {
-  try { return realpathSync(value); } catch { return null; }
+  const [acosRoot, commerceRoot, fixturePath, ...extra] = process.argv.slice(2);
+  const value = extra.length || !acosRoot || !commerceRoot
+    ? failure('composition_admission_arguments_invalid')
+    : runCompositionAdmissionProbe({ acosRoot, commerceRoot, fixturePath });
+  process.stdout.write(`${JSON.stringify(value)}\n`);
+  process.exitCode = value.ok ? 0 : 1;
 }
