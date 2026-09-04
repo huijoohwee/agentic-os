@@ -45,6 +45,9 @@ compatibility checks remain local. Load [the autonomous-goal guide](guides/AUTON
 only for delivery planning or when execution stalls/repeats a mechanical failure; it remains outside the
 always-load set.
 
+For direct, small source changes, see the lazy-loaded [user cookbook](guides/USER-COOKBOOK.md): autonomous
+path-scoped admission and stage-to-push delivery are the default; manual Git is the fallback.
+
 The lazy-loaded [composition architecture](guides/COMPOSITION-ARCHITECTURE.md) records the grounded
 ownership and provider boundaries among `agentic-os`, `agentic-canvas-os`, `agentic-graph`, and
 `agentic-commerce-os`. It carries executable source-acceptance checks, but grants no cross-repository
@@ -53,9 +56,9 @@ promotion or deployed-runtime authority.
 Open a lane, work, land it:
 
 ```sh
-npm run lane -- pricing-table   # worktree + branch at the profile's fetched canonical ref
-# ... author, commit ...
-npm run land                     # publish exact head; project the capability-selected review
+npm run lane -- pricing-table --write=src/pricing-table.ts
+# ... edit the owning file directly in the printed worktree ...
+npm run land -- --message="feat: update pricing table"  # stage, commit, push, protected handoff
 npm run status                   # registered lane projections and provider state
 npm run reap                     # classify all lanes within the strict inventory bound
 npm run reap -- --ref=agent/device/scope  # classify one exact lane; never clean or retire

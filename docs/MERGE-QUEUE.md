@@ -55,15 +55,14 @@ Draining `N` open PRs with require-up-to-date and no queue costs up to `N x (N-1
 cycles, because every merge invalidates every other PR. At `N = 45` that is about 1,980 CI runs, and
 every restack in that set re-presents the same hunks for resolution.
 
-A provider may batch candidates to reduce those cycles, but the repository chooses the tuning from
-its workload and risk constraints. The harness requires tested landing order, not a universal batch.
+A provider may batch candidates; the repository selects tuning. The harness requires tested landing order.
 
 ## What the author does
 
 ```sh
-npm run lane -- my-scope   # worktree + branch at the fetched profile canonical ref
-# ... author, commit ...
-npm run land                # publish exact head and project the selected review
+npm run lane -- my-scope --write=src/owning-file.ts
+# ... edit the owning file directly in the printed worktree ...
+npm run land -- --message="feat: focused change"  # stage, commit, push, project review
 ```
 
 Then stop touching the published lane. Do not rebase it, merge the canonical branch into it, or push

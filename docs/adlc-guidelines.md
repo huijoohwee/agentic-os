@@ -2,7 +2,7 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.1.0
+version: 1.2.0
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
@@ -30,7 +30,8 @@ never a competing controller.
 - Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.
 - Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md` for delivery planning or repeated mechanical failure.
 - Preserve bytes; inspect live state. Projections are evidence, not authority.
-- Canonical is read-only. Patch minimal scoped hunks in one admitted lane; never copy lane files into it.
+- Canonical is read-only. Edit owner files in disjoint path-scoped lanes; overlaps wait. Land stages,
+  commits, and publishes reserved paths.
 - Land the exact committed diff by protected merge. Lane binds branch/worktree/scope/review.
 - Exact candidates; proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt.
 - Clean exact eligible targets only after value closure/detachment; no wildcards. Effects need exact

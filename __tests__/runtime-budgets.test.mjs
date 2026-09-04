@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40_960, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40_936, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -70,7 +70,8 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'New always-load guidance/modules declare deltas; otherwise replace, lazy-load, or reject.',
       'Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.',
       'Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md`',
-      'Patch minimal scoped hunks in one admitted lane; never copy lane files into it.',
+      'Edit owner files in disjoint path-scoped lanes; overlaps wait.',
+      'Land stages, commits, and publishes reserved paths.',
       'Land the exact committed diff by protected merge.',
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
@@ -78,8 +79,9 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       "At start/resume, apply the global prompt's completion-estimate and external-wait rule.",
       'Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
       '`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
-      'for one admitted lane',
-      'commit only its smallest scoped diff',
+      '`agentic-os start <scope> --write=<paths>`',
+      'Disjoint lanes run; overlaps wait.',
+      '`agentic-os land --message=<message>` stages, commits, pushes',
       'Never copy lane files into canonical.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
@@ -132,7 +134,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.1.0', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.2.0', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',
@@ -238,7 +240,7 @@ test('this repository is inside its own module budget', () => {
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, { modules: 46, totalLines: 15_000, perModuleLines: 400 });
   assert.equal(entries.length, 46);
-  assert.equal(total, 13_769, 'update this exact cost to expose every source-line delta');
+  assert.equal(total, 13_840, 'update this exact cost to expose every source-line delta');
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
   for (const path of [
