@@ -268,3 +268,108 @@ test('tracked symlink bytes use the same before-and-after identity guard', (t) =
   symlinkSync('authored-target', join(root, 'tracked-link'));
   assert.ok(worktreeCleanupRisks(root, { includeIgnored: false }).tracked.includes('tracked-link'));
 });
+
+test('batched observation maps drift across boundaries and retains binary, empty, executable and symlink semantics', (t) => {
+  const { root, run } = fixture(t);
+  for (let index = 0; index < 70; index += 1)
+    writeFileSync(join(root, `batch-${String(index).padStart(3, '0')}.bin`), Buffer.from([0, index, 255]));
+  writeFileSync(join(root, 'empty'), '');
+  writeFileSync(join(root, 'run.sh'), '#!/bin/sh\nexit 0\n'); chmodSync(join(root, 'run.sh'), 0o755);
+  symlinkSync('empty', join(root, 'tracked-link'));
+  run(['add', '.']); run(['commit', '--quiet', '--message', 'batched types']);
+  assert.deepEqual(worktreeCleanupRisks(root, { includeIgnored: false }).tracked, []);
+  assert.deepEqual(trackedChanges(root), { headToIndex: [], indexToWorkingTree: [] });
+  writeFileSync(join(root, 'batch-031.bin'), Buffer.from([0, 42, 255]));
+  writeFileSync(join(root, 'batch-064.bin'), Buffer.from([0, 42, 255]));
+  chmodSync(join(root, 'run.sh'), 0o644);
+  unlinkSync(join(root, 'tracked-link')); symlinkSync('run.sh', join(root, 'tracked-link'));
+  const expected = ['batch-031.bin', 'batch-064.bin', 'run.sh', 'tracked-link'];
+  assert.deepEqual(worktreeCleanupRisks(root, { includeIgnored: false }).tracked, expected);
+  assert.deepEqual(trackedChanges(root).indexToWorkingTree.map(({ path }) => path), expected);
+});
+
+function isolatedBatchScenario(root, scenario) {
+  const helper = new URL('../bin/agentic-os-filter-compare.mjs', import.meta.url).href;
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import child from 'node:child_process';
+    import fs from 'node:fs';
+    import { createHash } from 'node:crypto';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { join } from 'node:path';
+    const root = process.argv[1], scenario = process.argv[2];
+    const { rawTrackedFilesMatch, rawTrackedFileMatches, RAW_BATCH_LIMITS } = await import(process.argv[3]);
+    const absolute = join(root, 'batch-source');
+    const original = Buffer.from([0, 1, 254, 255]);
+    fs.writeFileSync(absolute, original);
+    const oid = bytes => createHash('sha1').update('blob ' + bytes.length + '\\0').update(bytes).digest('hex');
+    const request = path => ({ absolute: path, path, oid: oid(fs.readFileSync(path)),
+      mode: '100644', before: fs.lstatSync(path, { bigint: true }), cwd: root });
+    const one = request(absolute);
+    let requests = [one, one], calls = [], descriptors = [], closeAttempts = [];
+    if (scenario === 'close') requests.push(one);
+    if (scenario === 'limits') {
+      const large = join(root, 'batch-large'); fs.writeFileSync(large, Buffer.alloc(17 * 1024 * 1024, 7));
+      requests = [...Array.from({ length: 65 }, () => one), request(large), request(large)];
+    }
+    const spawn = child.spawnSync;
+    child.spawnSync = (executable, args, options) => {
+      const entries = JSON.parse(options.input), fds = options.stdio.slice(3);
+      assert.ok(entries.length <= 32); assert.equal(entries.length, fds.length);
+      assert.ok(entries.reduce((sum, entry) => sum + entry.size, 0) <= 32 * 1024 * 1024);
+      assert.equal(options.timeout, 7000); assert.equal(options.killSignal, 'SIGKILL');
+      assert.equal(options.maxBuffer, 32);
+      assert.equal(options.env.NODE_OPTIONS, undefined); assert.equal(options.env.GIT_DIR, undefined);
+      calls.push(entries.map(entry => entry.size)); descriptors.push(...fds);
+      if (scenario === 'timeout') return { status: null, signal: 'SIGKILL',
+        error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }), stdout: Buffer.from('11') };
+      if (scenario === 'partial') return { status: 0, signal: null, stdout: Buffer.from('1') };
+      if (scenario === 'invalid') return { status: 0, signal: null, stdout: Buffer.from('1x') };
+      if (scenario === 'extra') return { status: 0, signal: null, stdout: Buffer.from('111') };
+      const result = spawn(executable, args, options);
+      if (scenario === 'replace') {
+        fs.renameSync(absolute, absolute + '-retained'); fs.writeFileSync(absolute, original);
+      }
+      if (scenario === 'grow') fs.appendFileSync(absolute, 'tail');
+      if (scenario === 'mode') fs.chmodSync(absolute, 0o755);
+      return result;
+    };
+    const close = fs.closeSync;
+    fs.closeSync = descriptor => {
+      if (scenario !== 'close' || !descriptors.includes(descriptor)) return close(descriptor);
+      closeAttempts.push(descriptor); close(descriptor);
+      if (closeAttempts.length === 2) throw new Error('injected uncertain middle close');
+    };
+    syncBuiltinESMExports();
+    process.env.NODE_OPTIONS = '--invalid-candidate-option'; process.env.GIT_DIR = '/untrusted';
+    const result = rawTrackedFilesMatch(requests);
+    for (const descriptor of new Set(descriptors)) assert.throws(() => fs.fstatSync(descriptor), { code: 'EBADF' });
+    if (scenario === 'limits') {
+      assert.ok(result.every(Boolean)); assert.equal(calls.length, 4);
+      assert.equal(rawTrackedFileMatches(one), true);
+    } else assert.deepEqual(result, requests.map(() => false));
+    if (scenario === 'close') assert.deepEqual(closeAttempts, descriptors);
+    console.log(JSON.stringify({ result, calls, limits: RAW_BATCH_LIMITS }));
+  `, root, scenario, helper], { encoding: 'utf8', timeout: 10_000 }));
+}
+
+test('raw comparison bounds inherited descriptors and aggregate bytes and closes every batch', (t) => {
+  const { root } = fixture(t);
+  const observed = isolatedBatchScenario(root, 'limits');
+  assert.equal(observed.result.length, 67);
+  assert.equal(observed.calls[0].length, 32);
+  assert.equal(observed.calls[1].length, 32);
+});
+
+for (const scenario of ['partial', 'invalid', 'extra', 'timeout', 'replace', 'grow', 'mode']) {
+  test(`raw batch ${scenario} refuses success and releases inherited descriptors`, (t) => {
+    const { root } = fixture(t);
+    assert.deepEqual(isolatedBatchScenario(root, scenario).result, [false, false]);
+  });
+}
+
+
+test('uncertain middle descriptor close drains each owned descriptor once and refuses the whole batch', (t) => {
+  const { root } = fixture(t);
+  assert.deepEqual(isolatedBatchScenario(root, 'close').result, [false, false, false]);
+});

@@ -12,16 +12,20 @@ import { createRepositoryProfile } from '../src/governance.mjs';
 import {
   assertPriorManagedRuntime, describeHookRuntime,
 } from '../bin/agentic-os-hook-runtime.mjs';
-
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
-
-function priorRuntimeFiles(selected) {
-  const bytes = readFileSync(new URL('./fixtures/quarantine-v1.mjs.txt', import.meta.url)), sha256 = digest(bytes);
-  assert.equal(sha256, 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d');
-  return selected.files.map(file => file.path === 'src/quarantine.mjs' ? { ...file, bytes, sha256 } : file);
+function priorRuntimeFiles(selected, quarantineLegacy = true) {
+  const fixtures = new Map([
+    ['src/git-tracked.mjs', ['git-tracked-single.mjs.txt', 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320']],
+    ['bin/agentic-os-filter-compare.mjs', ['filter-compare-single.mjs.txt', 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7']],
+    ...(quarantineLegacy ? [['src/quarantine.mjs', ['quarantine-v1.mjs.txt', 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d']]] : []),
+  ]);
+  return selected.files.map(file => {
+    const fixture = fixtures.get(file.path); if (!fixture) return file;
+    const bytes = readFileSync(new URL(`./fixtures/${fixture[0]}`, import.meta.url));
+    assert.equal(digest(bytes), fixture[1]); return { ...file, bytes, sha256: fixture[1] };
+  });
 }
-
 function installPriorReleaseRuntime(selected, { authorityRelease = false } = {}) {
   const files = priorRuntimeFiles(selected).map((file) => {
     let source = file.bytes.toString('utf8');
@@ -178,8 +182,8 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 
-function installImmediatePriorRuntime(selected, guardRelease = false) {
-  const files = priorRuntimeFiles(selected).map((file) => {
+function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false) {
+  const files = priorRuntimeFiles(selected, !currentRelease).map((file) => {
     if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;
     const bytes = Buffer.from(file.bytes.toString('utf8')
       .replace(
@@ -193,7 +197,7 @@ function installImmediatePriorRuntime(selected, guardRelease = false) {
   const identity = { schema: 'agentic-os/hook-runtime/v1',
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
-  assert.equal(runtimeId, guardRelease ? 'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9'
+  assert.equal(runtimeId, currentRelease ? 'v1-2be4a5d995408a4367167e0ee2d978726d02a64b13d009d3144e0acc4ce8c258' : guardRelease ? 'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9'
     : 'v1-0bae8f8aaeb216ae461c8015cec00b17c508ae3a32c9ff7d55b4f574b25acec3');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
@@ -215,8 +219,8 @@ test('the verified prior release runtimes authorize managed migration', (t) => {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
-  for (const guardRelease of [false, true]) {
-    const prior = installImmediatePriorRuntime(selected, guardRelease);
+  for (const [guardRelease, currentRelease] of [[false, false], [true, false], [false, true]]) {
+    const prior = installImmediatePriorRuntime(selected, guardRelease, currentRelease);
     assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true); }
 });
 
@@ -254,7 +258,6 @@ test('published files contain public JSON and adapters without deleted deep impo
   assert.equal(files.has('src/readiness-test-reporter.mjs'), false);
   assert.equal(files.has('src/wip.mjs'), false);
 });
-
 test('packed setup is canonical, durable, integrity-bound, and no-clobber', async (t) => {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-installed-consumer-'));
   const repository = join(parent, 'repository');
@@ -546,7 +549,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(fifoDoctor.signal, null, 'managed hook FIFO doctor inspection timed out');
   assert.match(fifoDoctor.stdout, /FAIL hook\.pre-commit/u);
 });
-
 test('managed hook runtime safely rebinds after a clone relocation', (t) => {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-relocated-consumer-'));
   const before = join(parent, 'before');
