@@ -23,7 +23,7 @@ import * as store from '../src/lane-records.mjs';
 import * as queue from '../src/queue.mjs';
 import {
   provision, assertProvisionable,
-  inspect as inspectWorktree,
+  inspectRegistered,
   reapLaneBranches,
   staleWorktrees,
   worktreeFor,
@@ -390,7 +390,8 @@ function cmdStatus(root, argv, profile, policy) {
   const cachedRecords = store.load(root).lanes;
   const registrations = worktrees(root)
     .filter(({ branch }) => parseLaneRef(branch)?.device === device);
-  const lanes = registrations.map(({ branch: ref, path }) => {
+  const lanes = registrations.map((registration) => {
+    const { branch: ref, path } = registration;
     const record = cachedRecords[ref] ?? null;
     const state = record?.state ?? 'active';
     if (!existsSync(path)) return {
@@ -398,7 +399,7 @@ function cmdStatus(root, argv, profile, policy) {
     };
     let observedLane;
     try {
-      observedLane = inspectWorktree(ref, root, policy.protectedRef, { includeIgnored: false });
+      observedLane = inspectRegistered(registration, root, policy.protectedRef, { includeIgnored: false });
     } catch (error) {
       if (!existsSync(path)) return {
         ref, path, state, commits: '-', untracked: 0, next: [], stale: true,

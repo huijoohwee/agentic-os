@@ -97,12 +97,6 @@ the paid-resource priority is an inference from existing implementation effort, 
 The next product decision should bind a payer and deliverable, then test one complete request → quote →
 authorized payment → verified settlement → delivery → receipt/reconciliation loop, including retries.
 
-The [Anthropic commerce reference](https://github.com/anthropics/commerce-agents) was inspected for design
-inspiration only. Its shared role/tool contracts and backend boundaries are relevant reusable ideas.
-Its examples do not charge cards or place orders, and merchant writes are staged for approval. It does
-not supply production evidence for these repositories. No source, prompts, schemas, tests or dependencies
-were copied. Keep model/provider adaptation behind existing contracts rather than importing its stack.
-
 ## Validation record
 
 | Repository | Observed checks |

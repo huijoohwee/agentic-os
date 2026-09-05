@@ -1,5 +1,4 @@
 /** Exact GitHub review projection and merge-queue handoff. */
-
 import { execFileSync } from 'node:child_process';
 import { loadRepositoryProfile, resolveRepositoryRoot } from './git-repository.mjs';
 import { remoteTransport } from './git.mjs';
@@ -11,16 +10,12 @@ export const GITHUB_CAPABILITIES = Object.freeze([
   'host-qualified-repository-pin',
 ]);
 export const GITHUB_REVIEW_OBSERVATION_SCHEMA = 'agentic-os/github-review-observation/v1';
-
 const FIELDS = [
   'number', 'state', 'url', 'mergeStateStatus', 'headRefOid', 'headRefName',
   'baseRefName', 'headRepository', 'isCrossRepository', 'body', 'autoMergeRequest',
 ].join(',');
 
-function repositoryName(value) {
-  return typeof value === 'string' ? value : value?.nameWithOwner ?? null;
-}
-
+const repositoryName = (value) => typeof value === 'string' ? value : value?.nameWithOwner ?? null;
 function repositoryIdentity(value) {
   const match = value?.match(/^((?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?)\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/u);
   const port = match?.[1].match(/\]:(\d+)$/u)?.[1]
@@ -80,17 +75,21 @@ function branchName(value) {
     && !value.split('/').some((part) => part.startsWith('.') || part.endsWith('.lock')) ? value : null;
 }
 
-export function ghAvailable() {
+function commandTimeout(value) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 15_000)
+    throw new RangeError('GitHub CLI timeoutMs must be an integer from 1 to 15000');
+  return value;
+}
+export function ghAvailable({ timeoutMs = 2_000 } = {}) {
   try {
-    execFileSync('gh', ['--version'], { stdio: 'ignore' });
+    execFileSync('gh', ['--version'], {
+      stdio: 'ignore', timeout: commandTimeout(timeoutMs), killSignal: 'SIGKILL',
+    });
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
-export let lastError = null;
-export let lastHttpStatus = null;
+export let lastError = null, lastHttpStatus = null;
 
 export function providerHttpStatus(error) {
   const raw = `${error.stdout ?? ''}${error.stderr ?? ''}`;
@@ -117,21 +116,22 @@ export function providerMessage(error) {
   }
 }
 
-export function gh(args, { cwd = process.cwd(), json = true, input } = {}) {
+export function gh(args, { cwd = process.cwd(), json = true, input, timeoutMs = 15_000 } = {}) {
   try {
     const out = execFileSync('gh', args, {
-      cwd,
-      input,
+      cwd, input,
       encoding: 'utf8',
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       maxBuffer: 16 * 1024 * 1024,
+      timeout: commandTimeout(timeoutMs), killSignal: 'SIGKILL',
     });
     lastError = null;
     lastHttpStatus = null;
     return json ? JSON.parse(out || 'null') : out.trim();
   } catch (error) {
-    lastError = providerMessage(error);
-    lastHttpStatus = providerHttpStatus(error);
+    lastError = error.code === 'ETIMEDOUT' ? `GitHub CLI timed out after ${timeoutMs}ms`
+      : providerMessage(error);
+    lastHttpStatus = error.code === 'ETIMEDOUT' ? null : providerHttpStatus(error);
     return null;
   }
 }

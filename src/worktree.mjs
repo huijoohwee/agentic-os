@@ -163,13 +163,20 @@ export function provision({ ref, scope, device, baseSha, cwd = process.cwd() }) 
 }
 /** Observed facts for the lane state machine. */
 export function inspect(ref, cwd = process.cwd(), baseRef, { includeIgnored = true } = {}) {
+  return inspectRegistered(worktreeFor(ref, cwd), cwd, baseRef, { includeIgnored });
+}
+/** Reuse one registration within a read-only observation; never reuse it to authorize an effect. */
+export function inspectRegistered(entry, cwd = process.cwd(), baseRef, { includeIgnored = true } = {}) {
   if (typeof baseRef !== 'string' || baseRef.length === 0)
     throw new TypeError('lane inspection requires an explicit canonical base ref');
-  const entry = worktreeFor(ref, cwd);
   if (!entry) return { registered: false, path: null, untracked: [], commits: 0 };
   const path = entry.path;
+  const count = observeGit(['rev-list', '--count', `${baseRef}..${entry.branch}`],
+    { cwd, maxBuffer: 64 });
+  if (!/^(0|[1-9][0-9]*)$/u.test(count) || !Number.isSafeInteger(Number(count)))
+    throw new Error('invalid lane commit count');
   return { registered: true, path, untracked: untrackedPaths(path, { includeIgnored }),
-    commits: observeGitLines(['rev-list', `${baseRef}..${ref}`], { cwd }).length };
+    commits: Number(count) };
 }
 /** Compatibility cleanup requires the public authenticated retirement contract. */
 export function retire() {
