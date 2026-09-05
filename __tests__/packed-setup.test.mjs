@@ -172,6 +172,47 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 
+function installImmediatePriorRuntime(selected) {
+  const files = selected.files.map((file) => {
+    if (file.path !== 'src/guard-main.mjs') return file;
+    const bytes = Buffer.from(file.bytes.toString('utf8')
+      .replace(
+        "'If bytes are already here, preserve them with: npm run reconcile -- plan --scope=<scope>',\n        'Do not retry pull or push until reconcile classifies the protected-main state.',",
+        "'If bytes are already here, preserve the checkout and use the repository-owned recovery flow.',",
+      ));
+    assert.equal(digest(bytes),
+      '74417d1754b6e2ed04fda07c0915b4cd37ffcb5047c9a043e8ec2be0353c57d8');
+    return { ...file, bytes, sha256: digest(bytes) };
+  });
+  const identity = { schema: 'agentic-os/hook-runtime/v1',
+    files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
+  const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
+  assert.equal(runtimeId,
+    'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9');
+  const manifest = { schema: identity.schema, runtimeId, files: identity.files };
+  const path = join(selected.managedRoot, runtimeId);
+  mkdirSync(selected.managedRoot, { recursive: true, mode: 0o700 });
+  mkdirSync(path, { mode: 0o700 });
+  for (const name of ['.githooks', 'bin', 'src']) mkdirSync(join(path, name), { mode: 0o700 });
+  for (const file of files) {
+    const target = join(path, file.path);
+    writeFileSync(target, file.bytes, { mode: file.mode }); chmodSync(target, file.mode);
+  }
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(join(path, 'runtime-manifest.json'), manifestBytes, { mode: 0o600 });
+  chmodSync(join(path, 'runtime-manifest.json'), 0o600);
+  return { path, hooksPath: join(path, '.githooks'), manifestBytes };
+}
+
+test('the immediate prior release runtime authorizes a managed migration', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'agentic-os-immediate-prior-runtime-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  const selected = describeHookRuntime(root, { sourceRoot: ROOT });
+  const prior = installImmediatePriorRuntime(selected);
+  assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true);
+});
+
 function runChild(file, args, options) {
   return new Promise((resolveResult) => {
     const child = spawn(file, args, options);
