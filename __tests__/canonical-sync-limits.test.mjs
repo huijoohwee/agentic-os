@@ -52,7 +52,7 @@ test('canonical plans publish explicit serialized-byte and inventory ceilings', 
   assert.deepEqual(CANONICAL_SYNC_LIMITS,
     { serializedPlanBytes: 500_000, quarantineManifestBytes: 500_000,
       inventoryEntries: 1_024, treeEntries: 50_000,
-      targetDirectories: 50_000,
+      targetDirectories: 50_000, quarantineManifestChunks: 31, aggregateQuarantineManifestBytes: 16_000_000,
       sourceFileBytes: 32 * 1024 * 1024, aggregateSourceBytes: 128 * 1024 * 1024,
       targetFileBytes: 32 * 1024 * 1024, aggregateTargetBytes: 128 * 1024 * 1024 });
   assert.ok(Object.isFrozen(CANONICAL_SYNC_LIMITS));
@@ -78,13 +78,15 @@ test('clean-tree quarantine manifests and target materialization are independent
     const path = `clean-${String(index).padStart(4, '0')}.txt`;
     return [path, { mode: '100644', type: 'blob', oid, size: 1 }];
   }));
-  assert.throws(() => buildCleanRetirementProjection({
+  const large = buildCleanRetirementProjection({
     planDigest: 'b'.repeat(64), inventoryDigest: 'c'.repeat(64), inventory: [],
-  }, base, CANONICAL_SYNC_LIMITS), (error) => {
-    assert.ok(error instanceof CanonicalResourceError);
-    assert.equal(error.code, 'quarantine-manifest-limit');
-    return true;
-  });
+  }, base, CANONICAL_SYNC_LIMITS);
+  assert.ok(large.manifest.chunks.length > 1);
+  assert.equal(JSON.parse(large.manifest.index).entryCount, 8_192);
+  const restored = large.manifest.chunks.flatMap(bytes => JSON.parse(bytes).entries);
+  assert.deepEqual(restored, large.entries.map((entry, slot) => ({ slot: String(slot), ...entry })));
+  for (const bytes of [large.manifest.index, ...large.manifest.chunks])
+    assert.ok(bytes.length <= 500_000);
 
   const dirty = buildDirtyQuarantineProjection({
     planDigest: 'b'.repeat(64), inventoryDigest: 'c'.repeat(64), inventory: [

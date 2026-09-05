@@ -48,6 +48,7 @@ const ARTIFACT_KEYS = Object.freeze([
   'recoveryRefPublished', 'recoveryRefCurrentOid', 'recoveryRefSymbolicTarget',
   'quarantineCreated', 'quarantinePath', 'quarantineManifestPath',
   'quarantineManifestDigest', 'quarantineManifestPublished',
+  'quarantineManifestPublishedPaths', 'quarantineManifestFailedPath',
   'quarantineManifestWriteAttempted', 'quarantineManifestWriteResultUnknown',
   'quarantineEntryCount', 'copiedBytes', 'quarantineCopyResultUnknown',
   'quarantineFailedSlot', 'sourceRetired', 'retiredEntryCount', 'stagingPath',

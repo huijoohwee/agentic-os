@@ -43,7 +43,7 @@ function copyEntry(source, destination, maxBytes, detail) {
 
 function expectedPaths(state) {
   return [...state.copied.map(({ slot }) => join(state.path, slot)),
-    ...state.manifests.map(file => file.path)];
+    ...(state.manifestPath ? [state.manifestPath] : [])];
 }
 
 function verifyState(state) {
@@ -57,45 +57,16 @@ function verifyState(state) {
     if (!state.retired) assertPathIdentity(state.sources.get(slot), 'quarantine source');
     assertPathIdentity(state.slots.get(slot), 'quarantine destination');
   });
-  for (const file of state.manifests) try {
-    assertPathIdentity(file.identity, 'quarantine manifest');
-    if (!readPrivateFile(file.path, state.limits.maxManifestBytes,
-      'quarantine manifest', state.root).equals(file.bytes))
-      throw new Error('quarantine manifest bytes changed');
-    assertPathIdentity(file.identity, 'quarantine manifest');
-  } catch (cause) {
-    throw failure('blocked-quarantine-manifest-race', 'quarantine manifest integrity changed',
-      { quarantinePath: state.path, quarantineManifestFailedPath: file.path }, cause);
+  if (state.manifestPath) {
+    assertPathIdentity(state.manifestIdentity, 'quarantine manifest');
+    if (!readPrivateFile(state.manifestPath, state.limits.maxManifestBytes,
+      'quarantine manifest', state.root).equals(state.manifest))
+      throw failure('blocked-quarantine-manifest-race', 'quarantine manifest bytes changed',
+        { quarantinePath: state.path });
   }
   assertTree(state.root, expectedPaths(state));
   assertRoot(state.root);
   return true;
-}
-
-function snapshotManifestFiles(manifest, limits) {
-  if (manifest === null) return [];
-  if (limits.maxAggregateManifestBytes !== undefined
-    && (!Number.isSafeInteger(limits.maxAggregateManifestBytes) || limits.maxAggregateManifestBytes < 1))
-    throw new TypeError('quarantine manifest aggregate limit must be a positive integer');
-  const compound = !Buffer.isBuffer(manifest);
-  if (compound && (!manifest || Object.keys(manifest).sort().join(',') !== 'chunks,index'
-    || !Array.isArray(manifest.chunks) || manifest.chunks.length < 1
-    || !Number.isSafeInteger(limits.maxManifestChunks) || limits.maxManifestChunks < 1
-    || manifest.chunks.length > limits.maxManifestChunks
-    || !Number.isSafeInteger(limits.maxAggregateManifestBytes) || limits.maxAggregateManifestBytes < 1))
-    throw new TypeError('quarantine manifest bundle requires bounded chunks and aggregate bytes');
-  const files = compound ? [...manifest.chunks.map((bytes, index) => ({
-    name: `manifest-chunk-${index}.json`, bytes })), { name: 'manifest.json', bytes: manifest.index }]
-    : [{ name: 'manifest.json', bytes: manifest }];
-  let total = 0;
-  const aggregate = limits.maxAggregateManifestBytes ?? limits.maxManifestBytes;
-  for (const file of files) {
-    if (!Buffer.isBuffer(file.bytes) || file.bytes.length > limits.maxManifestBytes
-      || file.bytes.length > aggregate - total)
-      throw new TypeError('quarantine manifest file or aggregate byte limit exceeded');
-    total += file.bytes.length;
-  }
-  return files.map(file => ({ name: file.name, bytes: Buffer.from(file.bytes) }));
 }
 
 /** Copy sources into distinct private slots without renaming or unlinking any source path. */
@@ -106,9 +77,9 @@ export function copyWorktreeEntriesToQuarantine({
   if (!/^[a-z0-9][a-z0-9-]{0,127}$/u.test(name ?? '')
     || !limits || limitKeys.some((key) => !Number.isSafeInteger(limits[key]) || limits[key] < 0))
     throw new TypeError('quarantine copy requires a safe name and explicit byte limits');
-  if (!Array.isArray(entries) || typeof verify !== 'function')
+  if (!Array.isArray(entries) || typeof verify !== 'function'
+    || manifest !== null && !Buffer.isBuffer(manifest))
     throw new TypeError('quarantine copy input is invalid');
-  const manifestFiles = snapshotManifestFiles(manifest, limits);
   let path = null, root = null;
   try {
     path = mkdtempSync(join(storageRoot, `${name}-`));
@@ -124,9 +95,7 @@ export function copyWorktreeEntriesToQuarantine({
   }
   const copied = [], slots = new Map(), sources = new Map(), budget = { bytes: 0 };
   const manifestPath = manifest === null ? null : join(path, 'manifest.json');
-  const manifests = [];
-  let copyAttemptedSlot = null, copyResultUnknown = false;
-  let manifestPublished = false, manifestFailedPath = null;
+  let manifestIdentity = null, copyAttemptedSlot = null, copyResultUnknown = false;
   let manifestWriteAttempted = false, manifestWriteResultUnknown = false;
   try {
     for (const entry of entries) {
@@ -147,17 +116,13 @@ export function copyWorktreeEntriesToQuarantine({
       assertPathIdentity(copy.destination, 'quarantine destination');
       assertTree(root, copied.map(({ slot: prior }) => join(path, prior)), detail);
     }
-    for (const file of manifestFiles) { assertRoot(root);
-      assertTree(root, [...copied.map(({ slot }) => join(path, slot)), ...manifests.map(value => value.path)]);
-      const target = join(path, file.name); manifestFailedPath = target;
+    if (manifest !== null) { assertRoot(root);
       manifestWriteAttempted = true; manifestWriteResultUnknown = true;
-      const identity = writePrivateFileExclusive(target, file.bytes,
+      manifestIdentity = writePrivateFileExclusive(manifestPath, manifest,
         { maxBytes: limits.maxManifestBytes, label: 'quarantine manifest' });
-      manifests.push({ ...file, path: target, identity });
-      if (file.name === 'manifest.json') manifestPublished = true;
-      manifestWriteResultUnknown = false; manifestFailedPath = null; }
+      manifestWriteResultUnknown = false; }
     assertRoot(root); assertTree(root, [
-      ...copied.map(({ slot }) => join(path, slot)), ...manifests.map(file => file.path),
+      ...copied.map(({ slot }) => join(path, slot)), ...(manifestPath ? [manifestPath] : []),
     ]);
   } catch (error) {
     Object.assign(error, { quarantinePath: path, quarantineEntryCount: copied.length,
@@ -166,19 +131,16 @@ export function copyWorktreeEntriesToQuarantine({
       quarantineCopyResultUnknown: copyResultUnknown
         && error.reason !== 'blocked-quarantine-slot-occupied',
       quarantineManifestPath: manifestPath,
-      quarantineManifestPublished: manifestPublished,
-      quarantineManifestPublishedPaths: manifests.map(file => file.path),
-      quarantineManifestFailedPath: manifestFailedPath,
+      quarantineManifestPublished: manifestIdentity !== null,
       quarantineManifestWriteAttempted: manifestWriteAttempted,
       quarantineManifestWriteResultUnknown: manifestWriteResultUnknown });
     throw error;
   }
   const state = { path, root, copied: Object.freeze(copied), slots, sources, budget,
-    manifests, manifestPath, limits: Object.freeze({ ...limits }), verify,
+    manifest, manifestPath, manifestIdentity, limits: Object.freeze({ ...limits }), verify,
     retired: false };
   const receipt = Object.freeze({ path, copied: state.copied, copyOnly: true,
     sourceRetired: false, copiedBytes: budget.bytes, manifestPath,
-    manifestPublishedPaths: Object.freeze(manifests.map(file => file.path)),
     verify: () => verifyState(state) });
   states.set(receipt, state);
   return receipt;
