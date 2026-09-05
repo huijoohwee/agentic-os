@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { syncBuiltinESMExports } from 'node:module';
+import fs, {
   chmodSync,
   existsSync,
   lstatSync,
@@ -285,20 +286,18 @@ test('a post-quarantine directory is never removed by target installation', (t) 
   const raced = fixture();
   t.after(() => rmSync(raced.dir, { recursive: true, force: true }));
   const plan = canonicalPlan(raced.dir);
-  useGitWrapper(t, 'agentic-os-install-race-git-', [
-    'if [ "$1" = hash-object ] && [ "$2" = --stdin ] &&',
-    '   [ ! -e "$SOURCE_SENTINEL" ] && [ ! -e "$RACE_PATH" ]; then',
-    '  mkdir "$RACE_PATH"',
-    'fi',
-    'exec "$REAL_GIT" "$@"',
-  ], () => ({ SOURCE_SENTINEL: join(raced.dir, 'tracked space.txt'),
-    RACE_PATH: join(raced.dir, 'target collision.txt') }));
-
-  let failure;
-  assert.throws(() => applyPlan(plan, raced.dir), (error) => {
+  const originalUnlink = fs.unlinkSync, sentinel = join(fs.realpathSync(raced.dir), 'tracked space.txt');
+  let injected = false, failure;
+  fs.unlinkSync = function(path) {
+    const result = originalUnlink(path);
+    if (path === sentinel) { mkdirSync(join(raced.dir, 'target collision.txt')); injected = true; }
+    return result; };
+  syncBuiltinESMExports();
+  try { assert.throws(() => applyPlan(plan, raced.dir), (error) => {
     failure = error;
     return reason(error, 'blocked-after-recovery');
-  });
+  }); } finally { fs.unlinkSync = originalUnlink; syncBuiltinESMExports(); }
+  assert.equal(injected, true);
   assert.equal(failure.detail.cause, 'blocked-install-collision');
   assert.equal(failure.detail.collisionPath, 'target collision.txt');
   assert.ok(failure.detail.quarantinePath);
