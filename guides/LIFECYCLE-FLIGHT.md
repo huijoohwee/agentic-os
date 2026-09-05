@@ -96,6 +96,27 @@ manifest without enrolling it; it never replaces the manifest that `land` reads 
 Use the same preview file at every phase. The report contains missing IDs, owners and remedies but no
 environment values or evidence content. Malformed input produces a typed refusal without raw data.
 
+## Prepare consumer review metadata before publication
+
+When the consumer requires review metadata, validate its body with the consumer's existing contract
+before the first `land`. Supply that prepared file directly:
+
+```sh
+agentic-os land --body-file=/absolute/external/review.md
+```
+
+Relative paths resolve from the lane root. The file must be regular, valid UTF-8, nonempty, and without
+NUL or authored `Lane:`, `Base-Revision:`, or `Source-Head:` lines. Symlinks and changing files are
+rejected. The complete body, including the generated suffix, is limited to 64 KiB. Invalid inputs stop
+before any push or review mutation, including a repeated landing of an already published head.
+
+`land` captures the file once before publication, preserves its exact text at the beginning (including
+YAML front matter and line endings), then appends two LF characters and the three native identity
+trailers. Later file changes cannot alter that captured handoff. The harness checks encoding, bounds
+and identity ownership; consumer metadata schemas remain consumer-owned. Omit the option to retain
+the existing generated body. Supply the prepared file on each landing that should use it. This option
+adds no provider API, module, dependency, or always-load guidance.
+
 ## Scope and cost
 
 The three phases share the existing bounded evidence command module, Git observers and integration

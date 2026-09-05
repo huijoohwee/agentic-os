@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { assertScope, isLaneRef } from './lane-id.mjs';
+import { parseWritePaths } from './worktree.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSION = '2025-11-25';
@@ -33,6 +34,11 @@ const LANE_INPUT = {
       type: 'string',
       pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$',
       description: 'Lowercase lane scope with optional interior hyphens.',
+    },
+    writePaths: {
+      type: 'array', minItems: 1, maxItems: 128,
+      items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '^[^,]+$' },
+      description: 'Repository-relative write reservations; combined UTF-8 limit 32 KiB.',
     },
   },
   required: ['scope'],
@@ -189,15 +195,21 @@ export function toolArguments(name, args) {
     return value.ref === undefined ? ['reap'] : ['reap', `--ref=${value.ref}`];
   }
   if (name !== 'lane') invalidParams(`unknown tool "${String(name)}"`);
-  if (!plainObject(args) || !onlyKeys(args, ['scope']) || typeof args.scope !== 'string') {
-    invalidParams('lane arguments must contain only a string scope');
+  if (!plainObject(args) || !onlyKeys(args, ['scope', 'writePaths']) || typeof args.scope !== 'string') {
+    invalidParams('lane arguments require a string scope and optional writePaths array');
   }
   try {
     assertScope(args.scope);
+    if (args.writePaths === undefined) return ['start', args.scope];
+    if (!Array.isArray(args.writePaths) || args.writePaths.length < 1 || args.writePaths.length > 128
+      || args.writePaths.some((path) => typeof path !== 'string' || path.length > 4096
+        || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
+      throw new TypeError('writePaths must contain 1-128 paths within the declared size limits');
+    const paths = parseWritePaths(args.writePaths.join(','));
+    return ['start', args.scope, `--write=${paths.join(',')}`];
   } catch (error) {
     invalidParams(error.message);
   }
-  return ['start', args.scope];
 }
 
 function success(id, result) {

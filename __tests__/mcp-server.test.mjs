@@ -126,6 +126,8 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
     ['reap', { ref: 'agent/device/pricing-table' },
       ['reap', '--ref=agent/device/pricing-table']],
     ['lane', { scope: 'pricing-table' }, ['start', 'pricing-table']],
+    ['lane', { scope: 'pricing-table', writePaths: ['src/price.mjs', 'docs/price.md', 'src/price.mjs'] },
+      ['start', 'pricing-table', '--write=docs/price.md,src/price.mjs']],
   ];
   for (const [name, args, expected] of cases) {
     const response = await handleRequest(request('tools/call', name, { name, arguments: args }), {
@@ -155,10 +157,14 @@ test('tool argument validation rejects escalation and shell-shaped scopes', asyn
     ['lane', { scope: 'ok', device: 'other' }],
     ['lane', { scope: 'x;rm-rf' }],
     ['lane', { scope: '../escape' }],
+    ...[null, [], 'src/price.mjs', [17], [''], ['../escape'], ['/absolute'], ['src/*'],
+      ['src/a.mjs,src/b.mjs'], ['src/../escape'], ['src\\\\escape'], [':(glob)**'],
+      ['x'.repeat(4097)], Array(129).fill('src/file.mjs'), Array(9).fill('x'.repeat(4096)),
+    ].map((writePaths) => ['lane', { scope: 'price', writePaths }]),
     ['unknown', {}],
   ]) {
     const response = await handleRequest(request('tools/call', name, { name, arguments: args }), {
-      runCli: okRunner,
+      runCli: () => assert.fail('invalid arguments reached the CLI'),
     });
     assert.equal(response.error.code, -32602, `${name}: ${JSON.stringify(args)}`);
   }

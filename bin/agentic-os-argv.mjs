@@ -35,7 +35,7 @@ export function validateCommandArguments(command, argv) {
     case 'setup': case 'git-configure': case 'guard-install': case 'doctor':
       return exact(argv, {});
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
-    case 'land': return exact(argv, { options: ['message'] });
+    case 'land': return exact(argv, { options: ['message', 'body-file'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
@@ -93,7 +93,7 @@ export function cmdHelp() {
       '  npm run setup             write config and select packaged hooks without clobbering',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
-      '  npm run land              publish the exact lane head and request provider handoff',
+      '  npm run land -- [--body-file=<file>]  publish the exact lane head and request provider handoff',
       '  npm run successor -- <scope>  preserve a published lane and continue in-place',
       '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
       '  npm run status            registered lane projections and provider state',

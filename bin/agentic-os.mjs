@@ -23,7 +23,7 @@ import * as store from '../src/lane-records.mjs';
 import * as queue from '../src/queue.mjs';
 import {
   provision, assertProvisionable,
-  inspect as inspectWorktree,
+  inspectRegistered,
   reapLaneBranches,
   staleWorktrees,
   worktreeFor,
@@ -210,6 +210,9 @@ function cmdLand(cwd, argv, profile, policy) {
     return 1;
   }
   const commits = gitLines(['rev-list', `${baseSha}..${laneHeadSha}`], { cwd: root }).length;
+  const bodyFile = option(argv, 'body-file');
+  const reviewText = bodyFile !== null || kind === 'github' && policy.pullRequestRequired
+    ? pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile) : null;
   const publishedHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
   assertPublicationPreflight(root, laneHeadSha, configuredFlight);
 
@@ -238,10 +241,7 @@ function cmdLand(cwd, argv, profile, policy) {
   // Only the exact advertised ref determines publication; stale cache states cannot block recovery.
   const state = publishedHead ? 'published' : 'active';
   const publishFacts = {
-    onCanonicalBranch: false,
-    dirtyTracked: false,
-    laneCommits: commits,
-    pushed: false,
+    onCanonicalBranch: false, dirtyTracked: false, laneCommits: commits, pushed: false,
   };
   const preflight = state === 'active' ? transition('active', 'publish', publishFacts) : null;
   if (preflight && preflight.reason !== 'blocked-not-pushed') {
@@ -305,7 +305,7 @@ function cmdLand(cwd, argv, profile, policy) {
       assertFlightRequirements(root, 'in', configuredFlight);
       return remoteRefSha(remote, ref, root, capturedRemote.fetchUrl) === laneHeadSha;
     },
-    ...pullRequestText(root, ref, laneHeadSha, baseSha),
+    ...reviewText,
   });
   let finalObserved;
   try {
@@ -390,7 +390,8 @@ function cmdStatus(root, argv, profile, policy) {
   const cachedRecords = store.load(root).lanes;
   const registrations = worktrees(root)
     .filter(({ branch }) => parseLaneRef(branch)?.device === device);
-  const lanes = registrations.map(({ branch: ref, path }) => {
+  const lanes = registrations.map((registration) => {
+    const { branch: ref, path } = registration;
     const record = cachedRecords[ref] ?? null;
     const state = record?.state ?? 'active';
     if (!existsSync(path)) return {
@@ -398,7 +399,7 @@ function cmdStatus(root, argv, profile, policy) {
     };
     let observedLane;
     try {
-      observedLane = inspectWorktree(ref, root, policy.protectedRef, { includeIgnored: false });
+      observedLane = inspectRegistered(registration, root, policy.protectedRef, { includeIgnored: false });
     } catch (error) {
       if (!existsSync(path)) return {
         ref, path, state, commits: '-', untracked: 0, next: [], stale: true,
