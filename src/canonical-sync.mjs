@@ -3,14 +3,14 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publishCanonicalIndex, removeStagedTree, stageTreeEntries } from './canonical-staging.mjs';
-import { captureCanonicalRecovery, CanonicalSyncError, createCanonicalArtifacts, recordCanonicalFailureEffects, retainCanonicalEffect } from './canonical-recovery.mjs';
+import { captureCanonicalRecovery, CanonicalSyncError, createCanonicalArtifacts, finishCanonicalOperation, recordCanonicalFailureEffects, retainCanonicalEffect } from './canonical-recovery.mjs';
 import { assertCanonicalReconciliationPlan, assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, canonicalReconciliation, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
 import { snapshotWorktreeEntry } from './file-integrity.mjs';
-import { acquireOperationLock, assertDirectoryAncestors, atomicAdvanceRef, currentBranch, decodeNulFields as decodeGitNul, finishOperationLock, git, isAncestor, quarantineWorktreeEntries, repoRoot, retireCleanProjectionUnderExclusiveContract } from './git.mjs';
+import { acquireOperationLock, assertDirectoryAncestors, atomicAdvanceRef, currentBranch, decodeNulFields as decodeGitNul, git, isAncestor, quarantineWorktreeEntries, repoRoot, retireCleanProjectionUnderExclusiveContract } from './git.mjs';
 export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2'; export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v2';
 export const CANONICAL_SYNC_LIMITS = Object.freeze({ serializedPlanBytes: 500_000,
   quarantineManifestBytes: 500_000, inventoryEntries: 1_024, treeEntries: 50_000,
-  targetDirectories: 50_000,
+  targetDirectories: 50_000, quarantineManifestChunks: 31, aggregateQuarantineManifestBytes: 16_000_000,
   sourceFileBytes: 32 * 1024 * 1024, aggregateSourceBytes: 128 * 1024 * 1024,
   targetFileBytes: 32 * 1024 * 1024, aggregateTargetBytes: 128 * 1024 * 1024 });
 export { CanonicalSyncError };
@@ -229,7 +229,8 @@ function copyProjection(cwd, projection) { const budget = { bytes: 0 };
     manifest,
     { maxEntryBytes: CANONICAL_SYNC_LIMITS.sourceFileBytes,
       maxAggregateBytes: CANONICAL_SYNC_LIMITS.aggregateSourceBytes,
-      maxManifestBytes: CANONICAL_SYNC_LIMITS.quarantineManifestBytes },
+      maxManifestBytes: CANONICAL_SYNC_LIMITS.quarantineManifestBytes,
+      maxManifestChunks: CANONICAL_SYNC_LIMITS.quarantineManifestChunks, maxAggregateManifestBytes: CANONICAL_SYNC_LIMITS.aggregateQuarantineManifestBytes },
   );
 }
 export function applyCanonicalSync(value, { cwd = process.cwd(), authorization = null, exclusive = null } = {}) {
@@ -257,6 +258,7 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
     retainCanonicalEffect(artifacts, {
       quarantineCreated: true, quarantinePath: quarantine.path,
       quarantineManifestPath: quarantine.manifestPath,
+      quarantineManifestPublishedPaths: quarantine.manifestPublishedPaths,
       quarantineManifestPublished: quarantine.manifestPath !== null,
       quarantineManifestWriteAttempted: quarantine.manifestPath !== null,
       quarantineEntryCount: quarantine.copied.length, copiedBytes: quarantine.copiedBytes,
@@ -389,5 +391,5 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
         cause: error.reason ?? error.message,
       }, error);
   }
-  return finishOperationLock(lock, { label: 'canonical-sync', result, error: operationError, artifacts });
+  return finishCanonicalOperation(lock, { result, error: operationError, artifacts });
 }

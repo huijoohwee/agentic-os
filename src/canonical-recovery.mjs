@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   captureExactTree, privateDirectoryIdentity, removeExactTree,
 } from './file-integrity.mjs';
-import { commonDir, git } from './git.mjs';
+import { commonDir, finishOperationLock, git } from './git.mjs';
 
 export class CanonicalSyncError extends Error {
   constructor(reason, detail = {}, cause = null) {
@@ -18,23 +18,40 @@ export function retainCanonicalEffect(artifacts, detail = {}) {
   Object.assign(artifacts, detail); artifacts.effectsRetained = true;
 }
 
+/** Retain the operation journal even when the owned lock is released successfully. */
+export function finishCanonicalOperation(lock, { result, error, artifacts }) {
+  try { return finishOperationLock(lock, { label: 'canonical-sync', result, error, artifacts }); }
+  catch (failure) {
+    if (artifacts.effectsRetained && !failure.operationArtifacts) Object.assign(failure, {
+      retainedOperation: true, operationResult: result,
+      operationError: Object.freeze({ reason: failure.reason ?? null, message: failure.message }),
+      operationArtifacts: Object.freeze(Object.fromEntries(Object.entries(artifacts).map(
+        ([key, value]) => [key, Array.isArray(value) ? Object.freeze([...value]) : value]))),
+    });
+    throw failure;
+  }
+}
+
 const errorCause = (error) => error?.code ?? error?.message ?? null;
 
 /** Project exact partial-effect evidence carried by a failed canonical resource operation. */
 export function recordCanonicalFailureEffects(artifacts, error) {
+  const observed = (key, fallback) => Object.hasOwn(error, key) ? error[key] : artifacts[key] ?? fallback;
   if (error.installPath) artifacts.targetInstallFailedPath = error.installPath;
   if (error.retiredEntryCount > 0)
     retainCanonicalEffect(artifacts, { retiredEntryCount: error.retiredEntryCount });
   if (error.quarantinePath) retainCanonicalEffect(artifacts, {
     quarantineCreated: true, quarantinePath: error.quarantinePath,
-    quarantineManifestPath: error.quarantineManifestPath ?? null,
-    quarantineManifestPublished: error.quarantineManifestPublished === true,
-    quarantineManifestWriteAttempted: error.quarantineManifestWriteAttempted === true,
-    quarantineManifestWriteResultUnknown: error.quarantineManifestWriteResultUnknown === true,
-    quarantineEntryCount: error.quarantineEntryCount ?? 0,
-    copiedBytes: error.copiedBytes ?? 0,
-    quarantineCopyResultUnknown: error.quarantineCopyResultUnknown === true,
-    quarantineFailedSlot: error.quarantineFailedSlot ?? null,
+    quarantineManifestPath: observed('quarantineManifestPath', null),
+    quarantineManifestPublished: observed('quarantineManifestPublished', false),
+    quarantineManifestPublishedPaths: [...observed('quarantineManifestPublishedPaths', [])],
+    quarantineManifestFailedPath: observed('quarantineManifestFailedPath', null),
+    quarantineManifestWriteAttempted: observed('quarantineManifestWriteAttempted', false),
+    quarantineManifestWriteResultUnknown: observed('quarantineManifestWriteResultUnknown', false),
+    quarantineEntryCount: observed('quarantineEntryCount', 0),
+    copiedBytes: observed('copiedBytes', 0),
+    quarantineCopyResultUnknown: observed('quarantineCopyResultUnknown', false),
+    quarantineFailedSlot: observed('quarantineFailedSlot', null),
   });
   if (error.stagingPath) retainCanonicalEffect(artifacts, {
     stagingPath: error.stagingPath, stagedEntryCount: error.stagedEntryCount ?? 0,
@@ -71,6 +88,7 @@ export function createCanonicalArtifacts(plan) {
     recoveryRefSymbolicTarget: null,
     quarantineCreated: false, quarantinePath: null, quarantineManifestPath: null,
     quarantineManifestDigest: null, quarantineManifestPublished: false,
+    quarantineManifestPublishedPaths: [], quarantineManifestFailedPath: null,
     quarantineManifestWriteAttempted: false, quarantineManifestWriteResultUnknown: false,
     quarantineEntryCount: 0,
     copiedBytes: 0, quarantineCopyResultUnknown: false, quarantineFailedSlot: null,

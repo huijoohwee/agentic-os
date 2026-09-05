@@ -1,6 +1,7 @@
 /** Bounded tree projections and recovery-manifest serialization for canonical sync. */
 
 import { snapshotBoundedJson } from './catalog-input.mjs';
+import { createHash } from 'node:crypto';
 import {
   currentBranch, decodeNulFields, headSha, isAncestor, observeGit, worktreePreservationEntries,
 } from './git.mjs';
@@ -232,6 +233,56 @@ export function quarantineManifest(plan, entries, maxBytes) {
   return Buffer.concat(chunks, total + suffix.length);
 }
 
+/** Keep v1 bytes when they fit; otherwise bind bounded, ordered chunks through one index. */
+export function quarantineManifestBundle(plan, entries, limits) {
+  const maxBytes = limits.quarantineManifestBytes;
+  const maxChunks = limits.quarantineManifestChunks;
+  const maxAggregate = limits.aggregateQuarantineManifestBytes;
+  if (![maxBytes, maxChunks, maxAggregate].every(value => Number.isSafeInteger(value) && value > 0))
+    reject('quarantine-manifest-limits-invalid');
+  try {
+    const single = quarantineManifest(plan, entries, maxBytes);
+    if (single.length > maxAggregate) reject('quarantine-manifest-aggregate-limit');
+    return single;
+  } catch (error) {
+    if (!(error instanceof CanonicalResourceError) || error.code !== 'quarantine-manifest-limit') throw error;
+  }
+  const chunks = [], records = [], suffix = Buffer.from(']}\n');
+  let parts, size, firstSlot = 0, count = 0, aggregate = 0;
+  const begin = () => {
+    const header = JSON.stringify({ schema: 'agentic-os-canonical-sync-quarantine-chunk/v1',
+      planDigest: plan.planDigest, inventoryDigest: plan.inventoryDigest, firstSlot });
+    parts = [Buffer.from(`${header.slice(0, -1)},"entries":[`)]; size = parts[0].length; count = 0;
+  };
+  const finish = () => {
+    if (chunks.length >= maxChunks) reject('quarantine-manifest-chunk-limit', { limit: maxChunks });
+    const bytes = size + suffix.length;
+    if (bytes > maxAggregate - aggregate) reject('quarantine-manifest-aggregate-limit', { limit: maxAggregate });
+    const chunk = Buffer.concat([...parts, suffix], bytes);
+    records.push({ name: `manifest-chunk-${chunks.length}.json`, firstSlot, entryCount: count,
+      bytes, sha256: createHash('sha256').update(chunk).digest('hex') });
+    chunks.push(chunk); aggregate += bytes; firstSlot += count;
+  };
+  begin();
+  entries.forEach((entry, slot) => {
+    const text = JSON.stringify({ slot: String(slot), ...entry }), bytes = Buffer.byteLength(text);
+    if (size + Number(count > 0) + bytes + suffix.length > maxBytes && count > 0) {
+      finish(); begin();
+    }
+    if (size + bytes + suffix.length > maxBytes) reject('quarantine-manifest-entry-limit', { slot, limit: maxBytes });
+    if (count > 0) { parts.push(Buffer.from(',')); size += 1; }
+    parts.push(Buffer.from(text)); size += bytes; count += 1;
+  });
+  finish();
+  const index = Buffer.from(`${JSON.stringify({ schema: 'agentic-os-canonical-sync-quarantine/v2',
+    planDigest: plan.planDigest, inventoryDigest: plan.inventoryDigest,
+    entryCount: entries.length, chunks: records })}\n`);
+  if (index.length > maxBytes) reject('quarantine-manifest-index-limit', { limit: maxBytes });
+  if (index.length > maxAggregate - aggregate)
+    reject('quarantine-manifest-aggregate-limit', { limit: maxAggregate });
+  return Object.freeze({ index, chunks: Object.freeze(chunks) });
+}
+
 export function assertProjectionBudget(entries, limits, label) {
   return assertEntryByteBudget(entries, {
     maxEntries: limits.treeEntries,
@@ -247,7 +298,7 @@ export function buildDirtyQuarantineProjection(plan, limits) {
   const entries = plan.inventory.filter(({ kind }) => kind !== 'deleted').map(
     ({ path, mode, size, sha256 }) => ({ path, mode, size, sha256 }));
   assertProjectionBudget(entries, limits, 'quarantine');
-  return { entries, manifest: quarantineManifest(plan, entries, limits.quarantineManifestBytes) };
+  return { entries, manifest: quarantineManifestBundle(plan, entries, limits) };
 }
 
 /** Clean tracked bytes may be retired only under the separately attested exclusive contract. */
@@ -257,5 +308,5 @@ export function buildCleanRetirementProjection(plan, baseEntries, limits) {
   });
   const entries = worktreePreservationEntries(baseEntries, []);
   assertProjectionBudget(entries, limits, 'quarantine');
-  return { entries, manifest: quarantineManifest(plan, entries, limits.quarantineManifestBytes) };
+  return { entries, manifest: quarantineManifestBundle(plan, entries, limits) };
 }

@@ -16,8 +16,14 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+function priorRuntimeFiles(selected) {
+  const bytes = readFileSync(new URL('./fixtures/quarantine-v1.mjs.txt', import.meta.url)), sha256 = digest(bytes);
+  assert.equal(sha256, 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d');
+  return selected.files.map(file => file.path === 'src/quarantine.mjs' ? { ...file, bytes, sha256 } : file);
+}
+
 function installPriorReleaseRuntime(selected, { authorityRelease = false } = {}) {
-  const files = selected.files.map((file) => {
+  const files = priorRuntimeFiles(selected).map((file) => {
     let source = file.bytes.toString('utf8');
     if (file.path === 'src/git.mjs') source = source
       .replace('decodeNulFields, dirtyTracked, shallowTrackedChanges, trackedChanges',
@@ -172,9 +178,9 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 
-function installImmediatePriorRuntime(selected) {
-  const files = selected.files.map((file) => {
-    if (file.path !== 'src/guard-main.mjs') return file;
+function installImmediatePriorRuntime(selected, guardRelease = false) {
+  const files = priorRuntimeFiles(selected).map((file) => {
+    if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;
     const bytes = Buffer.from(file.bytes.toString('utf8')
       .replace(
         "'If bytes are already here, preserve them with: npm run reconcile -- plan --scope=<scope>',\n        'Do not retry pull or push until reconcile classifies the protected-main state.',",
@@ -187,8 +193,8 @@ function installImmediatePriorRuntime(selected) {
   const identity = { schema: 'agentic-os/hook-runtime/v1',
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
-  assert.equal(runtimeId,
-    'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9');
+  assert.equal(runtimeId, guardRelease ? 'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9'
+    : 'v1-0bae8f8aaeb216ae461c8015cec00b17c508ae3a32c9ff7d55b4f574b25acec3');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
   mkdirSync(selected.managedRoot, { recursive: true, mode: 0o700 });
@@ -204,13 +210,14 @@ function installImmediatePriorRuntime(selected) {
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 
-test('the immediate prior release runtime authorizes a managed migration', (t) => {
+test('the verified prior release runtimes authorize managed migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-immediate-prior-runtime-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
-  const prior = installImmediatePriorRuntime(selected);
-  assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true);
+  for (const guardRelease of [false, true]) {
+    const prior = installImmediatePriorRuntime(selected, guardRelease);
+    assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true); }
 });
 
 function runChild(file, args, options) {
