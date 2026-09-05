@@ -30,6 +30,7 @@ import { hookDoctorEntries } from './agentic-os-hooks.mjs';
 import * as report from './agentic-os-report.mjs';
 
 const MAX_REQUEST_INPUT_BYTES = 500_000;
+const MAX_REVIEW_BODY_BYTES = 65_536;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
@@ -173,20 +174,39 @@ export function classifyPromotion(root, baseRevision, head = 'HEAD') {
   }));
 }
 
-/** Provider review text correlates one exact source head; it is not integration proof. */
-export function pullRequestText(root, ref, laneHeadSha, baseSha) {
+function readReviewBody(path, suffix) {
+  try {
+    const bytes = readBoundedFile(path,
+      MAX_REVIEW_BODY_BYTES - Buffer.byteLength(suffix, 'utf8'), 'pull request body');
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    if (!text.trim() || text.includes('\0'))
+      throw new TypeError('pull request body must be nonempty text without NUL');
+    if (/^[\t \uFEFF]*(?:Lane|Base-Revision|Source-Head):/imu.test(text))
+      throw new TypeError('pull request body must not contain native identity trailer lines');
+    return text + suffix;
+  } catch (error) {
+    throw Object.assign(new Error(`invalid pull request body: ${error.message}`), {
+      reason: 'blocked-review-body-invalid',
+    });
+  }
+}
+
+/** Capture review text before publication; identity trailers are not integration proof. */
+export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null) {
   const subjects = gitLines(['log', '--format=%s', `${baseSha}..${laneHeadSha}`, '--reverse'], {
     cwd: root,
   });
   const scope = parseLaneRef(ref)?.scope ?? ref;
   const title = subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`;
-  const body = [
-    ...(subjects.length > 1 ? subjects.map((subject) => `- ${subject}`) : []),
-    ...(subjects.length > 1 ? [''] : []),
+  const identity = [
     `Lane: ${ref}`,
     `Base-Revision: ${baseSha}`,
     sourceHeadTrailer(laneHeadSha),
   ].join('\n');
+  const body = bodyFile === null ? [
+    ...(subjects.length > 1 ? [...subjects.map((subject) => `- ${subject}`), ''] : []),
+    identity,
+  ].join('\n') : readReviewBody(resolve(root, bodyFile), `\n\n${identity}`);
   return { title, body };
 }
 

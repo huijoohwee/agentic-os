@@ -210,6 +210,9 @@ function cmdLand(cwd, argv, profile, policy) {
     return 1;
   }
   const commits = gitLines(['rev-list', `${baseSha}..${laneHeadSha}`], { cwd: root }).length;
+  const bodyFile = option(argv, 'body-file');
+  const reviewText = bodyFile !== null || kind === 'github' && policy.pullRequestRequired
+    ? pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile) : null;
   const publishedHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
   assertPublicationPreflight(root, laneHeadSha, configuredFlight);
 
@@ -238,10 +241,7 @@ function cmdLand(cwd, argv, profile, policy) {
   // Only the exact advertised ref determines publication; stale cache states cannot block recovery.
   const state = publishedHead ? 'published' : 'active';
   const publishFacts = {
-    onCanonicalBranch: false,
-    dirtyTracked: false,
-    laneCommits: commits,
-    pushed: false,
+    onCanonicalBranch: false, dirtyTracked: false, laneCommits: commits, pushed: false,
   };
   const preflight = state === 'active' ? transition('active', 'publish', publishFacts) : null;
   if (preflight && preflight.reason !== 'blocked-not-pushed') {
@@ -305,7 +305,7 @@ function cmdLand(cwd, argv, profile, policy) {
       assertFlightRequirements(root, 'in', configuredFlight);
       return remoteRefSha(remote, ref, root, capturedRemote.fetchUrl) === laneHeadSha;
     },
-    ...pullRequestText(root, ref, laneHeadSha, baseSha),
+    ...reviewText,
   });
   let finalObserved;
   try {

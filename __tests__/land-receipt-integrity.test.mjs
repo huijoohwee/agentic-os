@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +43,7 @@ function reviewProjectionFixture(t, {
   writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(profile, null, 2)}\n`);
   run(['add', '.agentic-os.json']);
   run(['commit', '--quiet', '--message', 'profile']);
+  const base = run(['rev-parse', 'HEAD']);
   ensureRepositoryTrust(root, profile, { allowCreate: true });
   run(['remote', 'add', 'origin', bare]);
   run(['push', '--quiet', 'origin', 'main']);
@@ -75,7 +78,15 @@ function reviewProjectionFixture(t, {
     'if [ "$1" = "pr" ]; then',
     '  case "$2" in',
     "    list) echo '[]' ;;",
-    "    create) echo 'https://github.com/owner/repo/pull/41' ;;",
+    '    create)',
+    '      if [ -n "$AGENTIC_OS_TEST_EFFECTS_LOG" ]; then echo review >> "$AGENTIC_OS_TEST_EFFECTS_LOG"; fi',
+    '      if [ -n "$AGENTIC_OS_TEST_BODY_CAPTURE" ]; then',
+    '        while [ "$#" -gt 0 ]; do',
+    '          if [ "$1" = --body ]; then printf %s "$2" > "$AGENTIC_OS_TEST_BODY_CAPTURE"; break; fi',
+    '          shift',
+    '        done',
+    '      fi',
+    "      echo 'https://github.com/owner/repo/pull/41' ;;",
     `    view) printf '%s\\n' '${JSON.stringify(review)}' ;;`,
     '    *) exit 91 ;;',
     '  esac',
@@ -107,14 +118,37 @@ function reviewProjectionFixture(t, {
     '  exec "$AGENTIC_OS_TEST_REAL_GIT" -c "$2" fetch "$4" "$5" "$6" "$7" -- "$AGENTIC_OS_TEST_BARE" "${10}"',
     'fi',
     'case "$1" in',
-    '  push) exec "$AGENTIC_OS_TEST_REAL_GIT" push "$2" -- "$AGENTIC_OS_TEST_BARE" "$5" ;;',
+    '  push)',
+    '    if [ -n "$AGENTIC_OS_TEST_EFFECTS_LOG" ]; then echo push >> "$AGENTIC_OS_TEST_EFFECTS_LOG"; fi',
+    '    if [ -n "$AGENTIC_OS_TEST_MUTATE_BODY" ]; then printf "changed during push" > "$AGENTIC_OS_TEST_MUTATE_BODY"; fi',
+    '    exec "$AGENTIC_OS_TEST_REAL_GIT" push "$2" -- "$AGENTIC_OS_TEST_BARE" "$5" ;;',
     '  ls-remote) exec "$AGENTIC_OS_TEST_REAL_GIT" ls-remote --refs -- "$AGENTIC_OS_TEST_BARE" "$5" ;;',
     '  *) exec "$AGENTIC_OS_TEST_REAL_GIT" "$@" ;;',
     'esac',
     '',
   ].join('\n'));
   chmodSync(gitWrapper, 0o755);
-  return { bare, head, lane, ref, support };
+  return { bare, base, head, lane, ref, support, parent,
+    bodyFile: join(parent, 'review body.md'), bodyCapture: join(parent, 'captured body.md'),
+    effectsLog: join(parent, 'publication.log') };
+}
+
+function land(subject, argv = [], env = {}) {
+  return spawnSync(process.execPath, [CLI, 'land', ...argv], {
+    cwd: subject.lane, encoding: 'utf8', timeout: 60_000,
+    env: {
+      ...process.env, PATH: `${subject.support}:${process.env.PATH}`,
+      AGENTIC_OS_TEST_REAL_GIT: execFileSync('which', ['git'], { encoding: 'utf8' }).trim(),
+      AGENTIC_OS_TEST_BARE: subject.bare,
+      AGENTIC_OS_TEST_BODY_CAPTURE: subject.bodyCapture,
+      AGENTIC_OS_TEST_EFFECTS_LOG: subject.effectsLog,
+      ...env,
+    },
+  });
+}
+
+function identity(subject) {
+  return `Lane: ${subject.ref}\nBase-Revision: ${subject.base}\nSource-Head: ${subject.head}`;
 }
 
 test('land retains a review whose written identity cannot be verified', (t) => {
@@ -143,16 +177,7 @@ test('land retains a review whose written identity cannot be verified', (t) => {
 
 test('land tolerates only an exact non-attention review without tested ordering', (t) => {
   const subject = reviewProjectionFixture(t, { exactBody: true });
-  const result = spawnSync(process.execPath, [CLI, 'land'], {
-    cwd: subject.lane,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      PATH: `${subject.support}:${process.env.PATH}`,
-      AGENTIC_OS_TEST_REAL_GIT: execFileSync('which', ['git'], { encoding: 'utf8' }).trim(),
-      AGENTIC_OS_TEST_BARE: subject.bare,
-    },
-  });
+  const result = land(subject);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /projected exact review/u);
   const projected = get(subject.ref, subject.lane);
@@ -160,6 +185,7 @@ test('land tolerates only an exact non-attention review without tested ordering'
   assert.equal(projected.handoff.reviewRequiresAttention, false);
   assert.equal(projected.handoff.sourceHeadBound, true);
   assert.equal(projected.handoff.testedProtectedOrdering, false);
+  assert.equal(readFileSync(subject.bodyCapture, 'utf8'), identity(subject));
 });
 
 test('provider mutation emits its exact bounded handoff when cache projection fails', (t) => {
@@ -217,4 +243,72 @@ test('provider handoff remains projected when final observation cannot start', (
   assert.equal(projected.handoff.schema, 'agentic-os-provider-handoff/v1');
   assert.equal(projected.handoff.reviewMutationAttempted, true);
   assert.equal(projected.handoff.reviewRequiresAttention, true);
+});
+
+test('land rejects invalid body files before any publication', async (t) => {
+  const subject = reviewProjectionFixture(t, { exactBody: true });
+  const cases = [
+    ['missing', null], ['empty', ' \r\n'], ['invalid UTF-8', Buffer.from([0xff])],
+    ['NUL', 'summary\0metadata'], ['oversize', 'x'.repeat(65_537)],
+    ['suffix exceeds budget', 'x'.repeat(65_536 - Buffer.byteLength(identity(subject)) - 1)],
+    ['Lane trailer', '---\nLane: authored\n---'],
+    ['Base-Revision trailer', 'summary\r\nBase-Revision: authored'],
+    ['Source-Head trailer', 'summary\n\tSource-Head: authored'],
+  ];
+  for (const [name, bytes] of cases) await t.test(name, () => {
+    const path = join(subject.parent, name);
+    if (bytes !== null) writeFileSync(path, bytes);
+    const result = land(subject, [`--body-file=${path}`]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /blocked-review-body-invalid/u);
+    assert.equal(existsSync(subject.effectsLog), false);
+    assert.equal(existsSync(subject.bodyCapture), false);
+  });
+  for (const kind of ['directory', 'symlink']) await t.test(kind, () => {
+    const path = join(subject.parent, kind);
+    if (kind === 'directory') mkdirSync(path);
+    else symlinkSync(join(subject.lane, 'candidate.txt'), path);
+    const result = land(subject, [`--body-file=${path}`]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /blocked-review-body-invalid/u);
+    assert.equal(existsSync(subject.effectsLog), false);
+  });
+  assert.equal(git(['--git-dir', subject.bare, 'for-each-ref', '--format=%(refname)',
+    `refs/heads/${subject.ref}`], { cwd: subject.lane }), '');
+});
+
+test('land captures metadata bytes before push and appends exact native identity once', (t) => {
+  const subject = reviewProjectionFixture(t, { exactBody: true });
+  const authored = '---\r\naction: publish\r\nscope: café\r\n---\r\n\r\nA $() `literal` summary.\r\n';
+  writeFileSync(subject.bodyFile, authored);
+  const result = land(subject, [`--body-file=${subject.bodyFile}`], {
+    AGENTIC_OS_TEST_MUTATE_BODY: subject.bodyFile,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(subject.bodyFile, 'utf8'), 'changed during push');
+  const captured = readFileSync(subject.bodyCapture, 'utf8');
+  assert.equal(captured, `${authored}\n\n${identity(subject)}`);
+  for (const trailer of ['Lane:', 'Base-Revision:', 'Source-Head:'])
+    assert.equal(captured.split('\n').filter((line) => line.startsWith(trailer)).length, 1);
+  assert.equal(readFileSync(subject.effectsLog, 'utf8'), 'push\nreview\n');
+
+  writeFileSync(subject.bodyFile, 'Source-Head: conflicting identity');
+  const retry = land(subject, [`--body-file=${subject.bodyFile}`]);
+  assert.equal(retry.status, 1, retry.stderr);
+  assert.match(retry.stderr, /blocked-review-body-invalid/u);
+  assert.equal(readFileSync(subject.effectsLog, 'utf8'), 'push\nreview\n');
+  assert.equal(readFileSync(subject.bodyCapture, 'utf8'), captured);
+});
+
+test('land accepts exactly the total byte budget and preserves a UTF-8 BOM', (t) => {
+  const subject = reviewProjectionFixture(t, { exactBody: true });
+  const prefix = '\uFEFF---\nsummary: café\n---\n';
+  const suffix = `\n\n${identity(subject)}`;
+  const authored = prefix + 'x'.repeat(65_536 - Buffer.byteLength(prefix + suffix, 'utf8'));
+  writeFileSync(subject.bodyFile, authored);
+  const result = land(subject, [`--body-file=${subject.bodyFile}`]);
+  assert.equal(result.status, 0, result.stderr);
+  const captured = readFileSync(subject.bodyCapture);
+  assert.equal(captured.byteLength, 65_536);
+  assert.deepEqual(captured, Buffer.from(authored + suffix));
 });
