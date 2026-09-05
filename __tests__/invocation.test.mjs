@@ -13,7 +13,7 @@ import {
   loadCatalog,
   resolveInvocation,
   validateCatalog,
-} from '../src/invocation.mjs';
+} from '../bin/agentic-os-invocation.mjs';
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
