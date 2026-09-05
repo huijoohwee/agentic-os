@@ -6,6 +6,7 @@ import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publi
 import { captureCanonicalRecovery, CanonicalSyncError, createCanonicalArtifacts, finishCanonicalOperation, recordCanonicalFailureEffects, retainCanonicalEffect } from './canonical-recovery.mjs';
 import { assertCanonicalReconciliationPlan, assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, canonicalReconciliation, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
 import { snapshotWorktreeEntry } from './file-integrity.mjs';
+import { gitBlobOid } from './git-tracked.mjs';
 import { acquireOperationLock, assertDirectoryAncestors, atomicAdvanceRef, currentBranch, decodeNulFields as decodeGitNul, git, isAncestor, quarantineWorktreeEntries, repoRoot, retireCleanProjectionUnderExclusiveContract } from './git.mjs';
 export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2'; export const RECEIPT_SCHEMA = 'agentic-os-canonical-sync-receipt/v2';
 export const CANONICAL_SYNC_LIMITS = Object.freeze({ serializedPlanBytes: 500_000,
@@ -81,7 +82,7 @@ function snapshotInventory(cwd, localSha, { rawTracked = true } = {}) {
     if (prior.mode === '160000') continue;
     const content = contentAt(path, cwd, budget);
     const rawDrift = rawTracked
-      && git(['hash-object', '--stdin'], { cwd, input: content.bytes }) !== prior.oid;
+      && gitBlobOid(content.bytes, prior.oid) !== prior.oid;
     if ((content.mode !== prior.mode || rawDrift) && !byPath.has(path)) byPath.set(path, 'M');
     assertCount();
   }
@@ -95,7 +96,7 @@ function snapshotInventory(cwd, localSha, { rawTracked = true } = {}) {
       continue;
     }
     const content = contentAt(path, cwd, budget);
-    const oid = git(['hash-object', '--stdin'], { cwd, input: content.bytes });
+    const oid = gitBlobOid(content.bytes, prior?.oid ?? localSha);
     inventory.push({ path, status, kind: content.kind, mode: content.mode,
       size: content.bytes.length, oid,
       sha256: sha256(content.bytes), prior });
@@ -221,7 +222,7 @@ function copyProjection(cwd, projection) { const budget = { bytes: 0 };
       if (slot === '0') budget.bytes = 0;
       const content = contentAt(slot, path, budget);
       const bytesMatch = entry.sha256 ? sha256(content.bytes) === entry.sha256
-        : git(['hash-object', '--stdin'], { cwd, input: content.bytes }) === entry.oid;
+        : gitBlobOid(content.bytes, entry.oid) === entry.oid;
       if (content.mode !== entry.mode || !bytesMatch)
         refuse('blocked-quarantine-drift', { path: entry.path, quarantinePath: path });
     },
