@@ -43,12 +43,41 @@ function changedPaths(mergeBase, tip, { cwd } = {}) {
   return decodeNulFields(output);
 }
 
-function treeEntry(revision, path, { cwd } = {}) {
-  return observeGit(['--literal-pathspecs', 'ls-tree', '-z', revision, '--', path], {
-    cwd,
-    binary: true,
-    allowFail: true,
+const PROJECTION_BATCH_PATHS = 128;
+const PROJECTION_BATCH_PATH_BYTES = 32 * 1024;
+const PROJECTION_BATCH_OUTPUT_BYTES = 64 * 1024;
+
+/** Bound process arguments; parent/child selectors must never share an ls-tree query. */
+function* projectionBatches(paths) {
+  let batch = [], bytes = 0;
+  for (const path of paths) {
+    const size = Buffer.byteLength(path) + 1;
+    if (size > PROJECTION_BATCH_PATH_BYTES) { yield null; return; }
+    if (batch.length >= PROJECTION_BATCH_PATHS || bytes + size > PROJECTION_BATCH_PATH_BYTES
+      || batch.some((other) => path.startsWith(`${other}/`) || other.startsWith(`${path}/`))) {
+      yield batch;
+      batch = []; bytes = 0;
+    }
+    batch.push(path); bytes += size;
+  }
+  if (batch.length > 0) yield batch;
+}
+
+function treeEntries(revision, paths, { cwd } = {}) {
+  const output = observeGit(['--literal-pathspecs', 'ls-tree', '-z', revision, '--', ...paths], {
+    cwd, binary: true, allowFail: true, maxBuffer: PROJECTION_BATCH_OUTPUT_BYTES,
   });
+  const records = decodeNulFields(output);
+  if (!records || records.length > paths.length) return null;
+  const selected = new Set(paths), seen = new Set();
+  for (const record of records) {
+    const tab = record.indexOf('\t'), path = record.slice(tab + 1);
+    if (tab < 0 || !selected.has(path) || seen.has(path)
+      || !/^(?:100(?:644|755) blob|120000 blob|160000 commit|040000 tree) [0-9a-f]{40}(?:[0-9a-f]{24})?$/u
+        .test(record.slice(0, tab))) return null;
+    seen.add(path);
+  }
+  return output;
 }
 
 /** Exact mode/type/blob state for every path changed by the lane. */
@@ -57,13 +86,14 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
   if (!mergeBase) return null;
   const paths = changedPaths(mergeBase, ref, { cwd });
   if (!paths || paths.length === 0) return null;
-  const mismatched = paths.filter((path) => {
-    const baseEntry = treeEntry(base, path, { cwd });
-    const laneEntry = treeEntry(ref, path, { cwd });
-    return !Buffer.isBuffer(baseEntry) || !Buffer.isBuffer(laneEntry)
-      || !baseEntry.equals(laneEntry);
-  });
-  if (mismatched.length > 0) return null;
+  // Reuse one bounded read per tree/batch, never a proof across observations or effects.
+  for (const batch of projectionBatches(paths)) {
+    if (batch === null) return null;
+    const baseEntries = treeEntries(base, batch, { cwd });
+    if (!baseEntries) return null;
+    const laneEntries = treeEntries(ref, batch, { cwd });
+    if (!laneEntries || !baseEntries.equals(laneEntries)) return null;
+  }
   return {
     kind: 'exact-tree-projection',
     detail: `${paths.length} lane-touched path(s) exactly match ${base}`,
