@@ -17,6 +17,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-2be4a5d995408a4367167e0ee2d978726d02a64b13d009d3144e0acc4ce8c258',
   'v1-0bae8f8aaeb216ae461c8015cec00b17c508ae3a32c9ff7d55b4f574b25acec3',
   'v1-c738e450c02b8e6ea7cc322e41db9f79ebb9bca15de10545e2a2364973428bd0',
   'v1-aeca6cdae21159346f98bbf744ae7a2b51d95b9040b048bb0cc64b40ea994c72',
@@ -54,9 +55,9 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
-    sha256: 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320' }),
+    sha256: '2dd090bc3978aa57025cbf028c6c7e8769d2e48d06f6253a30fab6e6aa6dc133' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,
-    sha256: 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7' }),
+    sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' }),
 ]);
 export const REQUIRED_HOOKS = Object.freeze(FILES
   .filter((file) => file.path.startsWith('.githooks/'))

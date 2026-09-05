@@ -1,12 +1,11 @@
 /** Sanitized Git execution plus exact tracked-byte observation. */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  lstatSync, readdirSync, readlinkSync,
+  closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { rawTrackedFilesMatch } from '../bin/agentic-os-filter-compare.mjs';
-export { TRACKED_FILE_LIMITS, rawTrackedFileMatches } from '../bin/agentic-os-filter-compare.mjs';
+import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
 export class GitError extends Error {
   constructor(args, status, stderr) {
@@ -95,12 +94,52 @@ export function gitLines(args, options = {}) { return outputLines(observeGit(arg
 export function observeGitLines(args, options = {}) {
   return outputLines(observeGit(args, options));
 }
+export const TRACKED_FILE_LIMITS = Object.freeze({ rawComparisonBytes: 32 * 1024 * 1024 });
+const FILTER_COMPARE = fileURLToPath(new URL('../bin/agentic-os-filter-compare.mjs', import.meta.url));
+
 export function gitBlobOid(bytes, expectedOid) {
   if (!Buffer.isBuffer(bytes) || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(expectedOid ?? ''))
     throw new TypeError('raw Git blob comparison requires bytes and a full object ID');
   const hash = createHash(expectedOid.length === 40 ? 'sha1' : 'sha256');
   hash.update(`blob ${bytes.length}\0`); hash.update(bytes);
   return hash.digest('hex');
+}
+
+function sameRawNode(left, right) {
+  return Boolean(right) && left.dev === right.dev && left.ino === right.ino
+    && left.mode === right.mode && left.nlink === right.nlink && left.size === right.size
+    && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
+}
+function childEnvironment() {
+  const environment = { ...process.env };
+  for (const key of Object.keys(environment)) {
+    const upper = key.toUpperCase();
+    if (upper.startsWith('GIT_') || upper === 'NODE_OPTIONS' || upper === 'NODE_PATH')
+      delete environment[key];
+  }
+  return environment;
+}
+export function rawTrackedFileMatches({ absolute, path, oid, mode, before, cwd }) {
+  let source = null;
+  try {
+    try {
+      source = openSync(absolute, constants.O_RDONLY | constants.O_NONBLOCK
+        | (constants.O_NOFOLLOW ?? 0));
+    } catch { return false; }
+    const opened = fstatSync(source, { bigint: true });
+    if (!opened.isFile() || !sameRawNode(before, opened)
+      || opened.size > BigInt(TRACKED_FILE_LIMITS.rawComparisonBytes)) return false;
+    const compared = spawnSync(process.execPath, [
+      FILTER_COMPARE, path, oid, String(TRACKED_FILE_LIMITS.rawComparisonBytes),
+    ], { cwd, env: childEnvironment(), stdio: ['ignore', 'ignore', 'ignore', source],
+      timeout: 7_000, killSignal: 'SIGKILL' });
+    const matches = compared.status === 0 && compared.signal === null && !compared.error;
+    const afterOpen = fstatSync(source, { bigint: true });
+    const afterPath = lstatSync(absolute, { bigint: true, throwIfNoEntry: false });
+    const observedMode = afterOpen.mode & 0o111n ? '100755' : '100644';
+    return matches && observedMode === mode && sameRawNode(opened, afterOpen)
+      && sameRawNode(afterOpen, afterPath);
+  } finally { if (source !== null) closeSync(source); }
 }
 
 /** Strict UTF-8 decode for NUL-delimited Git path output. */
@@ -173,21 +212,7 @@ function trackedEntryMatches({ mode, oid, path }, cwd, includeIgnored) {
     return mode === '120000' && gitBlobOid(bytes, oid) === oid && sameTrackedNode(stat, after);
   }
   if (!stat.isFile()) return false;
-  return rawTrackedFilesMatch([{ absolute, path, oid, mode, before: stat, cwd }])[0];
-}
-
-/** Batch only regular files; symlink and submodule ownership keep their existing checks. */
-function trackedEntriesMatch(entries, cwd, includeIgnored) {
-  const matched = new Map(), regular = [];
-  for (const entry of entries) {
-    const absolute = join(cwd, entry.path);
-    const before = lstatSync(absolute, { bigint: true, throwIfNoEntry: false });
-    if (entry.mode !== '160000' && before?.isFile())
-      regular.push({ ...entry, absolute, before, cwd, entry });
-    else matched.set(entry, trackedEntryMatches(entry, cwd, includeIgnored));
-  }
-  rawTrackedFilesMatch(regular).forEach((value, index) => matched.set(regular[index].entry, value));
-  return matched;
+  return rawTrackedFileMatches({ absolute, path, oid, mode, before: stat, cwd });
 }
 
 function parseIndexEntries(cwd) {
@@ -279,9 +304,8 @@ export function trackedChanges(cwd = process.cwd()) {
     indexToWorkingTree.push({ path, status: 'U', oldMode: entry.mode, newMode: '000000',
       oldObject: entry.oid, newObject: zero });
   }
-  const matched = trackedEntriesMatch(entries.filter(({ stage }) => stage === 0), cwd, false);
   for (const entry of entries) {
-    if (entry.stage !== 0 || matched.get(entry)) continue;
+    if (entry.stage !== 0 || trackedEntryMatches(entry, cwd, false)) continue;
     const stat = lstatSync(join(cwd, entry.path), { bigint: true, throwIfNoEntry: false });
     const newMode = worktreeMode(stat);
     const status = !stat ? 'D' : newMode !== entry.mode ? 'T' : 'M';
@@ -302,16 +326,14 @@ function hiddenIndexPaths(cwd) {
 export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = true } = {}) {
   const headToIndex = headToIndexChanges(cwd);
   const hidden = hiddenIndexPaths(cwd);
-  const tracked = [], entries = [];
+  const tracked = [];
   for (const record of strictGitPaths(['ls-tree', '-r', '-z', 'HEAD'], cwd)) {
     const tab = record.indexOf('\t');
     if (tab < 0) { tracked.push('[malformed-tree-entry]'); continue; }
     const [mode, , oid] = record.slice(0, tab).split(' ');
     const path = record.slice(tab + 1);
-    entries.push({ mode, oid, path });
+    if (!trackedEntryMatches({ mode, oid, path }, cwd, includeIgnored)) tracked.push(path);
   }
-  const matched = trackedEntriesMatch(entries, cwd, includeIgnored);
-  for (const entry of entries) if (!matched.get(entry)) tracked.push(entry.path);
   const owned = untrackedPaths(cwd, { includeIgnored });
   const headToIndexAfter = headToIndexChanges(cwd), hiddenAfter = hiddenIndexPaths(cwd);
   if (JSON.stringify(headToIndexAfter) !== JSON.stringify(headToIndex)

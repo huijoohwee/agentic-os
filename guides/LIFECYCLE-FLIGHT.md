@@ -103,3 +103,18 @@ oracle. Core module delta is zero; runtime dependency delta is zero; per-consume
 is zero. Workflow references replace existing prose to keep the always-load budget flat. This guide
 loads only when the consumer uses flight observations. Consumers adopt a reviewed package pin and a
 reviewed manifest; installing the package alone does not configure an external evaluator.
+
+## Bounded publication cost
+
+Exact publication observations share one raw-byte comparator. Each fresh observation batches at most
+32 regular-file descriptors and 32 MiB of source bytes into the existing isolated helper. A batch has
+one reusable 64 KiB hashing buffer and a seven-second kill deadline; failed, partial or timed-out
+helpers produce no accepted results. This deadline
+is stricter for a slow batch than the previous seven seconds per file. Descriptor identities, source
+path, executable mode, declared size and end-of-file remain checked; filters and candidate code never
+execute. Descriptor cleanup waits for child exit. Symlink and submodule checks retain their contracts.
+
+Pre-fetch, pre-push and post-push checks remain fresh. Results are never cached across effects. Measure
+repeated observations on the same disposable tree to compare startup cost; report files, bytes,
+process count and elapsed time separately from hosted CI or provider waits. No timing threshold can
+replace byte-integrity evidence. This changes no runtime dependency or module count.
