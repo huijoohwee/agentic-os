@@ -36,6 +36,7 @@ export function validateCommandArguments(command, argv) {
       return exact(argv, {});
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
     case 'land': return exact(argv, { options: ['message'] });
+    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
@@ -93,6 +94,7 @@ export function cmdHelp() {
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
       '  npm run land              publish the exact lane head and request provider handoff',
+      '  npm run successor -- <scope>  preserve a published lane and continue in-place',
       '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
       '  npm run status            registered lane projections and provider state',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',

@@ -34,6 +34,20 @@ test('publish requires a clean tree with commits already pushed', () => {
   assert.equal(transition('active', 'publish', { ...ready, pushed: false }).reason, REFUSALS.NOT_PUSHED);
 });
 
+test('published successor requires preserved identity, clean descendant, and absent destination', () => {
+  const ready = { predecessorExact: true, descendant: true, destinationAbsent: true };
+  assert.equal(transition('published', 'successor', ready).to, 'published');
+  assert.equal(transition('planned', 'provision', { baseFetched: true }).to, 'active');
+  assert.equal(transition('published', 'successor', { ...ready, dirtyTracked: true }).reason,
+    REFUSALS.DIRTY);
+  assert.equal(transition('published', 'successor', { ...ready, predecessorExact: false }).reason,
+    REFUSALS.PREDECESSOR);
+  assert.equal(transition('published', 'successor', { ...ready, descendant: false }).reason,
+    REFUSALS.DESCENDANT);
+  assert.equal(transition('published', 'successor', { ...ready, destinationAbsent: false }).reason,
+    REFUSALS.DESTINATION);
+});
+
 test('enqueue requires the provider to own landing order', () => {
   const providerReceipt = { ok: true, testedProtectedOrdering: true, headSha: 'a' };
   const facts = { laneHeadSha: 'a', providerReceipt };

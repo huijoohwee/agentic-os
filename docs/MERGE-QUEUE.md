@@ -46,9 +46,6 @@ When `integration-method:squash` is selected, the GitHub adapter verifies only t
 `SQUASH`. When linear history is selected without squash, `REBASE` or `SQUASH` remains compatible;
 otherwise the adapter does not invent a merge method.
 
-A failing candidate may leave the provider ordering projection. The harness does not invent an
-ejection or restack transition; it re-observes state and requires a separately authorized repair.
-
 ## Cost behavior
 
 Draining `N` open PRs with require-up-to-date and no queue costs up to `N x (N-1)` revalidation
@@ -65,9 +62,10 @@ npm run lane -- my-scope --write=src/owning-file.ts
 npm run land -- --message="feat: focused change"  # stage, commit, push, project review
 ```
 
-Then stop touching the published lane. Do not rebase it, merge the canonical branch into it, or push
-an empty commit to simulate evidence. A rejected candidate remains preserved until a new authority
-decision.
+After separate repair authorization, run successor (Git v2.46+) before edits. It keeps all prior
+refs/review, clean commits and worktree; then land. If effects remain, do not edit: resolve the
+collision; rerun the exact emitted `npm run successor -- <same-scope>
+--expected-head=<published-oid>`; then `land`.
 
 ## Cross-tool concurrency
 

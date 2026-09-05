@@ -52,6 +52,7 @@
     "doctor": "node bin/agentic-os.mjs doctor",
     "lane": "node bin/agentic-os.mjs start",
     "land": "node bin/agentic-os.mjs land",
+    "successor": "node bin/agentic-os.mjs successor",
     "status": "node bin/agentic-os.mjs status",
     "reap": "node bin/agentic-os.mjs reap",
     "finish": "node bin/agentic-os.mjs finish",

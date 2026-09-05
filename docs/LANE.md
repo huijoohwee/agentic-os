@@ -1,9 +1,8 @@
 # Lane State Machine
 
-The lane is the unit of the Agent Development Lifecycle (ADLC). One machine owns every lane scenario.
-`src/lane-state.mjs` is the executable copy of this document and holds no I/O. Adding a scenario
-means adding a row here and a row in the table there, never a new controller, adapter, evidence
-writer, and store.
+A lane is the ADLC unit. `src/lane-state.mjs` is this document's I/O-free executable copy and owns
+every scenario. Add scenarios as table rows, never new controllers, adapters, evidence writers, or
+stores.
 
 ## Identity
 
@@ -12,18 +11,16 @@ A lane is `agent/<device>/<scope>`:
 - `device` — lowercase host namespace used only for collision-resistant branch identity.
 - `scope` — lowercase hyphenated write-set label; it does not grant or exclude authority.
 
-The branch, pull request, and local record are provider projections, not claims or authority. Two
-devices can create distinct refs for the same scope. Cross-device exclusion therefore requires an
-external authenticated, fenced compare-and-swap claim; this compatibility lane machine does not
-provide one and must not be treated as one.
+Branches, pull requests, and local records are provider projections, not authority. Devices may
+reuse a scope under distinct refs. Cross-device exclusion requires an external authenticated,
+fenced compare-and-swap claim, which this compatibility machine does not provide.
 
-Lane records are non-authoritative hints stored as immutable Git blobs behind the direct,
-clone-common `refs/agentic-os/cache/lanes-v1` ref. Writers advance that ref only by exact old-object
-compare-and-swap. A pre-v1 `agentic-os/lanes.json` is read only before the ref exists, identity-bound
-through first publication, and retained afterward; neither cache form grants lifecycle authority.
-The only accepted legacy projection is the retired non-authoritative nonnegative `ejections` count:
-it is dropped in memory without rewriting the legacy bytes. Any other malformed or unknown legacy
-shape remains fail-closed.
+Lane records are non-authoritative hints stored as immutable Git blobs behind the direct clone-common
+`refs/agentic-os/cache/lanes-v1`, advanced only by exact old-object compare-and-swap. Pre-v1
+`agentic-os/lanes.json` is read only before that ref exists, identity-bound through first publication,
+and retained afterward. Neither cache grants authority. The sole accepted legacy projection is the
+retired nonnegative `ejections` count, dropped in memory without rewriting the legacy bytes; any other
+malformed or unknown shapes fail closed.
 
 Lane survey inventory is bounded to 256 local `refs/heads/agent/*` branches. At the first overflow
 it refuses before classifying or retiring anything; recovery must first partition the retained refs
@@ -33,7 +30,7 @@ under authenticated consumer authority.
 
 | State | Meaning | Terminal |
 |---|---|---|
-| `planned` | Lane recorded, no worktree or branch yet | no |
+| `planned` | Lane or successor activation is pending | no |
 | `active` | Worktree registered, branch bound, work in progress | no |
 | `published` | Exact remote lane ref present; selected review projection may exist | no |
 | `queued` | PR accepted into the merge queue | no |
@@ -47,6 +44,7 @@ under authenticated consumer authority.
 | `active` | `author` | `active` | `onLaneWorktree` |
 | `active` | `publish` | `published` | `clean`, `hasCommits`, `pushed` |
 | `published` | `enqueue` | `queued` | `orderingDelegated`, exact `providerHandoff` receipt |
+| `published` | `successor` | `published` | onLaneWorktree, clean, predecessorExact, descendant, destinationAbsent |
 | `queued` | `integrate` | `integrated` | `integratedProof` |
 | `active` | `integrate` | `integrated` | `integratedProof` |
 | `published` | `integrate` | `integrated` | `integratedProof` |
@@ -84,6 +82,9 @@ Every blocked transition returns one of these. They name the upstream owner, nev
 | `blocked-not-pushed` | Local commits are not on the remote lane ref |
 | `blocked-provider-handoff` | Exact provider head or tested-ordering receipt is absent |
 | `blocked-not-integrated` | No integration proof, so nothing may be deleted |
+| `blocked-successor-predecessor` | Published predecessor identity is invalid |
+| `blocked-successor-descendant` | Local head is not its descendant |
+| `blocked-successor-destination` | Successor destination already exists |
 
 ## Integration proof
 
