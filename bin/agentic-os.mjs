@@ -30,7 +30,7 @@ import {
   assertDisjointReservation, commitReservedChanges, parseWritePaths, runPublishedLaneSuccessor,
 } from '../src/worktree.mjs';
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
-import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
+import { dispatchInvocation, isInvocationTuple, resolveInvocation } from './agentic-os-invocation.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
 import * as report from './agentic-os-report.mjs';
 import {

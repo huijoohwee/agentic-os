@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/governance.mjs",
+    "./invocation": "./src/invocation.mjs",
     "./records": "./src/governance.mjs",
     "./records/authority-evidence": "./src/authority-record.mjs",
     "./records/recovery-candidate": "./src/recovery-candidate.mjs",

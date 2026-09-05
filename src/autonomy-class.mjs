@@ -67,6 +67,7 @@ export const AGENTIC_OS_AUTHORITY_PATHS = Object.freeze([
   'src/governance.mjs',
   'src/guard-main.mjs',
   'bin/agentic-os-hook-runtime.mjs',
+  'bin/agentic-os-invocation.mjs',
   'src/invocation.mjs',
   'src/lane-id.mjs',
   'src/lane-records.mjs',
