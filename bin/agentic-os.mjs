@@ -17,11 +17,8 @@ import {
   worktrees,
 } from '../src/git.mjs';
 import { assertDevice, deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import {
-  legalEvents,
-  providerAdapterRequired,
-  transition,
-} from '../src/lane-state.mjs';
+import { legalEvents, providerAdapterRequired, successorLineage,
+  transition } from '../src/lane-state.mjs';
 import * as store from '../src/lane-records.mjs';
 import * as queue from '../src/queue.mjs';
 import {
@@ -30,7 +27,7 @@ import {
   reapLaneBranches,
   staleWorktrees,
   worktreeFor,
-  assertDisjointReservation, commitReservedChanges, parseWritePaths,
+  assertDisjointReservation, commitReservedChanges, parseWritePaths, runPublishedLaneSuccessor,
 } from '../src/worktree.mjs';
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from '../src/invocation.mjs';
@@ -177,6 +174,12 @@ function cmdLand(cwd, argv, profile, policy) {
   }
   const laneStore = store.load(root);
   const record = laneStore.lanes[ref];
+  const lineage = successorLineage(record);
+  if (lineage === false) { err('blocked-successor-cache-race: successor lineage payload is invalid'); return 1; }
+  if (record?.state === 'planned' && lineage) {
+    err(`blocked-successor-recovery-required: rerun npm run successor -- ${record.scope} --expected-head=${lineage.predecessorHead}`);
+    return 1;
+  }
   const configuredFlight = assertFlightRequirements(root, 'pre');
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   const message = option(argv, 'message');
@@ -558,31 +561,28 @@ function main() {
     case 'git-configure':
     case 'guard-install':
       return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
-    case 'doctor':
-      return cmdDoctor(root, profile, policy);
-    case 'start':
-      return cmdStart(root, argv, policy, profile);
-    case 'land':
-      return cmdLand(cwd, argv, profile, policy);
-    case 'status':
-      return cmdStatus(root, argv, profile, policy);
-    case 'reap':
-      return cmdReap(root, argv, policy, profile);
-    case 'finish':
-      return cmdFinish(root, argv, policy, profile);
-    case 'canonical-sync':
-      return runCanonicalSync(root, argv, policy);
-    case 'reconcile':
-      requireCanonical(root, policy);
-      return runReconcile(root, argv, policy);
-    case 'queue':
-      return cmdQueue(root, argv, profile);
-    case 'autonomy-class':
-      return runAutonomyClass(root, argv, policy);
-    case 'flight':
-      return runFlight(root, argv, profile);
-    case 'observe':
-      return runObserve(root, argv, profile);
+    case 'doctor': return cmdDoctor(root, profile, policy);
+    case 'start': return cmdStart(root, argv, policy, profile);
+    case 'land': return cmdLand(cwd, argv, profile, policy);
+    case 'successor': {
+      const predecessorRef = currentBranch(root);
+      if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) {
+        err('blocked-unbound-lane: successor requires a bound published lane worktree');
+        return 1;
+      }
+      return runPublishedLaneSuccessor({ cwd: root, predecessorRef,
+        scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
+        remote: remoteName(policy, root), protectedRef: policy.protectedRef, out });
+    }
+    case 'status': return cmdStatus(root, argv, profile, policy);
+    case 'reap': return cmdReap(root, argv, policy, profile);
+    case 'finish': return cmdFinish(root, argv, policy, profile);
+    case 'canonical-sync': return runCanonicalSync(root, argv, policy);
+    case 'reconcile': requireCanonical(root, policy); return runReconcile(root, argv, policy);
+    case 'queue': return cmdQueue(root, argv, profile);
+    case 'autonomy-class': return runAutonomyClass(root, argv, policy);
+    case 'flight': return runFlight(root, argv, profile);
+    case 'observe': return runObserve(root, argv, profile);
     default:
       err(`unknown command "${command}"`);
       cmdHelp();

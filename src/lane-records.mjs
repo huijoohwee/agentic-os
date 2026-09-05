@@ -1,7 +1,4 @@
-/**
- * Clone-common lane-state cache. This is explicitly non-authoritative: safety
- * decisions always recover from exact Git/provider observations, never cache bytes.
- */
+/** Clone-common non-authoritative lane cache; safety comes from live Git/provider facts. */
 import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -28,14 +25,11 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const CACHE_LOCK_WAIT_MS = 30_000;
 const CACHE_LOCK_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-const RECORD_FIELDS = new Set([
-  'ref', 'device', 'scope', 'state', 'base', 'baseSha', 'worktree', 'pr', 'createdAt',
-  'head', 'handoff', 'mode', 'writePaths',
-]);
+const RECORD_FIELDS = new Set(['ref', 'device', 'scope', 'state', 'base', 'baseSha',
+  'worktree', 'pr', 'createdAt', 'head', 'handoff', 'mode', 'writePaths']);
 const RECORD_STATES = new Set(['planned', 'active', 'published', 'queued', 'integrated']);
-const STRING_FIELDS = new Set([
-  'device', 'scope', 'base', 'baseSha', 'worktree', 'createdAt', 'head', 'mode',
-]);
+const STRING_FIELDS = new Set(['device', 'scope', 'base', 'baseSha', 'worktree',
+  'createdAt', 'head', 'mode']);
 function invalid(message, cause) {
   return Object.assign(new Error(`lane cache ${message}`, cause ? { cause } : undefined), {
     reason: 'blocked-lane-cache-invalid',
@@ -157,11 +151,7 @@ function normalizeStore(value) {
   }
   return normalized;
 }
-
-export function storePath(cwd = process.cwd()) {
-  return join(commonDir(cwd), 'agentic-os', 'lanes.json');
-}
-
+export const storePath = (cwd = process.cwd()) => join(commonDir(cwd), 'agentic-os', 'lanes.json');
 function sameIdentity(left, right) {
   return Boolean(left && right) && left.dev === right.dev && left.ino === right.ino
     && left.mode === right.mode && left.uid === right.uid && left.nlink === right.nlink
@@ -273,12 +263,10 @@ function loadSnapshot(cwd) {
     store: parseBytes(bytes), cursor: Object.freeze({ oid: before, legacy: null }),
   });
 }
-
 /** Missing cache is normal recovery; every present invalid cache fails loudly. */
 export function load(cwd = process.cwd()) {
   return loadSnapshot(cwd).store;
 }
-
 /** Publish one immutable blob through an exact, direct-ref compare-and-swap. */
 function publish(value, cwd, expected, artifacts = null) {
   const store = normalizeStore(value);
@@ -312,7 +300,8 @@ function publish(value, cwd, expected, artifacts = null) {
     let currentOid = null;
     try { currentOid = directRefOid(cwd); } catch { currentOid = 'unreadable'; }
     throw publication('compare-and-swap failed; candidate blob retained', error, {
-      ...detail, currentOid,
+      ...detail, currentOid, published: currentOid === candidateOid,
+      publicationAttempted: true,
     });
   }
   if (artifacts) artifacts.refPublished = true;
@@ -332,12 +321,10 @@ function publish(value, cwd, expected, artifacts = null) {
   }
   return Object.freeze({ ref: CACHE_REF, oid: candidateOid });
 }
-
 export function save(value, cwd = process.cwd()) { return publish(value, cwd, loadSnapshot(cwd).cursor); }
 export function get(ref, cwd = process.cwd()) {
   return load(cwd).lanes[ref] ?? null;
 }
-
 /** Serialize cache read-modify-write across every worktree and cooperating device. */
 function mutate(cwd, operation) {
   const artifacts = {
@@ -364,36 +351,31 @@ function mutate(cwd, operation) {
     label: 'lane-cache', result, error, artifacts,
   });
 }
-
 export function put(record, cwd = process.cwd()) {
   return mutate(cwd, (artifacts) => {
     const { store, cursor } = loadSnapshot(cwd);
     store.lanes[record.ref] = { ...store.lanes[record.ref], ...record };
-    publish(store, cwd, cursor, artifacts);
-    return store.lanes[record.ref];
+    publish(store, cwd, cursor, artifacts); return store.lanes[record.ref];
   });
 }
-
+export function putExact(record, expected, cwd = process.cwd()) {
+  return mutate(cwd, (artifacts) => {
+    const { store, cursor } = loadSnapshot(cwd), current = store.lanes[record.ref] ?? null;
+    if (JSON.stringify(current) !== JSON.stringify(expected))
+      throw publication('record drifted before exact update', null, { ref: record.ref });
+    store.lanes[record.ref] = record; publish(store, cwd, cursor, artifacts); return record;
+  });
+}
 /** Best-effort projection after authoritative Git/provider effects have completed. */
 export function project(record, cwd = process.cwd()) {
   try { return Object.freeze({ ok: true, record: put(record, cwd) }); } catch (error) {
     return Object.freeze({ ok: false, error });
   }
 }
-
-export function remove(ref, cwd = process.cwd()) {
-  return mutate(cwd, (artifacts) => {
-    const { store, cursor } = loadSnapshot(cwd);
-    delete store.lanes[ref];
-    publish(store, cwd, cursor, artifacts);
-  });
-}
-
-export function list(cwd = process.cwd()) {
-  return Object.values(load(cwd).lanes);
-}
-
-export function newRecord({ ref, device, scope, base, baseSha, worktree, writePaths = [] }) {
-  return { ref, device, scope, state: 'planned', base, baseSha, worktree, pr: null,
-    createdAt: new Date().toISOString(), writePaths };
-}
+export const remove = (ref, cwd = process.cwd()) => mutate(cwd, (artifacts) => {
+  const { store, cursor } = loadSnapshot(cwd); delete store.lanes[ref];
+  publish(store, cwd, cursor, artifacts);
+});
+export const list = (cwd = process.cwd()) => Object.values(load(cwd).lanes);
+export const newRecord = ({ ref, device, scope, base, baseSha, worktree, writePaths = [] }) => ({
+  ref, device, scope, state: 'planned', base, baseSha, worktree, pr: null, createdAt: new Date().toISOString(), writePaths });
