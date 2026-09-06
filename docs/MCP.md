@@ -2,22 +2,24 @@
 
 # MCP server
 
-The packaged `agentic-os-mcp` binary is contract-ready as a newline-delimited stdio MCP server. It
-supports modern `2026-07-28` requests and a legacy `2025-11-25` initialization opening without a
-runtime dependency.
+The packaged `agentic-os-mcp` binary is contract-ready: newline-delimited stdio, zero dependencies,
+modern `2026-07-28` requests and legacy `2025-11-25` initialization.
 
-Modern requests carry their protocol version and client capabilities in `params._meta`. The server
-implements `server/discover`, returns deterministic tool lists, and includes its identity in result
-metadata. An `initialize` request instead selects legacy semantics for that stdio process.
+Modern requests carry version and capabilities in `params._meta`. `server/discover` exposes server
+identity and deterministic tools; results include identity metadata. `initialize` selects legacy
+semantics for the process.
 
-Four tools cross the MCP boundary by spawning the existing CLI with an argument array, never a shell:
+Five tools invoke the existing CLI with argument arrays, without a shell:
 
 - `doctor` and `status` inspect the harness;
+- `checks` accepts `{ "input": "./checks-input.json" }` and reads owner references and unsigned results;
 - `reap` is survey-only and cannot add `--apply`;
 - `lane` accepts one scope validated by the same grammar as `npm run lane`.
 
-Every tool returns `{ exitCode, stdout, stderr }` as both structured content and serialized text. A
-nonzero CLI exit is a tool error, while malformed protocol input remains a JSON-RPC error. Input,
-output, and execution time are bounded. Cancellation terminates the isolated CLI process group on
-POSIX, or the child process on Windows, and suppresses its response. End-of-file terminates all
-remaining work.
+Tools return `{ exitCode, stdout, stderr }` as structured content and serialized text. Nonzero exits
+are tool errors; malformed input produces JSON-RPC errors. Input, output and time are bounded.
+Cancellation suppresses responses and terminates the CLI process group on POSIX, or child on Windows.
+End-of-file terminates remaining work.
+
+`checks` maps to `observe --checks --input=<path>` without fetching or executing owner suites.
+Its [source bindings and coverage](../README.md#shared-check-discovery) grant no integration authority.

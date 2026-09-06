@@ -29,6 +29,7 @@ export const ENTRY_CONTRACTS = deepFreeze({
   '/lane': { kind: 'command', action: 'start', argv: [], semantic: 'mutating', accepts: ['scope'], requires: ['scope'] },
   '/land': { kind: 'command', action: 'land', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/status': { kind: 'command', action: 'status', argv: [], semantic: 'read-only', accepts: ['device'], requires: [] },
+  '/checks': { kind: 'command', action: 'observe', argv: ['--checks'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/reap': { kind: 'command', action: 'reap', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/reconcile': { kind: 'command', action: 'reconcile', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/queue.show': { kind: 'command', action: 'queue', argv: ['show'], semantic: 'read-only', accepts: [], requires: [] },
@@ -37,6 +38,7 @@ export const ENTRY_CONTRACTS = deepFreeze({
   '#mutating': { kind: 'semantic', value: 'mutating' },
   '@scope:': { kind: 'binding', name: 'scope', mode: 'positional' },
   '@device:': { kind: 'binding', name: 'device', mode: 'option' },
+  '@input:': { kind: 'binding', name: 'input', mode: 'option' },
 });
 
 function canonical(value) {

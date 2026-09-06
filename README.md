@@ -187,6 +187,76 @@ The command supplies no buyer-evidence verifier, so the seed remains fail-closed
 pass `rankFeatures` a code-owned `verifyDemandEvidence` adapter returning its verifier identity and
 receipt; self-attested, stale, or candidate-mismatched receipts never satisfy the demand gate.
 
+## Shared check discovery
+
+Keep cross-repository planning in the Canvas `docs/TODO.md` and `todo/YYYY-MM/` context records.
+Executable suites remain with their repository owners. `catalog/repository-checks.json` references
+package scripts and workflows for OS, Canvas, Graph, Commerce, the site and the mirror; it stores
+neither command bodies nor copied check verdicts. Discovery reads each supplied owner's committed
+`.agentic-os.json`, package scripts and workflow files, including their exact source digests.
+
+Run from a profile-trusted repository, using the packaged CLI:
+
+```sh
+node bin/agentic-os.mjs observe --checks --input=./checks-input.json
+node bin/agentic-os.mjs /checks '#read-only' '@input:./checks-input.json'
+```
+
+The bounded input maps catalog IDs to clone or worktree roots. Relative paths resolve from the
+input file's directory. Supply any subset; all six owners appear, with absent roots marked unavailable.
+
+```json
+{
+  "schema": "agentic-os/check-discovery-input/v1",
+  "repositories": [
+    { "id": "agentic-os", "root": "../agentic-os" },
+    { "id": "agentic-canvas-os", "root": "../agentic-canvas-os" },
+    { "id": "agentic-graph", "root": "../agentic-graph" },
+    { "id": "agentic-commerce-os", "root": "../agentic-commerce-os" },
+    { "id": "huijoohwee.github.io", "root": "../huijoohwee.github.io" },
+    { "id": "huijoohwee", "root": "../huijoohwee" }
+  ],
+  "results": []
+}
+```
+
+Optional `results` reference owner-supplied JSON files with this shape. Use the actual revision,
+package SHA-256 and argv from the execution, and name its exact coverage; a filtered case run is
+never a full repository or ecosystem suite. This example describes a format, not an executed result.
+
+```json
+{
+  "schema": "agentic-os/check-result-observation/v1",
+  "repository": "github.com/huijoohwee/agentic-os",
+  "revision": "<40-hex owner revision>",
+  "command": {
+    "package": "package.json", "script": "test", "sourceSha256": "<64-hex package SHA-256>",
+    "argv": ["npm", "run", "test"]
+  },
+  "coverage": {
+    "scope": "Owner test suite", "complete": true,
+    "counts": { "total": 3, "passed": 3, "failed": 0, "skipped": 0 }
+  },
+  "outcome": "passed"
+}
+```
+
+Counts are optional; outcomes are `passed`, `failed`, `interrupted`, or `unknown`. Missing, dirty,
+changed or revision-mismatched sources invalidate a current match. A `matched` binding only means
+the supplied observation matches the declared profile, configured origin and raw committed source at
+read time; it authenticates neither the result, dependencies, environment nor execution.
+Reported coverage and outcome remain attributed, unsigned observations, separate from provider
+required-check names. No results produces an empty result list, not a passing verdict.
+Without owner results, cleanliness is `null` and source status is `not-evaluated`; only committed
+descriptor bytes are checked. Deep raw-byte checks run only for owners with supplied results.
+
+Discovery rechecks observed bytes, executes no candidate code and makes no network requests. It
+does not infer ecosystem E2E coverage, integration authority or deployed readiness. Inputs and
+individual results are capped at 64 KiB, owner source files at 128 KiB, and output below 500 kB.
+The CLI runs discovery in its own process with a 30-second deadline and uses the existing bounded
+raw worktree observer; larger or unsupported inventories remain unavailable, with owner references retained.
+The trusted local Git reader must be available; unsupported hosts report unavailable source bindings.
+
 ## Remote configuration
 
 `npm run doctor` reports required remote settings and any drift. `npm run queue:show` prints the
