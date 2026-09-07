@@ -2,9 +2,8 @@
 
 # Invocation
 
-The invocation grammar is contract-ready. `catalog/invocation.json` contains only commands this harness
-implements. It is packaged as data instead of always-load prose, and its declared entry count and SHA-256 digest
-are checked before every resolution.
+The invocation grammar is contract-ready. `catalog/invocation.json` lists implemented commands as
+packaged data. Every resolution verifies its entry count and SHA-256 digest.
 
 An invocation contains at most one exact token per prefix:
 
@@ -12,18 +11,20 @@ An invocation contains at most one exact token per prefix:
 - `#` optionally states its mutation semantic;
 - `@name:<argument>` optionally binds one opaque argument.
 
-Token names use lowercase letters, digits, dots, and hyphens and are at most 128 characters. Only `@` accepts an
-argument, capped at 1,024 characters. Resolution never aliases, guesses, or calls a model; every token receives a
-zero-token, zero-cost record.
+Names allow lowercase letters, digits, dots and hyphens, up to 128 characters. Only `@` accepts an
+argument, up to 1,024 characters. Resolution uses no aliases, guesses or model calls; each token
+receives a zero-token, zero-cost record.
 
 ```sh
 node bin/agentic-os.mjs /doctor '#read-only'
 node bin/agentic-os.mjs /lane '#mutating' '@scope:pricing-table'
 node bin/agentic-os.mjs /status '@device:box-1.local'
+node bin/agentic-os.mjs /checks '#read-only' '@input:./checks-input.json'
 ```
 
-`/lane` deliberately dispatches to the internal `start` command so exact-ref creation and fetched-base guards
-remain the only local mutation owner. Cross-device exclusion belongs to the external authenticated claim adapter.
-`/reap` is the fetch-and-survey form; authenticated retirement remains a separate
-public governance operation, not an ordinary CLI action. A semantic token describes the selected command and
-cannot grant it additional authority.
+`/lane` dispatches to guarded `start`; cross-device exclusion requires the external authenticated
+claim adapter. `/reap` fetches and surveys. Authenticated retirement remains a separate public
+governance operation. Semantic tokens describe commands and grant no authority.
+
+`/checks` reads owner references and optional results without executing tests.
+[Input and result format](../README.md#shared-check-discovery).

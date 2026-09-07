@@ -17,14 +17,14 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:1897165973e1f2024ee350a630d57ba2f67081821489763685ae87612771186f'],
+  claims: ['sha256:881634367e1688839e2ed0d616b25e217aaf94bcf8a94826d72004f5adfd7b80'],
 });
 
 const clone = (value) => structuredClone(value);
 
-test('the packaged catalog has thirteen unique entries behind count and digest fences', () => {
+test('the packaged catalog has fifteen unique entries behind count and digest fences', () => {
   const catalog = loadCatalog();
-  assert.equal(catalog.entryCount, 13);
+  assert.equal(catalog.entryCount, 15);
   assert.equal(catalog.digest, catalogDigest(catalog.entries));
   assert.deepEqual(validateCatalog(catalog), { ok: true, findings: [] });
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
@@ -47,6 +47,9 @@ test('lane invocation resolves to the existing guarded start command', () => {
 test('an argument binding maps to an existing option without interpreting its value', () => {
   const result = resolveInvocation(['/status', '@device:box-1.local']);
   assert.deepEqual(dispatchInvocation(result).argv, ['--device=box-1.local']);
+  assert.deepEqual(dispatchInvocation(resolveInvocation(['/checks', '#read-only', '@input:./owner checks.json'])), {
+    ok: true, command: 'observe', argv: ['--checks', '--input=./owner checks.json'], semantic: 'read-only',
+  });
 });
 
 test('dispatch re-resolves untrusted resolution objects before crossing the CLI boundary', () => {
@@ -73,6 +76,8 @@ test('grammar failures are typed and fail closed', () => {
     [['/doctor', '#mutating'], 'semantic-mismatch'],
     [['/doctor', '@scope:x'], 'binding-not-accepted'],
     [['/lane'], 'binding-required'],
+    [['/checks'], 'binding-required'],
+    [['/checks', '#mutating', '@input:x.json'], 'semantic-mismatch'],
   ];
   for (const [input, code] of cases) assert.equal(resolveInvocation(input).code, code, input.join(' '));
 });
