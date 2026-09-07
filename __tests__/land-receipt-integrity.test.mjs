@@ -12,6 +12,7 @@ import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { CACHE_LIMITS, get, save, SCHEMA } from '../src/lane-records.mjs';
 import { PROVIDER_CAPABILITIES } from '../src/queue.mjs';
+import { pullRequestText } from '../bin/agentic-os-auxiliary.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
@@ -247,6 +248,21 @@ test('provider handoff remains projected when final observation cannot start', (
 
 test('land rejects invalid body files before any publication', async (t) => {
   const subject = reviewProjectionFixture(t, { exactBody: true });
+  // Exercise every real file through the production validator. Keep CLI coverage
+  // for unreadable input and the identity-dependent budget; repeating the whole
+  // publication preflight for each text encoding adds no distinct boundary.
+  const rejectsBody = (path, throughCli = false) => {
+    if (throughCli) {
+      const result = land(subject, [`--body-file=${path}`]);
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /blocked-review-body-invalid/u);
+    } else {
+      assert.throws(() => pullRequestText(subject.lane, subject.ref, subject.head,
+        subject.base, path), { reason: 'blocked-review-body-invalid' });
+    }
+    assert.equal(existsSync(subject.effectsLog), false);
+    assert.equal(existsSync(subject.bodyCapture), false);
+  };
   const cases = [
     ['missing', null], ['empty', ' \r\n'], ['invalid UTF-8', Buffer.from([0xff])],
     ['NUL', 'summary\0metadata'], ['oversize', 'x'.repeat(65_537)],
@@ -258,20 +274,13 @@ test('land rejects invalid body files before any publication', async (t) => {
   for (const [name, bytes] of cases) await t.test(name, () => {
     const path = join(subject.parent, name);
     if (bytes !== null) writeFileSync(path, bytes);
-    const result = land(subject, [`--body-file=${path}`]);
-    assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /blocked-review-body-invalid/u);
-    assert.equal(existsSync(subject.effectsLog), false);
-    assert.equal(existsSync(subject.bodyCapture), false);
+    rejectsBody(path, name === 'missing' || name === 'suffix exceeds budget');
   });
   for (const kind of ['directory', 'symlink']) await t.test(kind, () => {
     const path = join(subject.parent, kind);
     if (kind === 'directory') mkdirSync(path);
     else symlinkSync(join(subject.lane, 'candidate.txt'), path);
-    const result = land(subject, [`--body-file=${path}`]);
-    assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /blocked-review-body-invalid/u);
-    assert.equal(existsSync(subject.effectsLog), false);
+    rejectsBody(path);
   });
   assert.equal(git(['--git-dir', subject.bare, 'for-each-ref', '--format=%(refname)',
     `refs/heads/${subject.ref}`], { cwd: subject.lane }), '');
