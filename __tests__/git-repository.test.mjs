@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -8,12 +9,15 @@ import {
   mkdirSync,
   mkdtempSync,
   realpathSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { assertPriorManagedRuntime, describeHookRuntime } from '../bin/agentic-os-hook-runtime.mjs';
 import {
   GIT_ADAPTER,
   REPOSITORY_PROFILE_FILENAME,
@@ -27,7 +31,7 @@ import {
   repositoryTrustPath,
 } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
-import { commonDir, git, repoRoot, worktrees } from '../src/git.mjs';
+import { commonDir, git, remoteRefSha, remoteRefShas, repoRoot, worktrees } from '../src/git.mjs';
 
 function run(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
@@ -487,4 +491,84 @@ test('repository and worktree identities preserve trailing whitespace and newlin
       path: subject.root, branch: 'trunk', detached: false,
     }]);
   });
+});
+
+test('batched remote observations reduce transport work without reusing stale identities', (t) => {
+  const { root, parent } = repository(t), bare = join(parent, 'remote.git');
+  run(root, 'init', '--quiet', '--bare', bare);
+  run(root, 'remote', 'add', 'origin', bare);
+  run(root, 'push', '--quiet', 'origin', 'trunk');
+  const head = run(root, 'rev-parse', 'HEAD'), bin = join(parent, 'bin');
+  const calls = join(parent, 'calls'), reply = join(parent, 'reply');
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  mkdirSync(bin); writeFileSync(calls, '');
+  writeFileSync(join(bin, 'git'), ['#!/bin/sh',
+    'printf "%s\\n" "$1" >> "$REMOTE_CALLS"',
+    'if [ "$1" = ls-remote ] && [ -f "$REMOTE_REPLY" ]; then',
+    '  cat "$REMOTE_REPLY"',
+    '  if [ -n "$REMOTE_RETARGET" ]; then "$REMOTE_GIT" remote set-url origin "$REMOTE_RETARGET"; fi',
+    '  exit 0', 'fi', 'exec "$REMOTE_GIT" "$@"', ''].join('\n'));
+  chmodSync(join(bin, 'git'), 0o755);
+  const environment = { PATH: `${bin}:${process.env.PATH}`, REMOTE_CALLS: calls,
+    REMOTE_REPLY: reply, REMOTE_GIT: realGit, REMOTE_RETARGET: '' };
+  const prior = Object.fromEntries(Object.keys(environment).map(key => [key, process.env[key]]));
+  Object.assign(process.env, environment);
+  t.after(() => { for (const [key, value] of Object.entries(prior))
+    if (value === undefined) delete process.env[key]; else process.env[key] = value; });
+  const observedCalls = () => readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean);
+  assert.equal(remoteRefSha('origin', 'trunk', root), head);
+  assert.equal(remoteRefSha('origin', 'absent', root), null);
+  const separateCalls = observedCalls(); writeFileSync(calls, '');
+  const batch = remoteRefShas('origin', ['trunk', 'absent'], root);
+  assert.deepEqual(batch, { trunk: head, absent: null }); assert.ok(Object.isFrozen(batch));
+  const batchedCalls = observedCalls();
+  assert.equal(separateCalls.filter(call => call === 'ls-remote').length, 2);
+  assert.equal(batchedCalls.filter(call => call === 'ls-remote').length, 1);
+  assert.ok(batchedCalls.length < separateCalls.length);
+  t.diagnostic(`Two refs: ${separateCalls.length} -> ${batchedCalls.length} Git calls; 2 -> 1 advertisements.`);
+  run(root, 'commit', '--quiet', '--allow-empty', '-m', 'new head');
+  const moved = run(root, 'rev-parse', 'HEAD');
+  run(root, 'push', '--quiet', 'origin', 'trunk', 'trunk:absent');
+  assert.deepEqual(remoteRefShas('origin', ['trunk', 'absent'], root), { trunk: moved, absent: moved });
+  assert.deepEqual(batch, { trunk: head, absent: null }, 'previous result retains its original observation');
+  for (const invalid of [[], Array(33).fill('trunk'), ['trunk', 'trunk'], [null], ['x'.repeat(32769)]]) {
+    writeFileSync(calls, '');
+    assert.throws(() => remoteRefShas('origin', invalid, root), /1-32 unique branch names/u);
+    assert.deepEqual(observedCalls(), [], 'invalid bounds fail before invoking Git');
+  }
+  const names = Array.from({ length: 32 }, (_, i) => `branch-${i}`);
+  assert.equal(Object.keys(remoteRefShas('origin', names, root)).length, 32);
+  for (const output of ['invalid', `${head}\trefs/heads/trunk\n${head}\trefs/heads/trunk\n`,
+    `${head}\trefs/heads/unrequested\n`, 'x'.repeat(65537)]) {
+    writeFileSync(reply, output);
+    assert.throws(() => remoteRefShas('origin', ['trunk', 'absent'], root));
+  }
+  writeFileSync(reply, `${head}\trefs/heads/trunk\n`);
+  process.env.REMOTE_RETARGET = join(parent, 'different.git');
+  assert.throws(() => remoteRefShas('origin', ['trunk', 'absent'], root),
+    error => error.reason === 'blocked-remote-transport-race');
+});
+
+test('the prior single-ref runtime remains pinned for managed hook migration', (t) => {
+  const { root } = repository(t);
+  const selected = describeHookRuntime(root, { sourceRoot: fileURLToPath(new URL('..', import.meta.url)) });
+  const bytes = readFileSync(new URL('./fixtures/git-remote-single.mjs.txt', import.meta.url));
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  assert.equal(sha256, '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62');
+  const files = selected.files.map(file => file.path === 'src/git.mjs' ? { ...file, bytes, sha256 } : file);
+  const identity = { schema: 'agentic-os/hook-runtime/v1',
+    files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
+  const runtimeId = `v1-${createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
+  assert.equal(runtimeId, 'v1-be7454052f5609e1a80f6a55574d934b3fbf2379aff59d9b1a216da044dd3b68');
+  const prior = join(selected.managedRoot, runtimeId);
+  for (const file of files) {
+    const target = join(prior, file.path);
+    mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+    writeFileSync(target, file.bytes, { mode: file.mode }); chmodSync(target, file.mode);
+  }
+  writeFileSync(join(prior, 'runtime-manifest.json'),
+    JSON.stringify({ schema: identity.schema, runtimeId, files: identity.files }, null, 2) + '\n', { mode: 0o600 });
+  assert.equal(assertPriorManagedRuntime(join(prior, '.githooks'), selected), true);
+  writeFileSync(join(prior, 'src/git.mjs'), Buffer.concat([bytes, Buffer.from('\n')]));
+  assert.throws(() => assertPriorManagedRuntime(join(prior, '.githooks'), selected));
 });

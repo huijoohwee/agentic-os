@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   acquireOperationLock, currentBranch, decodeNulFields, finishOperationLock, git, gitLines,
-  headSha, isAncestor, observeGit, observeGitLines, refExists, remoteRefSha, remoteTransport,
+  headSha, isAncestor, observeGit, observeGitLines, refExists, remoteRefShas, remoteTransport,
   repoRoot, untrackedPaths, worktrees, worktreeCleanupRisks,
 } from './git.mjs';
 import { isLaneRef, laneDirName, laneRef, parseLaneRef } from './lane-id.mjs';
@@ -285,7 +285,9 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     plannedRecord = plan.plannedRecord;
     Object.assign(artifacts, { predecessorRef, cacheState: resuming ? plannedRecord.state : 'absent', expectedHead, tip });
     const transport = remoteTransport(remote, cwd);
-    if (remoteRefSha(remote, predecessorRef, cwd, transport.fetchUrl) !== expectedHead) throw successorError(
+    const remoteHeads = () => remoteRefShas(remote, [predecessorRef, successorRef], cwd, transport.fetchUrl);
+    const initialHeads = remoteHeads();
+    if (initialHeads[predecessorRef] !== expectedHead) throw successorError(
       'blocked-published-head-drift', 'predecessor remote ref differs from expected head');
     if (!isAncestor(currentRecord.baseSha, expectedHead, cwd)) throw successorError(
       'blocked-successor-predecessor', 'recorded base is not an ancestor of the published head');
@@ -297,7 +299,7 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     const state = transition('published', 'successor', { onCanonicalBranch: false,
       dirtyTracked: git(['status', '--porcelain=v1', '-z'], { cwd, binary: true }).length !== 0,
       predecessorExact: true, descendant: Boolean(tip && isAncestor(expectedHead, tip, cwd)),
-      destinationAbsent: destinationAbsent && remoteRefSha(remote, successorRef, cwd, transport.fetchUrl) === null });
+      destinationAbsent: destinationAbsent && initialHeads[successorRef] === null });
     if (!state.ok) throw successorError(state.reason, `successor refused under lock by ${state.guard}`);
     const provision = transition('planned', 'provision', { baseFetched: true });
     if (!provision.ok) throw successorError(provision.reason, `activation refused by ${provision.guard}`);
@@ -323,8 +325,8 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
       artifacts.cacheState = 'planned';
     }
     if (boundRef !== successorRef) {
-      if (remoteRefSha(remote, predecessorRef, cwd, transport.fetchUrl) !== expectedHead
-        || remoteRefSha(remote, successorRef, cwd, transport.fetchUrl) !== null
+      const beforeBinding = remoteHeads();
+      if (beforeBinding[predecessorRef] !== expectedHead || beforeBinding[successorRef] !== null
         || currentBranch(cwd) !== boundRef || headSha(`refs/heads/${boundRef}`, cwd) !== tip
         || refExists(`refs/heads/${successorRef}`, cwd)
         || git(['status', '--porcelain=v1', '-z'], { cwd, binary: true }).length !== 0
@@ -337,8 +339,8 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     const boundWorktree = worktreeFor(successorRef, cwd)?.path; if (boundWorktree !== plannedRecord.worktree)
       throw successorError(
       'blocked-successor-postcondition', 'successor worktree registration changed');
-    if (remoteRefSha(remote, predecessorRef, cwd, transport.fetchUrl) !== expectedHead
-      || remoteRefSha(remote, successorRef, cwd, transport.fetchUrl) !== null)
+    const afterBinding = remoteHeads();
+    if (afterBinding[predecessorRef] !== expectedHead || afterBinding[successorRef] !== null)
       throw successorError('blocked-successor-remote-race', 'remote refs changed during binding');
     if (currentBranch(cwd) !== successorRef || headSha('HEAD', cwd) !== tip) throw successorError(
       'blocked-successor-postcondition', 'successor drifted after cache publication');
