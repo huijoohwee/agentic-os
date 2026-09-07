@@ -365,3 +365,36 @@ test('single proof execution rejects early exit, todo and oversized bindings', a
     });
   }
 });
+
+
+test('failed proof reports bounded test identity without replay or raw assertion output', (t) => {
+  const claim = '<!-- readiness-proof kind=contract evidence=__tests__/proof.test.mjs -->\nContract ready.';
+  const body = executableTest(claim) + `
+    import { appendFileSync } from 'node:fs';
+    appendFileSync(new URL('../runs.txt', import.meta.url), 'once');
+    test('checkout settlement recovery', () => { throw new Error('PRIVATE_ASSERTION_PAYLOAD'); });
+  `;
+  const root = fixture(t, { 'README.md': claim, '__tests__/proof.test.mjs': body });
+  const found = violations(root);
+  assert.equal(found[0].kind, 'invalid-proof-artifact');
+  assert.equal(found[0].diagnostic.reason, 'assertion-failed');
+  assert.equal(found[0].diagnostic.failures[0].name, 'checkout settlement recovery');
+  assert.equal(readFileSync(join(root, 'runs.txt'), 'utf8'), 'once');
+  assert.ok(!JSON.stringify(found).includes('PRIVATE_ASSERTION_PAYLOAD'));
+});
+
+test('proof failure identities have bounded count and text without terminal control characters', async (t) => {
+  const prior = process.env.AGENTIC_OS_PROOF_SENTINEL;
+  process.env.AGENTIC_OS_PROOF_SENTINEL = '__FAILURE_BOUNDS__';
+  t.after(() => { if (prior === undefined) delete process.env.AGENTIC_OS_PROOF_SENTINEL; else process.env.AGENTIC_OS_PROOF_SENTINEL = prior; });
+  async function* events() {
+    for (let i = 0; i < 20; i += 1) yield { type: 'test:fail', data: { name: '\u001b[31m' + 'x'.repeat(1000), details: { error: { failureType: 'testCodeFailure', message: 'PRIVATE_ASSERTION_PAYLOAD' } } } };
+  }
+  let output = '';
+  for await (const part of readinessTestReporter(events())) output += part;
+  const result = JSON.parse(Buffer.from(output.trim().slice('__FAILURE_BOUNDS__'.length), 'base64').toString('utf8'));
+  assert.equal(result.fail, 20);
+  assert.equal(result.failures.length, 8);
+  assert.ok(result.failures.every(failure => failure.name.length <= 256 && !failure.name.includes('\u001b')));
+  assert.ok(!JSON.stringify(result).includes('PRIVATE_ASSERTION_PAYLOAD'));
+});

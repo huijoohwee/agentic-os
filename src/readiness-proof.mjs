@@ -13,6 +13,8 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 const TEST_REPORTER_PATH = fileURLToPath(import.meta.url);
 const PROOF_BINDING_MAX_BYTES = 64 * 1024;
+const FAILURE_LIMIT = 8;
+const diagnosticText = (value, limit) => String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').slice(0, limit);
 export const PROOF_KINDS = Object.freeze(['live-provider', 'contract', 'doc-parse', 'none']);
 export const LIVE_PROOF_SCHEMA = 'agentic-os-live-provider-proof/v1';
 export const CONTRACT_PROOF_SCHEMA = 'agentic-os-contract-proof/v1';
@@ -32,7 +34,7 @@ const PROOF_STRENGTH = Object.freeze({ none: 0, 'doc-parse': 1, contract: 2, 'li
 export default async function* readinessTestReporter(events) {
   const proofPath = process.env.AGENTIC_OS_PROOF_PATH;
   const sentinel = process.env.AGENTIC_OS_PROOF_SENTINEL;
-  const result = { pass: 0, fail: 0, skipped: 0, todo: 0, bindings: 0, proof: null };
+  const result = { pass: 0, fail: 0, skipped: 0, todo: 0, bindings: 0, proof: null, failures: [] };
   const bindingPrefix = `${sentinel}binding:`;
   let pending = '';
   let invalidBinding = false;
@@ -58,7 +60,13 @@ export default async function* readinessTestReporter(events) {
     }
     const name = event.data?.name;
     const wrapper = typeof name === 'string' && (name === proofPath || resolve(name) === proofPath);
-    if (event.type === 'test:fail') result.fail += 1;
+    if (event.type === 'test:fail') {
+      result.fail += 1;
+      if (result.failures.length < FAILURE_LIMIT) result.failures.push({
+        name: diagnosticText(name, 256),
+        type: diagnosticText(event.data?.details?.error?.failureType, 64),
+      });
+    }
     if (event.type === 'test:pass' && !wrapper && event.data?.skip) result.skipped += 1;
     if (event.type === 'test:pass' && !wrapper && event.data?.todo) result.todo += 1;
     if (event.type === 'test:pass' && !wrapper && !event.data?.skip && !event.data?.todo) result.pass += 1;
@@ -188,7 +196,8 @@ function sourceCompatible(root, sourceRevision, evidenceAt, options) {
   return sourceRevision === head && sourceClean(root, evidenceAt, options);
 }
 
-export function executableTest(path, claimDigest) {
+export function executableTest(path, claimDigest, onFailure = () => {}) {
+  const reject = (reason, failures = []) => { onFailure({ reason, failures }); return false; };
   try {
     path = realpathSync(path);
     const environment = { ...process.env };
@@ -202,7 +211,8 @@ export function executableTest(path, claimDigest) {
       `if (bytes.length > ${PROOF_BINDING_MAX_BYTES}) throw new Error('Oversized proof binding');`,
       `process.stdout.write(${JSON.stringify(`${sentinel}binding:`)} + bytes.toString('base64') + '\\n');`,
     ].join('\n');
-    const testOutput = execFileSync(process.execPath, [
+    let executionError = null, testOutput;
+    try { testOutput = execFileSync(process.execPath, [
       '--test',
       `--import=data:text/javascript,${encodeURIComponent(bindingScript)}`,
       `--test-reporter=${TEST_REPORTER_PATH}`,
@@ -217,12 +227,20 @@ export function executableTest(path, claimDigest) {
         AGENTIC_OS_PROOF_PATH: path,
         AGENTIC_OS_PROOF_SENTINEL: sentinel,
       },
-    });
+    }); } catch (error) {
+      executionError = error;
+      testOutput = typeof error.stdout === 'string' ? error.stdout : '';
+    }
+    if (executionError?.code === 'ETIMEDOUT') return reject('deadline-exceeded');
+    if (executionError?.code === 'ENOBUFS') return reject('output-limit-exceeded');
     const encoded = (output) => [...output.matchAll(new RegExp(`${sentinel}([A-Za-z0-9+/=]+)`, 'g'))]
       .at(-1)?.[1];
-    const result = JSON.parse(Buffer.from(encoded(testOutput) ?? '', 'base64').toString('utf8'));
+    let result;
+    try { result = JSON.parse(Buffer.from(encoded(testOutput) ?? '', 'base64').toString('utf8')); }
+    catch { return reject(executionError ? 'runner-failed' : 'missing-runner-summary'); }
+    if (executionError || result.fail > 0) return reject(result.fail > 0 ? 'assertion-failed' : 'runner-failed', result.failures);
     const proof = result.proof;
-    return result.bindings === 1
+    const accepted = result.bindings === 1
       && result.pass > 0
       && result.fail === 0
       && result.skipped === 0
@@ -230,8 +248,11 @@ export function executableTest(path, claimDigest) {
       && proof?.schema === CONTRACT_PROOF_SCHEMA
       && Array.isArray(proof.claims)
       && proof.claims.includes(claimDigest);
+    if (accepted) return true;
+    return reject(result.skipped > 0 || result.todo > 0 ? 'incomplete-assertions'
+      : result.pass === 0 ? 'no-passing-assertions' : 'proof-binding-mismatch');
   } catch {
-    return false;
+    return reject('proof-execution-unavailable');
   }
 }
 
@@ -239,7 +260,7 @@ function validProofArtifact(kind, path, root, document, options) {
   const at = relative(root, path);
   if (kind === 'contract' || kind === 'doc-parse') {
     return /^__tests__[\\/][^.\\/][^\\/]*\.test\.mjs$/.test(at)
-      && executableTest(path, sha256(document.text));
+      && executableTest(path, sha256(document.text), options.onProofFailure);
   }
   if (kind !== 'live-provider') return false;
   try {
@@ -300,8 +321,11 @@ export function inspectDocument(path, root = ROOT, options = {}) {
   if (!evidencePath) {
     return [{ path: at, kind: 'missing-proof', claims, measured: marker.evidence }];
   }
-  if (!validProofArtifact(marker.kind, evidencePath, root, { path, text }, options)) {
-    return [{ path: at, kind: 'invalid-proof-artifact', claims, measured: marker.evidence }];
+  let diagnostic;
+  if (!validProofArtifact(marker.kind, evidencePath, root, { path, text },
+    { ...options, onProofFailure: detail => { diagnostic = detail; } })) {
+    return [{ path: at, kind: 'invalid-proof-artifact', claims, measured: marker.evidence,
+      ...(diagnostic ? { diagnostic } : {}) }];
   }
   return [];
 }
@@ -319,6 +343,12 @@ function report(root = ROOT) {
   process.stdout.write('readiness proof violations:\n');
   for (const item of found) {
     process.stdout.write(`  ${item.kind}: ${item.path}:${item.claims.join(',')} (${item.measured})\n`);
+    if (item.diagnostic) {
+      process.stdout.write(`    ${item.diagnostic.reason}\n`);
+      for (const failure of item.diagnostic.failures) {
+        process.stdout.write(`    ${JSON.stringify(failure.name)} (${failure.type || 'test failure'})\n`);
+      }
+    }
   }
   return 1;
 }

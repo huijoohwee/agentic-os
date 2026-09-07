@@ -48,3 +48,13 @@ Validation: run `npm run check` from the upstream source lane. Always-loaded
 documentation delta is zero; core-module and dependency deltas are zero. The
 three assets add about 210 KiB to the package and are loaded only when requested.
 No runtime readiness or production deployment follows from these source checks.
+
+## Validation diagnostics
+
+Readiness proof failures retain the invalid-artifact verdict and identify the failed
+native tests without replaying them. Diagnostics include at most eight test names
+(256 characters each) and failure types (64 characters each), with control characters
+removed. Raw assertion values, stack traces and child stderr are not published.
+The existing 30-second execution deadline and 256 KiB child-output limit remain.
+A diagnostic distinguishes runner, deadline, output-limit, assertion and proof-binding
+failures; it grants no readiness or release authority.
