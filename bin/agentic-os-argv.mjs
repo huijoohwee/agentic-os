@@ -42,7 +42,9 @@ export function validateCommandArguments(command, argv) {
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });
-    case 'observe': return exact(argv, { flags: ['provider', 'deep'] });
+    case 'observe': return argv.includes('--checks')
+      ? exact(argv, { flags: ['checks'], options: ['input'], requiredOptions: ['input'] })
+      : exact(argv, { flags: ['provider', 'deep'] });
     case 'flight': {
       const error = exact(argv, { min: 1, options: ['requirements', 'checkpoint', 'ref'] });
       if (error) return error;
@@ -103,6 +105,7 @@ export function cmdHelp() {
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  agentic-os flight pre|in|post  inspect prerequisites, drift, and completion',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
+      '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
       '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
       '  npm run queue:show        inspect the required remote configuration',
       '  npm run queue:apply -- --yes  fail closed; provider policy is repository-owned',

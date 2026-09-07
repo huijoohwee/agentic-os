@@ -295,6 +295,10 @@ export function runObserve(root, argv, profile) {
     err(`blocked-repository-profile-missing: add ${REPOSITORY_PROFILE_FILENAME}`);
     return 1;
   }
+  if (flag(argv, 'checks')) {
+    return import('./agentic-os-checks.mjs').then(module => module.runChecksProcess(option(argv, 'input')))
+      .then(result => { process.stdout.write(result.stdout); process.stderr.write(result.stderr); return result.exitCode; });
+  }
   const providerRequested = flag(argv, 'provider');
   const selectedProvider = profile.adapters.provider;
   if (providerRequested && selectedProvider === null) {

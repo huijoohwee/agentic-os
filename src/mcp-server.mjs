@@ -27,6 +27,12 @@ const EMPTY_INPUT = {
   properties: {},
   additionalProperties: false,
 };
+const CHECKS_INPUT = {
+  type: 'object',
+  properties: { input: { type: 'string', minLength: 1, maxLength: 4096,
+    description: 'Local check-discovery input JSON; paths inside it resolve from its directory.' } },
+  required: ['input'], additionalProperties: false,
+};
 const LANE_INPUT = {
   type: 'object',
   properties: {
@@ -93,6 +99,14 @@ export const TOOLS = deepFreeze([
       idempotentHint: true,
       openWorldHint: true,
     },
+  },
+  {
+    name: 'checks',
+    title: 'Discover repository checks',
+    description: 'Read owner check references and unsigned result bindings without running checks or fetching.',
+    inputSchema: CHECKS_INPUT,
+    outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'reap',
@@ -187,6 +201,12 @@ export function toolArguments(name, args) {
     validateEmptyArguments(args);
     return [name];
   }
+  if (name === 'checks') {
+    if (!plainObject(args) || !onlyKeys(args, ['input']) || typeof args.input !== 'string'
+      || !args.input.trim() || Buffer.byteLength(args.input) > 4096 || /[\u0000-\u001f\u007f]/u.test(args.input))
+      invalidParams('checks requires one bounded local input path');
+    return ['observe', '--checks', `--input=${args.input}`];
+  }
   if (name === 'reap') {
     const value = args === undefined ? {} : args;
     if (!plainObject(value) || !onlyKeys(value, ['ref'])
@@ -235,7 +255,7 @@ function discoverResult() {
     supportedVersions: [...SUPPORTED_VERSIONS],
     capabilities: { tools: {} },
     _meta: SERVER_META,
-    instructions: 'Inspect with doctor, status, or reap; use lane only when a new worktree is intended.',
+    instructions: 'Inspect with doctor, status, checks, or reap; use lane only when a new worktree is intended.',
     ttlMs: 300_000,
     cacheScope: 'public',
   };

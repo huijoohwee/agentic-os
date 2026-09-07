@@ -591,7 +591,7 @@ function main() {
   }
 }
 try {
-  process.exit(main());
+  process.exit(await main());
 } catch (error) {
   const retained = report.formatRetainedOperation(error); if (retained) err(retained);
   err(`agentic-os: ${error.reason ? `${error.reason}: ` : ''}${error.message}`);

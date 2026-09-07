@@ -25,7 +25,7 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:c9cb6ac9fbf4e7e0b475ebb3d454051abb897c1b33c0b7abbc63216c78eaac96'],
+  claims: ['sha256:1466972ee8f62e30ce246d27539e7091df7d031804e93adfa4f4c49ce7dd32dc'],
 });
 
 const CLIENT_META = Object.freeze({
@@ -54,11 +54,13 @@ function legacyInitialize(id = 1) {
 const okRunner = async () => ({ exitCode: 0, stdout: 'ok\n', stderr: '' });
 
 test('the packaged fixed tool surface is deterministic and deeply frozen', () => {
-  assert.deepEqual(TOOLS.map((tool) => tool.name), ['doctor', 'status', 'reap', 'lane']);
+  assert.deepEqual(TOOLS.map((tool) => tool.name), ['doctor', 'status', 'checks', 'reap', 'lane']);
   assert.equal(Object.isFrozen(TOOLS), true);
   assert.equal(Object.isFrozen(TOOLS[0].inputSchema), true);
   assert.equal(TOOLS.find((tool) => tool.name === 'reap').annotations.destructiveHint, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'lane').annotations.idempotentHint, false);
+  assert.equal(TOOLS.find((tool) => tool.name === 'checks').annotations.openWorldHint, false);
+  assert.equal(TOOLS.find((tool) => tool.name === 'checks').annotations.readOnlyHint, true);
   assert.throws(() => { TOOLS[0].name = 'changed'; }, TypeError);
 
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
@@ -122,6 +124,7 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
   const cases = [
     ['doctor', {}, ['doctor']],
     ['status', {}, ['status']],
+    ['checks', { input: './owner checks.json' }, ['observe', '--checks', '--input=./owner checks.json']],
     ['reap', {}, ['reap']],
     ['reap', { ref: 'agent/device/pricing-table' },
       ['reap', '--ref=agent/device/pricing-table']],
@@ -154,6 +157,8 @@ test('tool argument validation rejects escalation and shell-shaped scopes', asyn
     ['reap', { apply: true }],
     ['reap', { ref: '../escape' }],
     ['status', null],
+    ...[{}, { input: '' }, { input: 'x\n' }, { input: 'x'.repeat(4097) }, { input: 'x', provider: true }]
+      .map((args) => ['checks', args]),
     ['lane', { scope: 'ok', device: 'other' }],
     ['lane', { scope: 'x;rm-rf' }],
     ['lane', { scope: '../escape' }],
