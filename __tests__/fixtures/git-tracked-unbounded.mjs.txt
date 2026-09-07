@@ -1,6 +1,5 @@
 /** Sanitized Git execution plus exact tracked-byte observation. */
 import { execFileSync } from 'node:child_process';
-import { boundedGitRead, REMOTE_READ_TIMEOUT_MS } from '../bin/agentic-os-git-read.mjs';
 import { createHash } from 'node:crypto';
 import {
   lstatSync, readdirSync, readlinkSync,
@@ -69,17 +68,14 @@ function observationEnvironment(extra = null) {
 /** Execute a Git mutation with inherited repository redirection removed. */
 export function git(args, { cwd = process.cwd(), allowFail = false, input, env,
   raw = false, binary = false, maxBuffer = 64 * 1024 * 1024, replaceEnv = false,
-  preserveGlobalConfig = false, remoteReadTimeoutMs = REMOTE_READ_TIMEOUT_MS } = {}) {
+  preserveGlobalConfig = false } = {}) {
   try {
-    const options = {
+    const output = execFileSync('git', args, {
       cwd, input, env: replaceEnv ? env : mutationEnvironment(env, { preserveGlobalConfig }),
       encoding: binary ? undefined : 'utf8',
       stdio: input === undefined ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
       maxBuffer,
-    };
-    const output = args[0] === 'ls-remote'
-      ? boundedGitRead(args, options, remoteReadTimeoutMs)
-      : execFileSync('git', args, options);
+    });
     return binary || raw ? output : output.trim();
   } catch (error) {
     if (allowFail) return null;

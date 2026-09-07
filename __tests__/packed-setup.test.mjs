@@ -20,7 +20,7 @@ function priorRuntimeFiles(selected, quarantineLegacy = true) {
     ['bin/agentic-os-filter-compare.mjs', ['filter-compare-single.mjs.txt', 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7']],
     ...(quarantineLegacy ? [['src/quarantine.mjs', ['quarantine-v1.mjs.txt', 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d']]] : []),
   ]);
-  return selected.files.map(file => {
+  return selected.files.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file => {
     const fixture = fixtures.get(file.path); if (!fixture) return file;
     const bytes = readFileSync(new URL(`./fixtures/${fixture[0]}`, import.meta.url));
     assert.equal(digest(bytes), fixture[1]); return { ...file, bytes, sha256: fixture[1] };

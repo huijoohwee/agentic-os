@@ -17,6 +17,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-476a09269ed108519c62404759f97b563745a32b1d200f73185af063eab3aeeb',
   'v1-be7454052f5609e1a80f6a55574d934b3fbf2379aff59d9b1a216da044dd3b68',
   'v1-2be4a5d995408a4367167e0ee2d978726d02a64b13d009d3144e0acc4ce8c258',
   'v1-0bae8f8aaeb216ae461c8015cec00b17c508ae3a32c9ff7d55b4f574b25acec3',
@@ -35,6 +36,8 @@ const LEGACY_HOOK_SETS = Object.freeze([
   }),
 ]);
 const FILES = Object.freeze([
+  Object.freeze({ path: 'bin/agentic-os-git-read.mjs', mode: 0o644,
+    sha256: '5cf1e74a091b18ad5cf3b65a7ffbe5a686422b078585435e2bf0b09d4350e5c2' }),
   Object.freeze({ path: '.githooks/pre-commit', mode: 0o755,
     sha256: '5765f7d3d259e2b11f443c4b68a42d1184e2034e2458fb3451c73f7281337542' }),
   Object.freeze({ path: '.githooks/pre-push', mode: 0o755,
@@ -56,7 +59,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
-    sha256: '2dd090bc3978aa57025cbf028c6c7e8769d2e48d06f6253a30fab6e6aa6dc133' }),
+    sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,
     sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' }),
 ]);
@@ -188,9 +191,9 @@ function layoutOk(runtime, rootIdentity) {
   try { assertPrivateDirectoryIdentity(rootIdentity, 'managed hook runtime root'); } catch { return false; }
   const exact = privateDirectoryHas(runtime.path, ['.githooks', 'bin', MANIFEST_NAME, 'src'])
     && privateDirectoryHas(join(runtime.path, '.githooks'), ['pre-commit', 'pre-push'])
-    && privateDirectoryHas(join(runtime.path, 'bin'), FILES
+    && privateDirectoryHas(join(runtime.path, 'bin'), runtime.files
       .filter((file) => file.path.startsWith('bin/')).map((file) => basename(file.path)))
-    && privateDirectoryHas(join(runtime.path, 'src'), FILES
+    && privateDirectoryHas(join(runtime.path, 'src'), runtime.files
       .filter((file) => file.path.startsWith('src/')).map((file) => basename(file.path)));
   try { assertPrivateDirectoryIdentity(rootIdentity, 'managed hook runtime root'); } catch { return false; }
   return exact;
@@ -278,10 +281,12 @@ function parseManifest(runtimePath) {
     || manifest.schema !== RUNTIME_SCHEMA
     || typeof manifest.runtimeId !== 'string'
     || !/^v1-[0-9a-f]{64}$/u.test(manifest.runtimeId)
-    || !Array.isArray(manifest.files) || manifest.files.length !== FILES.length) {
+    || !Array.isArray(manifest.files) || manifest.files.length > FILES.length) {
     throw blocked('managed runtime manifest contract is invalid');
   }
-  const expected = new Map(FILES.map((file) => [file.path, file.mode]));
+  const layout = manifest.files.length === FILES.length - 1
+    ? FILES.filter(file => file.path !== 'bin/agentic-os-git-read.mjs') : FILES;
+  const expected = new Map(layout.map((file) => [file.path, file.mode]));
   const files = manifest.files.map((file) => {
     const fileKeys = file && typeof file === 'object' && !Array.isArray(file)
       ? Object.keys(file).sort() : [];
@@ -292,7 +297,7 @@ function parseManifest(runtimePath) {
     }
     return { path: file.path, mode: file.mode, sha256: file.sha256 };
   });
-  if (new Set(files.map((file) => file.path)).size !== FILES.length)
+  if (new Set(files.map((file) => file.path)).size !== expected.size)
     throw blocked('managed runtime file manifest contains duplicates');
   const calculated = manifestFor(files);
   if (calculated.runtimeId !== manifest.runtimeId || basename(runtimePath) !== manifest.runtimeId
