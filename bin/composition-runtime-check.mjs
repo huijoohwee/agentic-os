@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { compositionOriginUrl, observeCompositionGit,
-  readCompositionHeadFile } from './composition-git.mjs';
+  createCompositionHeadReader } from './composition-git.mjs';
 import { decodeNulFields, gitBlobOid } from '../src/git-tracked.mjs';
 import { COMPOSITION_DEPLOYMENT_TOPOLOGY_SCHEMA, compositionDeploymentTopologyRuntimeFindings, executeCompositionDeploymentTopology, inspectCompositionDeploymentTopology } from './composition-deployment-topology.mjs';
 import { COMPOSITION_ADMISSION_PROBE_SCHEMA, isValidCompositionAdmissionInterfaceReport, runCompositionAdmissionProbe } from './composition-admission-probe.mjs';
@@ -292,12 +292,16 @@ function requirement(file, literals, options = {}) {
   return Object.freeze({ file, literals: Object.freeze(literals), ...options });
 }
 function inspectComponentChecks(root, component, revision) {
+  let read;
+  try { read = createCompositionHeadReader(root, revision, [...CONTRACT[component].map(value => value.file),
+    ...(component === 'agentic-os' ? [] : ['package-lock.json'])]); }
+  catch (error) { read = () => { throw error; }; }
   const checks = CONTRACT[component]
-    .map(requirementValue => inspectRequirement(root, component, revision, requirementValue));
+    .map(requirementValue => inspectRequirement(read, component, requirementValue));
   if (component !== 'agentic-os') {
     const pinRequirement = CONTRACT[component].find(value => value.agenticOsPinPrefix);
     const packageCheck = checks.find(check => check.file === 'package.json');
-    checks.push(inspectAgenticOsLock(root, component, revision, packageCheck?.agenticOsPin,
+    checks.push(inspectAgenticOsLock(read, component, packageCheck?.agenticOsPin,
       pinRequirement.agenticOsPinPrefix, pinRequirement.agenticOsResolvedPrefix));
     checks.push(...COPIED_WORKFLOW_PATHS.map(file => inspectForbiddenPath(
       root, component, revision, file,
@@ -305,13 +309,11 @@ function inspectComponentChecks(root, component, revision) {
   }
   return checks;
 }
-function inspectRequirement(root, component, revision,
+function inspectRequirement(read, component,
   { file, literals, agenticOsPinPrefix = null }) {
   let bytes, source;
   try {
-    ({ bytes } = readCompositionHeadFile(
-      root, revision, file, MAX_CONTRACT_BYTES, 'composition contract',
-    ));
+    ({ bytes } = read(file, MAX_CONTRACT_BYTES, 'composition contract'));
     source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch (error) {
     const code = error?.code === 'composition_head_file_untracked' ? 'contract_file_untracked'
@@ -350,11 +352,10 @@ function exactAgenticOsPinValue(manifest, prefix) {
   const revision = pins[0].slice(prefix.length);
   return /^[0-9a-f]{40}$/u.test(revision) ? revision : null;
 }
-function inspectAgenticOsLock(root, component, revision, expectedPin, prefix, resolvedPrefix) {
+function inspectAgenticOsLock(read, component, expectedPin, prefix, resolvedPrefix) {
   const file = 'package-lock.json'; let bytes, source;
-  try { ({ bytes } = readCompositionHeadFile(
-    root, revision, file, 1_048_576, 'composition package lock',
-  )); source = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  try { ({ bytes } = read(file, 1_048_576, 'composition package lock'));
+    source = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
   catch (error) { const code = error?.code === 'composition_head_file_untracked'
     ? 'agentic_os_lockfile_untracked' : error?.code === 'composition_head_file_bytes_unbound'
       ? 'agentic_os_lockfile_bytes_unbound' : 'agentic_os_lockfile_unreadable_or_oversized';

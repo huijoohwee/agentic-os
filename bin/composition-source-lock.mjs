@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { compositionRevision, readCompositionHeadFile } from './composition-git.mjs';
+import { compositionRevision, createCompositionHeadReader, readCompositionHeadFile } from './composition-git.mjs';
 
 export const COMPOSITION_SOURCE_LOCK_SCHEMA = 'agentic-os/composition-source-lock/v1';
 const OWNER_IDENTITIES = Object.freeze({
@@ -81,18 +81,19 @@ export function inspectCompositionSourceLock(roots, components) {
       return failure('composition_source_lock_identity_mismatch');
     }
   }
-  const observedArtifacts = {};
+  let topology;
   try {
+    const readers = new Map(OWNER_KEYS.map(owner => [owner, createCompositionHeadReader(
+      roots?.[owner], components?.[owner]?.revision,
+      ARTIFACT_KEYS.filter(key => ARTIFACTS[key].owner === owner).map(key => ARTIFACTS[key].path),
+    )]));
     for (const key of ARTIFACT_KEYS) {
       const artifact = ARTIFACTS[key];
-      const observed = readCompositionHeadFile(roots?.[artifact.owner],
-        components?.[artifact.owner]?.revision, artifact.path, 500_000,
-        'composition source lock artifact');
+      const observed = readers.get(artifact.owner)(artifact.path, 500_000, 'composition source lock artifact');
       if (observed.oid !== value.artifacts[key].blob) throw new Error('blob mismatch');
-      observedArtifacts[key] = observed;
+      if (key === 'topologyManifest') topology = observed;
     }
   } catch { return failure('composition_source_lock_artifact_mismatch'); }
-  const topology = observedArtifacts.topologyManifest;
   if (topology.oid !== value.topology.manifestBlob
     || sha256(topology.bytes) !== value.topology.manifestSha256) {
     return failure('composition_source_lock_topology_digest_mismatch');

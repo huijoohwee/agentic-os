@@ -15,6 +15,8 @@ const CONFIG = Object.freeze([
 
 const TRUSTED = resolveTrustedGit();
 export const TRUSTED_COMPOSITION_GIT = TRUSTED.path;
+export const COMPOSITION_READ_LIMITS = Object.freeze({ paths: 64, pathBytes: 4096,
+  totalPathBytes: 32_768, metadataBytes: 65_536 });
 
 export function observeCompositionGit(args, {
   cwd = process.cwd(), allowFail = false, binary = false, raw = false,
@@ -42,38 +44,71 @@ export function observeCompositionGit(args, {
   }
 }
 
-/** Read one regular candidate file and prove its bytes are the exact HEAD blob. */
-export function readCompositionHeadFile(rootValue, revision, relative, maximum, label) {
-  if (typeof rootValue !== 'string' || rootValue === '' || typeof relative !== 'string'
-    || relative === '' || path.isAbsolute(relative) || path.posix.normalize(relative) !== relative
-    || relative.startsWith('../') || relative.includes('\\')
-    || !/^[0-9a-f]{40}$/u.test(revision ?? '')) {
+function sourcePath(relative) {
+  if (typeof relative !== 'string' || relative === '' || relative.length > COMPOSITION_READ_LIMITS.pathBytes
+    || Buffer.byteLength(relative) > COMPOSITION_READ_LIMITS.pathBytes || relative.includes('\0')
+    || relative === '.' || relative === '..' || path.isAbsolute(relative)
+    || path.posix.normalize(relative) !== relative || relative.startsWith('../') || relative.includes('\\'))
     throw coded('composition_head_file_path_invalid');
+  return relative;
+}
+/** Private, invocation-local immutable metadata; every read still observes and hashes current bytes. */
+export function createCompositionHeadReader(rootValue, revision, paths) {
+  if (typeof rootValue !== 'string' || rootValue === '' || !/^[0-9a-f]{40}$/u.test(revision ?? ''))
+    throw coded('composition_head_file_path_invalid');
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > COMPOSITION_READ_LIMITS.paths)
+    throw coded('composition_head_file_inventory_invalid');
+  const requested = new Set(); let total = 0;
+  for (const relative of paths) {
+    sourcePath(relative); total += Buffer.byteLength(relative);
+    if (requested.has(relative) || total > COMPOSITION_READ_LIMITS.totalPathBytes)
+      throw coded('composition_head_file_inventory_invalid');
+    requested.add(relative);
   }
-  let root, target;
-  try {
-    root = realpathSync(rootValue); target = path.resolve(root, relative);
-    if (!inside(root, target) || realpathSync(target) !== target || !lstatSync(target).isFile()) {
-      throw new Error();
-    }
-  } catch { throw coded('composition_head_file_unreadable'); }
-  const fields = decodeNulFields(observeCompositionGit([
-    '--literal-pathspecs', 'ls-tree', '-z', revision, '--', relative,
-  ], { cwd: root, binary: true, allowFail: true }));
-  if (!fields || fields.length !== 1) throw coded('composition_head_file_untracked');
-  const tab = fields[0].indexOf('\t');
-  const match = tab < 0 ? null
-    : fields[0].slice(0, tab).match(/^100(?:644|755) blob ([0-9a-f]{40}(?:[0-9a-f]{24})?)$/u);
-  if (!match || fields[0].slice(tab + 1) !== relative) {
-    throw coded('composition_head_file_untracked');
-  }
-  let bytes;
-  try { bytes = readBoundedFile(target, maximum, label, { expectedPath: target }); }
+  let root, identity;
+  try { root = realpathSync(rootValue); identity = lstatSync(root, { bigint: true });
+    if (!identity.isDirectory()) throw new Error(); }
   catch { throw coded('composition_head_file_unreadable'); }
-  if (gitBlobOid(bytes, match[1]) !== match[1]) {
-    throw coded('composition_head_file_bytes_unbound');
+  const currentRoot = () => {
+    try {
+      const now = lstatSync(root, { bigint: true });
+      if (realpathSync(rootValue) !== root || !now.isDirectory()
+        || now.dev !== identity.dev || now.ino !== identity.ino) throw new Error();
+    } catch { throw coded('composition_head_file_unreadable'); }
+  };
+  const fields = decodeNulFields(observeCompositionGit([
+    '--literal-pathspecs', 'ls-tree', '-z', revision, '--', ...requested,
+  ], { cwd: root, binary: true, allowFail: true, maxBuffer: COMPOSITION_READ_LIMITS.metadataBytes }));
+  currentRoot();
+  if (!fields || fields.length > requested.size) throw coded('composition_head_file_untracked');
+  const entries = new Map();
+  for (const field of fields) {
+    const tab = field.indexOf('\t'), relative = field.slice(tab + 1);
+    const match = tab < 0 ? null : field.slice(0, tab).match(/^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}(?:[0-9a-f]{24})?)$/u);
+    if (!match || !requested.has(relative) || entries.has(relative)) throw coded('composition_head_file_untracked');
+    entries.set(relative, /^100(?:644|755)$/u.test(match[1]) && match[2] === 'blob' ? match[3] : null);
   }
-  return Object.freeze({ absolute: target, bytes, oid: match[1] });
+  return Object.freeze((relative, maximum, label) => {
+    sourcePath(relative);
+    if (!requested.has(relative)) throw coded('composition_head_file_untracked');
+    currentRoot();
+    const target = path.resolve(root, relative);
+    try {
+      if (!inside(root, target) || realpathSync(target) !== target || !lstatSync(target).isFile()) throw new Error();
+    } catch { throw coded('composition_head_file_unreadable'); }
+    const oid = entries.get(relative);
+    if (!oid) throw coded('composition_head_file_untracked');
+    let bytes;
+    try { bytes = readBoundedFile(target, maximum, label, { expectedPath: target }); }
+    catch { throw coded('composition_head_file_unreadable'); }
+    currentRoot();
+    if (gitBlobOid(bytes, oid) !== oid) throw coded('composition_head_file_bytes_unbound');
+    return Object.freeze({ absolute: target, bytes, oid });
+  });
+}
+/** Compatibility entry point for one exact source read. */
+export function readCompositionHeadFile(rootValue, revision, relative, maximum, label) {
+  return createCompositionHeadReader(rootValue, revision, [relative])(relative, maximum, label);
 }
 
 export function compositionRevision(root) {
