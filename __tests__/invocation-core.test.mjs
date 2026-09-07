@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   PREFIX_KINDS,
@@ -10,6 +12,10 @@ import {
   canonicalCatalogInput,
   serializeInvocationCatalogForDigest,
   serializeInvocationRoutingForDigest,
+  DICTIONARY_DESCRIPTORS,
+  DICTIONARY_LIMITS,
+  collectCatalogEntries,
+  validateDictionaryCatalogContract,
 } from '../src/invocation.mjs';
 
 function freeze(value) {
@@ -19,6 +25,99 @@ function freeze(value) {
   }
   return value;
 }
+
+const sha256 = (input) => createHash('sha256').update(input, 'utf8').digest('hex');
+const dictionaryDocuments = () => new Map(DICTIONARY_DESCRIPTORS.map(({ docsPath }) => [
+  docsPath, readFileSync(new URL(`../catalog/dictionaries/${docsPath}`, import.meta.url), 'utf8'),
+]));
+
+test('packaged dictionaries resolve offline and their declared count and digest are enforced', () => {
+  const documents = dictionaryDocuments();
+  for (const descriptor of DICTIONARY_DESCRIPTORS) {
+    assert.equal(import.meta.resolve(`agentic-os/dictionaries/${descriptor.docsPath}`),
+      new URL(`../catalog/dictionaries/${descriptor.docsPath}`, import.meta.url).href);
+    assert.equal(descriptor.sourcePath, `agentic-os/catalog/dictionaries/${descriptor.docsPath}`);
+    assert.ok(Object.isFrozen(descriptor));
+  }
+  assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
+  const { entries, failures } = collectCatalogEntries(documents);
+  assert.deepEqual(failures, []);
+  assert.equal(entries.length, 406);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [132, 141, 133]);
+  assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
+  assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
+  assert.ok(entries.some(e => e.token === '#vcc'));
+  assert.ok(entries.some(e => e.token === '@local-harness'));
+  const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+    cwd: new URL('../', import.meta.url), timeout: 15_000, encoding: 'utf8', maxBuffer: 256 * 1024,
+  }));
+  for (const { docsPath } of DICTIONARY_DESCRIPTORS) {
+    assert.ok(packed[0].files.some(f => f.path === `catalog/dictionaries/${docsPath}`));
+  }
+});
+
+test('dictionary drift, malformed declarations and missing assets fail before hashing', () => {
+  const original = dictionaryDocuments();
+  const name = DICTIONARY_DESCRIPTORS[0].docsPath;
+  for (const mutate of [
+    docs => docs.delete(name),
+    docs => docs.set(name, docs.get(name).replace('prefix: "/"', 'prefix: "@"')),
+    docs => docs.set(name, docs.get(name).replace('dictionary_entries:', 'dictionary_entries:\n  - "/unknown"')),
+    docs => docs.set(name, docs.get(name).replace('catalog_entry_count: 406', 'catalog_entry_count: 405')),
+  ]) {
+    const docs = new Map(original);
+    mutate(docs);
+    let calls = 0;
+    const failures = validateDictionaryCatalogContract(docs, input => { calls++; return sha256(input); });
+    assert.ok(failures.length > 0);
+    // Count drift is checked alongside the digest; structural failures stop hashing entirely.
+    assert.ok(calls <= 1);
+    if (!failures.some(f => f.includes('catalog_entry_count'))) assert.equal(calls, 0);
+  }
+  const docs = new Map(original);
+  docs.set(name, docs.get(name).replace(/catalog_digest: "[a-f0-9]+"/, `catalog_digest: "${'0'.repeat(64)}"`));
+  assert.ok(validateDictionaryCatalogContract(docs, sha256).some(f => f.includes('recomputed')));
+  assert.throws(() => validateDictionaryCatalogContract(original), /digestForInput/);
+  assert.throws(() => validateDictionaryCatalogContract(original, () => Promise.resolve('0'.repeat(64))), /synchronously/);
+});
+
+test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale result cache', () => {
+  assert.ok(Object.isFrozen(DICTIONARY_LIMITS));
+  const original = dictionaryDocuments();
+  const name = DICTIONARY_DESCRIPTORS[0].docsPath;
+  const available = DICTIONARY_LIMITS.bytesPerFile - Buffer.byteLength(original.get(name));
+  const boundary = new Map(original);
+  boundary.set(name, original.get(name) + 'x'.repeat(available));
+  assert.deepEqual(collectCatalogEntries(boundary).failures, []);
+  for (const suffix of ['x'.repeat(available + 1), '😀'.repeat(Math.floor(available / 4) + 1), '\ud800'.repeat(Math.floor(available / 3) + 1), '\n'.repeat(801)]) {
+    const docs = new Map(original);
+    docs.set(name, docs.get(name) + suffix);
+    assert.ok(collectCatalogEntries(docs).failures.some(f => f.includes('budget')));
+  }
+  const before = collectCatalogEntries(original);
+  original.delete(name);
+  assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
+  assert.equal(before.entries.length, 406);
+  assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
+});
+
+test('dictionary declarations reconcile duplicate, unlisted, missing and malformed rows', () => {
+  const base = dictionaryDocuments();
+  const name = DICTIONARY_DESCRIPTORS[0].docsPath;
+  const row = base.get(name).split('\n').find(line => line.startsWith('| `/runtime-ready.check`'));
+  for (const change of [
+    text => text.replace('dictionary_entries:', 'dictionary_entries:\n  - "/runtime-ready.check"'),
+    text => text.replace(row, `${row}\n${row}`),
+    text => text.replace(row, `${row}\n| \`/not-listed\` | Unlisted |`),
+    text => text.replace(row, ''),
+    text => text.replace('dictionary_entries:', 'dictionary_entries:\n  - "/INVALID"'),
+    text => text.replace('prefix_role:', 'missing_prefix_role:'),
+  ]) {
+    const docs = new Map(base);
+    docs.set(name, change(docs.get(name)));
+    assert.ok(validateDictionaryCatalogContract(docs, () => { throw Error('must not hash invalid structure'); }).length);
+  }
+});
 
 test('exact grammar returns declarations and opaque arguments without product dispatch policy', () => {
   assert.deepEqual(PREFIX_KINDS, { '/': 'command', '#': 'semantic', '@': 'binding' });

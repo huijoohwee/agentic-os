@@ -36,6 +36,27 @@ function executableTest(claim) {
   ].join('\n');
 }
 
+test('invocation literals are metadata while adjacent and quoted readiness assertions remain claims', () => {
+  assert.deepEqual(claimLines([
+    '  - "/runtime-ready.check"',
+    "  - '#runtime-ready'",
+    '| `/runtime-ready.check` | Requires `#runtime-ready` and `@runtime-proof`. |',
+    '`/runtime-ready.check #runtime-ready @local-harness`',
+    '``#runtime-ready``',
+  ].join('\n')), []);
+  for (const source of [
+    '`/runtime-ready.check` is runtime-ready.',
+    '`runtime-ready`',
+    '`#runtime-ready is true`',
+    '# runtime-ready',
+    'status: "runtime-ready"',
+    '- "runtime-ready"',
+    '`/runtime-ready:invalid`',
+    'Runtime-ready using `#runtime-ready`.',
+    '`#runtime-ready` and production-ready.',
+  ]) assert.deepEqual(claimLines(source), [1], source);
+});
+
 test('a readiness claim is accepted only with one existing named proof', (t) => {
   const claim = [
     '<!-- readiness-proof kind=contract evidence=__tests__/proof.test.mjs -->',
