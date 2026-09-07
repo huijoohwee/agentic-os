@@ -25,7 +25,10 @@
     "./compat/git": "./src/compat/git.mjs",
     "./compat/lane-id": "./src/compat/lane-id.mjs",
     "./compat/lane-records": "./src/compat/lane-records.mjs",
-    "./compat/worktree": "./src/compat/worktree.mjs"
+    "./compat/worktree": "./src/compat/worktree.mjs",
+    "./dictionaries/DICTIONARY-COMMAND.md": "./catalog/dictionaries/DICTIONARY-COMMAND.md",
+    "./dictionaries/DICTIONARY-SEMANTIC.md": "./catalog/dictionaries/DICTIONARY-SEMANTIC.md",
+    "./dictionaries/DICTIONARY-BINDING.md": "./catalog/dictionaries/DICTIONARY-BINDING.md"
   },
   "engines": {
     "node": ">=20.11"
