@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
+import readinessTestReporter, {
   claimLines,
   CONTRACT_PROOF_SCHEMA,
   LIVE_PROOF_SCHEMA,
@@ -284,4 +284,63 @@ test('proof paths cannot escape the repository or name a directory', async (t) =
 
 test('this repository has no unsupported readiness claims', () => {
   assert.deepEqual(violations(), []);
+});
+
+test('proof binding and native assertions execute once per fresh validation', (t) => {
+  const claim = '<!-- readiness-proof kind=contract evidence=__tests__/proof.test.mjs -->\nContract ready.';
+  const root = fixture(t, { 'README.md': claim, '__tests__/proof.test.mjs': [
+    "import { appendFileSync } from 'node:fs';",
+    "appendFileSync(new URL('../executions.txt', import.meta.url), 'import\\n');",
+    executableTest(claim),
+    "test('observed native assertion', () => appendFileSync(new URL('../executions.txt', import.meta.url), 'assertion\\n'));",
+  ].join('\n') });
+  assert.deepEqual(violations(root), []);
+  assert.equal(readFileSync(join(root, 'executions.txt'), 'utf8'), 'import\nassertion\n');
+  assert.deepEqual(violations(root), []);
+  assert.equal(readFileSync(join(root, 'executions.txt'), 'utf8'), 'import\nassertion\nimport\nassertion\n');
+  writeFileSync(join(root, '__tests__/proof.test.mjs'), executableTest(claim) + "\ntest('fresh failure', () => { throw new Error('changed proof'); });\n");
+  assert.equal(violations(root)[0].kind, 'invalid-proof-artifact');
+});
+
+test('proof transport handles fragmented bindings and rejects duplicate, malformed or oversized observations', async (t) => {
+  const priorPath = process.env.AGENTIC_OS_PROOF_PATH, priorSentinel = process.env.AGENTIC_OS_PROOF_SENTINEL;
+  process.env.AGENTIC_OS_PROOF_PATH = '/proof.test.mjs';
+  process.env.AGENTIC_OS_PROOF_SENTINEL = '__OWNED_PROOF__';
+  t.after(() => {
+    for (const [key, value] of [['AGENTIC_OS_PROOF_PATH', priorPath], ['AGENTIC_OS_PROOF_SENTINEL', priorSentinel]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  const proof = { schema: CONTRACT_PROOF_SCHEMA, claims: [digest('owned claim')] };
+  const line = '__OWNED_PROOF__binding:' + Buffer.from(JSON.stringify(proof)).toString('base64') + '\n';
+  const collect = async (messages, file = '/proof.test.mjs') => {
+    async function* events() {
+      for (const message of messages) yield { type: 'test:stdout', data: { file, message } };
+      yield { type: 'test:pass', data: { name: 'native assertion' } };
+    }
+    let output = '';
+    for await (const part of readinessTestReporter(events())) output += part;
+    return JSON.parse(Buffer.from(output.trim().slice('__OWNED_PROOF__'.length), 'base64').toString('utf8'));
+  };
+  const result = await collect([line.slice(0, 8), line.slice(8, 41), line.slice(41)]);
+  assert.equal(result.bindings, 1); assert.deepEqual(result.proof, proof); assert.equal(result.pass, 1);
+  assert.equal((await collect([line, line])).bindings, 2);
+  assert.equal((await collect(['__OWNED_PROOF__binding:invalid\n'])).proof, null);
+  assert.equal((await collect([line.slice(0, -1)])).proof, null);
+  assert.equal((await collect(['x'.repeat(131073), line])).proof, null);
+  assert.equal((await collect([line], '/another.test.mjs')).bindings, 0);
+});
+
+test('single proof execution rejects early exit, todo and oversized bindings', async (t) => {
+  const claim = '<!-- readiness-proof kind=contract evidence=__tests__/proof.test.mjs -->\nContract ready.';
+  for (const [name, body] of [
+    ['early exit', executableTest(claim) + '\nprocess.exit(0);'],
+    ['todo', executableTest(claim) + "\ntest.todo('still incomplete');"],
+    ['oversized', executableTest(claim) + "\nREADINESS_PROOF.padding = 'x'.repeat(65536);"],
+  ]) {
+    await t.test(name, child => {
+      const root = fixture(child, { 'README.md': claim, '__tests__/proof.test.mjs': body });
+      assert.equal(violations(root)[0].kind, 'invalid-proof-artifact');
+    });
+  }
 });

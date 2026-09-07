@@ -2,38 +2,37 @@
 
 # Evidence
 
-This checker is contract-ready. A readiness claim is a testable statement, not a maturity label.
-`npm run readiness:check` scans every Markdown file and rejects a claim unless the document contains exactly
-one marker:
+This checker is contract-ready. `npm run readiness:check` scans all Markdown, including `AGENTS.md`.
+Fenced examples are ignored. Each readiness claim requires exactly one marker:
 
 ```html
 <!-- readiness-proof kind=contract evidence=__tests__/feature.test.mjs -->
 ```
 
-The proof kind is one of:
+Proof kinds, strongest first:
 
-- `live-provider` — a fresh structured receipt bound to source, target, claim bytes, and provider check;
-- `contract` — a passing, claim-bound `__tests__/*.test.mjs` proof;
-- `doc-parse` — an executable structural proof only;
-- `none` — an explicit gap; it records blocked readiness and cannot support a readiness claim.
+- `live-provider`: fresh receipt bound to source, target, claim bytes and provider check.
+- `contract`: passing, claim-bound direct `__tests__/*.test.mjs` file, included in `npm test`.
+- `doc-parse`: executable structural proof only.
+- `none`: explicit gap; cannot support readiness.
 
-Strong claims require strong proof:
+Runtime, production and deployment readiness require live-provider proof. Contract and doc-parse
+claims require their named kind or stronger. `evidence` names a contained repository-relative file.
+Tests export the contract-proof schema and exact claim digest. Failures, skips, todo and absent
+assertions invalidate proof.
 
-```text
-runtime-ready  production-ready  deployment-ready  -> live-provider
-contract-ready                                      -> contract or live-provider
-doc-parse-ready                                     -> doc-parse, contract, or live-provider
-```
+A live receipt requires clean HEAD, exact claim path/digest, target, successful check receipt and age
+from zero through 30 days. It may be the sole untracked file. A code-owned provider verifier must
+authenticate it; self-attestation, URLs, prose, old output and detached green checks cannot.
 
-`evidence` is a repository-relative file. Contract tests must be direct `__tests__/*.test.mjs` files executed by
-`npm test`, export the contract-proof schema, and name the exact claim digest. A live receipt must name the exact
-clean `HEAD`, an exact claim path and digest, a target, a successful
-check receipt, and an observation no more than 30 days old. The receipt itself may be the sole untracked path so a
-provider adapter can materialize it after testing the committed source.
+## Execution contract
 
-The local checker validates those bindings and freshness. Live proof also requires an explicit code-owned
-provider verifier; without one, even a structurally valid receipt fails closed as self-attested.
-URLs, prose assertions, old command output, and a green check detached from the path are not evidence.
+CID `ADLC-EVIDENCE-01`; RAO: harness evaluates source assertions; SVO: one worker reports binding and
+results. PRD: eliminate duplicate execution without stale verdicts. TAD: preload the canonical test URL
+in its Node worker; one module instance supplies binding and assertions. ADR: reuse reporter/loader;
+no dependency, module or persistent result cache. Each call runs afresh.
 
-The checker ignores fenced examples so a contract can describe invalid input without making the claim itself.
-It checks `AGENTS.md`, `README.md`, and all other Markdown recursively, including this document.
+Bounds: one subprocess, 30 seconds, 64 KiB binding, 128 KiB pending stdout frame, 256 KiB captured output.
+Malformed, duplicate, incomplete and oversized bindings fail closed. Limits exclude tested-program
+memory and Node internal buffers. Full suite: `npm run check`. Live evidence stays separate.
+The deadline covers module loads and assertions.

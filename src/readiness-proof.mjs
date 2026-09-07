@@ -11,6 +11,7 @@ import { observeGit, trackedChanges, worktreeCleanupRisks } from './git.mjs';
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 const TEST_REPORTER_PATH = fileURLToPath(import.meta.url);
+const PROOF_BINDING_MAX_BYTES = 64 * 1024;
 export const PROOF_KINDS = Object.freeze(['live-provider', 'contract', 'doc-parse', 'none']);
 export const LIVE_PROOF_SCHEMA = 'agentic-os-live-provider-proof/v1';
 export const CONTRACT_PROOF_SCHEMA = 'agentic-os-contract-proof/v1';
@@ -30,8 +31,30 @@ const PROOF_STRENGTH = Object.freeze({ none: 0, 'doc-parse': 1, contract: 2, 'li
 export default async function* readinessTestReporter(events) {
   const proofPath = process.env.AGENTIC_OS_PROOF_PATH;
   const sentinel = process.env.AGENTIC_OS_PROOF_SENTINEL;
-  const result = { pass: 0, fail: 0, skipped: 0, todo: 0 };
+  const result = { pass: 0, fail: 0, skipped: 0, todo: 0, bindings: 0, proof: null };
+  const bindingPrefix = `${sentinel}binding:`;
+  let pending = '';
+  let invalidBinding = false;
   for await (const event of events) {
+    if (event.type === 'test:stdout' && event.data?.file === proofPath) {
+      const message = String(event.data.message ?? '');
+      if (Buffer.byteLength(pending) + Buffer.byteLength(message) > PROOF_BINDING_MAX_BYTES * 2) {
+        invalidBinding = true;
+        pending = '';
+      } else pending += message;
+      let newline;
+      while ((newline = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, newline);
+        pending = pending.slice(newline + 1);
+        if (!line.startsWith(bindingPrefix)) continue;
+        result.bindings += 1;
+        try {
+          const bytes = Buffer.from(line.slice(bindingPrefix.length), 'base64');
+          if (bytes.length > PROOF_BINDING_MAX_BYTES) throw new Error('Oversized proof binding');
+          result.proof = JSON.parse(bytes.toString('utf8'));
+        } catch { invalidBinding = true; }
+      }
+    }
     const name = event.data?.name;
     const wrapper = typeof name === 'string' && (name === proofPath || resolve(name) === proofPath);
     if (event.type === 'test:fail') result.fail += 1;
@@ -39,6 +62,7 @@ export default async function* readinessTestReporter(events) {
     if (event.type === 'test:pass' && !wrapper && event.data?.todo) result.todo += 1;
     if (event.type === 'test:pass' && !wrapper && !event.data?.skip && !event.data?.todo) result.pass += 1;
   }
+  if (invalidBinding || pending.startsWith(bindingPrefix)) result.proof = null;
   yield `${sentinel}${Buffer.from(JSON.stringify(result)).toString('base64')}\n`;
 }
 
@@ -153,29 +177,28 @@ function sourceCompatible(root, sourceRevision, evidenceAt, options) {
 
 export function executableTest(path, claimDigest) {
   try {
+    path = realpathSync(path);
     const environment = { ...process.env };
     delete environment.NODE_TEST_CONTEXT;
     const sentinel = `__AGENTIC_OS_CONTRACT_PROOF_${randomBytes(16).toString('hex')}__`;
+    // Preload the exact test module in its test worker. Node's module cache lets
+    // the runner collect its assertions without evaluating the module again.
     const bindingScript = [
       `const proof = (await import(${JSON.stringify(pathToFileURL(path).href)})).READINESS_PROOF;`,
-      `process.stdout.write(${JSON.stringify(sentinel)} + Buffer.from(JSON.stringify(proof)).toString('base64') + '\\n');`,
+      `const bytes = Buffer.from(JSON.stringify(proof));`,
+      `if (bytes.length > ${PROOF_BINDING_MAX_BYTES}) throw new Error('Oversized proof binding');`,
+      `process.stdout.write(${JSON.stringify(`${sentinel}binding:`)} + bytes.toString('base64') + '\\n');`,
     ].join('\n');
-    const bindingOutput = execFileSync(process.execPath, ['--input-type=module', '--eval', bindingScript], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 30_000,
-      maxBuffer: 1024 * 1024,
-      env: environment,
-    });
     const testOutput = execFileSync(process.execPath, [
       '--test',
+      `--import=data:text/javascript,${encodeURIComponent(bindingScript)}`,
       `--test-reporter=${TEST_REPORTER_PATH}`,
       path,
     ], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 30_000,
-      maxBuffer: 1024 * 1024,
+      maxBuffer: 256 * 1024,
       env: {
         ...environment,
         AGENTIC_OS_PROOF_PATH: path,
@@ -184,9 +207,10 @@ export function executableTest(path, claimDigest) {
     });
     const encoded = (output) => [...output.matchAll(new RegExp(`${sentinel}([A-Za-z0-9+/=]+)`, 'g'))]
       .at(-1)?.[1];
-    const proof = JSON.parse(Buffer.from(encoded(bindingOutput) ?? '', 'base64').toString('utf8'));
     const result = JSON.parse(Buffer.from(encoded(testOutput) ?? '', 'base64').toString('utf8'));
-    return result.pass > 0
+    const proof = result.proof;
+    return result.bindings === 1
+      && result.pass > 0
       && result.fail === 0
       && result.skipped === 0
       && result.todo === 0
