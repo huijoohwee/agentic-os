@@ -18,6 +18,13 @@ is mocked, cached, or relaxed by this optimization.
 
 ## Reuse evidence precisely
 
+Batch independent exact remote refs through `remoteRefShas` when they share one observation boundary.
+Successor validation reads predecessor and destination together, then obtains new advertisements before
+and after binding. Transport identity is checked before and after each call. The batch accepts at most
+32 distinct names / 32 KiB of input and 64 KiB of output; duplicate or unrequested advertisements fail.
+This reduces repeated Git and transport work in both lifecycle execution and its end-to-end tests.
+There is no cross-call cache: a new call can observe a moved or newly created ref.
+
 Record the command, source identity, environment, scope, outcome, and elapsed time. A focused run remains
 focused. Keep prior full-suite failures visible; a faster run does not make them pass. Reuse historical
 evidence only with its original identity and an explicit account of which relevant inputs stayed equal.

@@ -137,18 +137,16 @@ function retainedGitEffect(reason, message, cause, artifacts) {
   });
 }
 
-function remoteOidsAtUrl(url, remoteRefs, cwd) {
-  const output = git(['ls-remote', '--refs', '--', url, ...remoteRefs], { cwd, maxBuffer: 64 * 1024 });
-  const observed = new Map(remoteRefs.map(ref => [ref, null]));
-  for (const line of output.split('\n').filter(Boolean)) {
-    const match = line.match(/^([0-9a-f]{40}(?:[0-9a-f]{24})?)\s+(.+)$/u);
-    if (!match || !observed.has(match[2])) throw new Error('remote ref advertisement is malformed');
-    if (observed.get(match[2]) !== null) throw new Error('remote ref advertisement is ambiguous');
-    observed.set(match[2], match[1]);
-  }
-  return observed;
+function remoteOidAtUrl(url, remoteRef, cwd) {
+  const output = git(['ls-remote', '--refs', '--', url, remoteRef], { cwd });
+  if (output === '') return null;
+  const lines = output.split('\n').filter(Boolean);
+  if (lines.length !== 1) throw new Error('remote ref advertisement is ambiguous');
+  const match = lines[0].match(/^([0-9a-f]{40}(?:[0-9a-f]{24})?)\s+(.+)$/u);
+  if (!match || match[2] !== remoteRef)
+    throw new Error('remote ref advertisement is malformed');
+  return match[1];
 }
-const remoteOidAtUrl = (url, remoteRef, cwd) => remoteOidsAtUrl(url, [remoteRef], cwd).get(remoteRef);
 
 function remoteBranchRef(ref, cwd) {
   const remoteRef = `refs/heads/${ref}`;
@@ -167,19 +165,6 @@ export function remoteRefSha(remote, ref, cwd = process.cwd(), expectedUrl = nul
   if (remoteTransport(remote, cwd).fetchUrl !== transport.fetchUrl)
     throw transportRace('Git remote changed during observation');
   return oid;
-}
-/** One fresh advertisement for at most 32 exact branches; never reused across effect boundaries. */
-export function remoteRefShas(remote, refs, cwd = process.cwd(), expectedUrl = null) {
-  if (!Array.isArray(refs) || refs.length < 1 || refs.length > 32
-    || refs.some(ref => typeof ref !== 'string') || new Set(refs).size !== refs.length
-    || refs.reduce((bytes, ref) => bytes + Buffer.byteLength(ref), 0) > 32 * 1024)
-    throw new TypeError('remote observation requires 1-32 unique branch names within 32 KiB');
-  const requested = refs.map(ref => remoteBranchRef(ref, cwd));
-  const transport = capturedTransport(remote, cwd, expectedUrl);
-  const observed = remoteOidsAtUrl(transport.fetchUrl, requested, cwd);
-  if (remoteTransport(remote, cwd).fetchUrl !== transport.fetchUrl)
-    throw transportRace('Git remote changed during observation');
-  return Object.freeze(Object.fromEntries(refs.map((ref, index) => [ref, observed.get(requested[index])])));
 }
 /** Create one remote ref at one captured OID; refuse if the ref already exists. */
 export function publishExactNewRef(remote, ref, oid, cwd = process.cwd(), expectedUrl = null) {

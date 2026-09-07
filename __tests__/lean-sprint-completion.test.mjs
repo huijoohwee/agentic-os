@@ -362,7 +362,8 @@ test('cache destination interleaving is refused before successor refs are create
   const wrapper = join(support, 'git');
   writeFileSync(wrapper, [
     '#!/bin/sh',
-    'if [ "$1" = ls-remote ] && [ "$5" = refs/heads/agent/test-device/repair ] &&',
+    'if [ "$1" = ls-remote ] && { [ "$5" = refs/heads/agent/test-device/repair ] ||',
+    '   [ "$6" = refs/heads/agent/test-device/repair ]; } &&',
     '   [ ! -e "$AGENTIC_OS_TEST_RACE_MARKER" ]; then',
     '  touch "$AGENTIC_OS_TEST_RACE_MARKER"',
     '  "$AGENTIC_OS_TEST_NODE" "$AGENTIC_OS_TEST_RACE_HELPER"',
