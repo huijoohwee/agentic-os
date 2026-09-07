@@ -98,10 +98,69 @@ function argvFor(packagePath, script) {
   const directory = path.posix.dirname(packagePath);
   return ['npm', ...(directory === '.' ? [] : ['--prefix', directory]), 'run', script];
 }
+/** Advisory coverage of exact npm chains; opaque commands remain independently requested. */
+function validationPlan(commands, packages) {
+  const key = (pkg, script) => JSON.stringify([pkg, script]);
+  const reference = command => ({ package: command.package, script: command.script });
+  const invocation = /^npm (?:run ([A-Za-z0-9][A-Za-z0-9:._-]{0,127})|(test))(?: --workspace=([@A-Za-z0-9/._-]+))?$/u;
+  let remaining = 4096;
+  const closure = (packagePath, script, active = new Set()) => {
+    const identity = key(packagePath, script), pkg = packages.get(packagePath);
+    if (--remaining < 0 || active.size >= 32 || active.has(identity) || !pkg
+      || typeof pkg.manifest.scripts[script] !== 'string') return null;
+    // Keep npm lifecycle hooks in the intact invocation; never infer coverage from hook bodies.
+    const covered = new Set([identity]);
+    const parts = pkg.manifest.scripts[script].trim().split(/\s*&&\s*/u);
+    if (parts.length > 64) return null;
+    const calls = parts.map(part => invocation.exec(part));
+    // Never infer unconditional execution from shell syntax, flags or filtered invocations.
+    if (calls.some(call => !call)) return covered;
+    const next = new Set([...active, identity]);
+    for (const call of calls) {
+      let target = packagePath;
+      if (call[3]) {
+        // Resolve only explicit root workspace entries among already bounded owner manifests.
+        if (packagePath !== 'package.json' || !Array.isArray(pkg.manifest.workspaces)) return null;
+        const matches = [...packages.entries()].filter(([name, value]) => name !== 'package.json'
+          && pkg.manifest.workspaces.includes(path.posix.dirname(name))
+          && (value.manifest.name === call[3] || path.posix.dirname(name) === call[3]));
+        if (matches.length !== 1) return null;
+        target = matches[0][0];
+      }
+      const nested = closure(target, call[1] ?? call[2], next);
+      if (!nested) return null;
+      for (const child of nested) covered.add(child);
+      if (covered.size > 128) return null;
+    }
+    return covered;
+  };
+  const requested = new Map(commands.map((command, index) => [key(command.package, command.script), index]));
+  const candidates = commands.map((command, index) => ({ index,
+    covers: [...(closure(command.package, command.script) ?? new Set([key(command.package, command.script)]))]
+      .filter(identity => requested.has(identity)).map(identity => requested.get(identity)),
+  })).sort((a, b) => b.covers.length - a.covers.length || a.index - b.index);
+  const covered = new Set(), selected = [];
+  for (const candidate of candidates) {
+    if (covered.has(candidate.index)) continue;
+    selected.push(candidate);
+    candidate.covers.forEach(index => covered.add(index));
+  }
+  return {
+    status: 'advisory', requestedCommands: commands.length, plannedCommands: selected.length,
+    duplicateCommandsAvoided: commands.length - selected.length,
+    sourceBindings: [...packages].map(([name, value]) => ({ package: name, sha256: value.sha256 })),
+    execute: selected.sort((a, b) => a.index - b.index).map(candidate => ({
+      ...reference(commands[candidate.index]), argv: commands[candidate.index].argv,
+      coversOnSuccess: candidate.covers.sort((a, b) => a - b).map(index => reference(commands[index])),
+    })),
+    conditions: 'Use unchanged source and execution context, exact argv and successful complete runs. '
+      + 'Failed, interrupted or filtered runs grant no inferred coverage. This plan executes nothing and caches no results.',
+  };
+}
 function inspectOwner(entry, rootPath, roots, evaluate) {
   const row = { id: entry.id, repository: entry.repository, root: rootPath ?? null,
     sourceStatus: 'unavailable', revision: null, clean: false, requiredChecks: [], commands: [], workflows: [],
-    findings: [], results: [] };
+    findings: [], results: [], validationPlan: null };
   if (!rootPath) { row.findings.push('root_not_supplied'); return { row }; }
   try {
     const root = realpathSync(rootPath);
@@ -120,9 +179,11 @@ function inspectOwner(entry, rootPath, roots, evaluate) {
     if (profile.repository !== entry.repository) fail('repository_identity_mismatch');
     row.profile = { path: profileSource.path, sha256: profileSource.sha256, digest: profile.profileDigest };
     row.requiredChecks = profile.requiredChecks;
+    const packages = new Map();
     for (const pkg of entry.packages) {
       const source = read(pkg.path), manifest = json(source.bytes, 512);
       if (!plain(manifest.scripts)) fail('package_scripts_missing');
+      packages.set(pkg.path, { manifest, sha256: source.sha256 });
       for (const script of pkg.scripts) {
         const command = manifest.scripts[script];
         if (typeof command !== 'string' || !command.trim() || Buffer.byteLength(command) > 16_384) fail('referenced_script_missing');
@@ -130,6 +191,7 @@ function inspectOwner(entry, rootPath, roots, evaluate) {
           argv: argvFor(pkg.path, script), definition: command });
       }
     }
+    row.validationPlan = validationPlan(row.commands, packages);
     for (const workflow of entry.workflows) {
       const source = read(workflow);
       row.workflows.push({ path: workflow, sha256: source.sha256 });
@@ -146,6 +208,7 @@ function inspectOwner(entry, rootPath, roots, evaluate) {
     };
     return { row, verify };
   } catch (error) {
+    row.validationPlan = null;
     row.sourceStatus = 'unavailable'; row.findings.push(error.code ?? 'owner_observation_failed');
     return { row };
   }
@@ -216,6 +279,7 @@ export function discoverRepositoryChecks(inputPath, { catalogPath = CATALOG } = 
   for (const owner of owners) {
     if (!owner.verify) continue;
     try { if (owner.verify()) continue; } catch {}
+    owner.row.validationPlan = null;
     owner.row.sourceStatus = 'changed'; owner.row.findings.push('source_changed_during_observation');
     owner.row.results.forEach(result => { result.binding = 'source_changed'; });
   }

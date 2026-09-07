@@ -250,6 +250,14 @@ required-check names. No results produces an empty result list, not a passing ve
 Without owner results, cleanliness is `null` and source status is `not-evaluated`; only committed
 descriptor bytes are checked. Deep raw-byte checks run only for owners with supplied results.
 
+Each owner's `validationPlan.execute` retains whole umbrella commands and their authored order,
+omitting separately requested scripts that exact npm chains already invoke. `coversOnSuccess` is
+conditional: failed, interrupted or filtered runs grant no inferred coverage. Use unchanged source,
+execution context and exact argv; this advisory plan never caches passes or grants readiness.
+Resolution uses only bounded committed manifests: 32 levels, 64 calls per chain, 128 covered scripts,
+4,096 visits per owner. Cycles, flags, shell expressions and unresolved workspace links keep separate
+commands. Lifecycle hooks stay in the intact npm invocation; their bodies confer no inferred coverage. Explicit workspace paths must match an already cataloged package; no scanning.
+
 Discovery rechecks observed bytes, executes no candidate code and makes no network requests. It
 does not infer ecosystem E2E coverage, integration authority or deployed readiness. Inputs and
 individual results are capped at 64 KiB, owner source files at 128 KiB, and output below 500 kB.

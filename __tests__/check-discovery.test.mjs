@@ -293,3 +293,88 @@ test('the real CLI, invocation and MCP runner use the same read-only input witho
     ['--checks', '--input=x', '--deep'], ['--checks', '--input=x', '--input=y']])
     assert.notEqual(validateCommandArguments('observe', argv), null);
 });
+
+function planManifest(f, scripts, other = {}) {
+  writeJson(join(f.root(), 'package.json'), { name: 'owner-fixture', scripts, ...other });
+  git(f.root(), 'add', '.'); git(f.root(), 'commit', '--quiet', '-m', 'check composition');
+  return f.read().repositories.find(row => row.id === f.payload.repositories[0].id).validationPlan;
+}
+
+test('validation plan executes each requested component once through its intact umbrella', t => {
+  const f = fixture(t), log = join(f.parent, 'calls.txt');
+  const scripts = Object.fromEntries(['test', 'evals', 'precheck', 'postcheck'].map(name => [name,
+    `node -e "require('node:fs').appendFileSync(${JSON.stringify(log).replaceAll('"', "'")},'${name}\\n')"`]));
+  scripts.check = 'npm test && npm run evals';
+  const plan = planManifest(f, scripts);
+  const run = argv => execFileSync(argv[0], argv.slice(1), { cwd: f.root(), timeout: 10_000,
+    stdio: 'pipe', env: { ...process.env, npm_config_ignore_scripts: 'false' } });
+  for (const name of ['test', 'evals', 'check']) run(['npm', 'run', name]);
+  assert.equal(readFileSync(log, 'utf8'), 'test\nevals\nprecheck\ntest\nevals\npostcheck\n');
+  rmSync(log);
+  for (const command of plan.execute) run(command.argv);
+  assert.equal(readFileSync(log, 'utf8'), 'precheck\ntest\nevals\npostcheck\n');
+  assert.deepEqual(plan.execute.map(row => row.script), ['check']);
+  assert.deepEqual(plan.execute[0].coversOnSuccess.map(row => row.script), ['test', 'evals', 'check']);
+  assert.equal(plan.duplicateCommandsAvoided, 2);
+  assert.equal(plan.sourceBindings[0].sha256, hash(readFileSync(join(f.root(), 'package.json'))));
+});
+
+test('workspace coverage resolves declared package identity and nested unlisted npm chains', t => {
+  const f = fixture(t, ['agentic-graph']);
+  writeJson(join(f.root(), 'canvas/package.json'), { name: '@owner/canvas', scripts: {
+    'test:ci': 'npm run test:ci:unit && npm run test:ci:standalone-export',
+    'pretest:ci': 'npm run prepare:linked-packages', 'prepare:linked-packages': 'node prepare.mjs',
+    'test:ci:unit': 'node unit.mjs', 'test:ci:standalone-export': 'node browser.mjs',
+  } });
+  const scripts = { 'runtime:test': 'node runtime.mjs', check: 'node types.mjs',
+    test: 'npm run test:ci --workspace=@owner/canvas' };
+  let plan = planManifest(f, scripts, { workspaces: ['canvas'] });
+  assert.equal(plan.plannedCommands, 3);
+  assert.deepEqual(plan.execute.find(row => row.script === 'test').coversOnSuccess, [
+    { package: 'package.json', script: 'test' },
+    { package: 'canvas/package.json', script: 'test:ci:unit' },
+    { package: 'canvas/package.json', script: 'test:ci:standalone-export' },
+  ]);
+  assert.equal(plan.sourceBindings.length, 2);
+  plan = planManifest(f, scripts, { workspaces: ['can*'] });
+  assert.equal(plan.plannedCommands, 5, 'workspace globs must remain unresolved');
+  plan = planManifest(f, { ...scripts, test: 'npm run test:ci --workspace=canvas' }, { workspaces: ['canvas'] });
+  assert.equal(plan.plannedCommands, 3);
+});
+
+test('ambiguous syntax, missing scripts, cycles and bounds never omit requested checks', t => {
+  const f = fixture(t), leaf = { test: 'node unit.mjs', evals: 'node evals.mjs' };
+  const cases = [
+    { ...leaf, check: 'npm test -- --test-name-pattern=one && npm run evals' },
+    { ...leaf, check: 'npm test || npm run evals' },
+    { ...leaf, check: 'npm test; npm run evals' },
+    { ...leaf, check: 'npm test && node mutate.mjs && npm run evals' },
+    { ...leaf, check: 'CI=1 npm test && npm run evals' },
+    { ...leaf, check: 'npm run test --silent && npm run evals' },
+    { ...leaf, check: 'npm test && npm run missing' },
+    { ...leaf, test: 'npm run check', check: 'npm test && npm run evals' },
+    { ...leaf, check: Array(65).fill('npm test').join(' && ') },
+    { ...leaf, check: 'npm run chain0', ...Object.fromEntries(Array.from({ length: 33 }, (_, i) =>
+      [`chain${i}`, i === 32 ? 'npm test && npm run evals' : `npm run chain${i + 1}`])) },
+  ];
+  for (const scripts of cases) {
+    const plan = planManifest(f, scripts);
+    assert.equal(plan.plannedCommands, 3, JSON.stringify(scripts));
+  }
+});
+
+test('a failed umbrella cannot turn planned coverage into passing result observations', t => {
+  const f = fixture(t), marker = join(f.root(), 'LATER_CHECK');
+  const plan = planManifest(f, { test: 'node -e "process.exit(7)"',
+    evals: 'node -e "require(\'node:fs\').writeFileSync(\'LATER_CHECK\',\'yes\')"',
+    check: 'npm test && npm run evals' });
+  const command = plan.execute[0];
+  const result = spawnSync(command.argv[0], command.argv.slice(1), { cwd: f.root(), timeout: 10_000,
+    env: { ...process.env, npm_config_ignore_scripts: 'false' } });
+  assert.notEqual(result.status, 0); assert.equal(existsSync(marker), false);
+  f.receipt(receipt(f, { command: { ...command, sourceSha256: plan.sourceBindings[0].sha256,
+    coversOnSuccess: undefined }, outcome: 'failed', coverage: { scope: 'umbrella stopped', complete: false } }));
+  const owner = f.read().repositories[0];
+  assert.equal(owner.results.length, 1); assert.equal(owner.results[0].reportedOutcome, 'failed');
+  assert.match(owner.validationPlan.conditions, /Failed, interrupted or filtered runs grant no inferred coverage/u);
+});

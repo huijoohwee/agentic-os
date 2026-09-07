@@ -103,7 +103,7 @@ export const TOOLS = deepFreeze([
   {
     name: 'checks',
     title: 'Discover repository checks',
-    description: 'Read owner check references and unsigned result bindings without running checks or fetching.',
+    description: 'Read owner checks, deduplicated validation plans and unsigned results without running checks or fetching.',
     inputSchema: CHECKS_INPUT,
     outputSchema: CLI_OUTPUT,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
