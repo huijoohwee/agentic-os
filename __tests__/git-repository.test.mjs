@@ -555,7 +555,12 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const bytes = readFileSync(new URL('./fixtures/git-remote-single.mjs.txt', import.meta.url));
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   assert.equal(sha256, '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62');
-  const files = selected.files.map(file => file.path === 'src/git.mjs' ? { ...file, bytes, sha256 } : file);
+  const trackedBytes = readFileSync(new URL('./fixtures/git-tracked-unbounded.mjs.txt', import.meta.url));
+  const trackedSha = createHash('sha256').update(trackedBytes).digest('hex');
+  assert.equal(trackedSha, '2dd090bc3978aa57025cbf028c6c7e8769d2e48d06f6253a30fab6e6aa6dc133');
+  const files = selected.files.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file =>
+    file.path === 'src/git.mjs' ? { ...file, bytes, sha256 } : file.path === 'src/git-tracked.mjs'
+      ? { ...file, bytes: trackedBytes, sha256: trackedSha } : file);
   const identity = { schema: 'agentic-os/hook-runtime/v1',
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
