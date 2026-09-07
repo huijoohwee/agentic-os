@@ -7,6 +7,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'n
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { observeGit, trackedChanges, worktreeCleanupRisks } from './git.mjs';
+import { parseInvocationToken } from './invocation.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
@@ -109,10 +110,22 @@ function negated(line, claimIndex) {
     .test(clause);
 }
 
+function withoutInvocationReferences(source) {
+  // Only exact literal declarations/tuples are metadata. Prose, status fields,
+  // malformed tokens and quoted readiness assertions still require evidence.
+  const declaration = source.match(/^\s*-\s+(["'])([^"']+)\1\s*$/);
+  if (declaration && !parseInvocationToken(declaration[2]).error) return '';
+  return source.replace(/(?<!`)(`+)(?!`)(.*?)\1(?!`)/g, (span, fence, body) => {
+    const tokens = body.trim().split(/\s+/);
+    return tokens.every(token => !parseInvocationToken(token).error)
+      ? `${fence}${' '.repeat(body.length)}${fence}` : span;
+  });
+}
+
 export function readinessClaims(text) {
   const claims = [];
   for (const { line: source, number } of unfencedLines(text)) {
-    const line = source.replace(MARKER, '');
+    const line = withoutInvocationReferences(source.replace(MARKER, ''));
     for (const rule of CLAIM_RULES) {
       const pattern = new RegExp(rule.pattern.source, `${rule.pattern.flags}g`);
       for (const match of line.matchAll(pattern)) {

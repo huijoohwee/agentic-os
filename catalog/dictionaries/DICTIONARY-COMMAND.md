@@ -1,0 +1,472 @@
+---
+title: "Agentic OS Command Dictionary"
+graphId: "md:agentic-os-dictionary-command"
+doc_type: "Invocation Dictionary"
+date: "2026-09-05"
+lang: "en-US"
+schema: "agentic-os-dictionary-command/v1"
+frontmatter_contract: "required"
+status: "metadata-only"
+owner: "agentic-os"
+source_reference_root: "agentic-canvas-os/docs"
+prefix: "/"
+prefix_role: "command route"
+catalog_digest: "c65d8fd480966ed95cff4383e327c4dc2b21603af115a788361f8e2188073e00"
+catalog_entry_count: 406
+catalog_digest_input: "sha256:canonical-json:sorted(kind,token):token,kind,label,summary,sourcePath"
+catalog_digest_owner: "src/invocation.mjs#validateDictionaryCatalogContract"
+source_docs:
+  - "FACTS.md"
+  - "MEMORY.md"
+  - "AGENTS.md"
+  - "HARNESS-CONTRACTS.md"
+  - "APPLICATION-COMPOSITION.md"
+  - "AGENTIC-GRAPH.md"
+  - "AGENT-TEAM.md"
+  - "REPOSITORY-PACKING.md"
+  - "VOICE-STUDIO.md"
+  - "IMPLEMENTATION-RUN-OBSERVATION.md"
+  - "MCP-GATEWAY.md"
+  - "VALIDATION-RUNBOOK.md"
+  - "../AGENTS.md"
+  - "docs/documents/git-guidelines.md"
+publish_policy: "Dev-only until explicit operator approval"
+runtime_scope: "shared invocation metadata; execution remains consumer-owned"
+runtime_claim: "dictionary content for shared slash invocation utilities; no separate command runtime"
+runtime_proof: "consumer-owned; metadata is not execution evidence"
+metadata_consumers:
+  - id: "chat_composer"
+    surface: "FloatingPanel Chat composer"
+    owner: "agentic-graph/canvas/src/features/chat/floatingPanelChat/FloatingPanelChatComposer.tsx"
+    metadata_fields: ["token", "label", "summary", "group", "sourcePath", "keywords", "prefix_role"]
+    behavior: "inline command-menu insertion; preserve query text after the invocation token"
+  - id: "skills_commands_catalog"
+    surface: "FloatingPanel Skills & Commands catalog"
+    owner: "agentic-graph/canvas/src/features/panels/views/SkillsCommandsView.tsx"
+    metadata_fields: ["token", "label", "summary", "group", "sourcePath", "keywords", "prefix_role"]
+    behavior: "searchable catalog row and active-card token insertion"
+  - id: "mcp"
+    surface: "MCP capability metadata"
+    owner: "agentic-graph/mcp/local-tool-contract.js"
+    metadata_fields: ["token", "prefix", "intent", "required_bindings", "semantic_filters", "completion_signal", "publish_policy", "source_docs", "catalog_digest"]
+    behavior: "reference and handoff metadata plus the deterministic full-catalog digest; no standalone MCP tool execution"
+entry_metadata_contract:
+  token: "dictionary_entries item and first Commands table column"
+  label: "runtime mirror derives a concise display label from the token"
+  summary: "Commands table Intent column"
+  group: "Agentic OS command dictionary"
+  sourcePath: "this dictionary document"
+  keywords: "token parts plus Intent, Required bindings, Semantic filters, and Completion signal text"
+  mcp: "MCP consumers expose command intent, required context, full-catalog counts, and one deterministic catalog digest; digest or count drift fails closed before spend, mutation, or deploy"
+dictionary_entries:
+  - "/soul.load"
+  - "/personality.overlay"
+  - "/moa"
+  - "/video-agent"
+  - "/voice.studio"
+  - "/sme-care-agent"
+  - "/investment-research-agent"
+  - "/crawler-agent"
+  - "/image.to-threejs"
+  - "/image.to-glb"
+  - "/agentic-graph.probe-tree"
+  - "/query"
+  - "/memory.seed"
+  - "/memory.write"
+  - "/memory.compact"
+  - "/memory.search"
+  - "/session.search"
+  - "/user.profile"
+  - "/skill.discover"
+  - "/skill.load"
+  - "/skill.bundle"
+  - "/skill.manage"
+  - "/context.discover"
+  - "/context.load"
+  - "/context.audit"
+  - "/reference.expand"
+  - "/reference.audit"
+  - "/kanban.task"
+  - "/kanban.handoff"
+  - "/kanban.sync"
+  - "/tool.catalog"
+  - "/tool.route"
+  - "/tool.provider.select"
+  - "/tool.gateway.audit"
+  - "/toolset.enable"
+  - "/toolset.disable"
+  - "/tool.search"
+  - "/tool.describe"
+  - "/tool.call"
+  - "/experience.capture"
+  - "/skill.propose"
+  - "/skill.evolve"
+  - "/propose-skill"
+  - "/identity.reflect"
+  - "/application.compose"
+  - "/agentic.graph.ingest"
+  - "/agentic.graph.parser.generate"
+  - "/agentic.graph.query"
+  - "/agentic.graph.explain"
+  - "/orchestration.graph"
+  - "/agent.team"
+  - "/agent.swarm"
+  - "/agent.toolkit"
+  - "/state.checkpoint"
+  - "/human.review"
+  - "/stream.trace"
+  - "/superagent.run"
+  - "/sandbox.policy.validate"
+  - "/sandbox.policy.authorize"
+  - "/prd-tad.create"
+  - "/runtime-ready.check"
+  - "/instruction.audit"
+  - "/instruction.quality-evaluate"
+  - "/adlc.observe"
+  - "/ecs.session-start"
+  - "/ecs.world-tick"
+  - "/ecs.decision-persist"
+  - "/release.complete"
+  - "/deploy.guard"
+  - "/harness.define"
+  - "/mcp.capabilities"
+  - "/cost.audit"
+  - "/payment.rail.select"
+  - "/payment.intent.create"
+  - "/payment.event.settle"
+  - "/payment.reconcile"
+  - "/payment.receipt.project"
+  - "/payment.refund"
+  - "/payment.readiness"
+  - "/coordination.schedule"
+  - "/goal.advance"
+  - "/canvas.project"
+  - "/canvas.render"
+  - "/canvas.node.add"
+  - "/canvas.node.link"
+  - "/canvas.selection.open"
+  - "/canvas.selection.chat"
+  - "/canvas.selection.delete"
+  - "/canvas.media.attach"
+  - "/canvas.view.set"
+  - "/workspace.launch"
+  - "/workspace.artifact.manage"
+  - "/toolbar.invoke"
+  - "/media.immersive"
+  - "/canvas.layout.tune"
+  - "/canvas.viewport.inspect"
+  - "/canvas.viewport.transform"
+  - "/camera.select"
+  - "/camera.frame"
+  - "/camera.animate"
+  - "/camera.play"
+  - "/camera.scrub"
+  - "/xr.stage"
+  - "/xr.place"
+  - "/xr.transform"
+  - "/xr.label"
+  - "/xr.remove"
+  - "/xr.physics"
+  - "/xr.present"
+  - "/animation.control"
+  - "/motion.control"
+  - "/game.mode"
+  - "/game.portability"
+  - "/flight.sim"
+  - "/canvas.interaction.tune"
+  - "/canvas.physics.tune"
+  - "/canvas.center"
+  - "/canvas.distribute"
+  - "/canvas.performance.audit"
+  - "/canvas.edge.rewire"
+  - "/validation.run"
+  - "/workspace.review"
+  - "/pipeline.trace"
+  - "/source.ingest"
+  - "/source.parse"
+  - "/source.normalize"
+  - "/git.run"
+  - "/git.guidelines"
+  - "/file.sync"
+  - "/repository.pack"
+  - "/ingest-url"
+  - "/computing-flow"
+---
+<!-- Responsibility: Define canonical slash-command invocation entries and their non-executing ownership boundaries. -->
+
+# Command Dictionary
+
+This file defines `/` command-route content owned by agentic-os and reused by consumers. It is a dictionary for shared invocation utilities, not a new command runner, parser, provider panel, or compatibility registry.
+
+Product document references resolve against `agentic-canvas-os/docs` unless repository-qualified.
+Dictionary references resolve within this directory. Runtime and approval claims remain consumer-owned.
+
+## Contract
+
+| Rule | Requirement |
+|---|---|
+| Route owner | Existing shared `/` utilities own command detection and replacement. |
+| Dictionary role | This file names command intent, required context, and proof expectations. |
+| Runtime status | Spec-complete until a shared runtime owner proves execution. |
+| Spend policy | Malformed input, missing approval, or missing binding fails before paid calls. |
+| Deploy policy | Prod mirror and Cloudflare commands remain gated until explicit operator approval. |
+
+## Consumer Metadata
+
+| Consumer | Metadata read | Source fields | Runtime boundary |
+|---|---|---|---|
+| Chat composer | Token, label, summary, group, sourcePath, keywords, prefix role. | `dictionary_entries`; Commands table Intent plus Required bindings, Semantic filters, and Completion signal. | Inserts the `/` token and preserves the editable query; unknown tokens stay raw text. |
+| Skills & Commands catalog | Token, label, summary, group, sourcePath, keywords, prefix role. | Same source fields as chat composer. | Renders searchable rows and active-card insertion without copying a panel-local command list. |
+| MCP | Token, prefix, intent, required bindings, semantic filters, completion signal, publish policy, source docs, full-catalog counts, and catalog digest. | Commands table plus frontmatter policy fields; deterministic digest input is token, kind, label, summary, and source path across all three dictionaries. | Metadata is reference and handoff context only; every sigil query returns the same full-catalog digest, and a dictionary row does not become an executable MCP tool without a separate shared runtime owner. |
+
+## Commands
+
+| Command | Intent | Required bindings | Semantic filters | Completion signal |
+|---|---|---|---|---|
+| `/soul.load` | Load durable agent identity from `SOUL.md` as prompt slot 1 without hardcoding a default identity in runtime code. | `@soul-profile`, `@identity-slot`, `@runtime-proof` | `#soul`, `#primary-identity`, `#no-hardcode`, `#vcc` | Soul source parses, scan and bound result is typed, slot 1 identity is sourced or a typed fallback is returned, and no project commands or deploy grants are introduced. |
+| `/personality.overlay` | Apply a temporary session-level style or mode overlay. | `@personality-overlay`, `@operator`, `@runtime-proof` | `#personality-overlay`, `#soul`, `#approval-gate` | Overlay is session-scoped, cannot mutate `SOUL.md`, and remains subordinate to facts, roles, memory, safety, and deploy gates. |
+| `/moa` | Run a one-shot Mixture of Agents pass for a hard query without switching the global model or creating a copied provider preset. | `@moa-preset`, `@reference-agents`, `@aggregator-agent`, `@cost-log`, `@operator` when paid calls are possible | `#mixture-of-agents`, `#reference-agents`, `#aggregator-agent`, `#token-economics` | Local preset resolves; no-tool capped references settle fail-soft into input-ordered typed outcomes and attempted/succeeded/failed totals; aggregator returns the only user-visible answer; tool calls use normal approval gates; cost log records reference and aggregator tokens; prior context is restored. |
+| `/video-agent` | Run a source-backed, approval-gated video workflow from authored script through structured planning, media generation, persistence, read-back, and shared Canvas projection. | `@operator`, `@video-generation-demo-script`, one `@provider.*` binding, one or more of `@text`, `@image`, `@audio`, `@video`, `@cost-log`, `@runtime-proof` | one `#spec.*`, one `#thinking.type.*`, one `#token-cap.*`, `#approval-gate`, `#token-economics`, `#vcc` | The text stage returns Character, Scene, Dialogue, Visual asset, Audio, Timing, Metadata, and Prompt sheets; approved media stages persist and read back typed artifacts; Cards, Widgets, Rich Media Panels, and Timeline reuse the same identities; missing approval, credentials, entitlement, budget, persistence, read-back, or capability stops terminally. |
+| `/voice.studio` | Select one bounded AI voice studio operation without creating operation-specific slash aliases. | Route-dependent `@audio`, `@text`, `@voice-profile`, `@approval-gate`, `@cost-log`, and `@runtime-proof` exactly as defined in `VOICE-STUDIO.md`. | Exactly one of `#voice-clone`, `#speech-to-text`, or `#text-to-speech`. | The exact host route resolves metadata for `clone`, `dictate`, or `create`; consent and approval remain separate, and only the `agentic-graph.voice.studio` MCP wire tool may execute. Missing rights, consent, disclosure, capability, bounds, or proof fails before audio read, adapter work, spend, or persistence. |
+| `/sme-care-agent` | Produce provider-neutral SME exposure, coverage-gap, comparison, and assessment responses through the shared slash-agent owner. | `@source.frontmatter`, `@source.body`, `@local-harness`, `@cost-log`, `@runtime-proof` | `#frontmatter`, `#harness`, `#token-economics`, `#runtime-ready`, `#approval-gate` | The active Chat provider, endpoint, and model returns a source-grounded response or a focused material clarification; unknown coverage remains unknown, and missing route, evidence, approval, or capability fails closed before quote, bind, purchase, provider contact, persistence, Prod, or Cloudflare mutation. |
+| `/investment-research-agent` | Produce source-grounded investment research, comparisons, and plan assessments through the shared slash-agent owner. | `@source.frontmatter`, `@source.body`, `@cost-log`, `@runtime-proof` | `#frontmatter`, `#token-economics`, `#runtime-ready`, `#approval-gate` | The active Chat provider, endpoint, and model separates evidence, assumptions, contradictions, risks, catalysts, and verification gaps or asks one material clarification; missing route or evidence fails closed without invented market facts, transactions, personalized financial advice, persistence, Prod, or Cloudflare mutation. |
+| `/crawler-agent` | Run the native headless website crawl through the existing Import URL and Canvas output owners. | `@url:`, `@reference-policy`, `@runtime-proof` | `#canvas`, `#dev-only`, `#approval-gate` | The native shared runtime returns a persisted crawl report and pipe-table output or a typed URL, policy, download, storage, or capability error; paid-provider, authenticated, and external mutation actions stay blocked without approval. |
+| `/image.to-threejs` | Resolve the native `image.to-threejs` skill for the selected Card or Widget source. | `@image-to-threejs`, `@local-harness`, `@runtime-proof` | `#image-to-threejs`, `#skill-system`, `#dev-only` | A PNG, JPG, JPEG, or SVG source resolves to the shared zero-cost Three.js manifest and Card, Widget, or Rich Media projection; unsupported sources return the typed fallback without provider execution. |
+| `/image.to-glb` | Resolve the native procedural `image.to-glb` asset contract for the selected Card or Widget source. | `@image-to-glb`, `@local-harness`, `@runtime-proof` | `#image-to-glb`, `#skill-system`, `#dev-only` | Connected contour volumes reconstruct the observed front while hidden surfaces remain explicitly inferred; compact construction budgets, separate geometry, material, reference, and action gates, rigid named pivots and sockets, and one four-second +/-12-degree loop clip must validate before GLB plus editable external-buffer glTF export. Baked geometry, unproved skinning, or external runtime, model, dependency, and provider execution fail closed. |
+| `/agentic-graph.probe-tree` | Generate bounded editable next-question branches from the selected Widget Card through the shared Probe-Tree runtime. | `@agentic-graph.probe-tree`, `@source.frontmatter`, `@runtime-proof` | `#agentic-graph.probe-tree`, `#runtime-ready`, `#token-economics` | RECOMMEND, COMPARE, ASSESS, and PLAN action topics are semantic, case-insensitive clarification requests that use the active Chat provider, endpoint, and model to return 2-4 forward-only Type 2 cards. Only a runtime-recognized selected-child terminal continuation bypasses generation; an action verb, imperative, or root alias does not. Distinct questions, selected-child decision variables, numbered semantic choices, Other, and verbatim anchors are required; bare focus fragments, query-specific hardcoding, repeated or overlapping choice sets, stale card-local routing, and zero-model fallback cards fail closed. |
+| `/query` | Answer from `FACTS.md`, dictionaries, memory, and cited source docs without mutation. | `@agent`, `@source.body` | `#truth`, `#frontmatter`, `#vcc` | Response cites the owning source or returns a typed gap; no file mutation, token spend, Prod mirror change, or Cloudflare deploy occurs. |
+| `/memory.seed` | Create or update a neutral memory block from source docs. | `@source.frontmatter`, `@source.body`, `@operator` | `#frontmatter`, `#no-hardcode`, `#vcc` | Parsed frontmatter and authored body memory block are present locally. |
+| `/memory.write` | Add, replace, or remove a bounded memory or user-profile entry. | `@memory-store`, `@memory-entry`, `@memory-policy`, `@operator` | `#persistent-memory`, `#memory-capacity`, `#vcc` | Request names target, action, evidence, old text when replacing/removing, scan result, capacity result, and typed persistence result. |
+| `/memory.compact` | Consolidate or remove stale entries when a bounded memory target is near or over capacity. | `@memory-store`, `@memory-policy`, `@runtime-proof` | `#persistent-memory`, `#memory-capacity`, `#vcc` | Compact result preserves durable facts, removes stale or duplicate entries, and returns before/after capacity without silent data loss. |
+| `/memory.search` | Search scoped local memory or conversation indexes for reusable facts, decisions, and prior proof. | `@agent`, `@memory-store`, `@operator` | `#memory-search`, `#truth`, `#vcc` | Ranked results cite their source or return an empty typed result; no mutation, deploy, or paid call is implied. |
+| `/session.search` | Search past conversations or session records on demand. | `@session-index`, `@operator` | `#session-search`, `#truth`, `#vcc` | Cited session matches return without automatically writing to memory or profile. |
+| `/user.profile` | Add, replace, remove, or inspect explicit user-profile entries. | `@user-profile`, `@memory-entry`, `@memory-policy`, `@operator` | `#user-profile`, `#memory-capacity`, `#vcc` | Profile write is explicit, bounded, scanned, non-secret, and rejects unsupported personal inference. |
+| `/skill.discover` | List lightweight skill metadata without loading full skill bodies. | `@skill-index`, `@skill-policy`, `@operator` | `#skill-system`, `#progressive-disclosure`, `#agentskills-compatible` | Index returns name, description, category, source, trust, and compatibility with zero model spend. |
+| `/skill.load` | Load one selected skill source and optional on-demand resource. | `@skill-source`, `@skill-reference`, `@skill-policy` | `#skill-system`, `#progressive-disclosure`, `#skill-security` | Full skill source loads only after selection; referenced files load only when needed and shallow references validate. |
+| `/skill.bundle` | Resolve a bundle that groups existing skills under one invocation. | `@skill-bundle`, `@skill-index`, `@skill-policy` | `#skill-bundle`, `#skill-system`, `#vcc` | Bundle resolves installed skills, reports skipped missing skills, and does not install or hardcode missing entries. |
+| `/skill.manage` | Create, patch, edit, delete, or update supporting files for a skill. | `@skill-source`, `@skill-reference`, `@skill-policy`, `@operator` | `#skill-security`, `#skill-evolution`, `#agentskills-compatible` | Managed write is scanned, validated, review-gated when required, and returns a proposed or applied result with proof. |
+| `/context.discover` | Discover project-local context files from the active working directory. | `@working-directory`, `@context-policy` | `#context-file`, `#cwd-discovery`, `#project-context` | Returns first-match startup context plus progressive subdirectory candidates with zero model spend and no file mutation. |
+| `/context.load` | Load one approved context file into the behavior context. | `@context-file`, `@context-policy`, `@runtime-proof` | `#context-file`, `#project-context`, `#progressive-disclosure` | File parses as text, scans cleanly, truncates within bounds, and reports loaded or blocked state. |
+| `/context.audit` | Inspect context-file precedence, loaded files, truncation, scan blocks, and stale risks. | `@working-directory`, `@context-policy`, `@runtime-proof` | `#context-file`, `#vcc`, `#no-hardcode` | Audit is read-only and reports effective context without rewriting project files or promoting CLAUDE-style files above `FACTS.md`. |
+| `/reference.expand` | Expand inline context references from a message into attached context. | `@reference-policy`, `@attached-context`, `@working-directory` | `#context-reference`, `#inline-context`, `#token-economics` | References resolve, sensitive targets block, content stays bounded, and original message plus attached context are returned. |
+| `/reference.audit` | Inspect reference expansion safety, size, source, and warning state. | `@reference-policy`, `@attached-context`, `@runtime-proof` | `#context-reference`, `#attached-context`, `#vcc` | Audit reports expanded references, warnings, refused expansions, truncation, and source boundaries without mutating files. |
+| `/kanban.task` | Create or update one durable task row in `kanban.md`. | `@kanban-board`, `@task-row`, `@agent-profile`, `@runtime-proof` | `#kanban-board`, `#task-row`, `#multi-agent-collaboration` | Task row validates through shared multi-dimensional table/Kanban utilities and records owner, status, evidence, and next action. |
+| `/kanban.handoff` | Add a readable handoff row for another named profile or worker process. | `@kanban-board`, `@handoff-row`, `@worker-process`, `@agent-profile` | `#profile-handoff`, `#worker-process`, `#vcc` | Handoff row names from, to, task id, context refs, blockers, acceptance, and resume command without in-process subagent state. |
+| `/kanban.sync` | Reconcile board rows across named agent profiles without spawning fragile subagent swarms. | `@kanban-board`, `@agent-profile`, `@runtime-proof` | `#kanban-board`, `#multi-agent-collaboration`, `#no-hardcode` | Sync is row-based, conflict-aware, and preserves `kanban.md` as the durable SSOT. |
+| `/tool.catalog` | Read available tool categories, routing providers, status, and unavailable states. | `@tool-gateway`, `@tool-provider`, `@tool-policy` | `#tool-gateway`, `#tool-routing`, `#cost` | Catalog returns web search, image, TTS, and browser routing states with zero model spend and no tool execution. |
+| `/tool.route` | Route one tool call through the selected `agentic-graph` tool surface. | `@tool-gateway`, `@tool-provider`, `@tool-policy`, `@cost-log` | `#tool-gateway`, `#tool-routing`, `#vcc` | Tool input validates, approval gates pass, cost is logged, and fallback is typed before execution. |
+| `/tool.provider.select` | Select gateway, direct, local, or unavailable provider state per tool category. | `@tool-provider`, `@tool-policy`, `@operator` | `#tool-routing`, `#approval-gate`, `#no-hardcode` | Non-secret routing preference is stored or rejected; credentials remain server-managed. |
+| `/tool.gateway.audit` | Inspect routing, usage, cost, egress, approval, and deploy boundary state. | `@tool-gateway`, `@tool-provider`, `@cost-log`, `@runtime-proof` | `#tool-gateway`, `#token-economics`, `#vcc` | Audit reports per-tool status and blocked reasons without executing tool calls. |
+| `/toolset.enable` | Enable a logical toolset for one platform surface. | `@toolset`, `@platform-surface`, `@tool-policy`, `@operator` | `#toolset`, `#platform-toolset`, `#approval-gate` | Toolset resolves existing tool functions, platform scope is explicit, approvals pass, and enablement state is typed. |
+| `/toolset.disable` | Disable a logical toolset for one platform surface. | `@toolset`, `@platform-surface`, `@tool-policy` | `#toolset`, `#platform-toolset`, `#vcc` | Platform-scoped toolset is disabled without deleting functions, credentials, history, or unrelated provider state. |
+| `/tool.search` | Search the session-scoped deferred-tool catalog. | `@deferred-tool-catalog`, `@tool-policy` | `#tool-search`, `#progressive-disclosure`, `#token-economics` | Returns ranked deferred tool metadata or a typed empty/disabled result without loading full schemas or executing tools. |
+| `/tool.describe` | Load one deferred tool schema on demand. | `@deferred-tool-catalog`, `@tool-policy` | `#deferred-tool-schema`, `#tool-search`, `#vcc` | Selected tool schema resolves from the current session catalog or returns a stale, missing, or policy-blocked result. |
+| `/tool.call` | Invoke a selected deferred tool through a bridge route. | `@bridge-tool`, `@tool-function`, `@tool-policy`, `@cost-log` | `#bridge-tool`, `#tool-routing`, `#approval-gate` | Call unwraps to the underlying tool identity for schema validation, approval, hooks, audit, cost, and fallback. |
+| `/experience.capture` | Convert an observed run, failure, proof packet, or operator correction into a typed experience record. | `@experience`, `@source.body`, `@runtime-proof` | `#learning-loop`, `#vcc`, `#no-hardcode` | Experience record names source, lesson, applicability, cost, expiry risk, and approval state before persistence. |
+| `/skill.propose` | Propose a new reusable skill from repeated experience without directly modifying runtime code. | `@experience`, `@skill-catalog`, `@operator` | `#skill-evolution`, `#harness`, `#vcc` | Proposal includes intent, schemas, bounds, cost fields, source evidence, and review status. |
+| `/skill.evolve` | Optimize existing skill text through resumable bounded epochs, batches, and mini-batches. | `@skill-catalog`, `@skill-policy`, `@runtime-proof`, `@operator` | `#skill-evolution`, `#learning-loop`, `#vcc` | A source-revision-fenced `agentic-graph.skill.evolve` run applies a text-mutation learning-rate schedule and held-out gates; output is review-pending only, with no skill apply or model-weight change. |
+| `/propose-skill` | Draft a candidate Agent Definition with `status: proposed` from a typed capability-gap signal; owned by the ACOS Skill_Proposer harness and distinct from `/skill.propose` by owner, typed arguments `{ gap_signal }`, and artifact type. | `@skill-registry`, `@operator` | `#skill-candidate`, `#approval-gate` | One `status: proposed` Draft_Definition exists in the draft store together with one trace entry carrying the iteration count, or a typed no-draft result returns; the Active_Registry_Snapshot stays byte-identical and promotion happens only through the separate operator-gated gate. |
+| `/identity.reflect` | Update the local identity model from stable operator preferences, project boundaries, and working rules. | `@identity-model`, `@operator`, `@memory-store` | `#identity-model`, `#truth`, `#no-hardcode` | Reflection stores stable, non-secret, source-backed preferences or returns rejected inference reasons. |
+| `/application.compose` | Compile or execute one version-locked agent or LLM application from interoperable component and integration interfaces. | `@application-manifest`, `@component-catalog`, `@integration-profile`, `@runtime-proof`, and `@operator` only for live or mutating execution | `#application-composition`, `#runtime-ready`, `#no-hardcode` | Plan returns one immutable digest over exact revisions, schema digests, owners, bounds, and a deterministic dependency DAG; execute delegates bounded ready steps without silent upgrade, retry, migration, or deploy. |
+| `/agentic.graph.ingest` | Compile one bounded local workspace containing parser-supported code, docs, SQL, configs, and text-bearing PDFs into one digest-fenced explained-edge graph snapshot. | `@working-directory`, `@agentic-graph`, `@operator`, `@runtime-proof` | `#agentic-graph`, `#mcp`, `#runtime-ready` | `agentic-graph.agent_graph.ingest` returns opaque `graphId`, exact `snapshotDigest`, completeness, counts, and a bounded read-only projection; Agentic Canvas OS supplies invocation policy and typed forwarding only. |
+| `/agentic.graph.parser.generate` | Compile one source-backed inert parser-registry specification into a deterministic canonical v2 registry of fixed adapters or bounded declarative grammar data. | exactly `@parser-specification` and `@runtime-proof` | exactly `#agentic-graph`, `#parser-generation`, and `#mcp` | `agentic-graph.agent_graph.parser_generate` validates bounded descriptors and finite grammar data, then returns one canonical registry with its exact digest; Agentic Canvas OS adds no parser runtime, generated code, adapter, artifact store, model, network path, or implicit ingest. |
+| `/agentic.graph.query` | Query one exact local knowledge-graph snapshot with bounded deterministic lexical search, path, neighborhood, impact, or summary operations. | `@agentic-graph`, `@runtime-proof` | `#agentic-graph`, `#mcp`, `#vcc` | `agentic-graph.agent_graph.query` requires opaque `graphId`, exact `expectedSnapshotDigest`, and `mode`, then returns ordered evidence from that exact snapshot; stale identity and vector lookup fail closed. |
+| `/agentic.graph.explain` | Explain one exact relationship from one digest-bound local knowledge-graph snapshot. | `@agentic-graph`, `@runtime-proof` | `#agentic-graph`, `#mcp`, `#vcc` | `agentic-graph.agent_graph.explain_edge` requires opaque `graphId`, exact `expectedSnapshotDigest`, and `edgeId`, then returns stored endpoints, relationship kind, deterministic explanation, source evidence, parser identity, and extraction rule without reparsing or inference. |
+| `/orchestration.graph` | Declare or validate a stateful agent orchestration graph without importing an external graph runtime. | `@orchestration-graph`, `@state-store`, `@runtime-proof` | `#orchestration-graph`, `#stateful-agent`, `#vcc` | Graph contract names state schema, node ids, edge rules, compile checks, stop conditions, and proof. |
+| `/agent.team` | Plan, start, list, or control one exact source-backed role-playing agent team through the agentic-graph local stdio MCP owner. | exactly `@agent-team` | exactly `#role-based-agent-team` | `/agent.team #role-based-agent-team @agent-team` resolves exact Agent Definition and Agent Orchestration revisions, preserves delegate or handoff ownership, enforces bounded durable state and human review, and returns typed proof without broadening Agent Swarm. |
+| `/agent.swarm` | Horizontally scale one goal through runtime-generated independent tasks without caller-authored roles or workflow topology. | `@agent`, `@swarm-run`, `@runtime-proof` | `#agent-swarm`, `#runtime-ready`, `#token-economics` | Resolved exact agent, session-owned durable claims, bounded observed overlap, recovery, verified receipts, and base-agent-only synthesis pass focused proof. |
+| `/agent.toolkit` | Observe, evaluate, and compare digest-bound agent or team candidate revisions through framework-neutral adapters. | `@agent-toolkit-observer`, `@runtime-proof`, and `@operator` for evaluator spend or proposal persistence | `#agent-toolkit`, `#runtime-ready`, `#token-economics` | The authenticated session returns bounded metadata-only evidence, honest cost and metric provenance, a deterministic compare decision or review-pending proposal, and no automatic application. |
+| `/state.checkpoint` | Define checkpoint, resume, recovery, and idempotency behavior for long-running runs. | `@checkpoint-store`, `@state-store`, `@runtime-proof` | `#durable-execution`, `#stateful-agent`, `#vcc` | Checkpoint contract names scope, storage owner, resume token, retry policy, and recovery proof. |
+| `/human.review` | Interrupt a run for operator inspection, edit, approval, rejection, and resume. | `@human-review`, `@operator`, `@approval-gate` | `#human-in-loop`, `#approval-gate`, `#vcc` | Run remains paused until review result is present; resume payload and audit event are typed. |
+| `/stream.trace` | Surface execution progress, state transitions, cost, and stop events as a typed trace. | `@runtime-proof`, `@cost-log`, `@orchestration-graph` | `#durable-execution`, `#token-economics`, `#vcc` | Trace events are ordered, bounded, secret-free, and do not mutate source state. |
+| `/superagent.run` | Run a long-horizon research, coding, or creation workflow through source-backed orchestration. | `@orchestration-graph`, `@sandbox-workspace`, `@message-gateway`, `@runtime-proof` | `#long-horizon-harness`, `#sandboxed-workspace`, `#message-gateway`, `#token-economics` | Goal, tools, skills, memory reads, sandbox scope, message handoffs, checkpoints, stop conditions, artifacts, verification, and cost ledger are typed before promotion. |
+| `/sandbox.policy.validate` | Compile and audit one source-backed native sandbox policy without executing an operation. | `@sandbox-policy`, `@runtime-proof` | `#agent-sandbox-policy`, `#sandboxed-workspace`, `#no-hardcode` | Schema, policy digest, fail-closed defaults, domain mutability, and host-enforcement gap are returned. |
+| `/sandbox.policy.authorize` | Return one fail-closed preflight decision for a filesystem, process, network, or credential operation. | `@sandbox-policy`, `@sandbox-workspace`, `@runtime-proof` | `#agent-sandbox-policy`, `#sandboxed-workspace`, `#vcc` | Decision, reason code, matched rule where applicable, redacted audit metadata, and enforcement status are returned without execution. |
+| `/prd-tad.create` | Produce or refresh a combined PRD/TAD from validated problem and architecture context. | `@operator`, `@source.body` | `#tco`, `#ttv`, `#vcc`, `#foss` | PRD/TAD includes personas, MoSCoW, topology, harness, ADR, and VCC sections. |
+| `/runtime-ready.check` | Verify whether a spec-complete artifact or exact local Git worktree is runnable. | `@local-harness`, `@runtime-proof`, and `@repository-root` for repository audits | `#harness`, `#vcc`, `#runtime-ready` | Focused checks or the bounded source-admission evaluator emit layer-specific proof, stable findings, zero-cost evidence, and unchanged deploy boundaries; exit 0 applies only to the requested proven layer. |
+| `/instruction.audit` | Audit always-on guidance and skill catalog context without model calls or source mutation. | `@instruction-source`, `@local-harness`, `@runtime-proof` | `#instruction-audit`, `#progressive-disclosure`, `#runtime-ready` | Required intent remains present; context budgets, duplicate instructions, embedded procedures, and owner leakage pass with exact zero model cost. |
+| `/instruction.quality-evaluate` | Score recorded or live final answers against the bounded instruction task-quality suite. | `@instruction-eval-suite`, `@runtime-proof`, `@operator` | `#instruction-quality`, `#vcc`, `#runtime-ready` | Every registered case passes required concepts, forbidden-claim screening, and word budgets with explicit candidate provenance and human review. |
+| `/adlc.observe` | Project one immutable local ADLC ledger receipt into end-to-end execution, evidence, cost, gate, and release-lifecycle graph context through the existing agentic-graph Canvas owner. | exactly `@implementation-run`, `@canvas`, and `@runtime-proof` | exactly `#adlc-observability` | `agentic-graph.adlc.observe` returns `agentic-graph-adlc-observation/v1` with source identity, typed status and conformance, deterministic GraphData plus KGC Markdown, cache evidence, and zero model, network, token, and cost use; `verified`, `delivery_ready`, and `deployed` remain distinct claims, and no ledger, Canvas source, release state, Prod mirror, or Cloudflare target is mutated. |
+| `/ecs.session-start` | Hydrate one bounded native ECS session from a repository-owned KGC Markdown document. | `@source.frontmatter`, `@ecs-session`, `@runtime-proof` | `#agentic-ecs`, `#mcp`, `#dev-only` | `agentic-graph.ecs.session_start` validates a safe workspace-relative `.md` path, hydrates registered components and entities deterministically, and returns a private session id plus zero-spend proof without network, Prod, or Cloudflare capability. |
+| `/ecs.world-tick` | Advance one hydrated ECS session through its ordered systems and bounded reasoning boundary. | `@ecs-session`, `@runtime-proof` | `#agentic-ecs`, `#token-economics`, `#dev-only` | `agentic-graph.ecs.world_tick` resolves a live session, commits successful systems in order, rolls back only a failing system, and reports decisions plus `cost_logs`; timeout or unavailable reasoning defers without invented decisions or spend. |
+| `/ecs.decision-persist` | Persist only pending ECS decisions from one live session into its source KGC document. | `@ecs-session`, `@source.frontmatter`, `@runtime-proof` | `#agentic-ecs`, `#frontmatter`, `#dev-only` | `agentic-graph.ecs.decision_persist` atomically and idempotently appends validated `EcsDecision` nodes, preserves unrelated authored bytes, closes the session on success or zero pending decisions, and retains it after failure for retry. |
+| `/release.complete` | Authorize and verify one exact bounded product release through its selected deployment adapter. | `@operator`, `@source.frontmatter`, `@runtime-proof` | `#runtime-ready`, `#multi-agent-collaboration`, `#vcc` | The candidate digest, authenticated operator decision, immutable product artifact, target verification, and rollback evidence govern `production-complete`; repository integration and cleanup stay with ADLC. |
+| `/deploy.guard` | Stop accidental Prod mirror or Cloudflare mutation. | `@operator`, `@dev-only` | `#no-deploy`, `#approval-gate` | Output states Dev-only status and no Prod/Cloudflare mutation occurred. |
+| `/harness.define` | Define typed input, output, fallback, cost, and bounds for an AI-capable component. | `@local-harness`, `@cost-log` | `#harness`, `#token-economics`, `#vcc` | Harness contract includes schemas, cost fields, fallback paths, and max iteration. |
+| `/mcp.capabilities` | Discover tool capabilities through the existing MCP gateway contract. | `@mcp-gateway`, `@local-harness` | `#mcp`, `#runtime-ready`, `#cost` | Capability list is deduplicated and discovery reports zero model spend. |
+| `/cost.audit` | Inspect token, cache, and TCO impact before running a model-bearing path. | `@cost-log`, `@operator` | `#token-economics`, `#tco`, `#foss` | Cost log fields are present and budget breach blocks before spend. |
+| `/payment.rail.select` | Resolve exactly one settlement rail for one payment intent from requested currency, requested settlement asset, and per-rail readiness. | `@payment-rail`, `@payment-intent`, `@payment-readiness`, `@runtime-proof` | `#payment-rail-selection`, `#no-hardcode`, `#vcc` | Selection is deterministic for identical inputs, the rail identifier and selection reason persist before any provider call, and no ready rail returns a typed unavailable result with zero provider objects created. |
+| `/payment.intent.create` | Create one provider payment object on the selected rail behind a client-generated intent key. | `@payment-intent`, `@payment-provider`, `@cost-log`, `@runtime-proof`, and `@operator` or `@approval-gate` for agent-originated calls | `#payment-idempotency`, `#approval-gate`, `#token-economics` | The server-side trust boundary holds every credential, a replayed key yields exactly one provider object, a parameter conflict returns a typed conflict without a second object, one cost log entry exists per provider call, and zero model calls are recorded. |
+| `/payment.event.settle` | Authenticate one inbound provider event and apply its settlement side effect at most once. | `@payment-event`, `@payment-intent`, `@payment-provider`, `@runtime-proof` | `#payment-settlement-integrity`, `#vcc`, `#truth` | Signature or source authenticity is verified before the payload is read, provider state is read as the authority, a paid transition requires matching intent identifier, minor-unit amount, and currency, duplicate delivery yields one side effect, and a conflicting payload preserves prior state. |
+| `/payment.reconcile` | Resolve queued or in-flight payment intents to a terminal state from provider-read state under a bounded retry schedule. | `@payment-intent`, `@payment-provider`, `@runtime-proof` | `#offline-intent-queue`, `#payment-settlement-integrity`, `#vcc` | Queued intents persist offline with zero egress, submissions are ordered one intent key at a time, terminal state comes only from provider-read state, local queue state never unlocks paid capability, and an unresolvable record stops at the stated attempt bound with an operator-visible entry. |
+| `/payment.receipt.project` | Serialize terminal payment records into one locally readable document and parse that document back without loss. | `@payment-record`, `@payment-intent`, `@runtime-proof` | `#payment-data-minimization`, `#offline-intent-queue`, `#vcc` | Every terminal record yields exactly one entry, parse then print and print then parse then print are byte-identical, a malformed document returns a typed parse error naming the failing line with bytes unchanged, no prohibited identifier appears in any entry, and the receipt view renders with zero network requests. |
+| `/payment.refund` | Create one refund on the rail that settled the original payment. | `@payment-intent`, `@payment-provider`, `@cost-log`, `@operator` | `#payment-settlement-integrity`, `#approval-gate`, `#vcc` | A refund on a settled record records a refund reference on the settling rail, a repeated request leaves the refunded amount unchanged, a non-settled record returns a typed not-applicable result with zero provider contact, and every recorded failure carries the provider request identifier where the provider supplies one. |
+| `/payment.readiness` | Report per-rail payment configuration completeness without mutating configuration. | `@payment-readiness`, `@payment-rail`, `@runtime-proof` | `#payment-readiness`, `#dev-only`, `#runtime-ready` | The gate lists required credential names per rail, reports presence in server-side secret storage, fails when a credential name or value appears in client bundle output or visible runtime variables, reports the pinned provider API version and configured integration model, marks a rail ready only after a sandbox payment on that rail reached a terminal state, performs zero writes, and exits non-zero on any missing required input. |
+| `/coordination.schedule` | Partition independently authorized tasks into deterministic bounded waves without executing them. | `@coordination-plan`, `@runtime-proof` | `#coordination-scheduler`, `#workspace-parallelism`, `#truth` | Only current claims enter ready waves; waiting or non-writing claims retain typed dispositions, overlapping write sets serialize, dependencies propagate locally, and global attention is non-blocking only with digest-bound disjoint affected scope. The report grants no mutation or deployment authority. |
+| `/goal.advance` | Derive the next non-blocking advance decision for one declared goal from its unit set and its recorded outcomes. | exactly `@goal-plan` and `@runtime-proof` | exactly `#goal-completion` | Weights derive deterministically from recorded outcomes with a neutral prior for unseen kinds and may only reorder the ready set; unauthorized gated units are refused; each blocked unit bounds itself and its dependents while the goal stays continuable; the frozen digest-bound receipt dispatches nothing and grants no mutation, integration, release, or deployment authority. |
+| `/canvas.project` | Project source-backed runtime state into existing Canvas owners. | `@source.frontmatter`, `@source.body`, `@canvas` | `#canvas`, `#frontmatter`, `#runtime-ready` | Source-backed graph, table, or Storyboard surface renders without dashboard-only storage. |
+| `/canvas.render` | Inspect or trigger projection through existing Canvas render owners without mutating source graph data. | `@canvas`, `@source.frontmatter`, `@runtime-proof` | `#canvas`, `#runtime-ready`, `#vcc` | Canvas projection reports rendered graph, table, KGC, or Storyboard state without direct store mutation. |
+| `/canvas.node.add` | Create a graph node through existing Canvas owners at the resolved insertion point. | `@canvas`, `@canvas-center`, `@source.frontmatter` | `#canvas-node`, `#canvas-selection`, `#vcc` | Node creation uses shared graph mutation utilities, selects the committed node, and reports the resolved graph-space point. |
+| `/canvas.node.link` | Start or commit a node-to-node connection through the shared Canvas edge request flow. | `@canvas`, `@selected-node`, `@edge-endpoint` | `#canvas-node`, `#canvas-edge`, `#vcc` | Edge request names source, target, label, and selection state; missing endpoint returns a typed pending-edge state. |
+| `/canvas.selection.open` | Open the selected node or edge in the shared side panel, tab, editor, or Markdown provenance surface. | `@selected-node` or `@selected-edge`, `@markdown-provenance` when source opening is requested | `#canvas-selection`, `#canvas-node`, `#canvas-edge` | Open action resolves an implemented surface or returns a typed missing-selection/provenance result without adding a local panel alias. |
+| `/canvas.selection.chat` | Append selected node or edge context to FloatingPanel Chat through the existing chat append route. | `@selected-node` or `@selected-edge`, `@canvas` | `#canvas-selection`, `#inline-context`, `#vcc` | Chat receives typed selection context with id, label, type, properties, and source provenance when present. |
+| `/canvas.selection.delete` | Request deletion of the selected Canvas record through the shared graph mutation owner. | `@selected-node` or `@selected-edge`, `@approval-gate` when required | `#canvas-selection`, `#canvas-node`, `#canvas-edge` | Deletion fails closed without a valid selection, preserves graph consistency, and returns mutation proof from the shared owner. |
+| `/canvas.media.attach` | Add or update selected-node media metadata through the shared media property owner. | `@selected-node`, `@media-url`, `@canvas` | `#canvas-media`, `#canvas-node`, `#no-hardcode` | Media metadata validates kind, URL/reference, opacity, and interactivity before updating the node or creating a media node through shared utilities. |
+| `/canvas.view.set` | Apply one semantic Canvas View Mode row value through the existing browser-local toolbar selection owner. | exactly `@canvas-view` | exactly `#canvas-view` | Browser-local WebMCP tool `agentic-graph.control_local_canvas_view` accepts one canonical option id or `/canvas.view.set #canvas-view @canvas-view option=<id>`, rejects unavailable rows, and returns the exact applied tuple without adding a second renderer, menu, state store, or command registry. |
+| `/workspace.launch` | Invoke one semantic Launch toolbar row through its existing browser-local navigation, workspace, import, save, export, or panel owner. | exactly `@canvas` | exactly `#workspace-launch` | Browser-local WebMCP tool `agentic-graph.control_local_workspace_launch` accepts one canonical option id or `/workspace.launch #workspace-launch @canvas option=<id>`; file, folder, URL, and export configuration rows return typed `requested-user-input` status, unavailable owners fail visibly, and no duplicate Launch menu, workspace state, import/export path, credential, collaboration grant, or deployment authority is created. |
+| `/workspace.artifact.manage` | Plan or apply one bounded local file or folder lifecycle operation through the configured workspace artifact owner. | `@artifact-operation`, `@workspace-entry`, `@artifact-policy`, `@runtime-proof`; add `@operator` for apply | exactly `#workspace-artifact-lifecycle` | `/workspace.artifact.manage #workspace-artifact-lifecycle @artifact-operation @workspace-entry @artifact-policy @runtime-proof` resolves metadata only; exact MCP tools `agentic-graph.workspace_artifact.plan` and `agentic-graph.workspace_artifact.apply` own digest-fenced local execution. Launch selection, URL ingest, and provider synchronization remain delegated to `/workspace.launch`, `/source.ingest`, and `/file.sync`; recursive import/export, purge, undeclared roots, symlinks, traversal, network, Prod, and Cloudflare fail closed. |
+| `/toolbar.invoke` | Invoke one semantic Main Toolbar button through its existing browser-local action owner. | exactly `@canvas` | exactly `#toolbar-action` | Browser-local WebMCP tool `agentic-graph.control_local_toolbar_action` accepts one canonical action id or `/toolbar.invoke #toolbar-action @canvas action=<id>`; every supported button carries the same visible, hit-testable tuple, blocked actions fail visibly, and Launch, Interaction, Canvas View, and Zoom remain delegated to their specialized owners rather than a duplicate toolbar registry. |
+| `/media.immersive` | Inspect or control bounded immersive-media projection on the existing shared Canvas. | exactly `@canvas`; add `@media-url` only for a source or URL-backed marker operation | exactly `#canvas-media` | Dev-only browser-local WebMCP tools `agentic-graph.inspect_local_immersive_media` and `agentic-graph.control_local_immersive_media` validate operation-scoped source, view, navigation, transition, annotation, layer, overlay, and capture fields; agentic-graph retains the single renderer, camera/input, media, and persistence owners, while this dictionary adds no dependency, network, storage, Prod, or Cloudflare authority. |
+| `/canvas.layout.tune` | Tune or reset schema-owned Canvas layout mode and forces through the graph schema owner. | `@layout-forces`, `@physics-2d`, `@canvas`, `@runtime-proof` | `#canvas-layout`, `#canvas-physics`, `#canvas`, `#vcc` | Layout mode and force values are stored in schema layout state, with reset/preset behavior reported from the schema owner. |
+| `/canvas.viewport.inspect` | Read the current viewport size, zoom, center, and transform through shared zoom/projection owners. | `@viewport-readout`, `@viewport-transform`, `@canvas` | `#canvas-viewport`, `#canvas-transform`, `#vcc` | Readout reports viewport dimensions, zoom percent, center, scale, and translation from shared viewport utilities without panel-local recalculation. |
+| `/canvas.viewport.transform` | Apply or audit viewport transform, zoom modes, wheel behavior, and speed tuning through shared camera owners. | `@viewport-transform`, `@zoom-mode`, `@wheel-input`, `@interaction-speed`, `@canvas` | `#canvas-viewport`, `#canvas-transform`, `#canvas-zoom`, `#canvas-wheel` | Transform or audit result names the active shared camera owner, clamp bounds, gesture policy, and applied or blocked state. |
+| `/camera.select` | Select fixed-follow or free-orbit as the shared Camera source. | exactly `@camera` | exactly `#camera` | Browser-local WebMCP tool `agentic-graph.control_local_camera` validates `camera=fixed-follow` or `camera=free-orbit` and reports the selected source; this dictionary row defines invocation truth but does not execute the Camera runtime. |
+| `/camera.frame` | Frame the shared Camera around the active camera or selected actor. | exactly one of `@camera` or `@selected-actor` | exactly `#camera-shot` | Angle, level, shot size, and focal length resolve through the shared Camera framing owner and report the applied pose. |
+| `/camera.animate` | Add or update a camera motion mark on the canonical BottomPanel Timeline. | exactly one of `@camera` or `@selected-actor` | exactly `#camera-motion` | Rig and time parameters validate before one shared XR camera track is updated; no FloatingPanel timeline copy is created. |
+| `/camera.play` | Play or pause the shared camera motion track. | exactly `@camera` | exactly `#camera-motion` | Playback state routes through the canonical Timeline transport and shared XR runtime. |
+| `/camera.scrub` | Move the shared camera motion playhead to a bounded time. | exactly `@camera` | exactly `#camera-motion` | The requested time clamps to scene duration and updates the canonical Timeline transport without duplicating transport state. |
+| `/xr.stage` | Select one catalog environment for the canonical XR scene. | exactly one dynamic `@<environment-id>` binding | no semantic token | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` resolves and persists the catalog stage through one shared scene owner or returns a typed block; this dictionary does not execute it. |
+| `/xr.place` | Place one catalog 3D asset in the canonical XR scene with an optional bounded non-empty label and either a `linear` or `hold` transition. | exactly one dynamic `@<asset-id>` binding | no semantic token | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` creates and persists one scene-authored subject or returns a typed block; this dictionary does not create a renderer or asset store. |
+| `/xr.transform` | Update one scene-authored subject's asset, position, yaw rotation, scale, or color. | exactly one dynamic `@<subject-id>` binding | exactly `#transform` | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` validates bounded transform fields and persists the shared subject or returns a typed block; this dictionary does not own scene mutation. |
+| `/xr.label` | Assign a bounded non-empty label to one scene-authored subject. | exactly one dynamic `@<subject-id>` binding | no semantic token | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` validates and persists the label through the shared scene owner or returns a typed block. |
+| `/xr.remove` | Remove one scene-authored subject from the canonical XR scene. | exactly one dynamic `@<subject-id>` binding | no semantic token | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` removes and persists the subject through the shared scene owner or returns a typed block. |
+| `/xr.physics` | Control the canonical XR world, subject body, impulse, or native controller scope. | exactly `@canvas` | exactly one of `#world`, `#body`, `#impulse`, or `#controller` | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` validates the scoped operation and reports applied or blocked state; agentic-graph remains the single physics owner and Agentic Canvas OS adds no physics runtime. |
+| `/xr.present` | Commit the current canonical XR scene at the active immersive AR placement target. | exactly `@scene` | exactly `#reticle` | Browser-local WebMCP tool `agentic-graph.control_local_xr_scene` commits the current hit-test placement or returns a typed block; this dictionary grants no camera, sensor, persistence, or deployment authority. |
+| `/animation.control` | Apply, clear, play, pause, scrub, or export native XR character motion and action-path choreography through one shared runtime. | `@selected-actor` for apply or clear; `@canvas` for transport or export | exactly one of `#character-motion` or `#action-path` for apply or clear; no semantic token for transport or export | Typed preset and operation fields validate before the shared XR motion-reference plan is updated; BottomPanel Timeline remains transport owner, FloatingPanel remains a projection, and export returns a deterministic native motion-reference package. |
+| `/motion.control` | Inspect or control the bounded Motion Control session on the existing Canvas. | exactly `@canvas` | exactly `#pose` | Dev-only browser-local WebMCP tools `agentic-graph.inspect_local_motion_control` and `agentic-graph.control_local_motion_control` validate open, start, stop, record, finish, clear, export, and share operations and return typed state or an applied or blocked result; agentic-graph retains camera permission, pose inference, XR projection, persistence, and deployment authority. |
+| `/game.mode` | Open, inspect, or control deterministic Agentic ECS gameplay on the existing Canvas. | exactly `@canvas` | exactly `#gameplay` | Dev-only browser-local WebMCP tools `agentic-graph.inspect_local_game_mode` and `agentic-graph.control_local_game_mode` return typed state or an applied or blocked result; agentic-graph remains the single game, ECS, renderer, camera/input, and Decision-persistence owner, while this dictionary adds no runtime or deployment authority. |
+| `/game.portability` | Resolve the source-backed, capability-detected Agentic Game OS portability contract across browser and native projections without executing either runtime. | exactly `@portability-layer` | exactly `#game-portability` | The exact dictionary tuple resolves as metadata only; agentic-graph remains the shared capability and backend owner, GameXR remains the visual projection, interaction, scene-configuration, and local-adapter owner, and no renderer, persistence, provider, model, credential, Prod, Cloudflare, or deploy authority is granted. |
+| `/flight.sim` | Open, inspect, or control deterministic Flight Sim training on the existing Canvas. | exactly `@canvas` | exactly `#flight` | Dev-only browser-local WebMCP tools `agentic-graph.inspect_local_flight_sim` and `agentic-graph.control_local_flight_sim` return typed lifecycle, input, telemetry, and Decision-persistence state or an applied or blocked result; agentic-graph remains the single flight, ECS, XR terrain, renderer, camera/input, and persistence owner, while this dictionary adds no network, model, renderer, Prod, or Cloudflare authority. |
+| `/canvas.interaction.tune` | Tune pointer mode, run mode, drag alpha target, and flow interaction behavior through existing canvas owners. | `@flow-run-mode`, `@drag-alpha-target`, `@interaction-speed`, `@canvas` | `#canvas-interaction`, `#canvas-flow`, `#canvas-wheel`, `#vcc` | Browser-local WebMCP tool `agentic-graph.control_local_canvas_interaction` accepts one canonical toolbar option id or `/canvas.interaction.tune #canvas-interaction @canvas option=<id>`, delegates to the existing Interaction toolbar/store owner, and returns the exact applied tuple; unsupported values fail visibly without a FloatingPanel alias, duplicate state owner, or command registry. |
+| `/canvas.physics.tune` | Tune or reset schema-owned 2D physics forces without keeping panel-local slider state. | `@physics-2d`, `@layout-forces`, `@canvas`, `@runtime-proof` | `#canvas-physics`, `#canvas-layout`, `#vcc` | Charge, collision, speed, overlap, label, and drag-force values clamp through the schema owner and report applied, reset, or blocked state. |
+| `/canvas.center` | Center the viewport on the active selection or all items through shared arrange and centroid utilities. | `@centroid-target`, `@selected-node` when scoped to selection, `@canvas` | `#canvas-centroid`, `#canvas-selection`, `#vcc` | Centering resolves selection or all-items scope, dispatches through shared arrange utilities, and reports a typed missing-selection result when needed. |
+| `/canvas.distribute` | Distribute selected canvas items along an axis through shared arrange utilities. | `@spread-axis`, `@selected-node`, `@canvas` | `#canvas-even-spread`, `#canvas-selection`, `#vcc` | Distribution validates at least three selected items, axis, and graph state before mutation; invalid scope fails closed. |
+| `/canvas.performance.audit` | Inspect render updates, state updates, layout timing, and performance overlay state through diagnostic owners. | `@performance-overlay`, `@runtime-proof`, `@canvas` | `#canvas-performance`, `#canvas-viewport`, `#vcc` | Diagnostic output reports overlay state, render/update counters, and layout timing from shared diagnostic owners without creating a panel-local monitor. |
+| `/canvas.edge.rewire` | Update selected-edge source or target through the existing Canvas edge request flow. | `@selected-edge`, `@edge-endpoint`, `@canvas` | `#canvas-edge`, `#canvas-selection`, `#vcc` | Rewire validates endpoint existence, updates the selected edge through the shared flow, and avoids duplicate edge ownership. |
+| `/validation.run` | Run focused checks for the touched docs or runtime owner. | `@runtime-proof`, `@dev-only` | `#vcc`, `#no-hardcode`, `#runtime-ready` | Final response includes command, result, skipped checks, and deploy-boundary statement. |
+| `/workspace.review` | Review current workspace context, sources, memory, bindings, and blockers before execution. | `@operator`, `@source.body`, `@runtime-proof` | `#frontmatter`, `#vcc`, `#dev-only` | Typed context packet names ready inputs, missing bindings, stale risks, and the smallest high-ROI next action. |
+| `/pipeline.trace` | Trace source ingestion, parsing, render projection, harness state, and cost boundaries. | `@runtime-proof`, `@cost-log`, `@local-harness` | `#harness`, `#cost`, `#vcc` | Stage ledger names status, cache reuse, fallback, cost state, and stop condition for each pipeline stage. |
+| `/source.ingest` | Inspect or run source intake through existing Source Files and workspace owners. | `@operator`, `@source.body`, `@dev-only` | `#frontmatter`, `#no-hardcode`, `#dev-only` | Source intake is registered, rejected, or blocked with provenance and no generated-artifact backfill. |
+| `/source.parse` | Parse current source frontmatter and body into normalized graph, table, KTV, or KGC context. | `@source.frontmatter`, `@source.body`, `@runtime-proof` | `#frontmatter`, `#runtime-ready`, `#vcc` | Parse result succeeds without repair-only fallback or returns a typed parse error before model spend. |
+| `/source.normalize` | Neutralize conflicting or stale source content at the upstream document or shared owner. | `@source.frontmatter`, `@source.body` | `#no-hardcode`, `#frontmatter`, `#no-legacy` | Stale, duplicate, or hardcoded content is removed at source without downstream aliasing. |
+| `/repository.pack` | Pack the eligible text files in one exact local Git worktree into a deterministic content-addressed Markdown artifact. | exactly `@repository-root` and `@runtime-proof` | exactly `#repository-packing` | agentic-graph local stdio MCP returns `agentic-graph-repository-pack-result/v1` with a verified repository-relative artifact path, source and artifact digests, typed counts, hard bounds, and exact zero network, model, token, and cost evidence. |
+| `/git.run` | Inspect or mutate the browser-persisted Git repository, and fetch from or push to one configured remote through the Dev Worker relay. | `@local-git-repository`, `@git-remote` | `#git-remote`, `#mcp`, `#runtime-ready`, `#dev-only` | The browser WebMCP owner returns a typed repository result; remote credentials remain Worker-only, rejected authority paths fail atomically, and local stdio returns only a browser-runtime handoff. |
+| `/git.guidelines` | Load git rules. | `@git-guidelines` | `#git-collaboration` | One conformant report. |
+| `/file.sync` | Pull or push a file or directory between browser persisted cache and one configured cloud-storage provider. | `@persisted-cache`, `@file-sync-provider` | `#multi-provider-file-sync`, `#mcp`, `#runtime-ready`, `#dev-only` | The browser WebMCP owner returns per-file typed outcomes with hash skips, bounded retries, conflict state, and offline FIFO; provider credentials remain Worker-only and local stdio performs no storage or network work. |
+| `/ingest-url` | Import one operator-provided URL through the existing workspace URL intake, Source Files, and Canvas projection owners. | exactly one `@url:` value and `@reference-policy` | exactly `#canvas` | Canonical invocation `/ingest-url @url:https://example.com @reference-policy #canvas`; `agentic-graph.agentic_canvas_os.docs.invoke` resolves source-backed metadata only, while guarded browser WebMCP tool `agentic-graph.control_local_import_url` returns one typed imported, blocked, or failed result without a second importer, embedded URL, credential exposure, Prod mutation, or Cloudflare deployment. |
+| `/computing-flow` | Generate or validate a source-backed KGC computing-flow DAG. | `@operator`, `@source.frontmatter`, `@local-harness`, `@runtime-proof` | `#computing-flow`, `#frontmatter`, `#harness`, `#vcc` | `kgc-computing-flow/v1` frontmatter validates and routes through KGC validation before Canvas projection. |
+| Bare `/moa` | Return usage for the MoA route. | `@agent` | `#mixture-of-agents` | Usage response explains required query or scoped selection; it does not switch model, mutate state, or call a provider. |
+
+## Command Shape
+
+```yaml
+command:
+  token: "/runtime-ready.check"
+  role: "command route"
+  input:
+    source_ref: "@source.frontmatter"
+    semantic_filters: ["#harness", "#vcc"]
+  output:
+    status: "runtime-ready | spec-complete | gated | blocked"
+    proof_ref: "@runtime-proof"
+  bounds:
+    max_iterations: 1
+    fail_before_spend: true
+```
+
+## Resolution Rules
+
+| Situation | Resolution |
+|---|---|
+| Command is known and bindings are present | Route through the existing shared utility or runtime owner. |
+| Command is known but binding is missing | Return a structured missing-binding response. |
+| `/soul.load` finds missing, empty, unsafe, or unreadable source | Return typed fallback identity state; do not silently embed a hardcoded default. |
+| `/personality.overlay` conflicts with facts, safety, or deploy gates | Reject the overlay before prompt assembly. |
+| `/memory.write` or `/user.profile` exceeds capacity | Return typed capacity error and require `/memory.compact`, replace, or remove before retry. |
+| `/session.search` finds relevant history | Return cited search results; require explicit `/memory.write` or `/user.profile` before persistence. |
+| `/skill.load` references a supporting file | Load only the named shallow file under the selected skill root; reject deep or unsafe references. |
+| `/skill.manage` would mutate a skill under approval policy | Stage or return review-required before writing; never auto-commit protected skill changes. |
+| `/context.discover` finds several project context types | Apply one local precedence rule and report skipped matches; do not merge duplicate instruction layers. |
+| `/context.load` finds prompt injection, secrets, invisible controls, or exfiltration content | Block before inclusion and return a typed blocked-context result. |
+| `/context.audit` finds stale or conflicting project context | Report the conflict and fix the source file or shared owner; do not add a downstream remap. |
+| `/reference.expand` targets sensitive, binary, missing, outside-workspace, or over-hard-limit content | Append typed warning or refuse expansion before injecting content. |
+| `/reference.expand` runs on a platform that does not support inline expansion | Preserve the raw message and report unsupported-platform without rewriting the text. |
+| `/kanban.task` or `/kanban.handoff` lacks a row id, owner profile, status, or acceptance field | Reject before write; do not create partial board rows. |
+| `/agent.team` lacks exact team, agent-definition, workflow, branch, review-policy, bound, plan-digest, idempotency, or state-version fences | Reject before model, tool, state, or spend mutation; do not infer a role, route, owner, review decision, retry, or Agent Swarm fallback. |
+| `/agent.swarm` receives caller-authored roles, specialists, tasks, branches, or workflow topology, or cannot resolve the exact base-agent revision | Reject before planning or spend; do not infer a handcrafted workflow or stale agent. |
+| `/agent.toolkit` receives a missing, malformed, changed, or application-denied revision digest, raw telemetry content, undeclared metric direction, caller-owned signal, or apply request | Reject before observation, evaluator spend, persistence, or mutation; remote metadata that passes schema remains untrusted and cannot enter comparison evidence. |
+| `/kanban.sync` sees conflicting writes to the same row | Preserve both evidence fields and require explicit resolution; do not overwrite another profile's handoff. |
+| `/tool.route` targets a paid, mutating, browser-auth, egress, or generated-media tool | Require `@operator` approval and fail closed without approval. |
+| `/tool.provider.select` includes credentials or browser secrets | Reject and require server-managed secret setup; do not write secrets into docs or client state. |
+| `/toolset.enable` would expose paid, mutating, browser-auth, egress, filesystem, terminal, or generated-media tools | Require `@operator` approval and scoped `@platform-surface`; fail closed without both. |
+| `/tool.search` is enabled without a current deferred catalog | Return no-deferred-catalog; do not scan global tool registries. |
+| `/tool.describe` targets a tool outside the session catalog | Return unavailable-for-session before schema disclosure. |
+| `/tool.call` lacks described schema or real tool policy | Block before execution; never treat the bridge as approval. |
+| `/moa` references an MoA preset as aggregator | Reject with a typed recursion error before token spend. |
+| `/superagent.run` lacks sandbox scope, message gateway, checkpoint policy, or stop condition | Reject before execution; do not start an open-ended agent loop. |
+| `/adlc.observe` lacks an exact immutable `adlc-ledger-receipt/v1`, expected revision, or expected ledger digest, or the source bytes drift, or its exact evaluator is absent | Return a typed read-only block before projection (`adlc_evaluator_unavailable` is nonretryable); do not infer a receipt, repair a ledger, translate `delivery_ready` into `verified`, infer `deployed`, call a model or network, or create a second graph store or renderer. |
+| `/application.compose` receives missing bindings, mutable or inexact references, digest drift, an incompatible capability or schema, a cyclic or ambiguous DAG, or executable, connection, or secret material | Reject before owner execution or spend; do not choose a fallback, upgrade, install, retry, migrate, connect, or deploy. |
+| `/agentic.graph.parser.generate` receives a missing, mutable, executable, ambiguous, oversized, or unsupported parser specification | Reject before registry compilation or publication; do not infer source matchers, download an adapter, execute caller code, fall back to a model or remote service, or start ingestion. |
+| `/repository.pack` receives a non-Git root, unsafe path, symlink escape, changed source, sensitive content, unknown field, or exceeded bound | Block before artifact publication, remove staging residue, and return a source-byte-free typed error; do not fall back to a remote service, external binary, model, or alternate alias. |
+| An ECS command receives a missing, expired, or disposed `@ecs-session` | Return a typed session error without reconstructing hidden state or persisting caller-supplied decisions. |
+| Command requires paid, mutating, payment, Prod, or Cloudflare action | Require `@operator` approval and fail closed without approval. |
+| Command conflicts with source frontmatter | Fix the source or shared owner; do not add a downstream alias. |
+| Command is unknown | Reject with a typed unsupported-command result and suggest nearest dictionary entries. |
+
+## Direct Facts Link
+
+| Token | Facts source |
+|---|---|
+| `/agentic.graph.ingest` | `FACTS.md` direct-resolution entry for bounded native parser generation and graph ingestion. |
+| `/agentic.graph.parser.generate` | `FACTS.md` direct-resolution entry for deterministic source-backed parser generation. |
+| `/agentic.graph.query` | `FACTS.md` direct-resolution entry for deterministic local graph queries. |
+| `/agentic.graph.explain` | `FACTS.md` direct-resolution entry for exact stored edge evidence and explanation. |
+| `/application.compose` | `FACTS.md` direct-resolution entry for exact versioned application planning and bounded owner-delegated execution. |
+| `/adlc.observe` | `FACTS.md` direct-resolution entry for deterministic read-only ADLC ledger projection through the existing Canvas. |
+| `/agent.team` | `FACTS.md` direct-resolution entry for exact role-based Agent Team planning and durable agentic-graph MCP control. |
+| `/soul.load` | `FACTS.md` direct-resolution entry for durable identity loading. |
+| `/personality.overlay` | `FACTS.md` direct-resolution entry for temporary personality overlays. |
+| `/moa` | `FACTS.md` direct-resolution entry for one-shot Mixture of Agents routing. |
+| `/agent.swarm` | `FACTS.md` direct-resolution entry for native dynamic horizontal worker coordination. |
+| `/agent.toolkit` | `FACTS.md` direct-resolution entry for native metadata-only agent and team observation, evaluation, comparison, and proposal. |
+| `/sme-care-agent` | `FACTS.md` direct-resolution entry for source-grounded SME care responses. |
+| `/investment-research-agent` | `FACTS.md` direct-resolution entry for source-grounded investment research responses. |
+| `/crawler-agent` | `FACTS.md` direct-resolution entry for the native website crawl route. |
+| `/ingest-url` | `FACTS.md` direct-resolution entry for the guarded browser-local Import URL route. |
+| `/agentic-graph.probe-tree` | `FACTS.md` direct-resolution entry for bounded Widget Card Probe-Tree generation. |
+| `/memory.write` | `FACTS.md` direct-resolution entry for bounded memory writes. |
+| `/user.profile` | `FACTS.md` direct-resolution entry for explicit user profile updates. |
+| `/skill.discover` | `FACTS.md` direct-resolution entry for progressive skill discovery. |
+| `/skill.load` | `FACTS.md` direct-resolution entry for on-demand skill loading. |
+| `/context.discover` | `FACTS.md` direct-resolution entry for working-directory context discovery. |
+| `/context.load` | `FACTS.md` direct-resolution entry for scanned context-file loading. |
+| `/context.audit` | `FACTS.md` direct-resolution entry for context-file precedence and safety audit. |
+| `/reference.expand` | `FACTS.md` direct-resolution entry for inline context reference expansion. |
+| `/reference.audit` | `FACTS.md` direct-resolution entry for context reference safety and size audit. |
+| `/kanban.task` | `FACTS.md` direct-resolution entry for durable Kanban task rows. |
+| `/kanban.handoff` | `FACTS.md` direct-resolution entry for profile handoff rows. |
+| `/kanban.sync` | `FACTS.md` direct-resolution entry for shared board reconciliation. |
+| `/ecs.session-start` | `FACTS.md` direct-resolution entry for KGC-backed native ECS session hydration. |
+| `/ecs.world-tick` | `FACTS.md` direct-resolution entry for transactional ECS tick execution. |
+| `/ecs.decision-persist` | `FACTS.md` direct-resolution entry for atomic pending-decision persistence. |
+| `/tool.catalog` | `FACTS.md` direct-resolution entry for tool gateway discovery. |
+| `/tool.route` | `FACTS.md` direct-resolution entry for per-tool routing. |
+| `/toolset.enable` | `FACTS.md` direct-resolution entry for platform-scoped toolset enablement. |
+| `/toolset.disable` | `FACTS.md` direct-resolution entry for platform-scoped toolset disablement. |
+| `/tool.search` | `FACTS.md` direct-resolution entry for session-scoped deferred tool search. |
+| `/tool.describe` | `FACTS.md` direct-resolution entry for on-demand deferred tool schema loading. |
+| `/tool.call` | `FACTS.md` direct-resolution entry for bridge-routed deferred tool execution. |
+| `/repository.pack` | `FACTS.md` direct-resolution entry for bounded clean-room repository packing. |
+| `/git.run` | `FACTS.md` direct-resolution entry for browser Git and opaque remote relay operations. |
+| `/file.sync` | `FACTS.md` direct-resolution entry for bidirectional provider-neutral file and directory synchronization. |
+| `/query` | `FACTS.md` direct-resolution entry for source-backed read-only answers. |
+
+## VCCs
+
+| VCC | Check |
+|---|---|
+| Dictionary parses | Frontmatter parses as YAML and `dictionary_entries` lists slash-prefixed tokens. |
+| No duplicate runtime | No body section claims a new parser, command server, or provider panel. |
+| Fail-closed command path | Every command row names required bindings and a measurable completion signal. |
+| Deploy boundary preserved | `/deploy.guard` remains Dev-only unless explicit operator approval is present. |
+| ADLC observation stays read-only | `/adlc.observe #adlc-observability @implementation-run @canvas @runtime-proof` resolves exactly one local tool and requires an immutable ledger receipt before deterministic existing-Canvas projection. |
