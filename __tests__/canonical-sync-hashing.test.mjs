@@ -67,7 +67,7 @@ function denyPureHashes(t, fixture) {
 }
 
 for (const format of ['sha1', 'sha256']) {
-  test(`${format}: clean binary, empty, and symlink blobs survive canonical quarantine without pure hash processes`, t => {
+  test(`${format}: changed binary bytes are quarantined while empty and symlink blobs remain intact without pure hash processes`, t => {
     const f = fixture(t, format), calls = denyPureHashes(t, f), plan = planFor(f.cwd);
     assert.equal(plan.inventory.length, 0);
     assert.equal(plan.expectedLocalSha.length, format === 'sha1' ? 40 : 64);
@@ -76,7 +76,8 @@ for (const format of ['sha1', 'sha256']) {
     assert.deepEqual(readFileSync(join(f.cwd, 'data.bin')), targetBytes);
     assert.equal(readlinkSync(join(f.cwd, 'link')), 'data.bin');
     const manifest = JSON.parse(readFileSync(receipt.quarantineManifestPath));
-    assert.equal(manifest.entries.length, Object.keys(f.original).length);
+    assert.deepEqual(manifest.entries.map(entry => entry.path), ['data.bin']);
+    assert.deepEqual(readFileSync(join(f.cwd, 'empty.bin')), f.original['empty.bin'].bytes);
     for (const entry of manifest.entries) {
       assert.equal(entry.oid, f.original[entry.path].oid);
       const saved = join(receipt.quarantinePath, entry.slot);

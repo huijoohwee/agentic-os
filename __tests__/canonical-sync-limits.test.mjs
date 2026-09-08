@@ -53,7 +53,7 @@ test('canonical plans publish explicit serialized-byte and inventory ceilings', 
     { serializedPlanBytes: 500_000, quarantineManifestBytes: 500_000,
       inventoryEntries: 1_024, treeEntries: 50_000,
       targetDirectories: 50_000, quarantineManifestChunks: 31, aggregateQuarantineManifestBytes: 16_000_000,
-      sourceFileBytes: 32 * 1024 * 1024, aggregateSourceBytes: 128 * 1024 * 1024,
+      aggregateInspectionBytes: 512 * 1024 * 1024, sourceFileBytes: 32 * 1024 * 1024, aggregateSourceBytes: 128 * 1024 * 1024,
       targetFileBytes: 32 * 1024 * 1024, aggregateTargetBytes: 128 * 1024 * 1024 });
   assert.ok(Object.isFrozen(CANONICAL_SYNC_LIMITS));
 });

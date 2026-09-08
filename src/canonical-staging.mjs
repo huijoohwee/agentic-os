@@ -103,7 +103,7 @@ function stageZeroEntry(path, cwd, env) {
 }
 
 /** Materialize the target tree with target-index attributes and explicit output ceilings. */
-export function stageTreeEntries(name, ref, entries, limits, cwd = process.cwd()) {
+export function stageTreeEntries(name, ref, entries, limits, cwd = process.cwd(), attributeEntries = entries) {
   let path = null, stagingIdentity = null, indexRoot = null, indexIdentity = null;
   let index = null, indexManifest = null, primaryError = null, total = 0;
   let stagedEntryCount = 0, stagingAttemptedPath = null, stagingWriteResultUnknown = false;
@@ -126,7 +126,7 @@ export function stageTreeEntries(name, ref, entries, limits, cwd = process.cwd()
     git(['read-tree', ref], { cwd, env });
     mkdirSync(attributeRoot);
     const attributes = materializeTargetAttributes(
-      attributeRoot, entries, cwd, limits.maxEntryBytes);
+      attributeRoot, attributeEntries, cwd, limits.maxEntryBytes);
     const attributeFiles = attributes.map((entry) => join(attributeRoot, entry.path));
     indexManifest = captureExactTree(indexIdentity, [
       index, attributeRoot, ...descendantDirectories(attributeRoot,

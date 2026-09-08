@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publishCanonicalIndex, removeStagedTree, stageTreeEntries } from './canonical-staging.mjs';
 import { captureCanonicalRecovery, CanonicalSyncError, createCanonicalArtifacts, finishCanonicalOperation, recordCanonicalFailureEffects, retainCanonicalEffect } from './canonical-recovery.mjs';
-import { assertCanonicalReconciliationPlan, assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, canonicalReconciliation, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
+import { assertCanonicalReconciliationPlan, assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, canonicalReconciliation, canonicalDeltaEntries, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
 import { snapshotWorktreeEntry } from './file-integrity.mjs';
 import { gitBlobOid } from './git-tracked.mjs';
 import { acquireOperationLock, assertDirectoryAncestors, atomicAdvanceRef, currentBranch, decodeNulFields as decodeGitNul, git, isAncestor, quarantineWorktreeEntries, repoRoot, retireCleanProjectionUnderExclusiveContract } from './git.mjs';
@@ -12,7 +12,7 @@ export const PLAN_SCHEMA = 'agentic-os-canonical-sync-plan/v2'; export const REC
 export const CANONICAL_SYNC_LIMITS = Object.freeze({ serializedPlanBytes: 500_000,
   quarantineManifestBytes: 500_000, inventoryEntries: 1_024, treeEntries: 50_000,
   targetDirectories: 50_000, quarantineManifestChunks: 31, aggregateQuarantineManifestBytes: 16_000_000,
-  sourceFileBytes: 32 * 1024 * 1024, aggregateSourceBytes: 128 * 1024 * 1024,
+  aggregateInspectionBytes: 512 * 1024 * 1024, sourceFileBytes: 32 * 1024 * 1024, aggregateSourceBytes: 128 * 1024 * 1024,
   targetFileBytes: 32 * 1024 * 1024, aggregateTargetBytes: 128 * 1024 * 1024 });
 export { CanonicalSyncError };
 function refuse(reason, detail = {}) { throw new CanonicalSyncError(reason, detail); }
@@ -38,10 +38,10 @@ function treeEntries(ref, cwd, options = {}) {
   const fields = decodeNulFields(git(['ls-tree', '-r', '-l', '-z', ref], { cwd, binary: true }));
   return resource(() => parseTreeEntries(fields, CANONICAL_SYNC_LIMITS.treeEntries, options));
 }
-function contentAt(path, cwd, budget = { bytes: 0 }) {
+function contentAt(path, cwd, budget = { bytes: 0 }, inspecting = false) {
   let content;
   try { content = snapshotWorktreeEntry(join(cwd, path), {
-    maxBytes: CANONICAL_SYNC_LIMITS.sourceFileBytes, aggregateBytes: CANONICAL_SYNC_LIMITS.aggregateSourceBytes, budget,
+    maxBytes: CANONICAL_SYNC_LIMITS.sourceFileBytes, aggregateBytes: inspecting ? CANONICAL_SYNC_LIMITS.aggregateInspectionBytes : CANONICAL_SYNC_LIMITS.aggregateSourceBytes, budget,
     label: `canonical source ${path}` }); } catch (error) {
     const reason = error.code === 'ERR_FILE_TOO_LARGE' ? 'blocked-source-file-limit'
       : error.code === 'ERR_AGGREGATE_TOO_LARGE' ? 'blocked-source-aggregate-limit' : 'blocked-source-inspection';
@@ -80,8 +80,8 @@ function snapshotInventory(cwd, localSha, { rawTracked = true } = {}) {
       continue;
     }
     if (prior.mode === '160000') continue;
-    const content = contentAt(path, cwd, budget);
-    const rawDrift = rawTracked
+    const content = contentAt(path, cwd, budget, true);
+    const rawDrift = (rawTracked === true || rawTracked instanceof Set && rawTracked.has(path))
       && gitBlobOid(content.bytes, prior.oid) !== prior.oid;
     if ((content.mode !== prior.mode || rawDrift) && !byPath.has(path)) byPath.set(path, 'M');
     assertCount();
@@ -95,7 +95,7 @@ function snapshotInventory(cwd, localSha, { rawTracked = true } = {}) {
         oid: null, sha256: null, prior });
       continue;
     }
-    const content = contentAt(path, cwd, budget);
+    const content = contentAt(path, cwd, budget, true);
     const oid = gitBlobOid(content.bytes, prior?.oid ?? localSha);
     inventory.push({ path, status, kind: content.kind, mode: content.mode,
       size: content.bytes.length, oid,
@@ -246,10 +246,12 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
   let recovery = null, quarantine = null, retirement = null, staging = null, canonicalIndex = null, result, operationError = null;
   try {
     assertUnchanged(plan, root);
+    const targetTree = treeEntries(plan.expectedTargetSha, root);
+    const delta = canonicalDeltaEntries(treeEntries(plan.expectedLocalSha, root), targetTree);
     const preserved = resource(() => plan.inventory.length > 0
       ? buildDirtyQuarantineProjection(plan, CANONICAL_SYNC_LIMITS)
       : buildCleanRetirementProjection(
-        plan, treeEntries(plan.expectedLocalSha, root), CANONICAL_SYNC_LIMITS));
+        plan, delta.source, CANONICAL_SYNC_LIMITS));
     recovery = captureCanonicalRecovery(plan, root, {
       artifacts, contentAt, digest: sha256,
     });
@@ -278,14 +280,14 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
     canonicalIndex = prepareCanonicalIndex(plan.expectedTargetSha, root,
       CANONICAL_SYNC_LIMITS.aggregateTargetBytes);
     assertUnchanged(plan, root, { recoveryCommit: recovery.commit });
-    const targetEntries = [...treeEntries(plan.expectedTargetSha, root)].map(
+    const targetEntries = [...delta.target].map(
       ([path, entry]) => ({ path, ...entry }));
     resource(() => assertProjectionBudget(targetEntries, CANONICAL_SYNC_LIMITS, 'target'));
     const targetLimits = { maxEntryBytes: CANONICAL_SYNC_LIMITS.targetFileBytes,
       maxAggregateBytes: CANONICAL_SYNC_LIMITS.aggregateTargetBytes,
       maxParentDirectories: CANONICAL_SYNC_LIMITS.targetDirectories };
     staging = stageTreeEntries('agentic-os-canonical-sync-target',
-      plan.expectedTargetSha, targetEntries, targetLimits, root);
+      plan.expectedTargetSha, targetEntries, targetLimits, root, [...targetTree].map(([path, entry]) => ({ path, ...entry })));
     Object.assign(artifacts, { stagingPath: staging.path,
       stagedEntryCount: staging.stagedEntryCount, stagedBytes: staging.stagedBytes });
     retirement = retireCleanProjectionUnderExclusiveContract(quarantine, {
@@ -341,7 +343,7 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
       { cwd: root, allowFail: true });
     const status = git(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root });
     assertCleanIndex(root);
-    const remaining = snapshotInventory(root, plan.expectedTargetSha, { rawTracked: false });
+    const remaining = snapshotInventory(root, plan.expectedTargetSha, { rawTracked: new Set([...targetTree.keys()].filter(path => !delta.target.has(path))) });
     if (actualHead !== plan.expectedTargetSha || actualTarget !== plan.expectedTargetSha
         || actualRecovery !== recovery.commit || status !== '' || remaining.length > 0) {
       refuse('blocked-postcondition', { expectedHead: plan.expectedTargetSha, actualHead,
