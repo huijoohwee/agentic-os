@@ -6,24 +6,22 @@ import { compositionOriginUrl, compositionRevision, observeCompositionGit,
   readCompositionHeadFile } from './composition-git.mjs';
 
 export const COMPOSITION_ADMISSION_PROBE_SCHEMA =
-  'agentic-os/composition-static-admission-interface/v1';
+  'agentic-os/composition-static-admission-interface/v2';
 export const REQUIRED_ADMISSION_CONTRACT = 'commerce.agentic-os-admission-provider/v3';
 export const REQUIRED_FIXTURE_SCHEMA =
   'commerce.agentic-os-admission-v2-request-fixture/v1';
 export const REQUIRED_FIXTURE_DIGEST =
   'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0';
-const PROVIDER_FIXTURE = 'test/contracts/agentic-os-admission-v2.fixture.json';
-const CONSUMER_FIXTURE = 'test/contracts/acos-admission-v2.fixture.json';
+const SHARED_FIXTURE = 'test/contracts/admission-v2.fixture.json';
 const MAX_FIXTURE_BYTES = 65_536;
 const SUCCESS_KEYS = Object.freeze([
-  'consumerContractBlob', 'consumerFixtureBlob', 'effectWriterIdentitySchema', 'fixtureDigest',
-  'fixtureSchema', 'governingContract', 'ok', 'providerContractBlob', 'providerFixtureBlob',
+  'consumerContractBlob', 'sharedFixtureBlob', 'effectWriterIdentitySchema', 'fixtureDigest',
+  'fixtureSchema', 'governingContract', 'ok', 'providerContractBlob',
   'schema', 'servingIdentityHeader', 'sourceArtifactsBound', 'staticInterfaceObserved',
 ]);
 const FAILURE_CODES = Object.freeze([
   'composition_admission_arguments_invalid', 'composition_admission_artifact_bytes_unbound',
   'composition_admission_artifact_unreadable', 'composition_admission_artifact_untracked',
-  'composition_admission_consumer_fixture_invalid',
   'composition_admission_fixture_digest_invalid', 'composition_admission_fixture_json_invalid',
   'composition_admission_fixture_not_owner_published', 'composition_admission_fixture_shape_invalid',
   'composition_admission_fixture_unreadable', 'composition_admission_owner_changed',
@@ -32,44 +30,37 @@ const FAILURE_CODES = Object.freeze([
 
 /** Compare index-bound owner artifacts without evaluating either owner's code. */
 export function runCompositionAdmissionProbe({
-  acosRoot, commerceRoot, fixturePath, acosRevision = null, commerceRevision = null,
+  acosRoot, commerceRoot, agenticOsRoot, fixturePath, acosRevision = null, commerceRevision = null,
+  agenticOsRevision = null,
 } = {}) {
   let provider, consumer;
   try { provider = exactRoot(acosRoot, 'huijoohwee/agentic-canvas-os', acosRevision); }
   catch { return failure('composition_admission_owner_root_invalid', 'agentic-canvas-os', null); }
   try { consumer = exactRoot(commerceRoot, 'huijoohwee/agentic-commerce-os', commerceRevision); }
   catch { return failure('composition_admission_owner_root_invalid', 'agentic-commerce-os', null); }
+  let shared;
+  try { shared = exactRoot(agenticOsRoot, 'huijoohwee/agentic-os', agenticOsRevision); }
+  catch { return failure('composition_admission_owner_root_invalid', 'agentic-os', null); }
   const providerRoot = provider.root, consumerRoot = consumer.root;
-  const providerRelative = fixturePath
-    ? relativeOwnerPath(providerRoot, fixturePath) : PROVIDER_FIXTURE;
-  if (providerRelative !== PROVIDER_FIXTURE) {
-    return failure('composition_admission_fixture_not_owner_published', 'agentic-canvas-os',
-      PROVIDER_FIXTURE);
+  const sharedRelative = fixturePath ? relativeOwnerPath(shared.root, fixturePath) : SHARED_FIXTURE;
+  if (sharedRelative !== SHARED_FIXTURE) {
+    return failure('composition_admission_fixture_not_owner_published', 'agentic-os', SHARED_FIXTURE);
   }
-  let providerFixture, consumerFixture;
-  try { providerFixture = trackedFile(providerRoot, provider.revision,
-    PROVIDER_FIXTURE, MAX_FIXTURE_BYTES, 'fixture'); }
+  let sharedFixture;
+  try { sharedFixture = trackedFile(shared.root, shared.revision,
+    SHARED_FIXTURE, MAX_FIXTURE_BYTES, 'fixture'); }
   catch (error) { return failure(error.code ?? 'composition_admission_fixture_unreadable',
-    'agentic-canvas-os', PROVIDER_FIXTURE); }
-  try { consumerFixture = trackedFile(consumerRoot, consumer.revision,
-    CONSUMER_FIXTURE, MAX_FIXTURE_BYTES, 'fixture'); }
-  catch (error) { return failure(error.code ?? 'composition_admission_fixture_unreadable',
-    'agentic-commerce-os', CONSUMER_FIXTURE); }
-  if (!providerFixture.bytes.equals(consumerFixture.bytes)) {
-    return failure('composition_admission_consumer_fixture_invalid', 'agentic-commerce-os',
-      CONSUMER_FIXTURE);
-  }
-  const fixtureDigest = sha256(providerFixture.bytes);
+    'agentic-os', SHARED_FIXTURE); }
+  const fixtureDigest = sha256(sharedFixture.bytes);
   if (fixtureDigest !== REQUIRED_FIXTURE_DIGEST) {
-    return failure('composition_admission_fixture_digest_invalid', 'agentic-canvas-os', PROVIDER_FIXTURE);
+    return failure('composition_admission_fixture_digest_invalid', 'agentic-os', SHARED_FIXTURE);
   }
   let fixture;
   try {
-    fixture = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(providerFixture.bytes));
-  } catch { return failure('composition_admission_fixture_json_invalid', 'agentic-canvas-os',
-    PROVIDER_FIXTURE); }
+    fixture = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(sharedFixture.bytes));
+  } catch { return failure('composition_admission_fixture_json_invalid', 'agentic-os', SHARED_FIXTURE); }
   if (!validFixture(fixture)) return failure('composition_admission_fixture_shape_invalid',
-    'agentic-canvas-os', PROVIDER_FIXTURE);
+    'agentic-os', SHARED_FIXTURE);
   let providerContract, consumerContract;
   try { providerContract = trackedFile(providerRoot, provider.revision,
     'agent-api/src/commerce-admission-contract.js', 500_000, 'artifact'); }
@@ -85,6 +76,9 @@ export function runCompositionAdmissionProbe({
   if (compositionRevision(consumerRoot) !== consumer.revision) {
     return failure('composition_admission_owner_changed', 'agentic-commerce-os', null);
   }
+  if (compositionRevision(shared.root) !== shared.revision) {
+    return failure('composition_admission_owner_changed', 'agentic-os', null);
+  }
   return Object.freeze({
     schema: COMPOSITION_ADMISSION_PROBE_SCHEMA,
     ok: true,
@@ -92,8 +86,7 @@ export function runCompositionAdmissionProbe({
     sourceArtifactsBound: true,
     fixtureSchema: fixture.$schema,
     fixtureDigest,
-    providerFixtureBlob: providerFixture.oid,
-    consumerFixtureBlob: consumerFixture.oid,
+    sharedFixtureBlob: sharedFixture.oid,
     governingContract: REQUIRED_ADMISSION_CONTRACT,
     providerContractBlob: providerContract.oid,
     consumerContractBlob: consumerContract.oid,
@@ -115,8 +108,7 @@ export function isValidCompositionAdmissionInterfaceReport(value) {
     && value.sourceArtifactsBound === true
     && value.fixtureSchema === REQUIRED_FIXTURE_SCHEMA
     && value.fixtureDigest === REQUIRED_FIXTURE_DIGEST
-    && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.providerFixtureBlob)
-    && value.consumerFixtureBlob === value.providerFixtureBlob
+    && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.sharedFixtureBlob)
     && value.governingContract === REQUIRED_ADMISSION_CONTRACT
     && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.providerContractBlob)
     && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.consumerContractBlob)
@@ -210,10 +202,10 @@ function normalizeRepositoryIdentity(value) {
 }
 function validFailureTarget(owner, file) {
   const targets = {
-    'agentic-os': [null, 'bin/composition-admission-probe.mjs'],
-    'agentic-canvas-os': [null, PROVIDER_FIXTURE,
+    'agentic-os': [null, SHARED_FIXTURE, 'bin/composition-admission-probe.mjs'],
+    'agentic-canvas-os': [null,
       'agent-api/src/commerce-admission-contract.js'],
-    'agentic-commerce-os': [null, CONSUMER_FIXTURE, 'src/core/acos-admission.ts'],
+    'agentic-commerce-os': [null, 'src/core/acos-admission.ts'],
   };
   return targets[owner]?.includes(file) === true;
 }
@@ -225,10 +217,10 @@ function failure(code, owner = 'agentic-os', file = null) { return Object.freeze
 function realpathOrNull(value) { try { return realpathSync(value); } catch { return null; } }
 const invoked = process.argv[1] && realpathOrNull(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
-  const [acosRoot, commerceRoot, fixturePath, ...extra] = process.argv.slice(2);
-  const value = extra.length || !acosRoot || !commerceRoot
+  const [acosRoot, commerceRoot, agenticOsRoot, fixturePath, ...extra] = process.argv.slice(2);
+  const value = extra.length || !acosRoot || !commerceRoot || !agenticOsRoot
     ? failure('composition_admission_arguments_invalid')
-    : runCompositionAdmissionProbe({ acosRoot, commerceRoot, fixturePath });
+    : runCompositionAdmissionProbe({ acosRoot, commerceRoot, agenticOsRoot, fixturePath });
   process.stdout.write(`${JSON.stringify(value)}\n`);
   process.exitCode = value.ok ? 0 : 1;
 }

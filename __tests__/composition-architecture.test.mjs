@@ -81,13 +81,13 @@ test('central evidence is static, exact, and explicitly non-executing', () => {
 
 test('source lock has exact owner and artifact vocabulary', () => {
   const lock = JSON.parse(read(path.join(ROOT, 'catalog/composition-source-lock.json')));
-  assert.equal(lock.schema, 'agentic-os/composition-source-lock/v1');
+  assert.equal(lock.schema, 'agentic-os/composition-source-lock/v2');
   assert.deepEqual(Object.keys(lock.owners).sort(), [
     'agentic-canvas-os', 'agentic-commerce-os', 'agentic-graph',
   ]);
   assert.deepEqual(Object.keys(lock.artifacts).sort(), [
-    'admissionConsumerContract', 'admissionConsumerFixture', 'admissionProviderContract',
-    'admissionProviderFixture', 'marketplaceConsumerAuthoringHeaders',
+    'admissionConsumerContract', 'admissionProviderContract', 'admissionSharedFixture',
+    'marketplaceConsumerAuthoringHeaders',
     'marketplaceConsumerContract', 'marketplaceConsumerResponse', 'marketplaceProviderContract',
     'marketplaceProviderResponse', 'topologyManifest',
   ]);

@@ -13,7 +13,8 @@ export const CHECK_INPUT_SCHEMA = 'agentic-os/check-discovery-input/v1';
 export const CHECK_RESULT_SCHEMA = 'agentic-os/check-result-observation/v1';
 export const CHECK_REPORT_SCHEMA = 'agentic-os/check-discovery-report/v1';
 const CATALOG_SCHEMA = 'agentic-os/repository-check-catalog/v1';
-const CATALOG = fileURLToPath(new URL('../catalog/repository-checks.json', import.meta.url));
+const CATALOG = fileURLToPath(new URL('../test/repositories.json', import.meta.url));
+const MAX_REPOSITORIES = 32;
 const INPUT_BYTES = 65_536, SOURCE_BYTES = 131_072, OUTPUT_BYTES = 499_999;
 const SHA = /^[0-9a-f]{64}$/u, REVISION = /^[0-9a-f]{40}$/u;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
@@ -59,8 +60,8 @@ function catalogEntries(value) {
   exact(value, ['schema', 'repositories']);
   if (value.schema !== CATALOG_SCHEMA) fail('catalog_schema_invalid');
   const ids = new Set(), identities = new Set();
-  const rows = array(value.repositories, 6);
-  if (rows.length !== 6) fail('catalog_requires_six_repositories');
+  const rows = array(value.repositories, MAX_REPOSITORIES);
+  if (rows.length === 0) fail('catalog_requires_repository');
   for (const row of rows) {
     exact(row, ['id', 'repository', 'packages', 'workflows']);
     text(row.id, 128); text(row.repository, 256);
@@ -290,7 +291,7 @@ export function discoverRepositoryChecks(inputPath, { catalogPath = CATALOG } = 
   exact(input.value, ['schema', 'repositories', 'results'], ['schema', 'repositories']);
   if (input.value.schema !== CHECK_INPUT_SCHEMA) fail('input_schema_invalid');
   const base = path.dirname(input.path), selected = new Map();
-  for (const item of array(input.value.repositories, 6)) {
+  for (const item of array(input.value.repositories, MAX_REPOSITORIES)) {
     exact(item, ['id', 'root']); text(item.root, 4096);
     if (selected.has(item.id) || !entries.some(entry => entry.id === item.id)) fail('input_repository_invalid');
     selected.set(item.id, path.resolve(base, item.root));

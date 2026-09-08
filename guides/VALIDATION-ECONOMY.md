@@ -32,7 +32,8 @@ Unknown dependencies, changed runner/configuration, or runtime inputs require fr
 Never treat a result cache or a matching commit alone as proof of dirty worktree bytes or live readiness.
 
 Keep reusable policy here, executable checks in their owning repositories, and ecosystem result history
-in Canvas `test/log.md`. This guide is lazy-loaded and adds no always-load bytes or runtime dependency.
+in upstream `agentic-os/test/log.md`. Shared contract fixtures and the repository check index also live
+in `agentic-os/test/`; consumers resolve pinned package assets instead of copying them. This guide is lazy-loaded and adds no always-load bytes or runtime dependency.
 
 ## Batch failures from an existing run
 

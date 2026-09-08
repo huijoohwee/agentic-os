@@ -12,20 +12,15 @@
       "owner": "agentic-commerce-os",
       "path": "src/core/acos-admission.ts"
     },
-    "admissionConsumerFixture": {
-      "blob": "227ff0fa2c64fa0bf2ec0af67132deb3ab038086",
-      "owner": "agentic-commerce-os",
-      "path": "test/contracts/acos-admission-v2.fixture.json"
-    },
     "admissionProviderContract": {
       "blob": "4eea00aa24d94a9f7b8f12c11570b2fbd9f99d5e",
       "owner": "agentic-canvas-os",
       "path": "agent-api/src/commerce-admission-contract.js"
     },
-    "admissionProviderFixture": {
+    "admissionSharedFixture": {
       "blob": "227ff0fa2c64fa0bf2ec0af67132deb3ab038086",
-      "owner": "agentic-canvas-os",
-      "path": "test/contracts/agentic-os-admission-v2.fixture.json"
+      "owner": "agentic-os",
+      "path": "test/contracts/admission-v2.fixture.json"
     },
     "marketplaceConsumerAuthoringHeaders": {
       "blob": "d20e82752cd51964c4e84581133c8d1290341057",
@@ -93,7 +88,7 @@
       "tree": "ff8b11f4a1e17a2b22c1981c2d342339cf109afb"
     }
   },
-  "schema": "agentic-os/composition-source-lock/v1",
+  "schema": "agentic-os/composition-source-lock/v2",
   "topology": {
     "manifestBlob": "1b0241da6a9e82501167b524d842d8b59c8ed545",
     "manifestPath": "config/production-core-services.json",

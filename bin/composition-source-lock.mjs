@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { compositionRevision, createCompositionHeadReader, readCompositionHeadFile } from './composition-git.mjs';
 
-export const COMPOSITION_SOURCE_LOCK_SCHEMA = 'agentic-os/composition-source-lock/v1';
+export const COMPOSITION_SOURCE_LOCK_SCHEMA = 'agentic-os/composition-source-lock/v2';
 const OWNER_IDENTITIES = Object.freeze({
   'agentic-canvas-os': 'huijoohwee/agentic-canvas-os',
   'agentic-commerce-os': 'huijoohwee/agentic-commerce-os',
@@ -10,12 +10,10 @@ const OWNER_IDENTITIES = Object.freeze({
 const ARTIFACTS = Object.freeze({
   admissionConsumerContract: Object.freeze({ owner: 'agentic-commerce-os',
     path: 'src/core/acos-admission.ts' }),
-  admissionConsumerFixture: Object.freeze({ owner: 'agentic-commerce-os',
-    path: 'test/contracts/acos-admission-v2.fixture.json' }),
+  admissionSharedFixture: Object.freeze({ owner: 'agentic-os',
+    path: 'test/contracts/admission-v2.fixture.json' }),
   admissionProviderContract: Object.freeze({ owner: 'agentic-canvas-os',
     path: 'agent-api/src/commerce-admission-contract.js' }),
-  admissionProviderFixture: Object.freeze({ owner: 'agentic-canvas-os',
-    path: 'test/contracts/agentic-os-admission-v2.fixture.json' }),
   marketplaceConsumerAuthoringHeaders: Object.freeze({ owner: 'agentic-commerce-os',
     path: 'src/core/authoring-mutation-headers.ts' }),
   marketplaceConsumerContract: Object.freeze({ owner: 'agentic-commerce-os',
@@ -83,7 +81,7 @@ export function inspectCompositionSourceLock(roots, components) {
   }
   let topology;
   try {
-    const readers = new Map(OWNER_KEYS.map(owner => [owner, createCompositionHeadReader(
+    const readers = new Map(['agentic-os', ...OWNER_KEYS].map(owner => [owner, createCompositionHeadReader(
       roots?.[owner], components?.[owner]?.revision,
       ARTIFACT_KEYS.filter(key => ARTIFACTS[key].owner === owner).map(key => ARTIFACTS[key].path),
     )]));
