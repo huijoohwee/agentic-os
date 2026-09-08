@@ -31,9 +31,10 @@ const files = Object.freeze({
     'src/github-authority-operation.mjs': 'authority_input_digest does not match the event payload and committed policy',
     'bin/composition-git.mjs': 'TRUSTED_COMPOSITION_GIT GIT_CONFIG_NOSYSTEM /usr/bin/git',
     'bin/composition-runtime-check.mjs': 'agentic_os_runtime_root_mismatch component_changed_during_inspection candidateCodeExecuted: false',
-    'bin/composition-admission-probe.mjs': 'agentic-os/composition-static-admission-interface/v1 without evaluating either owner',
+    'bin/composition-admission-probe.mjs': 'agentic-os/composition-static-admission-interface/v2 without evaluating either owner',
     'bin/composition-deployment-topology.mjs': 'agentic-os/composition-deployment-topology/v1 commerce_production_service_target_mismatch',
-    'catalog/composition-source-lock.json': 'agentic-os/composition-source-lock/v1 commerce.agentic-os-admission-provider/v3',
+    'test/contracts/admission-v2.fixture.sha256': 'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0 admission-v2.fixture.json',
+    'catalog/composition-source-lock.json': 'agentic-os/composition-source-lock/v2 commerce.agentic-os-admission-provider/v3',
   },
   'agentic-canvas-os': {
     'package.json': harnessManifest(tarballPin),
@@ -41,7 +42,6 @@ const files = Object.freeze({
     'agent-api/src/commerce-admission-authority.js': 'agentic-graph-commerce-admission-authority/v1 createCommerceAdmissionAuthority authority_unconfigured authority_expired',
     'agent-api/src/commerce-admission-provider.js': 'createCommerceAdmissionProvider agentic-os-adapter-registration-finding/v1 agentic-os-admission.internal runtime_unconfigured',
     'agent-api/src/commerce-deployment-identity.js': 'acos-cloudflare-deployment-identity/v1 resolveCommerceDeploymentIdentity',
-    'test/contracts/agentic-os-admission-v2.fixture.sha256': 'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0 agentic-os-admission-v2.fixture.json',
     'wrangler.jsonc': 'AGENT_STATE AGENTIC_OS_ADMISSION_AUTH_SECRET AGENTIC_OS_ADMISSION_AUTHORITY_HMAC_SECRET CF_VERSION_METADATA ACOS_SOURCE_REVISION ACOS_CANDIDATE_DIGEST',
     '.github/workflows/production-release.yml': 'workflow_dispatch: environment: production authorized_release_candidate_json graph_authority_evidence_digest npm run web:build acos-production-release-controller.mjs',
     'scripts/acos-production-release-contract.mjs': 'acos-production-release-candidate/v1 acos-production-preserve-required-receipt/v1 validateProductionReleaseCandidate reuse-exact-candidate-version https://airvio.co',
@@ -116,11 +116,11 @@ function gitState(clean = true) {
   };
 }
 const injectedAdmission = () => Object.freeze({
-  schema: 'agentic-os/composition-static-admission-interface/v1', ok: true,
+  schema: 'agentic-os/composition-static-admission-interface/v2', ok: true,
   staticInterfaceObserved: true, sourceArtifactsBound: true,
   fixtureSchema: 'commerce.agentic-os-admission-v2-request-fixture/v1',
   fixtureDigest: 'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0',
-  providerFixtureBlob: 'd'.repeat(40), consumerFixtureBlob: 'd'.repeat(40),
+  sharedFixtureBlob: 'd'.repeat(40),
   governingContract: 'commerce.agentic-os-admission-provider/v3',
   providerContractBlob: 'e'.repeat(40), consumerContractBlob: 'f'.repeat(40),
   effectWriterIdentitySchema: 'acos-cloudflare-deployment-identity/v1',

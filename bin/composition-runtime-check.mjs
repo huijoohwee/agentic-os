@@ -22,11 +22,13 @@ const CONTRACT = Object.freeze({
     requirement('bin/composition-runtime-check.mjs', ['agentic_os_runtime_root_mismatch',
       'component_changed_during_inspection', 'candidateCodeExecuted: false']),
     requirement('bin/composition-admission-probe.mjs', [
-      'agentic-os/composition-static-admission-interface/v1', 'without evaluating either owner']),
+      'agentic-os/composition-static-admission-interface/v2', 'without evaluating either owner']),
     requirement('bin/composition-git.mjs', [
       'TRUSTED_COMPOSITION_GIT', 'GIT_CONFIG_NOSYSTEM', '/usr/bin/git']),
+    requirement('test/contracts/admission-v2.fixture.sha256', [
+      'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0', 'admission-v2.fixture.json']),
     requirement('catalog/composition-source-lock.json', [
-      'agentic-os/composition-source-lock/v1', 'commerce.agentic-os-admission-provider/v3']),
+      'agentic-os/composition-source-lock/v2', 'commerce.agentic-os-admission-provider/v3']),
     requirement('bin/composition-deployment-topology.mjs', [
       'agentic-os/composition-deployment-topology/v1', 'commerce_production_service_target_mismatch']),
   ]),
@@ -46,8 +48,6 @@ const CONTRACT = Object.freeze({
       'createCommerceAdmissionProvider', 'agentic-os-adapter-registration-finding/v1',
       'agentic-os-admission.internal', 'runtime_unconfigured']),
     requirement('agent-api/src/commerce-deployment-identity.js', ['acos-cloudflare-deployment-identity/v1', 'resolveCommerceDeploymentIdentity']),
-    requirement('test/contracts/agentic-os-admission-v2.fixture.sha256', [
-      'a2283f809470bf3044ed1e810bea67bb793bc975df0ab6f53f0e10e85fabbdd0', 'agentic-os-admission-v2.fixture.json']),
     requirement('wrangler.jsonc', [
       'AGENT_STATE', 'AGENTIC_OS_ADMISSION_AUTH_SECRET', 'AGENTIC_OS_ADMISSION_AUTHORITY_HMAC_SECRET',
       'CF_VERSION_METADATA', 'ACOS_SOURCE_REVISION', 'ACOS_CANDIDATE_DIGEST']),
@@ -429,8 +429,8 @@ function inspectAdmissionJoin(roots, components) {
   return runCompositionAdmissionProbe({
     acosRoot: roots['agentic-canvas-os'],
     commerceRoot: roots['agentic-commerce-os'],
-    fixturePath: path.join(roots['agentic-canvas-os'],
-      'test/contracts/agentic-os-admission-v2.fixture.json'),
+    agenticOsRoot: roots['agentic-os'],
+    agenticOsRevision: components['agentic-os'].revision,
     acosRevision: components['agentic-canvas-os'].revision,
     commerceRevision: components['agentic-commerce-os'].revision,
   });

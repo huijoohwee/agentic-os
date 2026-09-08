@@ -14,7 +14,7 @@ import { CHECK_INPUT_SCHEMA, CHECK_RESULT_SCHEMA, discoverRepositoryChecks, runC
 import { runCli } from '../src/mcp-stdio.mjs';
 import { toolArguments } from '../src/mcp-server.mjs';
 
-const CATALOG = JSON.parse(readFileSync(new URL('../catalog/repository-checks.json', import.meta.url)));
+const CATALOG = JSON.parse(readFileSync(new URL('../test/repositories.json', import.meta.url)));
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const git = (cwd, ...args) => execFileSync('/usr/bin/git', args, { cwd, encoding: 'utf8',
@@ -71,11 +71,11 @@ function receipt(f, overrides = {}) {
       counts: { total: 3, passed: 3, failed: 0, skipped: 0 } }, outcome: 'passed', ...overrides };
 }
 
-test('six owner references resolve from committed files without running scripts or changing Git', t => {
+test('catalog owner references resolve from committed files without running scripts or changing Git', t => {
   const f = fixture(t, CATALOG.repositories.map(row => row.id));
   const before = f.payload.repositories.map(row => git(f.root(row.id), 'rev-parse', 'HEAD'));
   const report = f.read();
-  assert.equal(report.repositories.length, 6);
+  assert.equal(report.repositories.length, CATALOG.repositories.length);
   for (const owner of report.repositories) {
     assert.equal(owner.sourceStatus, 'not-evaluated', JSON.stringify(owner.findings));
     assert.equal(owner.clean, null);

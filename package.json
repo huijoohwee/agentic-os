@@ -28,7 +28,10 @@
     "./compat/worktree": "./src/compat/worktree.mjs",
     "./dictionaries/DICTIONARY-COMMAND.md": "./catalog/dictionaries/DICTIONARY-COMMAND.md",
     "./dictionaries/DICTIONARY-SEMANTIC.md": "./catalog/dictionaries/DICTIONARY-SEMANTIC.md",
-    "./dictionaries/DICTIONARY-BINDING.md": "./catalog/dictionaries/DICTIONARY-BINDING.md"
+    "./dictionaries/DICTIONARY-BINDING.md": "./catalog/dictionaries/DICTIONARY-BINDING.md",
+    "./test/contracts/admission-v2.fixture.json": "./test/contracts/admission-v2.fixture.json",
+    "./test/contracts/admission-v2.fixture.sha256": "./test/contracts/admission-v2.fixture.sha256",
+    "./test/repositories.json": "./test/repositories.json"
   },
   "engines": {
     "node": ">=20.11"
@@ -48,6 +51,7 @@
     "templates",
     "guides",
     "docs",
+    "test",
     "__tests__",
     "AGENTS.md"
   ],

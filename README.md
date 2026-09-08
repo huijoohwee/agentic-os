@@ -189,9 +189,12 @@ receipt; self-attested, stale, or candidate-mismatched receipts never satisfy th
 
 ## Shared check discovery
 
+`test/README.md` owns the shared testing layout: coordination, evidence and contract fixtures live
+in Agentic OS; executable product suites remain beside their source.
+
 Keep cross-repository planning in the Canvas `docs/TODO.md` and `todo/YYYY-MM/` context records.
-Executable suites remain with their repository owners. `catalog/repository-checks.json` references
-package scripts and workflows for OS, Canvas, Graph, Commerce, the site and the mirror; it stores
+Executable suites remain with their repository owners. `test/repositories.json` references
+package scripts and workflows for OS, Canvas, Graph, Commerce, the site, the mirror and GameXR; it stores
 neither command bodies nor copied check verdicts. Discovery reads each supplied owner's committed
 `.agentic-os.json`, package scripts and workflow files, including their exact source digests.
 
@@ -203,7 +206,7 @@ node bin/agentic-os.mjs /checks '#read-only' '@input:./checks-input.json'
 ```
 
 The bounded input maps catalog IDs to clone or worktree roots. Relative paths resolve from the
-input file's directory. Supply any subset; all six owners appear, with absent roots marked unavailable.
+input file's directory. The index and input each accept at most 32 repositories. Supply any subset; all catalog owners appear, with absent roots marked unavailable.
 
 ```json
 {
