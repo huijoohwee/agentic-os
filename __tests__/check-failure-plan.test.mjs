@@ -105,3 +105,49 @@ test('bounded discovery process emits the same advisory partition without runnin
   assert.equal(plan.sourceGroups[0].failures.length, 2);
   assert.equal(report.candidateCodeExecuted, false); assert.equal(report.integrationAuthorized, false);
 });
+
+test('reported prerequisites partition cross-source failures without granting readiness', async t => {
+  const f = fixture(t), prerequisite = { repository: 'github.com/example/docs', path: 'docs/seed.md' };
+  const values = [
+    { ...failure('import', 'tests/import.mjs'), prerequisite },
+    { ...failure('render', 'tests/render.mjs'), prerequisite },
+    { ...failure('other', null), prerequisite: { ...prerequisite, repository: 'github.com/other/docs' } },
+    failure('unknown'),
+  ];
+  f.save(receipt(values, 7));
+  const process = await runChecksProcess(f.input);
+  assert.equal(process.exitCode, 0, process.stderr);
+  const report = JSON.parse(process.stdout), plan = report.repositories[0].results[0].failurePlan;
+  assert.deepEqual(plan.prerequisiteGroups[0], { prerequisite, failures: [
+    { id: 'import', occurrence: 1 }, { id: 'render', occurrence: 1 },
+  ] });
+  assert.equal(plan.prerequisiteGroups.length, 2);
+  assert.deepEqual(plan.unmappedPrerequisiteFailures, [{ id: 'unknown', occurrence: 1 }]);
+  const partition = [...plan.prerequisiteGroups.flatMap(group => group.failures), ...plan.unmappedPrerequisiteFailures];
+  assert.equal(partition.length, 4); assert.equal(plan.unlistedFailures, 3);
+  assert.equal(plan.status, 'advisory'); assert.equal(plan.fullValidationRequired, true);
+  assert.equal(report.candidateCodeExecuted, false); assert.equal(report.integrationAuthorized, false);
+  assert.equal(report.productionReady, false); assert.equal(report.authenticatedEvidenceObserved, false);
+  assert.equal('prerequisiteGroups' in f.results(receipt())[0].failurePlan, false);
+});
+
+test('reported prerequisite locators reject malformed paths and unexpected fields', t => {
+  const f = fixture(t);
+  const invalid = [null, {}, { repository: 'docs' }, { repository: '', path: 'seed.md' },
+    { repository: 'x\n', path: 'seed.md' }, { repository: 'x'.repeat(257), path: 'seed.md' },
+    ...['.', '../escape', '/absolute', 'docs/../escape', 'docs/', 'x:y', 'x\\y', 'x\n'].map(path => ({ repository: 'docs', path })),
+    { repository: 'docs', path: 'seed.md', verified: true }];
+  for (const prerequisite of invalid) assert.throws(() => f.read(receipt([{ ...failure('case'), prerequisite }])));
+});
+
+test('prerequisite grouping uses structural identities and deterministic tie ordering', t => {
+  const f = fixture(t);
+  const values = [
+    { ...failure('first'), prerequisite: { repository: 'a|b', path: 'c' } },
+    { ...failure('second'), prerequisite: { repository: 'a', path: 'b|c' } },
+    { ...failure('third'), prerequisite: { repository: '__proto__', path: 'constructor' } },
+  ];
+  const a = f.results(receipt(values))[0].failurePlan.prerequisiteGroups;
+  const b = f.results(receipt([...values].reverse()))[0].failurePlan.prerequisiteGroups;
+  assert.equal(a.length, 3); assert.deepEqual(a, b);
+});

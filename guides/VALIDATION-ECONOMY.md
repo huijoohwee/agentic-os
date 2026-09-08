@@ -54,3 +54,16 @@ Grouping is not root-cause proof, an execution filter, a pass cache, or measured
 bindings stay on the enclosing result; dirty/stale observations remain historical and unauthenticated.
 Different runs are never merged or deduplicated. This uses the existing CLI/MCP discovery path and runs
 no candidate code; it neither waives release checks nor establishes runtime readiness.
+
+
+When runner output identifies a missing prerequisite, a failure may additionally report
+`prerequisite: { repository: "github.com/owner/docs", path: "docs/seed.md" }`. Keep the owner's
+identity and relative file path; do not infer prerequisites from test names. Each failure has at most
+one primary reported prerequisite. The same input bounds apply; malformed locators fail validation.
+
+If any prerequisite is supplied, `prerequisiteGroups` ranks matching repository/path pairs across test
+sources by count, then structural locator identity. `unmappedPrerequisiteFailures` retains listed cases
+without a locator; `unlistedFailures` still retains missing detail. Source and prerequisite groups are
+separate partitions, never additive failure counts. This exposes shared setup leads without rescanning
+sources or rerunning tests. Locators remain unsigned reports: discovery does not read their paths,
+verify dependency ownership, classify a root cause, suppress execution, or establish readiness.
