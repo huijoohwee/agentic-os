@@ -217,8 +217,14 @@ function inspectOwner(entry, rootPath, roots, evaluate) {
 /** Group validated, unsigned failures from one observation; never combine runs or infer coverage. */
 function failurePlan(result) {
   const groups = new Map(), unmappedFailures = [];
-  for (const { id, occurrence, source } of result.failures) {
+  const prerequisites = new Map(), unmappedPrerequisiteFailures = [];
+  for (const { id, occurrence, source, prerequisite } of result.failures) {
     const failure = { id, occurrence };
+    if (prerequisite) {
+      const key = JSON.stringify([prerequisite.repository, prerequisite.path]);
+      if (!prerequisites.has(key)) prerequisites.set(key, { prerequisite, failures: [] });
+      prerequisites.get(key).failures.push(failure);
+    } else unmappedPrerequisiteFailures.push(failure);
     if (source === null) { unmappedFailures.push(failure); continue; }
     if (!groups.has(source)) groups.set(source, []);
     groups.get(source).push(failure);
@@ -230,9 +236,15 @@ function failurePlan(result) {
     listedFailures: result.failures.length,
     unlistedFailures: result.coverage.counts.failed - result.failures.length,
     sourceGroups, unmappedFailures, fullValidationRequired: true,
+    ...(prerequisites.size ? {
+      prerequisiteGroups: [...prerequisites].sort(([ak, a], [bk, b]) =>
+        b.failures.length - a.failures.length || (ak < bk ? -1 : ak > bk ? 1 : 0)).map(([, group]) => group),
+      unmappedPrerequisiteFailures,
+    } : {}),
     conditions: 'Inspect larger source groups first and verify the shared cause before batching repairs. '
       + 'Source mappings are unsigned caller reports, not verified dependency or root-cause analysis. '
-      + 'Each case occurrence appears once within this observation; separate runs are never combined. '
+      + 'Each case occurrence appears once in each partition; separate runs are never combined. '
+      + 'Optional prerequisite groups are unsigned reported locators, not verified dependencies; no referenced path is read. '
       + 'Unmapped and unlisted failures remain unresolved. Use the enclosing result binding and original scope; '
       + 'stale, dirty or unavailable source remains historical evidence. '
       + 'Run affected owner checks during repairs and full applicable validation on final bytes. '
@@ -266,7 +278,13 @@ function validateResult(value) {
       fail('result_failures_invalid');
     const cases = new Set();
     for (const failure of failures) {
-      exact(failure, ['id', 'occurrence', 'source']);
+      exact(failure, ['id', 'occurrence', 'source', 'prerequisite'], ['id', 'occurrence', 'source']);
+      if (Object.hasOwn(failure, 'prerequisite')) {
+        exact(failure.prerequisite, ['repository', 'path']);
+        text(failure.prerequisite.repository, 256);
+        relativeFile(failure.prerequisite.path);
+        if (failure.prerequisite.path === '.' || failure.prerequisite.path.endsWith('/')) fail('invalid_prerequisite_path');
+      }
       text(failure.id, 1024);
       if (!Number.isSafeInteger(failure.occurrence) || failure.occurrence < 1) fail('result_occurrence_invalid');
       if (failure.source !== null) {
