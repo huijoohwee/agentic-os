@@ -50,3 +50,8 @@ documentation and module evaluators. Source remains 46/46 modules and 13,809/15,
 guidance remains 39.9 KiB/40 KiB. Independent source review found no remaining actionable issue.
 This is source behavior evidence; protected integration, consumer adoption and production remain
 separate receipts. In particular, source tests do not issue payment or deployment authority.
+
+Concurrent admission rejects a declared path overlap before scanning that sibling worktree's
+tracked bytes or committed diff. The declaration can prove refusal, never acceptance: disjoint
+requests still inspect dirty, hidden, untracked and committed paths. This saves observation work
+on contention; it does not shorten ownership handoffs or permit timeout-based takeover.

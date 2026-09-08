@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -9,7 +9,7 @@ import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { get, put } from '../src/lane-records.mjs';
-import { parseWritePaths, provision, registeredLaneBranches, worktreeFor } from '../src/worktree.mjs';
+import { assertDisjointReservation, parseWritePaths, provision, registeredLaneBranches, worktreeFor } from '../src/worktree.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 const LANE_RECORDS_URL = new URL('../src/lane-records.mjs', import.meta.url).href;
@@ -557,4 +557,26 @@ test('finish removes one clean integrated worktree and retains its branch histor
   assert.equal(run(['rev-parse', `refs/heads/${ref}`]), laneHead);
   assert.equal(run(['rev-parse', 'main']), laneHead);
   assert.equal(run(['rev-parse', 'origin/main']), laneHead);
+});
+
+
+test('declared overlap refuses before sibling byte scans; disjoint requests still inspect', (t) => {
+  const { root, run } = fixture(t);
+  const ref = 'agent/test-device/active';
+  const active = createLane(t, root, ref, 'active');
+  const hiddenPath = `${active.path}-temporarily-unavailable`;
+  renameSync(active.path, hiddenPath);
+  try {
+    const records = { [ref]: { writePaths: ['src/shared'] } };
+    for (const requested of ['src/shared', 'src/shared/file.mjs', 'src']) {
+      assert.throws(() => assertDisjointReservation({ cwd: root, ref: 'agent/test-device/next',
+        writePaths: [requested], protectedRef: 'HEAD', records }), error => {
+        assert.equal(error.reason, 'blocked-write-scope-overlap');
+        assert.equal(error.ref, ref); assert.equal(error.requested, requested); return true;
+      });
+    }
+    assert.throws(() => assertDisjointReservation({ cwd: root, ref: 'agent/test-device/next',
+      writePaths: ['other'], protectedRef: 'HEAD', records }), /git|directory|worktree/iu);
+    assert.equal(run(['branch', '--list', 'agent/test-device/next']), '');
+  } finally { renameSync(hiddenPath, active.path); }
 });

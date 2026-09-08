@@ -203,13 +203,13 @@ const pathsOverlap = (left, right) => left === right
   || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 const pathIsReserved = (path, reservations) => reservations.some((reservation) =>
   path === reservation || path.startsWith(`${reservation}/`));
-function observedLanePaths(entry, record, protectedRef, cwd) {
+function observedLanePaths(entry, record, protectedRef, cwd, writePaths) {
+  const reserved = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
+  if (writePaths.some(requested => reserved.some(path => pathsOverlap(requested, path)))) return reserved;
   const observed = worktreeCleanupRisks(entry.path, { includeIgnored: false });
-  const dirty = [...new Set([...observed.tracked, ...observed.owned, ...observed.hidden])];
   const committed = gitLines(['diff', '--name-only',
     `${record?.baseSha ?? protectedRef}...refs/heads/${entry.branch}`], { cwd, allowFail: true });
-  const reserved = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
-  return [...new Set([...reserved, ...dirty, ...committed])].sort();
+  return [...new Set([...reserved, ...observed.tracked, ...observed.owned, ...observed.hidden, ...committed])].sort();
 }
 function assertDisjointReservationExcept({
   cwd, ref, writePaths, protectedRef, records, predecessorRef = null,
@@ -220,7 +220,7 @@ function assertDisjointReservationExcept({
   if (active.length > 0 && writePaths.length === 0) throw writeScopeError(
     'blocked-write-scope-missing', 'concurrent admission requires --write=<path[,path...]>');
   for (const entry of active) {
-    const occupied = observedLanePaths(entry, records[entry.branch], protectedRef, cwd);
+    const occupied = observedLanePaths(entry, records[entry.branch], protectedRef, cwd, writePaths);
     if (occupied.length === 0) throw writeScopeError('blocked-unproven-write-scope',
       `active lane has no declared or observable write scope: ${entry.branch}`, { ref: entry.branch });
     for (const requested of writePaths) for (const path of occupied) {
