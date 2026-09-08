@@ -310,3 +310,16 @@ export function buildCleanRetirementProjection(plan, baseEntries, limits) {
   assertProjectionBudget(entries, limits, 'quarantine');
   return { entries, manifest: quarantineManifestBundle(plan, entries, limits) };
 }
+
+/** Preserve unchanged entries; attribute changes require complete rematerialization. */
+export function canonicalDeltaEntries(base, target) {
+  const same = (left, right) => left && right && left.oid === right.oid
+    && left.mode === right.mode && left.type === right.type;
+  const paths = new Set([...base.keys(), ...target.keys()]);
+  const attributesChanged = [...paths].some(path =>
+    (path === '.gitattributes' || path.endsWith('/.gitattributes'))
+      && !same(base.get(path), target.get(path)));
+  const changed = entries => new Map([...entries].filter(([path]) =>
+    attributesChanged || !same(base.get(path), target.get(path))));
+  return { source: changed(base), target: changed(target) };
+}

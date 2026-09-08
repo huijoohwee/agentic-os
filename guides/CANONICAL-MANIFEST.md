@@ -26,3 +26,17 @@ The receipt's existing manifest digest hashes the index, which transitively bind
 
 This is local preservation evidence. It does not prove operating-system exclusivity, protected
 integration, production readiness, or deployment authority.
+
+## Incremental canonical synchronization
+
+Canonical sync audits the complete tracked checkout with a separate 512 MiB aggregate inspection
+ceiling and the existing 32 MiB per-file ceiling. Clean source quarantine and target installation
+retain their independent 128 MiB aggregate ceilings. Unchanged entries with identical Git object,
+mode and type stay in place; only changed or deleted source entries are quarantined, and only changed
+or added target entries are staged. The recovery commit still retains the complete prior tree.
+
+Any added, changed or removed `.gitattributes` invalidates this optimization for the whole tree.
+Delta staging uses the complete target tree's attributes. Before success, unchanged entries receive
+raw-byte verification again; installed entries retain Git's filtered-worktree verification. Dirty
+inventory remains copy-only and cannot authorize synchronization. These bounds can still reject a
+large changed projection or a checkout exceeding the inspection ceiling; no resource bypass is implied.
