@@ -260,3 +260,77 @@ test('invalid embedding options return typed rejection receipts', () => {
   const timed = rankFeatures(source, { now: () => { throw hostile; } });
   assert.equal(timed.findings[0].code, 'evaluation-time-invalid');
 });
+
+
+test('bounded reads retain exact bytes with one payload allocation and no payload copy', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentic-os-read-allocation-'));
+  try {
+    const file = join(root, 'payload');
+    const moduleUrl = pathToFileURL(join(import.meta.dirname, '../src/catalog-input.mjs')).href;
+    const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      import { syncBuiltinESMExports } from 'node:module';
+      import { readBoundedFile } from ${JSON.stringify(moduleUrl)};
+      const file = ${JSON.stringify(file)};
+      const nativeRead = fs.readSync;
+      // Exercise short reads without changing the descriptor or returned data.
+      fs.readSync = (fd, buffer, offset, length, position) =>
+        nativeRead(fd, buffer, offset, Math.min(length, 7), position);
+      syncBuiltinESMExports();
+      const metrics = [];
+      for (const size of [0, 1, 4097, 65536]) {
+        const expected = Buffer.alloc(size, 0xa5);
+        fs.writeFileSync(file, expected);
+        let allocated = 0, copied = 0;
+        const alloc = Buffer.alloc, slow = Buffer.allocUnsafeSlow, copy = Buffer.prototype.copy;
+        let actual;
+        try {
+          Buffer.alloc = (size, ...args) => { allocated += size; return alloc(size, ...args); };
+          Buffer.allocUnsafeSlow = size => { allocated += size; return slow(size); };
+          Buffer.prototype.copy = function (...args) { const n = copy.apply(this, args); copied += n; return n; };
+          actual = readBoundedFile(file, size);
+        } finally {
+          Buffer.alloc = alloc; Buffer.allocUnsafeSlow = slow; Buffer.prototype.copy = copy;
+        }
+        assert.deepEqual(actual, expected);
+        assert.equal(actual.buffer.byteLength, size);
+        assert.ok(allocated <= size + 1, 'reader must allocate at most payload plus growth probe');
+        assert.equal(copied, 0);
+        fs.writeFileSync(file, Buffer.alloc(size, 0x3c));
+        assert.deepEqual(readBoundedFile(file, size), Buffer.alloc(size, 0x3c));
+        assert.deepEqual(actual, expected, 'later reads must not mutate retained evidence');
+        metrics.push({ size, allocated, copied });
+      }
+      console.log(JSON.stringify(metrics));
+    `], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(probe.status, 0, probe.stderr);
+    assert.equal(JSON.parse(probe.stdout).length, 4);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('bounded reads reject growth and truncation during payload acquisition', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentic-os-read-race-'));
+  try {
+    const file = join(root, 'payload');
+    const moduleUrl = pathToFileURL(join(import.meta.dirname, '../src/catalog-input.mjs')).href;
+    const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      import { syncBuiltinESMExports } from 'node:module';
+      import { readBoundedFile } from ${JSON.stringify(moduleUrl)};
+      const file = ${JSON.stringify(file)}, nativeRead = fs.readSync;
+      for (const [initial, next, limit] of [['abc', 'abcd', 3], ['abc', 'abcd', 8], ['abc', 'a', 8], ['', 'x', 0]]) {
+        fs.writeFileSync(file, initial);
+        let changed = false;
+        fs.readSync = (...args) => {
+          if (!changed) { changed = true; fs.writeFileSync(file, next); }
+          return nativeRead(...args);
+        };
+        syncBuiltinESMExports();
+        assert.throws(() => readBoundedFile(file, limit), /byte budget exceeded|changed during inspection/);
+      }
+    `], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(probe.status, 0, probe.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
