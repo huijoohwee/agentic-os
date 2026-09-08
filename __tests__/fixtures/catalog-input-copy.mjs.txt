@@ -179,25 +179,22 @@ export function readBoundedFile(path, maxBytes, label = 'file', {
     const expectedSize = Number(metadata.size);
     if (!Number.isSafeInteger(expectedSize) || expectedSize > maxBytes)
       throw new Error(`${label} byte budget exceeded`);
-    // Read directly into an exact, unpooled result; probe growth separately.
-    const buffer = Buffer.allocUnsafeSlow(expectedSize);
+    const buffer = Buffer.alloc(expectedSize + 1);
     let offset = 0;
     while (offset < buffer.byteLength) {
       const count = readSync(descriptor, buffer, offset, buffer.byteLength - offset, null);
       if (count === 0) break;
       offset += count;
     }
-    const probe = Buffer.allocUnsafeSlow(1);
-    if (readSync(descriptor, probe, 0, 1, null) !== 0) {
-      if (offset >= maxBytes) throw new Error(`${label} byte budget exceeded`);
-      throw new Error(`${label} changed during inspection`);
-    }
+    if (offset > maxBytes) throw new Error(`${label} byte budget exceeded`);
     const after = fstatSync(descriptor, { bigint: true });
     if (after.dev !== metadata.dev || after.ino !== metadata.ino || after.size !== BigInt(offset)
       || after.size !== metadata.size || after.mode !== metadata.mode || after.nlink !== metadata.nlink
       || after.mtimeNs !== metadata.mtimeNs || after.ctimeNs !== metadata.ctimeNs)
       throw new Error(`${label} changed during inspection`);
-    return buffer;
+    const exact = Buffer.allocUnsafeSlow(offset);
+    buffer.copy(exact, 0, 0, offset);
+    return exact;
   } finally {
     closeSync(descriptor);
   }

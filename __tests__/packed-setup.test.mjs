@@ -15,6 +15,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..'); const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function priorRuntimeFiles(selected, quarantineLegacy = true) {
   const fixtures = new Map([
+    ['src/catalog-input.mjs', ['catalog-input-copy.mjs.txt', '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667']],
     ['src/git.mjs', ['git-remote-single.mjs.txt', '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62']],
     ['src/git-tracked.mjs', ['git-tracked-single.mjs.txt', 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320']],
     ['bin/agentic-os-filter-compare.mjs', ['filter-compare-single.mjs.txt', 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7']],
@@ -181,7 +182,6 @@ const UTF8`)
   chmodSync(join(path, 'runtime-manifest.json'), 0o600);
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
-
 function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false) {
   const files = priorRuntimeFiles(selected, !currentRelease).map((file) => {
     if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;

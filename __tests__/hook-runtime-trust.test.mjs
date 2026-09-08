@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  chmodSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync,
+  chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -14,13 +14,17 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-test('a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
+for (const released of [false, true]) test(released
+  ? 'the exact previously released copying-reader runtime authorizes migration'
+  : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
   const altered = selected.files.map((file, index) => {
-    const bytes = index === 0 ? Buffer.concat([file.bytes, Buffer.from('\n')]) : file.bytes;
+    const bytes = released ? (file.path === 'src/catalog-input.mjs'
+      ? readFileSync(new URL('./fixtures/catalog-input-copy.mjs.txt', import.meta.url)) : file.bytes)
+      : index === 0 ? Buffer.concat([file.bytes, Buffer.from('\n')]) : file.bytes;
     return { path: file.path, mode: file.mode, sha256: digest(bytes), bytes };
   });
   const identity = { schema: 'agentic-os/hook-runtime/v1',
@@ -28,10 +32,10 @@ test('a self-consistent but release-unpinned prior runtime cannot authorize migr
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
-  mkdirSync(join(path, '.githooks'), { recursive: true });
+  mkdirSync(join(path, '.githooks'), { recursive: true, mode: 0o700 });
   chmodSync(path, 0o700);
-  mkdirSync(join(path, 'bin'));
-  mkdirSync(join(path, 'src'));
+  mkdirSync(join(path, 'bin'), { mode: 0o700 });
+  mkdirSync(join(path, 'src'), { mode: 0o700 });
   for (const file of altered) {
     const target = join(path, file.path);
     writeFileSync(target, file.bytes, { mode: file.mode });
@@ -41,10 +45,16 @@ test('a self-consistent but release-unpinned prior runtime cannot authorize migr
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
   chmodSync(manifestPath, 0o600);
 
+  if (released) {
+    assert.equal(runtimeId, 'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c');
+    assert.equal(assertPriorManagedRuntime(join(path, '.githooks'), selected), true);
+    const catalog = join(path, 'src/catalog-input.mjs');
+    writeFileSync(catalog, Buffer.concat([readFileSync(catalog), Buffer.from('\n')]));
+  }
   assert.throws(
     () => assertPriorManagedRuntime(join(path, '.githooks'), selected),
     (error) => error.reason === 'blocked-hook-runtime-integrity'
-      && /not release-pinned/u.test(error.message),
+      && (released || /not release-pinned/u.test(error.message)),
   );
   assert.equal(dirname(path), selected.managedRoot);
 });

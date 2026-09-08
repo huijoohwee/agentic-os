@@ -67,3 +67,16 @@ without a locator; `unlistedFailures` still retains missing detail. Source and p
 separate partitions, never additive failure counts. This exposes shared setup leads without rescanning
 sources or rerunning tests. Locators remain unsigned reports: discovery does not read their paths,
 verify dependency ownership, classify a root cause, suppress execution, or establish readiness.
+
+## Shared bounded input reads
+
+Catalog and evidence ingestion use `src/catalog-input.mjs` rather than consumer copies.
+Each read fills one exact unpooled result and uses a one-byte growth probe. This removes
+one full payload allocation and copy per successful read; filesystem payload bytes are
+unchanged. Short reads, growth, truncation, descriptor identity and metadata races still
+fail closed. Every call observes fresh bytes; there is no cross-call evidence cache.
+
+For Git-backed test fixtures, materialize only their declared source surfaces and required authority
+files when the check does not need a full working tree. Native sparse checkout can retain the full
+index and commit history. Verify the unchanged checks and exact committed-tree identity before
+claiming equivalent fixture coverage; record avoided files/bytes separately from observed timings.
