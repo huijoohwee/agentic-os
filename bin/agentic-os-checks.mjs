@@ -213,8 +213,34 @@ function inspectOwner(entry, rootPath, roots, evaluate) {
     return { row };
   }
 }
+/** Group validated, unsigned failures from one observation; never combine runs or infer coverage. */
+function failurePlan(result) {
+  const groups = new Map(), unmappedFailures = [];
+  for (const { id, occurrence, source } of result.failures) {
+    const failure = { id, occurrence };
+    if (source === null) { unmappedFailures.push(failure); continue; }
+    if (!groups.has(source)) groups.set(source, []);
+    groups.get(source).push(failure);
+  }
+  const sourceGroups = [...groups].map(([source, failures]) => ({ source, failures }))
+    .sort((a, b) => b.failures.length - a.failures.length || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
+  return {
+    status: 'advisory', basis: 'reported-test-source', reportedFailed: result.coverage.counts.failed,
+    listedFailures: result.failures.length,
+    unlistedFailures: result.coverage.counts.failed - result.failures.length,
+    sourceGroups, unmappedFailures, fullValidationRequired: true,
+    conditions: 'Inspect larger source groups first and verify the shared cause before batching repairs. '
+      + 'Source mappings are unsigned caller reports, not verified dependency or root-cause analysis. '
+      + 'Each case occurrence appears once within this observation; separate runs are never combined. '
+      + 'Unmapped and unlisted failures remain unresolved. Use the enclosing result binding and original scope; '
+      + 'stale, dirty or unavailable source remains historical evidence. '
+      + 'Run affected owner checks during repairs and full applicable validation on final bytes. '
+      + 'This plan executes nothing, grants no coverage and estimates no time savings.',
+  };
+}
 function validateResult(value) {
-  exact(value, ['schema', 'repository', 'revision', 'command', 'coverage', 'outcome']);
+  exact(value, ['schema', 'repository', 'revision', 'command', 'coverage', 'outcome', 'failures'],
+    ['schema', 'repository', 'revision', 'command', 'coverage', 'outcome']);
   if (value.schema !== CHECK_RESULT_SCHEMA || !REVISION.test(value.revision)) fail('result_identity_invalid');
   text(value.repository, 256);
   exact(value.command, ['package', 'script', 'sourceSha256', 'argv']);
@@ -232,6 +258,24 @@ function validateResult(value) {
     if (Object.values(counts).some(count => !Number.isSafeInteger(count) || count < 0)
       || counts.passed + counts.failed + counts.skipped !== counts.total
       || (value.outcome === 'passed' && counts.failed !== 0)) fail('result_counts_invalid');
+  }
+  if (value.failures !== undefined) {
+    const failures = array(value.failures, 256), counts = value.coverage.counts;
+    if (!counts || !['failed', 'interrupted'].includes(value.outcome) || failures.length > counts.failed)
+      fail('result_failures_invalid');
+    const cases = new Set();
+    for (const failure of failures) {
+      exact(failure, ['id', 'occurrence', 'source']);
+      text(failure.id, 1024);
+      if (!Number.isSafeInteger(failure.occurrence) || failure.occurrence < 1) fail('result_occurrence_invalid');
+      if (failure.source !== null) {
+        relativeFile(failure.source);
+        if (failure.source === '.' || failure.source.endsWith('/')) fail('invalid_source_path');
+      }
+      const identity = JSON.stringify([failure.id, failure.occurrence]);
+      if (cases.has(identity)) fail('duplicate_failure_occurrence');
+      cases.add(identity);
+    }
   }
   return value;
 }
@@ -274,6 +318,7 @@ export function discoverRepositoryChecks(inputPath, { catalogPath = CATALOG } = 
     const observation = { receipt: record.path, receiptSha256: record.sha256, repository: result.repository,
       revision: result.revision, command: result.command, coverage: result.coverage,
       reportedOutcome: result.outcome, binding, authenticated: false };
+    if (result.failures !== undefined) observation.failurePlan = failurePlan(result);
     (owner?.results ?? unmatchedResults).push(observation);
   }
   for (const owner of owners) {
