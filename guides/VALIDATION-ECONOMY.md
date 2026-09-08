@@ -33,3 +33,23 @@ Never treat a result cache or a matching commit alone as proof of dirty worktree
 
 Keep reusable policy here, executable checks in their owning repositories, and ecosystem result history
 in Canvas `test/log.md`. This guide is lazy-loaded and adds no always-load bytes or runtime dependency.
+
+## Batch failures from an existing run
+
+`agentic-os observe --checks --input=<file>` accepts optional `failures` in each unsigned
+`agentic-os/check-result-observation/v1` receipt. Each entry has `id` (case name), `occurrence`
+(positive ordinal for that name within the run), and `source` (repository-relative test file or `null`
+when unknown). Use the owner's registry or runner output to map cases; do not guess production owners
+from error text. Keep the original command, revision, scope, completeness and counts.
+
+At most 256 entries fit one receipt, still within its existing 65,536-byte input budget. Include counts
+and a `failed` or `interrupted` outcome. Partial lists are allowed: `unlistedFailures` explicitly retains
+the remainder. Duplicate case occurrences, invalid paths and contradictory counts fail validation.
+
+Each result's advisory `failurePlan` groups only its listed failures by reported test source, largest
+group first with source-path tie breaking. Unmapped cases remain separate. Inspect the group to find a
+shared cause, batch related repairs, and use affected owner checks before full validation on final bytes.
+Grouping is not root-cause proof, an execution filter, a pass cache, or measured time savings. Source
+bindings stay on the enclosing result; dirty/stale observations remain historical and unauthenticated.
+Different runs are never merged or deduplicated. This uses the existing CLI/MCP discovery path and runs
+no candidate code; it neither waives release checks nor establishes runtime readiness.
