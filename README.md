@@ -50,9 +50,9 @@ path-scoped admission and stage-to-push delivery are the default; manual Git is 
 Managed lanes share `<registry>/<repository>/<device>--<lane>`; `AGENTIC_OS_WORKTREE_ROOT` configures only
 the registry parent, so repository and lane isolation remain intact.
 
-The lazy-loaded [tech stack](guides/TECH-STACK.md) records the grounded
+The lazy-loaded [feature list](guides/FEATURES.md) and [tech stack](guides/TECH-STACK.md) record the grounded
 ownership and provider boundaries among `agentic-os`, `agentic-canvas-os`, `agentic-graph`, and
-`agentic-commerce-os`. It carries executable source-acceptance checks, but grants no cross-repository
+`agentic-commerce-os`. They link executable source-acceptance checks, but grant no cross-repository
 promotion or deployed-runtime authority.
 
 Open a lane, work, land it:
