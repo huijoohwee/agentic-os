@@ -475,14 +475,12 @@ function cmdFinish(root, argv, policy, profile) {
     err(`blocked-not-integrated: ${ref} is not exactly projected into ${policy.protectedRef}`);
     return 1;
   }
-  git(['worktree', 'remove', lane.path], { cwd: root });
-  if (worktreeFor(ref, root) || existsSync(lane.path)) {
-    err(`blocked-finish-postcondition: ${ref} worktree removal is incomplete`);
-    return 1;
-  }
   out(JSON.stringify({ schema: 'agentic-os/sprint-finish/v1', ref, laneHead,
-    integratedRevision: baseSha, worktree: lane.path, worktreeRemoved: true,
-    branchRetained: true }));
+    integratedRevision: baseSha, worktree: lane.path, worktreeRemoved: false,
+    branchRetained: true, grantsAuthority: false, profileDigest: profile.profileDigest,
+    cleanupDisposition: profile.cleanup.worktreeProjection === 'retain'
+      ? 'retained' : 'authenticated-cleanup-required',
+    cleanupOwner: 'agentic-os/adapters/worktree-cleanup' }));
   return 0;
 }
 function cmdQueue(root, argv, profile) {

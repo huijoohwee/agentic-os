@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -15,7 +15,7 @@ const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 const LANE_RECORDS_URL = new URL('../src/lane-records.mjs', import.meta.url).href;
 const SOURCE_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-function fixture(t) {
+function fixture(t, cleanupMode = 'retain') {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-lean-sprint-'));
   const root = join(parent, 'repo');
   mkdirSync(root);
@@ -28,6 +28,8 @@ function fixture(t) {
     repository: 'local:fixture',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
+    cleanup: { worktreeProjection: cleanupMode, worktreeRegistration: cleanupMode,
+      remoteTrackingRef: 'retain', localBranch: 'retain', remoteBranch: 'retain', unreachableObjects: 'retain' },
   });
   writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(profile, null, 2)}\n`);
   run(['add', 'base.txt', '.agentic-os.json']);
@@ -536,8 +538,8 @@ for (const deletion of [false, true]) test(`land publishes a reserved ${deletion
   assert.equal(git(['ls-tree', '--name-only', 'HEAD', '--', 'change.txt'], { cwd: lane.path }), deletion ? '' : 'change.txt');
 });
 
-test('finish removes one clean integrated worktree and retains its branch history', (t) => {
-  const { parent, root, run } = fixture(t);
+for (const cleanupMode of ['retain', 'quarantine']) test(`finish preserves ignored bytes under ${cleanupMode} policy`, (t) => {
+  const { parent, root, run } = fixture(t, cleanupMode);
   const bare = join(parent, 'remote.git');
   git(['init', '--quiet', '--bare', bare], { cwd: parent });
   run(['remote', 'add', 'origin', bare]);
@@ -545,21 +547,26 @@ test('finish removes one clean integrated worktree and retains its branch histor
   const ref = 'agent/test-device/completed';
   const created = createLane(t, root, ref, 'completed');
   writeFileSync(join(created.path, 'completed.txt'), 'completed\n');
-  git(['add', 'completed.txt'], { cwd: created.path });
+  writeFileSync(join(created.path, '.gitignore'), 'private-local-notes.txt\n');
+  git(['add', 'completed.txt', '.gitignore'], { cwd: created.path });
   git(['commit', '--quiet', '--message', 'complete lane'], { cwd: created.path });
   const laneHead = git(['rev-parse', 'HEAD'], { cwd: created.path });
   run(['merge', '--quiet', '--ff-only', ref]);
   run(['push', '--quiet', 'origin', 'main']);
-
+  const notes = join(created.path, 'private-local-notes.txt');
+  writeFileSync(notes, 'authored bytes outside Git\n');
   const result = spawnSync(process.execPath, [CLI, 'finish', `--ref=${ref}`], {
     cwd: root,
     encoding: 'utf8',
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /agentic-os\/sprint-finish\/v1/u);
-  assert.equal(existsSync(created.path), false);
-  assert.deepEqual(registeredLaneBranches(root), []);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.schema, 'agentic-os/sprint-finish/v1');
+  assert.equal(receipt.worktreeRemoved, false);
+  assert.equal(receipt.cleanupDisposition, cleanupMode === 'retain' ? 'retained' : 'authenticated-cleanup-required');
+  assert.equal(readFileSync(notes, 'utf8'), 'authored bytes outside Git\n');
+  assert.deepEqual(registeredLaneBranches(root), [ref]);
   assert.equal(run(['rev-parse', `refs/heads/${ref}`]), laneHead);
   assert.equal(run(['rev-parse', 'main']), laneHead);
   assert.equal(run(['rev-parse', 'origin/main']), laneHead);
