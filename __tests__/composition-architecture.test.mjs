@@ -49,8 +49,8 @@ test('document binds imported evidence without turning it into runtime proof', (
     'd5323bc35a62cf2dace300990d5ee0db228897d8',
     '499296c7830ca62f30a6b6ac4181474e2511bae9',
   ]) assert.ok(guide.includes(evidence), evidence);
-  assert.match(guide, /version: "1\.4\.2"/);
-  assert.match(guide, /adr_revision: "1\.4\.2"/);
+  assert.match(guide, /version: "1\.5\.0"/);
+  assert.match(guide, /adr_revision: "1\.5\.0"/);
   assert.match(guide, /execution_gate: "static-source-observation-authorized"/);
   assert.match(guide, /local_rung: "dev-proven"/);
   assert.match(guide, /delivered_rung: "undocumented"/);
