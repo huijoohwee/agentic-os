@@ -1,8 +1,8 @@
-# Browser adapter
+# Browser document capability
 
-Use an existing application or an available native visualization tool when the user selected
-one; read that tool's current host instructions. For an ordinary portable artifact, write a
-self-contained HTML file in the task's authorized output directory and provide its actual path.
+For an existing structured artifact, use the [structured document](structured-document.md)
+reference. For an ordinary portable browser artifact, write a self-contained HTML file in
+the task's authorized output directory and provide its actual path.
 Do not change an application stack or publish a website merely to display an analysis.
 
 Use platform HTML, CSS, SVG and JavaScript with embedded bounded data. The artifact should open

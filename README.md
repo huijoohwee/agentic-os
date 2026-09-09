@@ -184,18 +184,22 @@ docs/adlc-guidelines.md universal lifecycle principles for every consumer
 src/                 small responsibility-owned modules under the configured cap
 catalog/             invocation and feature data with count and digest fences
 templates/           universal runtime prompt assets
-skills/              portable on-demand skills with thin host references
+skills/              standalone on-demand skills with capability-based references
 bin/                 CLI and stdio MCP entrypoints
 ```
 
 ## Portable skills
 
 The portable [Canvas skill](skills/canvas/SKILL.md) owns standalone visual decision authoring;
-its browser, Cursor and Graph references load only for the selected host. Consumers resolve
+its browser-document, structured-document and commerce references load only when applicable.
+The skill has no vendor-specific paths, SDK requirements or repository-relative dependencies.
+Package consumers resolve
 `agentic-os/skills/canvas/SKILL.md` from their exact pinned installation and read it as an asset,
 not a JavaScript module. Register or link that installed skill directory through the host's
 supported discovery mechanism; package inclusion alone does not auto-install an IDE skill.
-Keep its relative resources together and reference upstream bytes rather than copying them.
+Keep the skill directory's relative resources together and reference upstream bytes rather than
+maintaining a second editable copy. The directory can also be distributed independently of this package;
+no Node.js runtime is needed to read the skill. Environment-specific registration stays with its host.
 The host retains rendering/storage and product owners retain runtime and payment behavior.
 No universal prompt or always-loaded document is enlarged by this skill.
 

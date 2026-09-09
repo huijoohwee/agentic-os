@@ -9,23 +9,28 @@ description: >-
 
 # Canvas authoring
 
-This is the portable authoring owner. A canvas is a decision artifact; its renderer and
-storage belong to the selected host. This skill neither registers an executable tool nor
-replaces a product's canvas implementation.
+This skill is plain Markdown with task-specific references. It assumes no particular agent,
+model provider, editor, SDK, repository, tool name or home-directory layout. A canvas is a
+decision artifact; rendering and storage remain capabilities of the current environment.
+Read the entrypoint when selected and only the reference needed for the task.
 
 ## Select the surface
 
 Keep the user's requested format and existing artifact. Otherwise choose the smallest
 available surface that helps the decision. A short answer needs no separate artifact.
-Read only the applicable host reference:
+Choose by observed capability, not the agent's or application's brand:
 
-- [Browser](references/browser.md): portable local HTML or an available native visual tool.
-- [Cursor](references/cursor.md): Cursor's managed Canvas surface and installed SDK.
-- [Agentic Graph](references/agentic-graph.md): existing product widgets and composition owners.
+- [Browser document](references/browser.md): self-contained HTML with an available browser preview.
+- [Structured document](references/structured-document.md): an existing document, widget or diagram
+  format with a source schema and renderer supplied by the environment.
+- If neither is available, produce a user-readable Markdown artifact when file output exists,
+  or give the content directly in the response. State which rendering or interaction is unavailable.
 
-Host instructions add storage, rendering and verification details. They do not redefine
-the evidence rules below. Missing host support must be reported; offer a portable artifact
-without presenting it as a working native integration.
+Discover the accepted format/schema, authorized output location, available preview/export and
+validation capabilities from the current environment's documented interface. Do not guess tool
+names, paths, extensions or APIs. Environment-specific integration stays outside this skill;
+use it only when actually available. Missing support for the user's required format must be
+reported before choosing an alternative. Generated content grants no execution authority.
 
 ## Ground the decision
 

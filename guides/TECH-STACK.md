@@ -435,8 +435,11 @@ No composed repository may add an external agent-orchestration SDK as a build de
 `agentic-os` remains the executable lifecycle/orchestration and admission-vocabulary SSOT; consumers use an exact pinned package rather than copied workflows. ACOS consumes OS invocation and retains safety interfaces and its Worker/state, Commerce retains its control plane, and Graph retains domain/payment runtimes. No repository, deployable asset, or state is physically migrated by this decision. A future native Worker and per-agent Durable Object memory tier is specification-only: identity, authorization, storage transfer, idempotent `@mem-` export, rehydration, and rollback require a separate owner-approved design and executable VCC/RAO.
 
 The portable [Canvas authoring skill](../skills/canvas/SKILL.md) is OS-owned and packaged for
-on-demand consumption. It separates decision/evidence guidance from thin browser, Cursor and Graph
-host references. Renderer, storage, execution and payment remain with their product owners.
+on-demand consumption. It selects browser-document or structured-document capabilities from
+the available environment; vendor-specific integration stays outside the skill. Its standalone
+directory has no repository-relative dependencies. Renderer, storage, execution and payment remain
+with their product owners. For this workspace, the existing pipeline records and owner contracts
+supply task context; they are not mandatory dependencies of the portable skill.
 This adds no runtime module, dependency or always-load bytes. Package relocation and resource
 resolution are checked by [portable-skills.test.mjs](../__tests__/portable-skills.test.mjs); native host rendering requires
 the selected host's own verification. Skill packaging is not automatic IDE registration.
