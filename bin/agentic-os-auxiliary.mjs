@@ -1,5 +1,6 @@
 /** Bounded evidence, request-construction, and protected-maintenance CLI commands. */
 
+import { ghAvailable } from '../src/github-provider.mjs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -560,10 +561,13 @@ export function cmdDoctor(root, profile, policy) {
   out(report.formatLocal(local));
   out('');
   const kind = providerKind(profile);
-  const observed = kind === 'github'
-    ? queue.observe({ cwd: root, profile }) : null;
   const providerRequired = providerAdapterRequired(policy);
-  const findings = kind === 'github' ? queue.audit(observed, profile) : [{
+  const providerSkipped = kind === 'github' && !providerRequired && !ghAvailable();
+  const observed = kind === 'github' && !providerSkipped
+    ? queue.observe({ cwd: root, profile }) : null;
+  const findings = providerSkipped ? [{ id: 'provider-observation', ok: true, warning: true,
+    detail: 'provider observation skipped: gh unavailable; no provider-dependent policy selected' }]
+    : kind === 'github' ? queue.audit(observed, profile) : [{
     id: 'provider-adapter', ok: kind === 'none' && !providerRequired,
     detail: kind === 'none' ? providerRequired
       ? 'selected capabilities require a provider adapter' : 'no provider selected'

@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 *.log
 *.tmp
+
+# This dependency-free harness permits npm install without canonical drift.
+/package-lock.json

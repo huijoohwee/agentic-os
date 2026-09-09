@@ -17,6 +17,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-5be6d0e5b7015be246c11d42cfc370d3ef765133abd51db05c41f6cfe61dba47',
   'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c',
   'v1-476a09269ed108519c62404759f97b563745a32b1d200f73185af063eab3aeeb',
   'v1-be7454052f5609e1a80f6a55574d934b3fbf2379aff59d9b1a216da044dd3b68',
@@ -58,7 +59,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/governance.mjs', mode: 0o644,
     sha256: 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390' }),
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
-    sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }),
+    sha256: '766765984aeb4645f84fa1d2790ed2134ff3f2cb33c2888b80655c86eab6e5d7' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
     sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,

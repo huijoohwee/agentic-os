@@ -1,12 +1,22 @@
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { readBoundedFile } from '../src/catalog-input.mjs';
 import { compositionRevision, createCompositionHeadReader, readCompositionHeadFile } from './composition-git.mjs';
 
 export const COMPOSITION_SOURCE_LOCK_SCHEMA = 'agentic-os/composition-source-lock/v2';
-const OWNER_IDENTITIES = Object.freeze({
-  'agentic-canvas-os': 'huijoohwee/agentic-canvas-os',
-  'agentic-commerce-os': 'huijoohwee/agentic-commerce-os',
-  'agentic-graph': 'huijoohwee/agentic-graph',
-});
+const OWNER_KEYS = Object.freeze(['agentic-canvas-os', 'agentic-commerce-os', 'agentic-graph']);
+const repositoryName = value => typeof value === 'string'
+  && /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_.-]*$/u.test(value)
+  && value.split('/').every(part => part !== '.' && part !== '..');
+
+/** Identities come from the installed harness catalog, never from candidate code. */
+export function compositionRepositories() {
+  const value = JSON.parse(readBoundedFile(fileURLToPath(new URL(
+    '../catalog/composition-source-lock.json', import.meta.url)), 65_536, 'composition identities'));
+  if (!validCompositionSourceLock(value)) throw new TypeError('invalid composition source lock');
+  return Object.freeze({ 'agentic-os': value.repository,
+    ...Object.fromEntries(OWNER_KEYS.map(owner => [owner, value.owners[owner].repository])) });
+}
 const ARTIFACTS = Object.freeze({
   admissionConsumerContract: Object.freeze({ owner: 'agentic-commerce-os',
     path: 'src/core/acos-admission.ts' }),
@@ -27,7 +37,6 @@ const ARTIFACTS = Object.freeze({
   topologyManifest: Object.freeze({ owner: 'agentic-commerce-os',
     path: 'config/production-core-services.json' }),
 });
-const OWNER_KEYS = Object.freeze(Object.keys(OWNER_IDENTITIES));
 const ARTIFACT_KEYS = Object.freeze(Object.keys(ARTIFACTS));
 const CRITICAL_ARTIFACT_BLOBS = Object.freeze({
   admissionConsumerContract: 'a72a94de974bf838bb80e30de6054ac083ace928',
@@ -71,11 +80,13 @@ export function inspectCompositionSourceLock(roots, components) {
     }
   } catch { return failure('composition_source_lock_unreadable'); }
   if (!validCompositionSourceLock(value)) return failure('composition_source_lock_shape_invalid');
+  const identities = compositionRepositories();
+  if (value.repository !== identities['agentic-os']) return failure('composition_source_lock_identity_mismatch');
   for (const owner of OWNER_KEYS) {
     const expected = value.owners[owner], observed = components?.[owner];
-    if (expected.repository !== OWNER_IDENTITIES[owner]
+    if (expected.repository !== identities[owner]
       || expected.revision !== observed?.revision || expected.tree !== observed?.tree
-      || observed?.repositoryIdentity !== OWNER_IDENTITIES[owner]) {
+      || observed?.repositoryIdentity !== identities[owner]) {
       return failure('composition_source_lock_identity_mismatch');
     }
   }
@@ -144,7 +155,8 @@ function validCompositionSourceLockFailure(value) {
 }
 
 export function validCompositionSourceLock(value) {
-  if (!exactKeys(value, ['admission', 'artifacts', 'marketplace', 'owners', 'schema', 'topology'])
+  if (!exactKeys(value, ['admission', 'artifacts', 'marketplace', 'owners', 'repository', 'schema', 'topology'])
+    || !repositoryName(value.repository)
     || value.schema !== COMPOSITION_SOURCE_LOCK_SCHEMA
     || !exactKeys(value.admission, ['contract', 'fixtureSchema', 'fixtureSha256',
       'servingIdentityHeader', 'storedEffectWriterIdentitySchema'])
@@ -170,7 +182,7 @@ export function validCompositionSourceLock(value) {
     return false;
   }
   return OWNER_KEYS.every(owner => exactKeys(value.owners[owner], ['repository', 'revision', 'tree'])
-      && value.owners[owner].repository === OWNER_IDENTITIES[owner]
+      && repositoryName(value.owners[owner].repository)
       && /^[0-9a-f]{40}$/u.test(value.owners[owner].revision ?? '')
       && oid(value.owners[owner].tree))
     && ARTIFACT_KEYS.every(key => exactKeys(value.artifacts[key], ['blob', 'owner', 'path'])

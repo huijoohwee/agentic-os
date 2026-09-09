@@ -14,6 +14,7 @@ import {
 } from './agentic-os-hook-runtime.mjs';
 import { ensureRepositoryTrust, loadRepositoryTrust } from '../src/git-repository.mjs';
 import * as report from './agentic-os-report.mjs';
+import { bindProfileToRemote } from '../src/github-provider.mjs';
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../', import.meta.url));
 
@@ -83,6 +84,17 @@ function assertCanonicalSetup(installation, policy) {
   }
 }
 
+function assertSetupRemote(root, profile) {
+  if (profile.adapters.provider?.id !== 'github') return;
+  try { bindProfileToRemote(profile, root); } catch (cause) {
+    const error = new Error('setup remote does not match the committed profile; for a fork, '
+      + 'generate and commit its profile with agentic-os profile init before setup (guides/FORK.md)',
+    { cause });
+    error.reason = 'blocked-setup-repository-identity';
+    throw error;
+  }
+}
+
 function verifyFinalSetup(root, profile, runtime, out, {
   beforeFinalInspection, beforeFinalTrustValidation,
 }) {
@@ -104,7 +116,7 @@ function verifyFinalSetup(root, profile, runtime, out, {
   if (typeof beforeFinalTrustValidation === 'function')
     beforeFinalTrustValidation({ runtime, statePath });
   let trustError = null;
-  try { ensureRepositoryTrust(root, profile); } catch (error) {
+  try { assertSetupRemote(root, profile); ensureRepositoryTrust(root, profile); } catch (error) {
     trustError = error;
     entries.push({
       key: 'repository.trust', value: 'exact setup profile identity',
@@ -140,6 +152,7 @@ export function runHookSetup(root, policy, profile, out, {
 } = {}) {
   const installation = packageInstallation(root);
   assertCanonicalSetup(installation, policy);
+  assertSetupRemote(root, profile);
   // The CLI's first observation only grants a one-shot creation allowance. Re-observe here so
   // a trust anchor that disappeared after profile loading is never silently reconstructed.
   const trust = loadRepositoryTrust(root, {
@@ -152,16 +165,19 @@ export function runHookSetup(root, policy, profile, out, {
   }
   const { changes, prepared: anchored } = config.ensure(root, {
     ...installation,
-    beforeConfigure: (artifacts) => ensureRepositoryTrust(root, profile, {
-      allowCreate: trust === null && allowTrustCreation,
-      onEffect: (effect) => {
-        Object.assign(artifacts, effect);
-        artifacts.effectsRetained = artifacts.stateDirectoryCreated
-          || artifacts.stateDirectoryTightened || artifacts.stateDirectoryTightenResultUnknown
-          || artifacts.trustCreated || artifacts.trustWriteResultUnknown;
-      },
-    }),
-    afterConfigure: () => ensureRepositoryTrust(root, profile),
+    beforeConfigure: (artifacts) => {
+      assertSetupRemote(root, profile);
+      return ensureRepositoryTrust(root, profile, {
+        allowCreate: trust === null && allowTrustCreation,
+        onEffect: (effect) => {
+          Object.assign(artifacts, effect);
+          artifacts.effectsRetained = artifacts.stateDirectoryCreated
+            || artifacts.stateDirectoryTightened || artifacts.stateDirectoryTightenResultUnknown
+            || artifacts.trustCreated || artifacts.trustWriteResultUnknown;
+        },
+      });
+    },
+    afterConfigure: () => { assertSetupRemote(root, profile); return ensureRepositoryTrust(root, profile); },
     finalize: ({ runtime }) => verifyFinalSetup(root, profile, runtime, out, {
       beforeFinalInspection, beforeFinalTrustValidation,
     }),

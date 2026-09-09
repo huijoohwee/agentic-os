@@ -15,6 +15,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..'); const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function priorRuntimeFiles(selected, quarantineLegacy = true) {
   const fixtures = new Map([
+    ['src/lane-id.mjs', ['lane-id-hostname.mjs.txt', 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a']],
     ['src/catalog-input.mjs', ['catalog-input-copy.mjs.txt', '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667']],
     ['src/git.mjs', ['git-remote-single.mjs.txt', '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62']],
     ['src/git-tracked.mjs', ['git-tracked-single.mjs.txt', 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320']],
@@ -182,8 +183,12 @@ const UTF8`)
   chmodSync(join(path, 'runtime-manifest.json'), 0o600);
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
-function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false) {
-  const files = priorRuntimeFiles(selected, !currentRelease).map((file) => {
+function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false, latest = false) {
+  const source = latest ? selected.files.map(file => file.path === 'src/lane-id.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),
+      sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' } : file)
+    : priorRuntimeFiles(selected, !currentRelease);
+  const files = source.map((file) => {
     if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;
     const bytes = Buffer.from(file.bytes.toString('utf8')
       .replace(
@@ -197,7 +202,7 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
   const identity = { schema: 'agentic-os/hook-runtime/v1',
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
-  assert.equal(runtimeId, currentRelease ? 'v1-2be4a5d995408a4367167e0ee2d978726d02a64b13d009d3144e0acc4ce8c258' : guardRelease ? 'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9'
+  assert.equal(runtimeId, latest ? 'v1-5be6d0e5b7015be246c11d42cfc370d3ef765133abd51db05c41f6cfe61dba47' : currentRelease ? 'v1-2be4a5d995408a4367167e0ee2d978726d02a64b13d009d3144e0acc4ce8c258' : guardRelease ? 'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9'
     : 'v1-0bae8f8aaeb216ae461c8015cec00b17c508ae3a32c9ff7d55b4f574b25acec3');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
@@ -219,8 +224,8 @@ test('the verified prior release runtimes authorize managed migration', (t) => {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
-  for (const [guardRelease, currentRelease] of [[false, false], [true, false], [false, true]]) {
-    const prior = installImmediatePriorRuntime(selected, guardRelease, currentRelease);
+  for (const [guardRelease, currentRelease, latest] of [[false, false], [true, false], [false, true], [false, false, true]]) {
+    const prior = installImmediatePriorRuntime(selected, guardRelease, currentRelease, latest);
     assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true); }
 });
 
@@ -238,17 +243,12 @@ function runChild(file, args, options) {
 
 test('published files contain public JSON and adapters without deleted deep imports', () => {
   const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
-    cwd: ROOT,
-    encoding: 'utf8',
+    cwd: ROOT, encoding: 'utf8',
   }));
   const files = new Set(packed[0].files.map((entry) => entry.path));
   for (const path of [
-    '.agentic-os.json',
-    '.githooks/pre-commit',
-    '.githooks/pre-push',
-    'src/governance.mjs',
-    'src/git-repository.mjs',
-    'src/github-provider.mjs',
+    '.agentic-os.json', '.githooks/pre-commit', '.githooks/pre-push',
+    'src/governance.mjs', 'src/git-repository.mjs', 'src/github-provider.mjs',
     'docs/GOVERNANCE.md',
     'docs/adlc-guidelines.md',
     'guides/AUTONOMOUS-GOAL-PURSUIT.md',
@@ -263,8 +263,7 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   const repository = join(parent, 'repository');
   const lane = join(parent, 'lane');
   const packed = join(parent, 'packed');
-  mkdirSync(repository);
-  mkdirSync(packed);
+  mkdirSync(repository); mkdirSync(packed);
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const archive = join(packed, execFileSync('npm', [
     'pack', '--silent', '--pack-destination', packed,

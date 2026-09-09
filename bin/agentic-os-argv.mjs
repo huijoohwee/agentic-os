@@ -36,6 +36,10 @@ export function validateCommandArguments(command, argv) {
     case 'help': case '--help': return exact(argv, {});
     case 'setup': case 'git-configure': case 'guard-install': case 'doctor':
       return exact(argv, {});
+    case 'profile': return argv[0] === 'init'
+      ? exact(argv, { min: 1, options: ['repository'], requiredOptions: ['repository'] })
+      : 'profile requires init --repository=<host/owner/name>';
+    case 'pin': return exact(argv, { options: ['consumer', 'revision'], requiredOptions: ['consumer'] });
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
     case 'land': return exact(argv, { options: ['message', 'body-file'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
@@ -94,6 +98,8 @@ export function cmdHelp() {
     [
       'agentic-os — ADLC harness',
       '',
+      '  agentic-os profile init --repository=<host/owner/name>  print a fork profile; write no state',
+      '  agentic-os pin --consumer=<root> [--revision=<sha>]  check exact consumer pin drift',
       '  npm run setup             write config and select packaged hooks without clobbering',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',

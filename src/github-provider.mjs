@@ -44,7 +44,7 @@ function remoteRepositoryIdentity(value) {
   return identity ? { ...identity, repository: `${identity.host}/${identity.name}` } : null;
 }
 
-function bindProfileToRemote(profile, root) {
+export function bindProfileToRemote(profile, root) {
   const configured = repositoryIdentity(profile.repository);
   const prefix = 'refs/remotes/';
   const suffix = profile.canonical.remoteRef.startsWith(prefix)

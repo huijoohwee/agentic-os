@@ -88,6 +88,7 @@
       "tree": "9197b0a3edd9f313715e7a190312ea8b2398a8f3"
     }
   },
+  "repository": "huijoohwee/agentic-os",
   "schema": "agentic-os/composition-source-lock/v2",
   "topology": {
     "manifestBlob": "1b0241da6a9e82501167b524d842d8b59c8ed545",

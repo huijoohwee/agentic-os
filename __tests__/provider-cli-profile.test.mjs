@@ -197,3 +197,20 @@ test('remote profile advance blocks stale-policy start and land', (t) => {
   assert.equal(runGit(subject.root, 'for-each-ref', '--format=%(refname)', 'refs/heads/agent')
     .includes('stale-policy'), false);
 });
+
+test('doctor skips unavailable optional GitHub observation but retains required provider failures', t => {
+  for (const required of [false, true]) {
+    const subject = cliRepository(t, {
+      repositoryAdapter: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' },
+      capabilities: required ? [PROVIDER_CAPABILITIES.PULL_REQUEST] : [],
+    });
+    const result = runCli(subject, 'doctor');
+    if (required) {
+      assert.equal(result.status, 1);
+      assert.doesNotMatch(result.stdout, /provider observation skipped/);
+      assert.match(result.stdout, /FAIL gh\s+gh CLI not available/);
+    } else {
+      assert.match(result.stdout, /warn provider-observation.*provider observation skipped: gh unavailable/);
+    }
+  }
+});

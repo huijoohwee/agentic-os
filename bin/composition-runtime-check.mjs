@@ -1,3 +1,5 @@
+import { exactAgenticOsPackagePin, parseAgenticOsLockfilePin, harnessPinFormats } from './composition-pin.mjs';
+export { exactAgenticOsPackagePin, parseAgenticOsLockfilePin } from './composition-pin.mjs';
 import { createHash } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
@@ -8,11 +10,13 @@ import { compositionOriginUrl, observeCompositionGit,
 import { decodeNulFields, gitBlobOid } from '../src/git-tracked.mjs';
 import { COMPOSITION_DEPLOYMENT_TOPOLOGY_SCHEMA, compositionDeploymentTopologyRuntimeFindings, executeCompositionDeploymentTopology, inspectCompositionDeploymentTopology } from './composition-deployment-topology.mjs';
 import { COMPOSITION_ADMISSION_PROBE_SCHEMA, isValidCompositionAdmissionInterfaceReport, runCompositionAdmissionProbe } from './composition-admission-probe.mjs';
-import { COMPOSITION_SOURCE_LOCK_SCHEMA, executeCompositionSourceLock, inspectCompositionSourceLock } from './composition-source-lock.mjs';
+import { COMPOSITION_SOURCE_LOCK_SCHEMA, compositionRepositories, executeCompositionSourceLock, inspectCompositionSourceLock } from './composition-source-lock.mjs';
 export const COMPOSITION_ACCEPTANCE_SCHEMA = 'agentic-os/composition-source-acceptance/v2';
 export { COMPOSITION_SOURCE_LOCK_SCHEMA, inspectCompositionSourceLock } from './composition-source-lock.mjs';
 const PACKAGE_ROOT = realpathSync(fileURLToPath(new URL('..', import.meta.url))), MAX_CONTRACT_BYTES = 500_000;
 const SNAPSHOT_LIMITS = Object.freeze({ tracked: 10_000, trackedBytes: 134_217_728, fileBytes: 1_048_576, untracked: 512, inventoryBytes: 4_194_304, pathBytes: 262_144, contentBytes: 500_000 });
+const REPOSITORY_IDENTITIES = compositionRepositories();
+const HARNESS_REPOSITORY = REPOSITORY_IDENTITIES['agentic-os'];
 const CONTRACT = Object.freeze({
   'agentic-os': Object.freeze([
     requirement('guides/TECH-STACK.md', ['DIR-RUNTIME-READY-01',
@@ -33,10 +37,8 @@ const CONTRACT = Object.freeze({
       'agentic-os/composition-deployment-topology/v1', 'commerce_production_service_target_mismatch']),
   ]),
   'agentic-canvas-os': Object.freeze([
-    requirement('package.json', ['"agentic-os": "https://codeload.github.com/huijoohwee/agentic-os/tar.gz/',
-      '"lane": "agentic-os start"', '"land": "agentic-os land"', '"reap": "agentic-os reap"'],
-    { agenticOsPinPrefix: 'https://codeload.github.com/huijoohwee/agentic-os/tar.gz/',
-      agenticOsResolvedPrefix: 'https://codeload.github.com/huijoohwee/agentic-os/tar.gz/' }),
+    requirement('package.json', ['"lane": "agentic-os start"', '"land": "agentic-os land"', '"reap": "agentic-os reap"'],
+    { checkAgenticOsPin: true }),
     requirement('agent-api/src/commerce-admission-contract.js', [
       'commerce.agentic-os-admission-provider/v3', '/agentic-os/internal/v2/adapter-registrations',
       'agentic-os-adapter-registration/v2', 'commerce-agentic-os-admission-auth/v1',
@@ -60,11 +62,10 @@ const CONTRACT = Object.freeze({
   ]),
   'agentic-graph': Object.freeze([
     requirement('.agentic-os.json', ['agentic-os/repository-profile/v1',
-      'github.com/huijoohwee/agentic-graph', 'Integration Gate', 'quarantine-worktree-cleanup-opt-in']),
+      `github.com/${REPOSITORY_IDENTITIES['agentic-graph']}`, 'Integration Gate', 'quarantine-worktree-cleanup-opt-in']),
     requirement('package.json', ['"land": "agentic-os land"', '"status": "agentic-os status"',
-      '"reap": "agentic-os reap"', '"agentic-os": "github:huijoohwee/agentic-os#'],
-    { agenticOsPinPrefix: 'github:huijoohwee/agentic-os#',
-      agenticOsResolvedPrefix: 'git+ssh://git@github.com/huijoohwee/agentic-os.git#' }),
+      '"reap": "agentic-os reap"'],
+    { checkAgenticOsPin: true }),
     requirement('docs/collaboration-runtime-contract.md', [
       'informational current-device projection', 'delete_branch_on_merge:false']),
     requirement('cloudflare/workers/commerce-provider-contract.ts', [
@@ -95,11 +96,9 @@ const CONTRACT = Object.freeze({
       'agentic-human-authorization-receipt/v2', 'consumed exact-candidate human authorization receipt']),
   ]),
   'agentic-commerce-os': Object.freeze([
-    requirement('package.json', ['"agentic-os": "https://codeload.github.com/huijoohwee/agentic-os/tar.gz/',
-      '"lane": "agentic-os start"', '"land": "agentic-os land"', '"reap": "agentic-os reap"',
+    requirement('package.json', ['"lane": "agentic-os start"', '"land": "agentic-os land"', '"reap": "agentic-os reap"',
       '"node": ">=22.22.0"'],
-    { agenticOsPinPrefix: 'https://codeload.github.com/huijoohwee/agentic-os/tar.gz/',
-      agenticOsResolvedPrefix: 'https://codeload.github.com/huijoohwee/agentic-os/tar.gz/' }),
+    { checkAgenticOsPin: true }),
     requirement('src/core/acos-admission.ts', ['ACOS_ADMISSION_PROVIDER_CONTRACT', 'ACOS_ADMISSION_PATH',
       'ACOS_ADMISSION_RECEIPT_SCHEMA', 'x-agentic-os-serving-deployment-identity',
       'acos_admission_serving_identity_invalid', 'authoring_mutation_intent']),
@@ -138,12 +137,6 @@ const CONTRACT = Object.freeze({
   ]),
 });
 const COMPONENTS = Object.freeze(Object.keys(CONTRACT));
-const REPOSITORY_IDENTITIES = Object.freeze({
-  'agentic-os': 'huijoohwee/agentic-os',
-  'agentic-canvas-os': 'huijoohwee/agentic-canvas-os',
-  'agentic-graph': 'huijoohwee/agentic-graph',
-  'agentic-commerce-os': 'huijoohwee/agentic-commerce-os',
-});
 const COPIED_WORKFLOW_PATHS = Object.freeze([
   'docs/START-WORKFLOW.md',
   'docs/RELEASE-WORKFLOW.md',
@@ -299,10 +292,10 @@ function inspectComponentChecks(root, component, revision) {
   const checks = CONTRACT[component]
     .map(requirementValue => inspectRequirement(read, component, requirementValue));
   if (component !== 'agentic-os') {
-    const pinRequirement = CONTRACT[component].find(value => value.agenticOsPinPrefix);
     const packageCheck = checks.find(check => check.file === 'package.json');
+    const format = harnessPinFormats(HARNESS_REPOSITORY).find(value => value.name === packageCheck?.agenticOsPinFormat);
     checks.push(inspectAgenticOsLock(read, component, packageCheck?.agenticOsPin,
-      pinRequirement.agenticOsPinPrefix, pinRequirement.agenticOsResolvedPrefix));
+      format?.prefix, format?.resolved));
     checks.push(...COPIED_WORKFLOW_PATHS.map(file => inspectForbiddenPath(
       root, component, revision, file,
     )));
@@ -310,7 +303,7 @@ function inspectComponentChecks(root, component, revision) {
   return checks;
 }
 function inspectRequirement(read, component,
-  { file, literals, agenticOsPinPrefix = null }) {
+  { file, literals, checkAgenticOsPin = false }) {
   let bytes, source;
   try {
     ({ bytes } = read(file, MAX_CONTRACT_BYTES, 'composition contract'));
@@ -324,33 +317,19 @@ function inspectRequirement(read, component,
   const findings = [];
   findings.push(...literals.filter(literal => !source.includes(literal))
     .map(literal => finding(component, file, 'contract_literal_missing', literal)));
-  const agenticOsPin = agenticOsPinPrefix
-    ? exactAgenticOsPackagePin(source, agenticOsPinPrefix) : null;
-  if (agenticOsPinPrefix && agenticOsPin === null) {
+  const format = checkAgenticOsPin && harnessPinFormats(HARNESS_REPOSITORY)
+    .find(value => exactAgenticOsPackagePin(source, value.prefix));
+  const agenticOsPin = format ? exactAgenticOsPackagePin(source, format.prefix) : null;
+  if (checkAgenticOsPin && agenticOsPin === null) {
     findings.push(finding(component, file, 'agentic_os_package_pin_invalid'));
   }
   return {
     file,
     status: findings.length === 0 ? 'pass' : 'fail',
     digest: createHash('sha256').update(bytes).digest('hex'),
-    ...(agenticOsPin === null ? {} : { agenticOsPin }),
+    ...(agenticOsPin === null ? {} : { agenticOsPin, agenticOsPinFormat: format.name }),
     findings,
   };
-}
-export function exactAgenticOsPackagePin(source, prefix) {
-  let manifest;
-  try { manifest = JSON.parse(source); } catch { return null; }
-  return exactAgenticOsPinValue(manifest, prefix);
-}
-function exactAgenticOsPinValue(manifest, prefix) {
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return null;
-  const pins = ['dependencies', 'devDependencies', 'optionalDependencies']
-    .filter(section => manifest[section] && typeof manifest[section] === 'object'
-      && Object.hasOwn(manifest[section], 'agentic-os'))
-    .map(section => manifest[section]['agentic-os']);
-  if (pins.length !== 1 || typeof pins[0] !== 'string' || !pins[0].startsWith(prefix)) return null;
-  const revision = pins[0].slice(prefix.length);
-  return /^[0-9a-f]{40}$/u.test(revision) ? revision : null;
 }
 function inspectAgenticOsLock(read, component, expectedPin, prefix, resolvedPrefix) {
   const file = 'package-lock.json'; let bytes, source;
@@ -365,18 +344,6 @@ function inspectAgenticOsLock(read, component, expectedPin, prefix, resolvedPref
     digest: createHash('sha256').update(bytes).digest('hex'),
     ...(locked ? locked : {}), findings: locked ? []
       : [finding(component, file, 'agentic_os_lockfile_pin_invalid')] };
-}
-export function parseAgenticOsLockfilePin(source, prefix, resolvedPrefix, expectedPin) {
-  let lock;
-  try { lock = JSON.parse(source); } catch { return null; }
-  const root = lock?.packages?.[''], installed = lock?.packages?.['node_modules/agentic-os'];
-  const pin = exactAgenticOsPinValue(root, prefix), integrity = installed?.integrity;
-  if (lock?.lockfileVersion !== 3 || lock?.requires !== true || pin === null || pin !== expectedPin
-    || installed?.resolved !== `${resolvedPrefix}${pin}` || typeof integrity !== 'string'
-    || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(integrity)) return null;
-  const encoded = integrity.slice(7), digest = Buffer.from(encoded, 'base64');
-  return digest.length === 64 && digest.toString('base64') === encoded
-    ? { agenticOsPin: pin, agenticOsIntegrity: integrity } : null;
 }
 export function compositionHarnessPinIsAncestor(root, pin, revision) {
   if (typeof root !== 'string' || root === '' || !/^[0-9a-f]{40}$/u.test(pin ?? '')

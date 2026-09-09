@@ -542,6 +542,8 @@ async function main() {
     err('not inside a git repository.');
     return 1;
   }
+  if (command === 'profile') return (await import('./agentic-os-profile.mjs')).runProfileInit(root, argv, out);
+  if (command === 'pin') return (await import('./agentic-os-pin.mjs')).runPinCheck(root, argv, out);
   const setupCommand = ['setup', 'git-configure', 'guard-install'].includes(command);
   const trustedProfile = trustedRepositoryProfile(root, { allowUnanchored: setupCommand });
   const { profile } = trustedProfile;

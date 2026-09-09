@@ -25,6 +25,12 @@ load_policy: "on-demand"
 verification_scope: "as-built source and specification joins; product runtime evidence remains separate"
 ---
 
+
+Current composition identities and accepted product revisions live in
+[`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json).
+Revision-qualified links and grounding tables below record historical evidence, not current pins.
+Use `composition:runtime:check` with exact owner roots and `agentic-os pin --consumer=<root>`
+for current observations; refreshing a pin does not refresh historical verification evidence.
 # Reference implementation — As-built ADLC pipeline
 
 This document owns the **as-built governance path from product intent to source implementation, product release and verified completion**. It describes the implemented controls and explicit handoffs across the seven repositories. It does not introduce a runtime controller or turn an accepted specification into deployment authority.
