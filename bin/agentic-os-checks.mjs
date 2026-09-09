@@ -103,7 +103,7 @@ function argvFor(packagePath, script) {
 function validationPlan(commands, packages) {
   const key = (pkg, script) => JSON.stringify([pkg, script]);
   const reference = command => ({ package: command.package, script: command.script });
-  const invocation = /^npm (?:run ([A-Za-z0-9][A-Za-z0-9:._-]{0,127})|(test))(?: --workspace=([@A-Za-z0-9/._-]+))?$/u;
+  const invocation = /^npm (?:--prefix(?:=| )(?<prefix>[A-Za-z0-9/._-]+) )?(?:run (?<script>[A-Za-z0-9][A-Za-z0-9:._-]{0,127})|(?<test>test))(?: --workspace=(?<workspace>[@A-Za-z0-9/._-]+))?$/u;
   let remaining = 4096;
   const closure = (packagePath, script, active = new Set()) => {
     const identity = key(packagePath, script), pkg = packages.get(packagePath);
@@ -119,16 +119,23 @@ function validationPlan(commands, packages) {
     const next = new Set([...active, identity]);
     for (const call of calls) {
       let target = packagePath;
-      if (call[3]) {
+      const { prefix, workspace, script: nestedScript, test } = call.groups;
+      if (prefix) {
+        // Resolve only normalized relative prefixes to already cataloged manifests; never scan.
+        if (workspace || path.posix.isAbsolute(prefix) || path.posix.normalize(prefix) !== prefix) return covered;
+        target = path.posix.join(path.posix.dirname(packagePath), prefix, 'package.json');
+        if (!packages.has(target)) return covered;
+      }
+      if (workspace) {
         // Resolve only explicit root workspace entries among already bounded owner manifests.
         if (packagePath !== 'package.json' || !Array.isArray(pkg.manifest.workspaces)) return null;
         const matches = [...packages.entries()].filter(([name, value]) => name !== 'package.json'
           && pkg.manifest.workspaces.includes(path.posix.dirname(name))
-          && (value.manifest.name === call[3] || path.posix.dirname(name) === call[3]));
+          && (value.manifest.name === workspace || path.posix.dirname(name) === workspace));
         if (matches.length !== 1) return null;
         target = matches[0][0];
       }
-      const nested = closure(target, call[1] ?? call[2], next);
+      const nested = closure(target, nestedScript ?? test, next);
       if (!nested) return null;
       for (const child of nested) covered.add(child);
       if (covered.size > 128) return null;
