@@ -74,18 +74,18 @@
   "owners": {
     "agentic-canvas-os": {
       "repository": "huijoohwee/agentic-canvas-os",
-      "revision": "d64341cc69d4fbbfcacbecd4f9167e333e6c8f33",
-      "tree": "8f56e4e978958d2dfa927643409af604959ff5e9"
+      "revision": "954de91689abc1ab99a783e54f5ca7ac61387449",
+      "tree": "de7dd8e65c208f1d3376f1d924658f2e134ff017"
     },
     "agentic-commerce-os": {
       "repository": "huijoohwee/agentic-commerce-os",
-      "revision": "9e3b221434ca01cab1c489bf63466748233bbcc6",
-      "tree": "bd12c2036a883573224692d0d2c0672ec434de80"
+      "revision": "e3aec513178937669b28f807500095ee1f7c236c",
+      "tree": "2fd9e697bfd76c47f0c866551c72dc88249aa56e"
     },
     "agentic-graph": {
       "repository": "huijoohwee/agentic-graph",
-      "revision": "0abb288171b7a3e0807aab324b64f4032ebed105",
-      "tree": "ff8b11f4a1e17a2b22c1981c2d342339cf109afb"
+      "revision": "eb19100b4604e4d296bf6094f183f255ef0b20a6",
+      "tree": "9197b0a3edd9f313715e7a190312ea8b2398a8f3"
     }
   },
   "schema": "agentic-os/composition-source-lock/v2",
