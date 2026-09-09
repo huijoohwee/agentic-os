@@ -19,13 +19,9 @@ worktree_id: "feature-index"
 verification_scope: "source-grounded feature index; no runtime or commercial promotion"
 ---
 
-
-Current composition identities and accepted product revisions live in
-[`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json).
-Revision-qualified links and grounding tables below record historical evidence, not current pins.
-Use `composition:runtime:check` with exact owner roots and `agentic-os pin --consumer=<root>`
-for current observations; refreshing a pin does not refresh historical verification evidence.
 # Reference implementation — Feature Index
+
+Current composition identities live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json); revision-qualified links and grounding tables below are historical evidence, not current pins. [TECH-STACK.md](TECH-STACK.md) states the refresh commands.
 
 The composition-level feature list for the seven-repository system: what users can achieve, who owns each capability, what source exists, and what must still be proved. The first target is discovery → explicit confirmation → settlement → receipt/replay → marketplace readback in a mobile browser. Individual product tools and widgets remain in their owners' inventories.
 
