@@ -500,22 +500,27 @@ test('start refuses an overlapping active-lane write reservation', (t) => {
   assert.equal(run(['branch', '--list', 'agent/test-device/next']), '');
 });
 
-test('land autonomously stages, commits, and publishes only its reserved path', (t) => {
+for (const deletion of [false, true]) test(`land publishes a reserved ${deletion ? 'staged deletion' : 'new file'} with an unused reservation`, (t) => {
   const { parent, root, run } = fixture(t);
   const bare = join(parent, 'remote.git');
   git(['init', '--quiet', '--bare', bare], { cwd: parent });
   run(['remote', 'add', 'origin', bare]);
+  if (deletion) {
+    writeFileSync(join(root, 'change.txt'), 'obsolete\n');
+    run(['add', 'change.txt']); run(['commit', '--quiet', '-m', 'cleanup input']);
+  }
   run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
 
   const started = spawnSync(process.execPath, [CLI, 'start', 'autonomous',
-    '--device=test-device', '--write=change.txt'], { cwd: root, encoding: 'utf8' });
+    '--device=test-device', '--write=change.txt,unused.txt'], { cwd: root, encoding: 'utf8' });
   assert.equal(started.status, 0, started.stderr);
   const lane = worktreeFor('agent/test-device/autonomous', root);
   assert.ok(lane);
   t.after(() => {
     if (existsSync(lane.path)) git(['worktree', 'remove', '--force', lane.path], { cwd: root });
   });
-  writeFileSync(join(lane.path, 'change.txt'), 'delivered\n');
+  if (deletion) git(['rm', '--', 'change.txt'], { cwd: lane.path });
+  else writeFileSync(join(lane.path, 'change.txt'), 'delivered\n');
 
   const landed = spawnSync(process.execPath, [CLI, 'land', '--message=docs: autonomous'], {
     cwd: lane.path, encoding: 'utf8',
@@ -528,6 +533,7 @@ test('land autonomously stages, commits, and publishes only its reserved path', 
   const advertised = run(['ls-remote', '--refs', bare,
     'refs/heads/agent/test-device/autonomous']).split(/\s+/u)[0];
   assert.equal(advertised, local);
+  assert.equal(git(['ls-tree', '--name-only', 'HEAD', '--', 'change.txt'], { cwd: lane.path }), deletion ? '' : 'change.txt');
 });
 
 test('finish removes one clean integrated worktree and retains its branch history', (t) => {
