@@ -1,7 +1,7 @@
 ---
-title: "Reference Implementation — Composition Architecture and Workspace Topology"
+title: "Reference Implementation — Technology Stack and Composition Architecture"
 doc_type: "PRD-TAD-ADR"
-version: "1.5.0"
+version: "1.6.0"
 date: "2026-09-09"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -11,31 +11,25 @@ delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: "false"
 continuity_id: "TAD-COMPOSE-ARCH-001"
-prd_revision: "1.2.0"
-tad_revision: "1.2.0"
-adr_revision: "1.5.0"
+prd_revision: "1.3.0"
+tad_revision: "1.3.0"
+adr_revision: "1.6.0"
 source_input_digest: "sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418"
 amendment_input_digest: "sha256:4abee8d5d6aafcc71919d95e222b2d3dea6ebd4fe3cd6d115a361d32009b7a7e"
 execution_gate: "static-source-observation-authorized"
 publication_gate: "per-repository-protected-integration-required"
-worktree_id: "composition-topology-consolidation"
+worktree_id: "tech-stack-consolidation"
 load_policy: "on-demand"
 verification_scope: "static source and documentation; no live deployment proof"
 topology_input_revision: "de4108f28741a6bfd3468da2781eb86bbd671dca"
+techstack_input_revision: "8a0702ddca1fb2c9c88f85657d9dc6d91d05df27"
+techstack_input_digest: "sha256:7506b52107a2cd94188f1786ddc20fd17c2afbddd6ff6f1406af8111eda1294e"
 agent_id: "codex-orchestrator"
 ---
 
-# Reference implementation — composition architecture
+# Reference implementation — Technology Stack and Composition Architecture
 
-This combined PRD/TAD/ADR owns composition and workspace topology for seven independently governed
-repositories. It consolidates the former website topology document, including its reviewed-source
-candidate at `topology_input_revision`; that unmerged candidate is input, not integrated evidence.
-Product/runtime owners remain independent. This guide observes interfaces and acceptance boundaries;
-it creates no cross-repository controller. Shared semantics and template fields remain owned by
-[PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-guidelines.md) and its
-[Core Templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-templates.md).
-The imported baseline and amendment retain their digests below. Their runtime evidence and permissions
-are historical, candidate-bound records; this documentation consolidation renews none of them.
+This combined PRD/TAD/ADR owns technology selection, composition and workspace topology for seven independently governed repositories. It consolidates the former website topology document, including its reviewed-source candidate at `topology_input_revision`; that unmerged candidate is input, not integrated evidence. Product/runtime owners remain independent. This guide observes interfaces and acceptance boundaries; it creates no cross-repository controller. Shared semantics and template fields remain owned by [PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-guidelines.md) and its [Core Templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-templates.md). The imported baseline and amendment retain their digests below. Their runtime evidence and permissions are historical, candidate-bound records; this documentation consolidation renews none of them.
 
 ## Opening directive
 
@@ -68,30 +62,21 @@ verb: "implement"
 object: "production-runtime-composition"
 ```
 
-The historical runtime sprint capped four owner lanes; current documentation stays below 600 lines/file.
-External provider/review waits use condition-based rechecks, not inferred completion times.
+The historical runtime sprint capped four owner lanes; current documentation stays below 600 lines/file. External provider/review waits use condition-based rechecks, not inferred completion times.
 
 ## Feature: Governed commerce composition and workspace topology
 
 ### Problem Statement, Personas and User Journey Stage
-A solo maintainer needs one source map during development and release; duplicate topology documents
-already disagree on routes and deployment ownership. The buyer journey remains discovery to receipt.
+A solo maintainer needs one source map during development and release; duplicate topology documents already disagree on routes and deployment ownership. The buyer journey remains discovery to receipt.
 
 ### User Stories
-As a maintainer, I want one inspectable owner per capability so that I can select the smallest safe change.
-As a buyer, I want a confirmed purchase and replay-safe receipt so that retrying cannot charge me twice.
+As a maintainer, I want one inspectable owner per capability so that I can select the smallest safe change. As a buyer, I want a confirmed purchase and replay-safe receipt so that retrying cannot charge me twice.
 
 ### Acceptance Criteria
-Given the seven source revisions, when a maintainer follows the composition map, then commands, routes
-and owners resolve and historical, intended and deployed states remain distinct (`AC-TOPOLOGY-01`).
-Verify this with `VCC-TOPOLOGY-01`; runtime acceptance remains in the cross-repository criteria below.
+Given the seven source revisions, when a maintainer follows the composition map, then commands, routes and owners resolve and historical, intended and deployed states remain distinct (`AC-TOPOLOGY-01`). Verify this with `VCC-TOPOLOGY-01`; runtime acceptance remains in the cross-repository criteria below.
 
 ### MoSCoW Priority, Min-Viable Scope and Dependencies
-Must: consolidate existing documentation and repair live references, reusing owner code and validators.
-Should: reconcile deployment-owner policy at its owners; prerequisite: actual provider configuration.
-Won’t this increment: runtime changes, mirror migration, payment, merge, deployment or new dependencies.
-Open Questions: shared-project release ownership and live route state remain unresolved below.
-ROI score and monthly operating TCO are unmeasured; no demand or financial return is inferred.
+Must: consolidate existing documentation and repair live references, reusing owner code and validators. Should: reconcile deployment-owner policy at its owners; prerequisite: actual provider configuration. Out of scope: runtime changes, product mirror migration, payment, deployment or new dependencies. Documentation integration and exact clean lane cleanup are authorized when required checks pass. Open Questions: shared-project release ownership and live route state remain unresolved below. ROI score and monthly operating TCO are unmeasured; no demand or financial return is inferred.
 
 ### Pain-Point-to-Feature Mapping (runtime target; demand unvalidated)
 
@@ -136,8 +121,7 @@ ROI score and monthly operating TCO are unmeasured; no demand or financial retur
 | Confirm | 30 s | Replay the same confirmation and show the identical receipt with no second effect |
 | Close | 30 s | Read marketplace settlement and runtime evidence from zero-token routes |
 
-Monetization: mechanism proof, priced WTP validation and collected payment are independent evidence.
-No new payer research or payment occurred here; buyer demand and ROI remain unvalidated.
+Monetization: mechanism proof, priced WTP validation and collected payment are independent evidence. No new payer research or payment occurred here; buyer demand and ROI remain unvalidated.
 
 ## Constraints
 
@@ -151,11 +135,7 @@ No new payer research or payment occurred here; buyer demand and ROI remain unva
 
 ## Codebase Grounding Record
 
-Baseline grounding was read-only on 2026-09-03; the admission/marketplace refresh below is 2026-09-04.
-A `confirmed` disposition proves only the cited revision and grants no lifecycle or delivery authority.
-The following baseline claims are historical; the 2026-09-09 topology snapshot does not refresh their
-owner-suite, source-lock or delivery evidence. Repository:path locators resolve at the named revision;
-relative sibling links assume the canonical GitHub workspace, not an isolated worktree path.
+Baseline grounding was read-only on 2026-09-03; the admission/marketplace refresh below is 2026-09-04. A `confirmed` disposition proves only the cited revision and grants no lifecycle or delivery authority. The following baseline claims are historical; the 2026-09-09 topology snapshot does not refresh their owner-suite, source-lock or delivery evidence. Repository:path locators resolve at the named revision; relative sibling links assume the canonical GitHub workspace, not an isolated worktree path.
 
 | Input | Bound revision or digest | Observation |
 |---|---|---|
@@ -172,7 +152,7 @@ relative sibling links assume the canonical GitHub workspace, not an isolated wo
 | Material claim | Disposition | Evidence and consequence |
 |---|---|---|
 | `agentic-os` governs worktree/lane lifecycle | `confirmed` | `agentic-os:docs/LANE.md` defines one repository-scoped machine and denies authority to Git projections |
-| ACOS is the sole owner of `/`, `#`, `@`, and all frontmatter semantics | `contradicted` | ACOS owns shared dictionaries and safety contracts; `AG_REPO:docs/collaboration-runtime-contract.md` is `agentic-graph`'s machine SSOT for its collaboration frontmatter and PR grammar |
+| ACOS is the sole owner of `/`, `#`, `@`, and all frontmatter semantics | `contradicted` | At the imported baseline ACOS supplied shared dictionaries/safety; current dictionary ownership is OS (stack inventory below). `AG_REPO:docs/collaboration-runtime-contract.md` is `agentic-graph`'s machine SSOT for its collaboration frontmatter and PR grammar |
 | ACOS provides a native external Agents SDK | `contradicted` | It has a provider-neutral facade and blocked native skill harness; `docs/PROGRESSIVE-AGENTS.md` rejects emulating an external SDK |
 | `agentic-graph` uses no external Agents SDK | `contradicted` | `AG_REPO:cloudflare/workers/agentic-graph-mcp/package.json` depends on Cloudflare's `agents` package for its MCP Worker |
 | Commerce consumes a live ACOS admission contract | `static-source-confirmed; runtime-unverified` | Exact provider/consumer artifact blobs and identical canonical v3 / receipt v2 fixtures align; behavior is owner-suite evidence and protected deployment readback is still required |
@@ -185,7 +165,7 @@ relative sibling links assume the canonical GitHub workspace, not an isolated wo
 | Commerce ACOS permit binds the provider POST payload | `owner-suite-evidenced` | Owner suites cover Commerce translation and ACOS full-intent digest enforcement; the central observer attests only their exact artifacts and identical fixture |
 | Commerce discovery constraints map to the live owner input | `owner-suite-evidenced` | The owner suite covers one structured route projection and generic-synthesis rejection; protected deployed-version readback remains pending |
 
-### Topology source snapshot — 2026-09-09
+### Historical topology source snapshot — 2026-09-09
 
 | Repository | Inspected canonical revision |
 |---|---|
@@ -197,13 +177,62 @@ relative sibling links assume the canonical GitHub workspace, not an isolated wo
 | `huijoohwee` | `b7b6c39ce0b5844a43042026a910f7552477c8ff` |
 | `GameXR` | `718298dec9928f30bd24e349a7527aba2c85bfb1` |
 
+## Technology stack — reference implementation
+
+This section supersedes the website stack narrative at `techstack_input_revision`. File locators below resolve within each named repository at the inspected revisions; they are source evidence, not deployment or license certification for transitive dependencies.
+
+| Capability / sole source | Implemented technology and locator | Adoption boundary |
+|---|---|---|
+| Lifecycle and invocation — OS `678290f3bc041d9af80bfa74960fe7464863ed6d` | Native Node ESM, `package.json`, `src/invocation.mjs`, `catalog/dictionaries`, `src/rank.mjs`, `bin/agentic-os-mcp.mjs` | MIT; no runtime dependencies. Shared `/`, `@`, `#` resolution is deterministic; model-assisted implementation has a separate cost budget |
+| Agent facade — Canvas `954de91689abc1ab99a783e54f5ca7ac61387449` | Worker/SQLite DO bindings in `wrangler.jsonc`; browser in `web`; `scripts/invocation-resolve.mjs` imports `agentic-os/invocation` | Consume the pinned shared package. Root manifest declares no license; verify applicable licenses before adoption, rather than inferring FOSS from public source |
+| Commerce — `4774a4fc1543c4bcb1b912fe79c78c61384efc7c` | TypeScript Workers and SQLite DOs in `src/core`, MCP SDK/Zod in `package.json`; direct Podman executor in `scripts/isolated-process.ts`, `scripts/sandbox-podman-executor.ts` | MIT owner code. Sandbox SDK remains an existing dependency; its configured Containers deployment is forbidden. The real isolated-process suite proves local execution only |
+| Domain graph and marketplace — Graph `eb19100b4604e4d296bf6094f183f255ef0b20a6` | `canvas/package.json`, `cloudflare/workers`, `mcp/package.json`: browser UI, Hono/Workers, D1/Drizzle, Yjs, x402 adapters; `mcp/agentic-canvas-os-docs-contract.mjs` consumes OS invocation | Preserve each domain/state owner and implemented protocol. Existing packages are not blanket approval for new dependencies; verify component licenses and selected host quotas |
+| Spatial client — GameXR `7609bebd4b72efa2038b9f222e22ca56d13370ed` | Vite/Three.js and packaged Graph spatial/shared artifacts in `package.json`, `vite.config.ts`; native host in source-owned release guide | MIT; offline/browser work remains separate from shared Pages route/deployment ownership |
+| Authoring and navigation — website `8a0702ddca1fb2c9c88f85657d9dc6d91d05df27` | Markdown, JSON/JSON-LD, `guidelines`, `schema/AgenticRAG`; existing Node/Python validation in `package.json` | ISC manifest; common CID/RAO/SVO and schema authority stay here, with direct links to this stack owner |
+| Generated delivery — mirror `b7b6c39ce0b5844a43042026a910f7552477c8ff` | Graph-generated browser assets, headers and redirects | A projection, not an independent technology-selection or product-code owner; preserve source-owned release ordering |
+
+### Hosting and resource selection
+
+Constraints → argumentation → outranking selects reuse of an existing qualified owner before a new service. Free hosted services are permitted but are not called FOSS. Unknown license, quota, recurring cost or automatic overage blocks adoption, not unrelated implementation work. Paid plans, Containers hosting, paid add-ons and metered overages are excluded; this document grants no upgrade authority.
+
+| Option | Constraint and tradeoff | Decision |
+|---|---|---|
+| Existing free edge hosting | Keep only workloads whose required APIs and enforced quotas fit the actual Free plan; local success does not prove host compatibility | Retain eligible Workers/Pages contracts; verify configuration before deployment |
+| Already-owned device with FOSS runtime | Podman provides isolated execution without a hosted container subscription; uptime, network transport, recovery and resource limits still need owner evidence | Reuse the implemented runner; Workers-to-Podman transport, rollout migration and independent evaluator remain unfinished |
+| Newly provisioned infrastructure or paid hybrid | Subscription, usage or operational cost is unknown/nonzero; extra ownership increases maintenance | Excluded from this increment; no new infrastructure or dependencies |
+
+Dollar savings, ROI scores, scale/MAU figures and monthly cost estimates in the old stack document were scenarios, not measurements. No numeric savings or zero-total-cost claim is carried forward. Deterministic invocation means zero model calls in that resolver, not zero cost for an entire ADLC session. Track actual calls, tokens, wall time, storage and quota use at the owning execution boundary.
+
+### Operator journey and bounded harness
+
+Discover the supported command/catalog → select one owner and scope → implement in a registered lane → run applicable owner checks → integrate the exact green PR → observe completion → prune the exact clean target → synchronize clean canonical. Product deployment and authenticated runtime readback are separate owner operations. OS owns `docs/START-WORKFLOW.md`, `docs/RELEASE-WORKFLOW.md` and lifecycle commands; former Canvas `START-WORKFLOW.md`, `worktree:lifecycle:check` and `session:start:classify` examples are historical, not a current universal CLI.
+
+Federate existing transports without a fifth monolithic proxy or second data owner. MCP/WebMCP clients discover read-only capabilities first and use typed, authenticated mutation contracts only when authorized. Each execution boundary declares input/output/error, identity, cost, retry/idempotency and failure behavior. Bound concurrency, attempts, tokens, context and wall time per task; an implementer cannot supply its own independent evaluator trust anchor. Keep budgets and evaluator claims with executable owner contracts rather than copying the old narrative's numeric defaults.
+
+Local supervisors own ports and process identity; do not adopt or terminate an unrelated listener. Lazy-load only the required catalog, source chunk and check profile; cache derived projections by exact source revision/digest and invalidate on drift. Git documents stay authoritative; memory, generated indexes and resume summaries carry source links and do not become new authority. The future per-agent memory tier remains DR-8 specification-only.
+
+Operator TTV targets inherited from the old document are ≤3 steps/5 minutes to resolve a supported invocation, ≤6 steps/30 minutes to onboard a new target repository, and ≤1 session for the first multi-repository release. These are unmeasured targets, not current timing guarantees; use current owner-native commands and independent release receipts. External-agent read-only discovery and the buyer paid-loop criteria remain distinct journeys.
+
+### Consolidated source and historical evidence
+
+The removed website document is preserved in [its immutable source revision](https://github.com/huijoohwee/huijoohwee.github.io/blob/8a0702ddca1fb2c9c88f85657d9dc6d91d05df27/docs/documents/agentcos-tech-stack-document.md); `techstack_input_digest` binds its complete bytes. This historical record is retained without another active copy or redirect shim.
+
+| Imported material | Current disposition |
+|---|---|
+| Four lenses: minimum valuable scope, TCO, token economics, harness; stack options; operator/agent journeys | Technology selection and bounded harness above; owner, evidence and economic targets remain distinct |
+| Five legacy ADRs: thin harness/no second data owner, Git-backed invocation, discovery-first federation/no fifth proxy, supervisor-owned ports, zero-model orchestration | Reconciled with DR-7/8/10/11, actual OS lifecycle/invocation ownership and current product supervisors; no competing workflow or copied dictionary |
+| 2026-08-20 VCC-1/3/4/6 and six-workstream promotion narrative | Historical reports of docs checks, peer digests, local listeners and clean mirrors; no current deployment claim. Exact commands, SHA/digest strings and observations remain in the immutable source |
+| VCC-2/2c authority failures, VCC-5 temporary GameXR port, VCC-7 string scans, VCC-8 HTTP 200/406 | Historical partial checks; string absence does not prove zero cost, HTTP status alone does not prove authorization, and a stopped local server does not prove production availability |
+| VCC-R release run `30771408324`, failed attempts `30771075357`/`30771147307`, paired source/mirror SHAs | Retained as the old document's dated 2026-08-02 release evidence; no renewal of candidate authority, readiness rung or deployment identity |
+| Canvas-as-global-orchestrator, generic mirror-before-deploy, old namespace/commands and inconsistent promotion summaries | Superseded by Division of Work, the actual Graph release sequence, owner-native CLI and separate source/runtime/commercial gates |
+
 ## Division of Work
 
 | Component | Sole owned capability | Consumes | Explicit exclusion |
 |---|---|---|---|
-| `agentic-os` | Lifecycle/orchestration, admission-vocabulary, and source-lock SSOT: repository-local ADLC records, static composition observation, exact integration classification | Exact owner Git identities, tracked artifacts, canonical fixtures/topology, and external authority receipts | No sibling candidate execution, cross-repository claim service, product runtime, or ownership migration |
-| `agentic-canvas-os` | Shared invocation dictionaries, composition/safety interfaces, and provider-neutral agent facade | `agentic-graph` runtime catalogs and executors | No ownership of `agentic-graph`'s repository-specific collaboration grammar, payment rails, settlement persistence, or external Agents SDK dependency |
-| `agentic-graph` | Repository collaboration grammar, KGC/domain schemas, B2C marketplace storefront/orchestration, domain execution/state, payment rails, bundle/vendor splits, and payouts | ACOS shared invocation/safety interfaces and configured providers | D1 marketplace projections are not the authoritative bundle ledger |
+| `agentic-os` | Lifecycle/orchestration, shared invocation dictionaries/resolution, admission-vocabulary, and source-lock SSOT: repository-local ADLC records, static composition observation, exact integration classification | Exact owner Git identities, tracked artifacts, canonical fixtures/topology, and external authority receipts | No sibling candidate execution, cross-repository claim service, product runtime, or ownership migration |
+| `agentic-canvas-os` | Composition/safety interfaces and provider-neutral agent facade | OS shared invocation package; `agentic-graph` runtime catalogs and executors | No ownership of `agentic-graph`'s repository-specific collaboration grammar, payment rails, settlement persistence, or external Agents SDK dependency |
+| `agentic-graph` | Repository collaboration grammar, KGC/domain schemas, B2C marketplace storefront/orchestration, domain execution/state, payment rails, bundle/vendor splits, and payouts | OS shared invocation package, ACOS safety interfaces and configured providers | D1 marketplace projections are not the authoritative bundle ledger |
 | `agentic-commerce-os` | Edge coordination, admission-receipt validation, local projection, provider routing, derived markup, and evidence gates | ACOS admission plus discovery, checkout, and marketplace provider bindings | No ownership of upstream admission, discovery execution, money movement, settlement ledger, or payout execution |
 | `huijoohwee.github.io` | Shared guideline/schema vocabulary and documentation navigation | This guide for composition; `guidelines/prd-tad-adr-guidelines.md` for authoring | No product runtime or deployment controller |
 | `huijoohwee` | Generated production projections, validation, headers and redirects | Graph-generated assets and source-owned release policy (`AGENTS.md`, `_redirects`, `package.json`) | No authored Graph app code |
@@ -213,23 +242,16 @@ relative sibling links assume the canonical GitHub workspace, not an isolated wo
 ## Architecture: Component composition
 
 ### Overview and Journey → System Mapping
-From buyer intent through Commerce to owner admission/discovery/checkout/marketplace and receipt,
-reuse the five-flow trace and the component/connection inventories below as the journey-to-system map.
-Orchestration is a bounded sequential request/replay path: discovery and receipt reads use zero model
-calls, budget 0 prompt + 0 completion tokens/request, and fail closed on invalid evidence. Product
-providers own their cost logs and optional inference; this guide starts no model or service.
+From buyer intent through Commerce to owner admission/discovery/checkout/marketplace and receipt, reuse the five-flow trace and the component/connection inventories below as the journey-to-system map. Orchestration is a bounded sequential request/replay path: discovery and receipt reads use zero model calls, budget 0 prompt + 0 completion tokens/request, and fail closed on invalid evidence. Product providers own their cost logs and optional inference; this guide starts no model or service.
 
-Edges describe owned or intended relationships; the companion join state distinguishes static source from
-deployed runtime. Dotted edges are lifecycle guidance, non-binding input, or an unverified deployment join
-and must not be read as observed runtime calls.
+Edges describe owned or intended relationships; the companion join state distinguishes static source from deployed runtime. Dotted edges are lifecycle guidance, non-binding input, or an unverified deployment join and must not be read as observed runtime calls.
 
-**Diagram COMP-1** · Class: Component topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 10 — 2026-09-04
-**Caption**: Independent owners compose source-declared providers; deployed joins remain unproved.
+**Diagram COMP-1** · Class: Component topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 10 — 2026-09-04 **Caption**: Independent owners compose source-declared providers; deployed joins remain unproved.
 
 ```mermaid
 flowchart TB
     AOS["agentic-os<br/>Dispatcher · ADLC harness"]
-    CANVAS["agentic-canvas-os<br/>Router · shared invocation/safety interfaces"]
+    CANVAS["agentic-canvas-os<br/>Router · composition/safety interfaces"]
     AG["agentic-graph<br/>Executor · repo contracts + B2C marketplace"]
     COMMERCE["agentic-commerce-os<br/>Router · edge control plane"]
     DISCOVERY["Discovery provider<br/>Gateway · upstream service"]
@@ -239,7 +261,7 @@ flowchart TB
     AOS -.->|"batch · lifecycle advisory"| CANVAS
     AOS -.->|"batch · lifecycle advisory"| AG
     AOS -.->|"batch · lifecycle advisory"| COMMERCE
-    CANVAS -.->|"batch · shared invocation/safety contract"| AG
+    CANVAS -.->|"batch · composition/safety contract"| AG
     COMMERCE -.->|"sync request · admission"| CANVAS
     AG -.->|"batch · owner mapping"| DISCOVERY
     AG -.->|"batch · owner mapping"| CHECKOUT
@@ -255,7 +277,7 @@ flowchart TB
 | Layer | Component | Node key | File / module | Role · type | Local rung | Delivered rung |
 |---|---|---|---|---|---|---|
 | Lifecycle | `agentic-os` | `AOS` | `agentic-os:docs/LANE.md` | Dispatcher · ADLC harness | `spec-complete` | `undocumented` |
-| Interface | `agentic-canvas-os` | `CANVAS` | `agentic-canvas-os:docs/FACTS.md` | Router · shared invocation/safety interfaces | `dev-proven` | `undocumented` |
+| Interface | `agentic-canvas-os` | `CANVAS` | `agentic-canvas-os:docs/FACTS.md` | Router · composition/safety interfaces | `dev-proven` | `undocumented` |
 | Domain | `agentic-graph` | `AG` | `AG_REPO:contracts/kgc-document.schema.js`, `ecs/kgcNodeContract.js`, `src/marketplace` | Executor · repository contracts and B2C marketplace orchestration | `spec-complete` | `undocumented` |
 | Control | `agentic-commerce-os` | `COMMERCE` | `agentic-commerce-os:src/core` | Router · edge control plane | `dev-proven` | `undocumented` |
 | Provider | `agentic-graph` discovery | `DISCOVERY` | `AG_REPO:cloudflare/workers/agentic-graph-mcp` | Gateway · upstream service | `dev-proven` | `undocumented` |
@@ -264,17 +286,11 @@ flowchart TB
 | Protocol | x402 | `X402` | `AG_REPO:cloudflare/workers/agentic-graph-payment/agenticCommerceX402.ts` | Observer · external protocol dependency | `spec-complete` | `undocumented` |
 
 ### Connection inventory — Diagram COMP-1
-All 12 labelled edges are the connection inventory. Lifecycle and shared-contract edges are advisory;
-provider edges are source-declared, not observed deployed calls. The historical ACOS package pin
-`087c7246...` was not the grounded `3c597227...` revision; recheck current pins before any consumer change.
-Admission v3 / receipt v2 artifacts align at the locked baseline. x402 remains an upstream dependency.
+All 12 labelled edges are the connection inventory. Lifecycle and shared-contract edges are advisory; provider edges are source-declared, not observed deployed calls. The historical ACOS package pin `087c7246...` was not the grounded `3c597227...` revision; recheck current pins before any consumer change. Admission v3 / receipt v2 artifacts align at the locked baseline. x402 remains an upstream dependency.
 
 ## Runtime topology
 
-**Diagram TOP-1** · Class: Runtime topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 7 — 2026-09-04
-**Caption**: The Topology pattern specifies four trust boundaries in the Authoring lane. The tracked
-Commerce manifest fixes expected binding names; neither that manifest nor release code proves deployment.
-**Boundaries**: admission trust; commerce trust; `agentic-graph` payment trust; provider trust external to commerce.
+**Diagram TOP-1** · Class: Runtime topology · Notation: `flowchart TB` · Surface: Markdown source · Version: 7 — 2026-09-04 **Caption**: The Topology pattern specifies four trust boundaries in the Authoring lane. The tracked Commerce manifest fixes expected binding names; neither that manifest nor release code proves deployment. The Worker/container sandbox is the legacy configured topology, forbidden under current Free-only policy; the direct Podman runner below does not yet replace its deployed transport. **Boundaries**: admission trust; commerce trust; `agentic-graph` payment trust; provider trust external to commerce.
 
 ```mermaid
 flowchart TB
@@ -324,9 +340,7 @@ flowchart TB
 | `X402_FAC` | provider trust external to commerce | Gateway | service | Authoring | `AG_PAY` inbound | sync request | Provider-owned; unproved here |
 
 ### Connection inventory — Diagram TOP-1
-All 10 labelled edges are the connection inventory. Core-to-store and payment-to-D1 are source-owned
-persistence relationships; service/facilitator edges require separate protected deployment readback.
-Travel checkout uses `MARKETPLACE_SERVICE`, distinct from Commerce's `MARKETPLACE_PROVIDER`.
+All 10 labelled edges are the connection inventory. Core-to-store and payment-to-D1 are source-owned persistence relationships; service/facilitator edges require separate protected deployment readback. Travel checkout uses `MARKETPLACE_SERVICE`, distinct from Commerce's `MARKETPLACE_PROVIDER`.
 
 ### Component inventory — Diagram TOP-1
 
@@ -355,31 +369,11 @@ Travel checkout uses `MARKETPLACE_SERVICE`, distinct from Commerce's `MARKETPLAC
 | Commerce | `package.json`: own `dev`, `dev:apex`, offline Worker checks. `wrangler.edge.jsonc`: `airvio.co/agentic-commerce-os*` → `COMMERCE_CORE`; sandbox is separately declared in `wrangler.sandbox.jsonc`. |
 | GameXR | `package.json`: `dev`, `dev:apex`, `build`, `build:apex`; `vite.config.ts`: `/gamexr/`, or root mode with service-worker registration disabled at shared root. |
 
-`bin/composition-deployment-topology.mjs:inspectCompositionDeploymentTopology` passed five static joins
-at this snapshot with zero findings and `candidateCodeExecuted:false`. Commerce's production manifest
-and core configuration agree on `ACOS_ADMISSION→agentic-canvas-os`,
-`CHECKOUT_PROVIDER→agentic-travel-commerce-production`, `COMMERCE_SANDBOX→agentic-commerce-sandbox-production`,
-`DOCS_MCP→agentic-mcp` and `MARKETPLACE_PROVIDER→agentic-marketplace-production`.
-Manifest digest: `fbd529714b6d236aa85a0f12fffd3a71c19eefbb83850c5a4e34dc6fda3ff9c4`.
-This proves declaration consistency only; it neither updates the source lock nor proves a paid loop.
+`bin/composition-deployment-topology.mjs:inspectCompositionDeploymentTopology` passed five static joins at this snapshot with zero findings and `candidateCodeExecuted:false`. Commerce's production manifest and core configuration agree on `ACOS_ADMISSION→agentic-canvas-os`, `CHECKOUT_PROVIDER→agentic-travel-commerce-production`, `COMMERCE_SANDBOX→agentic-commerce-sandbox-production`, `DOCS_MCP→agentic-mcp` and `MARKETPLACE_PROVIDER→agentic-marketplace-production`. Manifest digest: `fbd529714b6d236aa85a0f12fffd3a71c19eefbb83850c5a4e34dc6fda3ff9c4`. This proves declaration consistency only; it neither updates the source lock nor proves a paid loop.
 
-The mirror snapshot still has retired unhyphenated Graph directories and redirects; source constants
-and mirror policy target `/agentic-graph/` and `content/agentic-graph`. Neither state proves live routing.
-`/gamexr/` and `/singabldr` are adjacent mirror routes; Singabldr's source is outside this seven-repo audit.
-Vercel/AWS tiering is superseded (`agentic-canvas-os:docs/PRD-TAD.md` and
-`agentic-graph:docs/agentic-graph-acos-topology-decision.md`). Do not hand-repair generated assets.
+The mirror snapshot still has retired unhyphenated Graph directories and redirects; source constants and mirror policy target `/agentic-graph/` and `content/agentic-graph`. Neither state proves live routing. `/gamexr/` and `/singabldr` are adjacent mirror routes; Singabldr's source is outside this seven-repo audit. Vercel/AWS tiering is superseded (`agentic-canvas-os:docs/PRD-TAD.md` and `agentic-graph:docs/agentic-graph-acos-topology-decision.md`). Do not hand-repair generated assets.
 
-Graph's `.github/workflows/release.yml` owns exact source/dependency validation → generated candidate →
-protected production authorization → Wrangler Pages deployment → immutable/stable/public and browser
-verification → verified mirror publication → release evidence. Its actual scripts are `pages:sync`,
-`pages:build-sync`, `pages:functions:build`, `pages:check-sync`; `sync:pages` and `release:pages` are absent.
-`pages:deploy-cloudflare` exists but grants no bypass authority. Consumers retain installed pinned OS
-workflows. No VM, container, browser, Worker or model starts unless the selected check requires it.
-GameXR's `docs/RELEASE.md` instead requires a scoped mirror PR, Git-connected `joohwee` preview,
-exact authorization, merge, production verification and rollback; Git is its sole forward owner.
-This conflicts with Graph's Wrangler-before-mirror workflow and mirror `AGENTS.md`. Reconcile project/
-route scope, sibling preservation, serialization and rollback with actual provider configuration before
-an affected release. This documentation change selects no controller and authorizes no release.
+Graph's `.github/workflows/release.yml` owns exact source/dependency validation → generated candidate → protected production authorization → Wrangler Pages deployment → immutable/stable/public and browser verification → verified mirror publication → release evidence. Its actual scripts are `pages:sync`, `pages:build-sync`, `pages:functions:build`, `pages:check-sync`; `sync:pages` and `release:pages` are absent. `pages:deploy-cloudflare` exists but grants no bypass authority. Consumers retain installed pinned OS workflows. No VM, container, browser, Worker or model starts unless the selected check requires it. GameXR's `docs/RELEASE.md` instead requires a scoped mirror PR, Git-connected `joohwee` preview, exact authorization, merge, production verification and rollback; Git is its sole forward owner. This conflicts with Graph's Wrangler-before-mirror workflow and mirror `AGENTS.md`. Reconcile project/ route scope, sibling preservation, serialization and rollback with actual provider configuration before an affected release. This documentation change selects no controller and authorizes no release.
 
 ### Quality Attributes
 
@@ -401,95 +395,52 @@ Site `scripts/check-diagram-canvas-render.mjs` passed: 2 diagrams, 19 nodes, 22 
 
 ## Integration Contracts and Interface Invariants
 
-Commerce consumes JSON `commerce.discovery-provider/v1`, `commerce.checkout-provider/v1` and
-`commerce.marketplace-provider/v1` over HTTP/service bindings; exact digests and owner receipts gate effects.
-Graph’s Bundle Graph owns bundle/vendor splits and ordered settlement; D1 is a reference/projection store.
-ACOS owns shared dictionaries/safety; Graph owns collaboration grammar/domain/payment/state; Commerce owns
-its control plane/DO/deploy boundary. Checkout retains upstream x402 guardrails and evidence (DR-2).
-`MARKETPLACE_PROVIDER` and `MARKETPLACE_SERVICE` are distinct interfaces, never aliases. Errors fail closed.
+Commerce consumes JSON `commerce.discovery-provider/v1`, `commerce.checkout-provider/v1` and `commerce.marketplace-provider/v1` over HTTP/service bindings; exact digests and owner receipts gate effects. Graph’s Bundle Graph owns bundle/vendor splits and ordered settlement; D1 is a reference/projection store. OS owns shared dictionaries/resolution; ACOS owns safety interfaces; Graph owns collaboration grammar/domain/payment/state; Commerce owns its control plane/DO/deploy boundary. Checkout retains upstream x402 guardrails and evidence (DR-2). `MARKETPLACE_PROVIDER` and `MARKETPLACE_SERVICE` are distinct interfaces, never aliases. Errors fail closed.
 
 ## Embedded decision records
 
 ### DR-1 — External marketplace research is reference-only
-An MIT-licensed Node.js/PostgreSQL/Redis marketplace informed seller/commission/split/payout concepts.
-Decision: no import, fork, deployment or compatibility claim; identity stays in the private grounding log.
+An MIT-licensed Node.js/PostgreSQL/Redis marketplace informed seller/commission/split/payout concepts. Decision: no import, fork, deployment or compatibility claim; identity stays in the private grounding log.
 
 ### DR-2 — Retain upstream x402 and join through the checkout owner
-Decision: reuse Graph's x402 adapter through `commerce.checkout-provider/v1`; add no Commerce payment rail.
-Constraints: Apache-2.0 protocol and Fetch/Workers compatibility pass; network/facilitator portability is
-conditional on an implemented scheme. Prepare persists guardrails; replay returns the stored settlement.
-The historical zero-address `payTo` and absent paid replay receipt keep production readiness unproved.
-Primary historical evidence: [principles](https://github.com/x402-foundation/x402/blob/eb0d899ead358a88eb3899dd3f5051e990e02299/README.md#principles),
-[protocol](https://github.com/x402-foundation/x402/blob/eb0d899ead358a88eb3899dd3f5051e990e02299/specs/x402-specification-v2.md),
-[Workers integration](https://github.com/cloudflare/cloudflare-docs/blob/37b9c206ecbb92a87eeab0c6869a1e70675e7154/src/content/docs/agents/tools/payments/x402/index.mdx).
+Decision: reuse Graph's x402 adapter through `commerce.checkout-provider/v1`; add no Commerce payment rail. Constraints: Apache-2.0 protocol and Fetch/Workers compatibility pass; network/facilitator portability is conditional on an implemented scheme. Prepare persists guardrails; replay returns the stored settlement. The historical zero-address `payTo` and absent paid replay receipt keep production readiness unproved. Primary historical evidence: [principles](https://github.com/x402-foundation/x402/blob/eb0d899ead358a88eb3899dd3f5051e990e02299/README.md#principles), [protocol](https://github.com/x402-foundation/x402/blob/eb0d899ead358a88eb3899dd3f5051e990e02299/specs/x402-specification-v2.md), [Workers integration](https://github.com/cloudflare/cloudflare-docs/blob/37b9c206ecbb92a87eeab0c6869a1e70675e7154/src/content/docs/agents/tools/payments/x402/index.mdx).
 
 ### DR-3 — Admission provider v3 binds the authorized effect and deployed identity
-Decision: `commerce.agentic-os-admission-provider/v3` and `agentic-os-adapter-registration/v2` retain
-`authoring_mutation_intent` as the fifth body field, fixing v1's lossy four-field effect projection.
-A signed `agentic-graph-commerce-admission-authority/v1` binds authority; the provider independently
-checks inputs/operation/permit and atomically journals fence plus outcome, with zero rejected writes.
-Exact replay retains the original `acos-cloudflare-deployment-identity/v1` receipt. POST header
-`x-agentic-os-serving-deployment-identity` and authenticated `readyz` independently prove current
-serving identity; Commerce checks exact keys and candidate pins, so old receipt bytes prove no cutover.
+Decision: `commerce.agentic-os-admission-provider/v3` and `agentic-os-adapter-registration/v2` retain `authoring_mutation_intent` as the fifth body field, fixing v1's lossy four-field effect projection. A signed `agentic-graph-commerce-admission-authority/v1` binds authority; the provider independently checks inputs/operation/permit and atomically journals fence plus outcome, with zero rejected writes. Exact replay retains the original `acos-cloudflare-deployment-identity/v1` receipt. POST header `x-agentic-os-serving-deployment-identity` and authenticated `readyz` independently prove current serving identity; Commerce checks exact keys and candidate pins, so old receipt bytes prove no cutover.
 
 ### DR-4 — Reuse owner state and typed service bindings
-Decision: discovery accepts supported structured intents only; checkout reuses issuance/settlement and
-a DO journal; marketplace extends existing D1 fence/outcome state. Add no database, queue, cache, model
-or ledger. Calls bind four-field evidence, checks/request/binding digests; bodies cap at 65,536 bytes.
+Decision: discovery accepts supported structured intents only; checkout reuses issuance/settlement and a DO journal; marketplace extends existing D1 fence/outcome state. Add no database, queue, cache, model or ledger. Calls bind four-field evidence, checks/request/binding digests; bodies cap at 65,536 bytes.
 
 ### DR-5 — Authenticate private service-binding operations
-Private transport grants no authority. Decision: `commerce-agentic-os-admission-auth/v1` signs admission
-URL/method/body digest and twelve authoring headers; `commerce-provider-auth/v1` signs checkout/marketplace
-request and evidence digests. Distinct protected HMAC secrets precede disclosure, parsing and mutation;
-secrets never enter receipts. Public runtime-evidence routes remain read-only.
+Private transport grants no authority. Decision: `commerce-agentic-os-admission-auth/v1` signs admission URL/method/body digest and twelve authoring headers; `commerce-provider-auth/v1` signs checkout/marketplace request and evidence digests. Distinct protected HMAC secrets precede disclosure, parsing and mutation; secrets never enter receipts. Public runtime-evidence routes remain read-only.
 
 ### DR-6 — Release each owner with authenticated forward recovery
 
 Decision: ACOS uses its own protected production controller to seal the exact protected-main source, artifact, manifest, and Graph authority; upload one inactive tagged version; compare-and-swap the exact 100% active baseline while preserving unmanaged bindings; activate that version; and authenticate `readyz` readback against its deployment identity and Graph authority. Ambiguous upload, activation, or readback produces a preserve-required receipt for an independently authenticated forward-recovery run.
 
-Commerce separately seals its tracked `config/production-core-services.json`, uploads core and edge inactive, deploys and proves the private sandbox Worker/container, compare-and-swaps the active sandbox/core/edge tuple before each activation, and proves the exact `airvio.co/agentic-commerce-os*` prefix. Bootstrap requires absence; steady state requires an authenticated predecessor receipt. Cloudflare cannot atomically activate this tuple and container rollout, so ambiguous effects are preserved for forward recovery and no path claims transactional rollback.
+Historical configured release design (requires Free-only migration): Commerce separately seals its tracked `config/production-core-services.json`, uploads core and edge inactive, deploys and proves the private sandbox Worker/container, compare-and-swaps the active sandbox/core/edge tuple before each activation, and proves the exact `airvio.co/agentic-commerce-os*` prefix. Bootstrap requires absence; steady state requires an authenticated predecessor receipt. Cloudflare cannot atomically activate this tuple and container rollout, so ambiguous effects are preserved for forward recovery and no path claims transactional rollback.
 
 ### DR-7 — Keep orchestration native to the harness
 
-No composed repository may add an external agent-orchestration SDK as a build dependency. Existing
-Cloudflare platform primitives remain repository-owned implementation details; other model providers are
-inference endpoints behind an owned gateway, never a second orchestration layer.
+No composed repository may add an external agent-orchestration SDK as a build dependency. Existing Cloudflare platform primitives remain repository-owned implementation details; other model providers are inference endpoints behind an owned gateway, never a second orchestration layer.
 
 ### DR-8 — Specify future ownership transfer without migrating repositories
 
-`agentic-os` remains the executable lifecycle/orchestration and admission-vocabulary SSOT; consumers use an exact pinned package rather than copied workflows. ACOS retains shared invocation/safety interfaces and its Worker/state, Commerce retains its control plane, and Graph retains domain/payment runtimes. No repository, deployable asset, or state is physically migrated by this decision. A future native Worker and per-agent Durable Object memory tier is specification-only: identity, authorization, storage transfer, idempotent `@mem-` export, rehydration, and rollback require a separate owner-approved design and executable VCC/RAO.
+`agentic-os` remains the executable lifecycle/orchestration and admission-vocabulary SSOT; consumers use an exact pinned package rather than copied workflows. ACOS consumes OS invocation and retains safety interfaces and its Worker/state, Commerce retains its control plane, and Graph retains domain/payment runtimes. No repository, deployable asset, or state is physically migrated by this decision. A future native Worker and per-agent Durable Object memory tier is specification-only: identity, authorization, storage transfer, idempotent `@mem-` export, rehydration, and rollback require a separate owner-approved design and executable VCC/RAO.
 
 ### DR-9 — Gate merchant and shopping roles on demand
 
-Future MCP/WebMCP merchant and shopping roles may compose `agentic-os` runtime with the existing Commerce
-control plane, but no endpoint is admissible before real micro-SME interviews and willingness-to-pay evidence.
-Merchant writes remain staged for approval; checkout remains with the existing owner. No external-reference
-code, prompt, schema, skill, or test may be copied.
+Future MCP/WebMCP merchant and shopping roles may compose `agentic-os` runtime with the existing Commerce control plane. Demand validation remains separately pending and does not block technical runtime implementation. Commercial role selection and first-dollar claims require real micro-SME interviews and willingness-to-pay evidence. Merchant writes remain staged for approval; checkout remains with the existing owner. No external-reference code, prompt, schema, skill, or test may be copied.
 
 ### DR-10 / ADR-10: One composition and topology owner
-**Status**: Accepted for documentation candidate; integration pending. **Date**: 2026-09-09.
-**Context**: Two topology narratives disagree on commands, routes and deployment order.
-**Decision**: Reuse this guide for composition/topology, retain shared authoring rules in the website,
-and remove the replaced website document after the owner candidate exists. Product owners keep execution.
-**Alternatives Considered**: (1) Keep both Markdown/FOSS documents: no infrastructure cost, recurring
-manual reconciliation; (2) generate a second projection: no paid dependency, but another generator and
-staleness surface. Constraints reject competing owners; argumentation favors direct references;
-outranking selects consolidation by zero new runtime code and fewer maintained artifacts.
-**Rationale**: One owner removes the observed documentation disagreement without moving product code.
-**TCO Impact**: all options add $0 infrastructure/egress/model runtime cost; consolidation lowers duplicate
-editing, generation adds maintenance, and monthly totals/12-month savings are unmeasured. No new managed,
-self-hosted or hybrid deployment is introduced; no variant price or vendor-risk reduction is asserted.
-**Consequences**: Positive—one topology owner; negative—old file links need migration; neutral—runtime
-and release evidence remain with current owners. `DIR-DOC-PUBLISH-01` → `AC-TOPOLOGY-01` → this decision/
-workspace topology → `VCC-TOPOLOGY-01` → `ER-TOPOLOGY-01` is the bidirectional trace.
-**RAO/SVO**: `RAO-TOPOLOGY-01` Writer consolidates source claims; `02` validator checks VCC output;
-`03` publisher exposes exact owner/references/removal candidates in that dependency order. No merge implied.
+**Status**: Accepted for documentation candidate; integration pending. **Date**: 2026-09-09. **Context**: Two topology narratives disagree on commands, routes and deployment order. **Decision**: Reuse this guide for composition/topology, retain shared authoring rules in the website, and remove the replaced website document after the owner candidate exists. Product owners keep execution. **Alternatives Considered**: (1) Keep both Markdown/FOSS documents: no infrastructure cost, recurring manual reconciliation; (2) generate a second projection: no paid dependency, but another generator and staleness surface. Constraints reject competing owners; argumentation favors direct references; outranking selects consolidation by zero new runtime code and fewer maintained artifacts. **Rationale**: One owner removes the observed documentation disagreement without moving product code. **TCO Impact**: all options add $0 infrastructure/egress/model runtime cost; consolidation lowers duplicate editing, generation adds maintenance, and monthly totals/12-month savings are unmeasured. No new managed, self-hosted or hybrid deployment is introduced; no variant price or vendor-risk reduction is asserted. **Consequences**: Positive—one topology owner; negative—old file links need migration; neutral—runtime and release evidence remain with current owners. `DIR-DOC-PUBLISH-01` → `AC-TOPOLOGY-01` → this decision/ workspace topology → `VCC-TOPOLOGY-01` → `ER-TOPOLOGY-01` is the bidirectional trace. **RAO/SVO**: `RAO-TOPOLOGY-01` Writer consolidates source claims; `02` validator checks VCC output; `03` publisher exposes exact owner/references/removal candidates in that dependency order. Protected integration and exact clean lane cleanup follow the standing user authorization and green checks; runtime effects remain separate.
+
+### DR-11 / ADR-11: One technology-stack and composition guide
+**Status**: Accepted for this documentation change. **Date**: 2026-09-09. **Continuity**: `TAD-COMPOSE-ARCH-001` is retained; a file rename does not create a new contract identity. **Context / decision**: The website stack and OS composition guide overlap and conflict on ownership, economics and readiness. Consolidate supported material into `guides/TECH-STACK.md`, update live navigation and static observer inputs, then remove the website source after protected owner integration. Preserve original bytes through the immutable source link and digest above. **Alternatives / rationale**: Keep both, generate a mirror, or use one directly linked owner. Constraints reject duplicate authority and new dependencies; argumentation favors source-grounded revision links; outranking selects direct consolidation by minimum maintained artifacts and no runtime change. TCO impact is reduced duplicate editing; realized savings remain unmeasured. **Consequences / verification**: Old active paths must migrate across OS, Graph and website; historical references remain dated. `DIR-DOC-PUBLISH-01` / `AC-TOPOLOGY-01` → `RAO-STACK-01` writer consolidates supported claims → `RAO-STACK-02` validator runs OS checks and consumer link/schema checks → `RAO-STACK-03` publisher integrates owner, references and removal in order. `VCC-STACK-01` requires one bounded guide, no replaced active files, exact grounding hashes and green required PR checks; receipts establish documentation integration only.
 
 ## Cross-repository acceptance contract
 
-This section separates publication, source acceptance, protected integration, and public delivery.
-`DE-DOC-PUBLISH-01` is the discoverable combined PRD/TAD/ADR and focused conformance test.
-`DE-RUNTIME-COMPOSE-01` is admission provider v3 / receipt v2, three owner adapters, the bounded four-component observer, and release-plan metadata injection. The observer requires four distinct canonical Git identities and binds every pass-contributing source read to its exact `HEAD` blob; it also binds each owner's singular package/lockfile resolution to an exact ancestor of the harness candidate, while selected cross-owner blobs are named by `catalog/composition-source-lock.json`. It compares the provider and consumer canonical admission fixtures byte-for-byte and verifies the tracked Commerce topology manifest and digest. It never imports, evaluates, spawns, or otherwise executes sibling candidate code. Owner suites remain the authority for HMAC, mutation, durability, replay, settlement, and route behavior; their local results may be recorded here but are not machine-bound or protected evidence in the observer report.
+This section separates publication, source acceptance, protected integration, and public delivery. `DE-DOC-PUBLISH-01` is the discoverable combined PRD/TAD/ADR and focused conformance test. `DE-RUNTIME-COMPOSE-01` is admission provider v3 / receipt v2, three owner adapters, the bounded four-component observer, and release-plan metadata injection. The observer requires four distinct canonical Git identities and binds every pass-contributing source read to its exact `HEAD` blob; it also binds each owner's singular package/lockfile resolution to an exact ancestor of the harness candidate, while selected cross-owner blobs are named by `catalog/composition-source-lock.json`. It compares the provider and consumer canonical admission fixtures byte-for-byte and verifies the tracked Commerce topology manifest and digest. It never imports, evaluates, spawns, or otherwise executes sibling candidate code. Owner suites remain the authority for HMAC, mutation, durability, replay, settlement, and route behavior; their local results may be recorded here but are not machine-bound or protected evidence in the observer report.
 
 | Report field | Meaning |
 |---|---|
@@ -501,10 +452,7 @@ This section separates publication, source acceptance, protected integration, an
 
 ### Operator decision
 
-`OP-20260903-FIX-RELEASE` records the 2026-09-03 Operator fix/release and production-runtime implementation
-requests. It authorizes the bounded owner-lane source implementations and each repository's
-normal protected review/integration path after named checks pass. It does not supply an x402 payee, provider
-credential, consumed release receipt, product-deployment authority, retirement authority, or cleanup proof.
+`OP-20260903-FIX-RELEASE` records the 2026-09-03 Operator fix/release and production-runtime implementation requests. It authorizes the bounded owner-lane source implementations and each repository's normal protected review/integration path after named checks pass. It does not supply an x402 payee, provider credential, consumed release receipt, product-deployment authority, retirement authority, or cleanup proof.
 
 ### Documentation-publication criterion
 
@@ -521,10 +469,7 @@ credential, consumed release receipt, product-deployment authority, retirement a
 | `AC-RUNTIME-X402-03` | `VCC-RUNTIME-X402-03`: `agentic-graph` production configuration has a non-placeholder payee and its checkout-provider adapter passes owner, Commerce, paid-resource, settlement-readback, and exact-replay checks | Unsatisfied; the source adapter passes, but the production payee and paid deployment receipt are absent |
 
 ### Publication RAO
-Historical `RAO-DOC-01` implementer produces `DE-DOC-PUBLISH-01`; `RAO-DOC-02` validator checks
-`VCC-DOC-PUBLISH-01`; `RAO-DOC-03` publisher exposes the exact candidate; `RAO-DOC-04` integrator requires
-its own exact authenticated authority and green checks. Each depends on the preceding step.
-Current consolidation instead uses ADR-10’s `RAO-TOPOLOGY-01`–`03` and `AC-TOPOLOGY-01`.
+Historical `RAO-DOC-01` implementer produces `DE-DOC-PUBLISH-01`; `RAO-DOC-02` validator checks `VCC-DOC-PUBLISH-01`; `RAO-DOC-03` publisher exposes the exact candidate; `RAO-DOC-04` integrator requires its own exact authenticated authority and green checks. Each depends on the preceding step. Current consolidation instead uses ADR-10’s `RAO-TOPOLOGY-01`–`03` and `AC-TOPOLOGY-01`.
 
 ### Runtime RAO
 
@@ -567,8 +512,7 @@ Baseline coverage: `2/2` directives, `14/14` RAOs; ADR-10 adds topology trace wi
 | `VCC-RUNTIME-AUTHORITY-02` | Each changed repository has its own current claim, lane, review, integration proof, and release boundary | Authenticated consumer lifecycle evaluator | Unsatisfied; no exact consumed integration or release receipt exists for the refreshed candidates |
 | `VCC-RUNTIME-X402-03` | The existing `agentic-graph` x402 path satisfies production configuration and the checkout-provider adapter preserves Commerce receipt/evidence semantics | Owner/Commerce suites plus paid production and exact-replay probes | Unsatisfied; adapter source passes, but operator payee and paid delivery evidence are absent |
 
-Historical `local_rung: dev-proven` records owner-suite/static baseline evidence, not this topology refresh.
-Current delivery remains `undocumented`; the three runtime VCCs require exact integration/live evidence.
+Historical `local_rung: dev-proven` records owner-suite/static baseline evidence, not this topology refresh. Current delivery remains `undocumented`; the three runtime VCCs require exact integration/live evidence.
 
 ## Known gaps
 
@@ -577,7 +521,7 @@ Current delivery remains `undocumented`; the three runtime VCCs require exact in
 - `sourceCandidateReviewReady` does not set `productionRuntimeReady`. Protected integration, authenticated
   release authority, required secrets, nonzero operator x402 payee, Cloudflare activation/readback and paid
   settlement/replay receipts remain separate mandatory evidence.
-- Admission/Graph-authority/provider HMAC secrets, discovery bearer token and operator payee remain external.
+- Authentication keys, discovery bearer token and operator payee require exact current owner readback; earlier missing-input lists are historical.
 - Graph's `MARKETPLACE_SERVICE` and Commerce's `MARKETPLACE_PROVIDER` need separate live binding readback.
 - Avalanche equivalence was not proved; DR-8 memory tier is unbuilt; DR-9 roles lack pain/WTP evidence.
 - Mirror convergence and Graph/GameXR deployment-owner reconciliation remain open; this change does neither.
@@ -585,15 +529,12 @@ Current delivery remains `undocumented`; the three runtime VCCs require exact in
 
 ## Lane topology and deploy boundaries
 
-The generic historical authoring→mirror→delivery drawing is replaced by the actual Graph sequence and
-GameXR conflict above. Repository-local lanes retain independent claim, exact review, integration and
-cleanup receipts. Source resides on the operator device; generated mirrors and delivery are provider-owned.
-The consolidation authorizes documentation candidates only, not historical runtime operations or cleanup.
+The generic historical authoring→mirror→delivery drawing is replaced by the actual Graph sequence and GameXR conflict above. Repository-local lanes retain independent claim, exact review, integration and cleanup receipts. Source resides on the operator device; generated mirrors and delivery are provider-owned. The consolidation authorizes documentation integration and exact clean lane cleanup when green; it renews no historical runtime authority.
 
 ### Deploy Boundary Register
 
 | Boundary | From lane | To lane | Evidence Reference | Operator instruction | Rollback statement | State |
 |---|---|---|---|---|---|---|
-| Composition publication | Authoring | Protected source | `ER-TOPOLOGY-01`, required CI | Consolidation request; candidate preparation only | Revert exact documentation commit through protected review; run checks | closed pending exact integration authority |
+| Composition publication | Authoring | Protected source | `ER-TOPOLOGY-01`, required CI | Consolidation request and standing green-merge authorization | Revert exact documentation commit through protected review; run checks | authorized; exact required checks and integration receipt pending |
 | Graph product | Generated candidate | Delivery, then verified mirror | Graph release workflow and exact browser/runtime receipts | none in this increment | Owner release recovery; preserve sibling artifacts and exact prior evidence | closed |
 | Shared Pages / GameXR | Source / mirror candidate | Delivery | Provider/controller reconciliation and GameXR release evidence absent | none in this increment | Source-owned rollback decision with exact candidate and project scope | closed |

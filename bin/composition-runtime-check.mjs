@@ -15,7 +15,7 @@ const PACKAGE_ROOT = realpathSync(fileURLToPath(new URL('..', import.meta.url)))
 const SNAPSHOT_LIMITS = Object.freeze({ tracked: 10_000, trackedBytes: 134_217_728, fileBytes: 1_048_576, untracked: 512, inventoryBytes: 4_194_304, pathBytes: 262_144, contentBytes: 500_000 });
 const CONTRACT = Object.freeze({
   'agentic-os': Object.freeze([
-    requirement('guides/COMPOSITION-ARCHITECTURE.md', ['DIR-RUNTIME-READY-01',
+    requirement('guides/TECH-STACK.md', ['DIR-RUNTIME-READY-01',
       '`agentic-canvas-os`', '`agentic-graph`', '`agentic-commerce-os`', 'VCC-RUNTIME-AUTHORITY-02']),
     requirement('src/github-authority.mjs', ['github-actions-fenced-authority', 'agentic-os/github-authority-input/v1', "source.event !== 'workflow_dispatch'"]),
     requirement('src/github-authority-operation.mjs', ['authority_input_digest does not match the event payload and committed policy']),

@@ -26,7 +26,7 @@ const harnessManifest = pin => JSON.stringify({
 });
 const files = Object.freeze({
   'agentic-os': {
-    'guides/COMPOSITION-ARCHITECTURE.md': 'DIR-RUNTIME-READY-01 `agentic-canvas-os` `agentic-graph` `agentic-commerce-os` VCC-RUNTIME-AUTHORITY-02',
+    'guides/TECH-STACK.md': 'DIR-RUNTIME-READY-01 `agentic-canvas-os` `agentic-graph` `agentic-commerce-os` VCC-RUNTIME-AUTHORITY-02',
     'src/github-authority.mjs': "github-actions-fenced-authority agentic-os/github-authority-input/v1 source.event !== 'workflow_dispatch'",
     'src/github-authority-operation.mjs': 'authority_input_digest does not match the event payload and committed policy',
     'bin/composition-git.mjs': 'TRUSTED_COMPOSITION_GIT GIT_CONFIG_NOSYSTEM /usr/bin/git',

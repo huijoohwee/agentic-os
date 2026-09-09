@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { observeCompositionRuntime } from '../bin/composition-runtime-check.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const GUIDE_LINK = 'guides/COMPOSITION-ARCHITECTURE.md';
+const GUIDE_LINK = 'guides/TECH-STACK.md';
 const GUIDE_PATH = path.join(ROOT, GUIDE_LINK);
 const README_PATH = path.join(ROOT, 'README.md');
 const WRITE_SCOPE = Object.freeze([
@@ -24,14 +24,14 @@ const WRITE_SCOPE = Object.freeze([
 function read(file) { return readFileSync(file, 'utf8'); }
 test('composition architecture is discoverable and every authored artifact is bounded', () => {
   const readme = read(README_PATH), guide = read(GUIDE_PATH);
-  assert.match(readme, new RegExp(`\\[composition architecture\\]\\(${GUIDE_LINK}\\)`));
+  assert.match(readme, new RegExp(`\\[tech stack\\]\\(${GUIDE_LINK}\\)`));
   assert.ok(statSync(GUIDE_PATH).isFile());
   for (const file of WRITE_SCOPE) {
     const source = read(path.join(ROOT, file));
     assert.ok(Buffer.byteLength(source) < 500_000, file);
     assert.ok(source.split('\n').length - 1 < 600, file);
   }
-  for (const removed of ['bin/composition-marketplace-probe.mjs',
+  for (const removed of ['guides/COMPOSITION-ARCHITECTURE.md', 'bin/composition-marketplace-probe.mjs',
     'bin/composition-module-loader.mjs', 'bin/composition-probe-sandbox.mjs']) {
     assert.equal(existsSync(path.join(ROOT, removed)), false, removed);
   }
@@ -49,8 +49,8 @@ test('document binds imported evidence without turning it into runtime proof', (
     'd5323bc35a62cf2dace300990d5ee0db228897d8',
     '499296c7830ca62f30a6b6ac4181474e2511bae9',
   ]) assert.ok(guide.includes(evidence), evidence);
-  assert.match(guide, /version: "1\.5\.0"/);
-  assert.match(guide, /adr_revision: "1\.5\.0"/);
+  assert.match(guide, /version: "1\.6\.0"/);
+  assert.match(guide, /adr_revision: "1\.6\.0"/);
   assert.match(guide, /execution_gate: "static-source-observation-authorized"/);
   assert.match(guide, /local_rung: "dev-proven"/);
   assert.match(guide, /delivered_rung: "undocumented"/);
@@ -129,7 +129,7 @@ test('required decisions, RAOs, VCCs, and owner controllers remain explicit', ()
   assert.match(guide, /ACOS uses its own protected production controller/);
   assert.match(guide, /Commerce separately seals its tracked `config\/production-core-services\.json`/);
   assert.match(guide, /No composed repository may add an external agent-orchestration SDK/);
-  assert.match(guide, /no endpoint is admissible before real micro-SME interviews and willingness-to-pay evidence/);
+  assert.match(guide, /Demand validation remains separately pending and does not block technical runtime implementation/);
 });
 
 test('native observer rejects execution from a different agentic-os checkout root', () => {
