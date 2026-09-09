@@ -31,8 +31,10 @@ required checks and merge policy succeed.
 
 ## Completion
 
-After the provider merges, run `agentic-os finish --ref=<lane>` from canonical to prove exact integration and
-remove the clean lane worktree. Then fetch and fast-forward the canonical checkout from `origin/main`.
+After the provider merges, run `agentic-os finish --ref=<lane>` from canonical to observe exact integration.
+It retains the worktree, ignored bytes and branch; its result grants no cleanup authority. Retain profiles
+keep the target. Quarantine profiles require the authenticated cleanup executor and exact receipts described
+in `../docs/LIFECYCLE-COMPLETION.md`. Canonical synchronization remains a separate operation.
 
 If a check, reservation, provider observation, or protected merge blocks, preserve the lane bytes and use the
 reported condition. Do not force-push, merge locally into canonical, or write `origin/main` directly.

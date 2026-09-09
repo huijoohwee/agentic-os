@@ -99,7 +99,7 @@ export function cmdHelp() {
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
       '  npm run land -- [--body-file=<file>]  publish the exact lane head and request provider handoff',
       '  npm run successor -- <scope>  preserve a published lane and continue in-place',
-      '  npm run finish -- --ref=<lane>  remove one clean, exactly integrated worktree',
+      '  npm run finish -- --ref=<lane>  observe exact integration; retain worktree for governed cleanup',
       '  npm run status            registered lane projections and provider state',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',

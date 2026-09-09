@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40_878, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40_801, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -88,7 +88,8 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       "At release start/resume, apply the global prompt's completion-estimate and external-wait rule.",
       'exact committed diff lands by profile-selected protected integration.',
       'Never copy lane files into canonical.',
-      'run `agentic-os finish --ref=<lane>` to prove integration and remove that clean worktree',
+      'run `agentic-os finish --ref=<lane>` to observe integration and retain the worktree',
+      'Authenticated cleanup: `LIFECYCLE-COMPLETION.md`.',
     ]],
     ['templates/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md; obey always.',
