@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/governance.mjs",
     "./invocation": "./src/invocation.mjs",
+    "./skills/canvas/SKILL.md": "./skills/canvas/SKILL.md",
     "./records": "./src/governance.mjs",
     "./records/authority-evidence": "./src/authority-record.mjs",
     "./records/recovery-candidate": "./src/recovery-candidate.mjs",
@@ -49,6 +50,7 @@
     "src",
     "catalog",
     "templates",
+    "skills",
     "guides",
     "docs",
     "test",
