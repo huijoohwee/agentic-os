@@ -33,9 +33,7 @@ import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, resolveInvocation } from './agentic-os-invocation.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
 import * as report from './agentic-os-report.mjs';
-import {
-  REPOSITORY_PROFILE_FILENAME,
-} from '../src/git-repository.mjs';
+import { REPOSITORY_PROFILE_FILENAME } from '../src/git-repository.mjs';
 import {
   runAutonomyClass,
   runCanonicalSync,
@@ -516,7 +514,7 @@ function cmdQueue(root, argv, profile) {
   err(`unknown queue action "${action}". use: show | apply`);
   return 1;
 }
-function main() {
+async function main() {
   const supplied = process.argv.slice(2);
   let [command, ...argv] = supplied;
   if (isInvocationTuple(supplied)) {
@@ -537,6 +535,7 @@ function main() {
   }
   if (command === 'help' || command === '--help') return cmdHelp();
   if (command === 'request') return runRequest(argv);
+  if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);
   const cwd = process.cwd();
   let root;
   try {
