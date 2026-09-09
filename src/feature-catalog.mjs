@@ -212,7 +212,9 @@ function validateProfile(profile, findings) {
   if (!exactObject(profile, 'profile', PROFILE_KEYS, findings)) return;
   finiteNonnegative(profile.maxCodeDeltaLines, 'profile.maxCodeDeltaLines', findings, { integer: true });
   finiteNonnegative(profile.maxFirstDollarHours, 'profile.maxFirstDollarHours', findings);
-  finiteNonnegative(profile.maxIncrementalSpendUsd, 'profile.maxIncrementalSpendUsd', findings);
+  if (profile.maxIncrementalSpendUsd !== 0)
+    add(findings, 'free-tier-only-required', 'profile.maxIncrementalSpendUsd');
+  if (profile.fossOnly !== true) add(findings, 'foss-only-required', 'profile.fossOnly');
   finiteNonnegative(profile.maxRuntimeDependencies, 'profile.maxRuntimeDependencies', findings, { integer: true });
   for (const key of ['deploymentAllowed', 'browserSurfaceAvailable', 'fossOnly']) {
     if (typeof profile[key] !== 'boolean') add(findings, 'boolean-required', `profile.${key}`);

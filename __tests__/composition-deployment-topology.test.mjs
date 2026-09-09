@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -176,4 +176,36 @@ test('rejects injected or mutated success reports', () => {
     assert.equal(rejected.ok, false);
     assert.equal(rejected.findings[0].code, 'cross_repository_deployment_topology_invalid');
   } finally { rmSync(value.base, { recursive: true, force: true }); }
+});
+
+
+test('rejects paid Containers across JSONC runtime owners without executing candidate code', () => {
+  for (const [component, file] of [
+    ['agentic-canvas-os', 'wrangler.jsonc'],
+    ['agentic-commerce-os', 'wrangler.core.jsonc'],
+    ['agentic-commerce-os', 'wrangler.sandbox.jsonc'],
+    ['agentic-graph', 'cloudflare/workers/agentic-graph-travel-commerce/wrangler.jsonc'],
+    ['agentic-graph', 'cloudflare/workers/agentic-graph-marketplace/wrangler.jsonc'],
+  ]) {
+    const value = fixture();
+    try {
+      const target = path.join(value.roots[component], file);
+      const original = JSON.parse(readFileSync(target, 'utf8'));
+      for (const scope of ['root', 'production']) {
+        const config = structuredClone(original);
+        const owner = scope === 'root' ? config : ((config.env ??= {}).production ??= {});
+        owner.containers = [{ class_name: 'Sandbox', image: './Dockerfile' }];
+        writeFileSync(target, JSON.stringify(config));
+        git(value.roots[component], ['add', file]);
+        git(value.roots[component], ['-c', 'user.name=Composition Test',
+          '-c', 'user.email=composition@example.invalid', 'commit', '-qm', `paid ${scope}`]);
+        const report = executeCompositionDeploymentTopology(value.roots);
+        assert.equal(report.ok, false);
+        assert.equal(report.candidateCodeExecuted, false);
+        assert.equal(isValidCompositionDeploymentTopologyReport(report), true);
+        assert(report.findings.some(item => item.code === 'paid_runtime_dependency_forbidden'
+          && item.component === component && item.file === file));
+      }
+    } finally { rmSync(value.base, { recursive: true, force: true }); }
+  }
 });

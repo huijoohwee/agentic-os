@@ -31,7 +31,7 @@ const FINDING_CODES = Object.freeze([
   'commerce_release_manifest_unreadable', 'commerce_release_manifest_untracked',
   'commerce_release_manifest_bytes_unbound', 'commerce_release_manifest_invalid',
   'commerce_production_service_target_mismatch', 'commerce_release_service_target_mismatch',
-  'topology_component_changed_during_inspection',
+  'topology_component_changed_during_inspection', 'paid_runtime_dependency_forbidden',
 ]);
 const TOPOLOGY_FILE = 'bin/composition-deployment-topology.mjs';
 
@@ -82,6 +82,20 @@ export function inspectCompositionDeploymentTopology(roots, components = null) {
     ));
   }
   const core = json('agentic-commerce-os', FILES.commerceCore);
+  for (const [component, file, config] of [
+    ['agentic-canvas-os', FILES.acos, acos],
+    ['agentic-commerce-os', FILES.commerceCore, core],
+    ['agentic-commerce-os', FILES.commerceSandbox, sandbox],
+    ['agentic-graph', FILES.graphTravel, travel],
+    ['agentic-graph', FILES.graphMarketplace, marketplace],
+  ]) {
+    // Cloudflare Containers require a paid plan, including root declarations.
+    if ([config, config?.env?.production].some(value => value?.containers != null
+      && (!Array.isArray(value.containers) || value.containers.length > 0))) {
+      findings.push(finding(component, file, 'paid_runtime_dependency_forbidden',
+        null, 'free-tier-only', 'workers-paid-required'));
+    }
+  }
   const configuredServices = serviceMap(core?.env?.production?.services,
     'commerce_production_service_binding_invalid', FILES.commerceCore, findings);
   let manifest = null;
