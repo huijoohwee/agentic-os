@@ -31,6 +31,8 @@ function exact(argv, {
 
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'pipeline': return exact(argv, { options: ['repo', 'run', 'head', 'attempt', 'timeout-ms'],
+      requiredOptions: ['repo', 'run', 'head', 'attempt'] });
     case 'help': case '--help': return exact(argv, {});
     case 'setup': case 'git-configure': case 'guard-install': case 'doctor':
       return exact(argv, {});
@@ -103,6 +105,7 @@ export function cmdHelp() {
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
+      '  agentic-os pipeline --repo=<owner/repo> --run=<id> --head=<sha> --attempt=<n>  watch exact CI progress',
       '  agentic-os flight pre|in|post  inspect prerequisites, drift, and completion',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
       '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
