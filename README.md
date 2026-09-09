@@ -259,7 +259,10 @@ conditional: failed, interrupted or filtered runs grant no inferred coverage. Us
 execution context and exact argv; this advisory plan never caches passes or grants readiness.
 Resolution uses only bounded committed manifests: 32 levels, 64 calls per chain, 128 covered scripts,
 4,096 visits per owner. Cycles, flags, shell expressions and unresolved workspace links keep separate
-commands. Lifecycle hooks stay in the intact npm invocation; their bodies confer no inferred coverage. Explicit workspace paths must match an already cataloged package; no scanning.
+commands. Lifecycle hooks stay in the intact npm invocation; their bodies confer no inferred coverage.
+Explicit workspace paths and normalized relative `npm --prefix <path> run <script>` calls must resolve
+to an already cataloged package; no scanning. Prefix calls may use `--prefix=<path>` or `test` shorthand.
+Absolute, escaping, unlisted, or combined prefix/workspace targets remain unresolved.
 
 Discovery rechecks observed bytes, executes no candidate code and makes no network requests. It
 does not infer ecosystem E2E coverage, integration authority or deployed readiness. Inputs and

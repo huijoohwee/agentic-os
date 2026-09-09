@@ -342,6 +342,49 @@ test('workspace coverage resolves declared package identity and nested unlisted 
   assert.equal(plan.plannedCommands, 3);
 });
 
+test('relative prefix coverage preserves the real workspace umbrella and executes each suite once', t => {
+  const f = fixture(t, ['agentic-graph']), log = join(f.parent, 'prefix-calls.txt');
+  const record = name => `node -e "require('node:fs').appendFileSync('${log}','${name}\\n')"`;
+  writeJson(join(f.root(), 'canvas/package.json'), { name: '@owner/canvas', scripts: {
+    'test:ci': 'npm --prefix .. run ledger && npm run test:ci:unit && npm run test:ci:standalone-export',
+    'pretest:ci': record('prepare'), 'test:ci:unit': record('unit'),
+    'test:ci:standalone-export': record('browser'),
+  } });
+  const scripts = { 'runtime:test': record('runtime'), check: record('types'), ledger: record('ledger'),
+    test: 'npm run test:ci --workspace=@owner/canvas' };
+  const plan = planManifest(f, scripts, { workspaces: ['canvas'] });
+  assert.equal(plan.requestedCommands, 5); assert.equal(plan.plannedCommands, 3);
+  assert.equal(plan.duplicateCommandsAvoided, 2);
+  assert.deepEqual(plan.execute.find(row => row.script === 'test').coversOnSuccess, [
+    { package: 'package.json', script: 'test' },
+    { package: 'canvas/package.json', script: 'test:ci:unit' },
+    { package: 'canvas/package.json', script: 'test:ci:standalone-export' },
+  ]);
+  for (const command of plan.execute) execFileSync(command.argv[0], command.argv.slice(1), {
+    cwd: f.root(), timeout: 10_000, stdio: 'pipe',
+    env: { ...process.env, npm_config_ignore_scripts: 'false' },
+  });
+  assert.equal(readFileSync(log, 'utf8'), 'runtime\ntypes\nprepare\nledger\nunit\nbrowser\n');
+  for (const prefix of ['--prefix canvas', '--prefix=canvas']) {
+    const direct = planManifest(f, { ...scripts, test: `npm ${prefix} run test:ci` });
+    assert.equal(direct.plannedCommands, 3, prefix);
+  }
+});
+
+test('prefix ambiguity, external targets, missing scripts and cycles retain separate checks', t => {
+  const f = fixture(t), leaf = { test: 'node unit.mjs', evals: 'node evals.mjs' };
+  assert.equal(planManifest(f, { ...leaf, check: 'npm --prefix . test && npm --prefix=. run evals' }).plannedCommands, 1);
+  for (const command of ['npm --prefix .. test', 'npm --prefix missing test', 'npm --prefix /tmp test',
+    'npm --prefix child/.. test', 'npm --prefix . test --workspace=canvas',
+    'npm --prefix . test -- --filter=one', 'npm --prefix . run missing', 'npm --prefix . run check']) {
+    const plan = planManifest(f, { ...leaf, check: `${command} && npm run evals` });
+    assert.equal(plan.plannedCommands, 3, command);
+  }
+  const plan = planManifest(f, { ...leaf, prepare: 'npm --prefix node_modules/agentic-os run evals',
+    check: 'npm run prepare && npm test && npm run evals' });
+  assert.equal(plan.plannedCommands, 1, 'an opaque dependency retains its parent umbrella coverage');
+});
+
 test('ambiguous syntax, missing scripts, cycles and bounds never omit requested checks', t => {
   const f = fixture(t), leaf = { test: 'node unit.mjs', evals: 'node evals.mjs' };
   const cases = [
