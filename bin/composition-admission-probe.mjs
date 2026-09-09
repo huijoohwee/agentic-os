@@ -1,3 +1,4 @@
+import { compositionRepositories } from './composition-source-lock.mjs';
 import { createHash } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
@@ -33,13 +34,14 @@ export function runCompositionAdmissionProbe({
   acosRoot, commerceRoot, agenticOsRoot, fixturePath, acosRevision = null, commerceRevision = null,
   agenticOsRevision = null,
 } = {}) {
+  const identities = compositionRepositories();
   let provider, consumer;
-  try { provider = exactRoot(acosRoot, 'huijoohwee/agentic-canvas-os', acosRevision); }
+  try { provider = exactRoot(acosRoot, identities['agentic-canvas-os'], acosRevision); }
   catch { return failure('composition_admission_owner_root_invalid', 'agentic-canvas-os', null); }
-  try { consumer = exactRoot(commerceRoot, 'huijoohwee/agentic-commerce-os', commerceRevision); }
+  try { consumer = exactRoot(commerceRoot, identities['agentic-commerce-os'], commerceRevision); }
   catch { return failure('composition_admission_owner_root_invalid', 'agentic-commerce-os', null); }
   let shared;
-  try { shared = exactRoot(agenticOsRoot, 'huijoohwee/agentic-os', agenticOsRevision); }
+  try { shared = exactRoot(agenticOsRoot, identities['agentic-os'], agenticOsRevision); }
   catch { return failure('composition_admission_owner_root_invalid', 'agentic-os', null); }
   const providerRoot = provider.root, consumerRoot = consumer.root;
   const sharedRelative = fixturePath ? relativeOwnerPath(shared.root, fixturePath) : SHARED_FIXTURE;

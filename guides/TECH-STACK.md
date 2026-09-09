@@ -29,6 +29,12 @@ agent_id: "codex-orchestrator"
 
 # Reference implementation — Technology Stack and Composition Architecture
 
+Current composition identities and accepted product revisions live in
+[`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json).
+Revision-qualified links and grounding tables below record historical evidence, not current pins.
+Use `composition:runtime:check` with exact owner roots and `agentic-os pin --consumer=<root>`
+for current observations; refreshing a pin does not refresh historical verification evidence.
+
 This combined PRD/TAD/ADR owns technology selection, composition and workspace topology for seven independently governed repositories. It consolidates the former website topology document, including its reviewed-source candidate at `topology_input_revision`; that unmerged candidate is input, not integrated evidence. Product/runtime owners remain independent. This guide observes interfaces and acceptance boundaries; it creates no cross-repository controller. Shared semantics and template fields remain owned by [PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-guidelines.md) and its [Core Templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-templates.md). The imported baseline and amendment retain their digests below. Their runtime evidence and permissions are historical, candidate-bound records; this documentation consolidation renews none of them.
 
 ## Opening directive

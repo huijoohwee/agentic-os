@@ -23,7 +23,9 @@ for (const released of [false, true]) test(released
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
   const altered = selected.files.map((file, index) => {
     const bytes = released ? (file.path === 'src/catalog-input.mjs'
-      ? readFileSync(new URL('./fixtures/catalog-input-copy.mjs.txt', import.meta.url)) : file.bytes)
+      ? readFileSync(new URL('./fixtures/catalog-input-copy.mjs.txt', import.meta.url))
+      : file.path === 'src/lane-id.mjs'
+        ? readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)) : file.bytes)
       : index === 0 ? Buffer.concat([file.bytes, Buffer.from('\n')]) : file.bytes;
     return { path: file.path, mode: file.mode, sha256: digest(bytes), bytes };
   });

@@ -12,6 +12,11 @@ pull request, or cached lane record never grants governance authority.
 
 ## Quick start
 
+Requires Node.js 20.11+, npm and Git. GitHub observation and protected publication additionally
+use the optional authenticated GitHub CLI (`gh auth status`). Setup and local observation work
+without it; selected provider-dependent policies still fail closed when GitHub is unavailable.
+For a different repository owner, follow [fork bootstrap](guides/FORK.md) before setup.
+
 ```sh
 git clone https://github.com/huijoohwee/agentic-os.git
 cd agentic-os
@@ -29,6 +34,7 @@ implicitly and installs a versioned runtime in clone-common Git storage. Commit 
 canonical `.agentic-os.json` first: every repository-bound command requires it and invents no
 default branch, remote, provider, checks, or ordering policy.
 
+Setup checks the selected GitHub remote against the profile before writing trust or hooks.
 The first successful `setup` is an explicit trust-on-first-use ceremony. After you verify the
 committed profile's repository identity and canonical refs, setup records only those stable fields
 at `<git-common-dir>/agentic-os/repository-trust.json`. Git's common directory is shared by every
@@ -47,6 +53,10 @@ always-load set.
 
 For direct, small source changes, see the lazy-loaded [user cookbook](guides/USER-COOKBOOK.md): autonomous
 path-scoped admission and stage-to-push delivery are the default; manual Git is the fallback.
+New lane device names default to a short hostname hash; set `AGENTIC_OS_DEVICE` or `--device`
+for an explicit alias. Existing refs remain valid. `test:fast` provides a short local loop;
+`npm run check` remains the complete required check. Check consumer drift with
+`node bin/agentic-os.mjs pin --consumer=/absolute/root` (see the fork guide).
 Managed lanes share `<registry>/<repository>/<device>--<lane>`; `AGENTIC_OS_WORKTREE_ROOT` configures only
 the registry parent, so repository and lane isolation remain intact.
 

@@ -4,7 +4,6 @@
  */
 
 import { hostname } from 'node:os';
-import { createHash } from 'node:crypto';
 
 export const LANE_PREFIX = 'agent';
 export const SEGMENT = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
@@ -27,11 +26,14 @@ export function assertDevice(device) {
   return device;
 }
 
-/** Explicit aliases take precedence; defaults do not publish the raw hostname. */
-export function deviceSegment(raw = hostname(), alias = process.env.AGENTIC_OS_DEVICE) {
-  if (alias !== undefined) return assertDevice(alias);
-  if (typeof raw !== 'string' || raw.length === 0) throw new Error('hostname unavailable; pass --device');
-  return `device-${createHash('sha256').update(raw.toLowerCase()).digest('hex').slice(0, 12)}`;
+/** Stable, lowercase, hyphen-safe device segment derived from the host. */
+export function deviceSegment(raw = hostname()) {
+  const value = String(raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+  if (!value) throw new Error('device segment could not be derived; pass --device');
+  return assertDevice(value);
 }
 
 export function assertScope(scope) {

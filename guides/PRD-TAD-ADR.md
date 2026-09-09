@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR"
-version: "1.0.0"
+version: "1.1.0"
 date: "2026-09-09"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,21 +11,23 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.0.0"
-tad_revision: "1.0.0"
-adr_revision: "1.0.0"
+prd_revision: "1.1.0"
+tad_revision: "1.1.0"
+adr_revision: "1.1.0"
 related_continuity_id: "TAD-COMPOSE-ARCH-001"
-source_revision: "32df6dd02e708250cc04b05ccc9c742bcf11eedd"
+source_revision: "92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d"
 architecture_revision: "1.6.0"
 feature_index_revision: "1.0.0"
 guideline_revision: "2.4.0"
-worktree_id: "implemented-pipeline-spec"
+worktree_id: "prd-tad-adr-ssot"
 agent_id: "codex-orchestrator"
 load_policy: "on-demand"
-verification_scope: "as-built source and specification joins; product runtime evidence remains separate"
+verification_scope: "as-built source and specification joins; measured clean-clone walkthrough; product runtime evidence remains separate"
 ---
 
 # Reference implementation — As-built ADLC pipeline
+
+Current composition identities live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json); revision-qualified links and grounding tables below are historical evidence, not current pins. [TECH-STACK.md](TECH-STACK.md) states the refresh commands.
 
 This document owns the **as-built governance path from product intent to source implementation, product release and verified completion**. It describes the implemented controls and explicit handoffs across the seven repositories. It does not introduce a runtime controller or turn an accepted specification into deployment authority.
 
@@ -33,13 +35,15 @@ This document owns the **as-built governance path from product intent to source 
 
 ## Identity and opening directive
 
-The stable locator is `guides/PRD-TAD-ADR.md`. The addressable [PRD](#prd), [TAD](#tad) and [ADR](#adr) sections each bind `PRD-TAD-ADR-ADLC-PIPELINE-001` at revision `1.0.0`; TAD consumes that exact PRD and ADR binds that exact TAD. Companion versions resolve through the [source bindings](#codebase-grounding-record), never through the filename alone. Changes to a requirement re-derive affected design, decisions, RAO steps and evidence before dependent execution.
+The stable locator is `guides/PRD-TAD-ADR.md`. The addressable [PRD](#prd), [TAD](#tad) and [ADR](#adr) sections each bind `PRD-TAD-ADR-ADLC-PIPELINE-001` at revision `1.1.0`; TAD consumes that exact PRD and ADR binds that exact TAD. Companion versions resolve through the [source bindings](#codebase-grounding-record), never through the filename alone. Changes to a requirement re-derive affected design, decisions, RAO steps and evidence before dependent execution.
+
+**SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 
 ## PRD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.0.0`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.1.0`.
 
 ### Problem, personas and minimum outcome
 
@@ -47,7 +51,7 @@ A solo operator loses time locating source owners, repeating validation and reco
 
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
 
-The minimum outcome is one source-owned change that can be authored, checked, integrated and handed to the product's release/evidence owner. A runtime outcome additionally needs that owner's deployed acceptance results. A paid loop additionally needs actual payment and replay receipts. The harness does not itself execute a universal PRD-to-code compiler or global product deployment.
+The minimum outcome is one source-owned change that can be authored, checked, integrated and handed to the product's release/evidence owner. A runtime outcome additionally needs that owner's deployed acceptance results. A paid loop additionally needs actual payment and replay receipts.
 
 ### Acceptance and verification contract
 
@@ -74,10 +78,10 @@ PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directiv
 | Metric | Baseline | Target / measurement point |
 |---|---|---|
 | Local / delivered rung | `spec-complete` / `undocumented` for this pipeline specification | Recompute only from recorded VCC results; product delivery remains owner-evidenced |
-| Builder TTV steps | Estimate: setup, observe, start, author, check, land, verify integration = 7 groups | Walk a clean environment before treating 7 as observed; cleanup and product deployment measured separately |
-| Builder TTV elapsed | Unmeasured | Measure active author/check minutes separately from provider waits on the next clean walkthrough |
+| Builder TTV steps | Measured 2026-09-09 on a fresh clone at `7f7928d`: clone 1.3 s, install 0.4 s, `setup` blocked by an untracked `package-lock.json` (G13); after removal setup, doctor, evals (2.5 s) and lane completed — 7 groups observed | Re-walk at the integrated `92b8f5f` candidate, which ignores the lockfile; cleanup and product deployment measured separately |
+| Builder TTV elapsed | Full `npm run check` 254 s wall on a 4-core laptop (739 tests); clone-to-first-lane under 2 minutes once G13 is removed | Measure active author/check minutes separately from provider waits; `test:fast` in the `92b8f5f` candidate is the short local loop |
 | Rework / CI cycles | No longitudinal baseline | Record attempts per exact candidate; reduce repeat work without skipping owner suites |
-| Incremental runtime dependencies / always-load bytes | 0 / 0 for this document | Remain 0 / 0; two authored files, this guide under 400 lines and 45 kB |
+| Incremental runtime dependencies / always-load bytes | 0 / 0 for this document; the SSOT rule in `docs/adlc-guidelines.md` landed byte-neutral (2,144 bytes before and after) | Remain 0 / 0; this guide under 400 lines and 45 kB |
 | Token cost / month | Harness CLI makes no model calls; agent usage unmeasured | Attribute external agent usage to the session; no invented token telemetry or free inference claim |
 | Monthly TCO / ROI | Cash, hardware, electricity and maintenance not measured | Zero new paid services; separate deployment variants in ADR-P03; measure before ranking a commercial winner |
 | Revenue / payer / WTP | Pending; no selected payer or priced offer | Record actual paid acceptance independently; no demand claim from a technical pass |
@@ -88,7 +92,7 @@ Open questions: an eligible always-on execution host/transport, independent eval
 
 ## TAD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.0.0` consumes PRD `1.0.0`, decisions ADR `1.0.0`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.1.0` consumes PRD `1.1.0`, decisions ADR `1.1.0`.
 
 ### Journey-to-system and RAO steps
 
@@ -263,7 +267,7 @@ The document grants no effects. Existing user authorization continues to apply t
 
 ## ADR
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.0.0` binds PRD/TAD `1.0.0`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.1.0` binds PRD/TAD `1.1.0`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -279,15 +283,15 @@ The document grants no effects. Existing user authorization continues to apply t
 | Operations / vendor risk | Local maintenance plus hosted-provider dependency | Host/transport maintenance; FOSS portability, uptime responsibility | Recurring billing/provider dependence conflicts with policy |
 | 12-month delta / ROI | Unmeasured; this doc adds no runtime dependency | Unmeasured; compare before activation | Rejected by constraint before outranking |
 
-Five lenses apply to all three decisions: smallest reusable outcome, zero new paid services, lazy context/token usage, existing harness contracts and explicit concurrency/evidence boundaries. Free hosted services are not described as FOSS software. Unknown licensing or cost blocks adopting that component, not dependency-disjoint work. No current vendor price, quota or product recommendation is asserted here.
+Five lenses apply to all three decisions: smallest reusable outcome, zero new paid services, lazy context/token usage, existing harness contracts and explicit concurrency/evidence boundaries. Free hosted services are not FOSS; unknown licensing or cost blocks that component, not disjoint work. No vendor price, quota or product recommendation is asserted.
 
 ## Codebase grounding record
 
-**Input binding:** this generated specification `1.0.0` consumes TECH-STACK `1.6.0` and FEATURES `1.0.0` at OS `32df6dd02e708250cc04b05ccc9c742bcf11eedd`; guidelines `2.4.0` at site `7bb36e9df2dfe14497c789b531bbc674c3d8da91`. Material claims are scoped to these exact snapshots. Linked implementation/test files establish existence and contract intent, not successful execution or deployment. Refresh volatile identities and configuration at their consuming transition.
+**Input binding:** this specification `1.1.0` consumes TECH-STACK `1.6.0` and FEATURES `1.0.0` at OS `92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d` (published candidate of PR #91, not yet integrated); guidelines `2.4.0` at site `7bb36e9df2dfe14497c789b531bbc674c3d8da91`. The site guideline `2.5.0` SSOT-precedence candidate is unintegrated input. Material claims are scoped to these exact snapshots. Linked implementation/test files establish existence and contract intent, not successful execution or deployment. Refresh volatile identities and configuration at their consuming transition.
 
 | Source owner | Exact revision | Responsibility in this specification |
 |---|---|---|
-| agentic-os | `32df6dd02e708250cc04b05ccc9c742bcf11eedd` | Lifecycle, invocation, evidence tooling and companion guides |
+| agentic-os | `92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d` | Lifecycle, invocation, evidence tooling and companion guides; published clonability candidate |
 | agentic-commerce-os | `4774a4fc1543c4bcb1b912fe79c78c61384efc7c` | Commerce control plane, executor integration, evaluation and release |
 | agentic-canvas-os | `954de91689abc1ab99a783e54f5ca7ac61387449` | Agent/admission owner; current [package scripts][canvas-package] |
 | agentic-graph | `4e9056ce12fc68a19ddec1381f2aee8b76de36ae` | Discovery, settlement, marketplace state and generated publication, referenced through FEATURES |
@@ -309,8 +313,10 @@ Five lenses apply to all three decisions: smallest reusable outcome, zero new pa
 | G10 Independent evaluator enrollment and current release/configuration are established | unverified | [runtime context][commerce-context] requires externally managed trust anchor, trusted Git, Canvas root and isolated executor outside candidate worktrees; no live readback is supplied by this spec |
 | G11 OS automatically compiles this spec and deploys every product | absent | The scoped [CLI][cli] and [public API][governance] expose deterministic primitives; authoring, product activation and evaluation stay separate owner actions |
 | G12 The composed paid checkout and real demand are verified | unverified | FEATURES F01–F05 and F08/F09/F19 preserve gaps; no current paid-loop or WTP receipt is introduced |
+| G13 The README quick start completes on a fresh clone | contradicted at `7f7928d`; corrected in candidate | `npm install` writes an untracked `package-lock.json` and `setup` fails `blocked-canonical-source-dirty`; the `92b8f5f` candidate ignores the lockfile and adds a clonability test. T03 TTV is measured only after that fix integrates |
+| G14 An active, unpublished lane can be abandoned or its reservation widened | absent | [LANE.md][lane] has no `abandon` or `widen` event; an empty active lane keeps blocking overlapping scopes and a successor cannot add paths. Observed 2026-09-09; worked around by a byte-neutral always-load edit |
 
-G08/G09 are confirmed integration defects for P08, G10 is missing live evidence and G12 blocks P09 satisfaction or a demand claim. They do not block this retrospective source specification. The next technical delta belongs to Commerce's executor/lifecycle/release owners; update that owner's requirements and evidence before deriving implementation tasks from this guide.
+G08/G09 are confirmed integration defects for P08, G10 is missing live evidence and G12 blocks P09 satisfaction or a demand claim. G13 is a T03 defect with a published fix; G14 is a lifecycle gap for T03/T06 that a future ADR must decide (abandon event with retained branch, or reservation amendment) before any command implements it. They do not block this retrospective source specification. The next technical delta belongs to Commerce's executor/lifecycle/release owners; update that owner's requirements and evidence before deriving implementation tasks from this guide.
 
 ## Verification, demonstration and maintenance
 
@@ -333,35 +339,36 @@ G08/G09 are confirmed integration defects for P08, G10 is missing live evidence 
 | `artifact-continuity-authoring-seam#7` — “Re-run Directive-to-RAO coverage” | Revision propagation in Identity and opening directive |
 | `artifact-continuity-authoring-seam#8` — “Require joined independent evidence” | Acceptance contract and closed runtime boundaries |
 
-**Demo skeleton:** from a profile-trusted clean checkout, inspect the joined intent, open one scoped lane, author a bounded source change, run the owner's complete applicable checks, publish and observe exact integration, then perform separately authorized completion. Record TTV steps/time, command argv, source identity, coverage and outcomes. For runtime demonstration continue through P08/P09 only when their owner evidence is available; retain explicit failures rather than recording a synthetic success. This is a reproducible demonstration plan, not a completed clean-environment TTV run.
+**Demo skeleton:** from a profile-trusted clean checkout, inspect the joined intent, open one scoped lane, author a bounded source change, run the owner's complete applicable checks, publish and observe exact integration, then perform separately authorized completion. Record TTV steps/time, command argv, source identity, coverage and outcomes. For runtime demonstration continue through P08/P09 only when their owner evidence is available; retain explicit failures rather than recording a synthetic success. The measured clean-clone walkthrough covers setup through lane start; author, check, land and completion remain unmeasured.
 
-**Roadmap:** reuse the implemented controls; close G08–G10 within Commerce without reintroducing the retired verifier as a shim; collect P09 provider/replay evidence; evaluate demand independently; expand only on measured value. Maintenance uses the Phase 4 bound stated under PIPE-H1, immutable source references and successor decisions when material architecture changes. No periodic polling, new daemon or always-loaded checklist is added by this specification.
+**Roadmap:** reuse the implemented controls; close G08–G10 within Commerce without reintroducing the retired verifier as a shim; collect P09 provider/replay evidence; evaluate demand independently; expand only on measured value. Maintenance uses the Phase 4 bound stated under PIPE-H1, immutable source references and successor decisions when material architecture changes.
 
 [guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/prd-tad-adr-guidelines.md
 [templates]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/prd-tad-adr-templates.md
 [cid]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/cid-guidelines.md#shared-field-contract
 [continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/adlc-artifact-continuity.md
 [process]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/prd-tad-adr-process-flows.md
-[rank]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/rank.mjs
-[worktree]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/worktree.mjs
-[checks]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/bin/agentic-os-checks.mjs
-[composition]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/bin/composition-runtime-check.mjs
-[cli]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/bin/agentic-os.mjs
-[completion]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/completion.mjs
-[sync]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/canonical-sync.mjs
-[flight]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/bin/agentic-os-auxiliary.mjs
-[invocation]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/invocation.mjs
-[mcp]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/mcp-server.mjs
-[authority]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/github-transition-authority.mjs
-[governance]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/governance.mjs
-[governance-test]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/__tests__/governance-contract.test.mjs
-[governance-guide]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/docs/GOVERNANCE.md
-[source-lock]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/catalog/composition-source-lock.json
-[patch]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/patch-identity.mjs
-[budgets]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/docs/BUDGETS.md
-[cleanup]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/src/cleanup.mjs
-[start]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/docs/START-WORKFLOW.md
-[release]: https://github.com/huijoohwee/agentic-os/blob/32df6dd02e708250cc04b05ccc9c742bcf11eedd/docs/RELEASE-WORKFLOW.md
+[rank]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/rank.mjs
+[worktree]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/worktree.mjs
+[checks]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/bin/agentic-os-checks.mjs
+[composition]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/bin/composition-runtime-check.mjs
+[cli]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/bin/agentic-os.mjs
+[completion]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/completion.mjs
+[sync]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/canonical-sync.mjs
+[flight]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/bin/agentic-os-auxiliary.mjs
+[invocation]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/invocation.mjs
+[mcp]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/mcp-server.mjs
+[authority]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/github-transition-authority.mjs
+[governance]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/governance.mjs
+[governance-test]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/__tests__/governance-contract.test.mjs
+[governance-guide]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/docs/GOVERNANCE.md
+[source-lock]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/catalog/composition-source-lock.json
+[patch]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/patch-identity.mjs
+[budgets]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/docs/BUDGETS.md
+[lane]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/docs/LANE.md
+[cleanup]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/src/cleanup.mjs
+[start]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/docs/START-WORKFLOW.md
+[release]: https://github.com/huijoohwee/agentic-os/blob/92b8f5fb6bfa3211ac83a4809acb6bca8495ee8d/docs/RELEASE-WORKFLOW.md
 [commerce-release]: https://github.com/huijoohwee/agentic-commerce-os/blob/4774a4fc1543c4bcb1b912fe79c78c61384efc7c/scripts/production-release/production-controller.ts
 [commerce-release-test]: https://github.com/huijoohwee/agentic-commerce-os/blob/4774a4fc1543c4bcb1b912fe79c78c61384efc7c/test/domain/production-release-safety.test.ts
 [commerce-executor]: https://github.com/huijoohwee/agentic-commerce-os/blob/4774a4fc1543c4bcb1b912fe79c78c61384efc7c/scripts/isolated-process.ts

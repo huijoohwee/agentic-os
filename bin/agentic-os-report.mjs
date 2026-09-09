@@ -285,7 +285,7 @@ function pad(value, width) {
 export function formatFindings(title, findings) {
   const lines = [`${title}:`];
   for (const finding of findings) {
-    const mark = finding.ok ? MARK.ok : MARK.fail;
+    const mark = finding.warning ? MARK.warn : finding.ok ? MARK.ok : MARK.fail;
     lines.push(`  ${mark} ${pad(finding.id, 18)} ${finding.detail}`);
     if (!finding.ok && finding.remedy) lines.push(`       remedy: ${finding.remedy}`);
   }
