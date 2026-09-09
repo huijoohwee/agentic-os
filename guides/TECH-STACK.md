@@ -434,6 +434,24 @@ No composed repository may add an external agent-orchestration SDK as a build de
 
 `agentic-os` remains the executable lifecycle/orchestration and admission-vocabulary SSOT; consumers use an exact pinned package rather than copied workflows. ACOS consumes OS invocation and retains safety interfaces and its Worker/state, Commerce retains its control plane, and Graph retains domain/payment runtimes. No repository, deployable asset, or state is physically migrated by this decision. A future native Worker and per-agent Durable Object memory tier is specification-only: identity, authorization, storage transfer, idempotent `@mem-` export, rehydration, and rollback require a separate owner-approved design and executable VCC/RAO.
 
+The portable [Canvas authoring skill](../skills/canvas/SKILL.md) is OS-owned and packaged for
+on-demand consumption. It separates decision/evidence guidance from thin browser, Cursor and Graph
+host references. Renderer, storage, execution and payment remain with their product owners.
+This adds no runtime module, dependency or always-load bytes. Package relocation and resource
+resolution are checked by [portable-skills.test.mjs](../__tests__/portable-skills.test.mjs); native host rendering requires
+the selected host's own verification. Skill packaging is not automatic IDE registration.
+
+Ownership review (2026-09-09): retain ACOS `agent-api` and product docs rather than relocating
+directories by name. Its [reasoning-continuity.js][continuity-source] is a possible small extraction, but currently
+joins generic continuity policy with Responses-shaped request fields; no second consumer was
+established. A transfer must isolate that adapter, migrate callers and tests, and update pinned
+consumers in dependency order before removing the replaced source. Constraints preserve owner
+state and acyclic dependencies; argumentation favors existing tested product code; outranking
+selects portable authoring guidance now over an unneeded runtime migration. Universal lifecycle
+guidance already lives in OS; product schemas, deployment and rollback remain owner-local.
+
+[continuity-source]: https://github.com/huijoohwee/agentic-canvas-os/blob/954de91689abc1ab99a783e54f5ca7ac61387449/agent-api/src/reasoning-continuity.js
+
 ### DR-9 — Gate merchant and shopping roles on demand
 
 Future MCP/WebMCP merchant and shopping roles may compose `agentic-os` runtime with the existing Commerce control plane. Demand validation remains separately pending and does not block technical runtime implementation. Commercial role selection and first-dollar claims require real micro-SME interviews and willingness-to-pay evidence. Merchant writes remain staged for approval; checkout remains with the existing owner. No external-reference code, prompt, schema, skill, or test may be copied.
