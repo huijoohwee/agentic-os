@@ -66,6 +66,10 @@ npm run reap                     # classify all lanes within the strict inventor
 npm run reap -- --ref=agent/device/scope  # classify one exact lane; never clean or retire
 ```
 
+`land --message` preserves staged deletions and stages only observed unstaged or untracked
+paths inside the reservation. Unused reserved paths need not exist. Changes outside the
+reservation still block publication; staged removals do not require recreating obsolete files.
+
 If the profile's canonical branch is behind with unstaged or untracked bytes, create a read-only
 synchronization plan instead of stashing or resetting it:
 

@@ -18,7 +18,6 @@ export function worktreeRoot(cwd = process.cwd()) {
 }
 export const lanePath = (scope, device, cwd = process.cwd()) =>
   join(worktreeRoot(cwd), laneDirName(scope, device));
-/** Lane branches that exist locally. */
 export function laneBranches(cwd = process.cwd()) {
   const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)',
     'refs/heads/agent', `--count=${LANE_BRANCH_LIMIT + 1}`], { cwd });
@@ -30,7 +29,6 @@ export function laneBranches(cwd = process.cwd()) {
   }
   return branches;
 }
-/** Bounded normal-path count; deep reap retains the strict full-inventory stop. */
 export function laneBranchSummary(cwd = process.cwd()) {
   const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)',
     'refs/heads/agent', `--count=${LANE_BRANCH_LIMIT + 1}`], { cwd });
@@ -388,7 +386,9 @@ export function commitReservedChanges({ cwd, writePaths, message }) {
   const outside = changed.filter((path) => !pathIsReserved(path, writePaths));
   if (outside.length > 0) throw writeScopeError('blocked-write-outside-reservation',
     `preserve ${outside.length} path(s) outside this lane reservation`, { paths: outside });
-  git(['add', '--', ...writePaths], { cwd });
+  const pending = [...decodeNulFields(git(['diff', '--name-only', '--no-renames', '-z'], { cwd, binary: true })), ...before.owned]
+    .filter((path) => pathIsReserved(path, writePaths));
+  if (pending.length > 0) git(['--literal-pathspecs', 'add', '--', ...pending], { cwd });
   const staged = gitLines(['diff', '--cached', '--name-only'], { cwd }); if (staged.length === 0)
     throw writeScopeError('blocked-empty-commit', 'no reserved changes were staged');
   const stagedOutside = staged.filter((path) => !pathIsReserved(path, writePaths));
