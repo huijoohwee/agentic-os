@@ -584,3 +584,40 @@ test('the selected external verification is explicit and changes the decision re
     second.trail.constraints[0].demandVerification);
   assert.notEqual(first.digest, second.digest);
 });
+
+
+test('catalog callers cannot relax the mandatory free and FOSS profile', () => {
+  for (const [key, override, code] of [
+    ['maxIncrementalSpendUsd', 5, 'free-tier-only-required'],
+    ['maxIncrementalSpendUsd', '0', 'free-tier-only-required'],
+    ['fossOnly', false, 'foss-only-required'],
+  ]) {
+    const value = catalog([candidate(`policy-${key}`)]);
+    value.profile[key] = override;
+    refresh(value);
+    const validation = validateTestCatalog(value);
+    assert.equal(validation.ok, false);
+    assert(validation.findings.some(item => item.code === code));
+    assert.equal(rankTestCatalog(value).ok, false);
+  }
+});
+
+test('mandatory profile rejects positive or unknown spend and proprietary dependencies', () => {
+  for (const [id, amount, expectedCode] of [
+    ['subscription', 5, 'spend-budget-exceeded'],
+    ['overage', 0.01, 'spend-budget-exceeded'],
+    ['unknown-cost', null, 'spend-unestimable'],
+  ]) {
+    const result = rankTestCatalog(catalog([candidate(id, { incrementalSpendUsd: amount })]));
+    assert.equal(result.selected, null);
+    assert(codes(result, id).includes(expectedCode));
+  }
+  for (const license of ['MIT', 'proprietary', 'unknown']) {
+    const value = candidate('software', { runtimeDependencies: 1 });
+    value.requirements.dependencies = [{ name: 'fixture', license }];
+    const source = catalog([value]);
+    source.profile.maxRuntimeDependencies = 1;
+    const result = rankTestCatalog(refresh(source));
+    assert.equal(codes(result, 'software').includes('non-foss-dependency'), license !== 'MIT');
+  }
+});

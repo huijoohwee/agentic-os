@@ -102,7 +102,7 @@ ROI score and monthly operating TCO are unmeasured; no demand or financial retur
 | Break | Unjoined provider contracts and an unverifiable admission effect stop the flow before a real first dollar |
 | Fix | Reuse each current owner and add only versioned adapters, exact evidence pins, and cross-repository checks |
 | Close | A buyer receives one digest-valid settlement receipt; replay causes no second effect |
-| Min-time-resource-max-value | Extend existing service bindings, Durable Objects, D1 tables, and protected workflows; add no new infrastructure or duplicate ledger |
+| Min-time-resource-max-value | Reuse owners within free quotas; fail closed at limits. [Cloudflare Containers require Workers Paid](https://developers.cloudflare.com/containers/platform/pricing/) and are forbidden; replace the sandbox execution owner while preserving isolation and receipts. Demand validation remains separately pending |
 
 ### Success metrics
 
@@ -111,7 +111,7 @@ ROI score and monthly operating TCO are unmeasured; no demand or financial retur
 | Time-to-value | One supported purchase in at most five buyer actions and ten minutes from a clean browser session | Timed production smoke receipt |
 | Token economics | Discovery/readiness/receipt readback use zero model calls and zero LLM tokens | Per-route cost log and runtime probe |
 | Transaction safety | One money effect for any count of exact confirmation retries | Provider and settlement idempotency suites |
-| Infrastructure TCO | No net-new paid infrastructure component | Bound configuration and cost inventory |
+| Infrastructure TCO | Free tiers only: zero spend, no paid plans/addons/overages; FOSS software | Bound configuration, license and quota inventory; unknowns block adoption |
 | Documentation TTV | Baseline: two conflicting sources; target: one guide and direct references this increment | `VCC-TOPOLOGY-01` |
 | Readiness | Historical local `dev-proven` / delivered `undocumented`; topology increment targets `spec-complete` / `undocumented` | Source/document checks only |
 | Delivery | Every exact candidate and deployed version is joined to review, release, rollback, and runtime receipts | Per-repository lifecycle and delivery evidence |

@@ -2,7 +2,7 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.2.0
+version: 1.3.0
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
@@ -16,10 +16,10 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC lifecycle/cleanup. Consumers keep product/deploy/rollback/authority policy,
-never a competing controller.
+ADLC supersedes Agentic SDLC. Consumers keep product/deploy/rollback/authority policy, not competing controllers.
 
-- Universal, neutral, agnostic, headless, simple, adaptive, autonomous, modular; adapt providers.
+- Free tiers only; zero spend, no paid plans/addons/overages. Software must be FOSS.
+- Free hosted services are permitted, not labeled FOSS; unknown cost/license blocks adoption.
 - Minimize time-to-production: smallest valuable vertical diff; fix owner/remove replacements; no scenario
   controllers.
 - Continue safe work; infer no scope/authority/destruction/promotion/deploy/product choice.
