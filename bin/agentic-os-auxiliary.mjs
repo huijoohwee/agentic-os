@@ -372,14 +372,19 @@ function flightRequirements(root, profile, file = null, ref = profile.canonical.
     bytes = observeGit(['cat-file', 'blob', match[1]], { cwd: root, binary: true, maxBuffer: FLIGHT_BYTES });
   }
   const value = JSON.parse(UTF8.decode(bytes));
-  if (!exactFields(value, 'schema,maxAgeSeconds,requirements')
-    || value.schema !== 'agentic-os/flight-requirements/v1'
+  const scoped = value?.schema === 'agentic-os/flight-requirements/v2';
+  if (!exactFields(value, 'schema,maxAgeSeconds,requirements' + (scoped ? ',operations' : ''))
+    || !scoped && value.schema !== 'agentic-os/flight-requirements/v1'
     || !Number.isSafeInteger(value.maxAgeSeconds) || value.maxAgeSeconds < 1 || value.maxAgeSeconds > 3600
     || !Array.isArray(value.requirements) || value.requirements.length > 32
     || canonicalJson(value) + '\n' !== UTF8.decode(bytes)) flightFail('blocked-flight-manifest-invalid');
+  if (scoped && (!Array.isArray(value.operations) || value.operations.length > 32
+    || !value.operations.includes('publication') || new Set(value.operations).size !== value.operations.length
+    || value.operations.some(id => typeof id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/u.test(id))))
+    flightFail('blocked-flight-operations-invalid');
   const ids = new Set();
   for (const item of value.requirements) {
-    if (!exactFields(item, 'id,owner,kind,input,sha256,expiresAt,phases,remedy')
+    if (!exactFields(item, 'id,owner,kind,input,sha256,expiresAt,phases,remedy' + (scoped ? ',operations' : ''))
       || typeof item.id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/u.test(item.id) || ids.has(item.id)
       || !flightText(item.owner) || !flightText(item.remedy)
       || typeof item.input !== 'string' || !/^[A-Z][A-Z0-9_]{0,127}$/u.test(item.input)
@@ -388,6 +393,10 @@ function flightRequirements(root, profile, file = null, ref = profile.canonical.
       || new Set(item.phases).size !== item.phases.length
       || item.phases.some((phase) => !['pre', 'in', 'post'].includes(phase)))
       flightFail('blocked-flight-requirement-invalid');
+    if (scoped && (!Array.isArray(item.operations) || item.operations.length > 32
+      || new Set(item.operations).size !== item.operations.length
+      || item.operations.some(id => !value.operations.includes(id))))
+      flightFail('blocked-flight-requirement-operations-invalid');
     if (item.kind === 'environment' ? item.sha256 !== null || item.expiresAt !== null
       : typeof item.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(item.sha256)
         || typeof item.expiresAt !== 'string' || !Number.isFinite(Date.parse(item.expiresAt))
@@ -397,13 +406,24 @@ function flightRequirements(root, profile, file = null, ref = profile.canonical.
   }
   return { ...value, digest: flightHash(bytes) };
 }
-function flightInputs(root, requirements, phase, now) {
-  const roots = worktrees(root).map((entry) => resolve(entry.path));
-  return requirements.requirements.filter((item) => item.phases.includes(phase)).map((item) => {
+function flightOperation(requirements, requested) {
+  if (!requirements.operations) {
+    if (requested !== undefined) flightFail('blocked-flight-operation-requires-v2');
+    return null;
+  }
+  const operation = requested ?? 'publication';
+  if (!requirements.operations.includes(operation)) flightFail('blocked-flight-operation-unknown');
+  return operation;
+}
+function flightInputs(root, requirements, phase, now, operation = flightOperation(requirements)) {
+  let roots;
+  return requirements.requirements.filter(item => item.phases.includes(phase)
+    && (!item.operations?.length || item.operations.includes(operation))).map((item) => {
     const value = process.env[item.input];
     let code = typeof value === 'string' && value.trim().length > 0 ? null : 'input-missing';
     if (!code && item.kind === 'evidence') {
       try {
+        roots ??= worktrees(root).map((entry) => resolve(entry.path));
         const file = realpathSync(value);
         if (!isAbsolute(value) || roots.some((rootPath) => {
           const tail = relative(rootPath, file);
@@ -446,6 +466,7 @@ export function observeFlight(root, argv, profile) {
   const add = (code, owner, remedy) => findings.push({ code, owner, remedy });
   const file = option(argv, 'requirements'), requirements = flightRequirements(root, profile, file);
   if (!requirements) flightFail('blocked-flight-requirements-unconfigured');
+  const operation = flightOperation(requirements, option(argv, 'operation') ?? undefined);
   const ref = option(argv, 'ref') ?? observeGit(['branch', '--show-current'], { cwd: root });
   if (!isLaneRef(ref)) flightFail('blocked-flight-lane-required');
   const sourceRef = `refs/heads/${ref}`, head = headSha(sourceRef, root);
@@ -454,10 +475,11 @@ export function observeFlight(root, argv, profile) {
   const canonicalPath = before.find((item) => `refs/heads/${item.branch}` === profile.canonical.localRef)?.path;
   const source = { repository: profile.repository, ref, head,
     tree: observeGit(['rev-parse', `${head}^{tree}`], { cwd: root }),
-    canonicalPath, profileDigest: profile.profileDigest, requirementsDigest: requirements.digest };
+    canonicalPath, profileDigest: profile.profileDigest, requirementsDigest: requirements.digest,
+    ...(operation === null ? {} : { operation }) };
   const base = headSha(profile.canonical.remoteRef, root);
   const local = headSha(profile.canonical.localRef, root);
-  const inputs = flightInputs(root, requirements, phase, now);
+  const inputs = flightInputs(root, requirements, phase, now, operation);
   inputs.filter((item) => !item.satisfied).forEach((item) => add(item.code, item.owner, item.remedy));
   let checkpoint = null;
   if (phase !== 'pre') {
@@ -506,7 +528,7 @@ export function observeFlight(root, argv, profile) {
     || completion?.canonicalClean && publicationByteRisks(canonicalPath).blocked
     || canonicalJson(worktrees(root)) !== canonicalJson(before)
     || flightRequirements(root, profile, file)?.digest !== requirements.digest
-    || canonicalJson(flightInputs(root, requirements, phase, Date.now())) !== canonicalJson(inputs))
+    || canonicalJson(flightInputs(root, requirements, phase, Date.now(), operation)) !== canonicalJson(inputs))
     add('observation-drift', 'orchestrator', 'Repeat observation after concurrent changes settle.');
   const payload = { schema: FLIGHT_SCHEMA, phase, observedAt: new Date(now).toISOString(),
     observationOnly: true, authorizesEffects: false, ok: findings.length === 0,
