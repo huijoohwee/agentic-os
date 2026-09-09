@@ -1,3 +1,11 @@
+---
+schema: agentic-os/lifecycle-flight-guide/v2
+title: Lifecycle flight observations
+owner: agentic-os
+load_policy: on-demand
+runtime_contract: bin/agentic-os-auxiliary.mjs
+verification: node --test __tests__/lifecycle-flight.test.mjs
+---
 # Lifecycle flight observations
 
 Use the pinned Agentic OS package to discover unavailable prerequisites before expensive checks,
@@ -19,7 +27,7 @@ existing repositories unchanged; an enrolled malformed manifest blocks instead o
 Candidate edits cannot override the canonical manifest. A manifest differing from fetched upstream
 policy blocks publication until canonical reconciliation; a stale checkout cannot omit new requirements.
 
-The manifest has exactly `schema`, `maxAgeSeconds`, and `requirements`. Encode it using the package's
+The V1 manifest has exactly `schema`, `maxAgeSeconds`, and `requirements`. Encode it using the package's
 `canonicalJson` export plus one LF, so duplicate JSON keys and noncanonical input fail closed. This
 readable example is the object to encode, not the final wire bytes:
 
@@ -40,7 +48,7 @@ readable example is the object to encode, not the final wire bytes:
 }
 ```
 
-Each requirement has exactly the eight fields above. IDs are unique lowercase identifiers. Owners and
+Each V1 requirement has exactly the eight fields above. IDs are unique lowercase identifiers. Owners and
 remedies are bounded text. `input` names an environment variable; its value is never included in the
 report or hashed. A consumer such as Commerce can declare its evaluator trust-anchor, Git executable,
 runtime root, and executor-module variables here without adding a consumer controller to Agentic OS.
@@ -55,6 +63,66 @@ checks cannot replace signature verification or the independently operated evalu
 Bounds: 32 requirements, 64 KiB manifest/checkpoint, 128 KiB per public artifact (4 MiB maximum per pass),
 and checkpoint age from 1 to 3,600 seconds. Phase lists select pre/in/post obligations explicitly.
 An empty requirements array declares that this contract has no external inputs.
+
+## Select resources by operation
+
+Use `agentic-os/flight-requirements/v2` when prerequisites differ by operation. The owner adds a
+top-level `operations` list (1–32 unique IDs, including the reserved `publication`) and an
+`operations` list to every requirement. An empty requirement list applies that requirement to all
+operations; a nonempty list selects only the named operations. Phase selection still applies.
+V1 enrollment keeps all existing phase obligations and rejects operation selection.
+
+For example, extend the canonical object above with:
+
+```json
+{
+  "schema": "agentic-os/flight-requirements/v2",
+  "operations": ["publication", "edge-browser", "paid-loop"],
+  "maxAgeSeconds": 900,
+  "requirements": [{
+    "id": "sandbox-context",
+    "owner": "sandbox-runtime-owner",
+    "kind": "environment",
+    "input": "SANDBOX_RUNTIME_CONTEXT",
+    "sha256": null,
+    "expiresAt": null,
+    "phases": ["pre", "in"],
+    "operations": ["paid-loop"],
+    "remedy": "Resolve the sandbox runtime through its owning runner, then repeat paid-loop pre-flight."
+  }]
+}
+```
+
+`agentic-os flight pre --operation=edge-browser` neither accesses the sandbox input nor reads its
+evidence file. `--operation=paid-loop` requires it. Unknown operations or malformed declarations
+fail before filtering. Omitting the option selects `publication`; `doctor` and `land` use that same
+reserved operation. Requirements needed for every action use an empty operation list. Publication
+requirements cannot be waived with a runtime selection or candidate manifest edit.
+
+Choose the operation from the actual owner runner's coverage, not its name or available tools. Missing
+metadata means unknown requirements, not resource-free execution. The owner must enroll the reviewed
+manifest and call the matching flight operation before expensive setup; a package upgrade alone does
+not migrate a consumer runner. Keep the operation unchanged in later checkpoints:
+
+```sh
+agentic-os flight pre --operation=paid-loop > /absolute/external/paid-loop-pre.json
+# Run the owner's complete paid-loop check.
+agentic-os flight in --operation=paid-loop --checkpoint=/absolute/external/paid-loop-pre.json
+```
+
+The operation is bound into the checkpoint source identity. Edge-browser evidence cannot satisfy
+paid-loop or publication observations. Inputs omitted by selection carry no readiness claim. A
+missing required input blocks that operation; it is neither a failed product assertion nor a pass.
+Run other independently required operations with their own checkpoints and retain blocked coverage.
+
+Resource policy is provider-neutral: use the same contract for container engines, browsers, model
+endpoints, accelerators or credentials. Activate only the selected runner's dependencies, share them
+only under its existing ownership/locking policy, and release only resources it acquired. For the
+Commerce reference case, full paid-loop coverage needs its sandbox engine; edge-only browser coverage
+does not establish that loop. This observer never starts, installs, probes or stops a tool, interprets
+commands, or grants execution authority. Environment presence is still only presence; the owner must
+verify runtime identity and readiness. Worktree enumeration for public evidence is also lazy and occurs
+only when a selected evidence input is present.
 
 ## Use all three phases
 

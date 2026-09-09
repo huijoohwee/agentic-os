@@ -23,7 +23,7 @@ function requirement(overrides = {}) {
     sha256: null, expiresAt: null, phases: ['pre', 'in', 'post'],
     remedy: 'Supply the evaluator context outside the candidate.', ...overrides };
 }
-function fixture(t, requirements = [requirement()]) {
+function fixture(t, requirements = [requirement()], manifestOptions = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'flight-'));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'), lane = join(parent, 'lane'), bare = join(parent, 'remote.git');
@@ -36,7 +36,7 @@ function fixture(t, requirements = [requirement()]) {
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
     capabilities: [], requiredChecks: [] });
   writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile) + '\n');
-  const manifest = { schema: 'agentic-os/flight-requirements/v1', maxAgeSeconds: 900, requirements };
+  const manifest = { schema: 'agentic-os/flight-requirements/v1', maxAgeSeconds: 900, requirements, ...manifestOptions };
   writeFileSync(join(root, '.agentic-os-flight.json'), canonicalJson(manifest) + '\n');
   writeFileSync(join(root, 'source.txt'), 'base\n');
   git(root, 'add', '.'); git(root, 'commit', '-qm', 'base');
@@ -204,4 +204,73 @@ test('land refuses a canonical manifest stale against the fetched upstream polic
   assert.equal(git(subject.root, 'rev-parse', 'HEAD'), canonicalHead);
   assert.equal(git(subject.lane, 'rev-parse', 'HEAD'), head);
   assert.equal(spawnSync('git', ['--git-dir', subject.bare, 'show-ref', '--verify', `refs/heads/${REF}`]).status, 128);
+});
+
+const scopedManifest = { schema: 'agentic-os/flight-requirements/v2',
+  operations: ['publication', 'edge-browser', 'paid-loop'] };
+test('on-demand operation skips unrelated unavailable evidence and binds checkpoints to its scope', t => {
+  const subject = fixture(t, [requirement({ id: 'sandbox', kind: 'evidence',
+    operations: ['paid-loop'], sha256: hash('sandbox receipt'),
+    expiresAt: new Date(Date.now() + 600_000).toISOString() })], scopedManifest);
+  // This file is deliberately unavailable: edge/publication must not resolve or read it.
+  const absent = join(subject.parent, 'unavailable-sandbox');
+  const edge = cli(subject, ['flight', 'pre', '--operation=edge-browser'], { supplied: absent });
+  assert.equal(edge.status, 0, edge.stderr + edge.stdout);
+  assert.deepEqual(edge.report.inputs, []);
+  assert.equal(edge.report.source.operation, 'edge-browser');
+  assert.equal(edge.report.authorizesEffects, false);
+  writeFileSync(subject.checkpoint, edge.stdout);
+  const paid = cli(subject, ['flight', 'pre', '--operation=paid-loop'], { supplied: absent });
+  assert.equal(paid.status, 1);
+  assert.equal(paid.report.inputs[0].code, 'evidence-unavailable');
+  writeFileSync(absent, 'sandbox receipt');
+  const changed = cli(subject, ['flight', 'in', '--operation=paid-loop',
+    `--checkpoint=${subject.checkpoint}`], { supplied: absent });
+  assert.ok(changed.report.findings.some(item => item.code === 'checkpoint-drift'));
+  const same = cli(subject, ['flight', 'in', '--operation=edge-browser',
+    `--checkpoint=${subject.checkpoint}`], { supplied: '' });
+  assert.equal(same.status, 0, same.stdout);
+  const publication = cli(subject, ['flight', 'pre'], { supplied: '' });
+  assert.equal(publication.status, 0, publication.stdout);
+  assert.equal(publication.report.source.operation, 'publication');
+  assert.deepEqual(publication.report.inputs, []);
+});
+
+test('common requirements apply to every operation and selection never waives publication policy', t => {
+  const subject = fixture(t, [requirement({ operations: [] }),
+    requirement({ id: 'publish', input: 'AGENTIC_OS_TEST_PUBLISH_INPUT', operations: ['publication'] })],
+  scopedManifest);
+  const edge = cli(subject, ['flight', 'pre', '--operation=edge-browser'], { supplied: '' });
+  assert.equal(edge.status, 1);
+  assert.equal(edge.report.inputs[0].id, 'evaluator');
+  const ready = cli(subject, ['flight', 'pre', '--operation=edge-browser']);
+  assert.equal(ready.status, 0, ready.stdout);
+  const head = git(subject.lane, 'rev-parse', 'HEAD');
+  const land = cli(subject, ['land']);
+  assert.equal(land.status, 1);
+  assert.match(land.stderr, /blocked-flight-prerequisites/u);
+  assert.match(land.stderr, /"id":"publish"/u);
+  assert.equal(git(subject.lane, 'rev-parse', 'HEAD'), head);
+  assert.equal(cli(subject, ['land', '--operation=edge-browser']).status, 1);
+});
+
+test('operation selection requires explicit v2 enrollment and validates all declarations before filtering', t => {
+  const legacy = fixture(t);
+  assert.equal(cli(legacy, ['flight', 'pre', '--operation=edge-browser']).report.code,
+    'blocked-flight-operation-requires-v2');
+  const subject = fixture(t, [requirement({ operations: ['paid-loop'] })], scopedManifest);
+  assert.equal(cli(subject, ['flight', 'pre', '--operation=typo']).report.code,
+    'blocked-flight-operation-unknown');
+  const external = join(subject.parent, 'preview.json');
+  for (const manifest of [
+    { ...subject.manifest, operations: ['edge-browser'] },
+    { ...subject.manifest, operations: ['publication', 'publication'] },
+    { ...subject.manifest, requirements: [requirement({ operations: ['typo'] })] },
+    { ...subject.manifest, requirements: [requirement({ operations: ['paid-loop', 'paid-loop'] })] },
+    { ...subject.manifest, requirements: [requirement()] },
+  ]) {
+    writeFileSync(external, canonicalJson(manifest) + '\n');
+    assert.equal(cli(subject, ['flight', 'pre', '--operation=edge-browser',
+      `--requirements=${external}`]).status, 1);
+  }
 });

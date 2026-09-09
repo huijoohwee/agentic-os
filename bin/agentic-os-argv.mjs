@@ -48,7 +48,7 @@ export function validateCommandArguments(command, argv) {
       ? exact(argv, { flags: ['checks'], options: ['input'], requiredOptions: ['input'] })
       : exact(argv, { flags: ['provider', 'deep'] });
     case 'flight': {
-      const error = exact(argv, { min: 1, options: ['requirements', 'checkpoint', 'ref'] });
+      const error = exact(argv, { min: 1, options: ['requirements', 'checkpoint', 'ref', 'operation'] });
       if (error) return error;
       const phase = argv.find((token) => !token.startsWith('--'));
       if (!['pre', 'in', 'post'].includes(phase)) return 'flight requires pre, in, or post';
