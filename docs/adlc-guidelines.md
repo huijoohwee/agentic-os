@@ -16,25 +16,23 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC. Consumers keep product/deploy/rollback/authority policy, not competing controllers.
+ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority policy, no controllers.
 
-- Free tiers only; zero spend, no paid plans/addons/overages. Software must be FOSS.
-- Free hosted services are permitted, not labeled FOSS; unknown cost/license blocks adoption.
-- Minimize time-to-production: smallest valuable vertical diff; fix owner/remove replacements; no scenario
-  controllers.
+- PRD-TAD-ADR (continuity ID + exact revision) is the SSOT for scope, acceptance, design, and decision of
+  every 0→1 transition; other docs only reference it; a stale join blocks that transition only.
+- Free tiers only; zero spend, no paid plans/addons/overages. Software must be FOSS; free hosting is not
+  FOSS; unknown cost/license blocks adoption.
+- Minimize time-to-production: smallest valuable vertical diff; fix owner, remove replacements.
 - Continue safe work; infer no scope/authority/destruction/promotion/deploy/product choice.
 - Lean bounded sprints state TTP ETA and time/byte/module caps; refresh on drift. External waits state
   dependency/condition/recheck, never ETA.
 - Global prompt: exact LF-terminated UTF-8, at most 1,000 bytes; code points secondary, tokens advisory.
 - New always-load guidance/modules declare deltas; otherwise replace, lazy-load, or reject.
 - Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.
-- Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md` for delivery planning or repeated mechanical failure.
-- Preserve bytes; inspect live state. Projections are evidence, not authority.
+- Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md` for delivery planning or repeated mechanical failure,
+  `../guides/PRD-TAD-ADR.md` (pipeline) for a transition's owner/check.
 - Canonical is read-only. Edit owner files in disjoint path-scoped lanes; overlaps wait. Land stages,
-  commits, and publishes reserved paths.
-- Land the exact committed diff by protected merge. Lane binds branch/worktree/scope/review.
+  commits, and publishes reserved paths. Land the exact committed diff by protected merge.
 - Exact candidates; proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt.
-- Clean exact eligible targets only after value closure/detachment; no wildcards. Effects need exact
-  byte/path/ref/race proof; structural health is advisory.
-
-Run both workflows; local policy may narrow ADLC or select adapters.
+- Clean exact eligible targets only after value closure; no wildcards. Effects need exact byte/path/ref/race
+  proofs; structure is advisory.
