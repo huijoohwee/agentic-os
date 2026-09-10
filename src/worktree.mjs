@@ -197,7 +197,7 @@ export function parseWritePaths(value) {
   }
   return paths;
 }
-const pathsOverlap = (left, right) => left === right
+export const pathsOverlap = (left, right) => left === right
   || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 const pathIsReserved = (path, reservations) => reservations.some((reservation) =>
   path === reservation || path.startsWith(`${reservation}/`));

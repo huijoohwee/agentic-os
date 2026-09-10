@@ -9,6 +9,7 @@
     "./invocation": "./src/invocation.mjs",
     "./frontmatter": "./src/catalog-input.mjs",
     "./DOCUMENTS.md": "./DOCUMENTS.md",
+    "./FLEET.md": "./FLEET.md",
     "./skills/canvas/SKILL.md": "./skills/canvas/SKILL.md",
     "./records": "./src/governance.mjs",
     "./records/authority-evidence": "./src/authority-record.mjs",
@@ -58,7 +59,8 @@
     "test",
     "__tests__",
     "AGENTS.md",
-    "DOCUMENTS.md"
+    "DOCUMENTS.md",
+    "FLEET.md"
   ],
   "scripts": {
     "setup": "node bin/agentic-os.mjs setup",
@@ -67,6 +69,7 @@
     "land": "npm run test:fast && node bin/agentic-os.mjs land",
     "successor": "node bin/agentic-os.mjs successor",
     "status": "node bin/agentic-os.mjs status",
+    "fleet:check": "node bin/agentic-os-fleet.mjs",
     "reap": "node bin/agentic-os.mjs reap",
     "finish": "node bin/agentic-os.mjs finish",
     "sync:canonical": "node bin/agentic-os.mjs canonical-sync",
