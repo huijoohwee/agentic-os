@@ -14,8 +14,8 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-for (const released of [false, true]) test(released
-  ? 'the exact previously released copying-reader runtime authorizes migration'
+for (const released of [false, 'copy', 'pre-frontmatter']) test(released
+  ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -23,8 +23,8 @@ for (const released of [false, true]) test(released
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
   const altered = selected.files.map((file, index) => {
     const bytes = released ? (file.path === 'src/catalog-input.mjs'
-      ? readFileSync(new URL('./fixtures/catalog-input-copy.mjs.txt', import.meta.url))
-      : file.path === 'src/lane-id.mjs'
+      ? readFileSync(new URL('./fixtures/catalog-input-' + released + '.mjs.txt', import.meta.url))
+      : released === 'copy' && file.path === 'src/lane-id.mjs'
         ? readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)) : file.bytes)
       : index === 0 ? Buffer.concat([file.bytes, Buffer.from('\n')]) : file.bytes;
     return { path: file.path, mode: file.mode, sha256: digest(bytes), bytes };
@@ -48,7 +48,9 @@ for (const released of [false, true]) test(released
   chmodSync(manifestPath, 0o600);
 
   if (released) {
-    assert.equal(runtimeId, 'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c');
+    assert.equal(runtimeId, released === 'copy'
+      ? 'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c'
+      : 'v1-c154ec30b0471e98ba26f61583b1c12063b80c355d366f61d63695a12f4be5e9');
     assert.equal(assertPriorManagedRuntime(join(path, '.githooks'), selected), true);
     const catalog = join(path, 'src/catalog-input.mjs');
     writeFileSync(catalog, Buffer.concat([readFileSync(catalog), Buffer.from('\n')]));
@@ -56,7 +58,7 @@ for (const released of [false, true]) test(released
   assert.throws(
     () => assertPriorManagedRuntime(join(path, '.githooks'), selected),
     (error) => error.reason === 'blocked-hook-runtime-integrity'
-      && (released || /not release-pinned/u.test(error.message)),
+      && (Boolean(released) || /not release-pinned/u.test(error.message)),
   );
   assert.equal(dirname(path), selected.managedRoot);
 });

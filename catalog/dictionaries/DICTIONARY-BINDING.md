@@ -23,7 +23,7 @@ source_docs:
   - "AGENT-TEAM.md"
   - "REPOSITORY-PACKING.md"
   - "VOICE-STUDIO.md"
-  - "docs/documents/git-guidelines.md"
+  - "../node_modules/agentic-os/docs/adlc-guidelines.md"
 publish_policy: "Dev-only until explicit operator approval"
 runtime_scope: "shared invocation metadata; execution remains consumer-owned"
 runtime_claim: "dictionary content for shared binding invocation utilities; no separate binding store"
@@ -301,7 +301,7 @@ Dictionary references resolve within this directory. Runtime and approval claims
 | `@git:` | Context reference to recent commit metadata or patch range. | Current VCS repository. | Count is clamped to a small maximum, missing revisions warn, and sensitive content remains blocked. |
 | `@local-git-repository` | Browser-owned persisted Git object, ref, worktree, and outbox state. | agentic-graph storage-engine IndexedDB owner. | Carries no credential; controls require active IndexedDB, bounded paths and objects, atomic authority checks, and typed offline state. |
 | `@git-remote` | Opaque configured remote alias used for browser Git fetch or push. | Authenticated Dev Worker storage relay and its static allowlist. | Browser payloads contain neither credentials nor upstream URLs; the relay revalidates loopback origin, membership, role, size, path, and compare-before-update state. |
-| `@git-guidelines` | Git guidelines source. | `docs/documents/git-guidelines.md`. | Source-only binding; it grants no mutation, integration, release, publication, or deployment authority. |
+| `@git-guidelines` | Git guidelines source. | `../node_modules/agentic-os/docs/adlc-guidelines.md`. | Source-only binding; it grants no mutation, integration, release, publication, or deployment authority. |
 | `@persisted-cache` | Browser-owned binary and metadata cache used by file synchronization. | agentic-graph storage-engine IndexedDB owner. | Chunked values stay within browser limits, credentials are rejected, and degraded persistence blocks mutating controls. |
 | `@file-sync-provider` | Opaque configured provider alias for file or directory pull and push. | Authenticated Dev Worker provider registry. | Alias exposes no provider resource id or credential; unsupported native documents, shortcuts, symlinks, and unverifiable hashes fail explicitly. |
 | `@url:` | Operator-provided reference to bounded external content for context expansion or source import. | Approved URL fetch, extract, or Import URL owner. | Requires `@reference-policy`, egress policy, cache/citation metadata, size bounds, and no credentials in the URL or headers. |
