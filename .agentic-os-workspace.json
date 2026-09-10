@@ -1,22 +1,18 @@
 {
-  "schema": "agentic-os/workspace/v1",
+  "schema": "agentic-os/workspace/v2",
+  "remote": "https://github.com/huijoohwee/.workspace.git",
+  "branch": "main",
   "sources": {
     "memory": {
       "path": ".memory",
-      "remote": "https://github.com/huijoohwee/.memory.git",
-      "branch": "main",
       "directory": "records"
     },
     "todo": {
       "path": ".todo",
-      "remote": "https://github.com/huijoohwee/.todo.git",
-      "branch": "main",
       "entry": "docs/TODO.md"
     },
     "artifacts": {
-      "path": ".artifacts",
-      "remote": "https://github.com/huijoohwee/.artifacts.git",
-      "branch": "main"
+      "path": ".artifacts"
     }
   }
 }

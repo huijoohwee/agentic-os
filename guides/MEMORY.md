@@ -26,8 +26,8 @@ its local key must not coexist with workspace enrollment.
 For a standalone consumer, clone the private source beside the canonical repository and opt in:
 
 ```sh
-git clone --branch main https://github.com/huijoohwee/.memory.git ../.memory
-git config --local agentic-os.memoryRoot ../.memory
+git clone --branch main https://github.com/huijoohwee/.workspace.git ../.workspace
+git config --local agentic-os.memoryRoot ../.workspace
 node bin/agentic-os.mjs memory
 ```
 
@@ -42,9 +42,9 @@ A consumer must commit `.agentic-os-memory.json` on its protected branch before 
 ```json
 {
   "schema": "agentic-os/memory-source/v1",
-  "remote": "https://github.com/huijoohwee/.memory.git",
+  "remote": "https://github.com/huijoohwee/.workspace.git",
   "branch": "main",
-  "directory": "records"
+  "directory": ".memory/records"
 }
 ```
 
@@ -61,6 +61,11 @@ base and before provisioning a lane. Configuration comes from that exact protect
 uncommitted edits and lane-only configuration cannot redirect the memory source.
 On resume, run `agentic-os memory`; use `agentic-os memory --offline` to request the saved snapshot.
 Installed consumers invoke their installed CLI with the same arguments.
+
+A shared reference index such as `.memory/MEMORY.md` stays outside the bounded shard directory.
+A curated entry can point to its exact source revision for on-demand search. Preserve referenced
+files when importing an index so relative links work on other devices. Assistant-managed local
+indexes remain subject to that assistant's update mechanism; startup does not overwrite them.
 
 The command prints a compact receipt with source/config revisions, entry count, index pathname,
 reuse status and freshness. It does not print record text. Open the indicated index only when
@@ -102,7 +107,9 @@ Use Canvas's [memory-log/v1 owner][contract]; do not copy raw sessions or invent
 This adapter supports its flat scalar frontmatter and four single-line sigil fields (`type`, `scope`,
 `summary`, `refs`). It is a deliberately narrow reader, not a general YAML parser. Source-specific
 validation, including source-contract link resolution, stays at the content owner.
-Place reviewed monthly shards at `records/YYYY-MM.md`; keep other material outside that directory.
+Place reviewed monthly shards under the selected directory (`.memory/records/YYYY-MM.md` in the
+consolidated workspace). Bounded relative paths are accepted; traversal and symlink parents fail.
+Keep other material outside that directory.
 Include the existing required frontmatter (`schema`, `agent`, `device`, `period`, `timestamp_format`,
 `append_policy`, `source_contract`) and unique ascending `## @mem-YYYYMMDDTHHmmssZ` headings.
 `refs` uses a nonempty comma-separated bracket list; quoted commas and multiline values are unsupported.

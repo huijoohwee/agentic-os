@@ -13,18 +13,21 @@ function configuration(root, revision) {
   const mode = read(root, ['ls-tree', revision, '--', FILE]);
   if (!mode.startsWith('100644 blob ')) fail('config-file');
   const config = JSON.parse(read(root, ['show', `${revision}:${FILE}`], { maxBuffer: 4096 }));
-  if (!config || Object.keys(config).sort().join(',') !== 'schema,sources'
-    || config.schema !== 'agentic-os/workspace/v1' || !config.sources
+  const combined = config?.schema === 'agentic-os/workspace/v2';
+  if (!config || Object.keys(config).sort().join(',') !== (combined ? 'branch,remote,schema,sources' : 'schema,sources')
+    || !combined && config.schema !== 'agentic-os/workspace/v1' || !config.sources
     || Object.keys(config.sources).sort().join(',') !== 'artifacts,memory,todo') fail('config-invalid');
+  if (combined) validateSource(config, root);
   const paths = new Set();
   for (const role of ROLES) {
     const source = config.sources[role];
-    const keys = role === 'memory' ? 'branch,directory,path,remote'
-      : role === 'todo' ? 'branch,entry,path,remote' : 'branch,path,remote';
+    const keys = combined ? (role === 'memory' ? 'directory,path' : role === 'todo' ? 'entry,path' : 'path')
+      : role === 'memory' ? 'branch,directory,path,remote'
+        : role === 'todo' ? 'branch,entry,path,remote' : 'branch,path,remote';
     if (!source || Object.keys(source).sort().join(',') !== keys
       || typeof source.path !== 'string' || !/^\.?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(source.path)
       || paths.has(source.path)) fail('source-path');
-    paths.add(source.path); validateSource(source, root);
+    paths.add(source.path); if (!combined) validateSource(source, root);
     if (role === 'memory' && (typeof source.directory !== 'string'
       || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(source.directory))) fail('memory-directory');
     if (role === 'todo' && (typeof source.entry !== 'string' || source.entry.length > 128
@@ -36,11 +39,25 @@ function selectedSources(root, policy, selected, config, roles) {
   const canonical = worktrees(root).filter(item => item.branch === policy.protectedBranch);
   if (canonical.length !== 1) fail('canonical-root');
   const container = realpathSync(resolve(canonical[0].path, selected));
-  if (!lstatSync(container).isDirectory() || lstatSync(join(container, '.git'), { throwIfNoEntry: false }))
-    fail('container');
+  const combined = config.schema === 'agentic-os/workspace/v2';
+  if (!lstatSync(container).isDirectory()) fail('container');
+  if (combined) {
+    if (realpathSync(repoRoot(container)) !== container || commonDir(container) === commonDir(root)) fail('source-root');
+    if (remoteTransport('origin', container).fetchUrl !== config.remote) fail('remote-identity');
+  } else if (lstatSync(join(container, '.git'), { throwIfNoEntry: false })) fail('container');
   const sources = new Map(), seen = new Set();
   for (const role of roles) {
     const spec = config.sources[role], path = realpathSync(join(container, spec.path));
+    if (combined) {
+      if (path !== join(container, spec.path) || !lstatSync(path).isDirectory()
+        || realpathSync(repoRoot(path)) !== container) fail('source-root');
+      const selected = { ...spec, remote: config.remote, branch: config.branch };
+      if (role === 'memory') selected.directory = `${spec.path}/${spec.directory}`;
+      if (role === 'todo') selected.entry = `${spec.path}/${spec.entry}`;
+      const tree = read(container, ['ls-tree', `refs/remotes/origin/${config.branch}`, '--', spec.path]);
+      if (!tree.startsWith('040000 tree ') || !tree.endsWith(`\t${spec.path}`)) fail('source-tree');
+      sources.set(role, { path: container, spec: selected }); continue;
+    }
     if (realpathSync(repoRoot(path)) !== path) fail('source-root');
     const common = commonDir(path);
     if (common === commonDir(root) || seen.has(common)) fail('source-collision');
@@ -50,11 +67,11 @@ function selectedSources(root, policy, selected, config, roles) {
   }
   return { container, sources };
 }
-function observeSource(path, spec, offline, role) {
-  const revision = read(path, ['rev-parse', '--verify', `refs/remotes/origin/${spec.branch}^{commit}`]);
+function observeSource(path, spec, offline, role, shared = null) {
+  const revision = shared?.sourceRevision ?? read(path, ['rev-parse', '--verify', `refs/remotes/origin/${spec.branch}^{commit}`]);
   if (!SHA.test(revision)) fail('local-source-revision');
-  let remoteRevision = null, status = 'offline-local';
-  if (!offline) {
+  let remoteRevision = shared?.remoteRevision ?? null, status = shared?.status ?? 'offline-local';
+  if (!offline && !shared) {
     const advertised = read(path, ['ls-remote', '--refs', spec.remote, `refs/heads/${spec.branch}`],
       { allowFail: true, maxBuffer: 4096, remoteReadTimeoutMs: 5000 });
     if (advertised !== null) {
@@ -90,12 +107,16 @@ export function hydrateWorkspace(root, policy, { revision = null, offline = fals
   let result, error;
   try {
     const observations = {};
+    let shared = null;
     for (const [role, { path, spec }] of sources) {
       if (role === 'memory') {
         const { remote, branch, directory } = spec;
         observations.memory = hydrateSelectedMemory(root, policy, path,
           { schema: 'agentic-os/memory-source/v1', remote, branch, directory }, { configRevision, offline });
-      } else observations[role] = observeSource(path, spec, offline, role);
+      } else {
+        observations[role] = observeSource(path, spec, offline, role, shared);
+        if (config.schema === 'agentic-os/workspace/v2') shared = observations[role];
+      }
     }
     result = { schema: 'agentic-os/workspace-observation/v1', status: 'observed', root: container,
       configRevision, sources: observations, grantsAuthority: false };
