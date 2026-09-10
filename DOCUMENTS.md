@@ -1,7 +1,7 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.0.0"
+version: "1.1.0"
 date: "2026-09-10"
 lang: "en-US"
 owner: "agentic-os"
@@ -20,6 +20,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Need | Authoritative entry point |
 |---|---|
 | Document authoring and ownership rules | [Documentation guidelines][documentation] |
+| Naming conventions and syntax profile selection | [Conventions and syntax guidelines][conventions] |
 | Common YAML frontmatter | [Runtime frontmatter guidelines][frontmatter] |
 | Bounded parsed metadata API | [Shared frontmatter boundary](guides/FRONTMATTER.md) |
 | CID, RAO, SVO and specification fields | [PRD/TAD/ADR guidelines][prd], [shared semantic schema][semantics] |
@@ -95,6 +96,7 @@ Markdown targets against the selected owner trees and inspect `npm pack --dry-ru
 for this asset. Document checks establish source consistency only.
 
 [documentation]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/documentation-guidelines.md
+[conventions]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/conventions-and-syntax-guidelines.md
 [frontmatter]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/runtime-frontmatter-guidelines.md
 [prd]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/prd-tad-adr-guidelines.md
 [semantics]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/roles-actions-outcomes-schema.jsonld
