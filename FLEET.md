@@ -45,7 +45,7 @@ requirements exhaust the real product scope; the dispatcher validates that join 
 | Local branch/worktree observation | Existing `agentic-os status` and `reap` | Observe lifecycle state; do not infer remote exclusivity. |
 | Authenticated claim and transfer | Consumer-selected governance authority | Verify current identity, write set, epoch and fence for each authorized effect. |
 
-The operator selected private `huijoohwee/.todo` as the shared planning owner. The owner migration moves
+The operator selected private `huijoohwee/.workspace/.todo` as the shared planning owner. The owner migration moves
 the TODO contract, Kanban board and immutable records together, reusing public validators with preserved source
 hashes. Canvas retains owner-routing documents only. Historical website logs route to the live index.
 Central navigation remains in `DOCUMENTS.md`; moving files does not make simultaneous claims atomic.
@@ -109,7 +109,7 @@ Their `authority: false` and `liveClaimsVerified: false` are invariant, includin
 ## Decision and remaining enforcement
 
 **ADR FLEET-01, accepted for this implementation.** Add a bounded on-demand allocation check that
-reuses the existing lane path semantics and governance hashing. Keep planning in private `huijoohwee/.todo`, common
+reuses the existing lane path semantics and governance hashing. Keep planning in private `huijoohwee/.workspace/.todo`, common
 authoring rules in the website and lifecycle authority in the existing consumer-selected adapters.
 Do not add a mutable Markdown fleet lock, another backlog, a background poller or a new database.
 The added command is loaded only when requested; the always-loaded prompt and source-module budget
@@ -121,5 +121,5 @@ publication and integration. Exercise simultaneous claims, stale/offline writers
 and exact checkpoint recovery before claiming automatic exclusion. Existing GitHub recovery authority
 must not be treated as a general task-claim service. See [ordering boundaries](docs/MERGE-QUEUE.md).
 
-[todo]: https://github.com/huijoohwee/.todo/blob/main/docs/TODO.md
-[kanban]: https://github.com/huijoohwee/.todo/blob/main/docs/kanban.md
+[todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
+[kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md

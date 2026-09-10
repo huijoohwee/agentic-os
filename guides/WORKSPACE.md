@@ -1,7 +1,7 @@
 ---
 title: "Private Workspace Startup"
 doc_type: "Runtime Guide"
-version: "1.0.0"
+version: "2.0.0"
 date: "2026-09-10"
 lang: "en-US"
 owner: "agentic-os"
@@ -11,97 +11,95 @@ load_policy: "on-demand"
 
 # Private workspace startup
 
-`.workspace` is a local container for three independent private Git repositories:
+The selected private `huijoohwee/.workspace` repository owns shared context on `main`:
 
 ```text
-.workspace/             local directory, not a Git repository
-  .memory/              curated shared knowledge; derived indexes stay local
+GitHub/.workspace/       one Git repository and remote
+  .memory/              curated knowledge; generated indexes stay in .git locally
   .todo/                immutable task records and current Kanban coordination
   .artifacts/           retained evidence and produced artifacts
 ```
 
-Each source keeps its own remote, branch, history, permissions and publication workflow.
-`agentic-os` owns startup composition, not these repositories' content or product effect authority.
-Hidden names do not establish privacy: select private repositories and retain device credentials locally.
-Physical clones and explicit directory aliases are supported. On the current device, these three
-entries are aliases to the existing sibling clones, preserving active artifact paths and every byte.
-New devices may clone directly into the container. There is no enclosing Git monorepo or submodule.
+`agentic-os` owns startup composition; each subfolder has one content responsibility.
+Hidden names do not establish privacy. Verify repository visibility and keep device credentials,
+Git metadata, caches and personal assistant indexes local. Historical references retain their
+original identities; new content links use the consolidated source and an exact commit.
 
 ## Enroll once per consuming clone
 
-Create the container and clone only missing sources into the selected paths. Do not replace an
-existing directory, move an active writer, or reset a checkout to obtain a clean startup.
-From the canonical `agentic-os` checkout, the usual layout is:
+On a new device, clone the one private repository, then enroll from canonical `agentic-os`:
 
 ```sh
-mkdir -p ../.workspace
-git clone --branch main https://github.com/huijoohwee/.memory.git ../.workspace/.memory
-git clone --branch main https://github.com/huijoohwee/.todo.git ../.workspace/.todo
-git clone --branch main https://github.com/huijoohwee/.artifacts.git ../.workspace/.artifacts
+git clone --branch main https://github.com/huijoohwee/.workspace.git ../.workspace
 git config --local agentic-os.workspaceRoot ../.workspace
 node bin/agentic-os.mjs workspace
 ```
 
-Run each clone command only when its destination is absent. On an existing installation, an
-explicit symlink to the already selected clone provides the same layout without copying its data.
-An absolute container path is accepted. Relative paths resolve from the canonical worktree;
-linked lanes share enrollment while other clones/devices configure their own location.
-Forks commit their own `.agentic-os-workspace.json` source identities on their protected branch.
-Installed consumers use their installed `agentic-os` CLI; package installation does not enroll them
-or distribute this repository's private-source configuration.
+Clone only into an absent destination. Do not overwrite existing data or reset dirty work.
+Relative enrollment resolves from the canonical worktree; linked lanes share it. Other clones
+and devices enroll independently. Forks select their own remote in the protected configuration.
+Installed consumers use their installed CLI; the package does not distribute private source
+configuration or enroll a clone automatically.
 
-The protected configuration owns source paths, exact remote transports and branches. Memory adds
-its selected shard directory; TODO adds its contract entry path. There is one config owner for
-workspace enrollment. The older standalone memory mode remains available to its existing consumers;
-do not configure both `agentic-os.workspaceRoot` and `agentic-os.memoryRoot`. To migrate an enrolled
-standalone clone, remove the latter key, then select the workspace root. Configuration edits in
-an uncommitted checkout or a lane cannot redirect a protected startup operation.
+`.agentic-os-workspace.json` uses `agentic-os/workspace/v2`: one exact `remote` and `branch`, plus
+three distinct `sources` with `path` values. Memory adds its relative shard `directory`; TODO adds
+its contract `entry`. Paths must be real subfolders of the selected clone, without aliases or
+nested repositories. Runtime configuration comes from the consumer's exact protected revision;
+uncommitted edits and lane-only config cannot redirect startup.
 
-## Startup, resume and on-demand retrieval
+The earlier `workspace/v1` contract remains supported for existing independent source clones.
+Migrate those clones explicitly before selecting v2. Do not configure both `agentic-os.workspaceRoot`
+and the older standalone `agentic-os.memoryRoot`; standalone memory remains a compatibility mode.
+The migration must inventory all dirty, untracked and ignored bytes, retain source Git history,
+verify publication and quiesce active writers before removing old paths. A successful startup
+observation is not permission to delete a legacy directory.
 
-`agentic-os start <scope> --write=<paths>` observes the enrolled workspace before lane creation.
-On resume, run `agentic-os workspace`; `--source=memory|todo|artifacts` selects just one source.
-`agentic-os memory` is the memory-only entry point for either enrollment mode.
-`--offline` reads available local committed references and the last validated memory index.
+## Startup and resume
+
+`agentic-os start <scope> --write=<paths>` observes enrolled context before lane creation.
+On resume run `agentic-os workspace`; `--source=memory|todo|artifacts` selects one responsibility.
+`agentic-os memory` selects memory only. `--offline` uses local committed references and the last
+validated memory cache, with remote freshness explicitly unknown.
 
 | Source | Startup behavior | Load when relevant |
 |---|---|---|
-| Memory | Refresh the selected Git branch and reuse/rebuild its bounded private index | Relevant scope/summary, then the cited source blob; [memory contract](MEMORY.md) |
-| TODO | Check source identity, local committed revision, remote branch and contract blob identity | Exact TODO Context and board row from that source revision |
-| Artifacts | Check source identity and local/remote branch revisions | A specifically selected artifact and its producer's validation receipt |
+| Memory | Refresh the selected branch; reuse or rebuild the bounded private index | Relevant entry, then cited source blob; [memory contract](MEMORY.md) |
+| TODO | Observe revision freshness and the committed contract blob | Exact context record and board row |
+| Artifacts | Observe revision freshness without opening artifact bodies | Selected artifact and producer validation receipt |
 
-TODO/artifact observation never fetches payloads, changes Git refs, reads the working tree, pushes,
-merges, or rewrites evidence. `current` means the advertised branch matched the cached local ref
-at observation; it says nothing about dirty local files, record validity or production readiness.
-`update-available` identifies a newer/different remote revision without treating local content as
-fresh. Use that source's normal Git workflow to fetch/reconcile it before relying on newer content.
-`offline-local` means remote freshness is unknown. The memory adapter separately reports
-`ready` or `offline-cache`; its snapshot freshness and append checks are described in its guide.
+TODO and artifact observations do not fetch payloads or mutate refs, working files or evidence.
+They share one remote advertisement in v2. Memory fetch uses the shared Git repository: a new
+commit may transfer artifact objects too. Git transport is not a payload budget or sparse clone;
+the index itself reads only the configured memory directory. Keep large generated caches local
+under source-owned ignore rules. Startup never automatically clones, pushes, merges or rebases.
 
-A workspace receipt contains roots, source/config revisions and retrieval pointers, without task
-or artifact bodies. Re-read the selected owner and its current validation evidence before taking
-action. The TODO owner runs actual corpus/board checks; public website CI uses synthetic records.
-An observation has `grantsAuthority: false`; source discovery never replaces claims, protected
-checks, release authorization, payment evidence or a producer's artifact validation.
+`current` means the remote branch matched the local tracking ref at observation; it does not
+validate dirty files or prove production readiness. `update-available` requires normal source
+reconciliation before relying on newer content. Memory reports its separately validated revision
+and `ready` or `offline-cache`; consumers must compare receipt revisions before joining sources.
+Every observation has `grantsAuthority: false`. Re-read current owners and validation evidence
+before effects; context does not replace leases, checks, release approval or payment evidence.
 
-## Concurrency and budgets
+## Concurrent devices and publication
 
-Source identities and distinct clone roots are checked before memory hydration. A source mismatch,
-missing selected clone or malformed config fails before an enrolled start provisions its lane.
-Source-specific requests do not inspect unrelated roots. Existing dirty work stays where its writer
-owns it. Consumers sharing one clone serialize workspace observation; the memory source has its
-own clone-wide lock for consumers in different repositories. Contention fails explicitly and releases
-owned locks; retry after the holder finishes. There is no polling daemon or background writer.
+Each device has its own clone and derived index. Consumers sharing one clone serialize workspace
+observation; memory hydration also uses the source clone's lock. Contention fails explicitly and
+releases owned locks. No polling daemon or background writer is installed.
 
-The adapter loads only for startup/workspace/memory commands. Configuration is capped at 4 KiB,
-local metadata output at 8 KiB per Git read and remote advertisements at 4 KiB. Each TODO/artifact
-remote read has a five-second deadline and memory fetch has its existing 15-second deadline.
-No payload scan, embedding, new dependency, new `src/` module or bulk always-loaded context is added.
-For disconnected use, request `--offline` and retain the explicit freshness labels.
+Fetch and fast-forward a clean `main` before creating a scoped branch. Preserve dirty files and
+divergence; reconcile through normal Git review. Use distinct task/context paths for concurrent
+writers; append memory records without rewriting accepted bytes. Required checks and authorized
+merge precede cleanup. Startup reads committed context and never adopts uncommitted work.
 
-Continuity `WORKSPACE-STARTUP-001`, PRD/TAD/ADR `1.0.0`: an operator resolves shared context through
-one enrollment; the CLI composes existing memory and Git observations; independent source ownership
-and lazy retrieval are selected over a combined repository or eager artifact synchronization.
-Validation: `__tests__/workspace-startup.test.mjs` exercises enrolled startup/resume, aliases, isolated
-source requests, remote advance reporting, dirty-byte preservation, identity/config failures and
-lock recovery. Run `npm run check` for the complete package and budget gates.
+The adapter loads only for startup/workspace/memory commands. Config is bounded to 4 KiB; local
+metadata to 8 KiB per Git read, remote advertisements to 4 KiB and five seconds. Memory fetch has
+a 15-second deadline; its corpus, shard and cache bounds remain in the memory guide. No dependency,
+new `src/` module or always-loaded context is added.
+
+Continuity `WORKSPACE-STARTUP-001`, PRD/TAD/ADR `2.0.0`: one private collaboration source replaces
+three separately synchronized repositories at the operator's request. The existing memory reader
+accepts a bounded nested directory; v2 validates one clone identity and distinct role paths, while
+v1 preserves its explicit compatibility contract. Source histories and migration receipts stay
+at the private owner. `__tests__/workspace-startup.test.mjs` and `startup-memory.test.mjs` verify
+startup, scoped retrieval, offline reuse, dirty-byte preservation, remote advances, locks, nested
+paths and identity failures. Run `npm run check` for package regression and budget gates.

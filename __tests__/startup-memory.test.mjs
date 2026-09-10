@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync,
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync,
   symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -217,4 +217,24 @@ test('a hanging transport is terminated at the deadline and returns the accepted
     process.env.PATH = oldPath;
     if (oldMarker === undefined) delete process.env.MEMORY_TEST_PIDS; else process.env.MEMORY_TEST_PIDS = oldMarker;
   }
+});
+
+test('nested workspace memory indexes committed shards and rejects symlink parents and traversal', t => {
+  const s = fixture(t);
+  mkdirSync(join(s.source, '.memory'));
+  renameSync(join(s.source, 'records'), join(s.source, '.memory/records'));
+  s.commit(s.source); s.run(s.source, ['push', '--quiet', 'origin', 'main']);
+  s.config.directory = '.memory/records';
+  writeFileSync(join(s.root, '.agentic-os-memory.json'), JSON.stringify(s.config));
+  s.commit(s.root); s.run(s.root, ['push', '--quiet', 'origin', 'main']);
+  const ready = s.hydrate(); assert.equal(ready.entries, 1);
+  assert.equal(load(ready).entries[0].path, '.memory/records/2026-09.md');
+  rmSync(join(s.source, '.memory'), { recursive: true });
+  symlinkSync('/tmp/untrusted', join(s.source, '.memory'));
+  s.commit(s.source); s.run(s.source, ['push', '--quiet', 'origin', 'main']);
+  assert.throws(() => s.hydrate(), /shard-parent/u);
+  s.config.directory = '../records';
+  writeFileSync(join(s.root, '.agentic-os-memory.json'), JSON.stringify(s.config));
+  s.commit(s.root); s.run(s.root, ['push', '--quiet', 'origin', 'main']);
+  assert.throws(() => s.hydrate(), /config-invalid/u);
 });

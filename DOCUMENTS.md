@@ -41,12 +41,12 @@ The [repository check catalog](test/repositories.json) owns check-owner membersh
 The [composition source lock](catalog/composition-source-lock.json) owns accepted composition revisions.
 Follow those existing registries; this page does not repeat their inventories, commands, pins or verdicts.
 
-Planning is centralized in private `huijoohwee/.todo`: the TODO contract owns immutable records and
+Planning is centralized in private `huijoohwee/.workspace/.todo`: the TODO contract owns immutable records and
 Kanban owns current task state. The website and Canvas retain migration routes, not writable copies.
 The planning owner validates imported record hashes and the board projection.
 
-[todo]: https://github.com/huijoohwee/.todo/blob/main/docs/TODO.md
-[kanban]: https://github.com/huijoohwee/.todo/blob/main/docs/kanban.md
+[todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
+[kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
 
 ## Repository concerns
 

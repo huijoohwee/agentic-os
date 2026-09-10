@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -118,4 +118,66 @@ test('only protected workspace configuration is used and unknown sources fail be
   assert.equal(s.hydrate({ source: 'todo', offline: true }).sources.todo.status, 'offline-local');
   const result = s.invoke('workspace', '--source=unknown');
   assert.equal(result.status, 1); assert.match(result.stderr, /invalid-arguments/u);
+});
+
+function consolidate(s) {
+  s.run(s.container, ['init', '--quiet', '--initial-branch=main']);
+  s.run(s.container, ['config', 'user.name', 'Workspace Test']);
+  s.run(s.container, ['config', 'user.email', 'test@example.invalid']);
+  for (const role of Object.keys(s.sources)) {
+    rmSync(join(s.container, `.${role}`));
+    rmSync(join(s.sources[role], '.git'), { recursive: true });
+    renameSync(s.sources[role], join(s.container, `.${role}`));
+    s.sources[role] = join(s.container, `.${role}`);
+  }
+  s.commit(s.container);
+  const remote = join(s.parent, 'workspace.git');
+  s.run(s.parent, ['init', '--quiet', '--bare', remote]);
+  s.run(s.container, ['remote', 'add', 'origin', remote]);
+  s.run(s.container, ['push', '--quiet', '-u', 'origin', 'main']);
+  s.config = { schema: 'agentic-os/workspace/v2', remote, branch: 'main', sources: {
+    memory: { path: '.memory', directory: 'records' }, todo: { path: '.todo', entry: 'docs/TODO.md' },
+    artifacts: { path: '.artifacts' } } };
+  writeFileSync(join(s.root, '.agentic-os-workspace.json'), JSON.stringify(s.config));
+  s.commit(s.root); s.run(s.root, ['push', '--quiet', 'origin', 'main']);
+  return s;
+}
+test('one private repository starts and resumes with scoped subfolders and preserves dirty evidence', t => {
+  const s = consolidate(fixture(t));
+  writeFileSync(join(s.sources.artifacts, 'README.md'), 'ongoing evidence');
+  const started = s.invoke('start', 'consolidated', '--device=device-a', '--write=change.txt');
+  assert.equal(started.status, 0, started.stderr);
+  const result = JSON.parse(started.stdout.match(/^workspace (.+)$/mu)[1]);
+  assert.equal(result.sources.todo.entry.path, '.todo/docs/TODO.md');
+  assert.equal(result.sources.memory.sourceRevision, result.sources.artifacts.sourceRevision);
+  assert.ok(result.sources.memory.index.startsWith(join(realpathSync(s.container), '.git')));
+  assert.equal(readFileSync(join(s.sources.artifacts, 'README.md'), 'utf8'), 'ongoing evidence');
+  const offline = s.hydrate({ offline: true });
+  assert.equal(offline.sources.memory.status, 'offline-cache');
+  assert.equal(offline.sources.todo.status, 'offline-local');
+});
+test('consolidated scoped requests skip unrelated folders while rejecting aliases and nested repositories', t => {
+  const s = consolidate(fixture(t));
+  rmSync(s.sources.artifacts, { recursive: true });
+  assert.equal(s.hydrate({ source: 'todo', offline: true }).sources.todo.status, 'offline-local');
+  assert.throws(() => s.hydrate());
+  const moved = join(s.parent, 'moved-todo'); renameSync(s.sources.todo, moved);
+  symlinkSync(moved, s.sources.todo, 'dir');
+  assert.throws(() => s.hydrate({ source: 'todo' }), /source-root/u);
+  rmSync(s.sources.todo); renameSync(moved, s.sources.todo);
+  s.run(s.sources.todo, ['init', '--quiet']);
+  assert.throws(() => s.hydrate({ source: 'todo' }), /source-root/u);
+});
+test('consolidated source identity is checked before memory cache creation', t => {
+  const s = consolidate(fixture(t)); s.run(s.container, ['remote', 'set-url', 'origin', '/other']);
+  assert.throws(() => s.hydrate(), /remote-identity/u);
+  assert.equal(existsSync(join(s.container, '.git/agentic-os-memory')), false);
+});
+test('consolidated remote advance leaves the checkout and origin ref unchanged', t => {
+  const s = consolidate(fixture(t)), before = s.run(s.container, ['rev-parse', 'HEAD']);
+  const next = s.run(s.container, ['commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'other device']);
+  s.run(s.container, ['push', '--quiet', s.config.remote, `${next}:refs/heads/main`]);
+  const result = s.hydrate({ source: 'artifacts' }).sources.artifacts;
+  assert.equal(result.status, 'update-available'); assert.equal(result.remoteRevision, next);
+  assert.equal(s.run(s.container, ['rev-parse', 'origin/main']), before);
 });

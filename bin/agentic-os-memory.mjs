@@ -47,7 +47,8 @@ export function validateSource(config, root) {
 function memoryConfiguration(config, root) {
   if (!config || Object.keys(config).sort().join(',') !== 'branch,directory,remote,schema'
     || config.schema !== 'agentic-os/memory-source/v1'
-    || typeof config.directory !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(config.directory))
+    || typeof config.directory !== 'string' || config.directory.length > 128
+    || !config.directory.split('/').every(part => /^\.?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(part)))
     fail('config-invalid');
   validateSource(config, root);
   return { schema: config.schema, remote: config.remote, branch: config.branch, directory: config.directory };
@@ -145,6 +146,11 @@ function indexFor(source, config, revision, previous) {
   if (previous && observeGit(['merge-base', '--is-ancestor', previous.source.revision, revision],
     { cwd: source, allowFail: true, maxBuffer: LIMIT.tree }) === null)
     fail('history-not-forward');
+  const parts = config.directory.split('/');
+  for (let i = 1; i < parts.length; i++) {
+    const parent = tree(source, revision, parts.slice(0, i).join('/'));
+    if (parent.length !== 1 || parent[0].kind !== 'tree') fail('shard-parent');
+  }
   const directory = tree(source, revision, config.directory);
   if (directory.length && directory[0].kind !== 'tree') fail('shard-directory');
   const shards = directory.length ? tree(source, `${revision}:${config.directory}`, '') : [];
