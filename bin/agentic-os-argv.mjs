@@ -55,9 +55,9 @@ export function validateCommandArguments(command, argv) {
       const error = exact(argv, { min: 1, options: ['requirements', 'checkpoint', 'ref', 'operation'] });
       if (error) return error;
       const phase = argv.find((token) => !token.startsWith('--'));
-      if (!['pre', 'in', 'post'].includes(phase)) return 'flight requires pre, in, or post';
+      if (!['plan', 'pre', 'in', 'post'].includes(phase)) return 'flight requires plan, pre, in, or post';
       const checkpoint = argv.some((token) => token.startsWith('--checkpoint='));
-      return checkpoint === (phase !== 'pre') ? null : 'in/post require a checkpoint; pre forbids one';
+      return checkpoint === (phase === 'in' || phase === 'post') ? null : 'in/post require a checkpoint; plan/pre forbid one';
     }
     case 'request': {
       const error = exact(argv, { min: 1, max: 1, options: ['input'],
@@ -112,7 +112,7 @@ export function cmdHelp() {
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  agentic-os pipeline --repo=<owner/repo> --run=<id> --head=<sha> --attempt=<n>  watch exact CI progress',
-      '  agentic-os flight pre|in|post  inspect prerequisites, drift, and completion',
+      '  agentic-os flight plan|pre|in|post  preview all phase prerequisites, inspect drift and completion',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
       '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
       '  agentic-os request ...    construct an unsigned Coordination Request from JSON',

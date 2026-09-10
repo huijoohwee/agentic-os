@@ -192,6 +192,13 @@ function readReviewBody(path, suffix) {
   }
 }
 
+const reviewIdentity = (ref, head, base) => [
+  `Lane: ${ref}`, `Base-Revision: ${base}`, sourceHeadTrailer(head),
+].join('\n');
+/** Reserve exact trailer space before commit/fetch; actual identity is appended after commit. */
+export function validateReviewBody(root, ref, file) {
+  if (file !== null) readReviewBody(resolve(root, file), `\n\n${reviewIdentity(ref, headSha('HEAD', root), headSha('HEAD', root))}`);
+}
 /** Capture review text before publication; identity trailers are not integration proof. */
 export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null) {
   const subjects = gitLines(['log', '--format=%s', `${baseSha}..${laneHeadSha}`, '--reverse'], {
@@ -199,11 +206,7 @@ export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null
   });
   const scope = parseLaneRef(ref)?.scope ?? ref;
   const title = subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`;
-  const identity = [
-    `Lane: ${ref}`,
-    `Base-Revision: ${baseSha}`,
-    sourceHeadTrailer(laneHeadSha),
-  ].join('\n');
+  const identity = reviewIdentity(ref, laneHeadSha, baseSha);
   const body = bodyFile === null ? [
     ...(subjects.length > 1 ? [...subjects.map((subject) => `- ${subject}`), ''] : []),
     identity,
@@ -418,7 +421,7 @@ function flightOperation(requirements, requested) {
 }
 function flightInputs(root, requirements, phase, now, operation = flightOperation(requirements)) {
   let roots;
-  return requirements.requirements.filter(item => item.phases.includes(phase)
+  return requirements.requirements.filter(item => (phase === 'plan' || item.phases.includes(phase))
     && (!item.operations?.length || item.operations.includes(operation))).map((item) => {
     const value = process.env[item.input];
     let code = typeof value === 'string' && value.trim().length > 0 ? null : 'input-missing';
@@ -435,7 +438,7 @@ function flightInputs(root, requirements, phase, now, operation = flightOperatio
           !== item.sha256) code = 'evidence-digest-mismatch';
       } catch { code = 'evidence-unavailable'; }
     }
-    return { id: item.id, owner: item.owner, input: item.input, satisfied: code === null, code,
+    return { id: item.id, owner: item.owner, input: item.input, ...(phase === 'plan' ? { phases: item.phases } : {}), satisfied: code === null, code,
       remedy: code === null ? null : item.remedy };
   });
 }
@@ -483,7 +486,7 @@ export function observeFlight(root, argv, profile) {
   const inputs = flightInputs(root, requirements, phase, now, operation);
   inputs.filter((item) => !item.satisfied).forEach((item) => add(item.code, item.owner, item.remedy));
   let checkpoint = null;
-  if (phase !== 'pre') {
+  if (phase === 'in' || phase === 'post') {
     checkpoint = flightJson(option(argv, 'checkpoint'));
     const { digest, ...payload } = checkpoint;
     if (!exactFields(checkpoint, 'schema,phase,observedAt,observationOnly,authorizesEffects,ok,source,base,worktreePath,inputs,completion,findings,digest')

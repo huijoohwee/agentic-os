@@ -31,6 +31,44 @@ test('fresh attempt-specific job inventory is bracketed by exact run observation
   assert.equal(result.status, 'in_progress');
 });
 
+test('step timing preserves identity, elapsed duration and unavailable timestamps', async () => {
+  const timed = { ...job, steps: [
+    { number: 2, name: 'skipped step', status: 'completed', conclusion: 'skipped', started_at: null, completed_at: null },
+    { number: 1, name: 'integration', status: 'completed', conclusion: 'success',
+      started_at: '2026-09-10T11:00:00Z', completed_at: '2026-09-10T11:02:30Z' },
+  ] };
+  const { result } = await observe([run, { total_count: 1, jobs: [timed] }, run]);
+  assert.deepEqual(result.jobs[0].steps.map(step => [step.number, step.durationMs]), [[1, 150000], [2, null]]);
+  for (const steps of [[timed.steps[0], timed.steps[0]], Array(101).fill(timed.steps[0]),
+    [{ ...timed.steps[1], completed_at: '2026-09-10T10:59:59Z' }],
+    [{ ...timed.steps[1], started_at: 'not a timestamp' }], [null],
+    [{ ...timed.steps[1], started_at: '2026-02-30T11:00:00Z' }]]) {
+    await assert.rejects(observe([run, { total_count: 1, jobs: [{ ...job, steps }] }, run]), /pipeline_/);
+  }
+});
+
+test('step progress changes reset backoff while elapsed time alone does not restart polling or jobs', async () => {
+  const timer = clock(); let calls = 0;
+  const step = { number: 1, name: 'integration', status: 'in_progress', conclusion: null,
+    startedAt: '2026-09-10T11:00:00Z', completedAt: null, durationMs: null };
+  const code = await watchPipeline(target, { ...timer, timeoutMs: 60000,
+    wallNow: () => Date.parse(step.startedAt) + timer.now(),
+    snapshot: async () => {
+      calls++;
+      return { status: 'in_progress', conclusion: null, coherent: true,
+        jobs: [{ id: 10, name: 'linux', status: 'in_progress', conclusion: null,
+          steps: [{ ...step, ...(calls >= 3 ? { number: 2, name: 'XR browser' } : {}) }] }] };
+    } });
+  assert.equal(code, 2);
+  assert.deepEqual(timer.waits, [5000, 10000, 5000, 10000, 20000, 10000]);
+  assert.equal(timer.events.filter(event => event.event === 'job_changed').length, 2);
+  const wait = timer.events.at(-1);
+  assert.equal(wait.activeSteps[0].name, 'XR browser');
+  assert.equal(wait.activeSteps[0].elapsedMs, 60000);
+  assert.equal(wait.completionEstimate, null);
+  assert.equal(wait.nextAction, 'observe_same_run_and_attempt');
+});
+
 test('rerun, head, repository and URL drift fail closed before success', async () => {
   for (const delta of [{ run_attempt: 3 }, { head_sha: 'b'.repeat(40) },
     { repository: { full_name: 'elsewhere/repo' } }, { html_url: 'https://example.com' }, { id: 124 }]) {
@@ -51,6 +89,12 @@ test('completion racing the job read requires another fresh observation', async 
   const complete = { ...run, status: 'completed', conclusion: 'success' };
   assert.equal((await observe([run, page, complete])).result.coherent, false);
   assert.equal((await observe([complete, page, complete])).result.coherent, true);
+  const pending = { total_count: 1, jobs: [{ ...job, steps: [
+    { number: 1, name: 'pending', status: 'pending', conclusion: null },
+  ] }] };
+  assert.equal((await observe([complete, pending, complete])).result.coherent, false);
+  const failed = { ...complete, conclusion: 'failure' };
+  assert.equal((await observe([failed, pending, failed])).result.coherent, true);
 });
 
 test('one simulated hour reduces unchanged polls while bounding detection delay to 60 seconds', async () => {
@@ -92,8 +136,10 @@ test('failure is terminal, provider errors are not success, and late reads do no
   await assert.rejects(watchPipeline(target, { snapshot: async () => { throw new Error('offline'); } }), /offline/);
   const late = clock();
   assert.equal(await watchPipeline(target, { ...late, timeoutMs: 1,
-    snapshot: async () => { late.advance(2); return { status: 'completed', conclusion: 'success', coherent: true, jobs: [] }; } }), 2);
+    snapshot: async () => { late.advance(2); return { status: 'completed', conclusion: 'success', coherent: true,
+      jobs: [{ id: 10, name: 'late', steps: [{ number: 1, name: 'late step', status: 'in_progress', startedAt: null }] }] }; } }), 2);
   assert.deepEqual(late.events.map(e => e.event), ['verified_wait']);
+  assert.deepEqual(late.events[0].activeSteps, []);
 });
 
 test('invalid inputs are rejected before provider access', async () => {
