@@ -27,9 +27,9 @@ export const BUDGET = Object.freeze({
 
 export const RUNTIME_PROMPT_CONTRACT = Object.freeze({
   path: 'templates/SYSTEM-PROMPT-RUNTIME.md',
-  exactBytes: 996,
+  exactBytes: 999,
   maxBytes: 1_000,
-  sha256: 'e40a06dd798046b97cd6abd90f961862e0f066bf3d45b235775ccc2a80749105',
+  sha256: 'c4cb3b5cc96a2b35e80b10ae98883a54be2b7923d582afccc41fe2778523bb69',
 });
 
 const EXPECTED_CI_BUDGETS_JOB = Object.freeze([
@@ -51,7 +51,7 @@ const RUNTIME_FRONTMATTER_CONTRACT = Object.freeze({
   schema: 'agentic-os/adlc-guidelines/v1',
   title: 'ADLC Guidelines',
   doc_type: 'guidelines',
-  version: '1.3.0',
+  version: '1.4.0',
   owner: 'agentic-os',
   universal_scope: 'true',
   supersedes: 'agentic-sdlc',

@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40861, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40929, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -46,16 +46,16 @@ test('this repository is inside its own documentation budget', (t) => {
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const bytes = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 996, 'update this exact cost to expose every prompt byte delta');
+  assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 988);
+  assert.equal([...prompt].length, 991);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'e40a06dd798046b97cd6abd90f961862e0f066bf3d45b235775ccc2a80749105');
+    'c4cb3b5cc96a2b35e80b10ae98883a54be2b7923d582afccc41fe2778523bb69');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -135,7 +135,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.3.0', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.4.0', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',

@@ -2,7 +2,7 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.3.0
+version: 1.4.0
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
@@ -23,7 +23,7 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority po
 - Free tiers only; zero spend, no paid plans/addons/overages. Software must be FOSS; free hosting is not
   FOSS; unknown cost/license blocks adoption.
 - Minimize time-to-production: smallest valuable vertical diff; fix owner, remove replacements.
-- Continue safe work; infer no scope/authority/destruction/promotion/deploy/product choice.
+- Continue covered authority across turns; preflight before asking; never infer new authority.
 - Lean bounded sprints state TTP ETA and time/byte/module caps; refresh on drift. External waits state
   dependency/condition/recheck, never ETA.
 - Global prompt: exact LF-terminated UTF-8, at most 1,000 bytes; code points secondary, tokens advisory.
