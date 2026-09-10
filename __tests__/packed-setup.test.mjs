@@ -186,7 +186,10 @@ const UTF8`)
 function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false, latest = false) {
   const source = latest ? selected.files.map(file => file.path === 'src/lane-id.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),
-      sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' } : file)
+      sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }
+    : file.path === 'src/catalog-input.mjs'
+      ? { ...file, bytes: readFileSync(new URL('./fixtures/catalog-input-pre-frontmatter.mjs.txt', import.meta.url)),
+        sha256: '70086b33be5c04f2bacd5d3165c94eb0000bf5fbbb776358e7bb1c75088a4f9e' } : file)
     : priorRuntimeFiles(selected, !currentRelease);
   const files = source.map((file) => {
     if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;

@@ -40,8 +40,13 @@ of these new assets.
 
 Release upstream first, then update consumer pins/readers and remove replaced
 dictionary definitions and parsers in their owning source changes. A historical
-docs path may retain a reference-only shim when a published contract requires it;
-it must not retain an editable catalog or silently fall back to an old owner.
+docs path may retain a reference-only shim when a published contract requires it.
+When an existing raw-Markdown consumer needs the complete text, a byte-identical
+projection of the locked upstream asset is permitted until that consumer migrates.
+The consumer must check every projected byte against the installed asset in CI,
+identify the upstream owner and revision in its migration guide, and provide one
+explicit projection-refresh command. Projections are never independently authored;
+missing upstream assets fail closed. A locally recomputed digest alone is insufficient.
 Until those consumer changes release, ecosystem migration remains incomplete.
 
 Validation: run `npm run check` from the upstream source lane. Always-loaded

@@ -17,6 +17,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-c154ec30b0471e98ba26f61583b1c12063b80c355d366f61d63695a12f4be5e9',
   'v1-5be6d0e5b7015be246c11d42cfc370d3ef765133abd51db05c41f6cfe61dba47',
   'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c',
   'v1-476a09269ed108519c62404759f97b563745a32b1d200f73185af063eab3aeeb',
@@ -53,7 +54,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/git-repository.mjs', mode: 0o644,
     sha256: '293725c6285065e102ee55ef5890efe9eb204a29cb7f826d8d0ffb23f4814c26' }),
   Object.freeze({ path: 'src/catalog-input.mjs', mode: 0o644,
-    sha256: '70086b33be5c04f2bacd5d3165c94eb0000bf5fbbb776358e7bb1c75088a4f9e' }),
+    sha256: '89276893b78148da2b67e88902ab22f6b4908a723dc4bb7ff038fe6174100219' }),
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,
     sha256: 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f' }),
   Object.freeze({ path: 'src/governance.mjs', mode: 0o644,
