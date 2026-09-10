@@ -31,21 +31,28 @@ function configuration(root, revision) {
   const item = tree(root, revision, CONFIG)[0];
   if (!item) return null;
   if (item.mode !== '100644' || item.path !== CONFIG) fail('config-file');
-  const config = JSON.parse(decode(blob(root, item.blob, LIMIT.config)));
-  if (!config || Object.keys(config).sort().join(',') !== 'branch,directory,remote,schema'
-    || config.schema !== 'agentic-os/memory-source/v1'
-    || typeof config.remote !== 'string' || /[\s\x00-\x1f]/u.test(config.remote)
+  return JSON.parse(decode(blob(root, item.blob, LIMIT.config)));
+}
+export function validateSource(config, root) {
+  if (!config || typeof config.remote !== 'string' || /[\s\x00-\x1f]/u.test(config.remote)
     || !(config.remote.startsWith('https://') || config.remote.startsWith('ssh://') || isAbsolute(config.remote))
-    || typeof config.branch !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/u.test(config.branch)
-    || typeof config.directory !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(config.directory))
-    fail('config-invalid');
+    || typeof config.branch !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/u.test(config.branch))
+    fail('source-invalid');
   if (config.remote.includes('://')) {
     const url = new URL(config.remote);
     if (url.password || url.search || url.hash || url.protocol === 'https:' && url.username) fail('remote-credentials');
   }
   read(root, ['check-ref-format', `refs/heads/${config.branch}`]);
+}
+function memoryConfiguration(config, root) {
+  if (!config || Object.keys(config).sort().join(',') !== 'branch,directory,remote,schema'
+    || config.schema !== 'agentic-os/memory-source/v1'
+    || typeof config.directory !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(config.directory))
+    fail('config-invalid');
+  validateSource(config, root);
   return { schema: config.schema, remote: config.remote, branch: config.branch, directory: config.directory };
 }
+
 function sourceRoot(root, selected, policy) {
   const canonical = worktrees(root).filter(item => item.branch === policy.protectedBranch);
   if (canonical.length !== 1) fail('canonical-root');
@@ -196,6 +203,11 @@ export function hydrateMemory(root, policy, { revision = null, offline = false }
   if (!SHA.test(configRevision)) fail('config-revision');
   const config = configuration(root, configRevision);
   if (!config) fail('config-missing');
+  return hydrateSelectedMemory(root, policy, selected, config, { configRevision, offline });
+}
+export function hydrateSelectedMemory(root, policy, selected, supplied, { configRevision, offline = false }) {
+  const config = memoryConfiguration(supplied, root);
+  if (!SHA.test(configRevision ?? '')) fail('config-revision');
   const source = sourceRoot(root, selected, policy);
   assertRemote(source, config);
   const key = digest(JSON.stringify(config));
