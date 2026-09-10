@@ -32,7 +32,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Central planning records and current task state | [Workspace TODO contract][todo], [Workspace Kanban][kanban] |
 | Portable, capability-routed skills | [Canvas skill](skills/canvas/SKILL.md) |
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
-| Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR.md) |
+| Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
 
 The website's [guideline and schema map][guideline-map] owns its on-demand guideline inventory.
@@ -107,7 +107,7 @@ for this asset. Document checks establish source consistency only.
 [documentation]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/documentation-guidelines.md
 [conventions]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/conventions-and-syntax-guidelines.md
 [frontmatter]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/runtime-frontmatter-guidelines.md
-[prd]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/prd-tad-adr-guidelines.md
+[prd]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
 [semantics]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/roles-actions-outcomes-schema.jsonld
 [guidelines]: https://github.com/huijoohwee/huijoohwee.github.io/tree/main/guidelines
 [guideline-map]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/agenticrag-guidelines-and-surfaces-map.graph.jsonld
