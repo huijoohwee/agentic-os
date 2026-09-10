@@ -16,9 +16,14 @@ records. Each device owns its derived retrieval index. Memory is context, never 
 grant, current product state, check receipt or substitute for re-reading an authoritative source.
 No assistant vendor, model, vector database, new dependency or background service is required.
 
-## Enroll a device once
+## Standalone enrollment compatibility
 
-Clone the private source beside the canonical repositories, then opt in from each consuming clone:
+The current OS checkout uses [workspace enrollment](WORKSPACE.md), which groups memory, TODO and artifacts
+in one protected source configuration. `agentic-os memory` selects only its memory source.
+The following standalone mode remains for existing consumers with `.agentic-os-memory.json`;
+its local key must not coexist with workspace enrollment.
+
+For a standalone consumer, clone the private source beside the canonical repository and opt in:
 
 ```sh
 git clone --branch main https://github.com/huijoohwee/.memory.git ../.memory
@@ -43,7 +48,7 @@ A consumer must commit `.agentic-os-memory.json` on its protected branch before 
 }
 ```
 
-The OS checkout selects this private source. Forks choose their own transport and directory.
+The standalone example selects a private source. Forks choose their own transport and directory.
 The package does not enroll consumers or ship this repository-specific memory configuration.
 The remote is an exact credential-free HTTPS/SSH URL, or an absolute local Git transport.
 No sibling discovery, automatic clone, personal-memory import or host memory file rewrite occurs.

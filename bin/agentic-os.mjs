@@ -116,8 +116,8 @@ async function cmdStart(root, argv, policy, profile) {
         err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
         return 1;
       }
-      const memory = (await import('./agentic-os-memory.mjs')).hydrateMemory(root, policy, { revision: baseSha });
-      if (memory.status !== 'disabled') out(`memory ${JSON.stringify(memory)}`);
+      const context = (await import('./agentic-os-workspace.mjs')).hydrateWorkspace(root, policy, { revision: baseSha });
+      if (context.status !== 'disabled') out(`${context.schema ? 'workspace' : 'memory'} ${JSON.stringify(context)}`);
       const facts = { baseFetched: true };
       const result = transition('planned', 'provision', facts);
       if (!result.ok) {
@@ -562,8 +562,8 @@ async function main() {
       return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
     case 'doctor': return cmdDoctor(root, profile, policy);
     case 'start': return cmdStart(root, argv, policy, profile);
-    case 'memory': return (await import('./agentic-os-memory.mjs')).runMemory(root, policy,
-      { offline: flag(argv, 'offline') }, out);
+    case 'memory': case 'workspace': return (await import('./agentic-os-workspace.mjs')).runWorkspace(root, policy,
+      { offline: flag(argv, 'offline'), source: command === 'memory' ? 'memory' : option(argv, 'source') }, out);
     case 'land': return cmdLand(cwd, argv, profile, policy);
     case 'successor': {
       const predecessorRef = currentBranch(root);

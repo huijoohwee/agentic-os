@@ -1,6 +1,0 @@
-{
-  "schema": "agentic-os/memory-source/v1",
-  "remote": "https://github.com/huijoohwee/.memory.git",
-  "branch": "main",
-  "directory": "records"
-}
