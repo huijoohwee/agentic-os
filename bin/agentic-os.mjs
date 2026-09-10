@@ -73,10 +73,8 @@ function remoteName(policy, root) {
 function requireCanonical(root, policy) {
   const branch = currentBranch(root);
   if (branch === policy.protectedBranch) return;
-  err(
-    `this command runs in the canonical ${policy.protectedBranch} worktree, not in a lane.\n` +
-      `current branch: ${branch ?? 'detached'}`,
-  );
+  err(`this command runs in the canonical ${policy.protectedBranch} worktree, not in a lane.\n` +
+    `current branch: ${branch ?? 'detached'}`);
   process.exit(1);
 }
 async function cmdStart(root, argv, policy, profile) {
@@ -534,6 +532,8 @@ async function main() {
   if (command === 'help' || command === '--help') return cmdHelp();
   if (command === 'request') return runRequest(argv);
   if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);
+  if (command === 'workspace' && argv[0] === 'check')
+    return (await import('./agentic-os-workspace-check.mjs')).runWorkspaceCheck(argv, out);
   const cwd = process.cwd(); let root;
   try {
     root = repoRoot(cwd);
@@ -562,8 +562,8 @@ async function main() {
       return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
     case 'doctor': return cmdDoctor(root, profile, policy);
     case 'start': return cmdStart(root, argv, policy, profile);
-    case 'memory': case 'workspace': return (await import('./agentic-os-workspace.mjs')).runWorkspace(root, policy,
-      { offline: flag(argv, 'offline'), source: command === 'memory' ? 'memory' : option(argv, 'source') }, out);
+    case 'memory': case 'workspace': return (await import('./agentic-os-workspace-sync.mjs'))
+      .runWorkspaceCommand(root, policy, command, argv, out);
     case 'land': return cmdLand(cwd, argv, profile, policy);
     case 'successor': {
       const predecessorRef = currentBranch(root);

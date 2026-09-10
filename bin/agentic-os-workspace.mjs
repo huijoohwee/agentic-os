@@ -9,10 +9,13 @@ const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const ROLES = ['memory', 'todo', 'artifacts'];
 const fail = reason => { throw new Error(`blocked-workspace-${reason}`); };
 const read = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 8192, ...options });
-function configuration(root, revision) {
+export function workspaceConfiguration(root, revision) {
   const mode = read(root, ['ls-tree', revision, '--', FILE]);
   if (!mode.startsWith('100644 blob ')) fail('config-file');
   const config = JSON.parse(read(root, ['show', `${revision}:${FILE}`], { maxBuffer: 4096 }));
+  return validateWorkspaceConfiguration(config, root);
+}
+export function validateWorkspaceConfiguration(config, root) {
   const combined = config?.schema === 'agentic-os/workspace/v2';
   if (!config || Object.keys(config).sort().join(',') !== (combined ? 'branch,remote,schema,sources' : 'schema,sources')
     || !combined && config.schema !== 'agentic-os/workspace/v1' || !config.sources
@@ -35,7 +38,7 @@ function configuration(root, revision) {
   }
   return config;
 }
-function selectedSources(root, policy, selected, config, roles) {
+export function selectedSources(root, policy, selected, config, roles) {
   const canonical = worktrees(root).filter(item => item.branch === policy.protectedBranch);
   if (canonical.length !== 1) fail('canonical-root');
   const container = realpathSync(resolve(canonical[0].path, selected));
@@ -90,7 +93,8 @@ function observeSource(path, spec, offline, role, shared = null) {
   }
   return result;
 }
-export function hydrateWorkspace(root, policy, { revision = null, offline = false, source = null } = {}) {
+export function hydrateWorkspace(root, policy,
+  { revision = null, offline = false, source = null, sync = false } = {}) {
   if (source !== null && !ROLES.includes(source)) fail('unknown-source');
   const selected = read(root, ['config', '--local', '--get-all', 'agentic-os.workspaceRoot'], { allowFail: true });
   if (selected === null) return source && source !== 'memory' ? { status: 'disabled', reason: 'local-enrollment-required' }
@@ -100,7 +104,8 @@ export function hydrateWorkspace(root, policy, { revision = null, offline = fals
     fail('duplicate-enrollment');
   const configRevision = revision ?? read(root, ['rev-parse', '--verify', `${policy.protectedRef}^{commit}`]);
   if (!SHA.test(configRevision)) fail('config-revision');
-  const config = configuration(root, configRevision), roles = source ? [source] : ROLES;
+  const config = workspaceConfiguration(root, configRevision), roles = source ? [source] : ROLES;
+  if (sync && config.schema !== 'agentic-os/workspace/v2') fail('sync-requires-v2');
   const { container, sources } = selectedSources(root, policy, selected, config, roles);
   const lock = acquireOperationLock('agentic-os-workspace', root);
   if (!lock) fail('busy');
@@ -108,7 +113,28 @@ export function hydrateWorkspace(root, policy, { revision = null, offline = fals
   try {
     const observations = {};
     let shared = null;
-    for (const [role, { path, spec }] of sources) {
+    if (config.schema === 'agentic-os/workspace/v2' && roles.includes('memory')) {
+      const { path, spec: { remote, branch, directory } } = sources.get('memory');
+      observations.memory = hydrateSelectedMemory(root, policy, path,
+        { schema: 'agentic-os/memory-source/v1', remote, branch, directory },
+        { configRevision, offline, advertise: sync, inspect: (sourceRevision, { refreshError }) => {
+          const context = {};
+          for (const [role, { path, spec }] of sources) {
+            const tree = read(path, ['ls-tree', sourceRevision, '--', spec.path]);
+            if (!tree.startsWith('040000 tree ') || !tree.endsWith(`\t${spec.path}`)) fail('source-tree');
+            if (role !== 'memory') context[role] = observeSource(path, spec, Boolean(refreshError), role,
+              { sourceRevision, remoteRevision: refreshError ? null : sourceRevision,
+                status: refreshError ? 'offline-local' : 'current' });
+          }
+          return context;
+        } });
+      Object.assign(observations, observations.memory.context);
+      delete observations.memory.context;
+      result = { schema: 'agentic-os/workspace-observation/v1', status: 'observed', root: container,
+        sourceRevision: observations.memory.sourceRevision, configRevision,
+        sources: observations, grantsAuthority: false };
+    }
+    for (const [role, { path, spec }] of result ? [] : sources) {
       if (role === 'memory') {
         const { remote, branch, directory } = spec;
         observations.memory = hydrateSelectedMemory(root, policy, path,
@@ -118,7 +144,7 @@ export function hydrateWorkspace(root, policy, { revision = null, offline = fals
         if (config.schema === 'agentic-os/workspace/v2') shared = observations[role];
       }
     }
-    result = { schema: 'agentic-os/workspace-observation/v1', status: 'observed', root: container,
+    result ??= { schema: 'agentic-os/workspace-observation/v1', status: 'observed', root: container,
       configRevision, sources: observations, grantsAuthority: false };
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'workspace', result, error });

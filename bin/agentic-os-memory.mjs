@@ -142,7 +142,7 @@ function entriesFor(bytes, shard) {
   if (!entries.length && body.includes('@mem-')) fail('entry-heading');
   return entries;
 }
-function indexFor(source, config, revision, previous) {
+export function memoryIndexFor(source, config, revision, previous = null) {
   if (previous && observeGit(['merge-base', '--is-ancestor', previous.source.revision, revision],
     { cwd: source, allowFail: true, maxBuffer: LIMIT.tree }) === null)
     fail('history-not-forward');
@@ -211,7 +211,8 @@ export function hydrateMemory(root, policy, { revision = null, offline = false }
   if (!config) fail('config-missing');
   return hydrateSelectedMemory(root, policy, selected, config, { configRevision, offline });
 }
-export function hydrateSelectedMemory(root, policy, selected, supplied, { configRevision, offline = false }) {
+export function hydrateSelectedMemory(root, policy, selected, supplied,
+  { configRevision, offline = false, inspect = null, advertise = false }) {
   const config = memoryConfiguration(supplied, root);
   if (!SHA.test(configRevision ?? '')) fail('config-revision');
   const source = sourceRoot(root, selected, policy);
@@ -227,18 +228,36 @@ export function hydrateSelectedMemory(root, policy, selected, supplied, { config
   try {
     const file = join(storage, `${key}.json`), previous = cached(file, config);
     const ref = `refs/agentic-os/memory/fetched-${key}`;
-    const refreshError = offline ? 'offline-requested' : refresh(source, config, ref);
+    let unchanged = false, advertisementFailed = false;
+    if (!offline && advertise && previous) {
+      const advertised = observeGit(['ls-remote', '--refs', config.remote, `refs/heads/${config.branch}`],
+        { cwd: source, allowFail: true, maxBuffer: 4096, remoteReadTimeoutMs: 5000 });
+      advertisementFailed = advertised === null;
+      if (!advertisementFailed) {
+        const match = advertised.match(/^([a-f0-9]{40}(?:[a-f0-9]{24})?)\t(.+)$/u);
+        if (!match || match[2] !== `refs/heads/${config.branch}`) fail('remote-branch');
+        unchanged = match[1] === previous.source.revision;
+      }
+    }
+    const refreshError = offline ? 'offline-requested' : advertisementFailed ? 'fetch-failed'
+      : unchanged ? null : refresh(source, config, ref);
     assertRemote(source, config);
-    const revision = refreshError ? previous?.source.revision : read(source, ['rev-parse', '--verify', `${ref}^{commit}`]);
+    const revision = refreshError || unchanged ? previous?.source.revision
+      : read(source, ['rev-parse', '--verify', `${ref}^{commit}`]);
     if (!revision) fail('unavailable-no-cache');
     if (refreshError) read(source, ['cat-file', '-e', `${revision}^{commit}`]);
     const reused = previous?.source.revision === revision;
-    const index = reused ? previous : indexFor(source, config, revision, previous);
+    const index = reused ? previous : memoryIndexFor(source, config, revision, previous);
+    // Validate every composed source before publishing the single accepted snapshot pointer.
+    const context = inspect ? inspect(revision, { refreshError, reused }) : null;
     // The accepted ref keeps the last valid source reachable after a refused rewrite or interrupted refresh.
+    // This retention ref is not the published cache pointer. Advance it before the atomic rename,
+    // so a ref-lock failure cannot publish a snapshot; ancestry keeps the prior snapshot reachable.
     git(['update-ref', '--no-deref', `refs/agentic-os/memory/accepted-${key}`, revision], { cwd: source });
     if (!reused) save(file, index);
     result = { status: refreshError ? 'offline-cache' : 'ready', sourceRevision: revision,
       configRevision, index: file, entries: index.entries.length, reused, refreshError, grantsAuthority: false };
+    if (context !== null) result.context = context;
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'memory', result, error });
 }
