@@ -181,9 +181,11 @@ before any push or review mutation, including a repeated landing of an already p
 `land` captures the file once before publication, preserves its exact text at the beginning (including
 YAML front matter and line endings), then appends two LF characters and the three native identity
 trailers. Later file changes cannot alter that captured handoff. The harness checks encoding, bounds
-and identity ownership; consumer metadata schemas remain consumer-owned. Omit the option to retain
-the existing generated body. Supply the prepared file on each landing that should use it. This option
-adds no provider API, module, dependency, or always-load guidance.
+and identity ownership; consumer metadata schemas remain consumer-owned. Without the option, a new
+review gets generated text and an existing exact-head review keeps its title and body without edits.
+An existing review without the exact source-head trailer fails before mutation; provide the validated
+body file to repair or explicitly replace its text. Repeating a landing does not reset authored metadata
+or restart checks through an unnecessary review edit. This adds no module or always-load guidance.
 
 ## Scope and cost
 

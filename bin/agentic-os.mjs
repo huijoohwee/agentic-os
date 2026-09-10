@@ -298,7 +298,7 @@ function cmdLand(cwd, argv, profile, policy) {
     cwd: root,
     expectedHead: laneHeadSha,
     expectedRepository: observed.repo,
-    baseBranch: policy.protectedBranch,
+    baseBranch: policy.protectedBranch, preserveExistingText: bodyFile === null,
     assertSourceHead: () => {
       assertFlightRequirements(root, 'in', configuredFlight);
       return remoteRefSha(remote, ref, root, capturedRemote.fetchUrl) === laneHeadSha;

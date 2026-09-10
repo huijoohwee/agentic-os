@@ -193,8 +193,10 @@ function receipt({
 
 export function enqueue(ref, {
   cwd = process.cwd(), title, body, expectedHead, expectedRepository,
-  baseBranch, provider = gh, assertSourceHead = null,
+  baseBranch, provider = gh, assertSourceHead = null, preserveExistingText = false,
 } = {}) {
+  if (typeof preserveExistingText !== 'boolean') throw new TypeError('review text preservation must be boolean');
+  const reviewIdentity = { ref, expectedHead, expectedRepository, baseBranch };
   const call = (args, json = true) => provider(args, { cwd, json });
   const target = repositoryIdentity(expectedRepository);
   const sourceBranch = branchName(ref);
@@ -202,7 +204,7 @@ export function enqueue(ref, {
   if (!target || !branchName(baseBranch) || !sourceBranch || !revision) {
     return receipt({
       ref,
-      identity: { ref, expectedHead, expectedRepository, baseBranch },
+      identity: reviewIdentity,
       review: null,
       written: false,
       failureReason: !target ? 'repository-identity-missing'
@@ -212,9 +214,7 @@ export function enqueue(ref, {
   }
   const pin = (args) => [...args, '--repo', expectedRepository];
   const view = pin(['pr', 'view', ref, '--json', FIELDS]);
-  const identity = (review) => identityExact(review, {
-    ref, expectedHead, expectedRepository, baseBranch,
-  });
+  const identity = (review) => identityExact(review, reviewIdentity);
   const snapshot = (url) => url ? call([
     'api', 'graphql', '--hostname', target.host,
     '-f', 'query=query($url:URI!){resource(url:$url){... on PullRequest{' +
@@ -239,7 +239,7 @@ export function enqueue(ref, {
   const unknownWrite = (fallback = null) => {
     const { review, fresh } = reobserve(fallback);
     const sourceCurrent = sourceHeadCurrent();
-    return receipt({ ref, identity: { ref, expectedHead, expectedRepository, baseBranch },
+    return receipt({ ref, identity: reviewIdentity,
       review, written: false, mutationAttempted: true,
       failureReason: 'review-write-result-unknown', sourceHeadCurrent: sourceCurrent,
       writeResultUnknown: true, reobservedAfterMutation: fresh,
@@ -251,7 +251,7 @@ export function enqueue(ref, {
   if (!Array.isArray(listed)) {
     return receipt({
       ref,
-      identity: { ref, expectedHead, expectedRepository, baseBranch },
+      identity: reviewIdentity,
       review: null,
       written: false,
     });
@@ -260,16 +260,17 @@ export function enqueue(ref, {
   const existing = matching.length === 1 ? matching[0] : listed[0] ?? null;
   if (listed.length > 1 || (existing && !identity(existing))) {
     return receipt({
-      ref, identity: { ref, expectedHead, expectedRepository, baseBranch }, review: existing,
+      ref, identity: reviewIdentity, review: existing,
     });
   }
   const observedExisting = snapshot(existing?.url);
-  if (bodyExact(observedExisting) && observedExisting.mergeQueueEntry) {
+  if (existing && preserveExistingText || bodyExact(observedExisting) && observedExisting.mergeQueueEntry) {
     const sourceCurrent = sourceHeadCurrent();
     return receipt({
-      ref, identity: { ref, expectedHead, expectedRepository, baseBranch },
+      ref, identity: reviewIdentity,
       review: observedExisting, sourceHeadCurrent: sourceCurrent,
-      failureReason: sourceCurrent ? null : sourceHeadReason(),
+      failureReason: !bodyExact(observedExisting) ? 'review-source-head-unbound'
+        : sourceCurrent ? null : sourceHeadReason(),
     });
   }
 
@@ -277,7 +278,7 @@ export function enqueue(ref, {
   if (existing?.state === 'OPEN') {
     if (body) {
       if (!sourceHeadCurrent()) return receipt({ ref,
-        identity: { ref, expectedHead, expectedRepository, baseBranch }, review: existing,
+        identity: reviewIdentity, review: existing,
         written: false, failureReason: sourceHeadReason(), sourceHeadCurrent: false });
       mutationAttempted = true;
       if (call(pin(['pr', 'edit', ref, '--body', body]), false) === null)
@@ -286,7 +287,7 @@ export function enqueue(ref, {
     if (title) {
       if (!sourceHeadCurrent()) { const observed = mutationAttempted ? reobserve(existing) : null;
         if (mutationAttempted) sourceHeadCurrent();
-        return receipt({ ref, identity: { ref, expectedHead, expectedRepository, baseBranch },
+        return receipt({ ref, identity: reviewIdentity,
           review: observed?.review ?? existing, mutationAttempted,
           failureReason: sourceHeadReason(), sourceHeadCurrent: false,
           reobservedAfterMutation: observed?.fresh ?? false,
@@ -297,7 +298,7 @@ export function enqueue(ref, {
     }
   } else if (!existing) {
     if (!sourceHeadCurrent()) return receipt({ ref,
-      identity: { ref, expectedHead, expectedRepository, baseBranch }, review: null,
+      identity: reviewIdentity, review: null,
       written: false, failureReason: sourceHeadReason(), sourceHeadCurrent: false });
     mutationAttempted = true;
     if (call(pin([
@@ -305,19 +306,18 @@ export function enqueue(ref, {
       '--title', title ?? ref, '--body', body ?? '',
     ]), false) === null) return unknownWrite();
   }
-  const observed = reobserve(existing);
-  const final = observed.review;
-  const verified = (!mutationAttempted || observed.fresh) && bodyExact(final);
+  const { review: final, fresh } = reobserve(existing);
+  const verified = (!mutationAttempted || fresh) && bodyExact(final);
   const sourceCurrent = sourceHeadCurrent();
   return receipt({
     ref,
-    identity: { ref, expectedHead, expectedRepository, baseBranch },
+    identity: reviewIdentity,
     review: final,
     written: true,
     mutationAttempted,
     sourceHeadCurrent: sourceCurrent,
-    reobservedAfterMutation: mutationAttempted && observed.fresh,
-    reobservationExact: mutationAttempted && observed.fresh && verified,
+    reobservedAfterMutation: mutationAttempted && fresh,
+    reobservationExact: mutationAttempted && fresh && verified,
     failureReason: !sourceCurrent ? sourceHeadReason()
       : mutationAttempted && !verified ? 'written-but-identity-failed' : null,
   });
