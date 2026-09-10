@@ -166,6 +166,20 @@ environment values or evidence content. Malformed input produces a typed refusal
 
 ## Prepare consumer review metadata before publication
 
+Preview every enrolled prerequisite for an operation before its expensive checks:
+
+```sh
+agentic-os flight plan --operation=publication
+```
+
+For a v1 manifest, omit `--operation`. The preview reports all pre/in/post requirements together,
+including each input's phases, owner and remedy. Missing future inputs remain visible without changing
+phase-specific admission: run `flight pre` for the actual start boundary. A plan cannot serve as an
+in-flight checkpoint, even when all its inputs are present. It executes no consumer code and grants no
+authority. Dependency, source-map and metadata validators stay with their source owners; run those
+read-only checks before build/publication, then retain the enrolled public evidence. Revalidate volatile
+inputs at the effect boundary. Do not replace a consumer validator with an environment-presence check.
+
 When the consumer requires review metadata, validate its body with the consumer's existing contract
 before the first `land`. Supply that prepared file directly:
 
@@ -176,7 +190,9 @@ agentic-os land --body-file=/absolute/external/review.md
 Relative paths resolve from the lane root. The file must be regular, valid UTF-8, nonempty, and without
 NUL or authored `Lane:`, `Base-Revision:`, or `Source-Head:` lines. Symlinks and changing files are
 rejected. The complete body, including the generated suffix, is limited to 64 KiB. Invalid inputs stop
-before any push or review mutation, including a repeated landing of an already published head.
+before autonomous staging/commit, commit hooks or fetch, as well as push/review mutation. This includes
+a repeated landing of an already published head. The early check reserves the exact native trailer
+size; the actual committed source and fetched base are bound at publication.
 
 `land` captures the file once before publication, preserves its exact text at the beginning (including
 YAML front matter and line endings), then appends two LF characters and the three native identity
@@ -194,6 +210,23 @@ oracle. Core module delta is zero; runtime dependency delta is zero; per-consume
 is zero. Workflow references replace existing prose to keep the always-load budget flat. This guide
 loads only when the consumer uses flight observations. Consumers adopt a reviewed package pin and a
 reviewed manifest; installing the package alone does not configure an external evaluator.
+
+## Observe the active CI step
+
+`agentic-os pipeline` retains bounded step identities and provider start/completion timestamps within
+its existing repository/run/head/attempt binding. Completed durations and elapsed active-step times
+are observations. Missing timestamps remain unavailable. Duplicate steps, malformed timestamps and
+reversed durations fail closed; a provider rerun cannot relabel observations from an earlier attempt.
+Step changes reset the existing polling backoff. Elapsed time alone does not trigger another event or
+workflow. An expired observation window returns the active step, the next observation delay and
+`observe_same_run_and_attempt`; it supplies no speculative completion estimate. A terminal failure
+returns `inspect_failure_before_retry`. The watcher never restarts a workflow or submits authorization.
+
+Inspect the owner failure, reconcile uncertain effects, and retain the attempt history before any
+authorized retry. Do not restart an unchanged deterministic failure. Check reuse, duration forecasting
+from comparable history and automatic consumer-validator execution are outside this first sprint.
+This slice adds no runtime module, dependency, service or always-load prompt text; one new test module
+covers the pre-commit preservation boundary. Existing source files remain below 600 lines.
 
 ## Bounded publication cost
 

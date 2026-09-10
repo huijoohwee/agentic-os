@@ -82,6 +82,29 @@ test('pre-flight reports all missing prerequisites with owner/remedy and never e
   assert.equal(secret.stdout.includes('private-value-never-report'), false);
 });
 
+test('flight plan previews all phases without changing phase-specific admission or authorizing a checkpoint', (t) => {
+  const subject = fixture(t, [requirement({ phases: ['pre'] }),
+    requirement({ id: 'handoff', input: 'ABSENT_HANDOFF', phases: ['in'] }),
+    requirement({ id: 'completion', input: 'ABSENT_COMPLETION', phases: ['post'] })]);
+  const before = git(subject.lane, 'rev-parse', 'HEAD');
+  const planned = cli(subject, ['flight', 'plan']);
+  assert.equal(planned.status, 1, planned.stderr);
+  assert.deepEqual(planned.report.inputs.map(({ id, phases, satisfied }) => ({ id, phases, satisfied })), [
+    { id: 'evaluator', phases: ['pre'], satisfied: true },
+    { id: 'handoff', phases: ['in'], satisfied: false },
+    { id: 'completion', phases: ['post'], satisfied: false },
+  ]);
+  assert.equal(planned.report.authorizesEffects, false);
+  assert.doesNotMatch(planned.stdout, /private-value-never-report/);
+  assert.equal(cli(subject, ['flight', 'pre']).status, 0);
+  assert.equal(git(subject.lane, 'rev-parse', 'HEAD'), before);
+  const ready = fixture(t, [requirement()]);
+  const plan = cli(ready, ['flight', 'plan']);
+  assert.equal(plan.status, 0, plan.stderr);
+  writeFileSync(ready.checkpoint, plan.stdout);
+  assert.equal(later(ready).report.code, 'blocked-flight-checkpoint-invalid');
+});
+
 test('in-flight binds the clean source, profile, requirements and prerequisite availability', (t) => {
   const subject = fixture(t);
   pre(subject);
@@ -214,6 +237,9 @@ test('on-demand operation skips unrelated unavailable evidence and binds checkpo
     expiresAt: new Date(Date.now() + 600_000).toISOString() })], scopedManifest);
   // This file is deliberately unavailable: edge/publication must not resolve or read it.
   const absent = join(subject.parent, 'unavailable-sandbox');
+  const preview = cli(subject, ['flight', 'plan', '--operation=edge-browser'], { supplied: absent });
+  assert.equal(preview.status, 0, preview.stdout);
+  assert.deepEqual(preview.report.inputs, []);
   const edge = cli(subject, ['flight', 'pre', '--operation=edge-browser'], { supplied: absent });
   assert.equal(edge.status, 0, edge.stderr + edge.stdout);
   assert.deepEqual(edge.report.inputs, []);
