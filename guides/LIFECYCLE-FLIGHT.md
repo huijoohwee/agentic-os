@@ -1,22 +1,23 @@
 ---
-schema: agentic-os/lifecycle-flight-guide/v2
-title: Lifecycle flight observations
+schema: agentic-os/lifecycle-flight-guide/v3
+title: Lifecycle flight observations and execution gate
 owner: agentic-os
 load_policy: on-demand
 runtime_contract: bin/agentic-os-auxiliary.mjs
-verification: node --test __tests__/lifecycle-flight.test.mjs
+verification: node --test __tests__/lifecycle-flight.test.mjs __tests__/flight-checks.test.mjs
 ---
 # Lifecycle flight observations
 
 Use the pinned Agentic OS package to discover unavailable prerequisites before expensive checks,
 recheck the candidate during handoff, and inspect the result after integration and cleanup.
-The command is read-only and emits bounded JSON. Exit 1 means a missing, invalid, expired, or changed
+The `plan`, `pre`, `in` and `post` phases are read-only and emit bounded JSON. Exit 1 means a missing, invalid, expired, or changed
 input, or an unfinished observed step. Exit 0 means the selected observations passed.
 
-Every report states `observationOnly: true` and `authorizesEffects: false`. File digest matches prove
+Observation reports state `observationOnly: true` and `authorizesEffects: false`. File digest matches prove
 byte identity; they do not authenticate an issuer. Environment presence does not validate a credential
 or evaluator configuration. Existing owner checks, protected CI, runtime verification, authority
-retirement, and authorized cleanup remain required. No report executes candidate code or changes Git.
+retirement, and authorized cleanup remain required. Observation phases execute no candidate code and change no Git state.
+The explicit `gate` command below executes enrolled checks and retains a local attempt ledger.
 
 ## Enroll prerequisites once
 
@@ -242,3 +243,62 @@ Pre-fetch, pre-push and post-push checks remain fresh. Results are never cached 
 repeated observations on the same disposable tree to compare startup cost; report files, bytes,
 process count and elapsed time separately from hosted CI or provider waits. No timing threshold can
 replace byte-integrity evidence. This changes no runtime dependency or module count.
+
+## Execute browser checks before activation
+
+The scope and acceptance contract is [ADLC-PREFLIGHT-001](../PRD-TAD-ADR.md).
+Enroll reviewed Node scripts in `.agentic-os-flight.json` using schema v3. It retains v2 `operations`,
+`requirements` and `maxAgeSeconds`, and adds a nonempty `checks` array. Each check has these fields:
+
+```json
+{
+  "id": "browser-fidelity",
+  "owner": "consumer-release-owner",
+  "kind": "browser",
+  "operations": ["production-activation"],
+  "script": "scripts/check-production-browser.mjs",
+  "args": [],
+  "environment": ["PRODUCTION_ORIGIN"],
+  "timeoutMs": 180000
+}
+```
+
+The selected operation must include a `browser` check; additional `command` checks are allowed.
+The owner script runs the existing validator against the exact isolated artifact before production
+activation. It must verify the artifact/configuration identity from `AGENTIC_OS_FLIGHT_CONTEXT` and
+exit nonzero on incomplete or failed behavior. Scripts are trusted canonical owner code; the bounded
+child process is not a permission sandbox. Declare only the environment inputs the check requires.
+Node injection variables are not forwarded. No check may contain production activation effects.
+
+Write a canonical, LF-terminated JSON context outside the checkout, using `canonicalJson` from
+`agentic-os`. Its exact fields are `schema: "agentic-os/flight-check-context/v1"`, `sourceRevision`
+(a 40-character Git SHA), `artifactDigest` and `configurationDigest` (64-character SHA-256 digests).
+These describe the actual content and configuration, not a run ID, timestamp or random retry token.
+The source must be clean and match the local and fetched canonical refs; refresh protected source
+through the consumer's existing workflow before invoking the gate.
+
+```sh
+agentic-os flight gate --operation=production-activation --context=/absolute/path/context.json
+```
+
+Run this command before dispatching the expensive release, and again at the consumer's activation
+boundary when its inputs can have changed. The caller must stop on nonzero exit status. Success is
+an observed gate result, with `authorizesEffects: false` and `productionReady: false`; existing
+operator authority and provider/runtime checks still govern the actual effect. No saved gate report
+can be supplied to this command as a substitute for executing the checks.
+
+History lives under the Git common directory at `agentic-os/flight-checks/`, shared by cooperating
+worktrees and serialized with the existing operation-lock primitive. All selected history is checked
+before any child starts. Failed results stop unchanged attempts; a started record without a result
+requires reconciliation. No force/reset option deletes history or recasts an unknown effect as success.
+Success is rechecked rather than cached, with a three-execution bound per unchanged identity.
+
+Source tree, content/configuration digests, command and actual forwarded environment identify a check.
+Run IDs and operation aliases do not change that identity. Context-file paths and empty commits do
+not reset it. A corrected source/configuration requires fresh execution. A timeout or output overflow
+is interrupted evidence, never a reason to retry automatically. Diagnostic files are private (0600),
+bounded to 64 KiB per stream, and referenced by digest; report JSON never includes their contents.
+
+This ledger is local to one Git clone. Ephemeral CI and other devices must use consumer-owned protected
+storage to preserve the same attempt history before relying on this gate across hosts. Merely updating
+Agentic OS does not insert the gate into an existing consumer deployment workflow.

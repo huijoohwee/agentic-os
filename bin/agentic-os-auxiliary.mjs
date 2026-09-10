@@ -1,5 +1,4 @@
 /** Bounded evidence, request-construction, and protected-maintenance CLI commands. */
-
 import { ghAvailable } from '../src/github-provider.mjs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
@@ -29,10 +28,8 @@ import { laneBranchSummary, staleWorktrees } from '../src/worktree.mjs';
 import { providerAdapterRequired } from '../src/lane-state.mjs';
 import { hookDoctorEntries } from './agentic-os-hooks.mjs';
 import * as report from './agentic-os-report.mjs';
-
-const MAX_REQUEST_INPUT_BYTES = 500_000;
+const MAX_REQUEST_INPUT_BYTES = 500_000, UTF8 = new TextDecoder('utf-8', { fatal: true });
 const MAX_REVIEW_BODY_BYTES = 65_536;
-const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
 const flag = (argv, name) => argv.includes(`--${name}`);
@@ -346,7 +343,6 @@ export function runRequest(argv) {
   return 0;
 }
 
-// Flight reports are observations, never authority or authenticated runtime verdicts.
 export const FLIGHT_SCHEMA = 'agentic-os/flight-observation/v1';
 const FLIGHT_FILE = '.agentic-os-flight.json', FLIGHT_BYTES = 65_536;
 const flightHash = (value) => createHash('sha256').update(value).digest('hex');
@@ -361,7 +357,7 @@ const flightText = (value) => typeof value === 'string' && value.length > 0 && v
 function flightJson(file) {
   return JSON.parse(UTF8.decode(readBoundedFile(resolve(file), FLIGHT_BYTES, 'flight input')));
 }
-function flightRequirements(root, profile, file = null, ref = profile.canonical.localRef) {
+export function flightRequirements(root, profile, file = null, ref = profile.canonical.localRef) {
   let bytes;
   if (file) bytes = readBoundedFile(resolve(file), FLIGHT_BYTES, 'flight requirements');
   else {
@@ -376,8 +372,9 @@ function flightRequirements(root, profile, file = null, ref = profile.canonical.
     bytes = observeGit(['cat-file', 'blob', match[1]], { cwd: root, binary: true, maxBuffer: FLIGHT_BYTES });
   }
   const value = JSON.parse(UTF8.decode(bytes));
-  const scoped = value?.schema === 'agentic-os/flight-requirements/v2';
-  if (!exactFields(value, 'schema,maxAgeSeconds,requirements' + (scoped ? ',operations' : ''))
+  const executable = value?.schema === 'agentic-os/flight-requirements/v3';
+  const scoped = executable || value?.schema === 'agentic-os/flight-requirements/v2';
+  if (!exactFields(value, 'schema,maxAgeSeconds,requirements' + (scoped ? ',operations' : '') + (executable ? ',checks' : ''))
     || !scoped && value.schema !== 'agentic-os/flight-requirements/v1'
     || !Number.isSafeInteger(value.maxAgeSeconds) || value.maxAgeSeconds < 1 || value.maxAgeSeconds > 3600
     || !Array.isArray(value.requirements) || value.requirements.length > 32
@@ -408,6 +405,18 @@ function flightRequirements(root, profile, file = null, ref = profile.canonical.
       flightFail('blocked-flight-evidence-pin-invalid');
     ids.add(item.id);
   }
+  if (executable && (!Array.isArray(value.checks) || !value.checks.length || value.checks.length > 8
+    || new Set(value.checks.map(c => c?.id)).size !== value.checks.length || value.checks.some(c =>
+      !exactFields(c, 'id,owner,kind,operations,script,args,environment,timeoutMs')
+      || !flightText(c.id) || !flightText(c.owner) || !['browser', 'command'].includes(c.kind)
+      || !Array.isArray(c.operations) || !c.operations.length || c.operations.some(op => !value.operations.includes(op))
+      || !flightText(c.script) || !/^(?!\/)(?!.*(?:^|\/)\.\.?\/)[A-Za-z0-9_./-]+\.[cm]?js$/u.test(c.script)
+      || !Array.isArray(c.args) || c.args.length > 32 || c.args.some(arg => !flightText(arg))
+      || !Array.isArray(c.environment) || c.environment.length > 32 || new Set(c.environment).size !== c.environment.length
+      || c.environment.some(name => !/^[A-Z][A-Z0-9_]{0,127}$/u.test(name)
+        || ['NODE_OPTIONS', 'NODE_PATH', 'AGENTIC_OS_FLIGHT_CONTEXT'].includes(name))
+      || !Number.isSafeInteger(c.timeoutMs) || c.timeoutMs < 1 || c.timeoutMs > 600_000)))
+    flightFail('blocked-flight-check-enrollment-invalid');
   return { ...value, digest: flightHash(bytes) };
 }
 function flightOperation(requirements, requested) {
@@ -419,7 +428,7 @@ function flightOperation(requirements, requested) {
   if (!requirements.operations.includes(operation)) flightFail('blocked-flight-operation-unknown');
   return operation;
 }
-function flightInputs(root, requirements, phase, now, operation = flightOperation(requirements)) {
+export function flightInputs(root, requirements, phase, now, operation = flightOperation(requirements)) {
   let roots;
   return requirements.requirements.filter(item => (phase === 'plan' || item.phases.includes(phase))
     && (!item.operations?.length || item.operations.includes(operation))).map((item) => {
@@ -540,6 +549,7 @@ export function observeFlight(root, argv, profile) {
   return { ...payload, digest: flightHash(canonicalJson(payload)) };
 }
 export function runFlight(root, argv, profile) {
+  if (argv[0] === 'gate') return import('./agentic-os-flight-checks.mjs').then(module => module.runFlightGate(root, argv, profile));
   try {
     const observed = observeFlight(root, argv, profile);
     out(JSON.stringify(observed, null, 2));
