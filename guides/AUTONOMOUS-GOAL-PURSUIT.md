@@ -28,6 +28,43 @@ authority, approval, destructive effect, deployment, or product decision.
 - After the same approach fails twice, diagnose the owner and change approach. A renamed third attempt is
   still a loop.
 
+## Authorization continuity
+
+Carry the operator's actual decisions and owner-issued receipts across turns, compaction, retries and
+handoffs. Retain their provenance, scope, targets, effects, constraints, candidate bindings, validity and
+prior outcomes in the existing task evidence. A summary transports that evidence; it never expands it.
+
+Before each effect, use its owner to check whether existing authority still covers it. Continue covered
+implementation, verification, observation and authorized idempotent recovery without asking again. A new
+turn, command, run identifier or mechanical retry is not itself a reason for another operator decision.
+Unknown effect outcomes require provider reconciliation before retry; never assume that no mutation occurred.
+
+Separate ongoing task permission from candidate-bound promotion. A repair may invalidate a release receipt
+without withdrawing permission to diagnose, fix, test and prepare its successor. Perform that work first.
+An approval bound to old source or artifact bytes cannot authorize changed bytes. A broader standing grant
+may cover successors only when the operator explicitly granted that scope and the effect owner validates it;
+the autonomy class alone is not an authority issuer. Expired, revoked, mismatched or uncovered grants stop
+only dependent effects. Continue independent authorized work.
+
+Make an unavoidable approval the final operator step for a concrete, reviewable candidate. Before asking:
+
+- Run all currently available, authorized non-mutating preflights. Recreate the effect job's dependency
+  environment and observe existing public routes, versions and migration inputs where relevant.
+- Collect all knowable deficiencies in one report and repair those within scope. Credentials or environment
+  access available only after approval must be identified as remaining dependencies, not claimed verified.
+- Revalidate volatile state when it is consumed. Earlier preflight success is preparation evidence, not a
+  deployment, settlement, rollback or cleanup receipt.
+- Ask only for the missing semantic decision, naming the exact rule and owner. Do not ask the operator to
+  repeat covered consent or transport machine-derived identifiers between tools that can read them.
+
+Product promotion and provider trust stay consumer-owned. Updating this guide or the shared prompt does not
+change a protected environment or enroll delegated authority. Consumers adopt the reviewed upstream package
+pin; never patch an installed package or reinterpret a candidate receipt as a standing grant.
+
+This change adds no module, dependency, provider operation or controller. Always-load guidance grows by
+71 UTF-8 bytes: 68 in the existing ADLC/release documents and three in the prompt (996 to 999), within
+the unchanged documentation and 1,000-byte prompt caps. The detailed policy stays on demand.
+
 ## Deadlock avoidance
 
 Classify a rejection before retrying:
