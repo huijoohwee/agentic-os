@@ -52,6 +52,8 @@ export function validateCommandArguments(command, argv) {
       ? exact(argv, { flags: ['checks'], options: ['input'], requiredOptions: ['input'] })
       : exact(argv, { flags: ['provider', 'deep'] });
     case 'flight': {
+      if (argv[0] === 'gate') return exact(argv, { min: 1, options: ['context', 'operation'],
+        requiredOptions: ['context', 'operation'] });
       const error = exact(argv, { min: 1, options: ['requirements', 'checkpoint', 'ref', 'operation'] });
       if (error) return error;
       const phase = argv.find((token) => !token.startsWith('--'));
@@ -113,6 +115,7 @@ export function cmdHelp() {
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',
       '  agentic-os pipeline --repo=<owner/repo> --run=<id> --head=<sha> --attempt=<n>  watch exact CI progress',
       '  agentic-os flight plan|pre|in|post  preview all phase prerequisites, inspect drift and completion',
+      '  agentic-os flight gate --operation=<id> --context=<json>  run enrolled checks before an effect',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
       '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
       '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
