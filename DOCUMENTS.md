@@ -28,6 +28,8 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
 | Global development lifecycle | [ADLC guidelines](docs/adlc-guidelines.md) |
 | Start or release work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md) |
+| Divide work across devices and check write boundaries | [Fleet allocation](FLEET.md) |
+| Central planning records and current task state | [Workspace TODO contract][todo], [Workspace Kanban][kanban] |
 | Portable, capability-routed skills | [Canvas skill](skills/canvas/SKILL.md) |
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR.md) |
@@ -38,6 +40,13 @@ The [repository check catalog](test/repositories.json) owns check-owner membersh
 The [composition source lock](catalog/composition-source-lock.json) owns accepted composition revisions.
 Follow those existing registries; this page does not repeat their inventories, commands, pins or verdicts.
 
+Planning is centralized in `huijoohwee.github.io`: the TODO contract owns immutable records and
+Kanban owns current task state. Canvas retains migration-aware routing links, not writable copies.
+The planning owner validates imported record hashes and the board projection.
+
+[todo]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/docs/TODO.md
+[kanban]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/docs/kanban.md
+
 ## Repository concerns
 
 Each row identifies a local documentation owner. Shared concerns above apply by reference;
@@ -46,7 +55,7 @@ a product's rules and executable validators stay beside its implementation.
 | Repository | Local responsibility | Entry points |
 |---|---|---|
 | `agentic-os` | Shared lifecycle, reusable contracts, catalogs and skills | [README](README.md), shared concerns above |
-| `huijoohwee.github.io` | Common authoring guidelines and semantic schemas | [Guidelines][guidelines], [schema map][guideline-map] |
+| `huijoohwee.github.io` | Common authoring guidelines, semantic schemas and workspace planning | [Guidelines][guidelines], [schema map][guideline-map] |
 | `agentic-commerce-os` | Commerce control plane, buyer loop and product readiness | [README][commerce], [MVP/GTM][gtm], [runtime][commerce-runtime] |
 | `agentic-canvas-os` | Agent application contracts and local documentation control surface | [Docs index][canvas], [product rules][canvas-rules] |
 | `agentic-graph` | Graph/browser execution and shared deployment orchestration | [README][graph], [readiness][graph-runtime], [collaboration][graph-collaboration] |
