@@ -11,7 +11,8 @@ Importing it does not load the CLI or lifecycle catalog.
 |---|---|
 | `src/invocation.mjs` | Token parsing, prefix classification, canonical token, catalog serialization |
 | `bin/agentic-os-invocation.mjs` | Lifecycle catalog IO/hash, exact dispatch policy, argument requirements |
-| Agentic Canvas OS | Application dictionaries, Markdown loading, product safety and invocation proof |
+| `catalog/dictionaries/` | Shared invocation definitions; [asset contract](INVOCATION-DICTIONARIES.md) |
+| Agentic Canvas OS | Checked dictionary projections, Markdown loading, product safety and invocation proof |
 | Agentic Graph | Product routes, document projections, browser interaction and MCP/WebMCP registration |
 | Agentic Commerce OS | Commerce capabilities, payment authorization and transaction evidence |
 
