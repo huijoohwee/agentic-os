@@ -12,6 +12,48 @@ import { enqueue, PROVIDER_CAPABILITIES } from '../src/queue.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
+test('preserved exact-head reviews keep authored text without edit calls or inferred ordering', () => {
+  const head = 'a'.repeat(40), ref = 'agent/device/metadata';
+  const body = `---\nscope: '#metadata'\n---\nReviewed explanation.\nSource-Head: ${head}`;
+  const review = { number: 99, state: 'OPEN', url: 'https://github.com/owner/repo/pull/99',
+    headRefOid: head, headRefName: ref, baseRefName: 'main', body,
+    headRepository: { nameWithOwner: 'owner/repo' }, isCrossRepository: false };
+  const calls = [];
+  const result = enqueue(ref, { expectedHead: head, expectedRepository: 'github.com/owner/repo',
+    baseBranch: 'main', title: 'generated title', body: `Source-Head: ${head}`,
+    preserveExistingText: true, assertSourceHead: () => true, provider: args => {
+      calls.push(args);
+      if (args[1] === 'list') return [review];
+      if (args[1] === 'view') return review;
+      if (args[0] === 'api') return { data: { resource: review } };
+      return assert.fail(`preservation must not mutate: ${args.join(' ')}`);
+    } });
+  assert.equal(result.pr.body, body);
+  assert.equal(result.reviewMutationAttempted, false);
+  assert.equal(result.testedProtectedOrdering, false);
+  assert.equal(result.reason, 'tested-ordering-unavailable');
+  assert.equal(calls.some(args => ['create', 'edit', 'merge'].includes(args[1])), false);
+});
+
+test('review text preservation refuses unbound or changed identities without repairing them implicitly', () => {
+  const head = 'a'.repeat(40), ref = 'agent/device/metadata';
+  for (const drift of [{ body: 'authored text without native identity' }, { headRefOid: 'b'.repeat(40) }]) {
+    const review = { state: 'OPEN', url: 'https://github.com/owner/repo/pull/99',
+      headRefOid: head, headRefName: ref, baseRefName: 'main', body: `Source-Head: ${head}`,
+      headRepository: { nameWithOwner: 'owner/repo' }, isCrossRepository: false };
+    const result = enqueue(ref, { expectedHead: head, expectedRepository: 'github.com/owner/repo',
+      baseBranch: 'main', body: `Source-Head: ${head}`, preserveExistingText: true,
+      assertSourceHead: () => true, provider: args => {
+        if (args[1] === 'list') return [review];
+        if (args[0] === 'api') return { data: { resource: { ...review, ...drift } } };
+        return assert.fail('unbound review must not be edited');
+      } });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'review-source-head-unbound');
+    assert.equal(result.reviewMutationAttempted, false);
+  }
+});
+
 function strictOnlyFixture(t) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-provider-admission-'));
   const root = join(parent, 'repo');

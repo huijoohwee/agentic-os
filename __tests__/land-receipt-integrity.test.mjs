@@ -17,7 +17,7 @@ import { pullRequestText } from '../bin/agentic-os-auxiliary.mjs';
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
 function reviewProjectionFixture(t, {
-  exactBody = false, saturatedCache = false, removeRemoteAfterHandoff = false,
+  exactBody = false, saturatedCache = false, removeRemoteAfterHandoff = false, existingReview = false,
 } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-land-receipt-'));
   const root = join(parent, 'repo');
@@ -64,7 +64,7 @@ function reviewProjectionFixture(t, {
   const review = {
     number: 41, state: 'OPEN', url: 'https://github.com/owner/repo/pull/41',
     headRefOid: head, headRefName: ref, baseRefName: 'main',
-    body: exactBody ? `Source-Head: ${head}`
+    body: exactBody ? `---\nscope: metadata\n---\nAuthored review text.\nSource-Head: ${head}`
       : 'provider dropped the required source-head trailer',
     headRepository: { nameWithOwner: 'owner/repo' }, isCrossRepository: false,
   };
@@ -78,7 +78,7 @@ function reviewProjectionFixture(t, {
     'fi',
     'if [ "$1" = "pr" ]; then',
     '  case "$2" in',
-    "    list) echo '[]' ;;",
+    `    list) printf '%s\\n' '${JSON.stringify(existingReview ? [review] : [])}' ;;`,
     '    create)',
     '      if [ -n "$AGENTIC_OS_TEST_EFFECTS_LOG" ]; then echo review >> "$AGENTIC_OS_TEST_EFFECTS_LOG"; fi',
     '      if [ -n "$AGENTIC_OS_TEST_BODY_CAPTURE" ]; then',
@@ -151,6 +151,19 @@ function land(subject, argv = [], env = {}) {
 function identity(subject) {
   return `Lane: ${subject.ref}\nBase-Revision: ${subject.base}\nSource-Head: ${subject.head}`;
 }
+
+test('repeated CLI landing preserves the reviewed body without repeating review mutations', t => {
+  const subject = reviewProjectionFixture(t, { exactBody: true, existingReview: true });
+  const first = land(subject);
+  assert.equal(first.status, 0, first.stderr);
+  const effects = readFileSync(subject.effectsLog, 'utf8');
+  assert.equal(effects, 'push\n', 'existing review must not be edited or recreated');
+  const second = land(subject);
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(readFileSync(subject.effectsLog, 'utf8'), effects);
+  assert.equal(get(subject.ref, subject.lane).handoff.pr.body,
+    `---\nscope: metadata\n---\nAuthored review text.\nSource-Head: ${subject.head}`);
+});
 
 test('land retains a review whose written identity cannot be verified', (t) => {
   const subject = reviewProjectionFixture(t);
