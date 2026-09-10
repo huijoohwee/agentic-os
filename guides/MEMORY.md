@@ -86,7 +86,8 @@ Unenrolled clones do no memory I/O beyond checking the local enrollment key.
 ## Concurrent devices and publication
 
 All consumers sharing a source clone use its common Git directory's `agentic-os-memory.lock`.
-Index replacement is atomic and private (0700 directory, 0600 file), under that source-wide lock.
+Workspace composition validates its other selected roles at this exact revision before accepting
+the index. Index replacement is atomic and private (0700 directory, 0600 file), under that source-wide lock.
 Another holder produces `blocked-memory-busy`; retry after its operation completes. Never remove
 an active lock. After a crash, establish that no holder remains before recovering a stale lock.
 Independent devices have independent locks and indexes, and converge on the same committed revision.
@@ -118,7 +119,8 @@ The configuration is at most 4 KiB, tree output 64 KiB, each shard 64 KiB, sourc
 32 shards, 512 entries, 16 references per entry, 1024 bytes per reference/summary, and 480,000 bytes
 per cache. Exceeding a bound is an explicit failure, never silent truncation. Select a reviewed,
 bounded corpus at the source; do not delete historical records merely to pass a reader limit.
-There is no embedding, full-history scan, automatic archive deletion or periodic polling.
+There is no embedding, full-history scan or automatic archive deletion. Optional session polling
+is composed by the [workspace runtime](WORKSPACE.md), using the same accepted index and source lock.
 
 ## Requirement, design and decision
 

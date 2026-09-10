@@ -41,6 +41,10 @@ export function validateCommandArguments(command, argv) {
       : 'profile requires init --repository=<host/owner/name>';
     case 'pin': return exact(argv, { options: ['consumer', 'revision'], requiredOptions: ['consumer'] });
     case 'workspace': {
+      if (argv[0] === 'check') return exact(argv, { min: 1,
+        options: ['repository', 'config', 'base', 'head'], requiredOptions: ['repository', 'config', 'base', 'head'] });
+      if (argv[0] === 'sync') return exact(argv, { min: 1, flags: ['offline'] });
+      if (argv[0] === 'watch') return exact(argv, { min: 1, options: ['interval-ms', 'duration-ms'] });
       const error = exact(argv, { flags: ['offline'], options: ['source'] });
       const source = option(argv, 'source');
       return error ?? (source === null || ['memory', 'todo', 'artifacts'].includes(source)
@@ -111,6 +115,9 @@ export function cmdHelp() {
       '  agentic-os pin --consumer=<root> [--revision=<sha>]  check exact consumer pin drift',
       '  npm run setup             write config and select packaged hooks without clobbering',
       '  agentic-os workspace [--offline] [--source=memory|todo|artifacts]  observe enrolled shared sources',
+      '  agentic-os workspace sync [--offline]  refresh one committed workspace snapshot',
+      '  agentic-os workspace watch [--interval-ms=30000] [--duration-ms=28800000]  refresh during this session',
+      '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
       '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',

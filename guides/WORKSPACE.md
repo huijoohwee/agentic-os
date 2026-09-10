@@ -1,7 +1,7 @@
 ---
 title: "Private Workspace Startup"
 doc_type: "Runtime Guide"
-version: "2.0.0"
+version: "2.1.0"
 date: "2026-09-10"
 lang: "en-US"
 owner: "agentic-os"
@@ -67,9 +67,14 @@ validated memory cache, with remote freshness explicitly unknown.
 | TODO | Observe revision freshness and the committed contract blob | Exact context record and board row |
 | Artifacts | Observe revision freshness without opening artifact bodies | Selected artifact and producer validation receipt |
 
-TODO and artifact observations do not fetch payloads or mutate refs, working files or evidence.
-They share one remote advertisement in v2. Memory fetch uses the shared Git repository: a new
-commit may transfer artifact objects too. Git transport is not a payload budget or sparse clone;
+A full v2 observation validates all selected role trees and the TODO contract at the memory
+snapshot revision before atomically publishing its index. Every role in that receipt uses one
+source SHA. A missing role or contract preserves the previous accepted index; offline resume
+reconstructs every role from that same accepted commit, even when origin/main has advanced.
+The index file is an atomic current pointer. Compare its stored source revision with the receipt
+before using it; if another refresh advanced it, acquire a new receipt or read the old Git blobs.
+Source-specific TODO/artifact observations remain metadata-only and can report update-available.
+Memory fetch uses the shared Git repository: a new commit may transfer artifact objects too. Git transport is not a payload budget or sparse clone;
 the index itself reads only the configured memory directory. Keep large generated caches local
 under source-owned ignore rules. Startup never automatically clones, pushes, merges or rebases.
 
@@ -84,7 +89,8 @@ before effects; context does not replace leases, checks, release approval or pay
 
 Each device has its own clone and derived index. Consumers sharing one clone serialize workspace
 observation; memory hydration also uses the source clone's lock. Contention fails explicitly and
-releases owned locks. No polling daemon or background writer is installed.
+releases owned locks. No polling daemon or background writer is installed. An explicit foreground watch session is
+available below; its clone-wide lock is separate from each short observation lock.
 
 Fetch and fast-forward a clean `main` before creating a scoped branch. Preserve dirty files and
 divergence; reconcile through normal Git review. Use distinct task/context paths for concurrent
@@ -96,10 +102,84 @@ metadata to 8 KiB per Git read, remote advertisements to 4 KiB and five seconds.
 a 15-second deadline; its corpus, shard and cache bounds remain in the memory guide. No dependency,
 new `src/` module or always-loaded context is added.
 
-Continuity `WORKSPACE-STARTUP-001`, PRD/TAD/ADR `2.0.0`: one private collaboration source replaces
+Continuity `WORKSPACE-STARTUP-001`, PRD/TAD/ADR `2.1.0`: one private collaboration source replaces
 three separately synchronized repositories at the operator's request. The existing memory reader
 accepts a bounded nested directory; v2 validates one clone identity and distinct role paths, while
 v1 preserves its explicit compatibility contract. Source histories and migration receipts stay
 at the private owner. `__tests__/workspace-startup.test.mjs` and `startup-memory.test.mjs` verify
 startup, scoped retrieval, offline reuse, dirty-byte preservation, remote advances, locks, nested
 paths and identity failures. Run `npm run check` for package regression and budget gates.
+
+## Continuous collaboration (WORKSPACE-STARTUP-001@2.1.0)
+
+PRD: active devices discover a published workspace revision within a target of 60 seconds under
+healthy connectivity, preserve unfinished local files, and join memory, TODO and artifacts at one SHA.
+This is a propagation target after publication, not a guarantee of CI/merge or remote availability.
+TAD: reuse the memory fetch/cache and source locks, validate all role references before index
+replacement, and read content directly from the receipt's immutable commit. No checkout update is
+needed to consume a snapshot. CI composes source-owned planning checks and the bounded checker below.
+ADR: Git remains the transport. A Cloudflare notification service would require a new authenticated
+endpoint and device connection lifecycle without improving the required 30-second probe interval;
+no service, paid capability, dependency or always-loaded context is introduced.
+
+From an enrolled consumer, run a one-shot refresh or a session in its own terminal:
+
+```sh
+agentic-os workspace sync
+agentic-os workspace watch
+```
+
+Watch defaults to a 30-second interval and an eight-hour session, stopping on SIGINT/SIGTERM.
+`--interval-ms` accepts 1000–300000; `--duration-ms` accepts 1–43200000. Choose a longer interval
+for an idle session. An unchanged remote advertisement reuses the cache without fetching objects.
+Only changed revision/config/freshness receipts are printed; no heartbeat files or commits are made.
+Offline errors use the accepted cache and exponential backoff capped at five minutes. SIGHUP or
+SIGCONT requests a fresh probe immediately after the current bounded operation; otherwise reconnection
+is detected on the next probe. Malformed content or lock contention exits explicitly, preserving
+accepted data. Stop the existing session before starting another against the same source clone.
+
+`workspace sync --offline` performs no remote request. A missing accepted cache is an explicit error.
+The session boundary is the foreground command lifetime; startup does not silently spawn a daemon.
+
+## Workspace CI and publication
+
+The private source workflow pins the harness and planning validator to exact reviewed Git commits.
+Keep one read-only Linux validation job with a timeout and per-branch cancellation of superseded
+validation. No schedule, write token, model call or automatic artifact upload is required. Required
+checks and authorized integration remain publication controls; an observation does not grant them.
+If a provider's private-repository plan cannot enforce required checks, report that capability as
+unavailable. Keep the repository private and free; verify exact PR checks in the publication client.
+Client-side verification does not prevent another writer from bypassing CI with a direct push.
+
+The upstream command reads committed blobs, not dirty files:
+
+```sh
+agentic-os workspace check --repository=<workspace-root> --config=<trusted-workspace-json> \
+  --base=<full-base-sha> --head=<full-candidate-sha>
+```
+
+It validates v2 role roots, the TODO contract blob, the existing bounded memory-log reader, forward
+history and accepted memory prefixes. New memory references must be credential-free HTTP(S) URLs
+or existing relative Git paths. Remote links are not fetched and their availability is not proven.
+Accepted TODO records/import identities are immutable. The existing `.todo` test command separately
+validates planning grammar, imported history and the Kanban projection using its pinned website owner.
+Both checks must pass: the generic check receipt explicitly labels the remaining owner checks.
+
+The changed-path budget is 512 entries / 64 KiB of Git output; changed role blobs must be regular
+files below 500,000 bytes. Artifact deletion is rejected. Changed artifact bytes produce an integrity
+manifest in the check receipt (commit, path, blob, SHA-256, size). Product-specific manifest semantics,
+producer completion and runtime/payment proof still require their existing evaluator. Historical
+artifact bodies are not recursively loaded, normalized or retroactively subjected to new size limits.
+
+Producers batch completed records/artifacts into one path-scoped branch and PR. Publish explicit
+finalized paths; keep active logs and generated indexes local. A stale base requires reconciliation
+and new checks of the resulting exact commit. Concurrent edits to the same memory shard must retain
+accepted prefixes and both writers' entries in timestamp order; duplicate IDs fail. Never force-push
+or silently select one writer's bytes. The sync session only retrieves accepted context; it does not
+stage, commit, push, merge, update working files, or arbitrate ownership. Use the existing repository
+publication path and its authority receipts for those effects.
+
+Validation: `workspace-sync.test.mjs` exercises remote publication, coherent offline recovery,
+invalid-candidate retention, process termination/lock release and deterministic polling/backoff.
+`workspace-check.test.mjs` exercises exact commit checks, dirty-file isolation, immutable records,
+reference failures, retained artifacts, symlinks and size bounds. Run `npm run check` before landing.
