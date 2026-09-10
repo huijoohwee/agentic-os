@@ -4,6 +4,9 @@ The **Agent Development Lifecycle (ADLC)** harness. A clonable, runnable workspa
 multi-worktree, multi-agent development that lands work on a canonical branch without rebase livelock.
 Zero runtime dependencies.
 
+[Workspace document owners](DOCUMENTS.md) is the on-demand entry point for shared dictionaries,
+guidelines, local product contracts and validation owners across the seven repositories.
+
 ADLC supersedes the earlier Agentic SDLC framing. The difference is not cosmetic: an SDLC describes
 humans shepherding changes through phases, so its artifacts are documents and approvals. ADLC
 describes agents opening, proving, and closing work at machine pace. Its Git lane state is a local
