@@ -63,7 +63,7 @@ for an explicit alias. Existing refs remain valid. `test:fast` provides a short 
 Managed lanes share `<registry>/<repository>/<device>--<lane>`; `AGENTIC_OS_WORKTREE_ROOT` configures only
 the registry parent, so repository and lane isolation remain intact.
 
-The lazy-loaded [pipeline PRD/TAD/ADR](guides/PRD-TAD-ADR.md) joins implemented lifecycle controls to
+The lazy-loaded [pipeline PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) joins implemented lifecycle controls to
 product release and verification handoffs. The [feature list](guides/FEATURES.md) and
 [tech stack](guides/TECH-STACK.md) record the grounded
 ownership and provider boundaries among `agentic-os`, `agentic-canvas-os`, `agentic-graph`, and

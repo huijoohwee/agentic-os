@@ -30,7 +30,7 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority po
 - New always-load guidance/modules declare deltas; otherwise replace, lazy-load, or reject.
 - Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.
 - Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md` for delivery planning or repeated mechanical failure,
-  `../guides/PRD-TAD-ADR.md` (pipeline) for a transition's owner/check.
+  `../guides/PRD-TAD-ADR-MVP-GTM.md` (pipeline) for a transition's owner/check.
 - Canonical is read-only. Edit owner files in disjoint path-scoped lanes; overlaps wait. Land stages,
   commits, and publishes reserved paths. Land the exact committed diff by protected merge.
 - Exact candidates; proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt.

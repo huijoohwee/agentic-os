@@ -8,8 +8,8 @@ canonical branch directly and never bypasses the repository's provider integrati
 From the clean canonical worktree, reserve the owning path and create its isolated lane:
 
 ```sh
-node bin/agentic-os-checkin-checkout.mjs checkout prd-tad-adr-update \
-  --write=guidelines/prd-tad-adr-guidelines.md
+node bin/agentic-os-checkin-checkout.mjs checkout prd-tad-adr-mvp-gtm-update \
+  --write=guidelines/prd-tad-adr-mvp-gtm-guidelines.md
 ```
 
 The command delegates to `agentic-os start`: it fetches the protected base, checks concurrent scope

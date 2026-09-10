@@ -25,7 +25,7 @@ Current composition identities live in [`catalog/composition-source-lock.json`](
 
 The composition-level feature list for the seven-repository system: what users can achieve, who owns each capability, what source exists, and what must still be proved. The first target is discovery → explicit confirmation → settlement → receipt/replay → marketplace readback in a mobile browser. Individual product tools and widgets remain in their owners' inventories.
 
-This is a derived navigation and acceptance index, not another feature database or a complete independent PRD. [TECH-STACK.md](./TECH-STACK.md) owns architecture and embedded decisions; [PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-guidelines.md), [templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-templates.md) and [CID/RAO/SVO](../../huijoohwee.github.io/guidelines/cid-guidelines.md#shared-field-contract) own authoring. [catalog/features.json](../catalog/features.json) remains the machine-readable commercial-candidate input. No second schema, controller or copied catalog is introduced.
+This is a derived navigation and acceptance index, not another feature database or a complete independent PRD. [TECH-STACK.md](./TECH-STACK.md) owns architecture and embedded decisions; [PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-guidelines.md), [templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-templates.md) and [CID/RAO/SVO](../../huijoohwee.github.io/guidelines/cid-guidelines.md#shared-field-contract) own authoring. [catalog/features.json](../catalog/features.json) remains the machine-readable commercial-candidate input. No second schema, controller or copied catalog is introduced.
 
 ## How to read the index
 
