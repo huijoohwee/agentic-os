@@ -242,7 +242,7 @@ The existing ranker was observed with catalog digest `sha256:17714ee450c8d72ac1f
 
 **AC-F23 / VCC-F23:** Given a future approved design, when memory is exported and rehydrated, then identity, authorization, idempotency, storage transfer and recovery are proved without adding a second product-state owner. Verify with executable owner check not yet specified; source link is design context only; grounding: [source](https://github.com/huijoohwee/agentic-os/blob/46c14586282a952d4af76e9f61e3b53f9e32dfab/guides/TECH-STACK.md).
 
-**Dependencies / TAD–ADR join:** New owner design and executable VCC before implementation; no deployed OS memory tier is claimed. DR-8.
+**Dependencies / TAD–ADR join:** New owner design and executable VCC before runtime-state transfer; no deployed OS memory tier is claimed. DR-8. The separate [shared-memory startup](MEMORY.md) (`MEMORY-STARTUP-001`) implements optional curated retrieval with clone-local indexes; it does not transfer live agent identity or state.
 
 ### F24 — Merchant and shopping roles
 

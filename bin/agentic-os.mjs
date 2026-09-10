@@ -79,7 +79,7 @@ function requireCanonical(root, policy) {
   );
   process.exit(1);
 }
-function cmdStart(root, argv, policy, profile) {
+async function cmdStart(root, argv, policy, profile) {
   requireCanonical(root, policy);
   const [scope] = positional(argv);
   if (!scope) {
@@ -96,14 +96,13 @@ function cmdStart(root, argv, policy, profile) {
     err('blocked-concurrent-start: another lane admission owns the clone-wide start lock');
     return 1;
   }
-  let operationResult;
-  let operationError = null;
+  let operationResult, operationError = null;
   const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null,
     protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
     provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false,
     fetchReceipt: null, provisionReceipt: null };
   try {
-    operationResult = (() => {
+    operationResult = await (async () => {
       assertProvisionable({ ref, scope, device, cwd: root });
       const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
       Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true,
@@ -117,6 +116,8 @@ function cmdStart(root, argv, policy, profile) {
         err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
         return 1;
       }
+      const memory = (await import('./agentic-os-memory.mjs')).hydrateMemory(root, policy, { revision: baseSha });
+      if (memory.status !== 'disabled') out(`memory ${JSON.stringify(memory)}`);
       const facts = { baseFetched: true };
       const result = transition('planned', 'provision', facts);
       if (!result.ok) {
@@ -136,10 +137,8 @@ function cmdStart(root, argv, policy, profile) {
           writePaths,
         }), state: 'active',
       }, root);
-      out('');
-      out(`  cd ${created.path}`);
-      out('  # author, then stage, commit, and push autonomously:');
-      out('  npm run land -- --message="<commit message>"');
+      out(`\n  cd ${created.path}`);
+      out('  # author, then stage, commit, and push autonomously:\n  npm run land -- --message="<commit message>"');
       return 0;
     })();
   } catch (error) {
@@ -535,8 +534,7 @@ async function main() {
   if (command === 'help' || command === '--help') return cmdHelp();
   if (command === 'request') return runRequest(argv);
   if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);
-  const cwd = process.cwd();
-  let root;
+  const cwd = process.cwd(); let root;
   try {
     root = repoRoot(cwd);
   } catch {
@@ -564,6 +562,8 @@ async function main() {
       return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
     case 'doctor': return cmdDoctor(root, profile, policy);
     case 'start': return cmdStart(root, argv, policy, profile);
+    case 'memory': return (await import('./agentic-os-memory.mjs')).runMemory(root, policy,
+      { offline: flag(argv, 'offline') }, out);
     case 'land': return cmdLand(cwd, argv, profile, policy);
     case 'successor': {
       const predecessorRef = currentBranch(root);

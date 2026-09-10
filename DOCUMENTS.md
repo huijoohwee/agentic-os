@@ -28,6 +28,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
 | Global development lifecycle | [ADLC guidelines](docs/adlc-guidelines.md) |
 | Start or release work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md) |
+| Shared memory enrollment, startup and offline retrieval | [Memory routine](guides/MEMORY.md) |
 | Divide work across devices and check write boundaries | [Fleet allocation](FLEET.md) |
 | Central planning records and current task state | [Workspace TODO contract][todo], [Workspace Kanban][kanban] |
 | Portable, capability-routed skills | [Canvas skill](skills/canvas/SKILL.md) |
