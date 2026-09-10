@@ -40,6 +40,7 @@ export function validateCommandArguments(command, argv) {
       ? exact(argv, { min: 1, options: ['repository'], requiredOptions: ['repository'] })
       : 'profile requires init --repository=<host/owner/name>';
     case 'pin': return exact(argv, { options: ['consumer', 'revision'], requiredOptions: ['consumer'] });
+    case 'memory': return exact(argv, { flags: ['offline'] });
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
     case 'land': return exact(argv, { options: ['message', 'body-file'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
@@ -103,6 +104,7 @@ export function cmdHelp() {
       '  agentic-os profile init --repository=<host/owner/name>  print a fork profile; write no state',
       '  agentic-os pin --consumer=<root> [--revision=<sha>]  check exact consumer pin drift',
       '  npm run setup             write config and select packaged hooks without clobbering',
+      '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
       '  npm run land -- [--body-file=<file>]  publish the exact lane head and request provider handoff',
