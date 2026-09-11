@@ -1,7 +1,7 @@
 /** Conservative source impact: literal references plus reviewed non-import contracts. No execution. */
 import { posix } from 'node:path';
 
-export const IMPACT_VERSION = 'agentic-os/test-impact/v1';
+export const IMPACT_VERSION = 'agentic-os/test-impact/v2';
 export const CONTRACT_PATH = 'test/impact-contracts.json';
 const testPath = name => `__tests__/${name}`;
 const isTest = path => /^__tests__\/[^/]+\.test\.mjs$/u.test(path);
@@ -12,11 +12,13 @@ const unique = values => [...new Set(values)].sort();
 export function validateContracts(value, files) {
   const fail = () => { throw new Error('blocked-test-impact-contracts'); };
   if (!value || value.schema !== 'agentic-os/test-impact-contracts/v1'
-    || Object.keys(value).sort().join() !== 'broad,dependencies,packaging,rules,schema,sentinels') fail();
+    || !['broad,dependencies,packaging,rules,schema,sentinels',
+      'broad,dependencies,isolated,packaging,rules,schema,sentinels'].includes(Object.keys(value).sort().join())) fail();
   const paths = list => Array.isArray(list) && list.length <= 256 && list.every(path =>
     typeof path === 'string' && path.length > 0 && path.length <= 256 && !/[\\\x00-\x1f]/u.test(path)
     && !path.startsWith('/') && !path.split('/').includes('..')) && new Set(list).size === list.length;
   const tests = list => paths(list) && list.every(name => isTest(testPath(name)) && files.has(testPath(name)));
+  if (value.isolated !== undefined && !tests(value.isolated)) fail();
   if (!tests(value.sentinels) || !value.sentinels.length || !tests(value.packaging)
     || !paths(value.broad) || !Array.isArray(value.rules) || value.rules.length > 64
     || new Set(value.rules.map(rule => rule.id)).size !== value.rules.length) fail();
@@ -98,7 +100,6 @@ export function selectTests({ before, after, changed, forceAll = false }) {
   } };
   contracts.sentinels.forEach(name => add(testPath(name), 'safety-sentinel'));
   if (forceAll) broadReasons.push('explicit-all');
-  if (changed.length > 128) broadReasons.push('change-count');
   for (const path of changed) {
     if (path === CONTRACT_PATH || path === 'package.json' || path.startsWith('bin/agentic-os-test'))
       broadReasons.push(`selector-or-command:${path}`);
@@ -130,7 +131,6 @@ export function selectTests({ before, after, changed, forceAll = false }) {
       || [...visited].some(isTest) || contracts.broad.some(input => matches(origin, input));
     if (!mapped) broadReasons.push(`unmapped:${origin}`);
   }
-  if (selected.size > Math.ceil(tests.length * 0.8)) broadReasons.push('affected-suite-threshold');
   if (broadReasons.length) tests.forEach(path => add(path, 'broad-impact'));
   const packaging = new Set(contracts.packaging.map(testPath));
   const suites = [...selected].sort(([a], [b]) => a.localeCompare(b)).map(([path, reasons]) =>
@@ -138,4 +138,46 @@ export function selectTests({ before, after, changed, forceAll = false }) {
   return { schema: IMPACT_VERSION, mode: broadReasons.length ? 'broad' : 'affected',
     reasons: unique(broadReasons), changed: unique(changed), available: tests.length, suites,
     stages: ['behavior', 'packaging'].map(name => ({ name, tests: suites.filter(suite => suite.stage === name).map(suite => suite.path) })) };
+}
+
+/** Inputs of one executable check, including reviewed file-read contracts.
+ * Unknown loaders, filesystem discovery and packaging require whole-source identity.
+ * Returned paths are candidate inputs; the selection itself unions old/new edges.
+ */
+export function checkInputs(files, path) { return checkInputResolver(files)(path); }
+export function checkInputResolver(files) {
+  const { contracts, forward, opaque } = inputGraph(files);
+  return path => resolveCheckInputs(files, path, contracts, forward, opaque);
+}
+function inputGraph(files) {
+  const contracts = validateContracts(JSON.parse(files.get(CONTRACT_PATH)?.text ?? 'null'), files);
+  const { graph, opaque } = reverseGraph(files, contracts), forward = new Map();
+  const link = (consumer, dependency) => {
+    if (!forward.has(consumer)) forward.set(consumer, new Set());
+    forward.get(consumer).add(dependency);
+  };
+  for (const [dependency, consumers] of graph) for (const consumer of consumers) link(consumer, dependency);
+  for (const rule of contracts.rules) for (const name of rule.tests)
+    for (const candidate of files.keys()) if (rule.inputs.some(input => matches(candidate, input)))
+      link(testPath(name), candidate);
+  return { contracts, forward, opaque };
+}
+function resolveCheckInputs(files, path, contracts, forward, opaque) {
+  const inputs = new Set([path]), pending = [path], reasons = [];
+  const isolated = contracts.isolated?.includes(path.replace('__tests__/', '')) === true;
+  if (contracts.packaging.includes(path.replace('__tests__/', ''))) reasons.push('packaging');
+  for (let index = 0; index < pending.length; index++) {
+    const consumer = pending[index], text = files.get(consumer)?.text ?? '';
+    if (opaque.has(consumer)) reasons.push(`opaque:${consumer}`);
+    // Literal references alone cannot bound arbitrary directory scans, file reads or subprocesses.
+    // Explicit dependency declarations make their input boundary reviewable.
+    if (/['"](?:npm|pnpm|yarn)['"]/u.test(text) && /['"](?:pack|install|ci)['"]/u.test(text))
+      reasons.push(`package-command:${consumer}`);
+    if (!isolated && (/['"]node:(?:fs(?:\/promises)?|child_process)['"]/u.test(text) || /\b(?:readFileSync|readFile|readdirSync|readdir|execFileSync|execSync|spawn|execFile|exec|glob|fetch)\s*\(/u.test(text))
+      && !Object.hasOwn(contracts.dependencies, consumer)) reasons.push(`discovery:${consumer}`);
+    for (const dependency of forward.get(consumer) ?? []) if (!inputs.has(dependency)) {
+      inputs.add(dependency); pending.push(dependency);
+    }
+  }
+  return { paths: unique(inputs), scope: reasons.length ? 'repository' : 'inputs', reasons: unique(reasons) };
 }

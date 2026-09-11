@@ -129,11 +129,10 @@ export function copyWorktreeEntriesToQuarantine({
   let manifestPublished = false, manifestFailedPath = null;
   let manifestWriteAttempted = false, manifestWriteResultUnknown = false;
   try {
-    assertTree(root, []);
     for (const entry of entries) {
       const slot = String(copied.length);
       const detail = { quarantinePath: path, quarantineSlot: slot, sourcePath: entry.path };
-      assertRoot(root);
+      assertRoot(root); assertTree(root, copied.map(({ slot: prior }) => join(path, prior)), detail);
       const remaining = limits.maxAggregateBytes - budget.bytes;
       if (remaining < 0) throw failure('blocked-quarantine-copy-limit',
         'quarantine aggregate byte limit exceeded', detail);
@@ -146,9 +145,8 @@ export function copyWorktreeEntriesToQuarantine({
       try { verify(entry, slot, path); } catch (error) { error.quarantinePath = path; throw error; }
       assertRoot(root); assertPathIdentity(copy.source, 'quarantine source');
       assertPathIdentity(copy.destination, 'quarantine destination');
+      assertTree(root, copied.map(({ slot: prior }) => join(path, prior)), detail);
     }
-    // No-clobber copies bind each slot; complete namespace checks belong at phase boundaries.
-    assertTree(root, copied.map(({ slot }) => join(path, slot)));
     for (const file of manifestFiles) { assertRoot(root);
       assertTree(root, [...copied.map(({ slot }) => join(path, slot)), ...manifests.map(value => value.path)]);
       const target = join(path, file.name); manifestFailedPath = target;
@@ -178,14 +176,6 @@ export function copyWorktreeEntriesToQuarantine({
   const state = { path, root, copied: Object.freeze(copied), slots, sources, budget,
     manifests, manifestPath, limits: Object.freeze({ ...limits }), verify,
     retired: false };
-  try { verifyState(state); } catch (error) {
-    Object.assign(error, { quarantinePath: path, quarantineEntryCount: copied.length,
-      copiedBytes: budget.bytes, quarantineCopyResultUnknown: false,
-      quarantineManifestPath: manifestPath, quarantineManifestPublished: manifestPublished,
-      quarantineManifestPublishedPaths: manifests.map(file => file.path),
-      quarantineManifestWriteAttempted: manifestWriteAttempted, quarantineManifestWriteResultUnknown: false });
-    throw error;
-  }
   const receipt = Object.freeze({ path, copied: state.copied, copyOnly: true,
     sourceRetired: false, copiedBytes: budget.bytes, manifestPath,
     manifestPublishedPaths: Object.freeze(manifests.map(file => file.path)),

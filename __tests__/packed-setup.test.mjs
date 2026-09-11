@@ -20,7 +20,8 @@ function priorRuntimeFiles(selected, quarantineLegacy = true) {
     ['src/git.mjs', ['git-remote-single.mjs.txt', '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62']],
     ['src/git-tracked.mjs', ['git-tracked-single.mjs.txt', 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320']],
     ['bin/agentic-os-filter-compare.mjs', ['filter-compare-single.mjs.txt', 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7']],
-    ...(quarantineLegacy ? [['src/quarantine.mjs', ['quarantine-v1.mjs.txt', 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d']]] : []),
+    ...(quarantineLegacy ? [['src/quarantine.mjs', ['quarantine-v1.mjs.txt', 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d']]]
+      : [['src/quarantine.mjs', ['quarantine-pre-diff.mjs.txt', 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e']]]),
   ]);
   return selected.files.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file => {
     const fixture = fixtures.get(file.path); if (!fixture) return file;
@@ -56,7 +57,6 @@ function installPriorReleaseRuntime(selected, { authorityRelease = false } = {})
   const changes = trackedChanges(cwd);
   return changes.headToIndex.length > 0 || changes.indexToWorkingTree.length > 0;
 }
-
 /** Conservative exact-byte risks; publication can skip ignored-only ownership enumeration. */
 export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = true } = {}) {
   const hidden = strictGitPaths(['ls-files', '-v', '-z'], cwd).filter((record) => {
@@ -74,7 +74,6 @@ export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = tru
   return { dirtyTracked: dirtyTracked(cwd), hidden,
     owned: untrackedPaths(cwd, { includeIgnored }), tracked };
 }
-
 const UTF8`)
       .replace(/function parseRawDiff\(cwd, args, label\) \{[\s\S]+?\n\}\n\nfunction headToIndexChanges[\s\S]+?\n\}\n\n\/\*\* Raw local tracked projections/u,
         `function parseRawDiff(cwd) {
@@ -101,7 +100,6 @@ const UTF8`)
   }
   return entries;
 }
-
 /** Raw local tracked projections`)
       .replace('export function trackedChanges(cwd = process.cwd()) {\n  const indexToWorkingTree = [];\n  const entries = parseIndexEntries(cwd);\n  const headToIndex = headToIndexChanges(cwd);',
         'export function trackedChanges(cwd = process.cwd()) {\n  const headToIndex = parseRawDiff(cwd);\n  const indexToWorkingTree = [];\n  const entries = parseIndexEntries(cwd);')
@@ -184,7 +182,9 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false, latest = false) {
-  const source = latest ? selected.files.map(file => file.path === 'src/lane-id.mjs'
+  const source = latest ? selected.files.map(file => file.path === 'src/quarantine.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
+      sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' } : file.path === 'src/lane-id.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),
       sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }
     : file.path === 'src/catalog-input.mjs'
@@ -221,7 +221,6 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
   chmodSync(join(path, 'runtime-manifest.json'), 0o600);
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
-
 test('the verified prior release runtimes authorize managed migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-immediate-prior-runtime-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -231,7 +230,6 @@ test('the verified prior release runtimes authorize managed migration', (t) => {
     const prior = installImmediatePriorRuntime(selected, guardRelease, currentRelease, latest);
     assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true); }
 });
-
 function runChild(file, args, options) {
   return new Promise((resolveResult) => {
     const child = spawn(file, args, options);
@@ -243,7 +241,6 @@ function runChild(file, args, options) {
     child.on('close', (status, signal) => resolveResult({ status, signal, stdout, stderr }));
   });
 }
-
 test('published files contain public JSON and adapters without deleted deep imports', () => {
   const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: ROOT, encoding: 'utf8',
@@ -306,7 +303,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   execFileSync('npm', ['install', '--ignore-scripts', '--no-package-lock', '--no-audit', '--no-fund', '--offline'], {
     cwd: lane, stdio: 'pipe',
   });
-
   const cli = join(repository, 'node_modules', '.bin', 'agentic-os');
   const laneCli = join(lane, 'node_modules', '.bin', 'agentic-os');
   const nodeModules = join(repository, 'node_modules');
@@ -317,7 +313,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   const laneBlocked = spawnSync(laneCli, ['setup'], { cwd: lane, encoding: 'utf8' });
   assert.equal(laneBlocked.status, 1);
   assert.match(laneBlocked.stderr, /blocked-canonical-setup-required/u);
-
   execFileSync('git', ['switch', '--quiet', '-c', 'feature/setup-wrong-branch'], { cwd: repository });
   for (const command of ['setup', 'git-configure', 'guard-install']) {
     const wrongBranch = spawnSync(cli, [command], { cwd: repository, encoding: 'utf8' });
@@ -331,7 +326,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(detached.status, 1);
   assert.match(detached.stderr, /primary canonical worktree identity is unavailable/u);
   execFileSync('git', ['switch', '--quiet', 'main'], { cwd: repository });
-
   const inherited = join(parent, 'global.gitconfig');
   execFileSync('git', ['config', '--file', inherited, 'core.hooksPath', '.inherited-hooks']);
   const inheritedBlocked = spawnSync(cli, ['setup'], {
@@ -339,7 +333,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   });
   assert.equal(inheritedBlocked.status, 1);
   assert.match(inheritedBlocked.stderr, /blocked-existing-hooks-path/u);
-
   execFileSync('git', ['config', 'core.hooksPath', '.legacy-hooks'], { cwd: repository });
   const blocked = spawnSync(cli, ['setup'], { cwd: repository, encoding: 'utf8' });
   assert.equal(blocked.status, 1);

@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { executionEnvironment, readRegular, safePath, snapshot } from '../bin/agentic-os-test-inputs.mjs';
+import { executionEnvironment, readRegular, safePath, snapshot, snapshotReader } from '../bin/agentic-os-test-inputs.mjs';
 import { ciArguments } from '../bin/agentic-os-test-ci.mjs';
 
 function fixture(t) {
@@ -70,4 +70,16 @@ test('CI binds PR merge parents, merge groups and push-before to the actual chec
   assert.throws(() => ciArguments({ before: '0'.repeat(40), after: head }, 'push', head), /revision/);
   assert.throws(() => ciArguments({ before: base, after: merge }, 'push', head), /revision/);
   assert.throws(() => ciArguments({}, 'workflow_dispatch', head), /event/);
+});
+
+test('run-local snapshots reuse unchanged file objects but detect restored timestamps, new paths and deletion', t => {
+  const f = fixture(t), observe = snapshotReader({ root: f.root, base: f.base });
+  const first = observe(), second = observe();
+  assert.equal(first.before, second.before);
+  assert.equal(first.after.get('a.mjs'), second.after.get('a.mjs'));
+  writeFileSync(join(f.root, 'a.mjs'), 'export const a=9;\n'); utimesSync(join(f.root, 'a.mjs'), 1, 1);
+  const third = observe();
+  assert.notEqual(third.after.get('a.mjs').digest, first.after.get('a.mjs').digest);
+  writeFileSync(join(f.root, 'new.mjs'), 'new'); rmSync(join(f.root, 'a.mjs'));
+  assert.deepEqual(observe().changed, ['a.mjs', 'new.mjs']);
 });
