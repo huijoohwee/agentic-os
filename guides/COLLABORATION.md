@@ -157,12 +157,17 @@ No private workspace content, credentials, caches or recovery payloads enter the
 an independent consumer/workspace clone and a short-lived, repository-scoped Actions token. Preparation
 refuses a private repository; standard public Ubuntu runners are used. Verification has read access only.
 
-Acceptance requires distinct hosted-machine digests and overlapping worker intervals, one winner for
+Acceptance requires distinct Linux boot-identity digests and overlapping worker intervals, one winner for
 one exact board revision, two simultaneous disjoint claims, rejection of overlapping and stale writers,
 and an explicit stopped release before another worker receives a higher epoch. Both workers preserve
 their fixture's dirty drafts, HEAD and index. The verifier checks the corresponding remote commit states,
 source/context/runtime pins, stopped reports and zero remaining tasks. Negative results cannot be promoted
 by supplying a success flag. Actor labels and Git history still do not grant execution or release authority.
+
+Hosted images can reuse hostnames. The cloud proof hashes the kernel's per-boot UUID and refuses missing
+or malformed identities; it never falls back to a hostname. Standard Ubuntu jobs receive separate VMs.
+Sources: [Linux boot identity](https://www.kernel.org/doc/html/v6.9/admin-guide/sysctl/kernel.html#random),
+[GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
 The proof uses four synthetic tasks, two workers, a 60-second admission rendezvous, a four-minute worker
 protocol deadline, at most 48 observations per phase and the native 15-second Git transport limits.

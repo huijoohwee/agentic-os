@@ -6,7 +6,16 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { prepareFixture, enrollPeer, readEnvelope, run } from '../test/collaboration-cloud-fixture.mjs';
-import { verifyPeers, verifyRemoteProof } from '../test/collaboration-cloud-proof.mjs';
+import { hostIdentity, verifyPeers, verifyRemoteProof } from '../test/collaboration-cloud-proof.mjs';
+
+test('cloud identity requires a boot UUID instead of reusable image hostnames', () => {
+  const first = hostIdentity(true, '11111111-1111-4111-8111-111111111111');
+  const second = hostIdentity(true, '22222222-2222-4222-8222-222222222222');
+  assert.equal(first.hostIdentitySource, 'linux-boot-id'); assert.notEqual(first.hostDigest, second.hostDigest);
+  assert.throws(() => hostIdentity(true, 'runnervm'), /Linux boot UUID required/u);
+  assert.throws(() => hostIdentity(true, ''), /Linux boot UUID required/u);
+  assert.equal(hostIdentity(false, 'runnervm').hostIdentitySource, 'hostname');
+});
 
 test('independent enrolled processes verify race, disjoint work, stopped handoff and remote history', { timeout: 60000 }, async t => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-cloud-proof-')));
@@ -41,6 +50,9 @@ test('independent enrolled processes verify race, disjoint work, stopped handoff
   assert.equal(result.remainingTasks, 0); assert.equal(result.remoteHistoryVerified, true);
   assert.equal(result.concurrentClaims, 2); assert.equal(result.exactRaceWinners, 1);
   assert.throws(() => verifyPeers(envelope, peers, { requireCloud: true }));
+  const sameBoot = structuredClone(peers);
+  for (const p of sameBoot) Object.assign(p, { cloud: true, ...hostIdentity(true, '11111111-1111-4111-8111-111111111111') });
+  assert.throws(() => verifyPeers(envelope, sameBoot, { requireCloud: true }), /distinct hosted machines/u);
   for (const mutate of [p => { p[1].runtimeSha = 'b'.repeat(40); },
     p => { p[1].race.won = p[0].race.won; }, p => { p[0].dirtyDraftsPreserved = false; },
     p => { p[1].finalRevision = 'b'.repeat(40); }]) {

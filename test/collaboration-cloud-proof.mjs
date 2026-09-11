@@ -1,10 +1,22 @@
 /** Two independent workers exercise the real collaboration owner over a shared Git transport. */
 import assert from 'node:assert/strict';
 import { hostname } from 'node:os';
+import { openSync, readSync, closeSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { observeBoard, updateBoard } from '../bin/agentic-os-collaboration-store.mjs';
 import { validateBoard } from '../bin/agentic-os-collaboration.mjs';
 import { hash, run, checkoutState } from './collaboration-cloud-fixture.mjs';
+
+function bootIdentity() {
+  // procfs reports size zero; read a fixed buffer instead of using a regular-file size check.
+  const descriptor = openSync('/proc/sys/kernel/random/boot_id', 'r'), bytes = Buffer.alloc(64);
+  try { return bytes.subarray(0, readSync(descriptor, bytes, 0, bytes.length, 0)).toString('utf8').trim(); }
+  finally { closeSync(descriptor); }
+}
+export function hostIdentity(cloud, identity = cloud ? bootIdentity() : hostname()) {
+  if (cloud) assert.match(identity, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u, 'Linux boot UUID required');
+  return { hostDigest: hash(identity), hostIdentitySource: cloud ? 'linux-boot-id' : 'hostname' };
+}
 
 export async function exercisePeer(peer, role, { cloud = false, pollMs = 1000, phaseMs = 60000 } = {}) {
   assert.ok(['a', 'b'].includes(role));
@@ -14,7 +26,7 @@ export async function exercisePeer(peer, role, { cloud = false, pollMs = 1000, p
   const id = suffix => `probe-${envelope.runId}-${suffix}`;
   const stopAt = envelope.startAt + 240000;
   const proof = { schema: 'agentic-os/cloud-collaboration-peer/v1', role, cloud, actor,
-    hostDigest: hash(hostname()), runId: envelope.runId, runtimeSha: envelope.runtimeSha,
+    ...hostIdentity(cloud), runId: envelope.runId, runtimeSha: envelope.runtimeSha,
     sourceSha: envelope.sourceSha, contextSha: envelope.contextSha,
     startedAt, raceRevision: envelope.revision, events, modelsInvoked: 0, tokens: 0,
     grantsAuthority: false, productEffects: false, status: 'running' };
@@ -114,7 +126,7 @@ export function verifyPeers(envelope, peers, { requireCloud = false } = {}) {
     for (const key of ['checkoutPreserved', 'indexPreserved', 'dirtyDraftsPreserved']) assert.equal(p[key], true);
     assert.equal(p.modelsInvoked, 0); assert.equal(p.tokens, 0); assert.equal(p.grantsAuthority, false);
     assert.equal(p.productEffects, false); assert.ok(p.startedAt <= envelope.startAt + 5000);
-    if (requireCloud) assert.equal(p.cloud, true);
+    if (requireCloud) { assert.equal(p.cloud, true); assert.equal(p.hostIdentitySource, 'linux-boot-id'); }
   }
   assert.notEqual(peers[0].actor.device, peers[1].actor.device);
   if (requireCloud) assert.notEqual(peers[0].hostDigest, peers[1].hostDigest, 'distinct hosted machines');
