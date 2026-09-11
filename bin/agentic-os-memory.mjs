@@ -99,7 +99,7 @@ function scalar(text) {
   return value;
 }
 /** Existing memory-log/v1 sigil blocks, restricted to its flat, single-line scalar profile. */
-function entriesFor(bytes, shard) {
+export function memoryEntriesFor(bytes, shard) {
   const text = decode(bytes).replaceAll('\r\n', '\n');
   const front = text.match(/^---\n([\s\S]*?)\n---\n/u);
   if (!front) fail('frontmatter-required');
@@ -168,7 +168,7 @@ export function memoryIndexFor(source, config, revision, previous = null) {
       const before = blob(source, old.blob, LIMIT.shard);
       if (!bytes.subarray(0, before.length).equals(before)) fail('append-only');
     }
-    entries.push(...entriesFor(bytes, shard));
+    entries.push(...memoryEntriesFor(bytes, shard));
     if (entries.length > LIMIT.entries) fail('entry-count');
   }
   if (previous?.shards.some(old => !shards.some(item => item.path === old.path))) fail('shard-removed');
@@ -186,6 +186,22 @@ function cached(file, config) {
     || !Array.isArray(value.entries) || value.entries.length > LIMIT.entries) fail('cache-invalid');
   // Cache integrity is not authorization. Re-read cited blobs before using memory to make a decision.
   return value;
+}
+/** Local-only pinned retrieval. A peer advancing the accepted cache never silently changes a task's revision. */
+export function acceptedMemorySnapshot(source, supplied, revision) {
+  if (!SHA.test(revision ?? '')) fail('exact-snapshot-required');
+  const config = memoryConfiguration(supplied, source), key = digest(JSON.stringify(config));
+  assertRemote(source, config);
+  const index = cached(join(commonDir(source), 'agentic-os-memory', `${key}.json`), config);
+  if (!index) fail('unavailable-no-cache');
+  const acceptedRef = `refs/agentic-os/memory/accepted-${key}`;
+  const accepted = read(source, ['rev-parse', '--verify', acceptedRef]);
+  if (accepted !== index.source.revision) fail('snapshot-race');
+  if (revision !== accepted && observeGit(['merge-base', '--is-ancestor', revision, accepted],
+    { cwd: source, allowFail: true }) === null) fail('snapshot-not-accepted');
+  const result = revision === accepted ? index : memoryIndexFor(source, config, revision);
+  if (read(source, ['rev-parse', '--verify', acceptedRef]) !== accepted) fail('snapshot-race');
+  return { index: result, acceptedRevision: accepted, indexReused: revision === accepted };
 }
 function save(file, value) {
   const prior = lstatSync(file, { throwIfNoEntry: false }) ? pathIdentity(file) : null;
