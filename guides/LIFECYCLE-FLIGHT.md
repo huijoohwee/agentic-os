@@ -246,7 +246,7 @@ replace byte-integrity evidence. This changes no runtime dependency or module co
 
 ## Execute browser checks before activation
 
-The scope and acceptance contract is [ADLC-PREFLIGHT-001](../PRD-TAD-ADR.md).
+The scope and acceptance contract is [ADLC-PREFLIGHT-001](../PRD-TAD-ADR-MVP-GTM-PREFLIGHT.md).
 Enroll reviewed Node scripts in `.agentic-os-flight.json` using schema v3. It retains v2 `operations`,
 `requirements` and `maxAgeSeconds`, and adds a nonempty `checks` array. Each check has these fields:
 
