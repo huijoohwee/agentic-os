@@ -35,7 +35,11 @@
     "./dictionaries/DICTIONARY-BINDING.md": "./catalog/dictionaries/DICTIONARY-BINDING.md",
     "./test/contracts/admission-v2.fixture.json": "./test/contracts/admission-v2.fixture.json",
     "./test/contracts/admission-v2.fixture.sha256": "./test/contracts/admission-v2.fixture.sha256",
-    "./test/repositories.json": "./test/repositories.json"
+    "./test/repositories.json": "./test/repositories.json",
+    "./context/prefix": "./runtime/cache-context.mjs",
+    "./context/continuity": "./runtime/reasoning-continuity.mjs",
+    "./context/json": "./runtime/json-contract.mjs",
+    "./context/codebase": "./bin/agentic-os-context-index.mjs"
   },
   "engines": {
     "node": ">=20.11"
@@ -51,6 +55,7 @@
     ".githooks",
     "bin",
     "src",
+    "runtime",
     "catalog",
     "templates",
     "skills",
@@ -101,7 +106,8 @@
     "check:all": "node bin/agentic-os-tests.mjs all --base=HEAD --fresh",
     "test:all": "npm run check:all",
     "test:fast": "node bin/agentic-os-tests.mjs fast",
-    "test:git": "node bin/agentic-os-tests.mjs git"
+    "test:git": "node bin/agentic-os-tests.mjs git",
+    "context:check": "node --test __tests__/cache-context.test.mjs __tests__/reasoning-continuity.test.mjs __tests__/context-runtime.test.mjs __tests__/codebase-context.test.mjs"
   },
   "dependencies": {},
   "devDependencies": {}

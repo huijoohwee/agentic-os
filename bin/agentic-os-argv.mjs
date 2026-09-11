@@ -31,6 +31,14 @@ function exact(argv, {
 
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'context': {
+      const operation = argv[0];
+      const required = operation === 'search' ? ['path', 'query']
+        : operation === 'read' ? ['path', 'sha256'] : operation === 'map' ? ['path'] : null;
+      if (!required) return 'context requires map, search, or read';
+      const optional = operation === 'read' ? ['line', 'lines'] : ['limit', 'after'];
+      return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
+    }
     case 'cleanup-user': return argv[0] === 'plan'
       ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow'],
         requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
@@ -135,6 +143,7 @@ export function cmdHelp() {
       '  agentic-os workspace watch [--interval-ms=30000] [--duration-ms=28800000]  refresh during this session',
       '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
       '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
+      '  agentic-os context map|search|read --path=<source>  bounded native context; see guides/CONTEXT.md',
       '  agentic-os collaborate status [--offline]  observe opt-in shared coordination; not authority',
       '  agentic-os cleanup-user <plan|apply>  explicit local-consent quarantine; see guides/USER-CLEANUP.md',
       '  agentic-os collaborate <get|submit|claim|renew|release|report|archive> --input=<json>  cooperative work/handoff',
