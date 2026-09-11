@@ -113,7 +113,7 @@ for this asset. Document checks establish source consistency only.
 [guidelines]: https://github.com/huijoohwee/huijoohwee.github.io/tree/main/guidelines
 [guideline-map]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/agenticrag-guidelines-and-surfaces-map.graph.jsonld
 [commerce]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/README.md
-[gtm]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/mvp-gtm-handoff.md
+[gtm]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/prd-tad-adr-mvp-gtm-handoff.md
 [commerce-runtime]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/production-runtime.md
 [canvas]: https://github.com/huijoohwee/agentic-canvas-os/blob/main/docs/README.md
 [canvas-rules]: https://github.com/huijoohwee/agentic-canvas-os/blob/main/docs/PROJECT-RULES.md
