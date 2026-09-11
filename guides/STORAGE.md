@@ -3,9 +3,9 @@ title: Storage compaction
 doc_type: PRD-TAD-ADR-MVP-GTM
 owner: agentic-os
 continuity_id: STORAGE-001
-prd_revision: 1.2.0
-tad_revision: 1.2.0
-adr_revision: 1.2.0
+prd_revision: 1.3.0
+tad_revision: 1.3.0
+adr_revision: 1.3.0
 load_policy: on-demand
 ---
 
@@ -170,3 +170,82 @@ Additional validation covers no-op growth thresholds, uneconomic candidate dispo
 restoration, tracked/state/alias/traversal refusals, active readers and changed-source preservation.
 
 Canonical-quarantine, retained-cache compression and internal/external hardlink cases are covered too.
+
+## Shared recovery location
+
+Completed Git recovery packs and artifact archives can be relocated to a private local store. This
+extends STORAGE-001 with configurable placement, bounded inventory, immutable provenance records,
+exact duplicate reuse and separate restore verification. Existing receipts and incomplete operations
+remain in their original clone. There is no automatic expiry, cache eviction or backup service.
+
+Configure each participating clone explicitly; the path is device configuration, never a source default:
+
+```sh
+node bin/agentic-os-storage.mjs configure --repository=/absolute/repository \
+  --store=/absolute/workspace/.agentic-os-store
+node bin/agentic-os-storage.mjs inventory --repository=/absolute/repository
+node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
+  --kind=recovery-relocation --operation=<completed-storage-plan-digest> > /private/relocation-plan.json
+node bin/agentic-os-storage.mjs apply --plan=/private/relocation-plan.json \
+  --authorize=agentic-os:storage:<relocation-plan-digest> --stopped
+```
+
+`configure` creates an empty private store or reuses its exact descriptor, then writes the clone's
+`.git/agentic-os-storage/store.json`. Conflicting existing configuration, directory aliases, public
+permissions and unknown contents are refused. A location inside a Git checkout must already be ignored
+and contain no tracked files. The workspace publication allowlist remains the owning publication guard.
+Store initialization refuses partial or unfamiliar layouts; it does not adopt arbitrary archive folders.
+
+The store contains `store.json`, `payloads/<manifest-digest>`, `records/<record-id>.json`, and `staging/`.
+Record identity includes store ID, clone ID and original operation ID. Immutable payloads with exactly
+matching streamed manifests share bytes, while each operation retains its independent provenance.
+Records preserve original plan/receipt/proof text, source location, content/mode/link manifest, allocated
+bytes, verification time and native restore evidence. Recovery retention is always `hold`; age or a
+quota cannot authorize deletion. This local store shares the host disk and is not an independent backup.
+
+Relocation uses the existing clone cleanup lock followed by one store lock, with no waiting loop.
+`--stopped` asserts that recovery payloads and their receipts have no uncooperative writers. Active
+application readers need not stop because installed dependencies and application stores are not targets.
+The original payload is removed only after copying, flushing, matching its full manifest, verifying the
+native format, publishing a durable catalog record, and rechecking the original evidence and both copies.
+Git verification checks the complete packed object-ID inventory, including unreachable objects. Archive
+verification extracts into private staging and checks the original artifact's content, modes and links.
+Source and store must not contain each other; another filesystem is supported through copy/verify.
+Free-space checks reserve payload logical bytes plus artifact extraction bytes and 16 MiB headroom.
+
+Original receipt paths stay immutable. An added `relocation-plan.json` journals the operation and
+`relocation.json` points to its completed central record. Inventory and storage receipt replay resolve
+the new location. Preserve these pointers and the catalog when backing up; historical absolute paths
+in the original receipts are evidence, not current payload locations.
+
+If copying or validation fails, retain staging and the original. A partial copy cannot resume deletion.
+If the catalog was published, an explicit `apply --resume` with the same unexpired plan verifies all
+bindings again before finalizing removal. A completed replay revalidates the retained payload and does
+not create another copy. Unknown, incomplete or corrupt operation records are reported as retained and
+unclassified. Inventory is read-only and metadata-based; it does not claim a fresh deep verification.
+It bounds discovery to 2,000 operation entries and records to 512,000 bytes. Existing payload, command,
+entry and one-hour plan bounds apply. No daemon, startup import, network call or dependency is added.
+
+Restore an independent payload copy into a new directory without overwriting live repository files:
+
+```sh
+node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
+  --kind=recovery-restore --operation=<original-storage-plan-digest> \
+  --destination=/private/new-recovery-directory > /private/restore-plan.json
+node bin/agentic-os-storage.mjs apply --plan=/private/restore-plan.json \
+  --authorize=agentic-os:storage:<restore-plan-digest> --stopped
+```
+
+The destination receives `recovery/` for Git or `artifact.tar.gz` for an archived artifact, together with
+its plan, catalog record and verified restore receipt. Native verification runs again; archive extraction
+is temporary verification, not installation into a checkout. Restore refuses existing destinations,
+store-internal destinations, aliases and changed payloads. A failed restore retains its partial copy;
+choose another new directory after diagnosis. Live Git refs, reflogs, packages, databases, pinned offline
+data and active graph output roots remain owned by their applications. Recovery records contain enough
+manifest and original evidence to support manual recovery if the source clone becomes unavailable;
+the command currently requires the original clone and its immutable operation receipts.
+
+Validation: `node --test __tests__/storage-recovery.test.mjs` exercises real Git object retention,
+archive extraction, separate restores, exact duplicate reuse across clones, private configuration,
+Git publication exclusion, read-only inventory, expiration, locks, interruption/resume and drift refusal.
+Use these checks with the original storage suite and `npm run check` before applying to retained data.
