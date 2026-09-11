@@ -556,6 +556,8 @@ async function main() {
   }
   const policy = queue.providerPolicy(profile);
   switch (command) {
+    case 'collaborate': return (await import('./agentic-os-collaboration-store.mjs'))
+      .runCollaboration(root, policy, profile, argv, out);
     case 'setup':
     case 'git-configure':
     case 'guard-install':

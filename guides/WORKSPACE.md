@@ -11,6 +11,9 @@ load_policy: "on-demand"
 
 # Private workspace startup
 
+For opt-in multi-device/provider work admission and compact handoffs, use the lazy
+[shared collaboration contract](COLLABORATION.md). It shares coordination metadata, not vendor sessions.
+
 The selected private `huijoohwee/.workspace` repository owns shared context on `main`:
 
 ```text

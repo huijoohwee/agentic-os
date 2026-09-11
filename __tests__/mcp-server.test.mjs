@@ -54,7 +54,7 @@ function legacyInitialize(id = 1) {
 const okRunner = async () => ({ exitCode: 0, stdout: 'ok\n', stderr: '' });
 
 test('the packaged fixed tool surface is deterministic and deeply frozen', () => {
-  assert.deepEqual(TOOLS.map((tool) => tool.name), ['doctor', 'status', 'checks', 'reap', 'lane']);
+  assert.deepEqual(TOOLS.map((tool) => tool.name), ['collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
   assert.equal(Object.isFrozen(TOOLS), true);
   assert.equal(Object.isFrozen(TOOLS[0].inputSchema), true);
   assert.equal(TOOLS.find((tool) => tool.name === 'reap').annotations.destructiveHint, false);
@@ -233,20 +233,24 @@ Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
 });
 
 test('effectful tool cancellation waits for and delivers the governed outcome', async () => {
+  for (const [name, args, expected] of [
+    ['lane', { scope: 'cancel-after-effect' }, ['start', 'cancel-after-effect']],
+    ['collaborate', { operation: 'claim', input: 'claim.json' }, ['collaborate', 'claim', '--input=claim.json']],
+  ]) {
   const responses = [];
   let resolveRun;
   let admitted = false;
   const connection = createConnection({
     write: (value) => responses.push(value),
     runCli: (argv, options) => new Promise((resolve) => {
-      assert.deepEqual(argv, ['start', 'cancel-after-effect']);
+      assert.deepEqual(argv, expected);
       assert.equal(options.effectful, true);
       assert.equal(options.signal, undefined);
       admitted = true; resolveRun = resolve;
     }),
   });
   connection.receive(request('tools/call', 71, {
-    name: 'lane', arguments: { scope: 'cancel-after-effect' },
+    name, arguments: args,
   }));
   assert.equal(admitted, true);
   connection.receive({
@@ -258,6 +262,7 @@ test('effectful tool cancellation waits for and delivers the governed outcome', 
   assert.equal(responses[0].id, 71);
   assert.equal(responses[0].result.structuredContent.stdout, 'exact lane receipt\n');
   await connection.close();
+  }
 });
 
 test('effectful forced termination returns bounded write-result-unknown evidence', async (t) => {
