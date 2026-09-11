@@ -3,13 +3,19 @@ on:
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:
+    inputs:
+      collaboration:
+        description: 'Run the synthetic two-runner Git collaboration proof'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
-  group: test-canary-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ inputs.collaboration && 'collaboration-canary' || format('test-canary-{0}', github.ref) }}
+  cancel-in-progress: ${{ !inputs.collaboration }}
 jobs:
   canary:
+    if: ${{ !inputs.collaboration }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,3 +39,89 @@ jobs:
           include-hidden-files: true
           retention-days: 7
           if-no-files-found: warn
+
+  collaboration-prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.collaboration }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: gh auth setup-git
+      - name: Prepare bounded synthetic enrollment
+        run: node test/collaboration-cloud.mjs prepare "$RUNNER_TEMP/collaboration-enrollment"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-enrollment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/collaboration-enrollment/
+          retention-days: 1
+          if-no-files-found: error
+
+  collaboration-peer:
+    needs: collaboration-prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        peer: [a, b]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PEER_ROLE: ${{ matrix.peer }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: gh auth setup-git
+      - uses: actions/download-artifact@v4
+        with:
+          name: collaboration-enrollment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/collaboration-enrollment
+      - name: Race, hold disjoint scopes and hand off through Git
+        run: node test/collaboration-cloud.mjs peer "$RUNNER_TEMP/collaboration-enrollment" "$RUNNER_TEMP/peer-$PEER_ROLE.json" "$PEER_ROLE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collaboration-peer-${{ matrix.peer }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/peer-${{ matrix.peer }}.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  collaboration-verify:
+    needs: collaboration-peer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: collaboration-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/collaboration-evidence
+          merge-multiple: true
+      - name: Verify distinct hosts and independently read published transitions
+        run: node test/collaboration-cloud.mjs verify "$RUNNER_TEMP/collaboration-evidence" "$RUNNER_TEMP/collaboration-proof.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/collaboration-proof.json
+          retention-days: 7
+          if-no-files-found: error

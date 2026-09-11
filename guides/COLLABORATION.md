@@ -1,13 +1,13 @@
 ---
 title: "On-demand shared collaboration"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.0"
+version: "1.1.0"
 date: "2026-09-11"
 owner: "agentic-os"
 continuity_id: "SHARED-COLLABORATION-001"
-prd_revision: "1.0.0"
-tad_revision: "1.0.0"
-adr_revision: "1.0.0"
+prd_revision: "1.1.0"
+tad_revision: "1.1.0"
+adr_revision: "1.1.0"
 load_policy: "on-demand"
 ---
 
@@ -134,3 +134,51 @@ different provider labels, cap/overlap/fence/expiry behavior, pinned reads, repo
 dirty preservation, rejected publication, offline operation, identity/history drift and CLI/MCP grammar.
 Run affected checks. These are local protocol/process tests, not live proof of multiple physical devices,
 multiple LLM APIs or independent enforcement of model spend. Measure total task time/tokens before ROI claims.
+
+## On-demand cloud validation
+
+The existing `Test canary` workflow accepts `collaboration=true` on manual dispatch. Its normal weekly
+full-suite run is unchanged. Dispatch a reviewed exact source branch and retain the resulting run URL:
+
+```sh
+gh workflow run test-canary.yml --ref <exact-candidate-branch> -f collaboration=true
+```
+
+`test/collaboration-cloud.mjs` prepares one synthetic enrollment bundle, runs two independent hosted
+workers, and independently verifies their receipts against published Git history. It reuses the native
+workspace enrollment, memory pin, board transition and Git transport owners; it introduces no runtime
+controller, dependency, startup import, credential store or scheduled collaboration loop.
+
+The public repository hosting the workflow is the proof remote. Only synthetic files and task metadata
+are published: a fixed `agentic-os/collaboration-fixture-v1` workspace ref and the existing board ref
+`agentic-os/collaboration-v1`. They are separate from the real private `.workspace` remote. The source
+consumer is a bundled synthetic fixture; `runtimeSha` identifies the actual OS candidate under test.
+No private workspace content, credentials, caches or recovery payloads enter the proof. Each worker uses
+an independent consumer/workspace clone and a short-lived, repository-scoped Actions token. Preparation
+refuses a private repository; standard public Ubuntu runners are used. Verification has read access only.
+
+Acceptance requires distinct Linux boot-identity digests and overlapping worker intervals, one winner for
+one exact board revision, two simultaneous disjoint claims, rejection of overlapping and stale writers,
+and an explicit stopped release before another worker receives a higher epoch. Both workers preserve
+their fixture's dirty drafts, HEAD and index. The verifier checks the corresponding remote commit states,
+source/context/runtime pins, stopped reports and zero remaining tasks. Negative results cannot be promoted
+by supplying a success flag. Actor labels and Git history still do not grant execution or release authority.
+
+Hosted images can reuse hostnames. The cloud proof hashes the kernel's per-boot UUID and refuses missing
+or malformed identities; it never falls back to a hostname. Standard Ubuntu jobs receive separate VMs.
+Sources: [Linux boot identity](https://www.kernel.org/doc/html/v6.9/admin-guide/sysctl/kernel.html#random),
+[GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
+The proof uses four synthetic tasks, two workers, a 60-second admission rendezvous, a four-minute worker
+protocol deadline, at most 48 observations per phase and the native 15-second Git transport limits.
+Mutations are never blindly retried. Jobs have 5/8/5-minute preparation/worker/verification limits;
+enrollment is at most 1 MiB plus 16 KiB metadata and peer/final receipts at most 64 KiB each. Enrollment
+artifacts expire after one day, proof receipts after seven. No dependency cache is created. The two fixed
+remote refs and their history remain retained; these bounds are not a lifetime Git-storage quota.
+
+Successful workers report and archive their own stopped tasks. A failed run preserves unfinished claims
+and blocks the next run until explicit reconciliation; cancellation does not imply release. Cloud proofs
+are serialized across source branches and do not automatically cancel one another. They validate real
+cross-runner Git coordination using synthetic enrollment; access to a user's private workspace requires
+separate per-runner enrollment and appropriately scoped credentials. Physical user devices, LLM APIs and
+product execution remain outside this proof. Local regression: `node --test __tests__/collaboration-cloud.test.mjs`.
