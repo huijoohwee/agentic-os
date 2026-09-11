@@ -51,6 +51,8 @@ Set `AGENTIC_OS_DEVICE=office` for a stable public device alias, or pass `--devi
 The default is a short hostname hash, which hides the literal hostname but is not an anonymity guarantee.
 Existing hostname-based refs remain valid; use `status --device=<old-device>` to inspect them.
 
-`npm run test:fast` runs 28 pure unit checks. `npm run test:git` runs the complementary integration
-suite, including other non-fast tests. `npm run check` remains the required complete test and budget
-check. The source repository's `npm run land` runs fast checks before invoking the publication CLI.
+`npm run check` and `npm test` select affected tests plus readiness/doc/module evaluators from the
+merge base with `origin/main`. Use `check:plan` to inspect selection or pass `-- --base=<ref>` for a
+different canonical ref. `npm run land` uses the same check and may reuse an unchanged local receipt.
+`test:fast` and `test:git` retain their explicit development subsets; `check:all` runs the full canary.
+See [validation economy](VALIDATION-ECONOMY.md) for impact contracts, receipts and CI behavior.

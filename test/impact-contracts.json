@@ -1,0 +1,56 @@
+{
+  "schema": "agentic-os/test-impact-contracts/v1",
+  "sentinels": ["lane-state.test.mjs", "governance-contract.test.mjs", "completion.test.mjs", "authority-evidence.test.mjs"],
+  "packaging": ["clonability.test.mjs", "packed-setup.test.mjs", "space-path-entrypoints.test.mjs", "setup-trust-ordering.test.mjs", "public-api.test.mjs"],
+  "broad": [
+    "package.json", "package-lock.json", ".npmrc", ".gitignore", ".gitattributes", ".agentic-os.json",
+    ".github/", ".githooks/", "test/impact-contracts.json", "bin/agentic-os-test", "bin/agentic-os-tests.mjs",
+    "src/git.mjs", "src/git-tracked.mjs", "src/governance.mjs", "src/lane-state.mjs", "src/worktree.mjs",
+    "src/git-repository.mjs", "src/guard-main.mjs", "src/catalog-input.mjs"
+  ],
+  "rules": [
+    {
+      "id": "runtime-and-document-contracts",
+      "inputs": ["AGENTS.md", "README.md", "DOCUMENTS.md", "FLEET.md", "docs/", "guides/", "templates/", "skills/"],
+      "tests": ["runtime-budgets.test.mjs", "evidence-doc.test.mjs", "portable-skills.test.mjs", "composition-architecture.test.mjs", "central-test-assets.test.mjs"]
+    },
+    {
+      "id": "packaged-runtime",
+      "inputs": ["templates/", ".githooks/", "bin/agentic-os-hooks.mjs", "bin/agentic-os-hook-runtime.mjs", "bin/agentic-os-config.mjs", "bin/agentic-os-profile.mjs", "bin/agentic-os-pin.mjs", "__tests__/fixtures/"],
+      "tests": ["clonability.test.mjs", "packed-setup.test.mjs", "space-path-entrypoints.test.mjs", "setup-trust-ordering.test.mjs", "public-api.test.mjs", "hook-runtime-trust.test.mjs"]
+    },
+    {
+      "id": "catalog-and-exported-assets",
+      "inputs": ["catalog/", "test/"],
+      "tests": ["central-test-assets.test.mjs", "frontmatter.test.mjs", "invocation-core.test.mjs", "invocation.test.mjs", "composition-architecture.test.mjs", "composition-runtime-check.test.mjs", "rank.test.mjs", "rank-security.test.mjs"]
+    },
+    {
+      "id": "source-budget-and-readiness",
+      "inputs": ["src/", "bin/agentic-os-doc-budget.mjs", "bin/agentic-os-module-budget.mjs"],
+      "tests": ["runtime-budgets.test.mjs", "readiness-proof.test.mjs"]
+    },
+    {
+      "id": "workspace-enrollment",
+      "inputs": [".agentic-os-workspace.json"],
+      "tests": ["workspace-startup.test.mjs", "workspace-sync.test.mjs", "workspace-check.test.mjs", "startup-memory.test.mjs"]
+    }
+  ],
+  "dependencies": {
+    "src/readiness-proof.mjs": ["src/"],
+    "bin/agentic-os-hook-runtime.mjs": [".githooks/", "__tests__/fixtures/"],
+    "__tests__/github-transition-client.test.mjs": ["bin/agentic-os-transition.mjs"],
+    "__tests__/invocation-core.test.mjs": ["catalog/dictionaries/"],
+    "__tests__/hook-runtime-trust.test.mjs": ["__tests__/fixtures/"],
+    "__tests__/composition-architecture.test.mjs": ["src/compat/"],
+    "__tests__/portable-skills.test.mjs": ["skills/"],
+    "__tests__/central-test-assets.test.mjs": ["test/"],
+    "__tests__/check-discovery.test.mjs": ["bin/agentic-os-checks.mjs", "test/repositories.json"],
+    "__tests__/clonability.test.mjs": ["bin/agentic-os-hooks.mjs", "bin/composition-runtime-check.mjs"],
+    "__tests__/lean-sprint-completion.test.mjs": ["bin/agentic-os.mjs", "src/lane-records.mjs"],
+    "__tests__/packed-setup.test.mjs": ["src/governance.mjs", "bin/agentic-os-hook-runtime.mjs", "__tests__/fixtures/"],
+    "__tests__/setup-trust-ordering.test.mjs": ["bin/agentic-os-hooks.mjs"],
+    "__tests__/public-api.test.mjs": ["package.json"],
+    "__tests__/tracked-file-integrity.test.mjs": ["src/git-tracked.mjs"],
+    "__tests__/test-impact.test.mjs": ["bin/agentic-os-test-impact.mjs", "bin/agentic-os-test-inputs.mjs"]
+  }
+}

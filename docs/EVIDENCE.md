@@ -12,7 +12,7 @@ Fenced examples are ignored. Each readiness claim requires exactly one marker:
 Proof kinds, strongest first:
 
 - `live-provider`: fresh receipt bound to source, target, claim bytes and provider check.
-- `contract`: passing, claim-bound direct `__tests__/*.test.mjs` file, included in `npm test`.
+- `contract`: passing, claim-bound `__tests__/*.test.mjs` source test.
 - `doc-parse`: executable structural proof only.
 - `none`: explicit gap; cannot support readiness.
 
@@ -33,6 +33,6 @@ in its Node worker; one module instance supplies binding and assertions. ADR: re
 no dependency, module or persistent result cache. Each call runs afresh.
 
 Bounds: one subprocess, 30 seconds, 64 KiB binding, 128 KiB pending stdout frame, 256 KiB captured output.
-Malformed, duplicate, incomplete and oversized bindings fail closed. Limits exclude tested-program
-memory and Node internal buffers. Full suite: `npm run check`. Live evidence stays separate.
+Malformed, duplicate, incomplete or oversized bindings fail. Limits exclude program/Node buffers.
+Affected: `npm run check`; full: `npm run check:all`. Test receipts grant no live proof.
 The deadline covers module loads and assertions.

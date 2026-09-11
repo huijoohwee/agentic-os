@@ -65,7 +65,7 @@ function checkin(argv) {
     err('blocked-checkin-requires-lane: run checkin from its registered agent/<device>/<scope> worktree');
     return 1;
   }
-  const checks = spawnSync('npm', ['test'], { cwd: process.cwd(), encoding: 'utf8', stdio: ['inherit', 'pipe', 'pipe'] });
+  const checks = spawnSync('npm', ['run', 'check'], { cwd: process.cwd(), encoding: 'utf8', stdio: ['inherit', 'pipe', 'pipe'] });
   if (checks.stdout) process.stdout.write(checks.stdout);
   if (checks.stderr) process.stderr.write(checks.stderr);
   if (checks.status !== 0) {

@@ -1,8 +1,52 @@
 # Validation economy
 
 Use the source owner's existing runner and validators. Profile a completed run before rerunning it.
-Batch related repairs, run the affected checks, then run the full applicable suite once on the final bytes.
+Batch related repairs, then run the dependency-closed affected checks on final bytes.
 Repeat a passing check only when changed inputs, a failure, or an unresolved concern requires it.
+
+## Affected validation (TEST-IMPACT-001@1.0.0)
+
+PRD: narrow source changes require their direct/transitive behavior checks and mandatory contracts;
+unknown impact cannot produce a narrow pass. TAD: the existing test entrypoint combines old/new Git
+dependency edges, reviewed non-import contracts, safety sentinels, and fresh cheap evaluators.
+ADR: keep the dependency-free runner and stable required CI job names; retain explicit broad checks
+for shared contracts and a weekly/manual canary. No product runtime or release authority changes.
+
+`npm run check`, `npm test`, and `npm run land` use affected validation. `npm run check:plan` prints
+the exact selected suites and reasons without executing them. Local selection includes committed,
+staged, unstaged, added and deleted files from the merge base with `origin/main`; `-- --base=<ref>`
+selects another baseline. A missing baseline fails with a diagnostic instead of an empty green run.
+
+The graph conservatively includes literal imports/re-exports, self-package exports, file references
+and subprocess entrypoints. `test/impact-contracts.json` owns non-import dependencies and the
+packaging group. Changed tests run directly; deletion and rename use old edges too. Unknown paths,
+opaque affected module loads, changes to the selector/contracts/package/hooks/CI/shared lifecycle
+primitives, more than 128 changed files, or over 80% affected suites broaden to the source inventory.
+Review computed imports, generated inputs and process boundaries in that map when adding them.
+
+Readiness/doc/module evaluators run first. Behavior and packaging are separate bounded stages;
+packaging executes only if selected (clone/install, packed setup, space paths, setup trust, exports).
+CI retains its required `test` and `budgets` jobs. The event baseline is PR base, merge-group base,
+or push-before; CI checks the actual merged/queued/pushed checkout with fresh execution. It runs no
+local full-suite precondition. `npm run check:all` explicitly runs every suite with fresh execution;
+the separate weekly/manual canary checks for missed contracts. Investigate any canary failure and
+add the missing edge or repair the owning behavior; do not relabel affected results as full coverage.
+
+The private worktree Git directory holds one last receipt and at most three logs. Receipts bind
+base/head revisions and trees, actual working bytes and executable modes, index, Git configuration
+and refs, package/selector/contracts, selected commands, Node/OS/architecture, environment digest,
+counts, outcome and elapsed time. Environment values are never serialized. Source identity is
+rechecked before stages and after execution. A one-hour local success can be reused only with exact
+matching inputs and log digests. `-- --fresh` disables reuse; CI never accepts local receipts.
+These are development observations, not authenticated provider or runtime proofs. External resources
+and undeclared ignored inputs are outside this cache: use fresh owner checks for those concerns.
+
+Bounds: 2,048 input files, 499 kB per file, 16 MiB aggregate, 256 suites, four workers, nine minutes
+total execution (one minute for evaluators), 480 kB per log and 128 kB per receipt. A worktree lock
+prevents competing runs; timeout/cancellation/output overflow kills the process group and fails.
+An interrupted lock is explicit evidence to reconcile; it is never silently stolen. No runtime
+dependencies, source-core modules or global prompt bytes are added. Tests cover selection, historical
+edges, baselines, dirty bytes, contract fallback, receipt rejection and process limits.
 
 ## Place assertions at the boundary they protect
 

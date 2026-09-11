@@ -58,7 +58,8 @@ For direct, small source changes, see the lazy-loaded [user cookbook](guides/USE
 path-scoped admission and stage-to-push delivery are the default; manual Git is the fallback.
 New lane device names default to a short hostname hash; set `AGENTIC_OS_DEVICE` or `--device`
 for an explicit alias. Existing refs remain valid. `test:fast` provides a short local loop;
-`npm run check` remains the complete required check. Check consumer drift with
+`npm run check` runs affected validation and budgets; `check:plan` explains selection and `check:all` runs the canary.
+See [validation economy](guides/VALIDATION-ECONOMY.md). Check consumer drift with
 `node bin/agentic-os.mjs pin --consumer=/absolute/root` (see the fork guide).
 Managed lanes share `<registry>/<repository>/<device>--<lane>`; `AGENTIC_OS_WORKTREE_ROOT` configures only
 the registry parent, so repository and lane isolation remain intact.
@@ -209,7 +210,7 @@ No universal prompt or always-loaded document is enlarged by this skill.
 ## Verify
 
 ```sh
-npm run check   # tests + doc budget + module budget
+npm run check   # affected behavior/packaging + readiness/doc/module budgets
 ```
 
 Rank the digest-fenced feature catalog with hard constraints, Pareto dominance, and argumentation:
