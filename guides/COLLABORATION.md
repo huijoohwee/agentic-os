@@ -1,6 +1,6 @@
 ---
 title: "On-demand shared collaboration"
-doc_type: "PRD-TAD-ADR"
+doc_type: "PRD-TAD-ADR-MVP-GTM"
 version: "1.0.0"
 date: "2026-09-11"
 owner: "agentic-os"
