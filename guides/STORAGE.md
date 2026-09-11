@@ -3,9 +3,9 @@ title: Storage compaction
 doc_type: PRD-TAD-ADR-MVP-GTM
 owner: agentic-os
 continuity_id: STORAGE-001
-prd_revision: 1.1.0
-tad_revision: 1.1.0
-adr_revision: 1.1.0
+prd_revision: 1.2.0
+tad_revision: 1.2.0
+adr_revision: 1.2.0
 load_policy: on-demand
 ---
 
@@ -34,6 +34,12 @@ clone-private recovery pack. It saves refs, logs and worktree metadata, then use
 --keep-unreachable`. Full object-ID, ref, reflog and worktree inventories must match before and after;
 `git fsck --full --no-dangling` must pass. No branch deletion, history rewrite, reflog expiry, `gc`, or
 object pruning is performed. Backup bytes count against net savings and are reported separately.
+Stores with at most one pack, fewer than 128 loose objects and less than 8 MiB of loose storage skip
+packing. Larger stores first measure the verified candidate pack plus recovery metadata. If retaining
+that backup and a similarly sized compact store cannot save space, only the new candidate is discarded;
+the source object store remains untouched. Previously committed recovery copies are never removed.
+`netBytesReclaimed` subtracts retained backup bytes from target savings; receipt metadata is additional.
+These on-demand thresholds prevent small repeated runs from accumulating full recovery copies.
 
 For one completed quarantine on macOS with a compression-capable APFS/HFS+ volume:
 
@@ -79,12 +85,54 @@ their owning generator. An old filename, matching file contents, or an ignored d
 prove obsolescence. Keep local database state and quarantine/recovery evidence under their existing
 retention policy. Source cleanup belongs in its owning scoped lane and must update affected references.
 
+For canonical-sync quarantines, select `--kind=canonical-quarantine` and
+`--quarantine=agentic-os-canonical-sync-quarantine-<six-character-suffix>`. This compresses the exact
+clone-private recovery directory in place, including source slots and manifests. It recognizes the
+source-owned v1/v2 manifest and binds its digest plus the full directory manifest; no recovery slot,
+receipt or original manifest is removed or rewritten. This is separate from lifecycle retirement.
+
+## Exact obsolete artifacts
+
+On macOS, archive an explicitly selected untracked directory only after its source owner establishes
+that it is obsolete or disposable output. An ignored name alone is insufficient authority.
+
+```sh
+node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
+  --kind=artifact-archive --artifact=data/outputs/retired-preview > /private/artifact-plan.json
+node bin/agentic-os-storage.mjs apply --plan=/private/artifact-plan.json \
+  --authorize=agentic-os:storage:<planDigest> --stopped
+```
+
+The exact relative directory must have direct ancestors and contain no tracked paths. Root selection,
+traversal, `.git`, `.wrangler`, aliases, special files and hardlinks pointing outside the selected tree are refused. A gzip tar archive is
+extracted into a private verification directory; the existing streamed manifest compares every file,
+mode and symlink. Reobserving the original and checking open files precedes removal. Recovery bytes
+and instructions are durable first. There is no glob, recursive discovery, age heuristic, automatic
+retention expiry or deletion of existing recovery records. Nested cached repositories are retained
+inside the verified archive. Partial archive operations remain for manual recovery; they cannot resume
+deletion. A completed replay requires the selected path to remain absent and the checkout HEAD unchanged.
+
+Keep active ingestion stores, local databases and production mirrors with their owners. Fix obsolete
+output paths at the owning generator; exclude disposable outputs from Git and regenerate only on demand.
+For an installed package, compression preserves its actual bytes; it does not prove those bytes match
+the lockfile. Diagnose package drift against the exact locked artifact before any separate repair.
+
+Use `--kind=artifact-compression --artifact=<exact-untracked-directory>` for retained caches or nested
+workspace dependencies that must remain available offline. The same selection checks and manifest
+apply, but the verified filesystem-compression swap keeps the directory in place. It does not archive
+or delete the selected data. Keep its readers and writers stopped through completion.
+
+Internal hardlink groups, including npm's linked executable binaries, must be wholly contained in the
+selected tree. Their path topology and link counts are bound and verified after copying. External
+hardlinks are refused. Allocated-byte accounting counts each regular-file inode once.
+
 ## Bounds and recovery
 
 Plans expire after one hour; exact authorization binds their digest. Commands have 20-minute deadlines,
-16 MiB output ceilings, and Git uses two compression threads with 128 MiB window memory each (not a
-total RSS limit). Object inventory caps at 100,000; filesystem accounting caps at 150,000 entries;
-dependency/projection manifests cap at 512 MiB and 25,000 entries and stream file bytes in 64 KiB chunks.
+64 MiB output ceilings, and Git uses two compression threads with 128 MiB window memory each (not a
+total RSS limit). Object inventory caps at 500,000; filesystem accounting caps at 150,000 entries;
+dependency/projection manifests cap at 4 GiB and 100,000 entries and stream file bytes in 64 KiB chunks.
+Git pack verification is quiet; bounded `show-index` output supplies the exact verified object IDs.
 These limits belong to storage compaction and do not raise lifecycle cleanup admission ceilings.
 
 Receipts, plans, recovery packs and swap journals are under `.git/agentic-os-storage/<planDigest>/`.
@@ -117,3 +165,8 @@ replay. macOS fixtures cover compression, original receipt parity, executable mo
 Checkout fixtures additionally cover executable invocation, manifest/lockfile/HEAD drift, tracked targets,
 aliases, active processes in and outside the checkout, preservation after a refused copy, and explicit
 resume with changed-journal/copy and active-reader refusals.
+
+Additional validation covers no-op growth thresholds, uneconomic candidate disposal, complete archive
+restoration, tracked/state/alias/traversal refusals, active readers and changed-source preservation.
+
+Canonical-quarantine, retained-cache compression and internal/external hardlink cases are covered too.

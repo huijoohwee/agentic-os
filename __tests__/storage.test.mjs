@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, realpathSync,
-  rmSync, symlinkSync, readlinkSync, chmodSync } from 'node:fs';
+  rmSync, symlinkSync, readlinkSync, chmodSync, linkSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { planStorage, applyStorage, runStorage } from '../bin/agentic-os-storage.mjs';
@@ -54,6 +54,7 @@ test('Git compaction retains reachable, reflog-only and unreachable loose/packed
   const packed = git(root, ['hash-object', '-w', '--stdin'], 'unreachable packed bytes');
   git(root, ['pack-objects', join(root, '.git/objects/pack/pack')], `${packed}\n`);
   git(root, ['prune-packed']);
+  for (let i = 0; i < 160; i++) git(root, ['hash-object', '-w', '--stdin'], `${i} recoverable bytes\n`.repeat(300));
   const plan = s.plan('git'), refs = git(root, ['show-ref']);
   const receipt = s.apply(plan);
   assert.equal(receipt.objectIdsPreserved, true); assert.equal(receipt.refsPreserved, true);
@@ -235,4 +236,100 @@ test('resume still refuses live checkout readers and cannot create an unplanned 
     assert.ok(existsSync(join(i.operation, 'original')));
     const other = fixture(t), installed = installation(other);
     assert.throws(() => other.apply(installed.plan(), { resume: true }), /resume-missing-operation/);
+  });
+
+test('small or already packed stores do not accumulate recovery copies', t => {
+  const s = fixture(t), receipt = s.apply(s.plan('git'));
+  assert.equal(receipt.skipped, 'below-growth-threshold');
+  assert.equal(receipt.backupAllocatedBytes, 0);
+  assert.equal(receipt.netBytesReclaimed, 0);
+  const next = planStorage({ cwd: s.root, kind: 'git' }, NOW + 1);
+  assert.equal(s.apply(next, { now: NOW + 1 }).skipped, 'below-growth-threshold');
+});
+test('uneconomic repacks discard only the verified candidate and retain the source', t => {
+  const s = fixture(t), root = s.root;
+  const ids = [];
+  for (let i = 0; i < 6; i++) ids.push(git(root, ['hash-object', '-w', '--stdin'], `object ${i}`));
+  for (const group of [ids.slice(0, 3), ids.slice(3)])
+    git(root, ['pack-objects', join(root, '.git/objects/pack/pack')], group.join('\n') + '\n');
+  git(root, ['prune-packed']);
+  const plan = s.plan('git'), receipt = s.apply(plan);
+  assert.equal(receipt.skipped, 'no-estimated-net-saving');
+  assert.equal(receipt.backupAllocatedBytes, 0);
+  assert.equal(s.plan('git').before.objectDigest, plan.before.objectDigest);
+  assert.equal(existsSync(join(root, '.git/agentic-os-storage', plan.planDigest, 'recovery')), false);
+});
+test('artifact archives restore complete bytes and reject tracked, state, alias and traversal targets',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), target = join(s.root, 'output'); mkdirSync(target);
+    writeFileSync(join(target, 'payload'), 'recoverable output\n'.repeat(10000));
+    chmodSync(join(target, 'payload'), 0o755); symlinkSync('payload', join(target, 'link'));
+    const plan = planStorage({ cwd: s.root, kind: 'artifact-archive', artifact: 'output' }, NOW);
+    const receipt = s.apply(plan);
+    assert.equal(receipt.archived, true); assert.equal(existsSync(target), false);
+    assert.ok(receipt.netBytesReclaimed > 0); assert.equal(s.apply(plan).replayed, true);
+    const restored = join(s.root, 'restore'); mkdirSync(restored);
+    execFileSync('tar', ['-xzpf', join(receipt.backupDirectory, 'artifact.tar.gz'), '-C', restored]);
+    assert.deepEqual(observeQuarantineManifest(join(restored, 'output'), LIMITS), plan.before.artifactManifest);
+    for (const artifact of ['../output', '/output', '.git/objects', '.wrangler', 'restore/../output'])
+      assert.throws(() => planStorage({ cwd: s.root, kind: 'artifact-archive', artifact }, NOW));
+    git(s.root, ['add', 'restore']); git(s.root, ['commit', '-qm', 'tracked source']);
+    assert.throws(() => planStorage({ cwd: s.root, kind: 'artifact-archive', artifact: 'restore' }, NOW), /tracked-artifact/);
+    symlinkSync(restored, join(s.root, 'alias'));
+    assert.throws(() => planStorage({ cwd: s.root, kind: 'artifact-archive', artifact: 'alias' }, NOW), /directory-alias/);
+  });
+test('artifact changes or an open artifact block removal and retain recovery material',
+  { skip: process.platform !== 'darwin' }, async t => {
+    const s = fixture(t), target = join(s.root, 'output'); mkdirSync(target);
+    const file = join(target, 'payload'); writeFileSync(file, 'preserve');
+    const plan = planStorage({ cwd: s.root, kind: 'artifact-archive', artifact: 'output' }, NOW);
+    const reader = await hold(t, tmpdir(), file);
+    assert.throws(() => s.apply(plan), /dependencies-in-use-pid/);
+    const closed = once(reader, 'exit'); reader.kill(); await closed;
+    assert.throws(() => s.apply(plan, { progress() { writeFileSync(file, 'new author bytes'); } }), /archive-content-mismatch/);
+    assert.equal(readFileSync(file, 'utf8'), 'new author bytes');
+    assert.throws(() => s.apply(plan, { resume: true }), /partial-operation-retained/);
+  });
+
+test('canonical-sync quarantine compression preserves source slots and manifest bytes',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), quarantine = 'agentic-os-canonical-sync-quarantine-ABC123';
+    const target = join(s.root, '.git', quarantine); mkdirSync(target);
+    const receipt = JSON.stringify({ schema: 'agentic-os-canonical-sync-quarantine/v2',
+      planDigest: 'a'.repeat(64), inventoryDigest: 'b'.repeat(64), chunks: [] });
+    writeFileSync(join(target, 'manifest.json'), receipt);
+    writeFileSync(join(target, '0'), 'recovery slot bytes\n'.repeat(100000));
+    const before = observeQuarantineManifest(target, LIMITS);
+    const plan = planStorage({ cwd: s.root, kind: 'canonical-quarantine', quarantine }, NOW);
+    assert.equal(s.apply(plan).quarantineReceiptPreserved, true);
+    assert.deepEqual(observeQuarantineManifest(target, LIMITS), before);
+    assert.equal(readFileSync(join(target, 'manifest.json'), 'utf8'), receipt);
+    assert.throws(() => planStorage({ cwd: s.root, kind: 'canonical-quarantine', quarantine: '../objects' }, NOW), /quarantine-id/);
+    writeFileSync(join(target, 'manifest.json'), '{}');
+    assert.throws(() => planStorage({ cwd: s.root, kind: 'canonical-quarantine', quarantine }, NOW), /quarantine-manifest/);
+  });
+
+test('contained hardlinks survive compression and allocation counts each inode once',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), deps = installation(s), run = join(deps.target, 'run');
+    linkSync(run, join(deps.target, 'hardlink'));
+    const plan = deps.plan(), receipt = s.apply(plan);
+    assert.equal(receipt.contentPreserved, true);
+    assert.equal(lstatSync(run).ino, lstatSync(join(deps.target, 'hardlink')).ino);
+    assert.equal(lstatSync(run).nlink, 2);
+    assert.ok(plan.beforeAllocatedBytes < 4 * 1024 * 1024);
+    linkSync(run, join(s.root, 'outside-installation'));
+    assert.throws(deps.plan, /external-hardlink/);
+  });
+test('exact untracked directory compression keeps generated data online and rejects source drift',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), target = join(s.root, 'cache'); mkdirSync(target);
+    writeFileSync(join(target, 'data'), 'retained cached content\n'.repeat(100000));
+    const before = observeQuarantineManifest(target, LIMITS);
+    const plan = planStorage({ cwd: s.root, kind: 'artifact-compression', artifact: 'cache' }, NOW);
+    const receipt = s.apply(plan);
+    assert.equal(receipt.contentPreserved, true); assert.equal(receipt.trackedSourcePreserved, true);
+    assert.ok(receipt.netBytesReclaimed > 0);
+    assert.deepEqual(observeQuarantineManifest(target, LIMITS), before);
+    assert.equal(s.apply(plan).replayed, true);
   });
