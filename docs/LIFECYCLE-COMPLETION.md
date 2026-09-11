@@ -1,7 +1,8 @@
 # Lifecycle completion
 
-Lifecycle records are operation-neutral and separate observation, provider authority, integration,
-retirement, and cleanup. Every later operation joins exact earlier bytes and reobserves its live trust root.
+Protected lifecycle separates observation, authority, integration, retirement and cleanup.
+Each operation joins exact prior bytes and rechecks its live trust root.
+Local consent: `../guides/USER-CLEANUP.md`.
 
 ## Stable package surfaces
 

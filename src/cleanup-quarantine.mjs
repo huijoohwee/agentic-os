@@ -153,8 +153,8 @@ function trustedState(plan, cwd) {
   return { root, trust, profile, canonicalRevision: observed.revision };
 }
 /** Observe the exact active projection, dirty recovery inventory, policy, refs, and admin bytes. */
-export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd() } = {}) {
-  const trusted = trustedState(plan, cwd), controller = realpathSync(trusted.root);
+export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observePolicy = trustedState } = {}) {
+  const trusted = observePolicy(plan, cwd), controller = realpathSync(trusted.root);
   if (controller === plan.targetPath) fail('blocked-cleanup-controller', 'cleanup must run from a surviving peer worktree');
   const common = realpathSync(commonDir(controller));
   if (realpathSync(commonDir(plan.targetPath)) !== common)
@@ -223,7 +223,7 @@ function readOperation(path, eligibility) {
 }
 /** Classify an exact completed quarantine after response loss; partial coordinates remain blocked. */
 export function classifyExistingWorktreeQuarantine(plan, eligibility, {
-  cwd = process.cwd(),
+  cwd = process.cwd(), observePolicy = trustedState,
 } = {}) {
   const controller = resolveRepositoryRoot(cwd), common = realpathSync(commonDir(controller));
   const quarantineRoot = join(common, QUARANTINE_ROOT);
@@ -249,7 +249,7 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   const retainedRegistrationManifest = observeRegistrationManifest(registrationPath, {
     byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
   });
-  const entries = worktreeInventory(controller), policy = trustedState(plan, controller);
+  const entries = worktreeInventory(controller), policy = observePolicy(plan, controller);
   const shared = sharedState(common, entries, null, plan);
   if (entries.some((entry) => entry.path === plan.targetPath)
     || projectionManifest.digest !== eligibility.projectionManifestDigest
@@ -273,7 +273,7 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
 }
 /** Move exact projection then exact registration into clone-private quarantine. Never delete. */
 export function quarantineWorktreeTarget(plan, before, {
-  cwd = process.cwd(), eligibility, authorizeEffects,
+  cwd = process.cwd(), eligibility, authorizeEffects, observePolicy = trustedState,
 } = {}) {
   const controller = resolveRepositoryRoot(cwd), common = before.commonDirectory;
   if (realpathSync(commonDir(controller)) !== common)
@@ -328,7 +328,7 @@ export function quarantineWorktreeTarget(plan, before, {
     const retainedRegistrationManifest = observeRegistrationManifest(registrationPath, {
       byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
     });
-    const policy = trustedState(plan, controller);
+    const policy = observePolicy(plan, controller);
     if (afterEntries.some((entry) => entry.path === plan.targetPath)
       || shared.peerRegistrationDigest !== before.peerRegistrationDigest
       || !absent(plan.targetPath, 'target-detachment')
