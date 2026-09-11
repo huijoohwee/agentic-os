@@ -1,6 +1,6 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
-doc_type: "PRD-TAD-ADR"
+doc_type: "PRD-TAD-ADR-MVP-GTM"
 version: "1.1.0"
 date: "2026-09-09"
 lang: "en-US"
@@ -81,7 +81,7 @@ PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directiv
 | Builder TTV steps | Measured 2026-09-09 on a fresh clone at `7f7928d`: clone 1.3 s, install 0.4 s, `setup` blocked by an untracked `package-lock.json` (G13); after removal setup, doctor, evals (2.5 s) and lane completed — 7 groups observed | Re-walk at the integrated `92b8f5f` candidate, which ignores the lockfile; cleanup and product deployment measured separately |
 | Builder TTV elapsed | Full `npm run check` 254 s wall on a 4-core laptop (739 tests); clone-to-first-lane under 2 minutes once G13 is removed | Measure active author/check minutes separately from provider waits; `test:fast` in the `92b8f5f` candidate is the short local loop |
 | Rework / CI cycles | No longitudinal baseline | Record attempts per exact candidate; reduce repeat work without skipping owner suites |
-| Incremental runtime dependencies / always-load bytes | 0 / +8 for the locator rename in `docs/adlc-guidelines.md` (`PRD-TAD-ADR.md` → `PRD-TAD-ADR-MVP-GTM.md`); always-load total 40,937 / 40,960 | Remain under the 40,960-byte always-load cap; this guide under 400 lines and 45 kB |
+| Incremental runtime dependencies / always-load bytes | 0 / +8 for the locator rename in `docs/adlc-guidelines.md` (`PRD-TAD-ADR-MVP-GTM-PREFLIGHT.md` → `PRD-TAD-ADR-MVP-GTM.md`); always-load total 40,937 / 40,960 | Remain under the 40,960-byte always-load cap; this guide under 400 lines and 45 kB |
 | Token cost / month | Harness CLI makes no model calls; agent usage unmeasured | Attribute external agent usage to the session; no invented token telemetry or free inference claim |
 | Monthly TCO / ROI | Cash, hardware, electricity and maintenance not measured | Zero new paid services; separate deployment variants in ADR-P03; measure before ranking a commercial winner |
 | Revenue / payer / WTP | Pending; no selected payer or priced offer | Record actual paid acceptance independently; no demand claim from a technical pass |
