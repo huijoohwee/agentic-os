@@ -4,6 +4,10 @@ The **Agent Development Lifecycle (ADLC)** harness. A clonable, runnable workspa
 multi-worktree, multi-agent development that lands work on a canonical branch without rebase livelock.
 Zero runtime dependencies.
 
+The on-demand [native context layer](guides/CONTEXT.md) provides bounded codebase map/search/read,
+portable stable-prefix reuse and reasoning continuity. Start with
+`node bin/agentic-os.mjs context search --path=src --query=receipt`; results bind current source hashes.
+
 [Workspace document owners](DOCUMENTS.md) is the on-demand entry point for shared dictionaries,
 guidelines, local product contracts and validation owners across the seven repositories.
 
