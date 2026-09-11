@@ -1,6 +1,6 @@
 ---
 title: "Fleet Work Allocation"
-doc_type: "PRD-TAD-ADR"
+doc_type: "PRD-TAD-ADR-MVP-GTM"
 version: "1.0.0"
 date: "2026-09-10"
 owner: "agentic-os"
