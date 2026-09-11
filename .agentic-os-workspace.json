@@ -2,6 +2,10 @@
   "schema": "agentic-os/workspace/v2",
   "remote": "https://github.com/huijoohwee/.workspace.git",
   "branch": "main",
+  "publication": {
+    "mode": "essential",
+    "files": [".gitignore", "README.md", "MIGRATION.json", ".github/workflows/planning.yml", ".artifacts/README.md"]
+  },
   "sources": {
     "memory": {
       "path": ".memory",

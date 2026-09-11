@@ -17,7 +17,7 @@ The selected private `huijoohwee/.workspace` repository owns shared context on `
 GitHub/.workspace/       one Git repository and remote
   .memory/              curated knowledge; generated indexes stay in .git locally
   .todo/                immutable task records and current Kanban coordination
-  .artifacts/           retained evidence and produced artifacts
+  .artifacts/           local evidence; only its README is shared in essential publication mode
 ```
 
 `agentic-os` owns startup composition; each subfolder has one content responsibility.
@@ -166,12 +166,12 @@ validates planning grammar, imported history and the Kanban projection using its
 Both checks must pass: the generic check receipt explicitly labels the remaining owner checks.
 
 The changed-path budget is 512 entries / 64 KiB of Git output; changed role blobs must be regular
-files below 500,000 bytes. Artifact deletion is rejected. Changed artifact bytes produce an integrity
+files below 500,000 bytes. Without essential publication mode, artifact deletion is rejected. Changed artifact bytes produce an integrity
 manifest in the check receipt (commit, path, blob, SHA-256, size). Product-specific manifest semantics,
 producer completion and runtime/payment proof still require their existing evaluator. Historical
 artifact bodies are not recursively loaded, normalized or retroactively subjected to new size limits.
 
-Producers batch completed records/artifacts into one path-scoped branch and PR. Publish explicit
+Without essential publication mode, producers batch completed records/artifacts into a scoped PR. Publish explicit
 finalized paths; keep active logs and generated indexes local. A stale base requires reconciliation
 and new checks of the resulting exact commit. Concurrent edits to the same memory shard must retain
 accepted prefixes and both writers' entries in timestamp order; duplicate IDs fail. Never force-push
@@ -183,3 +183,33 @@ Validation: `workspace-sync.test.mjs` exercises remote publication, coherent off
 invalid-candidate retention, process termination/lock release and deterministic polling/backoff.
 `workspace-check.test.mjs` exercises exact commit checks, dirty-file isolation, immutable records,
 reference failures, retained artifacts, symlinks and size bounds. Run `npm run check` before landing.
+
+## Essential publication (WORKSPACE-PUBLICATION-001@1.0.0)
+
+PRD: share only coordination knowledge and minimum workspace configuration; keep logs, screenshots,
+builds, archives and runtime evidence on their producing device. TAD: opt in with v2 `publication`
+containing `mode: essential` and an exact `files` allowlist. Memory and TODO remain shared trees to
+preserve accepted records and their reference closure. Artifact bodies are local-only; a shared README
+keeps the artifact role discoverable on a fresh clone. ADR: retain Git and existing sync commands;
+use default-deny ignore rules plus an independent committed-tree gate, not sparse checkout alone.
+
+`workspace check` enforces at most 512 shared files, 499999 bytes/file and 5 MB total, rejects local
+runtime paths and forced artifact additions, and verifies the generated `.gitignore` exactly. The
+trusted harness configuration owns the allowlist; candidate-local config cannot weaken that check.
+Generate the ignore text with `workspaceIgnore(config)` from the exported owner module
+`bin/agentic-os-workspace-publication.mjs`; consumers retain the resulting projection in `.gitignore`.
+The optional policy preserves legacy v1/v2 behavior when absent. No dependency, `src/` module or
+always-loaded guidance is added; one on-demand `bin/` module owns publication policy.
+
+For an existing source, `.gitignore` alone is insufficient: untrack excluded paths in a scoped
+candidate, without deleting the producer's local files. Retain the original commit/history, inventory
+and preservation receipt. Essential mode permits historical artifact removal from the current tree
+only after the whole new tree passes the allowlist and budgets; append-only memory and immutable TODO
+checks remain unchanged. The check never stages, deletes, rewrites history or proves local preservation.
+Do not apply a checkout deletion over active producer data. Other devices must preserve their local
+artifact bytes before adopting the migration commit. Use immutable historical GitHub URLs when older
+shared records need archived evidence; new artifact bodies are not promised on another device.
+
+Existing history still contains previously published objects. Use `git clone --depth=1` for a new
+minimal checkout; an ordinary full clone still downloads old history. No destructive history rewrite
+or remote storage-reclamation claim is included. This policy controls future publication, not backup.
