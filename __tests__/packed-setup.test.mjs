@@ -57,6 +57,7 @@ function installPriorReleaseRuntime(selected, { authorityRelease = false } = {})
   const changes = trackedChanges(cwd);
   return changes.headToIndex.length > 0 || changes.indexToWorkingTree.length > 0;
 }
+
 /** Conservative exact-byte risks; publication can skip ignored-only ownership enumeration. */
 export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = true } = {}) {
   const hidden = strictGitPaths(['ls-files', '-v', '-z'], cwd).filter((record) => {
@@ -74,6 +75,7 @@ export function worktreeCleanupRisks(cwd = process.cwd(), { includeIgnored = tru
   return { dirtyTracked: dirtyTracked(cwd), hidden,
     owned: untrackedPaths(cwd, { includeIgnored }), tracked };
 }
+
 const UTF8`)
       .replace(/function parseRawDiff\(cwd, args, label\) \{[\s\S]+?\n\}\n\nfunction headToIndexChanges[\s\S]+?\n\}\n\n\/\*\* Raw local tracked projections/u,
         `function parseRawDiff(cwd) {
@@ -100,6 +102,7 @@ const UTF8`)
   }
   return entries;
 }
+
 /** Raw local tracked projections`)
       .replace('export function trackedChanges(cwd = process.cwd()) {\n  const indexToWorkingTree = [];\n  const entries = parseIndexEntries(cwd);\n  const headToIndex = headToIndexChanges(cwd);',
         'export function trackedChanges(cwd = process.cwd()) {\n  const headToIndex = parseRawDiff(cwd);\n  const indexToWorkingTree = [];\n  const entries = parseIndexEntries(cwd);')
@@ -221,6 +224,7 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
   chmodSync(join(path, 'runtime-manifest.json'), 0o600);
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
+
 test('the verified prior release runtimes authorize managed migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-immediate-prior-runtime-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -230,6 +234,7 @@ test('the verified prior release runtimes authorize managed migration', (t) => {
     const prior = installImmediatePriorRuntime(selected, guardRelease, currentRelease, latest);
     assert.equal(assertPriorManagedRuntime(prior.hooksPath, selected), true); }
 });
+
 function runChild(file, args, options) {
   return new Promise((resolveResult) => {
     const child = spawn(file, args, options);
@@ -241,6 +246,7 @@ function runChild(file, args, options) {
     child.on('close', (status, signal) => resolveResult({ status, signal, stdout, stderr }));
   });
 }
+
 test('published files contain public JSON and adapters without deleted deep imports', () => {
   const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: ROOT, encoding: 'utf8',
@@ -343,7 +349,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.notEqual(spawnSync('git', ['config', '--get', 'rerere.enabled'], {
     cwd: repository,
   }).status, 0, 'hook preflight must precede every config write');
-
   execFileSync('git', ['config', '--unset', 'core.hooksPath'], { cwd: repository });
   const defaultHook = join(repository, '.git', 'hooks', 'pre-commit');
   writeFileSync(defaultHook, '#!/bin/sh\nexit 0\n');
@@ -352,7 +357,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(defaultBlocked.status, 1);
   assert.match(defaultBlocked.stderr, /blocked-existing-default-hooks/u);
   rmSync(defaultHook);
-
   assert.equal(spawnSync('mkfifo', [defaultHook]).status, 0);
   chmodSync(defaultHook, 0o755);
   const defaultFifoBlocked = spawnSync(cli, ['setup'], {
@@ -362,7 +366,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(defaultFifoBlocked.status, 1);
   assert.match(defaultFifoBlocked.stderr, /blocked-existing-default-hooks/u);
   rmSync(defaultHook);
-
   assert.equal(statSync(managedRoot, { throwIfNoEntry: false }), undefined,
     'no-effect setup refusals must not create a managed runtime');
 
