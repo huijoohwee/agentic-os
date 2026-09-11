@@ -31,6 +31,11 @@ function exact(argv, {
 
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'cleanup-user': return argv[0] === 'plan'
+      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow'],
+        requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
+      : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
+        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] }) : 'cleanup-user requires plan or apply';
     case 'collaborate': return argv[0] === 'status' ? exact(argv, { min: 1, flags: ['offline'] })
       : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
         ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';
@@ -131,6 +136,7 @@ export function cmdHelp() {
       '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
       '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
       '  agentic-os collaborate status [--offline]  observe opt-in shared coordination; not authority',
+      '  agentic-os cleanup-user <plan|apply>  explicit local-consent quarantine; see guides/USER-CLEANUP.md',
       '  agentic-os collaborate <get|submit|claim|renew|release|report|archive> --input=<json>  cooperative work/handoff',
       '  agentic-os memory search --revision=<sha> --query=<text> [--path=<memory-file>]  bounded local-only lookup',
       '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
