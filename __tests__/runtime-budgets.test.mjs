@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40943, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40914, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -148,8 +148,9 @@ test('required CI continuously evaluates the root-owned ADLC contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const packageDocument = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   assert.equal(packageDocument.scripts.test,
-    'node --test --test-concurrency=4 __tests__/*.test.mjs');
-  assert.equal(packageDocument.scripts.check, 'npm test && npm run evals');
+    'node bin/agentic-os-tests.mjs affected');
+  assert.equal(packageDocument.scripts.check, 'node bin/agentic-os-tests.mjs affected');
+  assert.equal(packageDocument.scripts['check:ci'], 'node bin/agentic-os-test-ci.mjs');
   assert.equal(packageDocument.scripts.evals,
     'npm run readiness:check && npm run docs:check && npm run modules:check');
   const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');

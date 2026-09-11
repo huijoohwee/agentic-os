@@ -9,7 +9,7 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:68d1a742d8f46ee9fe30f7452017a1978e7d746dab5a1bf1738e9dda1da152d7'],
+  claims: ['sha256:8cd1bd5fe8880326a1ea1c36134b6c0f6c3b9458e1ee6f612dff54e8d377acab'],
 });
 
 test('the documented proof kinds and freshness bound are executable policy', () => {

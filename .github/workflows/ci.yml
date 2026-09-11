@@ -35,8 +35,17 @@ jobs:
           git config --global user.email ci@example.invalid
           git config --global user.name "ADLC CI"
           git config --global init.defaultBranch main
-      # Includes clonability.test.mjs: real clone/install/setup and fork bootstrap.
-      - run: npm test
+      # Event-bound affected closure; packaging runs when its contracts are affected.
+      - run: npm run check:ci
+      - name: Retain selection, timing and bounded diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .git/agentic-os-tests/*.*
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: warn
 
   budgets:
     name: budgets

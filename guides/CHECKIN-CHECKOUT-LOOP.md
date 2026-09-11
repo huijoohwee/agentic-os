@@ -24,7 +24,8 @@ node bin/agentic-os-checkin-checkout.mjs checkin \
   --message="docs: update PRD TAD ADR guideline"
 ```
 
-Check-in requires an `agent/<device>/<scope>` branch, runs `npm test`, then delegates to `agentic-os land`.
+Check-in requires an `agent/<device>/<scope>` branch, runs the owner's `npm run check`, then delegates to
+`agentic-os land`. Agentic OS selects affected tests and budgets; consumers keep their own check contract.
 `land` stages only reserved paths, creates the commit, pushes the immutable lane ref, and requests the
 repository's protected provider handoff. The provider—not a local command—advances `origin/main` after its
 required checks and merge policy succeed.
