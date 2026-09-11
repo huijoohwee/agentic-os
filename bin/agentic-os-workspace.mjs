@@ -53,10 +53,10 @@ export function selectedSources(root, policy, selected, config, roles) {
   } else if (lstatSync(join(container, '.git'), { throwIfNoEntry: false })) fail('container');
   const sources = new Map(), seen = new Set();
   for (const role of roles) {
-    const spec = config.sources[role], joined = join(container, spec.path);
+    const spec = config.sources[role], path = realpathSync(join(container, spec.path));
     if (combined) {
-      const local = lstatSync(joined, { throwIfNoEntry: false });
-      if (local && (!local.isDirectory() || local.isSymbolicLink())) fail('source-root');
+      if (path !== join(container, spec.path) || !lstatSync(path).isDirectory()
+        || realpathSync(repoRoot(path)) !== container) fail('source-root');
       const selected = { ...spec, remote: config.remote, branch: config.branch };
       if (role === 'memory') selected.directory = `${spec.path}/${spec.directory}`;
       if (role === 'todo') selected.entry = `${spec.path}/${spec.entry}`;
@@ -64,7 +64,6 @@ export function selectedSources(root, policy, selected, config, roles) {
       if (!tree.startsWith('040000 tree ') || !tree.endsWith(`\t${spec.path}`)) fail('source-tree');
       sources.set(role, { path: container, spec: selected }); continue;
     }
-    const path = realpathSync(joined);
     if (realpathSync(repoRoot(path)) !== path) fail('source-root');
     const common = commonDir(path);
     if (common === commonDir(root) || seen.has(common)) fail('source-collision');
