@@ -1,0 +1,42 @@
+name: ADLC authority
+
+run-name: ADLC authority ${{ inputs.authority_input_digest }} @ ${{ github.workflow_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      authority_payload:
+        description: Exact canonical request and recovery candidate JSON.
+        required: true
+        type: string
+      authority_input_digest:
+        description: SHA-256 of the exact authority input and committed policy.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Bind enrollment to this repository
+        run: |
+          node --input-type=module -e '
+            import { loadAuthorityDispatch } from "./bin/agentic-os-authority.mjs";
+            const { dispatch } = loadAuthorityDispatch(process.env.GITHUB_EVENT_PATH);
+            const target = "github.com/huijoohwee/agentic-os";
+            if (dispatch.request.repository !== target || dispatch.candidate.targetRepository !== target)
+              throw new Error("authority target is outside this enrollment");
+          '
+      - name: Validate exact authority input without publication credentials
+        run: node bin/agentic-os-authority.mjs validate-event --event="$GITHUB_EVENT_PATH" --policy=.github/adlc-authority-policy.json
