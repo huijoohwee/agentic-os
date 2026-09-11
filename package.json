@@ -39,7 +39,8 @@
     "./context/prefix": "./runtime/cache-context.mjs",
     "./context/continuity": "./runtime/reasoning-continuity.mjs",
     "./context/json": "./runtime/json-contract.mjs",
-    "./context/codebase": "./bin/agentic-os-context-index.mjs"
+    "./context/codebase": "./bin/agentic-os-context-index.mjs",
+    "./generation": "./bin/agentic-os-generation.mjs"
   },
   "engines": {
     "node": ">=20.11"
