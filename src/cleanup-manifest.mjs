@@ -73,7 +73,8 @@ function streamManifestFile(path, before, hash, budget) {
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK
       | (constants.O_NOFOLLOW ?? 0));
     const opened = fstatSync(descriptor, { bigint: true });
-    if (!opened.isFile() || opened.nlink !== 1n || !sameCleanupNode(before, opened))
+    if (!opened.isFile() || (!budget.retainedHardlinks && opened.nlink !== 1n)
+      || !sameCleanupNode(before, opened))
       fail('blocked-cleanup-manifest', 'cleanup file identity is unsafe');
     const buffer = Buffer.allocUnsafe(BUFFER_SIZE);
     for (;;) {
@@ -90,12 +91,12 @@ function streamManifestFile(path, before, hash, budget) {
       fail('blocked-cleanup-manifest', 'cleanup file changed during hashing');
   } finally { if (descriptor !== null) closeSync(descriptor); }
 }
-export function observeQuarantineManifest(root, { byteCeiling, entryCeiling }) {
+export function observeQuarantineManifest(root, { byteCeiling, entryCeiling, retainedHardlinks = false }) {
   if (!Number.isSafeInteger(byteCeiling) || byteCeiling < 1
     || !Number.isSafeInteger(entryCeiling) || entryCeiling < 1)
     fail('blocked-cleanup-manifest', 'cleanup manifest ceilings are invalid');
   const hash = createHash('sha256'), budget = { bytes: 0, entries: 0,
-    byteCeiling, entryCeiling };
+    byteCeiling, entryCeiling, retainedHardlinks: retainedHardlinks === true };
   hash.update('agentic-os/quarantine-manifest/v1\0');
   const visit = (path, relativePath) => {
     const before = strictCleanupStat(path, 'cleanup-manifest');
@@ -120,7 +121,9 @@ export function observeQuarantineManifest(root, { byteCeiling, entryCeiling }) {
       const after = lstatSync(path, { bigint: true, throwIfNoEntry: false });
       if (!sameCleanupNode(before, after))
         fail('blocked-cleanup-manifest', 'cleanup symlink changed during hashing');
-    } else if (before.isFile() && before.nlink === 1n) {
+    } else if (before.isFile() && (before.nlink === 1n || budget.retainedHardlinks)) {
+      // Read-only retained objects may be shared by local Git clones. Bind link count too.
+      if (before.nlink !== 1n) { frame(hash, 'retained-hardlinks'); frame(hash, String(before.nlink)); }
       frame(hash, 'file'); frame(hash, relativePath); frame(hash, mode); frame(hash, String(before.size));
       streamManifestFile(path, before, hash, budget);
     } else fail('blocked-cleanup-manifest', 'cleanup manifest contains unsupported bytes');

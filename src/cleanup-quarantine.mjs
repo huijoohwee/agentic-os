@@ -27,7 +27,7 @@ function absent(path, label) {
     fail(`blocked-${label}`, `${label} absence is not proven`);
   }
 }
-function selectedManifest(root, names, limits, { allowMissing = false, label } = {}) {
+function selectedManifest(root, names, limits, { allowMissing = false, label, retainedHardlinks = false } = {}) {
   const rootBefore = strictStat(root, `${label}-root`);
   if (!rootBefore.isDirectory() || rootBefore.isSymbolicLink()
     || new Set(names).size !== names.length
@@ -40,7 +40,7 @@ function selectedManifest(root, names, limits, { allowMissing = false, label } =
       if (!allowMissing) fail('blocked-cleanup-manifest', `${label} path is absent`);
       return { name, manifest: null };
     }
-    const manifest = observeQuarantineManifest(path, limits);
+    const manifest = observeQuarantineManifest(path, { ...limits, retainedHardlinks });
     bytes += manifest.bytes; entries += manifest.entries;
     if (!Number.isSafeInteger(bytes) || bytes > limits.byteCeiling
       || !Number.isSafeInteger(entries) || entries > limits.entryCeiling)
@@ -102,7 +102,7 @@ function sharedState(common, worktrees, excludedAdminId, plan) {
     'logs', 'packed-refs', 'refs', 'reftable'],
     limits, { allowMissing: true, label: 'shared-refs-reflogs' });
   const objects = selectedManifest(common, ['objects'], limits,
-    { label: 'shared-object-store' });
+    { label: 'shared-object-store', retainedHardlinks: true });
   const sharedStateBytes = peerPhysical.bytes + refs.bytes + objects.bytes;
   const sharedStateEntries = peerPhysical.entries + refs.entries + objects.entries;
   if (sharedStateBytes > limits.byteCeiling || sharedStateEntries > limits.entryCeiling)
