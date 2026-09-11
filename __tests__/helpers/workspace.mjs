@@ -22,6 +22,7 @@ export function fixture(t, enrolled = true) {
   const commit = root => { run(root, ['add', '.']); run(root, ['commit', '--quiet', '-m', 'fixture']); };
   const publish = (root, name) => {
     const remote = join(parent, `${name}.git`); run(parent, ['init', '--quiet', '--bare', remote]);
+    run(remote, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
     run(root, ['remote', 'add', 'origin', remote]); run(root, ['push', '--quiet', '-u', 'origin', 'main']);
     return remote;
   };
@@ -64,6 +65,7 @@ export function consolidate(s) {
   s.commit(s.container);
   const remote = join(s.parent, 'workspace.git');
   s.run(s.parent, ['init', '--quiet', '--bare', remote]);
+  s.run(remote, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
   s.run(s.container, ['remote', 'add', 'origin', remote]);
   s.run(s.container, ['push', '--quiet', '-u', 'origin', 'main']);
   s.config = { schema: 'agentic-os/workspace/v2', remote, branch: 'main', sources: {
