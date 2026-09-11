@@ -471,7 +471,7 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
           compare: (base, head) => request('GET', `${target.path}/compare/${base}...${head}`,
             undefined, { project: (value) => ({ status: value.status, base_commit: { sha: value.base_commit?.sha },
               merge_base_commit: { sha: value.merge_base_commit?.sha },
-              head_commit: { sha: value.head_commit?.sha } }) }) });
+              head_commit: { sha: value.head_commit?.sha ?? value.commits?.at(-1)?.sha ?? null } }) }) });
       }
       return { repository: target.repository, repositoryId: identifier(source.id, 'GitHub target repository id'), owner,
         canonicalBranch: baseBranch, canonicalRevision: baseRevision, candidateBranch: headBranch,

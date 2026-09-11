@@ -290,7 +290,7 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
             request(`${repo.path}/compare/${before}...${after}`, { project: (entry) => ({ status: entry.status,
               base_commit: { sha: entry.base_commit?.sha },
               merge_base_commit: { sha: entry.merge_base_commit?.sha },
-              head_commit: { sha: entry.head_commit?.sha } }) }) });
+              head_commit: { sha: entry.head_commit?.sha ?? entry.commits?.at(-1)?.sha ?? null } }) }) });
       }
       return { repository: repo.repository, repositoryId: identifier(value.id, 'target repository id'),
         owner: actor(value.owner, 'target owner'), canonicalBranch: query.canonicalBranch,
