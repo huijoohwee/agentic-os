@@ -44,7 +44,7 @@ function fields(value) {
   if (result.length > LIMITS.files) throw new Error('blocked-test-file-count');
   return result;
 }
-export function readRegular(root, path, limit = LIMITS.fileBytes) {
+export function readRegular(root, path, limit = LIMITS.fileBytes, cache = null) {
   const absolute = join(root, safePath(path));
   let parent = dirname(absolute);
   while (parent !== root) {
@@ -53,13 +53,22 @@ export function readRegular(root, path, limit = LIMITS.fileBytes) {
   }
   const stat = lstatSync(absolute);
   if (!stat.isFile() || stat.size > limit) throw new Error(`blocked-test-file:${path}`);
+  const stamp = value => [value.dev, value.ino, value.mode, value.size, value.mtimeNs, value.ctimeNs].join(':');
+  const identity = stamp(lstatSync(absolute, { bigint: true }));
+  const previous = cache?.get(absolute);
+  if (previous?.identity === identity) return previous.file;
   const bytes = readFileSync(absolute), after = lstatSync(absolute);
   if (bytes.length !== stat.size || after.ino !== stat.ino || after.dev !== stat.dev
     || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs)
     throw new Error(`blocked-test-file-drift:${path}`);
-  return { mode: stat.mode & 0o111 ? '100755' : '100644', digest: hash(bytes), text: utf8.decode(bytes) };
+  if (stamp(lstatSync(absolute, { bigint: true })) !== identity) throw new Error(`blocked-test-file-drift:${path}`);
+  const file = Object.freeze({ mode: stat.mode & 0o111 ? '100755' : '100644', digest: hash(bytes), text: utf8.decode(bytes) });
+  cache?.set(absolute, { identity, file });
+  return file;
 }
-function committedFiles(root, revision) {
+function committedFiles(root, revision, cache) {
+  const key = `${root}:${revision}`;
+  if (cache?.has(key)) return cache.get(key);
   const listing = readGit(root, ['ls-tree', '-r', '-z', revision]);
   if (!listing) throw new Error('blocked-test-empty-source');
   const entries = fields(listing).map(record => {
@@ -84,9 +93,11 @@ function committedFiles(root, revision) {
     files.set(entry.path, { mode: entry.mode, digest: hash(bytes), text: utf8.decode(bytes) });
   }
   if (offset !== output.length) throw new Error('blocked-test-blob-trailing');
+  if (cache?.size >= 4) cache.clear();
+  cache?.set(key, files);
   return files;
 }
-function worktreeFiles(root) {
+function worktreeFiles(root, cache) {
   const listing = readGit(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
   const names = new Set(listing ? fields(listing) : []);
   // These are ignored in the dependency-free source package but can affect npm execution.
@@ -96,7 +107,7 @@ function worktreeFiles(root) {
   const files = new Map(); let bytes = 0;
   for (const path of [...names].sort()) {
     let file;
-    try { file = readRegular(root, path); } catch (error) {
+    try { file = readRegular(root, path, LIMITS.fileBytes, cache); } catch (error) {
       if (error.code === 'ENOENT') continue; throw error;
     }
     bytes += Buffer.byteLength(file.text);
@@ -108,7 +119,13 @@ function worktreeFiles(root) {
 export const manifestDigest = files => hash(JSON.stringify([...files].sort(([a], [b]) => a.localeCompare(b))
   .map(([path, file]) => [path, file.mode, file.digest])));
 
-export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed = false }) {
+// Cache lifetime is one runner invocation. Every boundary still inventories names, index,
+// refs, environment and file identities; only unchanged bytes and immutable Git blobs are reused.
+export function snapshotReader(options) {
+  const cache = { committed: new Map(), working: new Map() };
+  return () => snapshot(options, cache);
+}
+export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed = false }, cache = null) {
   root = realpathSync(root);
   if (resolve(readGit(root, ['rev-parse', '--show-toplevel']).trim()) !== root)
     throw new Error('blocked-test-repository-root');
@@ -117,8 +134,8 @@ export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed 
   if (actualHead !== headRevision) throw new Error('blocked-test-checkout-head');
   const bases = readGit(root, ['merge-base', '--all', requestedBase, headRevision]).trim().split('\n');
   if (bases.length !== 1 || !sha(bases[0])) throw new Error('blocked-test-merge-base');
-  const baseRevision = bases[0], before = committedFiles(root, baseRevision);
-  const headFiles = committedFiles(root, headRevision), after = worktreeFiles(root);
+  const baseRevision = bases[0], before = committedFiles(root, baseRevision, cache?.committed);
+  const headFiles = committedFiles(root, headRevision, cache?.committed), after = worktreeFiles(root, cache?.working);
   if (committed && manifestDigest(headFiles) !== manifestDigest(after))
     throw new Error('blocked-test-dirty-ci-source');
   const changed = [...new Set([...before.keys(), ...after.keys()])].filter(path => {

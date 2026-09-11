@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
+import { checkInputs, references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
 import { snapshot } from '../bin/agentic-os-test-inputs.mjs';
 
 const file = text => ({ text, digest: text, mode: '100644' });
@@ -88,6 +88,7 @@ test('mixed quotes and query/fragment imports cannot hide a module dependency', 
 test('actual source covers known budget/packaging regressions and preserves a small independent module', () => {
   const root = fileURLToPath(new URL('..', import.meta.url)), s = snapshot({ root, base: 'HEAD' });
   const select = changed => selectTests({ before: s.after, after: s.after, changed });
+  assert.equal(checkInputs(s.after, '__tests__/canonical-sync-delta.test.mjs').scope, 'inputs');
   const fleet = select(['bin/agentic-os-fleet.mjs']);
   assert.ok(paths(fleet).includes('__tests__/fleet.test.mjs'));
   assert.ok(fleet.suites.length < fleet.available / 3);
@@ -98,4 +99,43 @@ test('actual source covers known budget/packaging regressions and preserves a sm
   const hook = select(['.githooks/pre-push']); assert.equal(hook.suites.length, hook.available);
   const contract = JSON.parse(readFileSync(new URL('../test/impact-contracts.json', import.meta.url)));
   assert.ok(contract.packaging.includes('space-path-entrypoints.test.mjs'));
+});
+
+test('150 mapped planning edits select document checks without path-count escalation', () => {
+  const f = fixture(), changed = [];
+  for (let i = 0; i < 150; i++) {
+    const path = `docs/plan-${i}.md`; changed.push(path);
+    f.after.set(path, file('---\ndoc_type: "PRD-TAD-ADR-MVP-GTM"\n---\n'));
+  }
+  const plan = selectTests({ ...f, changed });
+  assert.equal(plan.mode, 'affected');
+  assert.deepEqual(paths(plan), ['__tests__/docs.test.mjs', '__tests__/safety.test.mjs']);
+  assert.deepEqual(plan.reasons, []);
+});
+test('high affected coverage preserves explicit selection without adding unrelated suites', () => {
+  const f = fixture(), changed = [...f.after.keys()].filter(path => path.startsWith('__tests__/') && !path.includes('package'));
+  const plan = selectTests({ ...f, changed });
+  assert.equal(plan.mode, 'affected'); assert.equal(plan.suites.length, 7);
+  assert.ok(!paths(plan).includes('__tests__/package.test.mjs'));
+});
+test('check inputs include transitive and declared file inputs; unknown discovery stays conservative', () => {
+  const f = fixture();
+  assert.deepEqual(checkInputs(f.after, '__tests__/a.test.mjs').paths,
+    ['__tests__/a.test.mjs', 'src/a.mjs', 'src/b.mjs']);
+  assert.ok(checkInputs(f.after, '__tests__/docs.test.mjs').paths.includes('docs/a.md'));
+  assert.equal(checkInputs(f.after, '__tests__/package.test.mjs').scope, 'repository');
+  f.after = new Map(f.after); f.after.set('__tests__/other.test.mjs', file('readdirSync(root)'));
+  assert.equal(checkInputs(f.after, '__tests__/other.test.mjs').scope, 'repository');
+});
+
+test('reviewed pure checks bind their dependency closure; package commands remain repository scoped', () => {
+  const f = fixture(); f.contracts.isolated = ['a.test.mjs'];
+  f.after.set('test/impact-contracts.json', file(JSON.stringify(f.contracts)));
+  f.after.set('src/a.mjs', file("import fs from 'node:fs'; export const unusedReader=fs.readFileSync;"));
+  assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'inputs');
+  f.after.set('__tests__/a.test.mjs', file("execFileSync('npm', ['pack']);"));
+  assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'repository');
+  f.after.set('__tests__/a.test.mjs', file('import(unknown);'));
+  assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'repository');
+  assert.throws(() => validateContracts({ ...f.contracts, isolated: ['missing.test.mjs'] }, f.after), /contracts/);
 });

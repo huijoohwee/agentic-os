@@ -14,7 +14,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-for (const released of [false, 'copy', 'pre-frontmatter']) test(released
+for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(released
   ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
@@ -22,7 +22,9 @@ for (const released of [false, 'copy', 'pre-frontmatter']) test(released
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
   const altered = selected.files.map((file, index) => {
-    const bytes = released ? (file.path === 'src/catalog-input.mjs'
+    const bytes = released ? (file.path === 'src/quarantine.mjs'
+      ? readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url))
+      : released !== 'pre-diff' && file.path === 'src/catalog-input.mjs'
       ? readFileSync(new URL('./fixtures/catalog-input-' + released + '.mjs.txt', import.meta.url))
       : released === 'copy' && file.path === 'src/lane-id.mjs'
         ? readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)) : file.bytes)
@@ -48,7 +50,8 @@ for (const released of [false, 'copy', 'pre-frontmatter']) test(released
   chmodSync(manifestPath, 0o600);
 
   if (released) {
-    assert.equal(runtimeId, released === 'copy'
+    assert.equal(runtimeId, released === 'pre-diff'
+      ? 'v1-971e58be7867813ac7ebf7ca9aa3761990b87ca909dde0c0212044d67b7a577b' : released === 'copy'
       ? 'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c'
       : 'v1-c154ec30b0471e98ba26f61583b1c12063b80c355d366f61d63695a12f4be5e9');
     assert.equal(assertPriorManagedRuntime(join(path, '.githooks'), selected), true);

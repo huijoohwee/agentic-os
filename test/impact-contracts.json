@@ -1,6 +1,7 @@
 {
   "schema": "agentic-os/test-impact-contracts/v1",
   "sentinels": ["lane-state.test.mjs", "governance-contract.test.mjs", "completion.test.mjs", "authority-evidence.test.mjs"],
+  "isolated": ["lane-state.test.mjs", "governance-contract.test.mjs", "completion.test.mjs", "authority-evidence.test.mjs", "canonical-sync-delta.test.mjs"],
   "packaging": ["clonability.test.mjs", "packed-setup.test.mjs", "space-path-entrypoints.test.mjs", "setup-trust-ordering.test.mjs", "public-api.test.mjs"],
   "broad": [
     "package.json", "package-lock.json", ".npmrc", ".gitignore", ".gitattributes", ".agentic-os.json",

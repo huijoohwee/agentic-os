@@ -562,7 +562,9 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const catalogSha = createHash('sha256').update(catalogBytes).digest('hex');
   assert.equal(catalogSha, '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667');
   const files = selected.files.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file =>
-    file.path === 'src/git.mjs' ? { ...file, bytes, sha256 } : file.path === 'src/git-tracked.mjs'
+    file.path === 'src/quarantine.mjs' ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
+      sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' }
+      : file.path === 'src/git.mjs' ? { ...file, bytes, sha256 } : file.path === 'src/git-tracked.mjs'
       ? { ...file, bytes: trackedBytes, sha256: trackedSha } : file.path === 'src/catalog-input.mjs'
         ? { ...file, bytes: catalogBytes, sha256: catalogSha } : file.path === 'src/lane-id.mjs'
           ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),

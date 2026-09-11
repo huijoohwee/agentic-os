@@ -5,9 +5,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArguments, runTests } from '../bin/agentic-os-tests.mjs';
-import { hash } from '../bin/agentic-os-test-inputs.mjs';
-import { executeCommand, lockReceipts, receiptDirectory, reusableReceipt, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
+import { parseArguments, runTests, validationChecks } from '../bin/agentic-os-tests.mjs';
+import { snapshot } from '../bin/agentic-os-test-inputs.mjs';
+import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 
 function fixture(t, { evaluator = 'node -e "process.exit(0)"', body = '' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'test runner '));
@@ -45,29 +45,26 @@ test('runner records commands, counts, byte identity, and reuses only the same l
   const f = fixture(t);
   assert.equal(await f.invoke(), 0); const first = f.receipt();
   assert.equal(first.authority, false); assert.equal(first.results[1].counts.pass, 1);
-  assert.deepEqual(first.results.map(result => result.name), ['evaluators', 'behavior']);
+  assert.deepEqual(first.results.map(result => result.name), ['evaluators', '__tests__/small.test.mjs']);
   assert.equal(first.identity.sourceDigest.length, 64); assert.equal(first.identity.environmentDigest.length, 64);
-  assert.equal(await f.invoke(), 0); assert.ok(f.messages.some(message => message.startsWith('reused local validation')));
-  assert.equal(f.receipt().finishedAt, first.finishedAt, 'reuse cannot renew its lifetime');
+  assert.equal(await f.invoke(), 0); assert.ok(f.messages.some(message => message.startsWith('reused local check')));
+  assert.equal(f.receipt().results[1].validatedAt, first.results[1].validatedAt, 'reuse cannot renew check lifetime');
   f.messages.length = 0; assert.equal(await f.invoke(['--fresh']), 0);
   assert.equal(f.messages.some(message => message.startsWith('reused')), false);
   process.env.CI = 'true'; f.messages.length = 0; assert.equal(await f.invoke(), 0);
   assert.equal(f.messages.some(message => message.startsWith('reused')), false);
 });
-test('stale, failed, tampered, incomplete and mismatched receipts are rejected', async t => {
+test('stale, failed, tampered, incomplete and mismatched check receipts are rejected', async t => {
   const f = fixture(t); assert.equal(await f.invoke(['--fresh']), 0);
-  const directory = receiptDirectory(f.root), valid = f.receipt();
-  const reuse = value => {
-    writeReceipt(directory, 'last.json', value);
-    return reusableReceipt(directory, valid.fingerprint, valid.plan);
-  };
+  const directory = receiptDirectory(f.root), check = validationChecks(snapshot({ root: f.root, base: 'HEAD' }), f.receipt().plan)[1];
+  const valid = previousCheck(directory, check); assert.ok(valid);
+  const reuse = value => { writeReceipt(directory, `${check.id}.json`, value); return previousCheck(directory, check); };
   assert.equal(reuse({ ...valid, finishedAt: Date.now() - 3_600_001 }), null);
   assert.equal(reuse({ ...valid, outcome: 'failed' }), null);
-  assert.equal(reuse({ ...valid, fingerprint: hash('changed environment') }), null);
-  assert.equal(reuse({ ...valid, results: valid.results.slice(0, 1) }), null);
-  assert.equal(reuse({ ...valid, planDigest: hash('different tests') }), null);
+  assert.equal(reuse({ ...valid, command: ['different'] }), null);
+  assert.equal(reuse({ ...valid, result: { ...valid.result, counts: {} } }), null);
   assert.equal(reuse({ ...valid, authority: true }), null);
-  writeReceipt(directory, 'behavior.log', 'altered diagnostics');
+  writeReceipt(directory, `${check.id}.log`, 'altered diagnostics');
   assert.equal(reuse(valid), null);
 });
 test('cheap evaluator failure stops before behavior execution', async t => {
@@ -97,4 +94,43 @@ test('command timeout, output overflow and missing executable fail with bounded 
   assert.equal(output.reason, 'output-budget'); assert.ok(Buffer.byteLength(output.output) <= 100);
   const missing = await executeCommand(process.cwd(), '/nonexistent/agentic-test-executable', []);
   assert.equal(missing.reason, 'spawn-failed');
+});
+
+test('an unrelated committed document delta reuses a bounded check but reruns its changed inputs', async t => {
+  const env = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
+  delete process.env.CI; delete process.env.GITHUB_ACTIONS;
+  t.after(() => { for (const [key, value] of Object.entries(env)) value === undefined ? delete process.env[key] : process.env[key] = value; });
+  const f = fixture(t);
+  assert.equal(await f.invoke(), 0); const original = f.receipt().results[1].validatedAt;
+  writeFileSync(join(f.root, 'unrelated.md'), '# Documentation'); f.git('add', '.'); f.git('commit', '-qm', 'docs');
+  assert.equal(await f.invoke(), 0);
+  assert.equal(f.receipt().results[1].reused, true);
+  assert.equal(f.receipt().results[1].validatedAt, original);
+  writeFileSync(join(f.root, '__tests__/small.test.mjs'), "import test from 'node:test'; test('new behavior',()=>{});\n");
+  assert.equal(await f.invoke(), 0); assert.equal(f.receipt().results[1].reused, false);
+});
+test('plans explain coverage, reuse and measured/default cost without executing evaluators', async t => {
+  const f = fixture(t, { evaluator: 'node -e "process.exit(9)"' });
+  const messages = [];
+  assert.equal(await runTests(['plan', '--base=HEAD'], { root: f.root, out: text => messages.push(text) }), 0);
+  const plan = JSON.parse(messages[0]);
+  assert.equal(plan.cost.selected, 1); assert.equal(plan.cost.skipped, 0);
+  assert.ok(plan.cost.estimatedCommandMs > 0);
+  assert.equal(plan.checks[0].estimateSource, 'default-budget-estimate');
+  assert.ok(plan.suites[0].reasons.includes('safety-sentinel'));
+});
+
+test('passing siblings survive a failed batch and only the corrected check reruns', async t => {
+  const env = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
+  delete process.env.CI; delete process.env.GITHUB_ACTIONS;
+  t.after(() => { for (const [key, value] of Object.entries(env)) value === undefined ? delete process.env[key] : process.env[key] = value; });
+  const f = fixture(t);
+  writeFileSync(join(f.root, '__tests__/failure.test.mjs'), "import test from 'node:test'; test('failure',()=>{throw Error('expected')});\n");
+  assert.equal(await f.invoke(), 1);
+  const passed = f.receipt().results.find(result => result.name === '__tests__/small.test.mjs');
+  assert.equal(passed.exitCode, 0);
+  writeFileSync(join(f.root, '__tests__/failure.test.mjs'), "import test from 'node:test'; test('fixed',()=>{});\n");
+  assert.equal(await f.invoke(), 0);
+  assert.equal(f.receipt().results.find(result => result.name === passed.name).reused, true);
+  assert.equal(f.receipt().results.find(result => result.name === '__tests__/failure.test.mjs').reused, false);
 });

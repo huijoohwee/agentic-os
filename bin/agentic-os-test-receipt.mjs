@@ -31,21 +31,33 @@ export function writeReceipt(directory, name, value) {
   writeFileSync(temporary, bytes, { flag: 'wx', mode: 0o600 });
   renameSync(temporary, join(directory, name));
 }
-export function reusableReceipt(directory, fingerprint, plan, now = Date.now()) {
+/** One bounded record per check, replaced atomically; logs are content-bound. */
+export function previousCheck(directory, check, now = Date.now()) {
   try {
-    const receipt = JSON.parse(readRegular(directory, 'last.json', LIMITS.receiptBytes).text);
-    if (receipt.schema !== 'agentic-os/test-receipt/v1' || receipt.authority !== false
-      || receipt.fingerprint !== fingerprint || receipt.outcome !== 'passed'
-      || receipt.planDigest !== hash(JSON.stringify(plan)) || receipt.exitCode !== 0
+    const receipt = JSON.parse(readRegular(directory, `${check.id}.json`, LIMITS.receiptBytes).text);
+    if (receipt.schema !== 'agentic-os/test-check/v1' || receipt.authority !== false
+      || receipt.id !== check.id || receipt.name !== check.name
+      || JSON.stringify(receipt.command) !== JSON.stringify([check.command, ...check.args])
+      || receipt.outcome !== 'passed' || receipt.result.exitCode !== 0 || receipt.result.reason !== null
       || !Number.isFinite(receipt.finishedAt) || now - receipt.finishedAt < 0
-      || now - receipt.finishedAt > 3_600_000 || !Array.isArray(receipt.results)) return null;
-    const expected = ['evaluators', ...plan.stages.filter(stage => stage.tests.length).map(stage => stage.name)];
-    if (receipt.results.length !== expected.length || receipt.results.some((result, index) =>
-      result.name !== expected[index] || result.exitCode !== 0 || result.reason !== null
-      || result.log !== `${expected[index]}.log`
-      || readRegular(directory, result.log, LIMITS.outputBytes).digest !== result.outputDigest)) return null;
+      || now - receipt.finishedAt > 3_600_000 || !Number.isFinite(receipt.result.elapsedMs)
+      || receipt.result.elapsedMs < 0 || receipt.result.elapsedMs > LIMITS.testMs
+      || receipt.result.log !== `${check.id}.log`
+      || readRegular(directory, receipt.result.log, LIMITS.outputBytes).digest !== receipt.result.outputDigest
+      || check.stage !== 'evaluators' && (!receipt.result.counts?.tests
+        || receipt.result.counts.fail !== 0 || receipt.result.counts.cancelled !== 0)) return null;
     return receipt;
   } catch { return null; }
+}
+export function writeCheck(directory, check, result, finishedAt = Date.now()) {
+  const { output, ...summary } = result, log = `${check.id}.log`;
+  writeReceipt(directory, log, output);
+  const receipt = { schema: 'agentic-os/test-check/v1', authority: false, id: check.id,
+    name: check.name, command: [check.command, ...check.args], fingerprint: check.fingerprint,
+    finishedAt, outcome: result.exitCode === 0 && !result.reason ? 'passed' : 'failed',
+    result: { ...summary, log } };
+  writeReceipt(directory, `${check.id}.json`, receipt);
+  return receipt;
 }
 export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes } = {}) {
   return new Promise(resolveResult => {

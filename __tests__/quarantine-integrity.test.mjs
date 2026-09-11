@@ -1,4 +1,6 @@
 import { test } from 'node:test';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
 import {
   existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, renameSync, rmSync,
@@ -32,10 +34,9 @@ test('an occupied quarantine slot is retained without overwriting or moving anot
     if (slot === '0') writeFileSync(join(path, '1'), 'foreign slot bytes\n', { flag: 'wx' });
   }, root, null, LIMITS), (error) => {
     failure = error;
-    return error.reason === 'blocked-quarantine-tree-race';
+    return error.reason === 'blocked-quarantine-slot-occupied';
   });
-  assert.equal(failure.quarantineSlot, '0');
-  assert.ok(failure.treeDetail.actualPaths.includes(join(failure.quarantinePath, '1')));
+  assert.equal(failure.quarantineSlot, '1');
   assert.equal(readFileSync(join(failure.quarantinePath, '0'), 'utf8'), 'first owned bytes\n');
   assert.equal(readFileSync(join(failure.quarantinePath, '1'), 'utf8'), 'foreign slot bytes\n');
   assert.equal(readFileSync(join(root, 'first'), 'utf8'), 'first owned bytes\n');
@@ -43,7 +44,7 @@ test('an occupied quarantine slot is retained without overwriting or moving anot
   assert.equal(existsSync(join(failure.quarantinePath, '2')), false);
   assert.equal(failure.quarantineEntryCount, 1);
   assert.equal(failure.copiedBytes, Buffer.byteLength('first owned bytes\n'));
-  assert.equal(failure.quarantineFailedSlot, '0');
+  assert.equal(failure.quarantineFailedSlot, '1');
   assert.equal(failure.quarantineCopyResultUnknown, false);
   assert.equal(failure.quarantineManifestPublished, false);
   assert.equal(failure.quarantineManifestWriteAttempted, false);
@@ -113,4 +114,45 @@ test('clean projection retirement is distinct and names only an external exclusi
   assert.equal(readFileSync(join(quarantine.path, '0'), 'utf8'), 'first owned bytes\n');
   assert.equal(readFileSync(quarantine.manifestPath, 'utf8'), manifest.toString('utf8'));
   quarantine.verify();
+});
+
+test('unexpected namespace additions fail at the copy boundary before manifest publication', t => {
+  const root = fixture(t);
+  assert.throws(() => quarantineWorktreeEntries('quarantine-addition', [{ path: 'first' }, { path: 'second' }],
+    (_entry, slot, path) => { if (slot === '0') writeFileSync(join(path, 'unexpected'), 'foreign'); },
+    root, Buffer.from('{}'), LIMITS), error => {
+      assert.equal(error.reason, 'blocked-quarantine-tree-race');
+      assert.equal(error.quarantineManifestPublished, false);
+      assert.equal(readFileSync(join(error.quarantinePath, 'unexpected'), 'utf8'), 'foreign');
+      assert.equal(readFileSync(join(root, 'first'), 'utf8'), 'first owned bytes\n');
+      return true;
+    });
+});
+test('a later callback replacing an earlier slot cannot produce a usable quarantine receipt', t => {
+  const root = fixture(t); let mutated = false;
+  assert.throws(() => quarantineWorktreeEntries('quarantine-earlier', [{ path: 'first' }, { path: 'second' }],
+    (_entry, slot, path) => {
+      if (slot === '1' && !mutated) { mutated = true; rmSync(join(path, '0')); writeFileSync(join(path, '0'), 'foreign'); }
+    }, root, null, LIMITS), error => {
+      assert.ok(error.quarantinePath); assert.equal(error.quarantineEntryCount, 2);
+      assert.equal(readFileSync(join(error.quarantinePath, '0'), 'utf8'), 'foreign');
+      assert.equal(readFileSync(join(root, 'first'), 'utf8'), 'first owned bytes\n');
+      return true;
+    });
+});
+
+test('copying 128 files uses a constant number of complete quarantine scans', t => {
+  const root = fixture(t), entries = [];
+  for (let i = 0; i < 128; i++) { const path = `entry-${i}`; entries.push({ path }); writeFileSync(join(root, path), 'x'); }
+  const original = fs.readdirSync; let scans = 0;
+  fs.readdirSync = function(path, ...args) {
+    if (String(path).includes('quarantine-scaled-')) scans++;
+    return original.call(this, path, ...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    const receipt = quarantineWorktreeEntries('quarantine-scaled', entries, () => {}, root, null, LIMITS);
+    assert.equal(receipt.copied.length, 128);
+    assert.ok(scans <= 6, `expected phase-boundary scans, observed ${scans}`);
+  } finally { fs.readdirSync = original; syncBuiltinESMExports(); }
 });
