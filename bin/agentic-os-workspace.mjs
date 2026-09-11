@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { acquireOperationLock, commonDir, finishOperationLock, observeGit,
   remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
 import { hydrateMemory, hydrateSelectedMemory, validateSource } from './agentic-os-memory.mjs';
+import { validatePublication } from './agentic-os-workspace-publication.mjs';
 const FILE = '.agentic-os-workspace.json';
 const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const ROLES = ['memory', 'todo', 'artifacts'];
@@ -17,7 +18,9 @@ export function workspaceConfiguration(root, revision) {
 }
 export function validateWorkspaceConfiguration(config, root) {
   const combined = config?.schema === 'agentic-os/workspace/v2';
-  if (!config || Object.keys(config).sort().join(',') !== (combined ? 'branch,remote,schema,sources' : 'schema,sources')
+  const keys = combined && config.publication !== undefined ? 'branch,publication,remote,schema,sources'
+    : combined ? 'branch,remote,schema,sources' : 'schema,sources';
+  if (!config || Object.keys(config).sort().join(',') !== keys
     || !combined && config.schema !== 'agentic-os/workspace/v1' || !config.sources
     || Object.keys(config.sources).sort().join(',') !== 'artifacts,memory,todo') fail('config-invalid');
   if (combined) validateSource(config, root);
@@ -36,7 +39,7 @@ export function validateWorkspaceConfiguration(config, root) {
     if (role === 'todo' && (typeof source.entry !== 'string' || source.entry.length > 128
       || !source.entry.split('/').every(part => /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(part)))) fail('todo-entry');
   }
-  return config;
+  validatePublication(config); return config;
 }
 export function selectedSources(root, policy, selected, config, roles) {
   const canonical = worktrees(root).filter(item => item.branch === policy.protectedBranch);

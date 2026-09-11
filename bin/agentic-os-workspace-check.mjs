@@ -5,6 +5,7 @@ import { observeGit } from '../src/git.mjs';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { memoryIndexFor } from './agentic-os-memory.mjs';
 import { validateWorkspaceConfiguration } from './agentic-os-workspace.mjs';
+import { checkPublication } from './agentic-os-workspace-publication.mjs';
 
 const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const CAP = 499999;
@@ -42,6 +43,7 @@ export function checkWorkspace({ root, base, head, config }) {
   if (config.schema !== 'agentic-os/workspace/v2') fail('requires-v2');
   for (const revision of [base, head]) read(root, ['cat-file', '-e', `${revision}^{commit}`]);
   if (read(root, ['merge-base', '--is-ancestor', base, head], { allowFail: true }) === null) fail('history-not-forward');
+  const publication = checkPublication(root, head, config);
   for (const source of Object.values(config.sources)) {
     if (entry(root, head, source.path)?.kind !== 'tree') fail('source-tree');
   }
@@ -54,8 +56,15 @@ export function checkWorkspace({ root, base, head, config }) {
   const accepted = new Set(previous.entries.map(item => item.id));
   for (const record of index.entries.filter(item => !accepted.has(item.id)))
     for (const reference of record.refs) checkReference(root, head, record, reference);
-  const paths = read(root, ['diff', '--no-ext-diff', '--no-renames', '--name-only', '-z', base, head, '--'],
+  // Essential mode checks the entire bounded candidate first. Historical artifact bodies can then
+  // leave the current tree without loading their bytes or expanding the normal changed-core budget.
+  const selection = publication ? ['.', `:(top,exclude,literal)${artifacts.path}`] : [];
+  const paths = read(root, ['diff', '--no-ext-diff', '--no-renames', '--name-only', '-z', base, head, '--', ...selection],
     { raw: true }).split('\0').filter(Boolean);
+  if (publication) {
+    const path = `${artifacts.path}/README.md`;
+    if (entry(root, base, path)?.blob !== entry(root, head, path)?.blob) paths.push(path);
+  }
   if (paths.length > 512 || paths.some(path => !safePath(path))) fail('changed-path-budget');
   const integrity = [];
   const changed = { memory: 0, todo: 0, artifacts: 0, configuration: 0 };
@@ -82,7 +91,7 @@ export function checkWorkspace({ root, base, head, config }) {
   return { schema: 'agentic-os/workspace-check/v1', status: 'passed', base, head, changed,
     memoryEntries: index.entries.length, artifacts: integrity,
     planningGrammar: 'source-owner-check-required', artifactSemantics: 'producer-check-required',
-    grantsAuthority: false };
+    ...(publication ? { publication } : {}), grantsAuthority: false };
 }
 export function runWorkspaceCheck(argv, out = console.log) {
   const option = name => argv.find(value => value.startsWith(`--${name}=`))?.slice(name.length + 3);
