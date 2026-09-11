@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** On-demand storage compaction. Content preservation is distinct from lifecycle cleanup. */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync,
   realpathSync, renameSync, rmSync, writeFileSync, openSync, fsyncSync, closeSync } from 'node:fs';
@@ -11,6 +11,7 @@ import { observeQuarantineManifest, readBoundedStableFile } from '../src/cleanup
 
 const SCHEMA = 'agentic-os/storage-plan/v1', MAX_OUTPUT = 16 * 1024 * 1024;
 const LIMITS = { byteCeiling: 512 * 1024 * 1024, entryCeiling: 25000 };
+const KINDS = ['git', 'dependencies', 'worktree-dependencies'];
 const hash = value => createHash('sha256').update(value).digest('hex');
 const digest = value => hash(JSON.stringify(value));
 const fail = reason => { throw new Error(`blocked-storage-${reason}`); };
@@ -106,17 +107,55 @@ function dependencyState(common, quarantine) {
     registrationManifest: observeQuarantineManifest(registration, LIMITS),
     dependencies: observeQuarantineManifest(target, LIMITS) } };
 }
+function worktreeDependencyState(root) {
+  const target = direct(join(root, 'node_modules')), packageFiles = {};
+  for (const name of ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml',
+    'yarn.lock', 'bun.lock', 'bun.lockb', '.npmrc', '.yarnrc.yml']) {
+    const path = join(root, name), present = lstatSync(path, { throwIfNoEntry: false });
+    packageFiles[name] = present ? hash(readBoundedStableFile(path, MAX_OUTPUT, 'package-source')) : null;
+  }
+  if (packageFiles['package.json'] === null) fail('package-source');
+  if (git(root, ['ls-files', '-z', '--', 'node_modules']).length) fail('tracked-dependencies');
+  return { target, state: { checkoutHead: git(root, ['rev-parse', 'HEAD']).trim(), packageFiles,
+    dependencies: observeQuarantineManifest(target, LIMITS) } };
+}
+function dependencySelection(plan) {
+  return plan.kind === 'worktree-dependencies' ? worktreeDependencyState(plan.root)
+    : dependencyState(plan.common, plan.quarantine);
+}
+function idleWorktree(plan, original = null) {
+  if (plan.kind !== 'worktree-dependencies') return;
+  const within = (path, root) => path === root || path.startsWith(`${root}/`);
+  const inspect = (args, relevant) => {
+    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-Fpn', ...args], {
+      cwd: plan.common, encoding: 'utf8', timeout: 30000, maxBuffer: MAX_OUTPUT,
+      stdio: ['ignore', 'pipe', 'pipe'] });
+    // lsof may return 1 for unmatched entries even while reporting other open files.
+    if (result.error || ![0, 1].includes(result.status) || result.stderr) fail('process-observation');
+    let pid = null;
+    for (const line of result.stdout.split('\n')) {
+      if (/^p[0-9]+$/u.test(line)) pid = Number(line.slice(1));
+      if (line.startsWith('n') && pid !== process.pid && relevant(line.slice(1)))
+        fail(`dependencies-in-use-pid-${pid}`);
+    }
+  };
+  // This is a bounded observation, not an OS-wide exclusion lock. --stopped remains required.
+  inspect(['-d', 'cwd'], path => within(path, plan.root) && !within(path, plan.common));
+  for (const target of [plan.target, original].filter(Boolean))
+    inspect(['+D', target], () => true);
+}
 function observed(plan) {
   const where = location(plan.root);
   if (where.root !== plan.root || where.common !== plan.common) fail('repository-drift');
   return plan.kind === 'git' ? inventory(plan.root, plan.common).state
-    : dependencyState(plan.common, plan.quarantine).state;
+    : dependencySelection(plan).state;
 }
 export function planStorage({ cwd = process.cwd(), kind, quarantine = null }, now = Date.now()) {
-  if (!['git', 'dependencies'].includes(kind) || kind === 'git' && quarantine !== null) fail('kind');
-  if (kind === 'dependencies' && process.platform !== 'darwin') fail('compression-platform');
+  if (!KINDS.includes(kind) || kind !== 'dependencies' && quarantine !== null) fail('kind');
+  if (kind !== 'git' && process.platform !== 'darwin') fail('compression-platform');
   const { root, common } = location(cwd);
-  const target = kind === 'git' ? direct(join(common, 'objects')) : dependencyState(common, quarantine).target;
+  const target = kind === 'git' ? direct(join(common, 'objects'))
+    : dependencySelection({ root, common, kind, quarantine }).target;
   const draft = { schema: SCHEMA, root, common, kind, quarantine, target, issuedAt: now,
     expiresAt: now + 3600000, before: null, beforeAllocatedBytes: allocated(target) };
   draft.before = observed(draft);
@@ -125,14 +164,15 @@ export function planStorage({ cwd = process.cwd(), kind, quarantine = null }, no
 function validate(plan) {
   const { planDigest, ...draft } = plan;
   if (Object.keys(plan).sort().join(',') !== 'before,beforeAllocatedBytes,common,expiresAt,issuedAt,kind,planDigest,quarantine,root,schema,target'
-    || plan.schema !== SCHEMA || !['git', 'dependencies'].includes(plan.kind)
+    || plan.schema !== SCHEMA || !KINDS.includes(plan.kind)
+    || plan.kind !== 'dependencies' && plan.quarantine !== null
     || digest(draft) !== planDigest || !/^[a-f0-9]{64}$/u.test(planDigest)
     || !Number.isSafeInteger(plan.issuedAt) || plan.expiresAt !== plan.issuedAt + 3600000)
     fail('plan-binding');
   const where = location(plan.root);
   if (where.root !== plan.root || where.common !== plan.common) fail('repository-drift');
   const target = plan.kind === 'git' ? join(plan.common, 'objects')
-    : dependencyState(plan.common, plan.quarantine).target;
+    : dependencySelection(plan).target;
   if (plan.target !== target) fail('target-binding');
 }
 function locksAbsent(common) {
@@ -193,23 +233,54 @@ function compressDependencies(plan, operation, progress) {
   }
   if (!same(observed(plan), plan.before)) fail('drift-before-swap');
   flushTree(prepared);
+  idleWorktree(plan);
+  if (lstatSync(plan.target).dev !== lstatSync(operation).dev) fail('cross-device-swap');
   durableJson(join(operation, 'swap.json'), { target: plan.target, prepared, original, manifest,
     recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' });
   // Both renames stay on the same filesystem. A partial swap retains the original and the journal.
   renameSync(plan.target, original);
   renameSync(prepared, plan.target);
   flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
+  progress('Dependency swap complete; verifying the retained original before removal.');
+  return finishDependencySwap(plan, operation);
+}
+function finishDependencySwap(plan, operation) {
+  const original = direct(join(operation, 'original')), prepared = join(operation, 'compressed');
+  if (existsSync(prepared)) fail('resume-phase');
+  const manifest = plan.before.dependencies, compressedBytes = allocated(plan.target);
+  const journal = JSON.parse(readBoundedStableFile(join(operation, 'swap.json'), 64000, 'storage-swap'));
+  if (!same(journal, { target: plan.target, prepared, original, manifest,
+    recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' }))
+    fail('resume-journal');
   if (!same(observed(plan), plan.before)
     || !same(observeQuarantineManifest(original, LIMITS), manifest)) fail('drift-after-swap');
-  durableJson(join(operation, 'verified.json'), { manifest, compressedBytes, originalVerified: true });
+  idleWorktree(plan, original);
+  const verifiedPath = join(operation, 'verified.json');
+  const verified = { manifest, compressedBytes, originalVerified: true };
+  if (existsSync(verifiedPath)) {
+    if (!same(JSON.parse(readBoundedStableFile(verifiedPath, 64000, 'storage-verified')), verified)) fail('resume-verified');
+  } else durableJson(verifiedPath, verified);
   rmSync(original, { recursive: true });
   flushDirectory(operation);
-  return { contentPreserved: true, quarantineReceiptPreserved: true, dependenciesRemoved: false };
+  return { contentPreserved: true,
+    ...(plan.kind === 'dependencies' ? { quarantineReceiptPreserved: true }
+      : { packageSourcesPreserved: true, idleProcessObservation: true }), dependenciesRemoved: false };
 }
-export function applyStorage(plan, { authorization, stopped = false, now = Date.now(),
+function storageReceipt(plan, operation, detail) {
+  const afterAllocatedBytes = allocated(plan.target);
+  const result = { schema: 'agentic-os/storage-receipt/v1', planDigest: plan.planDigest,
+    kind: plan.kind, target: plan.target, beforeAllocatedBytes: plan.beforeAllocatedBytes,
+    afterAllocatedBytes, targetBytesReclaimed: plan.beforeAllocatedBytes - afterAllocatedBytes,
+    ...detail, completedAt: new Date().toISOString(), authority: 'explicit-user-consent',
+    providerAuthority: false, operatingSystemExclusivityProven: false };
+  const receiptPath = join(operation, 'receipt.json'); durableJson(receiptPath, result);
+  return { ...result, receiptPath };
+}
+export function applyStorage(plan, { authorization, stopped = false, resume = false, now = Date.now(),
   progress = () => {} } = {}) {
   validate(plan);
-  if (authorization !== `agentic-os:storage:${plan.planDigest}` || stopped !== true) fail('authorization');
+  if (authorization !== `agentic-os:storage:${plan.planDigest}` || stopped !== true
+    || typeof resume !== 'boolean') fail('authorization');
   const lock = acquireOperationLock('agentic-os-worktree-cleanup', plan.root);
   if (!lock) fail('busy');
   let result, error;
@@ -219,23 +290,27 @@ export function applyStorage(plan, { authorization, stopped = false, now = Date.
     const operation = join(parent, plan.planDigest), receiptPath = join(operation, 'receipt.json');
     if (existsSync(operation)) {
       direct(operation);
-      if (!existsSync(receiptPath)) fail('partial-operation-retained');
-      const receipt = JSON.parse(readBoundedStableFile(receiptPath, 64000, 'storage-receipt'));
-      if (receipt.planDigest !== plan.planDigest || !same(observed(plan), plan.before)) fail('replay-drift');
-      result = { ...receipt, replayed: true };
+      if (!existsSync(receiptPath)) {
+        if (!resume || plan.kind === 'git') fail('partial-operation-retained');
+        if (now < plan.issuedAt || now >= plan.expiresAt) fail('expired');
+        if (!same(JSON.parse(readBoundedStableFile(join(operation, 'plan.json'), 64000, 'storage-plan')), plan))
+          fail('resume-plan');
+        progress('Revalidating the completed dependency swap and retained original.');
+        result = storageReceipt(plan, operation, { ...finishDependencySwap(plan, operation), resumed: true });
+      } else {
+        const receipt = JSON.parse(readBoundedStableFile(receiptPath, 64000, 'storage-receipt'));
+        if (receipt.planDigest !== plan.planDigest || !same(observed(plan), plan.before)) fail('replay-drift');
+        result = { ...receipt, replayed: true };
+      }
     } else {
+      if (resume) fail('resume-missing-operation');
       if (now < plan.issuedAt || now >= plan.expiresAt) fail('expired');
       if (!same(observed(plan), plan.before)) fail('plan-drift');
+      idleWorktree(plan);
       privateDirectory(operation); durableJson(join(operation, 'plan.json'), plan);
       const detail = plan.kind === 'git' ? compactGit(plan, operation, progress)
         : compressDependencies(plan, operation, progress);
-      const afterAllocatedBytes = allocated(plan.target);
-      result = { schema: 'agentic-os/storage-receipt/v1', planDigest: plan.planDigest,
-        kind: plan.kind, target: plan.target, beforeAllocatedBytes: plan.beforeAllocatedBytes,
-        afterAllocatedBytes, targetBytesReclaimed: plan.beforeAllocatedBytes - afterAllocatedBytes,
-        ...detail, completedAt: new Date().toISOString(), authority: 'explicit-user-consent',
-        providerAuthority: false, operatingSystemExclusivityProven: false };
-      durableJson(receiptPath, result); result = { ...result, receiptPath };
+      result = storageReceipt(plan, operation, detail);
     }
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'storage', result, error });
@@ -248,7 +323,7 @@ export function runStorage(argv) {
     if (!match || Object.hasOwn(args, match[1])) fail('arguments');
     args[match[1]] = match[2] ?? true;
   }
-  const allowed = action === 'plan' ? ['repository', 'kind', 'quarantine'] : ['plan', 'authorize', 'stopped'];
+  const allowed = action === 'plan' ? ['repository', 'kind', 'quarantine'] : ['plan', 'authorize', 'stopped', 'resume'];
   if (Object.keys(args).some(k => !allowed.includes(k))) fail('arguments');
   let result;
   if (action === 'plan') {
@@ -256,9 +331,10 @@ export function runStorage(argv) {
       || args.quarantine !== undefined && typeof args.quarantine !== 'string') fail('arguments');
     result = planStorage({ cwd: args.repository, kind: args.kind, quarantine: args.quarantine ?? null });
   } else {
-    if (typeof args.plan !== 'string' || typeof args.authorize !== 'string' || args.stopped !== true) fail('arguments');
+    if (typeof args.plan !== 'string' || typeof args.authorize !== 'string' || args.stopped !== true
+      || args.resume !== undefined && args.resume !== true) fail('arguments');
     const plan = JSON.parse(readBoundedStableFile(resolve(args.plan), 64000, 'storage-plan'));
-    result = applyStorage(plan, { authorization: args.authorize, stopped: args.stopped,
+    result = applyStorage(plan, { authorization: args.authorize, stopped: args.stopped, resume: args.resume ?? false,
       progress: message => process.stderr.write(`${message}\n`) });
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return 0;
