@@ -75,6 +75,15 @@ const CLI_OUTPUT = {
 
 export const TOOLS = deepFreeze([
   {
+    name: 'collaborate', title: 'Coordinate optional shared work',
+    description: 'Use enrolled shared Git coordination for on-demand agents; no model invocation or execution authority.',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['status', 'get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'] },
+      input: { type: 'string', minLength: 1, maxLength: 4096 }, offline: { type: 'boolean' },
+    }, required: ['operation'], additionalProperties: false }, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  {
     name: 'doctor',
     title: 'Inspect ADLC invariants',
     description: 'Report local harness and remote configuration drift without changing it.',
@@ -197,6 +206,20 @@ function validateEmptyArguments(args) {
 }
 
 export function toolArguments(name, args) {
+  if (name === 'collaborate') {
+    if (!plainObject(args) || !onlyKeys(args, ['operation', 'input', 'offline'])
+      || !['status', 'get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(args.operation))
+      invalidParams('collaborate requires a known operation');
+    if (args.operation === 'status') {
+      if (args.input !== undefined || args.offline !== undefined && typeof args.offline !== 'boolean')
+        invalidParams('status accepts only offline');
+      return ['collaborate', 'status', ...(args.offline ? ['--offline'] : [])];
+    }
+    if (args.offline !== undefined || typeof args.input !== 'string' || !args.input.trim()
+      || Buffer.byteLength(args.input) > 4096 || /[\x00-\x1f\x7f]/u.test(args.input))
+      invalidParams('collaborate requires one bounded local input path');
+    return ['collaborate', args.operation, `--input=${args.input}`];
+  }
   if (name === 'doctor' || name === 'status') {
     validateEmptyArguments(args);
     return [name];
@@ -276,7 +299,7 @@ async function callResult(params, modern, options) {
   const argv = toolArguments(params.name, params.arguments);
   const run = options.runCli;
   if (typeof run !== 'function') throw new Error('CLI runner is unavailable');
-  const effectful = params.name === 'lane' || params.name === 'reap';
+  const effectful = ['lane', 'reap', 'collaborate'].includes(params.name);
   if (effectful) options.onEffectful?.();
   const payload = await run(argv, {
     cwd: options.cwd, signal: effectful ? undefined : options.signal, effectful,

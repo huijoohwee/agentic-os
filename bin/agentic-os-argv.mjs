@@ -31,6 +31,9 @@ function exact(argv, {
 
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'collaborate': return argv[0] === 'status' ? exact(argv, { min: 1, flags: ['offline'] })
+      : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
+        ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';
     case 'pipeline': return exact(argv, { options: ['repo', 'run', 'head', 'attempt', 'timeout-ms'],
       requiredOptions: ['repo', 'run', 'head', 'attempt'] });
     case 'help': case '--help': return exact(argv, {});
@@ -127,6 +130,8 @@ export function cmdHelp() {
       '  agentic-os workspace watch [--interval-ms=30000] [--duration-ms=28800000]  refresh during this session',
       '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
       '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
+      '  agentic-os collaborate status [--offline]  observe opt-in shared coordination; not authority',
+      '  agentic-os collaborate <get|submit|claim|renew|release|report|archive> --input=<json>  cooperative work/handoff',
       '  agentic-os memory search --revision=<sha> --query=<text> [--path=<memory-file>]  bounded local-only lookup',
       '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
