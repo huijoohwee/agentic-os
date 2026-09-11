@@ -74,6 +74,8 @@ export async function watchWorkspace(root, policy, options = {}, out = console.l
 }
 
 export async function runWorkspaceCommand(root, policy, command, argv, out = console.log) {
+  if (command === 'memory' && ['search', 'read', 'capture'].includes(argv[0]))
+    return (await import('./agentic-os-memory-task.mjs')).runMemoryTask(root, policy, argv, out);
   if (argv[0] === 'watch' || argv[0] === 'sync') {
     if (argv[0] === 'watch') await watchWorkspace(root, policy,
       { intervalMs: Number(option(argv, 'interval-ms', '30000')),

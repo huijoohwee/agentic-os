@@ -50,7 +50,15 @@ export function validateCommandArguments(command, argv) {
       return error ?? (source === null || ['memory', 'todo', 'artifacts'].includes(source)
         ? null : 'workspace source must be memory, todo, or artifacts');
     }
-    case 'memory': return exact(argv, { flags: ['offline'] });
+    case 'memory': {
+      const operation = argv[0];
+      const required = operation === 'search' ? ['revision', 'query']
+        : operation === 'read' ? ['revision', 'path'] : operation === 'capture' ? ['revision', 'handoff'] : null;
+      if (!required) return exact(argv, { flags: ['offline'] });
+      const optional = operation === 'search' ? ['path', 'limit', 'after-line']
+        : operation === 'read' ? ['line', 'lines'] : [];
+      return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
+    }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
     case 'land': return exact(argv, { options: ['message', 'body-file'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
@@ -119,6 +127,9 @@ export function cmdHelp() {
       '  agentic-os workspace watch [--interval-ms=30000] [--duration-ms=28800000]  refresh during this session',
       '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
       '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
+      '  agentic-os memory search --revision=<sha> --query=<text> [--path=<memory-file>]  bounded local-only lookup',
+      '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
+      '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
       '  npm run land -- [--body-file=<file>]  publish the exact lane head and request provider handoff',

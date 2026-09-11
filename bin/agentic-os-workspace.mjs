@@ -120,7 +120,7 @@ export function hydrateWorkspace(root, policy,
       const { path, spec: { remote, branch, directory } } = sources.get('memory');
       observations.memory = hydrateSelectedMemory(root, policy, path,
         { schema: 'agentic-os/memory-source/v1', remote, branch, directory },
-        { configRevision, offline, advertise: sync, inspect: (sourceRevision, { refreshError }) => {
+        { configRevision, offline, advertise: true, inspect: (sourceRevision, { refreshError }) => {
           const context = {};
           for (const [role, { path, spec }] of sources) {
             const tree = read(path, ['ls-tree', sourceRevision, '--', spec.path]);

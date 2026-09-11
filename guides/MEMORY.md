@@ -1,8 +1,8 @@
 ---
 title: "Shared Memory Startup"
 doc_type: "Runtime Guide"
-version: "1.0.0"
-date: "2026-09-10"
+version: "1.1.0"
+date: "2026-09-11"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -59,7 +59,8 @@ Remove the local enrollment with `git config --local --unset-all agentic-os.memo
 `agentic-os start <scope> --write=<paths>` hydrates enrolled memory after selecting the protected
 base and before provisioning a lane. Configuration comes from that exact protected commit;
 uncommitted edits and lane-only configuration cannot redirect the memory source.
-On resume, run `agentic-os memory`; use `agentic-os memory --offline` to request the saved snapshot.
+On resume, use `agentic-os workspace sync` for workspace enrollment or `agentic-os memory` for
+standalone enrollment; add `--offline` to request the saved snapshot.
 Installed consumers invoke their installed CLI with the same arguments.
 
 A shared reference index such as `.memory/MEMORY.md` stays outside the bounded shard directory.
@@ -142,3 +143,74 @@ Source configuration and indexed references are discovery/context, not authority
 may be rebuilt from an accepted source after diagnosing corruption; preserve source records first.
 
 [contract]: https://github.com/huijoohwee/agentic-canvas-os/blob/main/docs/MEMORY-LOG.md
+
+## Task operating model (TASK-MEMORY-001@1.0.0)
+
+PRD: reduce repeated fetches, prompt payload and duplicate summarization while retaining source-bound
+decisions. TAD: reuse the accepted cache and explicitly pin its full source SHA for task retrieval;
+reuse one authored memory-log/v1 block in the normal completion handoff. ADR: no embeddings, model
+calls, daemon, vendor-memory relocation, implicit writes or automatic publisher. This adds one
+on-demand bin module, no dependencies or src modules; always-load guidance decreases by 13 bytes
+to 40,901 bytes without raising its cap.
+
+At task start, use the workspace receipt already emitted by `agentic-os start`; do not sync twice.
+At task resume or before a freshness-sensitive decision, run `agentic-os workspace sync` once and
+retain `sourceRevision` and `configRevision` in the task handoff. Unchanged v2 startup advertises the
+branch before fetching and reuses the accepted index. During the task use the pinned SHA below;
+these commands have no network request, lazy fetch, index rewrite or vendor-memory fallback:
+
+```sh
+agentic-os memory search --revision=<source-sha> --query="relevant phrase"
+agentic-os memory search --revision=<source-sha> --query="relevant phrase" --path=.memory/MEMORY.md
+agentic-os memory read --revision=<source-sha> --path=.memory/evidence.md --line=1 --lines=40
+```
+
+Search is literal, case-insensitive, not semantic recall. Default search returns at most five curated
+records, newest first; an explicit path searches only that committed memory file. Use `--limit` (1–20) and the
+returned `nextAfterLine` as `--after-line` to page file matches. Read returns at most 80 lines; follow
+`nextLine` when needed. Files are capped below 500 kB and responses at 16 KiB; a too-large selected
+line/record fails loudly so the caller can narrow the selection. A zero-match result is not proof
+that no relevant knowledge exists: search the imported index or cited owner when warranted.
+
+A peer advancing the shared cache never advances the caller's pinned source SHA. Historical accepted
+ancestors are read locally from Git; divergent/unaccepted candidates fail. Every response says remote
+freshness was not checked and grants no authority. Refresh before source-current decisions or
+publication; missing objects, cache corruption and identity drift fail instead of using another source.
+Use watch only during explicitly requested active multi-device collaboration; never install it by default.
+
+At completion, author zero or one durable entry using the decisions and evidence already in the handoff.
+Do not invent an entry for a routine/no-learning task. Keep credentials, raw transcripts and artifacts out.
+Place the existing memory-log/v1 entry in one fenced block in the handoff, for example:
+
+````markdown
+```memory-log/v1
+## @mem-20260911T120000Z
+type: decision
+scope: example-task
+summary: One durable, source-supported decision from this task's handoff.
+refs: [https://github.com/owner/repository/blob/exact-commit/path]
+```
+````
+
+Run `agentic-os memory capture --revision=<source-sha> --handoff=<file>` to validate and print the
+append proposal. It reuses the record verbatim, validates chronology, references and the existing
+parser, and detects already-published IDs/conflicts. For a new month include the source-owned
+memory-log/v1 frontmatter before the entry in the same fence; existing headers cannot be replaced.
+Capture reads at most 16 KiB of handoff and accepts at most 4 KiB in the memory block. A handoff can
+link large logs instead of embedding them. No shared source bytes are changed by this command.
+
+Publication remains a separate effect: refresh, use a clean scoped workspace branch at the proposal
+revision, verify the target blob/prefix against `baseBlob` and `baseSha256`, apply only `append`, run
+the source's exact workspace/planning checks, and review/merge under existing authority. Refresh
+consumers afterward and verify the entry. Preserve concurrent/dirty work; a stale proposal must be
+regenerated, not forced. Never equate a proposal with durable shared publication or production proof.
+
+Native Codex memory generation/recall and Chronicle remain disabled for the strict shared-source
+deployment. Device-local derived indexes stay under the workspace Git directory. This policy does
+not recreate automatic conversation/activity recall, configure another device, or hot-reload an
+already-running assistant. Preserve vendor history in place; do not symlink its writers into Git.
+
+Validation: `__tests__/memory-task.test.mjs` covers local-only retrieval, pagination, dirty preservation,
+two independent devices, pinned snapshots after peer refresh, capture/replay/conflicts and bounded
+failures. Run affected checks, not unrelated suites. Measure total task time/tokens and missed decisions
+before claiming net productivity gains; bounded behavior checks do not establish universal parity.
