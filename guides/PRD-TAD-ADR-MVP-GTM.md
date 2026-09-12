@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.0"
-date: "2026-09-09"
+version: "1.1.1"
+date: "2026-09-12"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -29,13 +29,19 @@ verification_scope: "as-built source and specification joins; measured clean-clo
 
 Current composition identities live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json); revision-qualified links and grounding tables below are historical evidence, not current pins. [TECH-STACK.md](TECH-STACK.md) states the refresh commands.
 
-This document owns the **as-built governance path from product intent to source implementation, product release and verified completion**. It describes the implemented controls and explicit handoffs across the seven repositories. It does not introduce a runtime controller or turn an accepted specification into deployment authority.
+This document owns the **as-built governance path from intent through source, release and verified completion** across seven repositories. Specification acceptance grants no deployment authority.
 
 [TECH-STACK.md](TECH-STACK.md) owns technology selection, product composition and deployment topology. [FEATURES.md](FEATURES.md) owns the derived feature index; [catalog/features.json](../catalog/features.json) owns commercial ranking input. The website [guidelines][guideline], [templates][templates], [continuity module][continuity] and [CID contract][cid] own authoring semantics. This guide adds pipeline requirements and traceability, without copying those contracts or product requirements.
 
+The [maturity rubric][maturity] and [source assessment][maturity-grounding] load on demand.
+Record four ratings or `unassessed`; keep experience, readiness and demand distinct.
+Historical acceptance/source bindings below retain their original revisions.
+[Shared naming][document-naming] preserves stable guides and record-owned export identities.
+This adds no always-load bytes, runtime module or dependency.
+
 ## Identity and opening directive
 
-The stable locator is `guides/PRD-TAD-ADR-MVP-GTM.md`. The addressable [PRD](#prd), [TAD](#tad) and [ADR](#adr) sections each bind `PRD-TAD-ADR-ADLC-PIPELINE-001` at revision `1.1.0`; TAD consumes that exact PRD and ADR binds that exact TAD. Companion versions resolve through the [source bindings](#codebase-grounding-record), never through the filename alone. Changes to a requirement re-derive affected design, decisions, RAO steps and evidence before dependent execution.
+[PRD](#prd), [TAD](#tad) and [ADR](#adr) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.1.0`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 
@@ -88,7 +94,7 @@ PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directiv
 
 Constraints → outranking → argumentation reuse the existing ranker: hard admissibility precedes Pareto comparison and grounded arguments. Feedback changes evidence and re-runs that bounded comparison. The feature index records `no-admissible-candidate` for its source-bound catalog observation. That result blocks a commercial selection, not this authorized engineering outcome. The domain objects here are requirement, exact source candidate, evidence observation and effect receipt; this improves engineering traceability, not a claimed new marketplace breakthrough.
 
-Open questions: an eligible always-on execution host/transport, independent evaluator enrollment, equivalent lifecycle claim/lease/fence verifier, current release bindings, shared Graph/GameXR project routing and the real payer/offer. G08–G10 identify affected runtime transitions. None authorizes guessing credentials or deleting source. Technical work can proceed while demand validation stays explicitly pending.
+Unverified at these historical bindings: host/transport, evaluator enrollment, lifecycle verifier, release bindings, Graph/GameXR routing and payer/offer. G08–G10 bound runtime transitions; source work continues without guessing credentials or deleting source.
 
 ## TAD
 
@@ -110,7 +116,7 @@ T01–T09 are independently closable task references within DIR-PIPELINE-01, not
 | T08 / activate | Commerce release owner activates versions | Exact authenticated source/configuration + independent executor/evaluator → owner release and runtime evidence; [release][commerce-release] | T05, T07 and G08–G10 closure; P08 |
 | T09 / demonstrate | Runtime evaluator verifies checkout | Exact deployed identities + confirmation → settlement/readback/replay evidence; composition F01–F05 | T08 and product authority; P09. Demand observation is a separate result |
 
-The upstream process remains Phase 0 problem discovery → Phase 1 PRD → Phase 2 TAD → Phase 3 review/alignment → Phase 4 living documents ([owner process][process]). T01 represents these authoring seams; T02–T09 are runtime/development handoffs, not replacement phase numbering. This retrospective specification does not imply previous implementations passed a newly authored gate.
+The [upstream process][process] remains Phase 0 discovery → 1 PRD → 2 TAD → 3 alignment → 4 maintenance. T01 consumes those phases; T02–T09 are development/runtime handoffs. This retrospective spec does not certify prior implementation against new gates.
 
 ### Five flow patterns
 
@@ -318,11 +324,13 @@ Five lenses apply to all three decisions: smallest reusable outcome, zero new pa
 
 G08/G09 are confirmed integration defects for P08, G10 is missing live evidence and G12 blocks P09 satisfaction or a demand claim. G13 is a T03 defect with a published fix; G14 is a lifecycle gap for T03/T06 that a future ADR must decide (abandon event with retained branch, or reservation amendment) before any command implements it. They do not block this retrospective source specification. The next technical delta belongs to Commerce's executor/lifecycle/release owners; update that owner's requirements and evidence before deriving implementation tasks from this guide.
 
-## Verification, demonstration and maintenance
+## MVP
 
-**Source-specification scope:** verify YAML identity, exact companion versions, P01–P09/T01–T09/ADR joins, cited Git blobs, diagram projection counts and README navigation; run OS `npm run check`. The document's `spec-complete` rung states that its pipeline VCCs are defined; none is claimed satisfied by merely generating this file. Prior product checks and the feature-index merge are not fresh deployment proof. The website `scripts/check-prd-tad-adr-mvp-gtm-guideline.mjs` validates the shared guideline set, not arbitrary consumer specs; this document also requires explicit join review. Independent review/provider checks remain separate from the authoring pass.
+### Verification, demonstration and maintenance
 
-**Applicable-rule trace:** 12/12 selected artifact-bearing rules link to artifacts below; 0 advisory rules are selected. These are a bounded conformance slice, not an exhaustive audit of every guideline/companion rule or a claim that all runtime criteria pass. Rule IDs use the governing section plus document-order ordinal; the quoted phrases identify the pinned rule text.
+**Source-specification scope:** verify YAML identity, companion versions, P01–P09/T01–T09/ADR joins, cited blobs, diagram counts and navigation; run OS `npm run check`. `spec-complete` means VCCs are defined. The website guideline checker validates its owning set; this consumer needs explicit join review. Authoring, independent/provider checks and deployment evidence remain separate.
+
+**Applicable-rule trace:** 12/12 selected artifact-bearing rules are linked below; 0 advisory rules. This bounded slice does not certify all guidelines or runtime criteria. Rule IDs use section and ordinal; excerpts identify pinned rule text.
 
 | Artifact-bearing Rule ID / text excerpt | Artifact |
 |---|---|
@@ -339,9 +347,14 @@ G08/G09 are confirmed integration defects for P08, G10 is missing live evidence 
 | `artifact-continuity-authoring-seam#7` — “Re-run Directive-to-RAO coverage” | Revision propagation in Identity and opening directive |
 | `artifact-continuity-authoring-seam#8` — “Require joined independent evidence” | Acceptance contract and closed runtime boundaries |
 
-**Demo skeleton:** from a profile-trusted clean checkout, inspect the joined intent, open one scoped lane, author a bounded source change, run the owner's complete applicable checks, publish and observe exact integration, then perform separately authorized completion. Record TTV steps/time, command argv, source identity, coverage and outcomes. For runtime demonstration continue through P08/P09 only when their owner evidence is available; retain explicit failures rather than recording a synthetic success. The measured clean-clone walkthrough covers setup through lane start; author, check, land and completion remain unmeasured.
+**Demo skeleton:** trusted clean checkout → joined intent → scoped lane → bounded change → complete owner checks → publication/integration → authorized completion. Record TTV, argv, exact source, coverage and results. Continue through P08/P09 only with owner evidence; retain failures. The measured walkthrough covers setup through lane start; later steps remain unmeasured.
 
-**Roadmap:** reuse the implemented controls; close G08–G10 within Commerce without reintroducing the retired verifier as a shim; collect P09 provider/replay evidence; evaluate demand independently; expand only on measured value. Maintenance uses the Phase 4 bound stated under PIPE-H1, immutable source references and successor decisions when material architecture changes.
+## GTM
+
+Consume P02/P09 and the [Commerce grounding][maturity-grounding]: prove priced acceptance and collected
+payment separately from sandbox settlement. No commercial winner is selected here.
+
+**Roadmap:** reuse controls; close G08–G10 in Commerce without restoring the retired verifier; collect P09 provider/replay evidence and independent demand. Expand on measured value; maintain Phase 4 bounds, immutable sources and successor ADRs.
 
 [guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/prd-tad-adr-guidelines.md
 [templates]: https://github.com/huijoohwee/huijoohwee.github.io/blob/7bb36e9df2dfe14497c789b531bbc674c3d8da91/guidelines/prd-tad-adr-templates.md
@@ -376,3 +389,7 @@ G08/G09 are confirmed integration defects for P08, G10 is missing live evidence 
 [commerce-context]: https://github.com/huijoohwee/agentic-commerce-os/blob/4774a4fc1543c4bcb1b912fe79c78c61384efc7c/scripts/evidence-runtime-context.ts
 [commerce-context-test]: https://github.com/huijoohwee/agentic-commerce-os/blob/4774a4fc1543c4bcb1b912fe79c78c61384efc7c/test/shared/evidence-runtime-context.test.ts
 [canvas-package]: https://github.com/huijoohwee/agentic-canvas-os/blob/954de91689abc1ab99a783e54f5ca7ac61387449/package.json
+
+[maturity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-maturity.md
+[maturity-grounding]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md#experience-and-first-dollar--reference-implementation
+[document-naming]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format

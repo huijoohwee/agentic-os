@@ -1,3 +1,14 @@
+---
+title: "User Cookbook"
+doc_type: "Guide"
+version: "1.0.0"
+date: "2026-09-12"
+lang: "en-US"
+owner: "agentic-os"
+frontmatter_contract: "required"
+load_policy: "on-demand"
+---
+
 # User Cookbook
 
 Use the smallest path that preserves source ownership, reviewability, and protected integration. Substitute
@@ -19,9 +30,13 @@ Keep review identifiers and timestamps in lane records; do not rename a live wor
 Only an immutable evidence export placed in a flat archive needs a collision-resistant artifact name:
 
 ```text
-<archive>/<repository>/PR<review>-<YYYYMMDDTHHmmZ>-<device>--<lane>.json
+<archive>/<repository>/<YYYYMMDDTHHmmssZ>-pr<review>-<device>--<lane>-<id>.json
 ```
 
+Use UTC with uppercase `T`/`Z`, seconds and a collision-resistant ID; create the export without overwriting.
+Existing record profiles retain their contracts. See the shared
+[naming profile](https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format).
+Living guides retain stable uppercase names in this repository; timestamps do not replace continuity IDs.
 Omit fields already represented by archive folders. A provider without pull requests substitutes its neutral
 review identifier; the live worktree layout remains provider-agnostic.
 
