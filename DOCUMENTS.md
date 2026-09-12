@@ -1,8 +1,8 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.1.0"
-date: "2026-09-10"
+version: "1.1.1"
+date: "2026-09-12"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -21,6 +21,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 |---|---|
 | Document authoring and ownership rules | [Documentation guidelines][documentation] |
 | Naming conventions and syntax profile selection | [Conventions and syntax guidelines][conventions] |
+| Agent experience maturity and evidence gaps | [Four-criterion rubric][maturity] |
 | Common YAML frontmatter | [Runtime frontmatter guidelines][frontmatter] |
 | Bounded parsed metadata API | [Shared frontmatter boundary](guides/FRONTMATTER.md) |
 | CID, RAO, SVO and specification fields | [PRD/TAD/ADR guidelines][prd], [shared semantic schema][semantics] |
@@ -126,3 +127,5 @@ for this asset. Document checks establish source consistency only.
 [game]: https://github.com/huijoohwee/GameXR/blob/main/README.md
 [game-design]: https://github.com/huijoohwee/GameXR/blob/main/docs/GAME-DESIGN-TECHNICAL-ARCHITECTURE.md
 [game-release]: https://github.com/huijoohwee/GameXR/blob/main/docs/RELEASE.md
+
+[maturity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/prd-tad-adr-mvp-gtm-maturity.md
