@@ -175,3 +175,88 @@ test('CLI process exits nonzero for conflicting allocation and emits a non-autho
   const result = spawnSync(process.execPath, ['bin/agentic-os-fleet.mjs', `--input=${file}`], { encoding: 'utf8' });
   assert.equal(result.status, 1); assert.equal(JSON.parse(result.stdout).authority, false);
 });
+
+const ownershipModule = await import('../bin/agentic-os-fleet.mjs');
+const { evaluateFleetOwnership, collectFleetOwnership, validateOwnershipPolicy } = ownershipModule;
+const fleetPolicy = () => ({ schema: 'agentic-os/fleet-ownership-policy/v1',
+  repositories: [repository, 'example.org/owner/consumer'].map((id, n) => ({ id,
+    directory: n ? 'consumer' : 'project', role: 'source', planningRoots: ['docs'] })),
+  responsibilities: [{ id: 'runtime', owner: repository, source: 'src/runtime.mjs',
+    consumers: ['example.org/owner/consumer'] }], historical: [] });
+const artifact = (path, continuityId = null, planningRevision = null, bodyDigest = null) =>
+  ({ path, sha256: 'b'.repeat(64), continuityId, planningRevision, bodyDigest });
+const fleetObservations = () => [
+  { id: repository, revision: 'a'.repeat(40), artifacts: [artifact('src/runtime.mjs'),
+    artifact('docs/plan.md', 'PLAN-1', '1.0.0', 'c'.repeat(64))] },
+  { id: 'example.org/owner/consumer', revision: 'd'.repeat(40), artifacts: [] },
+];
+const ownershipCodes = (p, o) => evaluateFleetOwnership(p, o).findings.map(f => f.code);
+
+test('fleet policy has one owner per responsibility and covers every observed repository', () => {
+  const p = fleetPolicy(), o = fleetObservations();
+  assert.equal(evaluateFleetOwnership(p, o).ok, true);
+  const duplicate = structuredClone(p); duplicate.responsibilities.push({ ...p.responsibilities[0], owner: o[1].id, consumers: [] });
+  assert.throws(() => validateOwnershipPolicy(duplicate), /duplicates/u);
+  assert(ownershipCodes(p, o.slice(0, 1)).includes('invalid-ownership-input'));
+  o[0].artifacts.shift(); assert(ownershipCodes(p, o).includes('missing-responsibility-source'));
+});
+
+test('a declared consumer cannot become a second source owner', () => {
+  const p = fleetPolicy(), o = fleetObservations();
+  o[1].artifacts.push(artifact('src/runtime.mjs'));
+  assert(ownershipCodes(p, o).includes('competing-responsibility-source'));
+  p.repositories[1].role = 'projection';
+  assert.equal(evaluateFleetOwnership(p, o).ok, true);
+  p.responsibilities[0].consumers = [repository];
+  assert.throws(() => validateOwnershipPolicy(p), /recursive consumer/u);
+});
+
+test('planning identity aliases and revision conflicts fail across repository boundaries', () => {
+  const p = fleetPolicy(), o = fleetObservations();
+  o[1].artifacts.push(artifact('docs/renamed.md', 'plan-1', '1.0.0', 'e'.repeat(64)));
+  assert(ownershipCodes(p, o).includes('conflicting-planning-authority'));
+  o[1].artifacts = []; o[0].artifacts.push(artifact('docs/companion.md', 'PLAN-1', '1.0.1', 'e'.repeat(64)));
+  assert(ownershipCodes(p, o).includes('conflicting-planning-authority'));
+  o[0].artifacts[2].planningRevision = '1.0.0';
+  assert.equal(evaluateFleetOwnership(p, o).ok, true);
+});
+
+test('renaming both the file and continuity ID does not hide an exact duplicate planning body', () => {
+  const p = fleetPolicy(), o = fleetObservations();
+  o[1].artifacts.push(artifact('docs/unrelated-name.md', 'PLAN-2', '9.0.0', 'c'.repeat(64)));
+  assert(ownershipCodes(p, o).includes('duplicate-planning-body'));
+});
+
+test('historical authority exclusions bind exact bytes and cannot hide drift', () => {
+  const p = fleetPolicy(), o = fleetObservations();
+  p.historical = [{ repository, path: 'docs/plan.md', sha256: 'b'.repeat(64) }];
+  assert.equal(evaluateFleetOwnership(p, o).ok, true);
+  o[0].artifacts[1].sha256 = 'd'.repeat(64);
+  assert(ownershipCodes(p, o).includes('immutable-authority-drift'));
+});
+
+test('unchanged observations stop failed loops or reuse passed evidence without granting authority', () => {
+  const p = fleetPolicy(), o = fleetObservations();
+  const passed = evaluateFleetOwnership(p, o);
+  const reused = evaluateFleetOwnership(p, o, passed);
+  assert.equal(reused.nextAction, 'reuse-passed-evidence'); assert.equal(reused.authority, false);
+  o[1].artifacts.push(artifact('src/runtime.mjs'));
+  const failed = evaluateFleetOwnership(p, o, passed);
+  assert.equal(failed.nextAction, 'fix-owning-source');
+  assert.equal(evaluateFleetOwnership(p, o, failed).nextAction, 'stop-unchanged-input');
+  assert.equal(failed.liveClaimsVerified, false);
+});
+
+test('ownership collector rejects incomplete roots without recursively searching the filesystem', () => {
+  assert.throws(() => collectFleetOwnership(fleetPolicy(), {}), /explicit repository roots/u);
+});
+
+
+test('planning metadata comments and quoted keys cannot hide conflicting identities', () => {
+  const field = ownershipModule.readOwnershipField;
+  assert.equal(field('doc_type: "PRD-TAD-ADR-MVP-GTM" # source owner', 'doc_type'), 'PRD-TAD-ADR-MVP-GTM');
+  assert.equal(field('"continuity_id": PLAN-1 # source owner', 'continuity_id'), 'PLAN-1');
+  assert.equal(field("'prd_revision': '1.0.0' # exact revision", 'prd_revision'), '1.0.0');
+  assert.throws(() => field('continuity_id: PLAN-1\n"continuity_id": PLAN-2', 'continuity_id'), /duplicate/u);
+  assert.throws(() => field('doc_type: |\n  PRD-TAD-ADR-MVP-GTM', 'doc_type'), /unsupported/u);
+});

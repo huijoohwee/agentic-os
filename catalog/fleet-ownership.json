@@ -1,0 +1,174 @@
+{
+  "schema": "agentic-os/fleet-ownership-policy/v1",
+  "repositories": [
+    {
+      "id": "github.com/huijoohwee/agentic-os",
+      "directory": "agentic-os",
+      "role": "source",
+      "planningRoots": [
+        "FLEET.md",
+        "PRD-TAD-ADR-MVP-GTM-PREFLIGHT.md",
+        "guides"
+      ]
+    },
+    {
+      "id": "github.com/huijoohwee/huijoohwee.github.io",
+      "directory": "huijoohwee.github.io",
+      "role": "source",
+      "planningRoots": [
+        "docs"
+      ]
+    },
+    {
+      "id": "github.com/huijoohwee/agentic-commerce-os",
+      "directory": "agentic-commerce-os",
+      "role": "source",
+      "planningRoots": [
+        "docs"
+      ]
+    },
+    {
+      "id": "github.com/huijoohwee/agentic-canvas-os",
+      "directory": "agentic-canvas-os",
+      "role": "source",
+      "planningRoots": [
+        "docs"
+      ]
+    },
+    {
+      "id": "github.com/huijoohwee/huijoohwee",
+      "directory": "huijoohwee",
+      "role": "projection",
+      "planningRoots": []
+    },
+    {
+      "id": "github.com/huijoohwee/agentic-graph",
+      "directory": "agentic-graph",
+      "role": "source",
+      "planningRoots": [
+        "docs",
+        "mcp"
+      ]
+    },
+    {
+      "id": "github.com/huijoohwee/81rv10",
+      "directory": "81rv10",
+      "role": "reference",
+      "planningRoots": [
+        "docs"
+      ]
+    },
+    {
+      "id": "github.com/huijoohwee/gamexr",
+      "directory": "GameXR",
+      "role": "source",
+      "planningRoots": [
+        "docs"
+      ]
+    }
+  ],
+  "responsibilities": [
+    {
+      "id": "lifecycle-governance",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "bin/agentic-os.mjs",
+      "consumers": [
+        "github.com/huijoohwee/huijoohwee.github.io",
+        "github.com/huijoohwee/agentic-commerce-os",
+        "github.com/huijoohwee/agentic-canvas-os",
+        "github.com/huijoohwee/huijoohwee",
+        "github.com/huijoohwee/agentic-graph"
+      ]
+    },
+    {
+      "id": "planning-guidelines",
+      "owner": "github.com/huijoohwee/huijoohwee.github.io",
+      "source": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
+      "consumers": [
+        "github.com/huijoohwee/agentic-os",
+        "github.com/huijoohwee/agentic-commerce-os",
+        "github.com/huijoohwee/agentic-canvas-os",
+        "github.com/huijoohwee/agentic-graph",
+        "github.com/huijoohwee/81rv10",
+        "github.com/huijoohwee/gamexr"
+      ]
+    },
+    {
+      "id": "commerce-control-plane",
+      "owner": "github.com/huijoohwee/agentic-commerce-os",
+      "source": "wrangler.edge.jsonc",
+      "consumers": [
+        "github.com/huijoohwee/agentic-graph"
+      ]
+    },
+    {
+      "id": "invocation-control-surface",
+      "owner": "github.com/huijoohwee/agentic-canvas-os",
+      "source": "docs/PRD-TAD-ADR-MVP-GTM.md",
+      "consumers": [
+        "github.com/huijoohwee/agentic-graph"
+      ]
+    },
+    {
+      "id": "graph-runtime",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "source": "mcp/agent-graph/runtime.mjs",
+      "consumers": [
+        "github.com/huijoohwee/huijoohwee",
+        "github.com/huijoohwee/agentic-canvas-os",
+        "github.com/huijoohwee/gamexr"
+      ]
+    },
+    {
+      "id": "launch-copilot-runtime",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "source": "docs/launch-copilot.md",
+      "consumers": [
+        "github.com/huijoohwee/81rv10",
+        "github.com/huijoohwee/huijoohwee"
+      ]
+    },
+    {
+      "id": "spatial-shared-core",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "source": "Package.swift",
+      "consumers": [
+        "github.com/huijoohwee/gamexr"
+      ]
+    },
+    {
+      "id": "gamexr-frontend",
+      "owner": "github.com/huijoohwee/gamexr",
+      "source": "src/runtime/GameRuntime.ts",
+      "consumers": []
+    },
+    {
+      "id": "production-mirror",
+      "owner": "github.com/huijoohwee/huijoohwee",
+      "source": "_routes.json",
+      "consumers": []
+    }
+  ],
+  "historical": [
+    {
+      "repository": "github.com/huijoohwee/agentic-graph",
+      "path": "docs/documents/agentic-graph-ar-vr-xr-prd-tad-adr-mvp-gtm.md",
+      "sha256": "5067f019a099a94ec02d3f7581963cf2c514ab46bf5a853020df8dfe85d5ef45"
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-graph",
+      "path": "docs/agentic-graph-acos-topology-decision.md",
+      "sha256": "1214cba45a7d5d4fe2a56766851f61424453300cadee88370a05c39e1fe95c8a"
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-graph",
+      "path": "docs/documents/agentic-graph-agentic-commerce-platform-prd-tad-adr-mvp-gtm.md",
+      "sha256": "4688da5b3d6e26e6e7f4089b04123304bd50783923ec8181782d850f9970e85f"
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-graph",
+      "path": "docs/documents/agentic-graph-agentic-travel-agencies-prd-tad-adr-mvp-gtm.md",
+      "sha256": "3a8542ec4869ab0dd66ce25cc10cca49003c701591a06912192e00de4b5f1f92"
+    }
+  ]
+}
