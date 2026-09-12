@@ -6,4 +6,5 @@ Installed (`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not
 Run doctor/status, then `agentic-os start <scope> --write=<paths>`. Disjoint lanes run; overlaps wait.
 After checks, `agentic-os land --message=<message>` stages, commits, pushes the reserved diff.
 Never copy lane files into canonical.
-Task memory (sync/read/capture): `../guides/MEMORY.md`.
+Memory: `../guides/MEMORY.md`.
+Cross-repo writes/publication: enforce `../FLEET.md`.

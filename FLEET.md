@@ -1,7 +1,7 @@
 ---
 title: "Fleet Work Allocation"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.1"
+version: "1.1.0"
 date: "2026-09-12"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -13,16 +13,16 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-cba000d3779d--planning-v27"
+worktree_id: "device-cba000d3779d--fleet-ownership"
 agent_id: "codex-01a0940a"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-prd_revision: "1.0.1"
-tad_revision: "1.0.1"
-adr_revision: "1.0.1"
-mvp_revision: "1.0.1"
-gtm_revision: "1.0.1"
+reviewed_source_revision: "ebe98531494295c0548e704a924421128791f631"
+prd_revision: "1.1.0"
+tad_revision: "1.1.0"
+adr_revision: "1.1.0"
+mvp_revision: "1.1.0"
+gtm_revision: "1.1.0"
 ---
 
 # Fleet work allocation
@@ -69,6 +69,28 @@ The operator selected private `huijoohwee/.workspace/.todo` as the shared planni
 the TODO contract, Kanban board and immutable records together, reusing public validators with preserved source
 hashes. Canvas retains owner-routing documents only. Historical website logs route to the live index.
 Central navigation remains in `DOCUMENTS.md`; moving files does not make simultaneous claims atomic.
+
+## Cross-repository source ownership
+
+The [fleet ownership policy](catalog/fleet-ownership.json) is the sole machine-readable registry for the eight selected repositories and their declared responsibilities. Each responsibility has one source owner; consumer and generated-projection relationships carry no authoring authority. Keep lifecycle governance in Agentic OS, planning rules in the website, product implementations in their named repositories, and generated production content in the existing protected mirror workflow. Launch Copilot uses the Graph runtime; the standalone repository remains a reference. GameXR owns its frontend and consumes the Graph spatial core.
+
+Before cross-repository authoring and before publication, run the existing fleet checker in ownership mode with one explicit JSON mapping from each registered repository identity to its absolute checkout path:
+
+```sh
+npm run fleet:check -- --ownership=/absolute/path/to/repository-roots.json
+```
+
+Use the selected task worktree when checking an unpublished candidate. Do not create a second persistent owner registry in a consumer. The command verifies each root and Git origin locally, reads only selected Git-indexed or non-ignored candidate files, and rejects missing responsibility sources, a competing source path in another authoring repository, duplicate planning bodies across source repositories, or the same continuity ID owned by different repositories or revisions. Companions may share one exact revision inside their owning repository. Historical exclusions require exact path and SHA-256; modified historical authority fails. Generated mirrors are declared projections, not additional planning owners; their byte parity stays with the existing release checks.
+
+**FLEET-01.6 / SRP:** each declared responsibility has exactly one owner and an existing source artifact. **FLEET-01.7 / MECE:** every registered repository is observed once, and the existing allocation check covers each selected acceptance criterion exactly once. **FLEET-01.8 / SSOT:** current planning identities, revisions and duplicate bodies cannot establish conflicting authority across source repositories. These are finite declared-identity checks; source review must still identify semantic duplication that uses different names and different bytes. Neither a label nor a passing scan proves arbitrary code equivalence.
+
+## Bounded verification and completion
+
+Ownership inspection runs once across at most eight explicit roots, 2,048 files, 500,000 bytes per file, 32 MB total and ten seconds. It starts no model, network, build, test, nested fleet command, recursive directory crawler or background poller. A bound or conflict ends the invocation with a nonzero result; fix the named owning source before trying again.
+
+A prior report may be supplied with `--previous=/absolute/path/to/report.json`. The result binds policy, repository revisions and artifact digests. An unchanged successful input returns `reuse-passed-evidence`; an unchanged conflicting input returns `stop-unchanged-input`. Those dispositions grant no authority and do not skip current file observation. Reuse existing input-bound test receipts; rerun only the checks invalidated by a source, environment or evidence change. After three mechanical repair attempts without a new observation, preserve the concrete blocker and continue independent useful work instead of repeating the same command. Green required checks and exact integration are completion conditions; do not expand review into unrelated low-value work.
+
+Validation uses the existing [fleet tests](__tests__/fleet.test.mjs), including conflicting owners, renamed duplicate bodies, immutable drift, incomplete coverage, cycles, malformed roots and unchanged-input disposition. The CLI remains read-only and reports `authority: false` and `liveClaimsVerified: false`.
 
 ## Dispatcher protocol
 
@@ -148,11 +170,11 @@ must not be treated as a general task-claim service. See [ordering boundaries](d
 
 ## MVP — reference implementation
 
-`FLEET-01@1.0.1` selects one disjoint allocation for a complete acceptance list. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+`FLEET-01@1.1.0` selects one disjoint allocation for a complete acceptance list. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
 Verify that acceptance with `node --test __tests__/fleet.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
-Experience assessment for `FLEET-01@1.0.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `FLEET-01@1.1.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.

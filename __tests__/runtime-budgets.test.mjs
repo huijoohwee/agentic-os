@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40901, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40930, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -76,6 +76,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
+      'Cross-repo writes/publication: enforce `../FLEET.md`.',
       "At start/resume, apply the global prompt's completion-estimate and external-wait rule.",
       'Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
       '`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',

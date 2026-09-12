@@ -24,7 +24,7 @@ function repositoryIdentity(value) {
     ? { host: match[1].toLowerCase(), name: match[2] } : null;
 }
 
-function remoteRepositoryIdentity(value) {
+export function remoteRepositoryIdentity(value) {
   if (typeof value !== 'string') return null;
   let host;
   let path;
