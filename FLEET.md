@@ -1,12 +1,28 @@
 ---
 title: "Fleet Work Allocation"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.0"
-date: "2026-09-10"
+version: "1.0.1"
+date: "2026-09-12"
 owner: "agentic-os"
 frontmatter_contract: "required"
 load_policy: "on-demand"
 status: "allocation-check-implemented"
+lang: "en-US"
+continuity_id: "FLEET-01"
+local_rung: "undocumented"
+delivered_rung: "undocumented"
+lane: "authoring"
+universal_scope: false
+worktree_id: "device-cba000d3779d--planning-v27"
+agent_id: "codex-01a0940a"
+guideline_revision: "2.7.0"
+guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
+prd_revision: "1.0.1"
+tad_revision: "1.0.1"
+adr_revision: "1.0.1"
+mvp_revision: "1.0.1"
+gtm_revision: "1.0.1"
 ---
 
 # Fleet work allocation
@@ -16,7 +32,9 @@ allocation check; [DOCUMENTS.md](DOCUMENTS.md) remains the workspace navigation 
 no live device roster, task rows or lock state. Graph's `FLEET.md` is its external export ledger and
 remains a separate product concern.
 
-## Intent and acceptance
+<a id="intent-and-acceptance"></a>
+
+## PRD: intent and acceptance
 
 **CID FLEET-01.** Intent: reduce duplicate implementation and preserve unfinished work across devices.
 Role/Subject: dispatcher. Action/Verb: partition. Outcome/Object: one complete, independently reviewable
@@ -35,7 +53,9 @@ Executable evidence: [allocation tests](__tests__/fleet.test.mjs). These criteri
 validation, not a deployed cross-device ownership service. The checker cannot prove that supplied
 requirements exhaust the real product scope; the dispatcher validates that join with the source owner.
 
-## Existing registry owners
+<a id="existing-registry-owners"></a>
+
+## TAD: existing registry owners
 
 | Concern | Owner | Update rule |
 |---|---|---|
@@ -106,7 +126,9 @@ symlinks, inspect repositories, authenticate identities or verify source freshne
 Reports bind the canonical input digest, declared source, proposed waves and required handoffs.
 Their `authority: false` and `liveClaimsVerified: false` are invariant, including on success.
 
-## Decision and remaining enforcement
+<a id="decision-and-remaining-enforcement"></a>
+
+## ADR: decision and remaining enforcement
 
 **ADR FLEET-01, accepted for this implementation.** Add a bounded on-demand allocation check that
 reuses the existing lane path semantics and governance hashing. Keep planning in private `huijoohwee/.workspace/.todo`, common
@@ -123,3 +145,14 @@ must not be treated as a general task-claim service. See [ordering boundaries](d
 
 [todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
 [kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
+
+## MVP — reference implementation
+
+`FLEET-01@1.0.1` selects one disjoint allocation for a complete acceptance list. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+Verify that acceptance with `node --test __tests__/fleet.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+
+## GTM — reference implementation
+
+The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
+
+Experience assessment for `FLEET-01@1.0.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.

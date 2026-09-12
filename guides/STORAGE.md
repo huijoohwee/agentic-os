@@ -1,12 +1,27 @@
 ---
 title: Storage compaction
-doc_type: PRD-TAD-ADR-MVP-GTM
-owner: agentic-os
-continuity_id: STORAGE-001
-prd_revision: 1.3.0
-tad_revision: 1.3.0
-adr_revision: 1.3.0
+doc_type: "PRD-TAD-ADR-MVP-GTM"
+owner: "agentic-os"
+continuity_id: "STORAGE-001"
+prd_revision: "1.0.1"
+tad_revision: "1.0.1"
+adr_revision: "1.0.1"
 load_policy: on-demand
+version: "1.0.1"
+date: "2026-09-12"
+lang: "en-US"
+frontmatter_contract: "required"
+local_rung: "undocumented"
+delivered_rung: "undocumented"
+lane: "authoring"
+universal_scope: false
+worktree_id: "device-cba000d3779d--planning-v27"
+agent_id: "codex-01a0940a"
+guideline_revision: "2.7.0"
+guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
+mvp_revision: "1.0.1"
+gtm_revision: "1.0.1"
 ---
 
 # Storage compaction
@@ -16,7 +31,9 @@ can consume GiB in a small product repository. Reduce allocated storage while pr
 objects, refs, reflogs, and original quarantine receipts. Existing lifecycle cleanup still owns retirement
 and quarantine; storage compaction does not infer integration, retirement or deletion authority.
 
-## Operator workflow
+<a id="operator-workflow"></a>
+
+## PRD: operator workflow
 
 Run the packaged `bin/agentic-os-storage.mjs` only on demand. It is not loaded by agent startup, and adds
 no dependencies, polling, background worker or recurring job. The operator must have user authorization
@@ -91,7 +108,9 @@ clone-private recovery directory in place, including source slots and manifests.
 source-owned v1/v2 manifest and binds its digest plus the full directory manifest; no recovery slot,
 receipt or original manifest is removed or rewritten. This is separate from lifecycle retirement.
 
-## Exact obsolete artifacts
+<a id="exact-obsolete-artifacts"></a>
+
+## TAD: exact obsolete artifacts
 
 On macOS, archive an explicitly selected untracked directory only after its source owner establishes
 that it is obsolete or disposable output. An ignored name alone is insufficient authority.
@@ -171,7 +190,7 @@ restoration, tracked/state/alias/traversal refusals, active readers and changed-
 
 Canonical-quarantine, retained-cache compression and internal/external hardlink cases are covered too.
 
-## Shared recovery location
+## ADR: shared recovery location
 
 Completed Git recovery packs and artifact archives can be relocated to a private local store. This
 extends STORAGE-001 with configurable placement, bounded inventory, immutable provenance records,
@@ -249,3 +268,14 @@ Validation: `node --test __tests__/storage-recovery.test.mjs` exercises real Git
 archive extraction, separate restores, exact duplicate reuse across clones, private configuration,
 Git publication exclusion, read-only inventory, expiration, locks, interruption/resume and drift refusal.
 Use these checks with the original storage suite and `npm run check` before applying to retained data.
+
+## MVP — reference implementation
+
+`STORAGE-001@1.0.1` selects one exact obsolete artifact compacted with recoverable bytes and retained refs. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+Verify that acceptance with `node --test __tests__/storage.test.mjs __tests__/storage-recovery.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+
+## GTM — reference implementation
+
+The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
+
+Experience assessment for `STORAGE-001@1.0.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.

@@ -1,14 +1,27 @@
 ---
 title: "On-demand shared collaboration"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.0"
-date: "2026-09-11"
+version: "1.1.1"
+date: "2026-09-12"
 owner: "agentic-os"
 continuity_id: "SHARED-COLLABORATION-001"
-prd_revision: "1.1.0"
-tad_revision: "1.1.0"
-adr_revision: "1.1.0"
+prd_revision: "1.1.1"
+tad_revision: "1.1.1"
+adr_revision: "1.1.1"
 load_policy: "on-demand"
+lang: "en-US"
+frontmatter_contract: "required"
+local_rung: "undocumented"
+delivered_rung: "undocumented"
+lane: "authoring"
+universal_scope: false
+worktree_id: "device-cba000d3779d--planning-v27"
+agent_id: "codex-01a0940a"
+guideline_revision: "2.7.0"
+guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
+mvp_revision: "1.1.1"
+gtm_revision: "1.1.1"
 ---
 
 # On-demand shared collaboration
@@ -182,3 +195,14 @@ are serialized across source branches and do not automatically cancel one anothe
 cross-runner Git coordination using synthetic enrollment; access to a user's private workspace requires
 separate per-runner enrollment and appropriately scoped credentials. Physical user devices, LLM APIs and
 product execution remain outside this proof. Local regression: `node --test __tests__/collaboration-cloud.test.mjs`.
+
+## MVP — reference implementation
+
+`SHARED-COLLABORATION-001@1.1.1` selects one cooperative claim, checked handoff and retained outcome. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+Verify that acceptance with `node --test __tests__/collaboration.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+
+## GTM — reference implementation
+
+The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
+
+Experience assessment for `SHARED-COLLABORATION-001@1.1.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
