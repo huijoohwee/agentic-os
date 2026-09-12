@@ -1,16 +1,27 @@
 ---
 title: "Native Context: Codebase, Prefix and Continuity"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.0"
-date: "2026-09-11"
+version: "1.0.1"
+date: "2026-09-12"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
 continuity_id: "NATIVE-CONTEXT-001"
-prd_revision: "1.0.0"
-tad_revision: "1.0.0"
-adr_revision: "1.0.0"
+prd_revision: "1.0.1"
+tad_revision: "1.0.1"
+adr_revision: "1.0.1"
 load_policy: "on-demand"
+local_rung: "undocumented"
+delivered_rung: "undocumented"
+lane: "authoring"
+universal_scope: false
+worktree_id: "device-cba000d3779d--planning-v27"
+agent_id: "codex-01a0940a"
+guideline_revision: "2.7.0"
+guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
+mvp_revision: "1.0.1"
+gtm_revision: "1.0.1"
 ---
 
 # Native context
@@ -19,7 +30,7 @@ OS owns reusable context mechanisms. Canvas owns application wiring, Graph owns 
 and production deployment, Commerce owns transactions. [Shared memory](MEMORY.md) remains the owner
 of curated cross-task records; codebase discovery neither imports nor rewrites those records.
 
-## PRD: NATIVE-CONTEXT-001@1.0.0
+## PRD: NATIVE-CONTEXT-001@1.0.1
 
 Context: a solo builder repeatedly discovers the same source and sends the same prompt prefix during
 an MVP-to-GTM sprint. Intent: shorten source discovery and reduce repeat input while preserving exact
@@ -37,7 +48,7 @@ These fields consume the existing [CID/RAO/SVO authoring seam](PRD-TAD-ADR-MVP-G
 | C04 / launch | Canvas consumes the pinned OS implementation | Canvas app/Worker tests and bundle |
 | C05 / GTM | Builder compares discovery cost and buyer outcomes | Experiment below; no fabricated WTP or savings |
 
-## TAD: NATIVE-CONTEXT-001@1.0.0
+## TAD: NATIVE-CONTEXT-001@1.0.1
 
 The three browser/edge-safe modules in `runtime/` are independent of the Node governance harness.
 They use JavaScript and Web Crypto, have no network calls, model adapters, storage, or host imports,
@@ -154,7 +165,7 @@ per thread. Hard ceilings: 128 threads, 4,096 turns, 32 invariant items/field, 2
 Provider confirmation requires matching effective response metadata. Adapters must verify actual
 capabilities; these field names are not a claim that any particular current model supports them.
 
-## ADR: NATIVE-CONTEXT-001@1.0.0
+## ADR: NATIVE-CONTEXT-001@1.0.1
 
 Move the existing portable Canvas mechanisms into OS; retain a contract-only JSON re-export in
 Canvas for its existing callers. Remove the duplicate prefix/continuity implementations and move
@@ -176,7 +187,7 @@ The reference [Graft README](https://github.com/trailhq/Graft) informed source-l
 freshness and progressive disclosure only. No external implementation, dependency, prompt, fixture,
 benchmark result or prose was imported. Performance claims must come from this implementation.
 
-## MVP, GTM and verification
+## GTM: buyer and verification plan
 
 First segment: solo developers shipping agent services, marketplaces or payment workflows with
 frequent cross-owner edits. The pain hypothesis is repeated source discovery and stale-context
@@ -194,3 +205,10 @@ Tests cover migration behavior, races, failure release, source drift, exclusions
 worktrees, offline CLI and package/platform boundaries. Canvas owns its full suite and Worker bundle.
 Keep the existing Dev Graph -> production mirror -> `airvio.co` topology and deployment owner;
 this library migration grants no production deployment or live payment authority.
+
+## MVP — reference implementation
+
+`NATIVE-CONTEXT-001@1.0.1` selects one owner-grounded source lookup and bounded context handoff. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+Verify that acceptance with `npm run context:check` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+
+Experience assessment for `NATIVE-CONTEXT-001@1.0.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.

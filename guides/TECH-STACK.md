@@ -1,30 +1,35 @@
 ---
 title: "Reference Implementation — Technology Stack and Composition Architecture"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.6.0"
-date: "2026-09-09"
+version: "1.6.1"
+date: "2026-09-12"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Solo Founder / AI Orchestrator"
 local_rung: "dev-proven"
 delivered_rung: "undocumented"
 lane: "authoring"
-universal_scope: "false"
+universal_scope: false
 continuity_id: "TAD-COMPOSE-ARCH-001"
-prd_revision: "1.3.0"
-tad_revision: "1.3.0"
-adr_revision: "1.6.0"
+prd_revision: "1.6.1"
+tad_revision: "1.6.1"
+adr_revision: "1.6.1"
 source_input_digest: "sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418"
 amendment_input_digest: "sha256:4abee8d5d6aafcc71919d95e222b2d3dea6ebd4fe3cd6d115a361d32009b7a7e"
 execution_gate: "static-source-observation-authorized"
 publication_gate: "per-repository-protected-integration-required"
-worktree_id: "tech-stack-consolidation"
+worktree_id: "device-cba000d3779d--planning-v27"
 load_policy: "on-demand"
 verification_scope: "static source and documentation; no live deployment proof"
 topology_input_revision: "de4108f28741a6bfd3468da2781eb86bbd671dca"
 techstack_input_revision: "8a0702ddca1fb2c9c88f85657d9dc6d91d05df27"
 techstack_input_digest: "sha256:7506b52107a2cd94188f1786ddc20fd17c2afbddd6ff6f1406af8111eda1294e"
-agent_id: "codex-orchestrator"
+agent_id: "codex-01a0940a"
+guideline_revision: "2.7.0"
+guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
+mvp_revision: "1.6.1"
+gtm_revision: "1.6.1"
 ---
 
 # Reference implementation — Technology Stack and Composition Architecture
@@ -70,7 +75,9 @@ object: "production-runtime-composition"
 
 The historical runtime sprint capped four owner lanes; current documentation stays below 600 lines/file. External provider/review waits use condition-based rechecks, not inferred completion times.
 
-## Feature: Governed commerce composition and workspace topology
+<a id="feature-governed-commerce-composition-and-workspace-topology"></a>
+
+## PRD: governed commerce composition and workspace topology
 
 ### Problem Statement, Personas and User Journey Stage
 A solo maintainer needs one source map during development and release; duplicate topology documents already disagree on routes and deployment ownership. The buyer journey remains discovery to receipt.
@@ -245,7 +252,9 @@ The removed website document is preserved in [its immutable source revision](htt
 | `GameXR` | Browser-local spatial flight and native visionOS host | Packaged Graph spatial/shared code (`package.json`, `vite.config.ts`, `docs/RELEASE.md`) | No shared-root publication without a routing decision |
 | x402 | External protocol packages; the current adapter and paid-resource routes are owned by `agentic-graph` | `agentic-graph` PRD/TAD, configuration, and readiness gates | No Commerce-owned payment rail and no delivered paid-runtime proof |
 
-## Architecture: Component composition
+<a id="architecture-component-composition"></a>
+
+## TAD: component composition
 
 ### Overview and Journey → System Mapping
 From buyer intent through Commerce to owner admission/discovery/checkout/marketplace and receipt, reuse the five-flow trace and the component/connection inventories below as the journey-to-system map. Orchestration is a bounded sequential request/replay path: discovery and receipt reads use zero model calls, budget 0 prompt + 0 completion tokens/request, and fail closed on invalid evidence. Product providers own their cost logs and optional inference; this guide starts no model or service.
@@ -403,7 +412,9 @@ Site `scripts/check-diagram-canvas-render.mjs` passed: 2 diagrams, 19 nodes, 22 
 
 Commerce consumes JSON `commerce.discovery-provider/v1`, `commerce.checkout-provider/v1` and `commerce.marketplace-provider/v1` over HTTP/service bindings; exact digests and owner receipts gate effects. Graph’s Bundle Graph owns bundle/vendor splits and ordered settlement; D1 is a reference/projection store. OS owns shared dictionaries/resolution; ACOS owns safety interfaces; Graph owns collaboration grammar/domain/payment/state; Commerce owns its control plane/DO/deploy boundary. Checkout retains upstream x402 guardrails and evidence (DR-2). `MARKETPLACE_PROVIDER` and `MARKETPLACE_SERVICE` are distinct interfaces, never aliases. Errors fail closed.
 
-## Embedded decision records
+<a id="embedded-decision-records"></a>
+
+## ADR: embedded decision records
 
 ### DR-1 — External marketplace research is reference-only
 An MIT-licensed Node.js/PostgreSQL/Redis marketplace informed seller/commission/split/payout concepts. Decision: no import, fork, deployment or compatibility claim; identity stays in the private grounding log.
@@ -565,3 +576,14 @@ The generic historical authoring→mirror→delivery drawing is replaced by the 
 | Composition publication | Authoring | Protected source | `ER-TOPOLOGY-01`, required CI | Consolidation request and standing green-merge authorization | Revert exact documentation commit through protected review; run checks | authorized; exact required checks and integration receipt pending |
 | Graph product | Generated candidate | Delivery, then verified mirror | Graph release workflow and exact browser/runtime receipts | none in this increment | Owner release recovery; preserve sibling artifacts and exact prior evidence | closed |
 | Shared Pages / GameXR | Source / mirror candidate | Delivery | Provider/controller reconciliation and GameXR release evidence absent | none in this increment | Source-owned rollback decision with exact candidate and project scope | closed |
+
+## MVP — reference implementation
+
+`TAD-COMPOSE-ARCH-001@1.6.1` selects one source-locked composition whose ownership and interfaces agree. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+Verify that acceptance with `npm run composition:runtime:check` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+
+## GTM — reference implementation
+
+The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
+
+Experience assessment for `TAD-COMPOSE-ARCH-001@1.6.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
