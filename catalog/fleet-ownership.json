@@ -78,7 +78,15 @@
         "github.com/huijoohwee/agentic-canvas-os",
         "github.com/huijoohwee/huijoohwee",
         "github.com/huijoohwee/agentic-graph"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "agent",
+          "command"
+        ],
+        "summary": "Portable ADLC lifecycle commands and guarded worktree workflow.",
+        "transport": "cli"
+      }
     },
     {
       "id": "planning-guidelines",
@@ -91,7 +99,15 @@
         "github.com/huijoohwee/agentic-graph",
         "github.com/huijoohwee/81rv10",
         "github.com/huijoohwee/gamexr"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "guide",
+          "contract"
+        ],
+        "summary": "Shared PRD TAD ADR MVP GTM authoring guidelines and schema vocabulary.",
+        "transport": "source"
+      }
     },
     {
       "id": "commerce-control-plane",
@@ -99,7 +115,14 @@
       "source": "wrangler.edge.jsonc",
       "consumers": [
         "github.com/huijoohwee/agentic-graph"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "runtime"
+        ],
+        "summary": "Commerce coordination and provider-routing control plane; execution stays with its owner.",
+        "transport": "http"
+      }
     },
     {
       "id": "invocation-control-surface",
@@ -107,7 +130,14 @@
       "source": "docs/PRD-TAD-ADR-MVP-GTM.md",
       "consumers": [
         "github.com/huijoohwee/agentic-graph"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "contract"
+        ],
+        "summary": "Reusable composition and safety interfaces for source-owned capabilities.",
+        "transport": "source"
+      }
     },
     {
       "id": "graph-runtime",
@@ -117,7 +147,15 @@
         "github.com/huijoohwee/huijoohwee",
         "github.com/huijoohwee/agentic-canvas-os",
         "github.com/huijoohwee/gamexr"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "runtime",
+          "agent"
+        ],
+        "summary": "Graph import, deterministic query and edge explanation runtime.",
+        "transport": "mcp"
+      }
     },
     {
       "id": "launch-copilot-runtime",
@@ -126,7 +164,16 @@
       "consumers": [
         "github.com/huijoohwee/81rv10",
         "github.com/huijoohwee/huijoohwee"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "runtime",
+          "agent",
+          "skill"
+        ],
+        "summary": "81rv10 Launch Copilot source-grounded five-document proposal and native Chat operations.",
+        "transport": "native-chat"
+      }
     },
     {
       "id": "spatial-shared-core",
@@ -134,19 +181,123 @@
       "source": "Package.swift",
       "consumers": [
         "github.com/huijoohwee/gamexr"
-      ]
+      ],
+      "discovery": {
+        "kinds": [
+          "runtime",
+          "contract"
+        ],
+        "summary": "Shared spatial core consumed by GameXR hosts.",
+        "transport": "module"
+      }
     },
     {
       "id": "gamexr-frontend",
       "owner": "github.com/huijoohwee/gamexr",
       "source": "src/runtime/GameRuntime.ts",
-      "consumers": []
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "runtime"
+        ],
+        "summary": "GameXR browser and platform-specific game capabilities.",
+        "transport": "module"
+      }
     },
     {
       "id": "production-mirror",
       "owner": "github.com/huijoohwee/huijoohwee",
       "source": "_routes.json",
-      "consumers": []
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "projection"
+        ],
+        "summary": "Generated production routes; authored capability definitions stay upstream.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "invocation-dictionaries",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "catalog/dictionaries/DICTIONARY-COMMAND.md",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "catalog",
+          "command"
+        ],
+        "summary": "Shared slash commands and links to semantic and binding dictionaries.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "adlc-prompt",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "templates/SYSTEM-PROMPT-RUNTIME.md",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "prompt"
+        ],
+        "summary": "Portable model-neutral ADLC instructions.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "canvas-skill",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "skills/canvas/SKILL.md",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "skill"
+        ],
+        "summary": "Portable canvas skill routes to source-owned browser, commerce and document capabilities.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "chat-prompt-presets",
+      "owner": "github.com/huijoohwee/agentic-canvas-os",
+      "source": "docs/PROMPT-PRESETS.md",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "catalog",
+          "prompt"
+        ],
+        "summary": "Reusable Chat prompt presets, including Launch Copilot (81rv10); selecting a preset never submits it.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "agent-facade",
+      "owner": "github.com/huijoohwee/agentic-canvas-os",
+      "source": "agent-api/src/progressive-agents.js",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "agent",
+          "contract"
+        ],
+        "summary": "Provider-neutral progressive agent facade; providers and tools remain host-configured.",
+        "transport": "module"
+      }
+    },
+    {
+      "id": "skills-catalog",
+      "owner": "github.com/huijoohwee/agentic-canvas-os",
+      "source": "docs/SKILLS.md",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "catalog",
+          "skill"
+        ],
+        "summary": "Reusable skills catalog and source-owned invocation contracts.",
+        "transport": "source"
+      }
     }
   ],
   "historical": [

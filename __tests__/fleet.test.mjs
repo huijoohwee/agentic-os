@@ -260,3 +260,85 @@ test('planning metadata comments and quoted keys cannot hide conflicting identit
   assert.throws(() => field('continuity_id: PLAN-1\n"continuity_id": PLAN-2', 'continuity_id'), /duplicate/u);
   assert.throws(() => field('doc_type: |\n  PRD-TAD-ADR-MVP-GTM', 'doc_type'), /unsupported/u);
 });
+
+const { discoverCapabilities, resolveCapability, runCapabilityCli } = ownershipModule;
+const discoveryPolicy = () => {
+  const policy = fleetPolicy();
+  policy.responsibilities[0].source = 'CAPABILITY.md';
+  policy.responsibilities[0].discovery = { kinds: ['prompt', 'skill'], summary: 'A reusable source prompt', transport: 'source' };
+  return policy;
+};
+
+test('discovery returns bounded references from one ownership policy without asset content', () => {
+  const policy = discoveryPolicy(), report = discoverCapabilities(policy, { query: 'reusable prompt', kind: 'skill', limit: 1 });
+  assert.equal(report.ok, true); assert.equal(report.authority, false); assert.equal(report.executable, false);
+  assert.equal(report.entries.length, 1); assert.equal(report.entries[0].owner, repository);
+  assert.equal(report.entries[0].path, 'CAPABILITY.md'); assert.equal('content' in report.entries[0], false);
+  assert.equal(discoverCapabilities(policy, { query: 'missing' }).total, 0);
+  assert.equal(discoverCapabilities(fleetPolicy()).total, 0);
+  for (const args of [{ limit: 0 }, { limit: 21 }, { limit: 1.5 }, { query: '\n' }, { query: 'x'.repeat(257) }, { kind: 'execute' }]) {
+    assert.throws(() => discoverCapabilities(policy, args), /invalid discovery/u);
+  }
+  for (const discovery of [null, { ...policy.responsibilities[0].discovery, endpoint: 'https://example.org' },
+    { kinds: ['skill', 'skill'], summary: 'duplicate', transport: 'source' }]) {
+    const invalid = discoveryPolicy(); invalid.responsibilities[0].discovery = discovery;
+    assert.throws(() => validateOwnershipPolicy(invalid));
+  }
+  policy.repositories[0].role = 'reference'; policy.responsibilities[0].discovery.transport = 'cli';
+  assert.throws(() => discoverCapabilities(policy), /cannot own execution/u);
+  const actual = JSON.parse(readFileSync(new URL('../catalog/fleet-ownership.json', import.meta.url)));
+  const bounded = discoverCapabilities(actual, { limit: 1 });
+  assert.equal(bounded.truncated, true); assert.equal(bounded.entries.length, 1);
+  assert.equal(discoverCapabilities(actual, { kind: 'prompt' }).entries.some(e => e.id === 'chat-prompt-presets'), true);
+  assert.equal(discoverCapabilities(actual, { query: '81rv10' }).entries.some(e => e.owner.endsWith('/agentic-graph')), true);
+});
+
+test('explicit source resolution binds committed bytes and rejects wrong owners, moving refs and unsafe blobs', t => {
+  const root = mkdtempSync(join(tmpdir(), 'capability-owner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } });
+    assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
+  };
+  git('init', '-q'); git('config', 'user.name', 'Capability Test'); git('config', 'user.email', 'test@example.org');
+  git('config', 'core.hooksPath', '/dev/null'); git('config', 'commit.gpgsign', 'false');
+  git('remote', 'add', 'origin', `https://${repository}.git`);
+  const source = join(root, 'CAPABILITY.md'), committed = 'Source-owned prompt. Do not execute on read.\n';
+  writeFileSync(source, committed); git('add', 'CAPABILITY.md'); git('commit', '-qm', 'source');
+  const revision = git('rev-parse', 'HEAD'), policy = discoveryPolicy();
+  const args = { capabilityId: 'runtime', root, revision };
+  writeFileSync(source, 'Uncommitted replacement');
+  const metadata = resolveCapability(policy, args), loaded = resolveCapability(policy, { ...args, includeContent: true });
+  assert.equal('content' in metadata, false); assert.equal(loaded.content, committed);
+  assert.equal(loaded.authority, false); assert.equal(loaded.executable, false);
+  assert.equal(loaded.source.revision, revision); assert.match(loaded.source.sha256, /^[a-f0-9]{64}$/u);
+  assert.equal(loaded.source.sha256, metadata.source.sha256); assert.equal(loaded.source.bytes, Buffer.byteLength(committed));
+  assert.equal(readFileSync(source, 'utf8'), 'Uncommitted replacement');
+  for (const changes of [{ revision: 'HEAD' }, { revision: 'a'.repeat(40) }, { root: '.' },
+    { capabilityId: 'unknown' }, { includeContent: 'true' }]) {
+    assert.throws(() => resolveCapability(policy, { ...args, ...changes }));
+  }
+  git('remote', 'set-url', 'origin', 'https://example.org/wrong/owner.git');
+  assert.throws(() => resolveCapability(policy, args), /identity mismatch/u);
+  git('remote', 'set-url', 'origin', `https://${repository}.git`);
+  rmSync(source); symlinkSync('/etc/passwd', source); git('add', 'CAPABILITY.md'); git('commit', '-qm', 'symlink');
+  assert.throws(() => resolveCapability(policy, { ...args, revision: git('rev-parse', 'HEAD') }), /regular Git blob/u);
+  rmSync(source); writeFileSync(source, 'x'.repeat(500001)); git('add', 'CAPABILITY.md'); git('commit', '-qm', 'oversized');
+  assert.throws(() => resolveCapability(policy, { ...args, revision: git('rev-parse', 'HEAD') }), /byte budget/u);
+  assert.equal(resolveCapability(policy, { ...args, includeContent: true }).content, committed);
+});
+
+test('native discovery works without a caller profile and rejects mixed or empty loading options', t => {
+  const root = mkdtempSync(join(tmpdir(), 'capability-caller-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cli = new URL('../bin/agentic-os.mjs', import.meta.url).pathname;
+  const result = spawnSync(process.execPath, [cli, 'capabilities', '--kind=prompt'], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.authority, false); assert(report.entries.some(e => e.id === 'adlc-prompt'));
+  const io = { log: () => assert.fail('Invalid options produced a successful report'), error: () => {} };
+  for (const argv of [['--query='], ['--query=x', '--query=y'], ['--include-content'], ['--execute'],
+    ['--id=adlc-prompt', '--query=mixed'], ['--root=/tmp'], ['--limit=21']]) {
+    assert.equal(runCapabilityCli(argv, io), 1);
+  }
+});
