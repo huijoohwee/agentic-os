@@ -40,7 +40,10 @@
     "./context/continuity": "./runtime/reasoning-continuity.mjs",
     "./context/json": "./runtime/json-contract.mjs",
     "./context/codebase": "./bin/agentic-os-context-index.mjs",
-    "./generation": "./bin/agentic-os-generation.mjs"
+    "./generation": "./bin/agentic-os-generation.mjs",
+    "./skills/esp-idf/SKILL.md": "./skills/esp-idf/SKILL.md",
+    "./skills/esp-idf/references/editors.md": "./skills/esp-idf/references/editors.md",
+    "./skills/esp-idf/references/debugging.md": "./skills/esp-idf/references/debugging.md"
   },
   "engines": {
     "node": ">=20.11"

@@ -314,6 +314,19 @@
         "summary": "Reusable skills catalog and source-owned invocation contracts.",
         "transport": "source"
       }
+    },
+    {
+      "id": "esp-idf-skill",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "skills/esp-idf/SKILL.md",
+      "consumers": [],
+      "discovery": {
+        "kinds": [
+          "skill"
+        ],
+        "summary": "ESP32 firmware with the native ESP-IDF toolchain, selected-device evidence and optional editor/debug recipes.",
+        "transport": "source"
+      }
     }
   ],
   "historical": [
