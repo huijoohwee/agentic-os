@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Technology Stack and Composition Architecture"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.6.1"
-date: "2026-09-12"
+version: "1.6.2"
+date: "2026-09-13"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Solo Founder / AI Orchestrator"
@@ -11,9 +11,9 @@ delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
 continuity_id: "TAD-COMPOSE-ARCH-001"
-prd_revision: "1.6.1"
-tad_revision: "1.6.1"
-adr_revision: "1.6.1"
+prd_revision: "1.6.2"
+tad_revision: "1.6.2"
+adr_revision: "1.6.2"
 source_input_digest: "sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418"
 amendment_input_digest: "sha256:4abee8d5d6aafcc71919d95e222b2d3dea6ebd4fe3cd6d115a361d32009b7a7e"
 execution_gate: "static-source-observation-authorized"
@@ -28,8 +28,8 @@ agent_id: "codex-01a0940a"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.6.1"
-gtm_revision: "1.6.1"
+mvp_revision: "1.6.2"
+gtm_revision: "1.6.2"
 ---
 
 # Reference implementation — Technology Stack and Composition Architecture
@@ -216,15 +216,26 @@ Constraints → argumentation → outranking selects reuse of an existing qualif
 
 Dollar savings, ROI scores, scale/MAU figures and monthly cost estimates in the old stack document were scenarios, not measurements. No numeric savings or zero-total-cost claim is carried forward. Deterministic invocation means zero model calls in that resolver, not zero cost for an entire ADLC session. Track actual calls, tokens, wall time, storage and quota use at the owning execution boundary.
 
-### Operator journey and bounded harness
+### Operator journey and bounded cross-repository invocation
 
-Discover the supported command/catalog → select one owner and scope → implement in a registered lane → run applicable owner checks → integrate the exact green PR → observe completion → prune the exact clean target → synchronize clean canonical. Product deployment and authenticated runtime readback are separate owner operations. OS owns `docs/START-WORKFLOW.md`, `docs/RELEASE-WORKFLOW.md` and lifecycle commands; former Canvas `START-WORKFLOW.md`, `worktree:lifecycle:check` and `session:start:classify` examples are historical, not a current universal CLI.
+Choose transport by runtime and trust boundary. A repository is a source owner; it does not require a network hop. **AC-INVOKE-01 / VCC-INVOKE-01:** the caller reuses one owner handler and validating contract; evidence records source revision, input/output digest, elapsed time, bytes, calls and tokens. **RAO-INVOKE-01:** the integrating maintainer selects and verifies the smallest supported route below; no new proxy, SDK, parser, controller or product runtime is implied.
 
-Federate existing transports without a fifth monolithic proxy or second data owner. MCP/WebMCP clients discover read-only capabilities first and use typed, authenticated mutation contracts only when authorized. Each execution boundary declares input/output/error, identity, cost, retry/idempotency and failure behavior. Bound concurrency, attempts, tokens, context and wall time per task; an implementer cannot supply its own independent evaluator trust anchor. Keep budgets and evaluator claims with executable owner contracts rather than copying the old narrative's numeric defaults.
+| Boundary | Preferred existing route | Economic and authority rule |
+|---|---|---|
+| Same process / Graph host | Direct handler plus the pinned Canvas validating client | Batch grounding and edge explanation in one bounded request; no model for dispatch or metadata. |
+| Browser → reachable owner | Native authenticated HTTP API; stream only useful progress/output | Lazy-load adapters; propagate cancellation/deadlines; avoid a browser orchestration SDK. |
+| Worker → Worker | Existing private service binding, retaining its HTTP contract or supported RPC | Reuse deployed bindings and owner validation; private reachability does not replace operation authorization. |
+| External agent → owner | Existing MCP; WebMCP for the active browser surface | Resolve only needed tools/contracts; reuse the pinned SDK and handler. Honor the implemented protocol version; catalog membership is not executable capability. |
+| Graph → OS publication | Existing pinned proposal handoff and protected lane/queue | Bind exact files, output repository/base, source snapshot and approval; inspect status after ambiguous writes, never automatically replay them. |
+| Public page → local Graph | Explicit short-lived paired host relay | Reuse Graph PR 975; it is a bounded bridge beside MCP, not standard MCP transport. An SDK alone cannot make localhost reachable. |
 
-Local supervisors own ports and process identity; do not adopt or terminate an unrelated listener. Lazy-load only the required catalog, source chunk and check profile; cache derived projections by exact source revision/digest and invalidate on drift. Git documents stay authoritative; memory, generated indexes and resume summaries carry source links and do not become new authority. The future per-agent memory tier remains DR-8 specification-only.
+Grounding at [Graph d003fc266](https://github.com/huijoohwee/agentic-graph/tree/d003fc2663a5d842c9865a1e6fdceb5063e2368c): `canvas/viteAgentGraphProposal.ts` calls existing graph tools through Canvas validators; `agentGraphHostAdapter.ts` chooses the reachable API or paired relay; `mcp/agent-graph/host-transport.mjs` owns pairing; `canvas/viteAgentGraphHandoff.ts` owns exact-content handoff. Importing a commerce reference repository does not invoke Commerce effects. Invoke the existing authenticated Commerce API only for a requested domain operation. Launch Copilot remains within the Graph shell at `/81rv10/`.
 
-Operator TTV targets inherited from the old document are ≤3 steps/5 minutes to resolve a supported invocation, ≤6 steps/30 minutes to onboard a new target repository, and ≤1 session for the first multi-repository release. These are unmeasured targets, not current timing guarantees; use current owner-native commands and independent release receipts. External-agent read-only discovery and the buyer paid-loop criteria remain distinct journeys.
+Cache only bounded derived results by source commit/snapshot plus query/selection and contract revision; never cache approval as authority. Prefer one composition pass and explicit refinement over repeated model planning. Measure cold/warm import, payload and relay acknowledgement time, model calls/tokens, and approval-to-PR latency before adding concurrency or infrastructure. Pairing currently adds base64 expansion and acknowledged chunks; no public latency, financial saving or always-on availability is established. A managed tunnel or hosted owner is a separate operating/dependency decision, not part of this zero-new-dependency increment.
+
+Platform references: [service bindings support private HTTP and RPC](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/); [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) defines an agent protocol, not private-host reachability. Keep credentials server-owned and validate origins, identity, input/output/error, bounds, idempotency and source/CID joins at each boundary. Retain completed proposal review/export offline; fresh grounding and drafting require their owners.
+
+Follow OS `START-WORKFLOW.md` and `RELEASE-WORKFLOW.md`: discover → scoped lane → affected owner checks → exact protected integration → completion receipt → governed cleanup/sync. Deploy and runtime readback remain separate. Supervisors own ports/process identity; preserve unrelated listeners. TTV targets (unmeasured): ≤3 steps/5 minutes to resolve a supported invocation, ≤6 steps/30 minutes to onboard a repository, ≤1 session for the first multi-repository release. Bound work, calls, bytes and wall time; external waits use condition-based rechecks. Keep the evaluator trust anchor independent. Source-linked memory and projections confer no authority; DR-8 memory remains specification-only.
 
 ### Consolidated source and historical evidence
 
@@ -579,11 +590,10 @@ The generic historical authoring→mirror→delivery drawing is replaced by the 
 
 ## MVP — reference implementation
 
-`TAD-COMPOSE-ARCH-001@1.6.1` selects one source-locked composition whose ownership and interfaces agree. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
-Verify that acceptance with `npm run composition:runtime:check` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+`TAD-COMPOSE-ARCH-001@1.6.2` selects one source-locked composition whose ownership and interfaces agree. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice. Verify that acceptance with `npm run composition:runtime:check` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
-Experience assessment for `TAD-COMPOSE-ARCH-001@1.6.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `TAD-COMPOSE-ARCH-001@1.6.2` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
