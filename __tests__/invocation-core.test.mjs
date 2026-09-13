@@ -42,10 +42,11 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
   const { entries, failures } = collectCatalogEntries(documents);
   assert.deepEqual(failures, []);
-  assert.equal(entries.length, 406);
-  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [132, 141, 133]);
+  assert.equal(entries.length, 407);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [133, 141, 133]);
   assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
   assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
+  assert.match(entries.find(e => e.token === '/launch-copilot').summary, /81rv10 Launch Copilot/);
   assert.ok(entries.some(e => e.token === '#vcc'));
   assert.ok(entries.some(e => e.token === '@local-harness'));
   const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
@@ -63,7 +64,7 @@ test('dictionary drift, malformed declarations and missing assets fail before ha
     docs => docs.delete(name),
     docs => docs.set(name, docs.get(name).replace('prefix: "/"', 'prefix: "@"')),
     docs => docs.set(name, docs.get(name).replace('dictionary_entries:', 'dictionary_entries:\n  - "/unknown"')),
-    docs => docs.set(name, docs.get(name).replace('catalog_entry_count: 406', 'catalog_entry_count: 405')),
+    docs => docs.set(name, docs.get(name).replace(/catalog_entry_count: (\d+)/, (_, count) => `catalog_entry_count: ${Number(count) - 1}`)),
   ]) {
     const docs = new Map(original);
     mutate(docs);
@@ -97,7 +98,7 @@ test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale res
   const before = collectCatalogEntries(original);
   original.delete(name);
   assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
-  assert.equal(before.entries.length, 406);
+  assert.equal(before.entries.length, 407);
   assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
 });
 
