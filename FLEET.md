@@ -1,7 +1,7 @@
 ---
 title: "Fleet Work Allocation"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.2.0"
+version: "1.2.1"
 date: "2026-09-13"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -13,16 +13,16 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-cba000d3779d--capability-discovery"
-agent_id: "assistant"
+worktree_id: "device-cba000d3779d--planning-release-handover"
+agent_id: "codex-01a09985"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "ebe98531494295c0548e704a924421128791f631"
-prd_revision: "1.2.0"
-tad_revision: "1.2.0"
-adr_revision: "1.2.0"
-mvp_revision: "1.2.0"
-gtm_revision: "1.2.0"
+reviewed_source_revision: "934f44fd30df4b23829a29df6cbe8d6456f7616d"
+prd_revision: "1.2.1"
+tad_revision: "1.2.1"
+adr_revision: "1.2.1"
+mvp_revision: "1.2.1"
+gtm_revision: "1.2.1"
 ---
 
 # Fleet work allocation
@@ -72,7 +72,7 @@ Central navigation remains in `DOCUMENTS.md`; moving files does not make simulta
 
 ## Cross-repository source ownership
 
-The [fleet ownership policy](catalog/fleet-ownership.json) is the sole machine-readable registry for the eight selected repositories and their declared responsibilities. Each responsibility has one source owner; consumer and generated-projection relationships carry no authoring authority. Keep lifecycle governance in Agentic OS, planning rules in the website, product implementations in their named repositories, and generated production content in the existing protected mirror workflow. Launch Copilot uses the Graph runtime; the standalone repository remains a reference. GameXR owns its frontend and consumes the Graph spatial core.
+The [fleet ownership policy](catalog/fleet-ownership.json) is the sole machine-readable registry for the eight selected repositories and their declared responsibilities. Each responsibility has one source owner; consumer and generated-projection relationships carry no authoring authority. Keep lifecycle governance in Agentic OS, planning rules in the website, product implementations in their named repositories, and generated production content in the existing protected mirror workflow. Launch Copilot’s existing `docs/documents/launch-copilot-prd-tad-adr-mvp-gtm.md` plan and `docs/launch-copilot.md` runbook belong to Graph; the standalone repository remains a reference. GameXR owns its frontend and consumes the Graph spatial core.
 
 Before cross-repository authoring and before publication, run the existing fleet checker in ownership mode with one explicit JSON mapping from each registered repository identity to its absolute checkout path:
 
@@ -92,7 +92,7 @@ Use the selected task worktree when checking an unpublished candidate. Do not cr
 |---|---|
 | Shared command dictionaries, ADLC prompt and canvas skill | Agentic OS |
 | Chat prompt presets, skills catalog and provider-neutral agent facade | Canvas OS |
-| Graph operations and Launch Copilot native Chat runtime | Graph |
+| Graph operations, Launch Copilot product plan and native Chat runbook | Graph |
 | Commerce coordination, planning guidelines and GameXR frontend | Their existing Commerce, website and GameXR owners |
 | Public entry and generated deployment | `81rv10` remains a reference; `huijoohwee` remains a projection |
 
@@ -113,6 +113,10 @@ Both outputs explicitly declare `authority: false` and `executable: false`. Trea
 Reuse the existing preset loader in Graph's Apex and FloatingPanel surfaces. A native Chat command with a unique authored preset seeds Chat without submitting; a declared executable MCP command keeps its current invocation route. Shared discovery does not add a browser proxy, a duplicated Launch Copilot runtime, a provider dependency or always-loaded prompt content.
 
 Validation: [fleet source and pin tests](__tests__/fleet.test.mjs), [MCP boundary tests](__tests__/mcp-server.test.mjs), and the existing fleet ownership scan. Availability is limited to this OS revision or consumers that explicitly adopt it; installing an older package does not expose the new tool automatically.
+
+For release/start planning joins, consume the existing [pipeline handover](guides/PRD-TAD-ADR-MVP-GTM.md#planning-release-handover).
+Resolve private task locators from the protected `.agentic-os-workspace.json`, then the selected TODO contract;
+never register a proposed artifact before it exists or assign planning authority to a generated mirror.
 
 ## Bounded verification and completion
 
@@ -200,11 +204,11 @@ must not be treated as a general task-claim service. See [ordering boundaries](d
 
 ## MVP — reference implementation
 
-`FLEET-01@1.2.0` selects one disjoint allocation for a complete acceptance list. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+`FLEET-01@1.2.1` selects one disjoint allocation for a complete acceptance list. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
 Verify that acceptance with `node --test __tests__/fleet.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
-Experience assessment for `FLEET-01@1.2.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `FLEET-01@1.2.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.

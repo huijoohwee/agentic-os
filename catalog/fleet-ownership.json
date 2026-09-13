@@ -158,6 +158,22 @@
       }
     },
     {
+      "id": "launch-copilot-plan",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "source": "docs/documents/launch-copilot-prd-tad-adr-mvp-gtm.md",
+      "consumers": [
+        "github.com/huijoohwee/81rv10"
+      ],
+      "discovery": {
+        "kinds": [
+          "guide",
+          "contract"
+        ],
+        "summary": "Launch Copilot product plan: five joined roles, preserved predecessor and source-bound acceptance evidence.",
+        "transport": "source"
+      }
+    },
+    {
       "id": "launch-copilot-runtime",
       "owner": "github.com/huijoohwee/agentic-graph",
       "source": "docs/launch-copilot.md",

@@ -1,8 +1,8 @@
 ---
 title: "Private Workspace Startup"
 doc_type: "Runtime Guide"
-version: "2.1.0"
-date: "2026-09-10"
+version: "2.1.1"
+date: "2026-09-13"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -56,6 +56,10 @@ and the older standalone `agentic-os.memoryRoot`; standalone memory remains a co
 The migration must inventory all dirty, untracked and ignored bytes, retain source Git history,
 verify publication and quiesce active writers before removing old paths. A successful startup
 observation is not permission to delete a legacy directory.
+
+For the release-to-next-start sequence, use the [pipeline handover](PRD-TAD-ADR-MVP-GTM.md#planning-release-handover).
+It reuses the startup receipt and the existing TODO/board owners; local records are shared only after
+the owner publication workflow integrates them and the receiving device verifies that revision.
 
 ## Startup and resume
 
