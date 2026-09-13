@@ -151,6 +151,7 @@ export function evaluateFleetAllocation(value) {
 
 export function runFleetCli(argv, io = console) {
   try {
+    if (argv[0] === '--discover') return runCapabilityCli(argv.slice(1), io);
     if (argv.some(arg => arg.startsWith('--ownership='))) return runOwnershipCli(argv, io);
     if (argv.length !== 1 || !argv[0].startsWith('--input=') || argv[0] === '--input=')
       fail('usage: npm run fleet:check -- --input=/absolute/path/to/registry-snapshot.json');
@@ -164,6 +165,8 @@ export function runFleetCli(argv, io = console) {
 export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 8, artifacts: 2048,
   fileBytes: 500_000, totalBytes: 32_000_000, milliseconds: 10_000, findings: 128 });
 const POLICY_PATH = fileURLToPath(new URL('../catalog/fleet-ownership.json', import.meta.url));
+const CAPABILITY_KINDS = ['catalog', 'prompt', 'agent', 'skill', 'command', 'contract', 'runtime', 'guide', 'projection', 'reference'];
+const CAPABILITY_TRANSPORTS = ['source', 'cli', 'module', 'http', 'mcp', 'native-chat'];
 const digestBytes = bytes => createHash('sha256').update(bytes).digest('hex');
 const decode = bytes => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 const readJson = file => JSON.parse(decode(readBoundedFile(file, FLEET_LIMITS.bytes, 'fleet input')));
@@ -184,11 +187,21 @@ export function validateOwnershipPolicy(value) {
   const repos = new Set(policy.repositories.map(r => r.id));
   list(policy.responsibilities, 64, 'responsibilities', true);
   for (const item of policy.responsibilities) {
-    exact(item, ['id', 'owner', 'source', 'consumers'], 'responsibility');
+    exact(item, ['id', 'owner', 'source', 'consumers', ...('discovery' in item ? ['discovery'] : [])], 'responsibility');
     id(item.id, 'responsibility.id'); relativePath(item.source, 'responsibility.source');
     if (!repos.has(item.owner)) fail('unknown responsibility owner');
     list(item.consumers, OWNERSHIP_LIMITS.repositories, 'consumers'); unique(item.consumers, 'consumers');
     if (item.consumers.some(r => !repos.has(r) || r === item.owner)) fail('unknown or recursive consumer');
+    if ('discovery' in item) {
+      exact(item.discovery, ['kinds', 'summary', 'transport'], 'capability discovery');
+      list(item.discovery.kinds, CAPABILITY_KINDS.length, 'capability kinds', true);
+      unique(item.discovery.kinds, 'capability kinds');
+      if (item.discovery.kinds.some(k => !CAPABILITY_KINDS.includes(k))) fail('unknown capability kind');
+      text(item.discovery.summary, 'capability summary');
+      if (!CAPABILITY_TRANSPORTS.includes(item.discovery.transport)) fail('unknown capability transport');
+      if (policy.repositories.find(r => r.id === item.owner).role !== 'source'
+        && item.discovery.transport !== 'source') fail('projections and references cannot own execution');
+    }
   }
   unique(policy.responsibilities.map(r => r.id), 'responsibility ownership');
   list(policy.historical, 32, 'historical');
@@ -198,6 +211,80 @@ export function validateOwnershipPolicy(value) {
     relativePath(item.path, 'historical path');
   }
   return policy;
+}
+
+/** Discover references only; importing this module never loads capability bodies or runs owners. */
+export function discoverCapabilities(policyValue, { query = '', kind = '', limit = 10 } = {}) {
+  const policy = validateOwnershipPolicy(policyValue);
+  if (typeof query !== 'string' || query.length > 256 || /[\u0000-\u001f\u007f]/u.test(query)
+    || kind && !CAPABILITY_KINDS.includes(kind)
+    || !Number.isInteger(limit) || limit < 1 || limit > 20) fail('invalid discovery query, kind or limit');
+  const terms = query.toLowerCase().trim().split(/\s+/u).filter(Boolean);
+  const matches = policy.responsibilities.filter(r => r.discovery && (!kind || r.discovery.kinds.includes(kind))
+    && terms.every(term => `${r.id} ${r.owner} ${r.source} ${r.discovery.summary}`.toLowerCase().includes(term)))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return { schema: 'agentic-os/capability-discovery/v1', ok: true, authority: false, executable: false,
+    policyDigest: governanceDigest(policy), total: matches.length, truncated: matches.length > limit,
+    entries: matches.slice(0, limit).map(r => ({ id: r.id, owner: r.owner, path: r.source,
+      ...r.discovery, sourceRole: policy.repositories.find(repo => repo.id === r.owner).role })) };
+}
+
+/** Read one caller-pinned Git blob. No fetch, working-tree read, provider call or execution. */
+export function resolveCapability(policyValue, { capabilityId, root, revision, includeContent = false }) {
+  const policy = validateOwnershipPolicy(policyValue), started = Date.now();
+  const role = policy.responsibilities.find(r => r.id === capabilityId && r.discovery);
+  if (!role || typeof root !== 'string' || !isAbsolute(root) || !SHA.test(revision ?? '')
+    || typeof includeContent !== 'boolean') fail('resolution requires a known id, absolute root and immutable revision');
+  const actualRoot = realpathSync(root);
+  const git = args => {
+    const remaining = OWNERSHIP_LIMITS.milliseconds - (Date.now() - started);
+    if (remaining <= 0) fail('capability resolution time budget exceeded');
+    return execFileSync('git', ['--no-optional-locks', ...args], { cwd: actualRoot,
+      timeout: Math.min(2000, remaining), maxBuffer: OWNERSHIP_LIMITS.fileBytes });
+  };
+  if (realpathSync(decode(git(['rev-parse', '--show-toplevel'])).trim()) !== actualRoot
+    || remoteRepositoryIdentity(decode(git(['config', '--get', 'remote.origin.url'])).trim())?.repository.toLowerCase() !== role.owner)
+    fail('capability repository identity mismatch');
+  if (decode(git(['rev-parse', '--verify', `${revision}^{commit}`])).trim() !== revision)
+    fail('capability revision must name an exact commit');
+  const entry = decode(git(['ls-tree', '--format=%(objectmode) %(objecttype) %(objectname)', revision, '--', role.source])).trim();
+  const match = entry.match(/^(100644|100755) blob ([a-f0-9]{40}|[a-f0-9]{64})$/u);
+  if (!match) fail('capability source must be one regular Git blob');
+  const size = Number(decode(git(['cat-file', '-s', match[2]])).trim());
+  if (!Number.isSafeInteger(size) || size < 0 || size > OWNERSHIP_LIMITS.fileBytes) fail('capability source exceeds byte budget');
+  const bytes = git(['cat-file', 'blob', match[2]]);
+  if (bytes.length !== size) fail('capability source size mismatch');
+  const source = { repository: role.owner, revision, path: role.source, blob: match[2],
+    sha256: digestBytes(bytes), bytes: size,
+    url: role.owner.startsWith('github.com/')
+      ? `https://${role.owner}/blob/${revision}/${role.source.split('/').map(encodeURIComponent).join('/')}` : null };
+  return { schema: 'agentic-os/capability-resource/v1', ok: true, authority: false, executable: false,
+    policyDigest: governanceDigest(policy), id: role.id, ...role.discovery, source,
+    ...(includeContent ? { content: decode(bytes) } : {}) };
+}
+
+export function runCapabilityCli(argv, io = console) {
+  try {
+    const options = new Map();
+    for (const arg of argv) {
+      const match = arg.match(/^--(query|kind|limit|id|root|revision)=(.*)$/u);
+      const key = match?.[1] ?? (arg === '--include-content' ? 'includeContent' : '');
+      if (!key || options.has(key) || match && !match[2]) fail('unknown, empty or duplicate capability option');
+      options.set(key, match ? match[2] : true);
+    }
+    const policy = readJson(POLICY_PATH);
+    let report;
+    if (options.has('id')) {
+      if (['query', 'kind', 'limit'].some(k => options.has(k))) fail('query options cannot accompany resolution');
+      report = resolveCapability(policy, { capabilityId: options.get('id'), root: options.get('root'),
+        revision: options.get('revision'), includeContent: options.get('includeContent') ?? false });
+    } else {
+      if (['root', 'revision', 'includeContent'].some(k => options.has(k))) fail('source loading requires an explicit capability id');
+      report = discoverCapabilities(policy, { query: options.get('query') ?? '', kind: options.get('kind') ?? '',
+        limit: options.has('limit') ? Number(options.get('limit')) : 10 });
+    }
+    io.log(JSON.stringify(report, null, 2)); return 0;
+  } catch (error) { io.error(`capability discovery: ${error.message}`); return 1; }
 }
 
 /** One finite observation, never an authority grant or proof of arbitrary semantic equivalence. */

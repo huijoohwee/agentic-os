@@ -54,8 +54,10 @@ function legacyInitialize(id = 1) {
 const okRunner = async () => ({ exitCode: 0, stdout: 'ok\n', stderr: '' });
 
 test('the packaged fixed tool surface is deterministic and deeply frozen', () => {
-  assert.deepEqual(TOOLS.map((tool) => tool.name), ['collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
+  assert.deepEqual(TOOLS.map((tool) => tool.name), ['capabilities', 'collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
   assert.equal(Object.isFrozen(TOOLS), true);
+  assert.equal(TOOLS.find(tool => tool.name === 'capabilities').annotations.readOnlyHint, true);
+  assert.equal(TOOLS.find(tool => tool.name === 'capabilities').annotations.openWorldHint, false);
   assert.equal(Object.isFrozen(TOOLS[0].inputSchema), true);
   assert.equal(TOOLS.find((tool) => tool.name === 'reap').annotations.destructiveHint, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'lane').annotations.idempotentHint, false);
@@ -122,6 +124,11 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
     return { exitCode: 0, stdout: argv.join(' '), stderr: '' };
   };
   const cases = [
+    ['capabilities', {}, ['capabilities']],
+    ['capabilities', { query: 'launch copilot', kind: 'skill', limit: 2 },
+      ['capabilities', '--query=launch copilot', '--kind=skill', '--limit=2']],
+    ['capabilities', { id: 'chat-prompt-presets', root: '/source owner', revision: 'a'.repeat(40), includeContent: true },
+      ['capabilities', '--id=chat-prompt-presets', '--root=/source owner', `--revision=${'a'.repeat(40)}`, '--include-content']],
     ['doctor', {}, ['doctor']],
     ['status', {}, ['status']],
     ['checks', { input: './owner checks.json' }, ['observe', '--checks', '--input=./owner checks.json']],
@@ -154,6 +161,10 @@ test('tool argument validation rejects escalation and shell-shaped scopes', asyn
   assert.deepEqual(toolArguments('reap', { ref: 'agent/device/exact' }),
     ['reap', '--ref=agent/device/exact']);
   for (const [name, args] of [
+    ...[{ execute: true }, { includeContent: true }, { query: '' }, { limit: 21 }, { root: '/tmp' },
+      { id: 'chat-prompt-presets', root: '/tmp', revision: 'main' },
+      { id: 'chat-prompt-presets', root: '/tmp', revision: 'a'.repeat(40), query: 'mixed' },
+    ].map(args => ['capabilities', args]),
     ['reap', { apply: true }],
     ['reap', { ref: '../escape' }],
     ['status', null],

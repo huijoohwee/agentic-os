@@ -91,8 +91,12 @@ test('actual source covers known budget/packaging regressions and preserves a sm
   assert.equal(checkInputs(s.after, '__tests__/canonical-sync-delta.test.mjs').scope, 'inputs');
   const fleet = select(['bin/agentic-os-fleet.mjs']);
   assert.ok(paths(fleet).includes('__tests__/fleet.test.mjs'));
-  assert.ok(fleet.suites.length < fleet.available / 3);
-  assert.deepEqual(fleet.stages[1].tests, []);
+  assert.ok(paths(fleet).includes('__tests__/mcp-server.test.mjs'));
+  assert.ok(paths(fleet).includes('__tests__/space-path-entrypoints.test.mjs'));
+  const independent = select(['runtime/cache-context.mjs']);
+  assert.ok(paths(independent).includes('__tests__/cache-context.test.mjs'));
+  assert.ok(independent.suites.length < independent.available / 3);
+  assert.deepEqual(independent.stages[1].tests, []);
   const docs = select(['docs/adlc-guidelines.md']);
   assert.ok(paths(docs).includes('__tests__/runtime-budgets.test.mjs'));
   assert.ok(paths(docs).includes('__tests__/packed-setup.test.mjs'));

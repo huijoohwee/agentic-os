@@ -1,6 +1,7 @@
 /** MCP protocol surface for the existing ADLC CLI. Zero dependencies, no shell. */
 
 import { readFileSync } from 'node:fs';
+import { CAPABILITY_COMMAND, capabilityArguments } from '../bin/agentic-os-argv.mjs';
 import { assertScope, isLaneRef } from './lane-id.mjs';
 import { parseWritePaths } from './worktree.mjs';
 
@@ -74,6 +75,7 @@ const CLI_OUTPUT = {
 };
 
 export const TOOLS = deepFreeze([
+  { ...CAPABILITY_COMMAND, outputSchema: CLI_OUTPUT },
   {
     name: 'collaborate', title: 'Coordinate optional shared work',
     description: 'Use enrolled shared Git coordination for on-demand agents; no model invocation or execution authority.',
@@ -206,6 +208,7 @@ function validateEmptyArguments(args) {
 }
 
 export function toolArguments(name, args) {
+  if (name === 'capabilities') return capabilityArguments(args, invalidParams);
   if (name === 'collaborate') {
     if (!plainObject(args) || !onlyKeys(args, ['operation', 'input', 'offline'])
       || !['status', 'get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(args.operation))

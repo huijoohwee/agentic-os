@@ -525,6 +525,7 @@ async function main() {
     return 1;
   }
   if (command === 'help' || command === '--help') return cmdHelp();
+  if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);
   if (command === 'request') return runRequest(argv);
   if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);
   if (command === 'workspace' && argv[0] === 'check')
