@@ -198,6 +198,11 @@ bin/                 CLI and stdio MCP entrypoints
 
 ## Portable skills
 
+The [ESP-IDF skill](skills/esp-idf/SKILL.md) supports native ESP32 firmware development,
+with optional editor and debugging references. It is an on-demand instruction asset,
+independent of the OS runtime; device acceptance remains project-owned.
+
+
 The portable [Canvas skill](skills/canvas/SKILL.md) owns standalone visual decision authoring;
 its browser-document, structured-document and commerce references load only when applicable.
 The skill has no vendor-specific paths, SDK requirements or repository-relative dependencies.
