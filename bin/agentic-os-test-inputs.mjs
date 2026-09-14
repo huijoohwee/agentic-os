@@ -141,13 +141,18 @@ export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed 
   const changed = [...new Set([...before.keys(), ...after.keys()])].filter(path => {
     const a = before.get(path), b = after.get(path); return a?.digest !== b?.digest || a?.mode !== b?.mode;
   }).sort();
+  // Bind only refs that participate in this validation. Git refs are shared by every
+  // worktree, so a clone-wide for-each-ref digest lets an unrelated fetch or lane
+  // invalidate an otherwise stable check running on this worktree.
+  const refsDigest = hash(JSON.stringify({ base: { selector: base, revision: requestedBase },
+    head: { selector: head, revision: headRevision }, checkout: actualHead }));
   const identity = { root, requestedBase, baseRevision, headRevision,
     baseTree: readGit(root, ['rev-parse', `${baseRevision}^{tree}`]).trim(),
     headTree: readGit(root, ['rev-parse', `${headRevision}^{tree}`]).trim(),
     sourceDigest: manifestDigest(after),
     indexDigest: hash(readGit(root, ['ls-files', '--stage', '-z'])),
     configurationDigest: hash(readGit(root, ['config', '--null', '--list', '--show-origin'])),
-    refsDigest: hash(readGit(root, ['for-each-ref', '--format=%(refname) %(objectname)'])),
+    refsDigest,
     environmentDigest: hash(JSON.stringify(executionEnvironment())),
     node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch,
     git: readGit(root, ['--version']).trim(),
