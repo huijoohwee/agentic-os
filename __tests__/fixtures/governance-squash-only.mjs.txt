@@ -7,13 +7,13 @@ export const AUTHORITY_TRANSITION_RECEIPT_SCHEMA = 'agentic-os/authority-transit
 export const REPOSITORY_PROFILE_SCHEMA = 'agentic-os/repository-profile/v1';
 export const OPERATIONS = Object.freeze(['claim', 'continue', 'integrate', 'retire']);
 const PROFILE_CAPABILITIES = new Set((
-  'deep-byte-audit-opt-in history:linear host-qualified-repository-pin integration-method:squash integration-method:squash-preferred ' +
+  'deep-byte-audit-opt-in history:linear host-qualified-repository-pin integration-method:squash ' +
   'protected-integration:pull-request read-only-repository-observation read-only-review-observation ' +
   'quarantine-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +
   'shallow-observation-default tested-protected-ordering:merge-queue'
 ).split(' '));
 const PROVIDER_BOUND_CAPABILITIES = new Set((
-  'history:linear host-qualified-repository-pin integration-method:squash integration-method:squash-preferred protected-integration:pull-request ' +
+  'history:linear host-qualified-repository-pin integration-method:squash protected-integration:pull-request ' +
   'read-only-review-observation required-check-policy:strict tested-protected-ordering:merge-queue'
 ).split(' '));
 const DIGEST = /^[0-9a-f]{64}$/u, EFFECT_PLAN = /^effect-plan:sha256:[0-9a-f]{64}$/u;

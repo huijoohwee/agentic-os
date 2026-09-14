@@ -41,8 +41,8 @@ function queueProfile(repository = 'github.com/owner/repo') {
     adapters: { repository: { id: 'git', version: '1' },
       provider: { id: 'github', version: '1' } },
     requiredChecks: ['test', 'budgets'],
-    capabilities: Object.values(PROVIDER_CAPABILITIES)
-      .filter((capability) => capability !== PROVIDER_CAPABILITIES.STRICT),
+    capabilities: [PROVIDER_CAPABILITIES.PULL_REQUEST, PROVIDER_CAPABILITIES.MERGE_QUEUE,
+      PROVIDER_CAPABILITIES.SQUASH, PROVIDER_CAPABILITIES.LINEAR_HISTORY],
   });
 }
 const TEST_PROFILE = queueProfile();

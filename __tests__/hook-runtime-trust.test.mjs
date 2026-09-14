@@ -22,7 +22,9 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(rele
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
   const altered = selected.files.map((file, index) => {
-    const bytes = released ? (file.path === 'src/quarantine.mjs'
+    const bytes = released ? (file.path === 'src/governance.mjs'
+      ? readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url))
+      : file.path === 'src/quarantine.mjs'
       ? readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url))
       : released !== 'pre-diff' && file.path === 'src/catalog-input.mjs'
       ? readFileSync(new URL('./fixtures/catalog-input-' + released + '.mjs.txt', import.meta.url))

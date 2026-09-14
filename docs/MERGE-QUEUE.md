@@ -20,6 +20,7 @@ any stronger existing policy.
 | `tested-protected-ordering:merge-queue` | queue, auto-merge, and `merge_group`; strict off | Tests landing order |
 | `required-check-policy:strict` | strict on; no queue | Selects fresh-base checks without a queue |
 | `protected-integration:pull-request` | direct protected-branch pushes blocked | Keeps integration provider-reviewed |
+| `integration-method:squash-preferred` | squash default; merge backup; explicit rebase | Preserve published refs |
 | `integration-method:squash` | squash is the only merge method | One protected commit per lane |
 | `history:linear` | linear history required | Selects a consumer's history policy |
 
@@ -38,34 +39,20 @@ Checks on an auto-merge request can describe a stale base. Candidate-side `land`
 lane stays `published` until a trusted consumer authorizes ordering and an exact queue entry is
 re-observed.
 
+## Default integration and controlled fallback
+
+Use [the integration guide](../guides/INTEGRATION-METHODS.md): squash by default, an explicitly
+justified merge commit as backup, and provider rebase by explicit revision-bound choice.
+Existing squash-only profiles retain their strict semantics.
+
 ## Provider-owned queue tuning
 
 Queue batch size, wait time, grouping strategy, build concurrency, and response timeout are
 consumer-owned provider tuning. The universal contract does not prescribe or audit those values.
-When `integration-method:squash` is selected, the GitHub adapter verifies only that the queue uses
+When `integration-method:squash` or `integration-method:squash-preferred` is selected, the GitHub
+adapter verifies only that the queue uses
 `SQUASH`. When linear history is selected without squash, `REBASE` or `SQUASH` remains compatible;
 otherwise the adapter does not invent a merge method.
-
-## Cost behavior
-
-Draining `N` open PRs with require-up-to-date and no queue costs up to `N x (N-1)` revalidation
-cycles, because every merge invalidates every other PR. At `N = 45` that is about 1,980 CI runs, and
-every restack in that set re-presents the same hunks for resolution.
-
-A provider may batch candidates; the repository selects tuning. The harness requires tested landing order.
-
-## What the author does
-
-```sh
-npm run lane -- my-scope --write=src/owning-file.ts
-# ... edit the owning file directly in the printed worktree ...
-npm run land -- --message="feat: focused change"  # stage, commit, push, project review
-```
-
-After separate repair authorization, run successor (Git v2.46+) before edits. It keeps all prior
-refs/review, clean commits and worktree; then land. If effects remain, do not edit: resolve the
-collision; rerun the exact emitted `npm run successor -- <same-scope>
---expected-head=<published-oid>`; then `land`.
 
 ## Cross-tool concurrency
 

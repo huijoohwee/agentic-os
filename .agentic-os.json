@@ -22,7 +22,7 @@
   "capabilities": [
     "deep-byte-audit-opt-in",
     "host-qualified-repository-pin",
-    "integration-method:squash",
+    "integration-method:squash-preferred",
     "protected-integration:pull-request",
     "quarantine-worktree-cleanup-opt-in",
     "read-only-repository-observation",
@@ -41,5 +41,5 @@
     "worktreeProjection": "quarantine",
     "worktreeRegistration": "quarantine"
   },
-  "profileDigest": "ff0fe1d413ab6fe8a4ae09d6b85cf807de432937f841344aa4ec373002a2ad9b"
+  "profileDigest": "cbfa12ac642d52deef3378592b8a0e9ab6d479449a426777616485759b7169ff"
 }

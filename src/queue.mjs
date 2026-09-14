@@ -3,6 +3,7 @@ import { remoteTransport } from './git.mjs';
 import { enqueue as providerEnqueue, gh, ghAvailable, isAbsentClassicProtection,
   lastError, lastHttpStatus } from './github-provider.mjs';
 import {
+  INTEGRATION_METHOD_POLICY,
   effectivePullRequestMethods,
   effectivePullRequestPolicyMatches,
   PROVIDER_CAPABILITIES,
@@ -35,7 +36,6 @@ export {
   workflowMergeGroupChecks,
 } from './protected-workflows.mjs';
 export const RULESET_NAME = 'ADLC protected integration';
-/** Queue invariant selected by the squash integration capability. */
 const MERGE_QUEUE_PARAMETERS = Object.freeze([
   'merge_method', 'min_entries_to_merge', 'max_entries_to_merge',
   'min_entries_to_merge_wait_minutes', 'max_entries_to_build',
@@ -159,6 +159,7 @@ export function observe({
     && (!policy.pullRequestRequired || pullRequestRequired && pullRequestPolicySatisfied)
     && (!policy.linearHistoryRequired || linearHistoryRequired)
     && (!policy.squashOnlyRequired || squashOnly)
+    && (!policy.squashPreferredRequired || pullRequestPolicySatisfied && !linearHistoryRequired)
     && (policy.strict === null || strict === policy.strict)
     && policy.requiredChecks.every((check) => requiredChecks.includes(check))
     && (!policy.mergeQueueRequired || queueEnabled && queuePolicySatisfied);
@@ -236,7 +237,6 @@ export function audit(state, profile) {
       'enable a provider merge queue',
     );
   }
-
   if (!policy.mergeQueueRequired) pass('queue-policy', 'not selected by repository profile');
   else if (state.queuePolicySatisfied) pass('queue-policy', 'every applicable queue rule matches policy');
   else fail(
@@ -244,29 +244,25 @@ export function audit(state, profile) {
     'an applicable queue rule is absent or has policy drift',
     'apply the reviewed repository-owned queue policy',
   );
-
   if (!policy.mergeQueueRequired) pass('auto-merge', 'not required without merge-queue ordering');
   else if (state.autoMerge) pass('auto-merge', 'auto-merge is allowed, so a lane can be armed and left');
   else fail('auto-merge', 'auto-merge is disabled; the queue rule also requires it',
     'ask repository authority to apply the reviewed provider policy');
-
   if (!policy.pullRequestRequired) pass('pull-request', 'not selected by repository profile');
   else if (state.pullRequestRequired) pass('pull-request', 'applicable pull-request protection is active');
   else fail('pull-request', 'no applicable pull-request rule was observed',
     'ask repository authority to apply the reviewed pull-request policy');
-
-  if (!policy.pullRequestRequired || !policy.linearHistoryRequired && !policy.squashOnlyRequired)
+  if (!policy.pullRequestRequired || !policy.linearHistoryRequired
+    && !policy.squashOnlyRequired && !policy.squashPreferredRequired)
     pass('pull-request-policy', 'no merge-method constraint selected');
   else if (state.pullRequestPolicySatisfied)
     pass('pull-request-policy', 'allowed merge methods satisfy the selected constraint');
   else fail('pull-request-policy', 'allowed merge methods conflict with selected history policy',
     'ask repository authority to apply the reviewed pull-request policy');
-
   if (!policy.linearHistoryRequired) pass('linear-history', 'not selected by repository profile');
   else if (state.linearHistoryRequired) pass('linear-history', 'linear history is required');
   else fail('linear-history', 'linear history is not required',
     'ask repository authority to apply the reviewed provider policy');
-
   const strictId = policy.strict === true ? 'strict-on' : 'strict-off';
   if (policy.strict === null) {
     pass('strict-policy', 'strictness not selected by repository profile');
@@ -284,7 +280,6 @@ export function audit(state, profile) {
     fail(strictId, 'require-branches-up-to-date is off but the profile requires fresh-base checks',
       'apply the reviewed repository-owned strict-check policy');
   }
-
   const squashOnly =
     state.merge?.allow_squash_merge &&
     !state.merge.allow_merge_commit &&
@@ -293,13 +288,17 @@ export function audit(state, profile) {
   else if (squashOnly) pass('squash-only', 'squash is the only merge method');
   else fail('squash-only', 'more than one merge method is allowed',
     'ask repository authority to apply the reviewed provider policy');
-
+  if (policy.squashPreferredRequired) {
+    if (!providerBlockingReasons(state, policy).includes('squash-preferred'))
+      pass('squash-preferred', 'squash default; merge backup; rebase requires a revision-bound choice');
+    else fail('squash-preferred', 'effective methods must preserve squash and merge with observed history policy',
+      'review repository flags and every applicable rule, including linear history');
+  }
   if (state.merge?.delete_branch_on_merge === false) {
     pass('retain-on-merge', 'remote lane refs remain available for governed retirement');
   } else {
     fail('retain-on-merge', 'merge can delete a lane ref before a retirement receipt', 'disable automatic branch deletion');
   }
-
   const missingChecks = policy.requiredChecks.filter(
     (check) => !state.requiredChecks?.includes(check),
   );
@@ -314,16 +313,13 @@ export function audit(state, profile) {
       'ask repository authority to apply the reviewed provider policy',
     );
   }
-
   if (!policy.mergeQueueRequired) pass('merge-group', 'not required without merge-queue ordering');
   else if (state.mergeGroupSupported) pass('merge-group', 'CI statically binds required jobs to merge groups');
   else fail('merge-group', 'CI has no merge_group trigger', 'add merge_group to protected CI');
-
   const openCount = Array.isArray(state.openPrs) ? state.openPrs.length : null;
   const countDetail = openCount === null ? 'open pull-request telemetry unavailable'
     : `${state.openPrsTruncated ? 'at least ' : ''}${openCount} open pull request(s) observed`;
   pass('wip', `${countDetail}; no universal count limit applies`);
-
   return findings;
 }
 /** Desired provider policy, rendered as data for repository-authority review. */
@@ -341,10 +337,14 @@ export function plan(profile) {
       allow_squash_merge: true,
       allow_merge_commit: false,
       allow_rebase_merge: false,
+    } : policy.squashPreferredRequired ? {
+      allow_squash_merge: true, allow_merge_commit: true, allow_rebase_merge: true,
     } : {}),
   };
   return {
     schema: 'agentic-os/github-policy-projection/v2',
+    ...(policy.squashPreferredRequired ? { integration: INTEGRATION_METHOD_POLICY,
+      incompatibleRules: ['required_linear_history'] } : {}),
     ruleset: {
       name: RULESET_NAME,
       target: 'branch',
@@ -369,7 +369,9 @@ export function plan(profile) {
       ...(policy.pullRequestRequired ? [{
         type: 'pull_request',
         requiredParameters: [...PULL_REQUEST_PARAMETERS],
-        constraints: policy.squashOnlyRequired || policy.linearHistoryRequired ? [{
+        constraints: policy.squashPreferredRequired ? [{
+          parameter: 'allowed_merge_methods', operator: 'effectiveEquals', values: ['merge', 'rebase', 'squash'],
+        }] : policy.squashOnlyRequired || policy.linearHistoryRequired ? [{
           parameter: 'allowed_merge_methods', operator: 'effectiveNonemptySubsetOf',
           values: policy.squashOnlyRequired ? ['squash'] : ['rebase', 'squash'],
         }] : [],
@@ -377,15 +379,14 @@ export function plan(profile) {
       ...(policy.mergeQueueRequired ? [{
         type: 'merge_queue',
         requiredParameters: [...MERGE_QUEUE_PARAMETERS],
-        constraints: policy.squashOnlyRequired || policy.linearHistoryRequired ? [{
+        constraints: policy.squashOnlyRequired || policy.squashPreferredRequired || policy.linearHistoryRequired ? [{
           parameter: 'merge_method', operator: 'oneOf',
-          values: policy.squashOnlyRequired ? ['SQUASH'] : ['REBASE', 'SQUASH'],
+          values: policy.squashOnlyRequired || policy.squashPreferredRequired ? ['SQUASH'] : ['REBASE', 'SQUASH'],
         }] : [],
       }] : []),
     ],
   };
 }
-
 export function apply() {
   return [{
     step: 'repository-owned provider policy',
