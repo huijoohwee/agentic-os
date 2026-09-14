@@ -11,7 +11,8 @@ The committed `.github/adlc-authority-policy.json` binds main, squash integratio
 and `test` checks, a one-hour validity window, and the create-only `adlc/authority/` evidence namespace.
 The issuer's policy supports an owner namespace; this workflow additionally rejects every target except
 `github.com/huijoohwee/agentic-os`. The separate `adlc-authority-graph.yml` enrollment selects only
-`github.com/huijoohwee/agentic-graph` and binds its `Integration Gate`. Both targets share the immutable
+`github.com/huijoohwee/agentic-graph`; its initial policy binds the evidence repository's `budgets` and
+`test` checks, while the transition proof binds Graph's `Integration Gate`. Both targets share the immutable
 transition evidence namespace, but neither initial workflow can issue authority for the other target.
 Forks must explicitly reenroll these identities; copying either policy does not authorize another repository.
 
