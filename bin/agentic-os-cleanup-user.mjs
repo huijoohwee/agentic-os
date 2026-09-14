@@ -1,4 +1,4 @@
-/** Explicit local-consent cleanup for profileless repositories; never a protected-path fallback. */
+/** Explicit local-consent cleanup; profile recovery requires its own operator opt-in. */
 import { lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { TextDecoder } from 'node:util';
@@ -10,6 +10,7 @@ import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quara
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
+import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
 const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent';
 const NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 const KEY = 'agentic-os.userCleanup';
@@ -25,13 +26,13 @@ const fields = (value, names) => {
 function policy(root, mode = MODE) {
   if (realpathSync(repoRoot(root)) !== root || read(root, ['symbolic-ref', '--quiet', 'HEAD']) !== 'refs/heads/main')
     refuse('canonical-controller');
-  const enrollment = mode === NO_CI_MODE ? 'quarantine-no-ci' : 'quarantine';
-  if (![MODE, NO_CI_MODE].includes(mode)
+  const enrollment = mode === RECOVERY_MODE ? 'quarantine-recovery' : mode === NO_CI_MODE ? 'quarantine-no-ci' : 'quarantine';
+  if (![MODE, NO_CI_MODE, RECOVERY_MODE].includes(mode)
     || read(root, ['config', '--local', '--get-all', KEY], { allowFail: true }) !== enrollment)
     refuse('local-enrollment-required');
-  if (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
+  if (mode !== RECOVERY_MODE && (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
     || read(root, ['ls-tree', 'refs/heads/main', '--', '.agentic-os.json'])
-    || loadRepositoryTrust(root, { required: false })) refuse('profile-governed-repository');
+    || loadRepositoryTrust(root, { required: false }))) refuse('profile-governed-repository');
   const remoteUrl = remoteTransport('origin', root).fetchUrl;
   const match = remoteUrl.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/u);
   if (!match || match[1].split('/').some(s => s === '.' || s === '..')) refuse('remote-identity');
@@ -41,6 +42,7 @@ function policy(root, mode = MODE) {
     || read(root, ['status', '--porcelain', '--untracked-files=all'])) refuse('canonical-not-clean');
   return { root, repository: match[1], remoteUrl, canonical, localRef: 'refs/heads/main',
     mode, enrollment: mode === MODE ? KEY : `${KEY}=${enrollment}`,
+    ...(mode === RECOVERY_MODE ? recoveryPolicy(root, match[1]) : {}),
     selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
 }
 function observePolicy(mechanics, root) {
@@ -51,7 +53,7 @@ function observePolicy(mechanics, root) {
     profile: { profileDigest: governanceDigest(current), canonical: { localRef: current.localRef } } };
 }
 function mechanics(plan) {
-  return { ...LIMITS, mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
+  return { ...(plan.mode === RECOVERY_MODE ? RECOVERY_LIMITS : LIMITS), mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
     expectedBranch: plan.branch, expectedHeadRevision: plan.head, expectedCanonicalRef: 'refs/heads/main',
     expectedCanonicalRevision: plan.canonical, profileDigest: plan.policyDigest,
     recoveryInventoryDigest: plan.inventoryDigest, recoveryInventoryContentEntries: plan.inventoryContentEntries,
@@ -71,7 +73,9 @@ function eligibility(plan) {
 }
 function mergedState(plan, options, observed = observeMergedReview(plan, { cwd: plan.root, ...options })) {
   if (!same(observed, plan.review)) refuse('review-drift');
-  if (read(plan.root, ['rev-parse', '--verify', `${plan.head}^{tree}`])
+  if (plan.mode === RECOVERY_MODE) {
+    if (!same(recoveryIntegration(plan, read), plan.integration)) refuse('integration-drift');
+  } else if (read(plan.root, ['rev-parse', '--verify', `${plan.head}^{tree}`])
     !== read(plan.root, ['rev-parse', '--verify', `${plan.merge}^{tree}`])) refuse('merge-tree-drift');
   if (read(plan.root, ['merge-base', '--is-ancestor', plan.merge, plan.canonical], { allowFail: true }) === null)
     refuse('merge-not-canonical');
@@ -82,10 +86,11 @@ function mergedState(plan, options, observed = observeMergedReview(plan, { cwd: 
 function validatePlan(input) {
   const bytes = canonicalJson(input); if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
   const plan = JSON.parse(bytes);
-  fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest');
+  fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest'
+    + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : ''));
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
-  if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE].includes(plan.mode) || governanceDigest(content) !== planDigest
+  if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE, RECOVERY_MODE].includes(plan.mode) || governanceDigest(content) !== planDigest
     || typeof plan.root !== 'string' || typeof plan.targetPath !== 'string' || plan.targetPath === plan.root
     || !['head', 'canonical', 'merge'].every(k => /^[a-f0-9]{40}$/u.test(plan[k]))
     || !['policyDigest', 'inventoryDigest', 'planDigest'].every(k => /^[a-f0-9]{64}$/u.test(plan[k]))
@@ -102,12 +107,14 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false }, options = {}) {
+  noCI = false, recovery = false }, options = {}) {
   const root = realpathSync(repoRoot(cwd));
-  const mode = noCI ? NO_CI_MODE : MODE;
+  if (noCI && recovery) refuse('incompatible-modes');
+  const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
   reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
   return locked(root, () => {
     const current = policy(root, mode), targetPath = realpathSync(target);
+    if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
@@ -119,6 +126,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       merge: review.merge, review, inventoryDigest: governanceDigest(inventory),
       inventoryContentEntries: inventory.inventoryEntries.content, policyDigest: governanceDigest(current),
       observation: null, issuedAt, expiresAt: issuedAt + 900000 };
+    if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
     plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root, observePolicy });
     plan.planDigest = governanceDigest(plan);
@@ -132,6 +140,8 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
   return locked(root, () => {
     const m = mechanics(plan), eligible = eligibility(plan);
     observePolicy(m, root); mergedState(plan, options);
+    if (plan.mode === RECOVERY_MODE && (!same(policy(root, plan.mode), plan.recoveryPolicy)
+      || plan.recoveryPolicy.requiredChecks.some(name => !plan.requiredChecks.includes(name)))) refuse('recovery-policy-drift');
     let applied = classifyExistingWorktreeQuarantine(m, eligible, { cwd: root, observePolicy });
     if (!applied) {
       if (now() < plan.issuedAt || now() >= plan.expiresAt) refuse('expired');
@@ -148,12 +158,14 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
         Object.assign(error, { retainedOperation: true, operationResult: null,
           operationError: { reason: error.reason ?? null, message: error.message },
           operationArtifacts: { ...error.operationArtifacts, effectsRetained: true, planDigest: plan.planDigest,
-            targetPath: plan.targetPath, mode: MODE } }); throw error;
+            targetPath: plan.targetPath, mode: plan.mode } }); throw error;
       }
     }
     return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
-      selectedChecksVerified: plan.mode === MODE, noCI: plan.mode === NO_CI_MODE,
+      selectedChecksVerified: plan.mode !== NO_CI_MODE, noCI: plan.mode === NO_CI_MODE,
+      ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy,
+        integration: plan.integration, historicalIntegrationMethodProven: false } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
@@ -163,7 +175,7 @@ export function runUserCleanup(root, argv, out = console.log) {
   if (argv[0] === 'plan') {
     const pr = Number(option(argv, 'pr'));
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
-      requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow') });
+      requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow'), recovery: argv.includes('--recovery') });
     out(canonicalJson(plan)); return 0;
   }
   const plan = JSON.parse(new TextDecoder('utf-8', { fatal: true })

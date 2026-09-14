@@ -43,7 +43,7 @@ export function validateCommandArguments(command, argv) {
       return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
     }
     case 'cleanup-user': return argv[0] === 'plan'
-      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow'],
+      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow'], flags: ['recovery'],
         requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
       : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
         requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] }) : 'cleanup-user requires plan or apply';
