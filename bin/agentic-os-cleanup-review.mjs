@@ -1,6 +1,7 @@
 /** Bounded read-only GitHub merge/check evidence, never protected-integration authority. */
 import { spawnSync } from 'node:child_process';
-export const refuse = reason => { throw Object.assign(new Error(`blocked-user-cleanup-${reason}`), { reason }); };
+import { RECOVERY_MODE, recoveryChecks, refuse } from './agentic-os-cleanup-recovery.mjs';
+export { refuse } from './agentic-os-cleanup-recovery.mjs';
 export function githubRead(path, { cwd, timeoutMs = 15000 } = {}) {
   const result = spawnSync('gh', ['api', '--hostname', 'github.com', '-H', 'Accept: application/vnd.github+json',
     '-H', 'X-GitHub-Api-Version: 2022-11-28', path], { cwd, encoding: 'utf8', maxBuffer: 499000,
@@ -52,7 +53,7 @@ export function observeMergedReview(value, { cwd, api = githubRead } = {}) {
       checkRunsObserved: 0, legacyStatusesObserved: 0,
       protectionProven: false, authority: 'observation-only' };
   }
-  const checks = value.requiredChecks.map(name => {
+  const checks = value.mode === RECOVERY_MODE ? recoveryChecks(value, pull, response.check_runs, read) : value.requiredChecks.map(name => {
     const candidates = response.check_runs.filter(c => c.name === name);
     if (candidates.length !== 1) refuse('check-ambiguous-or-missing');
     const c = candidates[0];
