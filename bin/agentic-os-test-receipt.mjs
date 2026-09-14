@@ -32,19 +32,22 @@ export function writeReceipt(directory, name, value) {
   renameSync(temporary, join(directory, name));
 }
 /** One bounded record per check, replaced atomically; logs are content-bound. */
-export function previousCheck(directory, check, now = Date.now()) {
+export function previousCheck(directory, check, now = Date.now(), { allowFailure = false } = {}) {
   try {
     const receipt = JSON.parse(readRegular(directory, `${check.id}.json`, LIMITS.receiptBytes).text);
+    const passed = receipt.outcome === 'passed' && receipt.result?.exitCode === 0 && receipt.result?.reason === null;
+    const failed = allowFailure && receipt.outcome === 'failed' && receipt.result
+      && (receipt.result.exitCode !== 0 || receipt.result.reason !== null);
     if (receipt.schema !== 'agentic-os/test-check/v1' || receipt.authority !== false
       || receipt.id !== check.id || receipt.name !== check.name
       || JSON.stringify(receipt.command) !== JSON.stringify([check.command, ...check.args])
-      || receipt.outcome !== 'passed' || receipt.result.exitCode !== 0 || receipt.result.reason !== null
+      || !passed && !failed
       || !Number.isFinite(receipt.finishedAt) || now - receipt.finishedAt < 0
       || now - receipt.finishedAt > 3_600_000 || !Number.isFinite(receipt.result.elapsedMs)
-      || receipt.result.elapsedMs < 0 || receipt.result.elapsedMs > LIMITS.testMs
+      || receipt.result.elapsedMs < 0 || receipt.result.elapsedMs > Math.max(LIMITS.testMs, check.timeoutMs || 0)
       || receipt.result.log !== `${check.id}.log`
       || readRegular(directory, receipt.result.log, LIMITS.outputBytes).digest !== receipt.result.outputDigest
-      || check.stage !== 'evaluators' && (!receipt.result.counts?.tests
+      || passed && check.report !== 'exit' && check.stage !== 'evaluators' && (!receipt.result.counts?.tests
         || receipt.result.counts.fail !== 0 || receipt.result.counts.cancelled !== 0)) return null;
     return receipt;
   } catch { return null; }
@@ -59,12 +62,14 @@ export function writeCheck(directory, check, result, finishedAt = Date.now()) {
   writeReceipt(directory, `${check.id}.json`, receipt);
   return receipt;
 }
-export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes } = {}) {
+export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes,
+  outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024 } = {}) {
+  if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
   return new Promise(resolveResult => {
     const started = performance.now();
     const child = spawn(command, args, { cwd: root, env: executionEnvironment(),
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    const chunks = []; let length = 0, reason = null;
+    const chunks = []; let length = 0, observedBytes = 0, reason = null;
     const kill = () => {
       try { process.platform === 'win32' ? child.kill('SIGKILL') : process.kill(-child.pid, 'SIGKILL'); }
       catch { child.kill('SIGKILL'); }
@@ -74,6 +79,17 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     const timer = setTimeout(() => stop('timeout'), timeoutMs);
     process.once('SIGTERM', cancel); process.once('SIGINT', cancel);
     for (const channel of ['stdout', 'stderr']) child[channel].on('data', bytes => {
+      observedBytes += bytes.length;
+      if (outputMode === 'tail') {
+        chunks.push(bytes); length += bytes.length;
+        while (length > outputBytes) {
+          const remove = Math.min(length - outputBytes, chunks[0].length);
+          if (remove === chunks[0].length) chunks.shift(); else chunks[0] = chunks[0].subarray(remove);
+          length -= remove;
+        }
+        if (observedBytes > totalOutputBytes) stop('output-budget');
+        return;
+      }
       const remaining = outputBytes - length, accepted = bytes.subarray(0, remaining);
       chunks.push(accepted); length += accepted.length;
       if (bytes.length > remaining) stop('output-budget');
@@ -82,9 +98,11 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     child.once('exit', kill);
     child.once('close', (exitCode, signal) => {
       clearTimeout(timer); process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);
-      const output = Buffer.concat(chunks).toString('utf8');
+      let output = Buffer.concat(chunks).toString('utf8');
+      while (outputMode === 'tail' && Buffer.byteLength(output) > outputBytes) output = output.slice(1);
       resolveResult({ exitCode, reason: reason ?? (signal ? 'signal' : null), elapsedMs: performance.now() - started,
         output, outputDigest: hash(Buffer.from(output)),
+        ...(outputMode === 'tail' ? { observedOutputBytes: observedBytes, outputTruncated: observedBytes > outputBytes } : {}),
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]
           .map(match => [match[1], Number(match[2])])) });
     });

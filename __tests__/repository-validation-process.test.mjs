@@ -1,0 +1,119 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { runRepositoryValidation } from '../bin/agentic-os-validation.mjs';
+import { executeCommand, previousCheck, writeCheck, receiptDirectory } from '../bin/agentic-os-test-receipt.mjs';
+
+function fixture(t) {
+  const keys = ['CI','GITHUB_ACTIONS','GITHUB_EVENT_PATH','GITHUB_EVENT_NAME','GITHUB_SHA','AGENTIC_OS_VALIDATION_ACTIVE'];
+  const saved = Object.fromEntries(keys.map(key => [key,process.env[key]]));
+  keys.forEach(key => { delete process.env[key]; });
+  t.after(() => keys.forEach(key => {
+    if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
+  }));
+  const root = mkdtempSync(join(tmpdir(), 'validation-run-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init', '-b', 'main'); git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'Validation Test');
+  git('remote', 'add', 'origin', 'https://github.com/example/consumer.git');
+  mkdirSync(join(root, 'source')); mkdirSync(join(root, 'checks'));
+  writeFileSync(join(root, '.gitignore'), '.cache/\n');
+  writeFileSync(join(root, 'source/a.txt'), 'pass'); writeFileSync(join(root, 'source/b.txt'), 'pass');
+  writeFileSync(join(root, 'checks/run.mjs'), `import {mkdirSync,appendFileSync,readFileSync,writeFileSync} from 'node:fs';
+const id=process.argv[2]; mkdirSync('.cache',{recursive:true}); appendFileSync('.cache/calls',id+'\\n');
+if(id==='a'&&readFileSync('source/a.txt','utf8')==='fail') process.exitCode=2;
+if(id==='a'&&readFileSync('source/a.txt','utf8')==='mutate') writeFileSync('source/b.txt','changed during execution');
+console.log('checked '+id);\n`);
+  const check = (id, inputs, requires = []) => ({id,command:['node','checks/run.mjs',id],inputs,requires,reuse:'local',timeoutMs:3000});
+  const policy = {schema:'agentic-os/repository-validation-policy/v1',repository:'github.com/example/consumer',
+    broadInputs:['config/'],always:['contract'],fallback:['fallback'],checks:[
+      check('contract',['.gitignore']),check('prepare',['checks/run.mjs']),
+      check('a',['source/a.txt'],['prepare']),check('b',['source/b.txt'],['prepare']),
+      {...check('fallback',[]),reuse:'never'},
+    ]};
+  writeFileSync(join(root,'.agentic-os-validation.json'),JSON.stringify(policy));
+  git('add','.');git('commit','-m','baseline');git('update-ref','refs/remotes/origin/main','HEAD');
+  const messages=[], run=(...flags)=>runRepositoryValidation(['run',`--root=${root}`,...flags],{out:message=>messages.push(message)});
+  const calls=()=>readFileSync(join(root,'.cache/calls'),'utf8').trim().split('\n');
+  const receipt=()=>JSON.parse(readFileSync(join(root,'.git/agentic-os-tests/validation-last.json'),'utf8'));
+  return {root,git,run,calls,receipt,messages};
+}
+
+test('real owner checks run once, reuse exact local inputs, and keep unrelated checks skipped', async t => {
+  const f=fixture(t);writeFileSync(join(f.root,'source/a.txt'),'changed');
+  assert.equal(await f.run(),0);assert.deepEqual(f.calls(),['contract','prepare','a']);
+  assert.equal(await f.run(),0);assert.equal(f.calls().length,3);
+  assert.ok(f.receipt().results.every(result=>result.reused));
+  writeFileSync(join(f.root,'source/b.txt'),'unrelated change');
+  assert.equal(await f.run(),0);assert.deepEqual(f.calls(),['contract','prepare','a','b']);
+  assert.equal(f.receipt().outcome,'passed');assert.equal(f.receipt().authority,false);
+  assert.equal(await f.run('--fresh'),0);assert.equal(f.calls().length,8);
+  const count=f.calls().length;assert.equal(await f.run('--only=b','--fresh'),0);
+  assert.deepEqual(f.calls().slice(count),['prepare','b']);assert.deepEqual(f.receipt().plan.partition,['b']);
+});
+
+test('unchanged deterministic failure stops without another command and remains failed evidence', async t => {
+  const f=fixture(t);writeFileSync(join(f.root,'source/a.txt'),'fail');
+  assert.equal(await f.run(),1);assert.equal(f.receipt().outcome,'failed');
+  const before=f.calls();assert.equal(await f.run(),1);assert.deepEqual(f.calls(),before);
+  assert.equal(f.receipt().outcome,'blocked');assert.match(f.receipt().error,/unchanged-failure:a/);
+  assert.equal(await f.run('--fresh'),1);assert.ok(f.calls().length>before.length);
+});
+
+test('source mutation during a passing command cannot publish a passing receipt', async t => {
+  const f=fixture(t);writeFileSync(join(f.root,'source/a.txt'),'mutate');
+  assert.equal(await f.run(),1);assert.equal(f.receipt().outcome,'blocked');
+  assert.match(f.receipt().error,/input-drift/);
+  assert.equal(f.receipt().results.some(result=>result.id==='a'),false);
+});
+
+test('plan does not execute and malformed owner identity is rejected before checks', async t => {
+  const f=fixture(t), output=[];
+  assert.equal(await runRepositoryValidation(['plan',`--root=${f.root}`],{out:value=>output.push(value)}),0);
+  assert.equal(JSON.parse(output[0]).selectedChecks,1);
+  assert.throws(f.calls,/ENOENT/);
+  f.git('remote','set-url','origin','https://github.com/example/other.git');
+  await assert.rejects(f.run,/repository-identity/);assert.throws(f.calls,/ENOENT/);
+});
+
+test('consumer logs retain a bounded tail without stopping successful verbose checks', async t => {
+  const f=fixture(t);
+  const result=await executeCommand(f.root,process.execPath,['-e',"process.stdout.write('é'.repeat(10000)+'\\nfinished\\n')"],
+    {outputMode:'tail',outputBytes:1023,timeoutMs:3000});
+  assert.equal(result.exitCode,0);assert.equal(result.reason,null);assert.equal(result.outputTruncated,true);
+  assert.ok(Buffer.byteLength(result.output)<=1023);assert.match(result.output,/finished\n$/);
+  const check={id:'consumer-tail',name:'tail',command:process.execPath,args:['-e','output'],fingerprint:'exact',stage:'owner-check',report:'exit'};
+  const directory=receiptDirectory(f.root);writeCheck(directory,check,result);
+  assert.equal(previousCheck(directory,check)?.outcome,'passed');
+  const strict=await executeCommand(f.root,process.execPath,['-e',"process.stdout.write('x'.repeat(10000))"],
+    {outputBytes:1023,timeoutMs:3000});
+  assert.equal(strict.reason,'output-budget');
+});
+
+test('execution timeout and changed log bytes cannot become reusable success', async t => {
+  const f=fixture(t);
+  const timed=await executeCommand(f.root,process.execPath,['-e','setInterval(()=>{},1000)'],{timeoutMs:150});
+  assert.equal(timed.reason,'timeout');
+  const result=await executeCommand(f.root,process.execPath,['-e',"console.log('pass')"],{timeoutMs:3000});
+  const check={id:'consumer-tamper',name:'tamper',command:process.execPath,args:['-e','pass'],fingerprint:'exact',stage:'owner-check',report:'exit'};
+  const directory=receiptDirectory(f.root);writeCheck(directory,check,result);
+  writeFileSync(join(directory,'consumer-tamper.log'),'different');
+  assert.equal(previousCheck(directory,check),null);
+});
+
+test('ordinary run in hosted CI verifies its event, executes fresh and refuses baseline overrides or dirt', async t => {
+  const f=fixture(t), before=f.git('rev-parse','HEAD');
+  writeFileSync(join(f.root,'source/a.txt'),'changed'); f.git('add','.');f.git('commit','-m','candidate');
+  const after=f.git('rev-parse','HEAD');
+  assert.equal(await f.run(),0);
+  const event=join(f.root,'.git/event.json'); writeFileSync(event,JSON.stringify({before,after}));
+  Object.assign(process.env,{CI:'true',GITHUB_ACTIONS:'true',GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'push',GITHUB_SHA:after});
+  assert.equal(await f.run(),0); assert.equal(f.receipt().execution,'ci');
+  assert.equal(f.receipt().checkout,'event-revision'); assert.ok(f.receipt().results.every(result=>!result.reused));
+  const calls=f.calls().length; assert.equal(await f.run(),0); assert.equal(f.calls().length,calls+3);
+  await assert.rejects(()=>f.run('--base=HEAD'),/CI owns/);
+  writeFileSync(join(f.root,'source/a.txt'),'dirty');await assert.rejects(f.run,/dirty-ci/);
+});
