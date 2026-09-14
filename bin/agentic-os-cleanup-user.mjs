@@ -11,6 +11,7 @@ import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent';
+const NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 const KEY = 'agentic-os.userCleanup';
 const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projectionEntryCeiling: 10000,
   registrationByteCeiling: 16 * 1024 * 1024, registrationEntryCeiling: 10000,
@@ -21,10 +22,13 @@ const fields = (value, names) => {
   if (!value || Array.isArray(value) || typeof value !== 'object'
     || Object.keys(value).sort().join(',') !== names.split(',').sort().join(',')) refuse('shape');
 };
-function policy(root) {
+function policy(root, mode = MODE) {
   if (realpathSync(repoRoot(root)) !== root || read(root, ['symbolic-ref', '--quiet', 'HEAD']) !== 'refs/heads/main')
     refuse('canonical-controller');
-  if (read(root, ['config', '--local', '--get-all', KEY], { allowFail: true }) !== 'quarantine') refuse('local-enrollment-required');
+  const enrollment = mode === NO_CI_MODE ? 'quarantine-no-ci' : 'quarantine';
+  if (![MODE, NO_CI_MODE].includes(mode)
+    || read(root, ['config', '--local', '--get-all', KEY], { allowFail: true }) !== enrollment)
+    refuse('local-enrollment-required');
   if (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
     || read(root, ['ls-tree', 'refs/heads/main', '--', '.agentic-os.json'])
     || loadRepositoryTrust(root, { required: false })) refuse('profile-governed-repository');
@@ -36,17 +40,18 @@ function policy(root) {
     || read(root, ['rev-parse', '--verify', 'refs/remotes/origin/main']) !== canonical
     || read(root, ['status', '--porcelain', '--untracked-files=all'])) refuse('canonical-not-clean');
   return { root, repository: match[1], remoteUrl, canonical, localRef: 'refs/heads/main',
-    mode: MODE, enrollment: KEY, selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
+    mode, enrollment: mode === MODE ? KEY : `${KEY}=${enrollment}`,
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
 }
 function observePolicy(mechanics, root) {
-  const current = policy(root);
+  const current = policy(root, mechanics.mode);
   if (governanceDigest(current) !== mechanics.profileDigest || current.canonical !== mechanics.expectedCanonicalRevision
     || `github.com/${current.repository}` !== mechanics.repository) refuse('local-policy-drift');
   return { root, canonicalRevision: current.canonical,
     profile: { profileDigest: governanceDigest(current), canonical: { localRef: current.localRef } } };
 }
 function mechanics(plan) {
-  return { ...LIMITS, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
+  return { ...LIMITS, mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
     expectedBranch: plan.branch, expectedHeadRevision: plan.head, expectedCanonicalRef: 'refs/heads/main',
     expectedCanonicalRevision: plan.canonical, profileDigest: plan.policyDigest,
     recoveryInventoryDigest: plan.inventoryDigest, recoveryInventoryContentEntries: plan.inventoryContentEntries,
@@ -80,7 +85,7 @@ function validatePlan(input) {
   fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest');
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
-  if (plan.schema !== SCHEMA || plan.mode !== MODE || governanceDigest(content) !== planDigest
+  if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE].includes(plan.mode) || governanceDigest(content) !== planDigest
     || typeof plan.root !== 'string' || typeof plan.targetPath !== 'string' || plan.targetPath === plan.root
     || !['head', 'canonical', 'merge'].every(k => /^[a-f0-9]{40}$/u.test(plan[k]))
     || !['policyDigest', 'inventoryDigest', 'planDigest'].every(k => /^[a-f0-9]{64}$/u.test(plan[k]))
@@ -96,18 +101,20 @@ function locked(root, operation) {
   try { result = operation(); } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
-export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow }, options = {}) {
+export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
+  noCI = false }, options = {}) {
   const root = realpathSync(repoRoot(cwd));
-  reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow });
+  const mode = noCI ? NO_CI_MODE : MODE;
+  reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
   return locked(root, () => {
-    const current = policy(root), targetPath = realpathSync(target);
+    const current = policy(root, mode), targetPath = realpathSync(target);
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main' });
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
     const issuedAt = options.now?.() ?? Date.now();
-    const plan = { schema: SCHEMA, mode: MODE, root, repository: current.repository, remoteUrl: current.remoteUrl,
+    const plan = { schema: SCHEMA, mode, root, repository: current.repository, remoteUrl: current.remoteUrl,
       pr, requiredChecks, workflow, targetPath, branch: review.branch, head: review.head, canonical: current.canonical,
       merge: review.merge, review, inventoryDigest: governanceDigest(inventory),
       inventoryContentEntries: inventory.inventoryEntries.content, policyDigest: governanceDigest(current),
@@ -144,8 +151,9 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
             targetPath: plan.targetPath, mode: MODE } }); throw error;
       }
     }
-    return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: MODE, planDigest: plan.planDigest,
+    return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
+      selectedChecksVerified: plan.mode === MODE, noCI: plan.mode === NO_CI_MODE,
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };

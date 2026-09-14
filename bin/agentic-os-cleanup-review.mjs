@@ -14,10 +14,12 @@ export function githubRead(path, { cwd, timeoutMs = 15000 } = {}) {
   try { return JSON.parse(result.stdout); } catch { return refuse('provider-json'); }
 }
 export function reviewOptions(value) {
+  const noCI = value.mode === 'explicit-local-user-consent-no-ci';
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(value.repository ?? '')
     || !Number.isSafeInteger(value.pr) || value.pr < 1
-    || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(value.workflow ?? '')
-    || !Array.isArray(value.requiredChecks) || !value.requiredChecks.length || value.requiredChecks.length > 8
+    || (noCI ? value.workflow !== null : !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(value.workflow ?? ''))
+    || !Array.isArray(value.requiredChecks)
+    || (noCI ? value.requiredChecks.length !== 0 : !value.requiredChecks.length || value.requiredChecks.length > 8)
     || value.requiredChecks.some(c => typeof c !== 'string' || !c.trim() || Buffer.byteLength(c) > 128
       || /[\x00-\x1f\x7f]/u.test(c))
     || JSON.stringify([...new Set(value.requiredChecks)].sort()) !== JSON.stringify(value.requiredChecks)) refuse('review-options');
@@ -39,6 +41,17 @@ export function observeMergedReview(value, { cwd, api = githubRead } = {}) {
   const response = read(`${prefix}/commits/${pull.head.sha}/check-runs?filter=latest&per_page=100`);
   if (!Array.isArray(response?.check_runs) || response.total_count !== response.check_runs.length
     || response.total_count > 100) refuse('check-page-incomplete');
+  if (value.mode === 'explicit-local-user-consent-no-ci') {
+    const status = read(`${prefix}/commits/${pull.head.sha}/status`);
+    if (response.total_count !== 0 || !Array.isArray(status?.statuses)
+      || status.statuses.length !== 0 || status.state !== 'pending'
+      || status.sha !== pull.head.sha) refuse('no-ci-evidence-drift');
+    return { repository: value.repository, pr: value.pr, url: pull.html_url,
+      branch: pull.head.ref, head: pull.head.sha, merge: pull.merge_commit_sha,
+      mergedAt: pull.merged_at, checks: [], noCI: true,
+      checkRunsObserved: 0, legacyStatusesObserved: 0,
+      protectionProven: false, authority: 'observation-only' };
+  }
   const checks = value.requiredChecks.map(name => {
     const candidates = response.check_runs.filter(c => c.name === name);
     if (candidates.length !== 1) refuse('check-ambiguous-or-missing');
