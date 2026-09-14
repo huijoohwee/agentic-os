@@ -47,6 +47,18 @@ test('Git baseline is the merge base and a missing baseline fails', t => {
   assert.throws(() => f.observe({ base: 'missing' }), /blocked-test-git/);
   assert.throws(() => f.observe({ head: 'main' }), /checkout-head/);
 });
+test('test identity ignores unrelated shared refs but binds requested refs', t => {
+  const f = fixture(t); f.git('switch', '-qc', 'lane');
+  const before = f.observe({ base: 'main' }).identity;
+  f.git('update-ref', 'refs/remotes/origin/unrelated-device', f.base);
+  const unrelated = f.observe({ base: 'main' }).identity;
+  assert.deepEqual(unrelated, before);
+  const next = f.git('commit-tree', `${f.base}^{tree}`, '-p', f.base, '-m', 'advance shared base');
+  f.git('update-ref', 'refs/heads/main', next, f.base);
+  const relevant = f.observe({ base: 'main' }).identity;
+  assert.notEqual(relevant.requestedBase, before.requestedBase);
+  assert.notEqual(relevant.refsDigest, before.refsDigest);
+});
 test('ignored npm inputs bind receipts, while symlinks and escaping paths fail', t => {
   const f = fixture(t); writeFileSync(join(f.root, 'package-lock.json'), '{}');
   assert.ok(f.observe().changed.includes('package-lock.json'));
