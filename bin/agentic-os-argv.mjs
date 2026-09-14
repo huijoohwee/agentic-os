@@ -84,6 +84,9 @@ export function validateCommandArguments(command, argv) {
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
+    case 'completion': return argv[0] === 'status'
+      ? exact(argv, { min: 1, options: ['ref'], requiredOptions: ['ref'] })
+      : 'completion requires status --ref=<lane>';
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });
     case 'observe': return argv.includes('--checks')
@@ -160,6 +163,7 @@ export function cmdHelp() {
       '  npm run land -- [--body-file=<file>]  publish the exact lane head and request provider handoff',
       '  npm run successor -- <scope>  preserve a published lane and continue in-place',
       '  npm run finish -- --ref=<lane>  observe exact integration; retain worktree for governed cleanup',
+      '  agentic-os completion status --ref=<lane>  read-only completion blockers and owner actions',
       '  npm run status            registered lane projections and provider state',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',

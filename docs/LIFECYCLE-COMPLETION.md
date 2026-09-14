@@ -1,7 +1,7 @@
 # Lifecycle completion
 
-Protected lifecycle separates observation, authority, integration, retirement and cleanup.
-Each operation joins exact prior bytes and rechecks its live trust root.
+Completion separates observation, authority, integration, retirement and cleanup.
+`agentic-os completion status --ref=<lane>` is read-only; grants no new receipts.
 Local consent: `../guides/USER-CLEANUP.md`.
 
 ## Stable package surfaces
