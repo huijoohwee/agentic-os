@@ -196,7 +196,7 @@ function targetProtection(observation, target, ref, classicProtection = null, re
       && !same(entry.bypassActors, [REDACTED_BYPASS])))
     fail('target canonical protection identity or bypass policy changed');
   if (projection.rulesets.length === 0) { if (!retrospective || classicProtection === null || repositoryValue === null) fail('target canonical protection lacks active rulesets');
-    const allowedMethods = [repositoryValue.allow_merge_commit === true ? 'merge' : null, repositoryValue.allow_squash_merge === true ? 'squash' : null].filter(Boolean);
+    const allowedMethods = [repositoryValue.allow_merge_commit === true ? 'merge' : null, repositoryValue.allow_rebase_merge === true ? 'rebase' : null, repositoryValue.allow_squash_merge === true ? 'squash' : null].filter(Boolean);
     if (allowedMethods.length === 0) fail('target repository exposes no supported merge method'); return { projection, versions: [], requiredContexts: classicProtection.requiredContexts, allowedMethods, activeRuleTypes: classicProtection.activeRuleTypes, bypassActorsObserved: true };
   }
   if (!Array.isArray(versions) || versions.length !== projection.rulesets.length

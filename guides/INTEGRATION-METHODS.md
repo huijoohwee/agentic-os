@@ -90,7 +90,8 @@ retains ownership; this companion records the merge-policy delta without rewriti
   rebase choice. User authorization is the 2026-09-14 revision-bound provider-rebase decision.
   Buyer demand, willingness to pay and realized savings remain unmeasured.
 - TAD: reuse the profile, provider observation, predecessor request and protected transition proof;
-  add a lazy method verifier. Source baseline: `d364634b11bbd2defcc405f3e7307719d10bd9f2`.
+  add a lazy method verifier. Protected baseline: `706a5c124f413a91f487118792e7d3708465d281`; its concurrent classic-protection
+  change was merged into the unpublished lane with both histories retained.
 - ADR: additive preference preserves strict profiles. Bind choices to existing immutable authority;
   reject ambiguous rebase instead of inferring it from a single parent. No automatic method fallback.
 - MVP: selection, migration, bounded provider proof, replay and historical hook migration checks
