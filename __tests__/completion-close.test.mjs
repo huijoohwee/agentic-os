@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateCompletionCloseArguments, validateCompletionCloseBundle,
-  applyCompletionClose } from '../bin/agentic-os-completion-close.mjs';
+  applyCompletionClose, completionCloseBundleDigest,
+  materializeCompletionCloseBundle } from '../bin/agentic-os-completion-close.mjs';
 
 const REF = 'agent/device/feature';
 test('completion close accepts only an exact plan or acknowledged apply invocation', () => {
@@ -30,4 +31,23 @@ test('bundle rejects invented or omitted evidence before any provider call', () 
 test('apply requires the explicit stopped-writers acknowledgement before observation', async () => {
   await assert.rejects(applyCompletionClose('/nonexistent', REF, {}, {}, 'digest'),
     { reason: 'blocked-completion-stop-acknowledgement' });
+});
+
+test('JSON completion bundles rehydrate exact plan bytes with a stable digest', () => {
+  const bundle = { cleanup: { plan: {}, integrationReceipt: {}, integrationPlanBytes: Buffer.from([1, 2, 3]),
+    retirementReceipt: {}, retirementPlanBytes: Uint8Array.from([4, 5]), integrationRequest: {},
+    retirementRequest: {}, preservationReceipt: {}, noRemainingValueReceipt: {} },
+  integrationVerifier: {}, retirementVerifier: {} };
+  const serialized = JSON.parse(JSON.stringify({ ...bundle, cleanup: { ...bundle.cleanup,
+    integrationPlanBytes: [...bundle.cleanup.integrationPlanBytes],
+    retirementPlanBytes: [...bundle.cleanup.retirementPlanBytes] } }));
+  assert.equal(completionCloseBundleDigest(bundle), completionCloseBundleDigest(serialized));
+  const materialized = materializeCompletionCloseBundle(serialized);
+  assert.ok(Buffer.isBuffer(materialized.cleanup.integrationPlanBytes));
+  assert.ok(Buffer.isBuffer(materialized.cleanup.retirementPlanBytes));
+  assert.deepEqual([...materialized.cleanup.integrationPlanBytes], [1, 2, 3]);
+  assert.deepEqual([...materialized.cleanup.retirementPlanBytes], [4, 5]);
+  assert.throws(() => materializeCompletionCloseBundle({ ...serialized, cleanup: {
+    ...serialized.cleanup, integrationPlanBytes: [256] } }),
+  { reason: 'blocked-completion-input' });
 });
