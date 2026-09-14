@@ -349,6 +349,11 @@
       "repository": "github.com/huijoohwee/agentic-graph",
       "path": "docs/documents/agentic-graph-agentic-travel-agencies-prd-tad-adr-mvp-gtm.md",
       "sha256": "3a8542ec4869ab0dd66ce25cc10cca49003c701591a06912192e00de4b5f1f92"
+    },
+    {
+      "repository": "github.com/huijoohwee/gamexr",
+      "path": "docs/drone/history/prd-tad-adr-mvp-gtm-gamexr-esp32-drone-control-v0.1.0.md",
+      "sha256": "fc68aa6ce590869e20aaa6980347d6e1d10ef992dfed9146ba58babf0a549b54"
     }
   ]
 }
