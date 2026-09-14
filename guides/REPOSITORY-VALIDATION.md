@@ -126,6 +126,10 @@ required status names and source/runtime/release assertions. `workflow_dispatch`
 and `schedule` use fresh broad execution; PR/merge-group/push use verified event
 baselines. PR checkouts verify either both merge parents or the exact PR head and
 provider merge revision; receipts distinguish those surfaces without claiming merge
+parity. PR-head jobs fetch the exact provider `GITHUB_SHA` object if it is absent;
+the verifier requires either the provider-selected head itself or a merge whose
+ordered parents equal the event base and head. Optional or stale `merge_commit_sha`
+webhook metadata is not accepted as parent proof. This preserves head-only
 coverage for a head checkout. All modes reject unsupported or missing context
 instead of empty green.
 
