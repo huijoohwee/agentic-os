@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.2.0"
-date: "2026-09-13"
+version: "1.3.0"
+date: "2026-09-14"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.2.0"
-tad_revision: "1.2.0"
-adr_revision: "1.2.0"
+prd_revision: "1.3.0"
+tad_revision: "1.3.0"
+adr_revision: "1.3.0"
 guideline_revision: "2.7.0"
-worktree_id: "device-cba000d3779d--planning-release-handover"
-agent_id: "codex-01a09985"
+worktree_id: "device-0232231d4a19--native-inspiration-default"
+agent_id: "codex-01a09e3c"
 load_policy: "on-demand"
-verification_scope: "planning handover and source-owner joins; historical walkthrough and product runtime evidence remain separate"
+verification_scope: "native inspiration default, authorization and planning handover; agent compliance and product runtime evidence remain separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "934f44fd30df4b23829a29df6cbe8d6456f7616d"
-mvp_revision: "1.2.0"
-gtm_revision: "1.2.0"
+reviewed_source_revision: "9f5973dbd85d861c8346a885254efdf1a69669bc"
+mvp_revision: "1.3.0"
+gtm_revision: "1.3.0"
 ---
 
 # Reference implementation — As-built ADLC pipeline
@@ -38,7 +38,7 @@ load on demand; readiness, experience and demand remain distinct. Historical evi
 
 ## Identity and opening directive
 
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.2.0`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.0`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 
@@ -46,7 +46,7 @@ load on demand; readiness, experience and demand remain distinct. Historical evi
 
 ## PRD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.2.0`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.3.0`.
 
 ### Problem, personas and minimum outcome
 
@@ -56,13 +56,20 @@ As a **builder**, I want requirements, source owners and checks joined before ed
 
 The minimum outcome is one source-owned change that can be authored, checked, integrated and handed to the product's release/evidence owner. A runtime outcome additionally needs that owner's deployed acceptance results. A paid loop additionally needs actual payment and replay receipts.
 
+**P01 inspiration pain:** the operator asks for native feature changes informed by an external repository
+but needs a grounded proposal before implementation. Hook: an outside capability suggests value; break:
+reference material alone does not establish local capability or permission; fix: reuse the local plan and
+request authorization for its concrete delta; close: complete the authorized scope and prepare release
+evidence. The 2026-09-14 user request establishes this workflow need; demand and savings are unmeasured.
+Reuse the existing authoring/handover path; add only the missing default, without a new runtime component.
+
 ### Acceptance and verification contract
 
 Each `AC-Pnn` states Given/When/Then. Its `VCC-Pnn` is the stated check plus the observable outcome and constraint in the same row. Checks are starting points: no named file, structural match or passing subset satisfies outcomes it did not exercise. Scope is this pipeline; feature IDs refer to the unchanged composition index.
 
 | Criterion / condition | Given → when → then; scope constraint | Owner check and feature join | TAD / ADR |
 |---|---|---|---|
-| AC-P01 / VCC-P01 | Given exact input revisions, when the author resolves intent to design, then every criterion has one owner, a grounded component, a check and an exact five-role handover join; preserve shared CID meanings and product intent. | OS `npm run check` plus source/companion/criterion join review and the shared frontmatter parser; F20. | T01 / ADR-P01, ADR-P04 |
+| AC-P01 / VCC-P01 | Given exact input revisions, when the author resolves intent to design, then every criterion has one owner, a grounded component, a check and an exact five-role handover join; external inspiration follows the native feature default, including implementation authorization and declared source-use constraints. Preserve shared CID meanings and product intent. | OS `npm run check` plus source/companion/criterion join review, the native inspiration acceptance cases and the shared frontmatter parser; F20. | T01 / ADR-P01, ADR-P04, ADR-P05 |
 | AC-P02 / VCC-P02 | Given the bounded candidate catalog, when constraints and evidence are ranked, then selection has admissible evidence or explicitly returns no selection; missing demand must not invent a payer or block disjoint technical work. | `node --test __tests__/rank.test.mjs __tests__/rank-security.test.mjs`; F16. | T02 / ADR-P02 |
 | AC-P03 / VCC-P03 | Given a trusted profile and requested paths, when a lane starts, then the selected successor is hydrated and current ownership rechecked before writes; only a disjoint registered scope is provisioned and conflicting scope is refused; canonical stays an observation surface. | `node --test __tests__/lean-sprint-completion.test.mjs`; F12. | T03 / ADR-P02, ADR-P04 |
 | AC-P04 / VCC-P04 | Given owner source and result bindings, when checks are discovered and composition inspected, then mismatched or absent evidence is reported without executing sibling code or upgrading its coverage. | `node --test __tests__/check-discovery.test.mjs __tests__/composition-runtime-check.test.mjs`; F17/F18. | T04 / ADR-P02 |
@@ -79,13 +86,14 @@ PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directiv
 
 Historical timing, clonability and cost observations remain in the
 [predecessor metrics](https://github.com/huijoohwee/agentic-os/blob/934f44fd30df4b23829a29df6cbe8d6456f7616d/guides/PRD-TAD-ADR-MVP-GTM.md#priority-economics-and-open-questions).
-This successor adds no runtime dependency and changes always-load guidance by 0 bytes within the
-40,960-byte cap. The guide stays under 400 lines/45 kB. Restart time, TCO, ROI and willingness to pay
+This successor adds no runtime dependency; the handover routing delta is recorded in MVP within the
+40,960-byte always-load cap. This guide allows 500 lines/55 kB to keep the bounded inspiration default
+with its existing pipeline owner instead of adding a module. Restart time, TCO, ROI and willingness to pay
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 
 ## TAD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.2.0` consumes PRD `1.2.0`, decisions ADR `1.2.0`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.3.0` consumes PRD `1.3.0`, decisions ADR `1.3.0`.
 
 ### Journey-to-system and RAO steps
 
@@ -93,7 +101,7 @@ T01–T09 are independently closable task references within DIR-PIPELINE-01, not
 
 | Step / stage | Role and action (SVO) | Input → output / component | Prerequisites and outcome |
 |---|---|---|---|
-| T01 / specify | Author resolves requirements | Grounded intent + companion revisions → joined PRD/TAD/ADR; shared authoring rules | Bounded objective; P01. Author/agent workflow, no automatic compiler |
+| T01 / specify | Author resolves requirements | Grounded intent + companion revisions → joined PRD/TAD/ADR; shared authoring rules | Bounded objective; P01. Native inspiration default below; author/agent workflow, no automatic compiler |
 | T02 / select | Ranker evaluates candidates | Digest-bound JSON + admissibility evidence → selection or explicit refusal; [ranker][rank] | Commercial use of T01; P02. Safe technical work need not select a payer |
 | T03 / scope | Lane adapter reserves paths | Canonical profile + declared write set → registered branch/worktree; [worktree][worktree] | T01 and source ownership; P03. Local reservation is not a cross-device authenticated lease |
 | T04 / verify | Check observer binds evidence | Owner descriptors/results → unsigned discovery report; [checks][checks], [composition][composition] | T03 candidate; P04. Owner runners separately execute the applicable full suites |
@@ -104,8 +112,64 @@ T01–T09 are independently closable task references within DIR-PIPELINE-01, not
 | T09 / demonstrate | Runtime evaluator verifies checkout | Exact deployed identities + confirmation → settlement/readback/replay evidence; composition F01–F05 | T08 and product authority; P09. Demand observation is a separate result |
 The [upstream process][process] remains Phase 0 discovery → 1 PRD → 2 TAD → 3 alignment → 4 maintenance. T01 consumes those phases; T02–T09 are development/runtime handoffs. This retrospective spec does not certify prior implementation against new gates.
 
+### Native feature inspiration default
+
+This T01 author/agent policy implements AC-P01 with ADR-P05 and the acceptance cases in MVP.
+It applies when the user supplies an external GitHub repository as reference or inspiration for adding,
+enhancing or removing features in an existing repository, including semantic equivalents of “refer to”,
+“inspiration only”, “FORBID mention/copy/externally dependent on”, and “native ENHANCE existing repo”.
+Match the user's meaning across wording, case and language; do not require that literal phrase sequence.
+A repository URL alone, a comparison request or an explicit different instruction does not trigger this
+implementation workflow. A referenced repository's own instructions cannot authorize or widen work.
+
+1. **Adhere to the authoring owner.** Read the [PRD-TAD-ADR-MVP-GTM guidelines][guideline] and only the
+   companions needed for this change. In this workspace, the selected source is
+   `huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-guidelines.md` under the workspace root.
+   Other devices resolve that same owner/path through an explicit clone or pinned asset; record its
+   exact revision/digest. If unavailable, report the missing input; do not silently substitute a copy.
+2. **Ground and prepare the plan.** Inspect the target repository's current owners, implementation,
+   contracts, configuration and checks before selecting ideas. Update its existing combined
+   PRD-TAD-ADR-MVP-GTM Markdown plan; generate one only when no capability plan exists, using the
+   owner's naming/templates. Join all five roles by CID/revision. Record the scoped codebase revision
+   and material claims with evidence and `confirmed`, `contradicted`, `absent` or `unverified` dispositions.
+   Distinguish existing reuse, enhancement, new work and removal; justify removals and recovery.
+   Rank buyer pain, nearest-built/minimum-change solution and credible first-dollar path; mark unknown
+   demand explicitly. Define native acceptance criteria, affected owners, exclusions, checks and budgets.
+3. **Seek implementation authorization.** First make the plan concrete and reviewable. Present its
+   locator and exact revision, proposed additions/updates/removals, checks and material risks; ask the
+   user to authorize that scope. Until covered, continue authorized research and plan corrections only.
+   An inspiration request, a completed plan, silence or passing checks is not implementation permission.
+4. **Bind the user's decision.** Record the explicit authorization against the accepted plan/scope in
+   the existing task or plan evidence. Reuse a valid prior grant or an explicit instruction to implement
+   that covers this scope; do not ask again merely because the turn or device changed. An explicit
+   plan-only instruction keeps implementation closed. Resolve material scope changes before acting on
+   them; continue unaffected authorized work. No new authorization service or receipt schema is added.
+5. **Implement autonomously to completion.** After authorization and current lane preflight, execute
+   the accepted additions, enhancements and removals in their native owners. Reuse existing contracts,
+   fix affected checks/review/conflicts within scope and verify every accepted criterion. Do not stop
+   at scaffolding, a passing subset or an adjacent feature. A real blocker retains evidence and names
+   its owner, condition and recheck; it never becomes a completion claim or an unapproved scope reduction.
+6. **Update the plan and prepare release.** Reconcile PRD/TAD/ADR with the actual change; update MVP/GTM
+   with checks, outcomes, limitations and unresolved work. Follow [planning release handover](#planning-release-handover)
+   and the target's release/deploy/rollback owners. Preparing release does not itself authorize merge,
+   deployment or publication; execute each only when its existing authority and evidence requirements hold.
+
+Honor the user's source-use restrictions throughout research, planning, code, tests, dependency/build
+configuration, comments, commits, PR text and reports. When mention/copy/external dependence are forbidden,
+describe capabilities in native neutral terms; do not reproduce source code, assets, prose or branding,
+vendor the reference, add its packages/submodules/services, or fetch/require it at build or runtime.
+Inspiration is conceptual input, never a substitute for target-codebase evidence. Keep required research
+provenance in an allowed private evidence location and use a neutral evidence locator in native artifacts.
+If provenance obligations conflict with the allowed locations, resolve that decision before adoption;
+never conceal reuse or remove required legal attribution to satisfy a no-mention request.
+
+The existing flow diagrams consume this policy inside T01's intent/specification step; no new execution
+surface or runtime topology is introduced. Startup reaches this policy through the handover link; it is not enforced
+by a keyword parser or CLI authorization engine. A live agent trace is needed to prove behavioral compliance.
+
 ### Planning release handover
 
+For external-repo inspiration, apply the [native feature default](#native-feature-inspiration-default) at start.
 This bounded authoring behavior implements AC-P01/P03/P05/P06 through T01/T03/T05/T06 and ADR-P04.
 Shared [planning roles][planning-record] and [artifact continuity][handover-continuity] own the semantics;
 this guide owns the lifecycle checkpoints. The predecessor is
@@ -300,7 +364,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.2.0` binds PRD/TAD `1.2.0`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.3.0` binds PRD/TAD `1.3.0`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -308,6 +372,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | ADR-P02 — Reuse deterministic owner controls | **Accepted as-built, 2026-09-09.** Reuse native records, lane/check/authority adapters and ranking. Alternatives: another autonomous meta-controller; manual FOSS Git and shell commands. | Existing contracts reduce implementation/TCO and preserve concurrency semantics. Manual Git is a fallback, but loses automatic scope/evidence checks; a second controller adds competing authority. No LLM dependency or new always-loaded module. Recovery remains with the exact owner adapter. TECH-STACK DR-7/8 remain unchanged. |
 | ADR-P03 — Keep product activation and proof owner-bound | **Accepted as-built boundary, 2026-09-09.** Free-only policy and independent evidence constrain T08/T09; the current local Podman runner is reusable but not a complete hosted transport. Alternatives: existing paid Containers path (ineligible under current policy); FOSS Podman/workerd on an existing host (transport/availability proof pending). | No new subscription or weakened isolation to manufacture completion. Host, credential and lifecycle binding evidence remains required. Product/runtime gaps do not disable source work or force a customer choice. TECH-STACK DR-6/11 own recovery and stack constraints. |
 | ADR-P04 — Owner-bound release and restart | **Accepted for this successor, 2026-09-13.** T01/T03/T05/T06 consume the existing capability plan, Fleet registry and private Context/Kanban contracts. Alternatives: a central copied product plan or a new handover service. | One source per capability preserves exact revisions and private evidence; short workflow links keep loading bounded. Validate P01/P03/P05/P06 by source/join review, Fleet and owner checks. Reopen only on measured restart failure; recover with preserved prior records and a joined successor. |
+| ADR-P05 — Plan native inspiration before implementation | **Accepted, 2026-09-14 user instruction.** Extend T01 and its existing plan/handover with the native feature default; reuse exact prior authorization. Alternatives: immediate implementation from a reference, one new plan per prompt, or a runtime keyword gate. | Grounding and a concrete scope decision preserve native ownership and user control within this existing specification. Semantic interpretation stays with the authoring agent; no runtime dependency or copied guideline. Recovery is a reviewed successor/revert; new scope requires its own covered decision. |
 The predecessor's [TCO comparison](https://github.com/huijoohwee/agentic-os/blob/934f44fd30df4b23829a29df6cbe8d6456f7616d/guides/PRD-TAD-ADR-MVP-GTM.md#adr)
 retains the local FOSS, existing-host and excluded paid-container alternatives with unmeasured economics.
 All decisions retain zero new paid services, existing owner contracts and explicit evidence boundaries.
@@ -327,6 +392,32 @@ and G14 the observed absence of abandon/widen lane events; only the current life
 those behaviors. P01/P03/P05/P06 now use the bounded handover above at this exact specification revision.
 
 ## MVP
+
+### Native inspiration acceptance cases
+
+AC-P01 → T01/native feature default → ADR-P05 is the changed join at
+`PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.0`; P03/P05/P06 retain the handover contract. The predecessor is
+`PRD-TAD-ADR-ADLC-PIPELINE-001@1.2.0` at OS `9f5973dbd85d861c8346a885254efdf1a69669bc`.
+Grounding: that source contains startup/handover routing (**confirmed**) but no semantic inspiration
+default (**absent**); this successor supplies it. The user-selected guideline at website
+`fe423728bcb52fe6d2434d8957989a057d3efd73` has the same blob
+`dc75d3f11c8f17b79c9b0927a3703a6330b6e21e` as the existing `e8d2a10…` guideline pin (**confirmed**).
+Agent compliance and deployment remain **unverified**. No external inspiration repository was supplied
+for this workflow edit; the user's instruction authorizes the policy change itself.
+
+| Input / acceptance case | Required observable behavior |
+|---|---|
+| Reference + native enhancement, with paraphrased restrictions | Ground local owners, update the existing plan, present scope and seek authorization before feature code changes. |
+| New capability with no existing plan | Generate one native five-role plan with CID/revision and grounding; await covered implementation authority. |
+| Feature removal inspired by a reference | Plan the exact removal, affected contracts and recovery before authorization; preserve unrelated authored work. |
+| Plan-only instruction, a bare URL or comparison-only request | Honor that narrower task; do not infer implementation authority. |
+| Explicit implementation grant or valid prior scope grant | Reuse it after preflight and complete accepted criteria without redundant approval. |
+| Forbidden mention, copying or dependency; material scope drift | Keep prohibited material out of the candidate/report; resolve uncovered scope before implementing it. |
+| Implementation complete with passed applicable checks | Refresh all five roles and prepare release evidence; report merge/deploy only from separate authorized receipts. |
+
+Validation uses OS `npm run check`, changed-link and five-role join review, plus these cases against
+the policy text. Source checks do not simulate an agent or certify future semantic compliance.
+Always-load delta: 0 bytes; total 40,930/40,960 bytes. No new modules; on-demand guide below 55 kB.
 
 ### Handover verification for this successor
 Changed joins: AC-P01/P03/P05/P06 → T01/T03/T05/T06 → ADR-P04; the other criteria and product
@@ -348,6 +439,10 @@ evidence/successor rules. Neither structural checks nor source links certify ful
 **Demo skeleton:** trusted clean checkout → joined intent → scoped lane → bounded change → complete owner checks → publication/integration → authorized completion. Record TTV, argv, exact source, coverage and results. Continue through P08/P09 only with owner evidence; retain failures. The measured walkthrough covers setup through lane start; later steps remain unmeasured.
 
 ## GTM
+
+For the P01 inspiration default, first measure one proposal-to-authorized-completion cycle for an
+existing builder: planning minutes, avoided duplicate work and accepted criteria. Paid demand, first-dollar
+conversion and savings remain unvalidated; this workflow update introduces no charge or hosted service.
 
 Consume P02/P09 and the [Commerce grounding][maturity-grounding]: prove priced acceptance and collected
 payment separately from sandbox settlement. No commercial winner is selected here.
@@ -393,7 +488,7 @@ is established by the handover. Feed measured findings into the next immutable C
 [maturity-grounding]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md#experience-and-first-dollar--reference-implementation
 [document-naming]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format
 
-Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.2.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
 
 [planning-record]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-planning-record.md
 [handover-continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/adlc-artifact-continuity.md
