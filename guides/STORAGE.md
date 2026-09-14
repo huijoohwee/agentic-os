@@ -3,25 +3,25 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.0.1"
-tad_revision: "1.0.1"
-adr_revision: "1.0.1"
+prd_revision: "1.1.0"
+tad_revision: "1.1.0"
+adr_revision: "1.1.0"
 load_policy: on-demand
-version: "1.0.1"
-date: "2026-09-12"
+version: "1.1.0"
+date: "2026-09-14"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-cba000d3779d--planning-v27"
-agent_id: "codex-01a0940a"
+worktree_id: "device-cba000d3779d--storage-report"
+agent_id: "codex-storage-report"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.0.1"
-gtm_revision: "1.0.1"
+mvp_revision: "1.1.0"
+gtm_revision: "1.1.0"
 ---
 
 # Storage compaction
@@ -30,6 +30,74 @@ Large collaboration-ledger revisions left as loose Git objects and quarantined d
 can consume GiB in a small product repository. Reduce allocated storage while preserving source, recovery
 objects, refs, reflogs, and original quarantine receipts. Existing lifecycle cleanup still owns retirement
 and quarantine; storage compaction does not infer integration, retirement or deletion authority.
+
+## Storage diagnosis — STORAGE-001@1.1.0
+
+PRD: distinguish retained archives from live Git objects before recommending expensive maintenance.
+The motivating Graph observation on 2026-09-14 measured 34.5 GiB for all of `.git`, of which
+34.19 GiB was `agentic-user-authorized-archive`; selected cleanup shared state was 87.1 MiB logical.
+The whole-directory size did not establish a cleanup budget failure. These are historical observations,
+not savings estimates or current inventories. The operator requested this enhancement; demand and
+monetary value remain unmeasured.
+
+TAD/ADR: extend the existing storage CLI with a metadata-only report and one on-demand module.
+Shallow discovery is the default. Recursive accounting is explicit, globally bounded and never opens
+payload bytes. Reuse the current compaction/relocation owner for effects; reports introduce no alternate
+cleanup authorization, retention deletion, timers, caches or dependencies. Existing storage behavior below
+is retained. This successor's MVP is diagnosis; verified legacy archive import and deduplication are deferred.
+
+```sh
+node bin/agentic-os-storage.mjs report --repository=/absolute/repository
+node bin/agentic-os-storage.mjs report --repository=/absolute/repository \
+  --deep --category=retained-archives --max-entries=20000 --max-ms=2000
+```
+
+The report covers direct children of the resolved Git common directory, including when invoked from a
+linked worktree. Categories are `git-objects`, `git-metadata`, `worktree-registrations`, `quarantine`,
+`recovery`, `retained-archives`, `agent-state`, and `other`. Names classify storage only; they do not prove
+provenance, obsolescence or reclaimability. External recovery stores, checkout dependencies and symlink
+targets are outside this report. Use existing recovery `inventory` for catalog provenance.
+
+Without `--deep`, directory rows are `unmeasured`: observed directory allocation is not a recursive size.
+With `--category`, that category is scanned first and other directories remain unmeasured. Omit the
+category to scan all discovered roots. Incomplete discovery, entry/time/depth limits, mount boundaries,
+special files, observed changes or read errors produce explicit partial coverage. Partial byte counts
+are observations, not full sizes or consistent-snapshot lower bounds. Even a complete scan is not an
+atomic snapshot or content verification. Reports have `grantsAuthority: false` and `reclaimableBytes: null`.
+
+Logical bytes count regular-file and symlink sizes per path; allocation uses filesystem block counts,
+deduplicating observed device/inode identities across rows. Shared inodes are charged to the first row
+visited. APFS clone sharing/compression and underlying filesystem accounting can make allocation differ
+from exclusive physical usage or space freed by deletion. The common directory's own inode is excluded.
+
+Defaults: 2,000 ms, 20,000 visited nodes, at most 256 roots and depth 64. Explicit maxima are 60,000 ms
+and 200,000 nodes. The deadline includes bounded Git location discovery and is checked between filesystem
+calls; a blocked filesystem call cannot be preempted. `cost` records elapsed time, stat/directory calls,
+entries and zero content bytes read. No persistent cache is written. Partial results still return JSON
+and exit zero; invalid arguments and failed repository resolution exit nonzero.
+
+Acceptance/evidence plan for this successor (PRD → TAD/ADR → MVP):
+
+- **AC-S01:** shallow reports separate archives/objects and leave payloads and repository state untouched.
+- **AC-S02:** recursive reports distinguish sparse logical size/allocation, deduplicate hardlinks, exclude
+  symlink targets, and mark partial or selected-category coverage explicitly.
+- **AC-S03:** discovery/depth/entry bounds, special files, linked worktree resolution and CLI argument
+  refusals are exercised by `node --test __tests__/storage-report.test.mjs`; run `npm run check` for
+  affected storage/recovery, packaging and repository contracts. CI binds the final committed candidate.
+
+GTM: pilot this command on the existing Graph archive; report actual elapsed time and coverage.
+Resource savings and restore correctness are not established by diagnostics. No automatic archive
+import, expiry or Git repack follows from the report. Source owners: `bin/agentic-os-storage.mjs`,
+`bin/agentic-os-storage-report.mjs`, `__tests__/storage-report.test.mjs`; original retention/protection
+contracts remain owned by the existing storage and cleanup modules. This adds one lazy CLI module,
+zero runtime dependencies and zero always-loaded documentation bytes.
+
+Pilot evidence (2026-09-14, macOS arm64/Node 24, authoring surface): Graph shallow discovery took
+38 ms for 50 nodes; the selected Git-object scan took 79 ms and completed that row (1,050 nodes,
+92,872,704 allocated bytes). The archive scan reached its 20,000-node cap in 757 ms and correctly
+returned partial coverage. All three read zero payload bytes. These single-run observations are not
+cross-device benchmarks or full archive measurements. Local repository check receipts live in the
+lane's Git administration directory; PR checks provide revision-bound release evidence.
 
 <a id="operator-workflow"></a>
 
