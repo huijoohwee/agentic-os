@@ -10,8 +10,10 @@ prompt, automatic cleanup trigger, or deletion capability; retain every branch a
 The committed `.github/adlc-authority-policy.json` binds main, squash integration, required `budgets`
 and `test` checks, a one-hour validity window, and the create-only `adlc/authority/` evidence namespace.
 The issuer's policy supports an owner namespace; this workflow additionally rejects every target except
-`github.com/huijoohwee/agentic-os`. The transition policy also selects that exact repository. Forks must
-explicitly reenroll these identities; copying this policy does not authorize another repository.
+`github.com/huijoohwee/agentic-os`. The separate `adlc-authority-graph.yml` enrollment selects only
+`github.com/huijoohwee/agentic-graph` and binds its `Integration Gate`. Both targets share the immutable
+transition evidence namespace, but neither initial workflow can issue authority for the other target.
+Forks must explicitly reenroll these identities; copying either policy does not authorize another repository.
 
 ## Owner-operated sequence
 
@@ -41,6 +43,8 @@ plan, requests, operation receipts, plan bytes, preservation receipt, and no-rem
 receipt; each verifier contains `repository`, `targetRepository`, `operationInput`, `workflowRun`,
 and `policy` as required by `createGitHubTransitionAuthorityVerifier`. Keep the bundle and plan
 outside source worktrees. Supply `GITHUB_TOKEN` only in the process environment, never in JSON.
+Plan bytes are JSON arrays of integers from 0 through 255; the CLI rehydrates them into bounded byte
+arrays before verification and computes the same bundle digest before and after rehydration.
 After stopping writers, run `npm run completion:apply -- --ref=<lane> --bundle=<absolute-json>
 --plan=<absolute-json> --authorize=<exact-eligibility-digest> --stopped`. Apply rechecks the
 canonical checkout, registered lane, evidence bundle and live provider winners; the cleanup

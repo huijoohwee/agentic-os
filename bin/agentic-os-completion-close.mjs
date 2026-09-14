@@ -30,6 +30,35 @@ function jsonFile(path, ceiling, label) {
     .decode(readBoundedStableFile(path, ceiling, label))); }
   catch (error) { fail('blocked-completion-input', `${label}: ${error.message}`); }
 }
+function serializableBundle(value) {
+  try {
+    return JSON.parse(JSON.stringify(value, (_key, entry) => {
+      if (Buffer.isBuffer(entry) || entry instanceof Uint8Array) return [...entry];
+      if (entry?.type === 'Buffer' && Array.isArray(entry.data)) return entry.data;
+      return entry;
+    }));
+  } catch (error) { fail('blocked-completion-input', `completion bundle: ${error.message}`); }
+}
+function planBytes(value, label) {
+  const entries = Buffer.isBuffer(value) || value instanceof Uint8Array ? [...value] : value;
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > 500_000
+    || entries.some((entry) => !Number.isInteger(entry) || entry < 0 || entry > 255))
+    fail('blocked-completion-input', `${label} must be a bounded byte array`);
+  return Buffer.from(entries);
+}
+export function materializeCompletionCloseBundle(value) {
+  const result = serializableBundle(value);
+  exact(result, BUNDLE_KEYS, 'completion bundle');
+  exact(result.cleanup, CLEANUP_KEYS, 'cleanup evidence');
+  result.cleanup.integrationPlanBytes = planBytes(result.cleanup.integrationPlanBytes,
+    'integrationPlanBytes');
+  result.cleanup.retirementPlanBytes = planBytes(result.cleanup.retirementPlanBytes,
+    'retirementPlanBytes');
+  return result;
+}
+export function completionCloseBundleDigest(value) {
+  return governanceDigest(serializableBundle(value));
+}
 export function validateCompletionCloseArguments(argv) {
   const [mode, ...args] = argv;
   const names = mode === 'plan' ? ['ref', 'bundle']
@@ -86,29 +115,33 @@ function options(root, bundle, token) {
 }
 export async function planCompletionClose(root, ref, bundle, { token = process.env.GITHUB_TOKEN } = {}) {
   const { canonical, status } = context(root, ref);
-  validateCompletionCloseBundle(bundle, status);
-  const eligibility = await assessWorktreeCleanupEligibility(bundle.cleanup,
-    options(canonical, bundle, token));
+  const bundleDigest = completionCloseBundleDigest(bundle);
+  const runtime = materializeCompletionCloseBundle(bundle);
+  validateCompletionCloseBundle(runtime, status);
+  const eligibility = await assessWorktreeCleanupEligibility(runtime.cleanup,
+    options(canonical, runtime, token));
   return { schema: PLAN_SCHEMA, ref, repository: status.repository, targetPath: status.lane.path,
     canonicalRevision: status.canonicalRevision, laneHead: status.lane.head,
-    bundleDigest: governanceDigest(bundle), eligibility,
+    bundleDigest, eligibility,
     authorizationDigest: eligibility.eligibilityDigest, effectsAuthorized: false };
 }
 export async function applyCompletionClose(root, ref, bundle, planned, authorization,
   { token = process.env.GITHUB_TOKEN, stopped = false } = {}) {
   if (!stopped) fail('blocked-completion-stop-acknowledgement', 'stop writers before applying cleanup');
   const { canonical, status } = context(root, ref);
-  validateCompletionCloseBundle(bundle, status);
+  const bundleDigest = completionCloseBundleDigest(bundle);
+  const runtime = materializeCompletionCloseBundle(bundle);
+  validateCompletionCloseBundle(runtime, status);
   exact(planned, ['schema', 'ref', 'repository', 'targetPath', 'canonicalRevision', 'laneHead',
     'bundleDigest', 'eligibility', 'authorizationDigest', 'effectsAuthorized'], 'completion plan');
   if (planned.schema !== PLAN_SCHEMA || planned.ref !== ref || planned.repository !== status.repository
     || planned.targetPath !== status.lane.path || planned.canonicalRevision !== status.canonicalRevision
-    || planned.laneHead !== status.lane.head || planned.bundleDigest !== governanceDigest(bundle)
+    || planned.laneHead !== status.lane.head || planned.bundleDigest !== bundleDigest
     || planned.authorizationDigest !== planned.eligibility?.eligibilityDigest
     || authorization !== planned.authorizationDigest || planned.effectsAuthorized !== false)
     fail('blocked-completion-plan-drift', 'exact plan, bundle and authorization must agree');
-  return executeWorktreeCleanup({ ...bundle.cleanup, eligibility: planned.eligibility,
-    authorizationDigest: authorization }, options(canonical, bundle, token));
+  return executeWorktreeCleanup({ ...runtime.cleanup, eligibility: planned.eligibility,
+    authorizationDigest: authorization }, options(canonical, runtime, token));
 }
 async function main() {
   const args = validateCompletionCloseArguments(process.argv.slice(2));
