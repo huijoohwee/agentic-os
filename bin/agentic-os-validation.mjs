@@ -40,9 +40,16 @@ export function resolveValidationCi(root, environment = process.env) {
   // Bind both revisions to the provider event and retain that narrower surface in the receipt.
   if (environment.GITHUB_EVENT_NAME === 'pull_request' && pr?.head?.sha === head
     && /^[a-f0-9]{40}$/u.test(pr?.base?.sha) && !/^0+$/u.test(pr.base.sha)
-    && /^[a-f0-9]{40}$/u.test(pr?.merge_commit_sha) && !/^0+$/u.test(pr.merge_commit_sha)
-    && environment.GITHUB_SHA === pr.merge_commit_sha)
+    && /^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA) && !/^0+$/u.test(environment.GITHUB_SHA)) {
+    // merge_commit_sha may be absent/stale on the opened webhook. Bind the provider
+    // revision directly to its actual parents instead of accepting metadata as proof.
+    if (environment.GITHUB_SHA !== head) {
+      const parents = readGit(root, ['show', '-s', '--format=%P', `${environment.GITHUB_SHA}^{commit}`]).trim().split(' ');
+      if (parents.length !== 2 || parents[0] !== pr.base.sha || parents[1] !== head)
+        throw new Error('blocked-validation-ci-checkout-parents');
+    }
     return { base: pr.base.sha, head, committed: true, fresh: true, all: false, checkout: 'pull-request-head' };
+  }
   if (environment.GITHUB_SHA !== head) throw new Error('blocked-validation-ci-checkout');
   if (['workflow_dispatch', 'schedule'].includes(environment.GITHUB_EVENT_NAME))
     return { base: head, head, committed: true, fresh: true, all: true, checkout: 'event-revision' };

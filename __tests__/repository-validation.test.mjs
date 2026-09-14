@@ -129,10 +129,20 @@ test('CI baseline cannot be overridden and a missing or mismatched event cannot 
   assert.throws(() => resolveValidationCi(root, { ...env, GITHUB_SHA: '0'.repeat(40) }), /ci-checkout/);
   assert.equal(resolveValidationCi(root, { ...env, GITHUB_EVENT_NAME: 'workflow_dispatch' }).all, true);
   const base=git('rev-parse','HEAD');writeFileSync(join(root,'a/source.txt'),'candidate');git('add','.');git('commit','-m','candidate');
-  const head=git('rev-parse','HEAD'), merge='a'.repeat(40);
+  const head=git('rev-parse','HEAD'), merge=git('commit-tree','HEAD^{tree}','-p',base,'-p',head,'-m','provider merge');
   writeFileSync(eventPath,JSON.stringify({pull_request:{base:{sha:base},head:{sha:head},merge_commit_sha:merge}}));
   const headEnv={...env,GITHUB_EVENT_NAME:'pull_request',GITHUB_SHA:merge};
   assert.equal(resolveValidationCi(root,headEnv).checkout,'pull-request-head');
   assert.equal(resolveValidationCi(root,headEnv).base,base);
-  assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:'b'.repeat(40)}),/ci-checkout/);
+  for (const merge_commit_sha of [null, 'a'.repeat(40)]) {
+    writeFileSync(eventPath,JSON.stringify({pull_request:{base:{sha:base},head:{sha:head},merge_commit_sha}}));
+    assert.equal(resolveValidationCi(root,headEnv).checkout,'pull-request-head');
+  }
+  assert.equal(resolveValidationCi(root,{...headEnv,GITHUB_SHA:head}).checkout,'pull-request-head');
+  const wrong=git('commit-tree','HEAD^{tree}','-p',head,'-p',base,'-m','reversed parents');
+  assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:wrong}),/ci-checkout-parents/);
+  assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:base}),/ci-checkout-parents/);
+  const blob=git('rev-parse','HEAD:a/source.txt');
+  assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:blob}),/blocked-test-git/);
+  assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:'b'.repeat(40)}),/blocked-test-git/);
 });
