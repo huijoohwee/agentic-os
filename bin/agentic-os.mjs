@@ -578,6 +578,8 @@ async function main() {
     case 'status': return cmdStatus(root, argv, profile, policy);
     case 'reap': return cmdReap(root, argv, policy, profile);
     case 'finish': return cmdFinish(root, argv, policy, profile);
+    case 'completion': return (await import('./agentic-os-completion-status.mjs'))
+      .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out);
     case 'canonical-sync': return runCanonicalSync(root, argv, policy);
     case 'reconcile': requireCanonical(root, policy); return runReconcile(root, argv, policy);
     case 'queue': return cmdQueue(root, argv, profile);
