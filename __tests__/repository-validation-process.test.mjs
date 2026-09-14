@@ -45,7 +45,10 @@ console.log('checked '+id);\n`);
 test('real owner checks run once, reuse exact local inputs, and keep unrelated checks skipped', async t => {
   const f=fixture(t);writeFileSync(join(f.root,'source/a.txt'),'changed');
   assert.equal(await f.run(),0);assert.deepEqual(f.calls(),['contract','prepare','a']);
+  const costs=()=>JSON.parse(readFileSync(join(f.root,'.git/agentic-os-tests/validation-economy.json'),'utf8'));
+  const measured=costs();assert.equal(measured.checks.a.samples,1);
   assert.equal(await f.run(),0);assert.equal(f.calls().length,3);
+  assert.deepEqual(costs(),measured);assert.equal(f.receipt().resources.estimatedMs,0);
   assert.ok(f.receipt().results.every(result=>result.reused));
   writeFileSync(join(f.root,'source/b.txt'),'unrelated change');
   assert.equal(await f.run(),0);assert.deepEqual(f.calls(),['contract','prepare','a','b']);

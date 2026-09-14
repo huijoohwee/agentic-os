@@ -1,18 +1,18 @@
 ---
 title: "Repository Validation PRD-TAD-ADR-MVP-GTM"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.0"
+version: "1.1.0"
 owner: "agentic-os"
 date: "2026-09-14"
 lang: "en-US"
 frontmatter_contract: "required"
 load_policy: "on-demand"
 continuity_id: "REPOSITORY-VALIDATION-001"
-prd_revision: "1.0.0"
-tad_revision: "1.0.0"
-adr_revision: "1.0.0"
-mvp_revision: "1.0.0"
-gtm_revision: "1.0.0"
+prd_revision: "1.1.0"
+tad_revision: "1.1.0"
+adr_revision: "1.1.0"
+mvp_revision: "1.1.0"
+gtm_revision: "1.1.0"
 status: "implementation"
 ---
 
@@ -20,7 +20,7 @@ status: "implementation"
 
 ## PRD
 
-`REPOSITORY-VALIDATION-001@1.0.0`: a solo maintainer changes one source concern and
+`REPOSITORY-VALIDATION-001@1.1.0`: a solo maintainer changes one source concern and
 runs the checks affected by its declared inputs and dependencies through the pinned
 Agentic OS owner. Context: repeated whole-repository checks delay delivery. Intent:
 reduce avoidable execution without changing test assertions or protected authority.
@@ -41,6 +41,7 @@ remains the reusable policy and native OS test-runner guide.
 | V05 | CI validates its actual event/checkout baseline, uses fresh execution, and rejects dirty sources. Local receipts never substitute for protected checks. |
 | V06 | Source drift, recursive invocation, timeout, process failure and output bounds cannot produce passing evidence. Logs retain a bounded tail without skipping command execution. |
 | V07 | Consumers invoke the pinned common executor through default validation and protected CI; owner commands remain in their source repositories. Unenrolled consumers are not claimed enforced. |
+| V08 | Every actual command updates bounded private cost observations. Learned order preserves selected coverage, prerequisites and mandatory precedence; stale or incompatible observations restore declared order. Reuse never counts as new execution. |
 
 V01–V06 are exercised by `__tests__/repository-validation*.test.mjs` and the existing
 `__tests__/test-{impact,runner}.test.mjs`. V07 requires each consumer's reviewed
@@ -48,7 +49,7 @@ package pin, script/workflow diff, protected checks and exact integration receip
 
 ## TAD and ADR
 
-TAD `1.0.0` consumes PRD `1.0.0`; ADR `1.0.0` binds V01–V07. Agentic OS owns the
+TAD `1.1.0` consumes PRD `1.1.0`; ADR `1.1.0` binds V01–V08. Agentic OS owns the
 selector, process bounds, input observation and receipt reuse. Each consumer owns
 `.agentic-os-validation.json`: source input boundaries, prerequisite relationships,
 existing commands and conservative fallback. Do not copy the executor or add a
@@ -69,6 +70,41 @@ contracts in the boundaries. Use `reuse: never` for browser/provider checks,
 external files, ignored generated inputs and dependencies whose actual bytes are
 not bound. Installed dependencies are not fingerprinted by their lockfile alone.
 The native OS source runner retains its existing static-import and contract graph.
+
+### Continuous resource feedback
+
+The lazy `agentic-os-validation-economy.mjs` module records command duration and
+failure rate after stable source execution. One private worktree receipt contains
+at most 128 check records / 64 kB, expires after 14 days, and is written atomically
+under the existing validation lock. Context binds policy, runner, repository root,
+Node/platform and environment. No provider, background worker, dependency or
+always-loaded guidance is introduced. Hosted runners learn only within their own
+checkout unless an owner separately designs an authenticated transport.
+
+After three observations for every ready optional check, execution automatically
+orders them by smoothed failure rate per millisecond, with a small exploration
+floor. Prerequisites and mandatory checks retain precedence. Cold or incomplete
+observations keep declared order. A 0.25 moving weight adapts to recent runs;
+sample counts saturate at 32. Cost data never selects/skips checks, changes commands,
+raises timeouts, grants authority, or substitutes for fresh CI results.
+
+Plans and receipts expose estimated execution time, unknown costs, source bytes,
+the execution order and hard run budget. Unknown cost is null, not a 15-minute
+estimate. An observed duration above both twice the learned mean and mean plus
+one second is reported as a regression. Inspect the owner command before changing
+its scope or budget; no automatic assertion, timeout or workflow edits occur.
+
+Checkout work precedes this installed executor. An exact PR synthetic merge needs
+depth 2 for the diff only: the merge and both event parents. Each owner must prove
+that its other gates need no older history before using that depth. Explicit PR
+head, push and merge-group jobs retain sufficient history for a verified merge
+base. The runner reports this constraint and never guesses a missing base or fetches
+history on its own. [Canvas PR 928](https://github.com/huijoohwee/agentic-canvas-os/pull/928) demonstrates the applicable shallow-merge
+contract with a real depth-2 clone regression and fresh protected checks. Compare
+checkout/job timings separately from selected command duration; none is a billing
+estimate or proof of whole-suite parity.
+
+### Invocation
 
 The common entrypoint is packaged automatically under `bin/`:
 
@@ -117,7 +153,7 @@ reuse only matching inode/mode/size/mtime/ctime identities. Bounds are 50,000 fi
 per run. Logs retain at most 480,000 bytes; over 16 MiB of command output fails.
 Receipts remain at most 128,000 bytes and always carry `authority: false`.
 
-Decision: extend the existing input/receipt/process owners and add three lazy CLI
+Decision: extend the existing input/receipt/process owners and add four lazy CLI
 modules; no runtime dependency, infrastructure, new provider, source-core module,
 or always-loaded prompt bytes. A separate executor per repository was rejected.
 Local check results do not authorize integration, cleanup, deployment or payment.

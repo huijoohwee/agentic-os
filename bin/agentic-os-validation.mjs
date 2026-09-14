@@ -7,12 +7,13 @@ import { readGit, hash, readRegular } from './agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, previousCheck, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
 import { ciArguments } from './agentic-os-test-ci.mjs';
 import { consumerSnapshotReader, CONSUMER_LIMITS, sourceDigest } from './agentic-os-validation-inputs.mjs';
+import { ECONOMY_FILE, economyContext, readEconomy, observeCost, costOrderedChecks, resourcePlan } from './agentic-os-validation-economy.mjs';
 import { VALIDATION_POLICY, VALIDATION_VERSION, validateValidationPolicy, selectValidationChecks,
   checkInputPatterns, matchesInput } from './agentic-os-validation-policy.mjs';
 const runtimeRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
 const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validation-policy.mjs',
   'bin/agentic-os-validation-inputs.mjs', 'bin/agentic-os-test-inputs.mjs', 'bin/agentic-os-test-receipt.mjs',
-  'bin/agentic-os-test-ci.mjs'];
+  'bin/agentic-os-test-ci.mjs', 'bin/agentic-os-validation-economy.mjs'];
 const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
 export function validationArguments(argv) {
   const [mode = 'run', ...flags] = argv;
@@ -79,29 +80,37 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     if (origin?.repository.toLowerCase() !== policy.repository.toLowerCase()) throw new Error('blocked-validation-repository-identity');
     const observe = consumerSnapshotReader({ root, base: options.base, head: options.head || 'HEAD', committed: options.committed });
     const observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest();
-    const checks = validationCheckDefinitions(policy, plan, observed, ownerDigest);
     const gitDirectory = realpathSync(readGit(root, ['rev-parse', '--absolute-git-dir']).trim());
     const directory = join(gitDirectory, 'agentic-os-tests');
+    const context = economyContext(policyFile.digest, ownerDigest, observed.identity);
+    const readCosts = () => readEconomy(directory, context, Date.now(), policy.checks.map(check => check.id));
+    const economy = readCosts();
+    const checks = costOrderedChecks(validationCheckDefinitions(policy, plan, observed, ownerDigest), economy);
     const priorFor = check => !options.fresh && !ci && check.reuse === 'local'
       ? previousCheck(directory, check, Date.now(), { allowFailure: true }) : null;
     const previews = checks.map(check => {
       const prior = priorFor(check), matches = prior?.fingerprint === check.fingerprint;
       return { id: check.name, command: [check.command, ...check.args], reasons: check.reasons,
         reuse: matches && prior.outcome === 'passed', unchangedFailure: matches && prior.outcome === 'failed',
-        estimatedMs: matches && prior.outcome === 'passed' ? 0 : prior?.result.elapsedMs ?? check.timeoutMs };
+        estimatedMs: matches && prior.outcome === 'passed' ? 0 : economy.checks[check.name]?.meanMs ?? null };
     });
+    const resources = resourcePlan(checks, economy, previews, { checkout: options.checkout,
+      observedBytes: observed.observedBytes, runMs: CONSUMER_LIMITS.runMs });
     if (options.mode === 'plan') {
       out(JSON.stringify({ schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
         identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
         policyDigest: policyFile.digest, ownerDigest, plan,
-        selectedChecks: checks.length, skippedChecks: plan.available - checks.length, checks: previews }, null, 2));
+        selectedChecks: checks.length, skippedChecks: plan.available - checks.length, checks: previews, resources }, null, 2));
       return 0;
     }
     const release = lockReceipts(receiptDirectory(root)), started = performance.now();
+    if (JSON.stringify(readCosts()) !== JSON.stringify(economy)) {
+      release(); throw new Error('blocked-validation-cost-drift');
+    }
     const receipt = { schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
       identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
       policyDigest: policyFile.digest, ownerDigest, plan,
-      outcome: 'running', startedAt: Date.now(), results: [] };
+      outcome: 'running', startedAt: Date.now(), results: [], resources, costRegressions: [] };
     const stable = () => {
       if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest() !== ownerDigest)
         throw new Error('blocked-validation-input-drift');
@@ -124,6 +133,9 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
           { timeoutMs: Math.min(check.timeoutMs, remaining), outputMode: 'tail' });
         stable();
         const saved = writeCheck(directory, check, result);
+        const regression = observeCost(economy, check, result);
+        if (regression) { receipt.costRegressions.push(regression); out(`cost regression ${check.name}: ${Math.round(regression.previousMeanMs)}ms mean -> ${Math.round(result.elapsedMs)}ms`); }
+        writeReceipt(directory, ECONOMY_FILE, economy);
         receipt.results.push({ id: check.name, reused: false, ...saved.result, validatedAt: saved.finishedAt });
         out(`${check.name}: exit ${result.exitCode}, ${(result.elapsedMs / 1000).toFixed(2)}s${result.outputTruncated ? ', bounded log tail retained' : ''}`);
         if (result.exitCode !== 0 || result.reason) {
