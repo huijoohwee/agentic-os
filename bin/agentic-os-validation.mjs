@@ -1,0 +1,150 @@
+/** Execute consumer-owned validation through one bounded, input-bound shared owner. */
+import { readFileSync, realpathSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { remoteRepositoryIdentity } from '../src/github-provider.mjs';
+import { readGit, hash, readRegular } from './agentic-os-test-inputs.mjs';
+import { executeCommand, lockReceipts, previousCheck, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
+import { ciArguments } from './agentic-os-test-ci.mjs';
+import { consumerSnapshotReader, CONSUMER_LIMITS, sourceDigest } from './agentic-os-validation-inputs.mjs';
+import { VALIDATION_POLICY, VALIDATION_VERSION, validateValidationPolicy, selectValidationChecks,
+  checkInputPatterns, matchesInput } from './agentic-os-validation-policy.mjs';
+const runtimeRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
+const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validation-policy.mjs',
+  'bin/agentic-os-validation-inputs.mjs', 'bin/agentic-os-test-inputs.mjs', 'bin/agentic-os-test-receipt.mjs',
+  'bin/agentic-os-test-ci.mjs'];
+const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
+export function validationArguments(argv) {
+  const [mode = 'run', ...flags] = argv;
+  if (!['plan', 'run', 'ci'].includes(mode)) throw new Error('expected validation plan, run or ci');
+  const options = { mode, root: process.cwd(), base: 'origin/main', all: false, fresh: false };
+  const seen = new Set();
+  for (const flag of flags) {
+    const match = /^--(root|base|only)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
+    if (seen.has(key)) throw new Error('duplicate validation option'); seen.add(key);
+    if (match) options[key] = key === 'only' ? match[2].split(',') : match[2];
+    else if (['--all', '--fresh'].includes(flag)) options[key] = true;
+    else throw new Error('unknown validation option');
+  }
+  if (mode === 'ci' && (seen.has('base') || seen.has('all'))) throw new Error('CI owns its validation baseline');
+  return options;
+}
+export function resolveValidationCi(root, environment = process.env) {
+  if (environment.GITHUB_ACTIONS !== 'true' || !environment.GITHUB_EVENT_PATH) throw new Error('blocked-validation-ci-context');
+  const head = readGit(root, ['rev-parse', 'HEAD']).trim();
+  const eventBytes = readFileSync(environment.GITHUB_EVENT_PATH);
+  if (eventBytes.length > 499_000) throw new Error('blocked-validation-ci-event-budget');
+  const event = JSON.parse(eventBytes), pr = event.pull_request;
+  // Some existing owners deliberately validate the PR head instead of the synthetic merge.
+  // Bind both revisions to the provider event and retain that narrower surface in the receipt.
+  if (environment.GITHUB_EVENT_NAME === 'pull_request' && pr?.head?.sha === head
+    && /^[a-f0-9]{40}$/u.test(pr?.base?.sha) && !/^0+$/u.test(pr.base.sha)
+    && /^[a-f0-9]{40}$/u.test(pr?.merge_commit_sha) && !/^0+$/u.test(pr.merge_commit_sha)
+    && environment.GITHUB_SHA === pr.merge_commit_sha)
+    return { base: pr.base.sha, head, committed: true, fresh: true, all: false, checkout: 'pull-request-head' };
+  if (environment.GITHUB_SHA !== head) throw new Error('blocked-validation-ci-checkout');
+  if (['workflow_dispatch', 'schedule'].includes(environment.GITHUB_EVENT_NAME))
+    return { base: head, head, committed: true, fresh: true, all: true, checkout: 'event-revision' };
+  const parents = readGit(root, ['show', '-s', '--format=%P', head]).trim().split(' ');
+  const args = ciArguments(event, environment.GITHUB_EVENT_NAME, head, parents);
+  return { base: args.find(arg => arg.startsWith('--base=')).slice(7), head, committed: true, fresh: true, all: false,
+    checkout: environment.GITHUB_EVENT_NAME === 'pull_request' ? 'pull-request-merge' : 'event-revision' };
+}
+export function validationCheckDefinitions(policy, plan, observed, ownerDigest) {
+  return plan.checks.map(check => {
+    const patterns = checkInputPatterns(policy, check.id);
+    const files = new Map([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
+      || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path)));
+    const { root, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
+    const fingerprint = hash(JSON.stringify({ version: VALIDATION_VERSION, ownerDigest, check: policy.checks.find(item => item.id === check.id),
+      sourceDigest: sourceDigest(files), root, configurationDigest, environmentDigest, node, executable, platform, arch }));
+    return { ...check, id: `consumer-${hash(check.id).slice(0, 24)}`, name: check.id, stage: 'owner-check', report: 'exit',
+      command: check.command[0] === 'node' ? process.execPath : check.command[0], args: check.command.slice(1), fingerprint };
+  });
+}
+export async function runRepositoryValidation(argv, { out = console.log } = {}) {
+  const options = validationArguments(argv), root = realpathSync(resolve(options.root));
+  const ci = options.mode === 'ci' || Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+  const marker = hash(root), previousMarker = process.env.AGENTIC_OS_VALIDATION_ACTIVE;
+  if (previousMarker?.split(':').includes(marker)) throw new Error('blocked-validation-recursive-run');
+  process.env.AGENTIC_OS_VALIDATION_ACTIVE = [previousMarker, marker].filter(Boolean).join(':');
+  try {
+    if (ci) {
+      if (argv.some(flag => flag.startsWith('--base=') || flag === '--all')) throw new Error('CI owns its validation baseline');
+      Object.assign(options, resolveValidationCi(root));
+    }
+    const policyFile = readRegular(root, VALIDATION_POLICY, 128_000);
+    const policy = validateValidationPolicy(JSON.parse(policyFile.text));
+    const origin = remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim());
+    if (origin?.repository.toLowerCase() !== policy.repository.toLowerCase()) throw new Error('blocked-validation-repository-identity');
+    const observe = consumerSnapshotReader({ root, base: options.base, head: options.head || 'HEAD', committed: options.committed });
+    const observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest();
+    const checks = validationCheckDefinitions(policy, plan, observed, ownerDigest);
+    const gitDirectory = realpathSync(readGit(root, ['rev-parse', '--absolute-git-dir']).trim());
+    const directory = join(gitDirectory, 'agentic-os-tests');
+    const priorFor = check => !options.fresh && !ci && check.reuse === 'local'
+      ? previousCheck(directory, check, Date.now(), { allowFailure: true }) : null;
+    const previews = checks.map(check => {
+      const prior = priorFor(check), matches = prior?.fingerprint === check.fingerprint;
+      return { id: check.name, command: [check.command, ...check.args], reasons: check.reasons,
+        reuse: matches && prior.outcome === 'passed', unchangedFailure: matches && prior.outcome === 'failed',
+        estimatedMs: matches && prior.outcome === 'passed' ? 0 : prior?.result.elapsedMs ?? check.timeoutMs };
+    });
+    if (options.mode === 'plan') {
+      out(JSON.stringify({ schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
+        identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
+        policyDigest: policyFile.digest, ownerDigest, plan,
+        selectedChecks: checks.length, skippedChecks: plan.available - checks.length, checks: previews }, null, 2));
+      return 0;
+    }
+    const release = lockReceipts(receiptDirectory(root)), started = performance.now();
+    const receipt = { schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
+      identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
+      policyDigest: policyFile.digest, ownerDigest, plan,
+      outcome: 'running', startedAt: Date.now(), results: [] };
+    const stable = () => {
+      if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest() !== ownerDigest)
+        throw new Error('blocked-validation-input-drift');
+    };
+    out(`${plan.mode}: ${checks.length}/${plan.available} owner checks; ${observed.changed.length} changed paths; no full-suite parity inferred`);
+    try {
+      stable(); writeReceipt(directory, 'validation-last.json', receipt);
+      for (const check of checks) {
+        stable();
+        const prior = priorFor(check);
+        if (prior?.fingerprint === check.fingerprint) {
+          if (prior.outcome === 'failed') throw new Error(`blocked-validation-unchanged-failure:${check.name}; inspect retained log or use --fresh after a new observation`);
+          receipt.results.push({ id: check.name, reused: true, ...prior.result, validatedAt: prior.finishedAt });
+          out(`reused ${check.name}`); continue;
+        }
+        const remaining = CONSUMER_LIMITS.runMs - (performance.now() - started);
+        if (remaining <= 0) throw new Error('blocked-validation-time-budget');
+        out(`running ${check.name}: ${[check.command, ...check.args].join(' ')}`);
+        const result = await executeCommand(root, check.command, check.args,
+          { timeoutMs: Math.min(check.timeoutMs, remaining), outputMode: 'tail' });
+        stable();
+        const saved = writeCheck(directory, check, result);
+        receipt.results.push({ id: check.name, reused: false, ...saved.result, validatedAt: saved.finishedAt });
+        out(`${check.name}: exit ${result.exitCode}, ${(result.elapsedMs / 1000).toFixed(2)}s${result.outputTruncated ? ', bounded log tail retained' : ''}`);
+        if (result.exitCode !== 0 || result.reason) {
+          receipt.outcome = 'failed'; out(result.output.slice(-12_000)); break;
+        }
+      }
+      stable();
+      if (receipt.outcome === 'running') receipt.outcome = 'passed';
+    } catch (error) { receipt.outcome = 'blocked'; receipt.error = error.message; out(error.message); }
+    finally {
+      receipt.finishedAt = Date.now(); receipt.elapsedMs = performance.now() - started;
+      try { writeReceipt(directory, 'validation-last.json', receipt); } finally { release(); }
+    }
+    out(`validation receipt: ${join(directory, 'validation-last.json')}`);
+    return receipt.outcome === 'passed' ? 0 : 1;
+  } finally {
+    if (previousMarker === undefined) delete process.env.AGENTIC_OS_VALIDATION_ACTIVE;
+    else process.env.AGENTIC_OS_VALIDATION_ACTIVE = previousMarker;
+  }
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
+  try { process.exitCode = await runRepositoryValidation(process.argv.slice(2)); }
+  catch (error) { console.error(error.message); process.exitCode = 1; }
+}
