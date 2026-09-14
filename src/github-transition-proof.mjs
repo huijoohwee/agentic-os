@@ -142,7 +142,7 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
     revision, required }) };
 }
 async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
-  activeRuleTypes, rulesetVersions, retrospective, expected = null) {
+  activeRuleTypes, rulesetVersions, retrospective, expected = null, beforeRevision = mergedCommit.parents[0]) {
   let suiteId;
   if (expected === null) {
     const response = await api.call('GET', `${target.path}/rulesets/rule-suites?ref=${
@@ -162,7 +162,7 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
   const actorName = text(detail.actor_name, 'rule suite actor name');
   const pushedAt = instant(detail.pushed_at, 'rule suite pushed time');
   if (id(detail.id, 'rule suite detail id') !== suiteId
-    || detail.before_sha !== mergedCommit.parents[0]
+    || detail.before_sha !== beforeRevision
     || detail.after_sha !== input.plan.target.immutableRevision || detail.ref !== canonicalRef
     || detail.result !== 'pass'
     || Date.parse(pushedAt) + PROVIDER_EVENT_SKEW_MS < Date.parse(mergedAt)
@@ -196,7 +196,7 @@ function targetProtection(observation, target, ref, classicProtection = null, re
       && !same(entry.bypassActors, [REDACTED_BYPASS])))
     fail('target canonical protection identity or bypass policy changed');
   if (projection.rulesets.length === 0) { if (!retrospective || classicProtection === null || repositoryValue === null) fail('target canonical protection lacks active rulesets');
-    const allowedMethods = [repositoryValue.allow_merge_commit === true ? 'merge' : null, repositoryValue.allow_squash_merge === true ? 'squash' : null].filter(Boolean);
+    const allowedMethods = [repositoryValue.allow_merge_commit === true ? 'merge' : null, repositoryValue.allow_rebase_merge === true ? 'rebase' : null, repositoryValue.allow_squash_merge === true ? 'squash' : null].filter(Boolean);
     if (allowedMethods.length === 0) fail('target repository exposes no supported merge method'); return { projection, versions: [], requiredContexts: classicProtection.requiredContexts, allowedMethods, activeRuleTypes: classicProtection.activeRuleTypes, bypassActorsObserved: true };
   }
   if (!Array.isArray(versions) || versions.length !== projection.rulesets.length
@@ -216,7 +216,7 @@ function targetProtection(observation, target, ref, classicProtection = null, re
     || contexts.some((entry) => entry?.integration_id !== GITHUB_ACTIONS_INTEGRATION_ID)
     || contexts.some((entry) => typeof entry.context !== 'string' || !entry.context)
     || !Array.isArray(methods) || methods.length === 0
-    || methods.some((entry) => !['merge', 'squash'].includes(entry)))
+    || methods.some((entry) => !['merge', 'rebase', 'squash'].includes(entry)))
     fail('target canonical protection does not expose exact checks and merge methods');
   const projectedContexts = contexts.map((entry) => entry.context).sort();
   const allowedMethods = [...methods].sort();
@@ -231,16 +231,6 @@ function targetProtection(observation, target, ref, classicProtection = null, re
   return { projection, versions, requiredContexts, allowedMethods, activeRuleTypes,
     bypassActorsObserved: projection.rulesets.every((entry) =>
       !entry.bypassActors.includes(REDACTED_BYPASS)) };
-}
-function mergeMethod(commitValue, candidateRevision, allowed) {
-  if (commitValue.parents.length === 2 && commitValue.parents[1] === candidateRevision) {
-    if (!allowed.includes('merge')) fail('observed merge commit method is forbidden');
-    return 'merge';
-  }
-  const oneParent = allowed.filter((entry) => entry === 'squash');
-  if (commitValue.parents.length !== 1 || oneParent.length !== 1)
-    fail('GitHub integration merge method is not unambiguous');
-  return oneParent[0];
 }
 async function descendant(api, target, base, head) {
   if (base === head) return 'equal';
@@ -308,10 +298,13 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
       bypassActorsObserved: expectedProof.targetBypassActorsObserved };
   const requiredChecksDigest = await checks(api, target, candidate.headRevision,
     protectedTarget.requiredContexts, mergedAt, expectedProof?.requiredChecks ?? null);
-  const method = mergeMethod(mergedCommit, candidate.headRevision,
-    protectedTarget.allowedMethods);
+  const { observeIntegrationMethod } = await import('../bin/agentic-os-integration-proof.mjs');
+  const methodProof = await observeIntegrationMethod({ api, target, input, candidate, mergedCommit,
+    allowedMethods: protectedTarget.allowedMethods, activeRuleTypes: protectedTarget.activeRuleTypes, canonicalRef, retrospective });
+  const method = methodProof.method;
   const suite = await ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
-    protectedTarget.activeRuleTypes, protectedTarget.versions, retrospective, expectedProof);
+    protectedTarget.activeRuleTypes, protectedTarget.versions, retrospective, expectedProof,
+    method === 'rebase' ? methodProof.integrationMethodEvidence.choice.baseRevision : mergedCommit.parents[0]);
   const predecessorStartedAt = issuance === null ? successorAuthority.issuedAt
     : retrospective ? bundle.challenge.issuedAt : issuance.publicationReceipt.committedAt;
   const predecessorExpiresAt = issuance === null ? successorAuthority.expiresAt : bundle.challenge.expiresAt;
@@ -354,6 +347,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     observedCanonicalHead: storedCanonicalHead,
     mergeRevision: input.plan.target.immutableRevision, mergeMethod: method,
     mergeEventId, mergedAt,
+    ...(methodProof.integrationMethodEvidence ? { integrationMethodEvidence: methodProof.integrationMethodEvidence } : {}),
     targetProtectionDigest: protectedTarget.projection.projectionDigest,
     targetBypassActorsObserved: protectedTarget.bypassActorsObserved,
     targetRequiredContexts: protectedTarget.requiredContexts,

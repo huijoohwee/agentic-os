@@ -128,6 +128,7 @@ test('validated profiles project exact canonical and capability-selected provide
     strict: false,
     linearHistoryRequired: true,
     squashOnlyRequired: true,
+    squashPreferredRequired: false,
     retainOnMergeRequired: true,
   });
 

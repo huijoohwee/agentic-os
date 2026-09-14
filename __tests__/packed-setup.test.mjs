@@ -15,6 +15,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..'); const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function priorRuntimeFiles(selected, quarantineLegacy = true) {
   const fixtures = new Map([
+    ['src/governance.mjs', ['governance-squash-only.mjs.txt', 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390']],
     ['src/lane-id.mjs', ['lane-id-hostname.mjs.txt', 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a']],
     ['src/catalog-input.mjs', ['catalog-input-copy.mjs.txt', '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667']],
     ['src/git.mjs', ['git-remote-single.mjs.txt', '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62']],
@@ -185,7 +186,8 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false, latest = false) {
-  const source = latest ? selected.files.map(file => file.path === 'src/quarantine.mjs'
+  const source = latest ? selected.files.map(file => file.path === 'src/governance.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url)), sha256: 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390' } : file.path === 'src/quarantine.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
       sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' } : file.path === 'src/lane-id.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),

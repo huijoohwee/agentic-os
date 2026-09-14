@@ -561,7 +561,12 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const catalogBytes = readFileSync(new URL('./fixtures/catalog-input-copy.mjs.txt', import.meta.url));
   const catalogSha = createHash('sha256').update(catalogBytes).digest('hex');
   assert.equal(catalogSha, '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667');
-  const files = selected.files.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file =>
+  const governanceBytes = readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url));
+  const governanceSha = createHash('sha256').update(governanceBytes).digest('hex');
+  assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390');
+  const priorFiles = selected.files.map(file => file.path === 'src/governance.mjs'
+    ? { ...file, bytes: governanceBytes, sha256: governanceSha } : file);
+  const files = priorFiles.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file =>
     file.path === 'src/quarantine.mjs' ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
       sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' }
       : file.path === 'src/git.mjs' ? { ...file, bytes, sha256 } : file.path === 'src/git-tracked.mjs'
@@ -569,19 +574,23 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
         ? { ...file, bytes: catalogBytes, sha256: catalogSha } : file.path === 'src/lane-id.mjs'
           ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),
             sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' } : file);
-  const identity = { schema: 'agentic-os/hook-runtime/v1',
-    files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
-  const runtimeId = `v1-${createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
-  assert.equal(runtimeId, 'v1-be7454052f5609e1a80f6a55574d934b3fbf2379aff59d9b1a216da044dd3b68');
-  const prior = join(selected.managedRoot, runtimeId);
-  for (const file of files) {
-    const target = join(prior, file.path);
-    mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-    writeFileSync(target, file.bytes, { mode: file.mode }); chmodSync(target, file.mode);
+  for (const [entries, expectedId] of [[files,
+    'v1-be7454052f5609e1a80f6a55574d934b3fbf2379aff59d9b1a216da044dd3b68'], [priorFiles,
+    'v1-72c53bdaa971f1a0f321f1d296ab789839c52392f49b91dfbb2f36bd3504c4dc']]) {
+    const identity = { schema: 'agentic-os/hook-runtime/v1',
+      files: entries.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
+    const runtimeId = `v1-${createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
+    assert.equal(runtimeId, expectedId);
+    const prior = join(selected.managedRoot, runtimeId);
+    for (const file of entries) {
+      const target = join(prior, file.path);
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+      writeFileSync(target, file.bytes, { mode: file.mode }); chmodSync(target, file.mode);
+    }
+    writeFileSync(join(prior, 'runtime-manifest.json'),
+      JSON.stringify({ schema: identity.schema, runtimeId, files: identity.files }, null, 2) + '\n', { mode: 0o600 });
+    assert.equal(assertPriorManagedRuntime(join(prior, '.githooks'), selected), true);
+    writeFileSync(join(prior, 'src/git.mjs'), Buffer.concat([bytes, Buffer.from('\n')]));
+    assert.throws(() => assertPriorManagedRuntime(join(prior, '.githooks'), selected));
   }
-  writeFileSync(join(prior, 'runtime-manifest.json'),
-    JSON.stringify({ schema: identity.schema, runtimeId, files: identity.files }, null, 2) + '\n', { mode: 0o600 });
-  assert.equal(assertPriorManagedRuntime(join(prior, '.githooks'), selected), true);
-  writeFileSync(join(prior, 'src/git.mjs'), Buffer.concat([bytes, Buffer.from('\n')]));
-  assert.throws(() => assertPriorManagedRuntime(join(prior, '.githooks'), selected));
 });

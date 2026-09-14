@@ -119,7 +119,7 @@ branches, and unreachable objects always remain retained. No adapter can promote
 legacy deletion into `retire`.
 
 Provider-policy capabilities are optional and explicit: pull-request integration, merge-queue
-ordering, strict fresh-base checks, squash-only integration, and linear history are selected per
+ordering, strict checks, squash-only or squash-preferred integration, and linear history are selected per
 consumer rather than imposed by the harness. Merge-queue ordering and strict checks conflict and
 cannot be selected together. Required check names and canonical refs always come from the profile.
 The v1 capability vocabulary is closed: unknown names are rejected rather than silently ignored;

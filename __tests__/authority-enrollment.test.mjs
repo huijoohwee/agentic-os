@@ -46,7 +46,7 @@ function fixture(t) {
 test('enrolled policy validates a bound input without token, network or success publication', async t => {
   const f = fixture(t); assert.equal(await f.run(), 0); assert.deepEqual(f.output, []);
   assert.deepEqual(policy.requiredStatusChecks, ['budgets', 'test']);
-  assert.deepEqual(policy.allowedMergeMethods, ['squash']);
+  assert.deepEqual(policy.allowedMergeMethods, ['merge', 'rebase', 'squash']);
   assert.equal(policy.validitySeconds, 3600);
 });
 test('enrolled validator rejects changed digest, branch, workflow and noncanonical payload', async t => {

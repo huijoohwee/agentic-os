@@ -2,11 +2,16 @@
  * Pure ADLC lane state machine.
  * This is the executable copy of docs/LANE.md.
  */
-import { validateRepositoryProfile } from './governance.mjs';
+import { canonicalJson, validateRepositoryProfile } from './governance.mjs';
 import { isLaneRef } from './lane-id.mjs';
 export const PROVIDER_CAPABILITIES = Object.freeze({
   PULL_REQUEST: 'protected-integration:pull-request', MERGE_QUEUE: 'tested-protected-ordering:merge-queue',
+  SQUASH_PREFERRED: 'integration-method:squash-preferred',
   STRICT: 'required-check-policy:strict', LINEAR_HISTORY: 'history:linear', SQUASH: 'integration-method:squash',
+});
+export const INTEGRATION_METHOD_POLICY = Object.freeze({
+  defaultMethod: 'squash', backupMethod: 'merge', rebaseFallback: 'explicit-revision-bound-provider-choice',
+  automaticFallback: false, publishedRefRewrite: false,
 });
 export const QUEUE_POLICY = Object.freeze({ merge_method: 'SQUASH' });
 export const RULESET_SCOPE = Object.freeze({
@@ -54,6 +59,13 @@ export function rulesetApplies(entry, defaultBranch = null, protectedBranch) {
 /** Pure policy projection from a validated, provider-neutral repository profile. */
 export function providerPolicy(value) {
   const profile = validateRepositoryProfile(value), capabilities = new Set(profile.capabilities);
+  if (capabilities.has(PROVIDER_CAPABILITIES.SQUASH_PREFERRED)
+    && [PROVIDER_CAPABILITIES.SQUASH, PROVIDER_CAPABILITIES.LINEAR_HISTORY]
+      .some((capability) => capabilities.has(capability)))
+    throw new TypeError('squash-preferred conflicts with squash-only and linear history');
+  if (capabilities.has(PROVIDER_CAPABILITIES.SQUASH_PREFERRED)
+    && !capabilities.has(PROVIDER_CAPABILITIES.PULL_REQUEST))
+    throw new TypeError('squash-preferred requires pull-request integration');
   const mergeQueueRequired = capabilities.has(PROVIDER_CAPABILITIES.MERGE_QUEUE),
     strictRequired = capabilities.has(PROVIDER_CAPABILITIES.STRICT);
   if (mergeQueueRequired && (strictRequired
@@ -72,21 +84,25 @@ export function providerPolicy(value) {
     strict: mergeQueueRequired ? false : strictRequired ? true : null,
     linearHistoryRequired: capabilities.has(PROVIDER_CAPABILITIES.LINEAR_HISTORY),
     squashOnlyRequired: capabilities.has(PROVIDER_CAPABILITIES.SQUASH),
+    squashPreferredRequired: capabilities.has(PROVIDER_CAPABILITIES.SQUASH_PREFERRED),
     retainOnMergeRequired: Object.values(profile.cleanup).every((effect) => effect === 'retain'),
   });
 }
 export function providerAdapterRequired(policy) {
   return policy.pullRequestRequired || policy.mergeQueueRequired || policy.strict !== null
-    || policy.linearHistoryRequired || policy.squashOnlyRequired || policy.requiredChecks.length > 0;
+    || policy.linearHistoryRequired || policy.squashOnlyRequired || policy.squashPreferredRequired
+    || policy.requiredChecks.length > 0;
 }
 export function queuePolicyMatches(parameters, policy) {
-  if (policy.squashOnlyRequired) return parameters?.merge_method === 'SQUASH';
+  if (policy.squashOnlyRequired || policy.squashPreferredRequired)
+    return parameters?.merge_method === 'SQUASH';
   if (policy.linearHistoryRequired)
     return ['REBASE', 'SQUASH'].includes(parameters?.merge_method);
   return true;
 }
 export function pullRequestPolicyMatches(parameters, policy) {
   const methods = parameters?.allowed_merge_methods;
+  if (policy.squashPreferredRequired) return preferredMethods(methods);
   if (!policy.squashOnlyRequired && !policy.linearHistoryRequired) return true;
   if (!Array.isArray(methods) || methods.length === 0) return false;
   const allowed = new Set(policy.squashOnlyRequired ? ['squash'] : ['rebase', 'squash']);
@@ -116,11 +132,77 @@ export function effectivePullRequestMethods(merge, rules = [], { linearHistoryRe
   return effective;
 }
 export function effectivePullRequestPolicyMatches(methods, policy) {
+  if (policy.squashPreferredRequired) return preferredMethods(methods);
   if (methods.length === 0) return false;
   if (policy.squashOnlyRequired) return methods.every((method) => method === 'squash');
   if (policy.linearHistoryRequired)
     return methods.every((method) => ['rebase', 'squash'].includes(method));
   return true;
+}
+function preferredMethods(methods) {
+  return Array.isArray(methods) && new Set(methods).size === methods.length
+    && methods.every((method) => MERGE_METHODS.includes(method))
+    && methods.includes('squash') && methods.includes('merge');
+}
+/** Read-only method selection; caller must verify authority and re-observe before any effect. */
+export function selectIntegrationMethod(profileValue, observation, choice = {}) {
+  const profile = validateRepositoryProfile(profileValue), policy = providerPolicy(profile);
+  if (!policy.squashPreferredRequired) throw new TypeError('squash-preferred policy is not selected');
+  if (observation?.repo !== profile.repository || observation?.policy?.profileDigest !== profile.profileDigest
+    || providerBlockingReasons(observation, policy).length > 0
+    || !preferredMethods(observation.effectiveMergeMethods) || observation.linearHistoryRequired !== false)
+    throw new TypeError('integration policy observation is incomplete or incompatible');
+  const { method = 'squash', reason = null, expectedHead, observedHead, expectedBase, observedBase } = choice;
+  const oid = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
+  if (!oid.test(expectedHead ?? '') || !oid.test(expectedBase ?? '')
+    || expectedHead !== observedHead || expectedBase !== observedBase)
+    throw new TypeError('integration requires exact current head and base revisions');
+  if (!MERGE_METHODS.includes(method)) throw new TypeError('unsupported integration method');
+  if (!observation.effectiveMergeMethods.includes(method))
+    throw new TypeError('requested integration method is unavailable');
+  if (policy.mergeQueueRequired && method !== 'squash')
+    throw new TypeError('selected merge queue requires squash');
+  if (method !== 'squash' && (typeof reason !== 'string' || !reason.trim()
+    || Buffer.byteLength(reason, 'utf8') > 1000 || /[\u0000-\u001f\u007f]/u.test(reason)))
+    throw new TypeError('integration fallback requires an explicit bounded reason');
+  return Object.freeze({ schema: 'agentic-os/integration-method-selection/v1', authority: false,
+    repository: profile.repository, profileDigest: profile.profileDigest,
+    headRevision: expectedHead, baseRevision: expectedBase, method,
+    reason: method !== 'squash' ? reason.trim() : null });
+}
+const CHOICE_PREFIX = 'integration-method-choice:v1:';
+/** Publish this reference in the predecessor CoordinationRequest.dependentWork before integration. */
+export function integrationMethodChoiceReference(value) {
+  const keys = ['schema', 'authority', 'repository', 'profileDigest', 'headRevision',
+    'baseRevision', 'method', 'reason'];
+  if (!value || Object.keys(value).length !== keys.length || keys.some((key) => !(key in value))
+    || value.schema !== 'agentic-os/integration-method-selection/v1' || value.authority !== false
+    || typeof value.repository !== 'string' || !value.repository || /[\u0000-\u0020\u007f]/u.test(value.repository)
+    || !/^[0-9a-f]{64}$/u.test(value.profileDigest ?? '')
+    || [value.headRevision, value.baseRevision].some((revision) =>
+      !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(revision ?? ''))
+    || !MERGE_METHODS.includes(value.method)
+    || (value.method === 'squash' ? value.reason !== null
+      : typeof value.reason !== 'string' || !value.reason.trim() || value.reason !== value.reason.trim()
+        || Buffer.byteLength(value.reason, 'utf8') > 1000 || /[\u0000-\u001f\u007f]/u.test(value.reason)))
+    throw new TypeError('invalid revision-bound integration method choice');
+  const reference = CHOICE_PREFIX + Buffer.from(canonicalJson(value)).toString('base64url');
+  if (reference.length > 4096) throw new TypeError('integration method choice exceeds reference budget');
+  return reference;
+}
+export function readIntegrationMethodChoice(dependentWork = []) {
+  if (!Array.isArray(dependentWork)) throw new TypeError('integration method references must be an array');
+  const references = dependentWork.filter((entry) => typeof entry === 'string'
+    && entry.startsWith('integration-method-choice:'));
+  if (references.length === 0) return null;
+  if (references.length !== 1 || !references[0].startsWith(CHOICE_PREFIX) || references[0].length > 4096)
+    throw new TypeError('integration requires one supported revision-bound method choice');
+  let value;
+  try { value = JSON.parse(Buffer.from(references[0].slice(CHOICE_PREFIX.length), 'base64url').toString('utf8')); }
+  catch { throw new TypeError('invalid integration method choice encoding'); }
+  if (integrationMethodChoiceReference(value) !== references[0])
+    throw new TypeError('integration method choice encoding must be canonical');
+  return Object.freeze(value);
 }
 /** Unknown facts block only when they govern a selected or mandatory capability. */
 export function providerBlockingReasons(state, policy) {
@@ -135,6 +217,11 @@ export function providerBlockingReasons(state, policy) {
   add(policy.squashOnlyRequired && !(state?.merge?.allow_squash_merge === true
     && state.merge.allow_merge_commit === false
     && state.merge.allow_rebase_merge === false), 'squash-only');
+  add(policy.squashPreferredRequired && (!preferredMethods(state?.effectiveMergeMethods)
+    || state?.merge?.allow_squash_merge !== true || state?.merge?.allow_merge_commit !== true
+    || typeof state?.merge?.allow_rebase_merge !== 'boolean' || state?.linearHistoryRequired !== false
+    || !Array.isArray(state?.observationErrors)
+    || state.observationErrors.includes('classic-protection')), 'squash-preferred');
   add(policy.strict !== null && state?.strict !== policy.strict, 'strict-policy');
   add(policy.requiredChecks.some((check) => !state?.requiredChecks?.includes(check)),
     'required-checks');
@@ -142,7 +229,7 @@ export function providerBlockingReasons(state, policy) {
     'rulesets', 'rulesets-pagination-boundary', 'expanded-rulesets', 'ruleset-scope',
   ].includes(error));
   const pullRequestMethodsSelected = policy.pullRequestRequired
-    && (policy.squashOnlyRequired || policy.linearHistoryRequired);
+    && (policy.squashOnlyRequired || policy.squashPreferredRequired || policy.linearHistoryRequired);
   add((policy.mergeQueueRequired || policy.strict !== null || pullRequestMethodsSelected)
     && incompleteRulesets,
     'ruleset-observation');
