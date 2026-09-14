@@ -70,6 +70,18 @@ export function validationCheckDefinitions(policy, plan, observed, ownerDigest) 
       command: check.command[0] === 'node' ? process.execPath : check.command[0], args: check.command.slice(1), fingerprint };
   });
 }
+/** Receipt diagnostics are bounded; selection and source validation use the complete plan. */
+export function validationPlanReceipt(plan) {
+  const evidence = values => ({ count: values.length, digest: hash(JSON.stringify(values)),
+    sample: values.slice(0, 8).map(value => value.slice(0, 256)),
+    abbreviated: values.length > 8 || values.slice(0, 8).some(value => value.length > 256) });
+  return { schema: 'agentic-os/validation-plan-receipt/v1', digest: hash(JSON.stringify(plan)),
+    mode: plan.mode, partition: plan.partition, available: plan.available,
+    changed: evidence(plan.changed), broadReasons: evidence(plan.broadReasons),
+    unmatchedPaths: evidence(plan.unmatchedPaths),
+    checks: plan.checks.map(check => ({ id: check.id,
+      reasons: { count: check.reasons.length, digest: hash(JSON.stringify(check.reasons)) } })) };
+}
 export async function runRepositoryValidation(argv, { out = console.log } = {}) {
   const options = validationArguments(argv), root = realpathSync(resolve(options.root));
   const ci = options.mode === 'ci' || Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
@@ -116,7 +128,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     }
     const receipt = { schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
       identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
-      policyDigest: policyFile.digest, ownerDigest, plan,
+      policyDigest: policyFile.digest, ownerDigest, plan: validationPlanReceipt(plan),
       outcome: 'running', startedAt: Date.now(), results: [], resources, costRegressions: [] };
     const stable = () => {
       if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest() !== ownerDigest)
