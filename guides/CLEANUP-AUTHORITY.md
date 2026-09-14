@@ -33,6 +33,21 @@ explicitly reenroll these identities; copying this policy does not authorize ano
    Projection and registration are moved into clone-private recoverable quarantine, not deleted.
    Synchronize a clean canonical checkout with its separate native plan/receipt.
 
+For step 6, `npm run completion:plan -- --ref=<lane> --bundle=<absolute-json>` reads one
+bounded evidence bundle, replays both immutable GitHub transition winners live, and prints the
+exact cleanup eligibility and authorization digest. The bundle has exactly `cleanup`,
+`integrationVerifier`, and `retirementVerifier` fields. `cleanup` contains the existing cleanup
+plan, requests, operation receipts, plan bytes, preservation receipt, and no-remaining-value
+receipt; each verifier contains `repository`, `targetRepository`, `operationInput`, `workflowRun`,
+and `policy` as required by `createGitHubTransitionAuthorityVerifier`. Keep the bundle and plan
+outside source worktrees. Supply `GITHUB_TOKEN` only in the process environment, never in JSON.
+After stopping writers, run `npm run completion:apply -- --ref=<lane> --bundle=<absolute-json>
+--plan=<absolute-json> --authorize=<exact-eligibility-digest> --stopped`. Apply rechecks the
+canonical checkout, registered lane, evidence bundle and live provider winners; the cleanup
+adapter checks expiration, manifests and authorization again before quarantine. A plan alone
+does not authorize effects. The command cannot issue initial authority, publish transition
+winners, merge a PR, delete a branch, or synchronize canonical main.
+
 See [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md) for the existing schemas and adapters.
 Each source coordinate has one create-only winner. Lost responses require exact-coordinate readback;
 do not rediscover dispatches by listing workflow runs or retry a deterministic failure unchanged.

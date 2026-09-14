@@ -81,6 +81,8 @@
     "fleet:check": "node bin/agentic-os-fleet.mjs",
     "reap": "node bin/agentic-os.mjs reap",
     "finish": "node bin/agentic-os.mjs finish",
+    "completion:plan": "node bin/agentic-os-completion-close.mjs plan",
+    "completion:apply": "node bin/agentic-os-completion-close.mjs apply",
     "sync:canonical": "node bin/agentic-os.mjs canonical-sync",
     "reconcile": "node bin/agentic-os.mjs reconcile",
     "queue:show": "node bin/agentic-os.mjs queue show",
