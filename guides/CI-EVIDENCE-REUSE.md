@@ -9,7 +9,7 @@ adr_revision: 1.0.0
 mvp_revision: 1.0.0
 gtm_revision: 1.0.0
 owner: agentic-os
-status: source-validated-consumer-integration-pending
+status: protected-consumer-reuse-observed
 load_policy: on-demand
 ---
 
@@ -97,5 +97,20 @@ Validation source: `__tests__/ci-evidence.test.mjs`. GitHub provider contracts:
 [artifact sharing](https://docs.github.com/en/actions/tutorials/store-and-share-data).
 
 Local validation on 2026-09-14: the existing affected runner selected 12 of 109 suites;
-all 86 tests and the fresh evaluators passed in 37.74 seconds. No production saving is
-claimed by this result. Required protected CI and the Graph consumer receipt remain pending.
+all 86 tests and the fresh evaluators passed in 37.74 seconds. This local observation
+does not establish a production saving.
+
+Protected consumer observation on 2026-09-14: OS [PR #154](https://github.com/huijoohwee/agentic-os/pull/154)
+passed its required checks and merged as `4a8aaa70174a4892612b1d219518db37a287cf75`.
+Graph [producer run 34867024729](https://github.com/huijoohwee/agentic-graph/actions/runs/34867024729)
+passed canonical integration in 226 seconds and XR review checks in 291 seconds on
+`9bc10287428cdb487e96f9a7c68ae4981fbdc697`. Its sealed evidence is 1,535 bytes.
+[Consumer run 34868416813](https://github.com/huijoohwee/agentic-graph/actions/runs/34868416813)
+verified that evidence in a 10-second composite step and skipped one duplicate
+`npm run ci:integration` command. Receipt input digest:
+`57a213472e189101ab3a8a6f36d4d92f4af57481e02555d97bfd6fb1910df0b0`;
+producer artifact ID `10357158557`; `reused:true`, `authority:false`.
+These are observed step durations and one avoided command, not a general speed benchmark.
+The consumer subsequently failed source-to-mirror parity because the schema document map
+lacked the new guide; deployment did not run. Build, parity, browser, human authorization,
+production availability and live sign-in retain separate results.
