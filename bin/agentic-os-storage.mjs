@@ -10,6 +10,7 @@ import { MAX_OUTPUT, hash, digest, fail, same, direct, command, git, location, a
   storageManifest, privateDirectory, flushDirectory, durableJson, flushTree } from './agentic-os-storage-files.mjs';
 import { RECOVERY_KINDS, configureRecovery, planRecovery, applyRecovery, inventoryRecovery,
   recoveryLocation } from './agentic-os-storage-recovery.mjs';
+import { reportStorage } from './agentic-os-storage-report.mjs';
 
 const SCHEMA = 'agentic-os/storage-plan/v1';
 const KINDS = ['git', 'dependencies', 'worktree-dependencies', 'artifact-archive', 'artifact-compression', 'canonical-quarantine'];
@@ -332,17 +333,26 @@ export function applyStorage(plan, { authorization, stopped = false, resume = fa
 }
 export function runStorage(argv) {
   const [action, ...tokens] = argv, args = {};
-  if (!['plan', 'apply', 'configure', 'inventory'].includes(action)) fail('action');
+  if (!['plan', 'apply', 'configure', 'inventory', 'report'].includes(action)) fail('action');
   for (const token of tokens) {
     const match = /^--([a-z-]+)(?:=(.+))?$/u.exec(token);
     if (!match || Object.hasOwn(args, match[1])) fail('arguments');
     args[match[1]] = match[2] ?? true;
   }
-  const allowed = action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination']
+  const allowed = action === 'report' ? ['repository', 'deep', 'category', 'max-entries', 'max-ms']
+    : action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination']
     : action === 'apply' ? ['plan', 'authorize', 'stopped', 'resume'] : ['repository', 'store'];
   if (Object.keys(args).some(k => !allowed.includes(k))) fail('arguments');
   let result;
-  if (action === 'configure' || action === 'inventory') {
+  if (action === 'report') {
+    if (typeof args.repository !== 'string' || args.deep !== undefined && args.deep !== true
+      || args.category !== undefined && typeof args.category !== 'string'
+      || ['max-entries', 'max-ms'].some(key => args[key] !== undefined && !/^[1-9][0-9]*$/u.test(args[key])))
+      fail('arguments');
+    result = reportStorage({ cwd: args.repository, deep: args.deep ?? false, category: args.category ?? null,
+      ...(args['max-entries'] === undefined ? {} : { maxEntries: Number(args['max-entries']) }),
+      ...(args['max-ms'] === undefined ? {} : { maxMs: Number(args['max-ms']) }) });
+  } else if (action === 'configure' || action === 'inventory') {
     if (typeof args.repository !== 'string' || action === 'configure' && typeof args.store !== 'string'
       || args.store !== undefined && typeof args.store !== 'string') fail('arguments');
     result = (action === 'configure' ? configureRecovery : inventoryRecovery)({ cwd: args.repository, store: args.store });
