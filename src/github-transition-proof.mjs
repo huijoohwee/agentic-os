@@ -101,11 +101,10 @@ function checkRecord(entry, context, revision, mergedAt) {
     status: 'completed', conclusion: 'success', completedAt, revision };
 }
 async function classicBranchProtection(api, target, branch) {
-  const response = await api.call('GET',
-    `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
+  const response = await api.call('GET', `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
   if (response.status === 404) return null;
-  return parseClassicBranchProtection(api.exact(response, [200], 'GitHub branch protection'),
-    GITHUB_ACTIONS_INTEGRATION_ID);
+  const value = api.exact(response, [200], 'GitHub branch protection'), strict = value?.required_status_checks?.strict;
+  if (typeof strict !== 'boolean') fail('GitHub branch protection required checks are invalid'); return parseClassicBranchProtection({ ...value, required_status_checks: { ...value.required_status_checks, strict: false } }, GITHUB_ACTIONS_INTEGRATION_ID);
 }
 async function checks(api, target, revision, contexts, mergedAt, expected = null) {
   if (expected !== null) {
@@ -191,13 +190,15 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
     rulesetVersions };
   return { ...payload, ruleSuiteDigest: governanceDigest(payload) };
 }
-function targetProtection(observation, target, ref, classicProtection = null, retrospective = false) {
-  const projection = object(observation, 'target protection observation').projection;
-  const versions = observation.versions;
+function targetProtection(observation, target, ref, classicProtection = null, retrospective = false, repositoryValue = null) { const projection = object(observation, 'target protection observation').projection, versions = observation.versions;
   if (projection.repository !== target.repository || projection.ref !== ref
     || projection.rulesets.some((entry) => entry.bypassActors.length !== 0
       && !same(entry.bypassActors, [REDACTED_BYPASS])))
     fail('target canonical protection identity or bypass policy changed');
+  if (projection.rulesets.length === 0) { if (!retrospective || classicProtection === null || repositoryValue === null) fail('target canonical protection lacks active rulesets');
+    const allowedMethods = [repositoryValue.allow_merge_commit === true ? 'merge' : null, repositoryValue.allow_squash_merge === true ? 'squash' : null].filter(Boolean);
+    if (allowedMethods.length === 0) fail('target repository exposes no supported merge method'); return { projection, versions: [], requiredContexts: classicProtection.requiredContexts, allowedMethods, activeRuleTypes: classicProtection.activeRuleTypes, bypassActorsObserved: true };
+  }
   if (!Array.isArray(versions) || versions.length !== projection.rulesets.length
     || versions.some((entry) => !projection.rulesets.some((ruleset) => ruleset.id === entry.id)))
     fail('target canonical protection versions are incomplete');
@@ -278,8 +279,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     retrospective && expectedProof === null
       ? classicBranchProtection(api, target, canonicalBranch) : Promise.resolve(null),
   ]);
-  const targetIdentity = targetRepositoryIdentity(api.exact(targetResponse, [200],
-    'GitHub target repository'), target, issuance?.storedBundle?.targetRepository ?? null);
+  const targetRepositoryValue = api.exact(targetResponse, [200], 'GitHub target repository'), targetIdentity = targetRepositoryIdentity(targetRepositoryValue, target, issuance?.storedBundle?.targetRepository ?? null);
   const events = api.exact(mergeEventsResponse, [200], 'GitHub integration merge events');
   if (!Array.isArray(events) || mergeEventsResponse.headers?.get?.('link')?.includes('rel="next"'))
     fail('GitHub integration merge events are incomplete');
@@ -289,7 +289,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const mergeEventId = id(mergeEvent.id, 'merge event id');
   const mergedAt = instant(pull.merged_at, 'review merged time');
   const protectedTarget = expectedProof === null
-    ? targetProtection(protectionObservation, target, canonicalRef, classicProtection, retrospective)
+    ? targetProtection(protectionObservation, target, canonicalRef, classicProtection, retrospective, targetRepositoryValue)
     : { projection: { projectionDigest: expectedProof.targetProtectionDigest },
       versions: expectedProof.targetRulesetVersions,
       requiredContexts: expectedProof.targetRequiredContexts,
