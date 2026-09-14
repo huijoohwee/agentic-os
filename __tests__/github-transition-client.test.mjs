@@ -55,10 +55,11 @@ function evidenceRuleRows(id) {
 function classicProtection(contexts = ['Integration Gate'], {
   conversationResolution = false,
   linearHistory = true,
+  strict = false,
 } = {}) {
   return {
     required_status_checks: {
-      strict: false,
+      strict,
       contexts,
       checks: contexts.map((context) => ({ context, app_id: 15368 })),
     },
@@ -233,7 +234,8 @@ function apiFixture(issuance) {
     ruleSuitePushedAt: '2026-09-02T00:14:59Z', targetRulesUpdatedAt: '2026-09-02T00:13:00Z',
     mergeParents: [TARGET_BASE, CANDIDATE], mergeCommittedAt: '2026-09-02T00:15:00Z',
     candidateTree: hex('a', 40), mergeTree: hex('a', 40), pullBaseRevision: TARGET_BASE,
-    targetOwner: { id: 42, login: 'example' }, absentRefBarrier: null,
+    targetOwner: { id: 42, login: 'example' }, targetRulesetRowsEmpty: false,
+    targetClassicStrict: false, absentRefBarrier: null,
     refCreateStatuses: [], concurrentRunTimes: false, runDigests: {},
     compareHeadCommitMissing: false, runStartedAtById: {}, runUpdatedAtById: {},
     retirePublicationCommittedAt: '2026-09-02T00:23:00Z' };
@@ -284,7 +286,9 @@ function apiFixture(issuance) {
     if (route === 'GET /repos/example/evidence/rulesets/12')
       return response(ruleDetail(12, evidenceRuleRows(12)));
     if (route === 'GET /repos/example/target') return response({ id: state.targetRepositoryId,
-      full_name: 'example/target', owner: state.targetOwner });
+      full_name: 'example/target', owner: state.targetOwner,
+      allow_merge_commit: state.targetMergeMethods.includes('merge'),
+      allow_squash_merge: state.targetMergeMethods.includes('squash') });
     if (route === 'GET /repos/example/target/git/ref/heads/agent/device/recovery')
       return response({ ref: 'refs/heads/agent/device/recovery', object: { type: 'commit', sha: CANDIDATE } });
     if (route === 'GET /repos/example/target/git/ref/heads/main')
@@ -307,9 +311,11 @@ function apiFixture(issuance) {
     if (route === 'GET /repos/example/target/branches/main/protection')
       return response(classicProtection(state.targetClassicProtectionContexts, {
         conversationResolution: state.targetClassicConversationResolution,
+        strict: state.targetClassicStrict,
       }));
     if (route === 'GET /repos/example/target/rules/branches/main')
-      return response(targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts));
+      return response(state.targetRulesetRowsEmpty ? []
+        : targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts));
     if (route === 'GET /repos/example/target/rulesets/21') {
       const detail = { ...ruleDetail(21,
         targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts)),
@@ -708,6 +714,25 @@ test('retrospective proof uses classic branch checks and ignores deleted ruleset
   assert.deepEqual(winner.stored.providerProof.targetRequiredContexts, ['Integration Gate']);
   assert.ok(winner.stored.providerProof.targetActiveRuleTypes.includes(
     'required_review_thread_resolution'));
+});
+
+test('retrospective proof accepts complete strict classic protection without rulesets', async () => {
+  const fixture = await successorFixture((state) => {
+    historicalSquash(state, { rulesUpdatedAfterMerge: true });
+    state.targetRulesetRowsEmpty = true;
+    state.targetClassicStrict = true;
+    state.targetClassicConversationResolution = true;
+    state.ruleEvaluations = ['deletion', 'non_fast_forward', 'pull_request',
+      'required_linear_history', 'required_review_thread_resolution',
+      'required_status_checks'].map((rule_type) => ({
+      rule_source: { type: 'protected_branch' }, enforcement: 'active',
+      result: state.ruleEvaluation, rule_type,
+    }));
+  });
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.deepEqual(winner.stored.providerProof.targetRulesetVersions, []);
+  assert.deepEqual(winner.stored.providerProof.targetRequiredContexts, ['Integration Gate']);
+  assert.deepEqual(winner.stored.providerProof.targetAllowedMergeMethods, ['squash']);
 });
 
 test('retrospective proof widens rule suite lookup for older merges', async () => {

@@ -131,13 +131,13 @@ function bypass(value) {
   return `${text(source.actor_type, 'bypass actor type')}:${id(source.actor_id,
     'bypass actor id')}:${text(source.bypass_mode, 'bypass mode')}`;
 }
-async function rulesProjection(call, repo, ref, allowRedactedBypass = false) {
-  const short = ref.slice('refs/heads/'.length);
-  const page = await call('GET', `${repo.path}/rules/branches/${encodeURIComponent(short)}?per_page=100`);
-  const rows = exactStatus(page, [200], 'GitHub transition rules');
-  if (!Array.isArray(rows) || rows.length === 0
-    || page.headers?.get?.('link')?.includes('rel="next"'))
-    fail('GitHub transition rules are incomplete');
+async function rulesProjection(call, repo, ref, allowRedactedBypass = false, allowClassicOnly = false) {
+  const short = ref.slice('refs/heads/'.length), page = await call('GET', `${repo.path}/rules/branches/${encodeURIComponent(short)}?per_page=100`), rows = exactStatus(page, [200], 'GitHub transition rules');
+  if (!Array.isArray(rows) || page.headers?.get?.('link')?.includes('rel="next"')) fail('GitHub transition rules are incomplete'); if (rows.length === 0) {
+    if (!allowClassicOnly) fail('GitHub transition rules are incomplete');
+    const payload = { schema: 'agentic-os/github-protection-projection/v1', repository: repo.repository, ref, rulesets: [] };
+    return { projection: { ...payload, projectionDigest: governanceDigest(payload) }, versions: [] };
+  }
   const ids = [...new Set(rows.map((entry) => id(entry?.ruleset_id, 'ruleset id')))];
   const rulesets = [], versions = [];
   for (const rulesetId of ids) {
@@ -311,7 +311,7 @@ export function createGitHubTransitionRestProvider({ repository: identity,
             issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
       return observeGitHubIntegrationProof({ api: {
         call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
-        rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true),
+        rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
         commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
       }, target, input, initialProvider: initial, requirePlanBinding: false });
     },
@@ -323,7 +323,7 @@ export function createGitHubTransitionRestProvider({ repository: identity,
           issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
         return { proof: await observeGitHubIntegrationProof({ api: {
           call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
-          rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true),
+          rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
           commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
         }, target, input, initialProvider: initial, expectedProof }), predecessor: null };
       }
@@ -341,7 +341,7 @@ export function createGitHubTransitionRestProvider({ repository: identity,
             token, fetchImpl, timeoutMs });
       const observedProof = await observeGitHubIntegrationProof({ api: {
         call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
-        rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true),
+        rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
         commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
       }, target, input: prior.stored.operationInput, initialProvider: initial,
       expectedProof: prior.stored.providerProof });
