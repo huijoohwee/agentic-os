@@ -21,9 +21,9 @@ test('native documentation has bounded explicit assets, current links and separa
   assert.equal(manifest.sourceHistoryRetained, true);
   assert.equal(manifest.phase, 'owner-assets-prepared-consumer-cutover-pending');
   assert.match(manifest.sourceRevision, /^[0-9a-f]{40}$/);
-  assert.equal(manifest.files.length, 19);
-  assert.equal(new Set(manifest.files.map(entry => entry.source)).size, 19);
-  assert.equal(new Set(manifest.files.map(entry => entry.destination)).size, 19);
+  assert.equal(manifest.files.length, 20);
+  assert.equal(new Set(manifest.files.map(entry => entry.source)).size, 20);
+  assert.equal(new Set(manifest.files.map(entry => entry.destination)).size, 20);
   assert.deepEqual(readdirSync(join(root, 'runtime/agents/docs')).sort(),
     manifest.files.map(entry => entry.destination.split('/').at(-1)).sort());
   let total = 0;
