@@ -1,9 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkInputs, references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
-import { snapshot } from '../bin/agentic-os-test-inputs.mjs';
+import { snapshot, LIMITS } from '../bin/agentic-os-test-inputs.mjs';
+import { writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
+
+test('expanded suite receipts retain all results inside the unchanged byte cap', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'compact-test-receipt-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const value = { authority: false, results: Array.from({ length: 1800 }, (_, index) => ({ name: `suite-${index}`, passed: true, tests: 1 })) };
+  assert.ok(Buffer.byteLength(JSON.stringify(value, null, 2)) > LIMITS.receiptBytes);
+  assert.ok(Buffer.byteLength(JSON.stringify(value)) < LIMITS.receiptBytes);
+  writeReceipt(directory, 'last.json', value);
+  const bytes = readFileSync(join(directory, 'last.json'));
+  assert.ok(bytes.length <= LIMITS.receiptBytes); assert.deepEqual(JSON.parse(bytes), value);
+  assert.throws(() => writeReceipt(directory, 'last.json', { data: 'x'.repeat(LIMITS.receiptBytes) }), /byte-budget/);
+  assert.deepEqual(JSON.parse(readFileSync(join(directory, 'last.json'))), value);
+});
 
 const file = text => ({ text, digest: text, mode: '100644' });
 function fixture() {

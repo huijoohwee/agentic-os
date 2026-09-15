@@ -48,7 +48,7 @@ test('the portable context runtime retains its closed budget independently of op
   const entries = readdirSync(root, { withFileTypes: true });
   const contextFiles = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort();
   assert.deepEqual(contextFiles, ['cache-context.mjs', 'json-contract.mjs', 'reasoning-continuity.mjs']);
-  assert.deepEqual(entries.filter(entry => entry.isDirectory()).map(entry => entry.name), ['agents']);
+  assert.deepEqual(entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort(), ['adapters', 'agents']);
   let bytes = 0;
   for (const name of contextFiles) {
     const source = readFileSync(new URL(name, root), 'utf8'); bytes += Buffer.byteLength(source);

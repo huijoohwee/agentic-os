@@ -1,7 +1,7 @@
 # Native agent runtime
 
 Implementation authority: approved `DURABLE-AGENT-WORKFLOWS-001@0.1.0`,
-[source plan](../../guides/DURABLE-WORKFLOWS.md). This is the P1 core transfer.
+[source plan](../../guides/DURABLE-WORKFLOWS.md). This package owns the native core.
 Consumer cutover, remaining application assets and production proof are separate gates.
 `MIGRATION.json` records the native source revision and original file hashes.
 
@@ -16,6 +16,9 @@ Import only the capability required by the caller:
 | `agentic-os/agents/composition` | Injected runtime composition |
 | `agentic-os/agents/durable-object-store` | Optional existing edge state transport |
 | `agentic-os/agents/sqlite-store` | Local persistent claims and checkpoints |
+| `agentic-os/agents/worker` | One bounded wake using the existing runtime and store |
+| `agentic-os/agents/local-model` | Optional loopback inference with pinned artifacts |
+| `agentic-os/agents/local-host` | Explicit authenticated local HTTP process and scheduled wakes |
 
 Imports start no worker, provider call, background timer or store connection. The
 root lifecycle API does not import these modules. Execution adapters, authorization,
@@ -45,9 +48,9 @@ at 8 globally and 4 per principal, and lock waits at one second. Configuration i
 persisted; changed limits require an explicit state migration. Existing ledgers
 keep their current expiry policy. This adapter alone does not extend run duration.
 
-All processes use the same store and caller-generated unique claim IDs. Expired
-execution counts can conservatively block new work until the owning ledger is
-recovered. Cross-device state transfer and remote filesystem locking are unproved.
+All processes use the same store and caller-generated unique claim IDs. Admission
+recomputes expired peer execution counts in the same transaction, preserving the
+original checkpoint. Cross-device transfer and remote filesystem locking are unproved.
 
 ## P1 handoff
 
@@ -70,3 +73,117 @@ Canvas must adopt the protected OS revision before its replaced bodies are remov
 Delayed retries, effect reconciliation, per-attempt authority, invocation/browser
 parity, the sandbox fulfillment loop, remaining Canvas assets and live deployment
 proof remain P2–P4 work. No AI-quality, WTP, revenue or production claim follows.
+
+## Durable recovery and invocation
+
+P1 source transfer and the Canvas caller cutover are protected by OS PR #162 and
+Canvas PR #930. P2 is partitioned into dependency-closed recovery, invocation and
+application slices. Each slice keeps the approved 12-module/150-KB bound; the
+application/mobile demonstration and provider setup remain separate exit checks.
+
+New jobs use `agent-swarm-run/v2`. Their immutable digest binds the normalized
+request, principal and exact agent revision; an altered request cannot reuse its
+run ID. Admission persists the execution policy, deadline and a fixed retention
+deadline (one day beyond execution by default). Reads never extend retention.
+One run may last at most seven days, in bounded attempts, with at most 30 days of
+additional retention. Storage capacity can reject new jobs; it never evicts a
+live receipt to make room. No new service, paid adapter or always-loaded executor
+is introduced. Queue/concurrency caps belong to the selected persistent store.
+
+Unknown effects enter `reconciling`. Supply a trusted `reconcileTask` reader that
+binds the original idempotency key and an evidence reference. Verified completion
+also needs the existing receipt verifier. An absent effect permits another attempt
+only when the reader confirms that the old executor cannot still emit an effect
+(`quiescent: true`). Pending/unknown readback releases the lease, persists its next
+read time and remains bounded by `maxReconciliations`. No response is an absence proof.
+
+Trusted adapters may throw `AgentSwarmFailure` with transient/permanent failure and
+explicitly known absent effect. Other thrown errors preserve uncertainty unless
+the host declares the whole executor read-only. Every dispatched attempt and accepted
+result rechecks current authorization; execution leases cannot outlive the supplied
+session. Model definition resolution remains pinned. Cancellation suppresses late
+results while retaining unknown effect state. Synthesis is an output-only adapter.
+
+The in-process `run()` convenience method returns when eligibility is in the future
+or reconciliation is needed. Use `nextEligibleAt` to schedule the next wake; waiting
+does not occupy a worker or start a polling timer. `work()` executes one eligible
+step. `retry()` performs one bounded reconciliation, never an unreviewed blind replay.
+
+Planning also persists the normalized request and a fenced lease. Only an explicitly
+read-only planner (`planningEffect: 'read-only'`) may repeat after a crash, within the
+original deadline and attempt cap. Unknown planning outcomes stop for review. A
+canceled planning reservation cannot accept a late plan. Initial acceptance rechecks
+authorization after planning.
+
+`createAgentSwarmWorker({ runtime, stateStore, resolveContext })` performs one `tick()`:
+it scans at most 128 retained jobs and dispatches at most eight concurrent operations
+(one by default). It reacquires current principal authority through the injected
+resolver. SQLite remains the queue and capacity owner. Returned `nextEligibleAt`
+lets an explicit host schedule its next wake, with a one-second minimum stalled-job
+delay. Missing or expired current authority pauses that job without idle polling;
+an explicit host wake rechecks authority. Construction starts no loop. Edge alarm
+hosting and fleet capacity still require their deployment adapter. Tick results
+omit prompts and outputs.
+
+`startLocalAgentHost({ runtime, stateStore, authenticate, resolveContext })` starts
+an explicit process host on `127.0.0.1` with an ephemeral port by default. It serves
+the four operations below and starts one bounded wake to resume persisted work.
+It schedules another wake only when work is pending. An accepted job continues
+after the browser leaves. Authentication and current worker authority are injected
+by the product; neither comes from request JSON. Authentication has a five-second
+deadline, HTTP operations have a 55-second bound, and four concurrent requests are
+allowed by default. Host, origin, JSON and request/response byte checks fail closed.
+No cross-origin access is enabled by default. Explicit allowed origins still need
+the same authentication; the host emits no CORS grant.
+
+Call `await host.close()` before closing the store. Shutdown cancels timers,
+aborts bounded attempts and drains their promises without deleting records.
+`host.wake()` rechecks queued jobs after authority becomes available. Its six
+tests cover CLI/MCP/HTTP parity, process-kill retry recovery without another start,
+idle/unauthorized suspension, wrong-owner denial, request capacity and bounded
+shutdown. Shared deadlines release listeners even when an executor never settles.
+This process host is local runtime evidence; it is not a public deployment.
+
+`createLocalModelExecutor` accepts a loopback endpoint and exact model/image digests.
+The host must verify the FOSS artifact license and bytes, run the isolated server,
+and supply authentication through `getHeaders`. Input is capped at 16 KB, output at
+256 KB, completion at 2,048 tokens and timeout at 50 seconds. Partial/mismatched
+results fail; no network retry occurs inside the adapter. Known token counts and
+executor revisions accompany the private result. Monetary cost remains null, and
+the runtime cost aggregate remains unknown. No paid endpoint or download is implicit.
+
+The refreshed local package cap is 28 modules / 300 KB across the completed core,
+recovery, invocation, local executor and explicit process host. Optional application
+adapters have separate per-batch caps documented in `../adapters/README.md`.
+Graph registers the four tools through its existing registry and the exported OS
+catalog. Its authenticated same-origin HTTP host is a separate required integration.
+
+Legacy v1 ledgers remain readable. A stopped-writer cutover can explicitly call
+`migrate({ runId, operationId, expectedDigest }, authenticatedContext)` before old
+retention expires. The authorizer must allow `agent.swarm.migrate`; the expected
+SHA-256 uses canonical JSON. Migration preserves original effect keys and treats
+unfinished old effects as unknown. Changed bytes, unknown schemas or an attempted
+new read-only assertion fail closed. This administrative seam is not a model tool.
+
+The existing catalog owns `/run.start`, `/run.status`, `/run.cancel`, `/run.retry`:
+
+```sh
+agentic-os /run.start @input:request.json '#mutating'
+agentic-os /run.status @input:status.json '#read-only'
+```
+
+Configure `AGENTIC_OS_RUN_ENDPOINT` to an authenticated `/api/agent-swarm/` endpoint
+and optionally `AGENTIC_OS_RUN_TOKEN` in the host environment. MCP exposes the same
+four names with typed JSON input, passed to CLI stdin. Tool input cannot supply
+endpoints, principals, tokens or executable code. `agentic-os/agents/invocation`
+exports the shared validator/dispatcher and optional portable HTTP client for
+browser adapters. Construction performs no I/O. Transport failure never retries
+automatically; uncertain mutations carry `writeResultUnknown`.
+
+Evidence: `agent-durable-workflow.test.mjs` kills a process after an effect but
+before checkpoint, reopens SQLite, reconciles one receipt, and verifies zero repeat
+executions. It also covers delay, exhaustion, retention, revoked authorization,
+source-bound legacy conversion and fencing. `agent-run-invocation.test.mjs` joins
+the catalog, real CLI subprocesses, MCP, authenticated HTTP and portable client.
+These deterministic tests establish recovery/transport behavior, not AI quality,
+browser/offline completion, live deployment or payment evidence.

@@ -1,12 +1,13 @@
 import { normalizeJson, serializedJsonLength } from "../json-contract.mjs";
 import { normalizeCostLog } from "./running-agent-contract.js";
 
-export const AGENT_SWARM_RUN_SCHEMA = "agent-swarm-run/v1";
+export const AGENT_SWARM_RUN_SCHEMA = "agent-swarm-run/v2";
 
 export const AGENT_SWARM_DEFAULTS = Object.freeze({
   maxTasks: 32,
   maxParallel: 8,
   maxAttempts: 2,
+  maxReconciliations: 8,
   maxWaves: 12,
   maxGoalChars: 40_000,
   maxInputChars: 100_000,
@@ -17,6 +18,9 @@ export const AGENT_SWARM_DEFAULTS = Object.freeze({
   taskTimeoutMs: 60_000,
   taskLeaseMs: 90_000,
   runTtlMs: 30 * 60_000,
+  retentionMs: 24 * 60 * 60_000,
+  retryBaseMs: 1_000,
+  retryMaxMs: 60_000,
   storeClaimTtlMs: 10_000,
   storeClaimAttempts: 8,
   storeClaimRetryMs: 5,
@@ -30,6 +34,18 @@ export class AgentSwarmBlock extends Error {
     super(message);
     this.name = "AgentSwarmBlock";
     this.reasonCode = reasonCode;
+  }
+}
+
+/** Trusted executor assertion. Unknown external effects must never be labeled absent. */
+export class AgentSwarmFailure extends Error {
+  constructor(reasonCode, { kind = 'unknown', effectState = 'unknown' } = {}) {
+    super(assertIdentifier(reasonCode, 'reasonCode', 128));
+    if (!['transient', 'permanent', 'unknown'].includes(kind) || !['absent', 'unknown'].includes(effectState))
+      throw new TypeError('Invalid task failure classification.');
+    this.reasonCode = reasonCode;
+    this.kind = kind;
+    this.effectState = effectState;
   }
 }
 

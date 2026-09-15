@@ -1,0 +1,165 @@
+{
+  "schema": "agentic-os/native-adapter-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "697c47a1508fbf7184f11d41e77575b316fed768",
+  "status": "source-transfer-awaiting-consumer-pin",
+  "batch": 2,
+  "modules": [
+    {
+      "source": "agent-api/src/auth.js",
+      "sourceBlob": "201b2ee7a1cba17f79a922c51d31017dbfd75492",
+      "sourceSha256": "ac8a5c3cdd071697e0ab816a2b0fa8bd3fe15157fb7fabfadd82d531d6744c61",
+      "destination": "runtime/adapters/auth.js",
+      "sha256": "ac8a5c3cdd071697e0ab816a2b0fa8bd3fe15157fb7fabfadd82d531d6744c61"
+    },
+    {
+      "source": "agent-api/src/agent-runtime-handler.js",
+      "sourceBlob": "2e4009cf966406a23344de59c8cceffce4013ba6",
+      "sourceSha256": "524f35fe3d7bed31a35ddeebe4e453e46a799c0bb5e4db6d6f82e77736ddd7c5",
+      "destination": "runtime/adapters/agent-runtime-handler.js",
+      "sha256": "d7d397a411ad8172dd74dd96030666749583081e811a0c7e13c5322c690b8b6d"
+    },
+    {
+      "source": "agent-api/src/agent-swarm-handler.js",
+      "sourceBlob": "22ea67e4a61f68e85dcae3bede8702a01f22d248",
+      "sourceSha256": "49308477c6a6211233e84785ebcb3c20bf23d0bd3923e7d1ba40985d329b4c87",
+      "destination": "runtime/adapters/agent-swarm-handler.js",
+      "sha256": "37593ae800d79d217271fb2eb7a5241901e8bad1840c533c3727e0a9eaf1fa8a",
+      "ownedCandidateInputSha256": "776ee4fda99f84df220adf29ae5288a8d3d13119ef9a6e4ee147d0968e3533c8"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-handler.js",
+      "sourceBlob": "014920af97bae7e5fcea3d64b796fa26786f3737",
+      "sourceSha256": "81f6d499fec2e2af8d69cc1a68f59f7a86af0931686f5a61b892540ae16d2429",
+      "destination": "runtime/adapters/agent-toolkit-handler.js",
+      "sha256": "02a324fee10b8c60e96cfc54fa90b6b60f975d125d814a9beb8fa771521f1396"
+    },
+    {
+      "source": "agent-api/src/function-calling-handler.js",
+      "sourceBlob": "54166e71bb8d9e316a38cd37be91b3ecddfa1648",
+      "sourceSha256": "4ee548cc7791301199477441e51d4ae6ed5b136919aa76b1d2bc811dc7a0479d",
+      "destination": "runtime/adapters/function-calling-handler.js",
+      "sha256": "4ee548cc7791301199477441e51d4ae6ed5b136919aa76b1d2bc811dc7a0479d"
+    },
+    {
+      "source": "agent-api/src/agentic-graph-function-gateway.js",
+      "sourceBlob": "bd994d82e31a8a63dd4910aa44d4fe2c4d20f94c",
+      "sourceSha256": "d9ce9693df172dad87dd5b3776b8b4240b07bd831b72ff21886dd8e0106a8bd9",
+      "destination": "runtime/adapters/agentic-graph-function-gateway.js",
+      "sha256": "d9ce9693df172dad87dd5b3776b8b4240b07bd831b72ff21886dd8e0106a8bd9"
+    },
+    {
+      "source": "agent-api/src/agentic-graph-function-tools.js",
+      "sourceBlob": "adc7f33d17e933b9e82eb3e6785fdbf4adf51971",
+      "sourceSha256": "329d18353b953c570124c92b8cbe6e8667226d7372463f180dcc50db8cdb83b5",
+      "destination": "runtime/adapters/agentic-graph-function-tools.js",
+      "sha256": "329d18353b953c570124c92b8cbe6e8667226d7372463f180dcc50db8cdb83b5"
+    },
+    {
+      "source": "agent-api/src/handler.js",
+      "sourceBlob": "751efe6aebf0eb1e53bafeca2a60fe5a56dcfe94",
+      "sourceSha256": "9090698fa82bff5ffa6d454f55a805b7ef510cb25d4a019b1f34db9cbfb14809",
+      "destination": "runtime/adapters/handler.js",
+      "sha256": "9090698fa82bff5ffa6d454f55a805b7ef510cb25d4a019b1f34db9cbfb14809"
+    },
+    {
+      "source": "agent-api/src/openai-responses-agent-adapter.js",
+      "sourceBlob": "2f879a5002e4b8c85d34f8672bd2da873def8481",
+      "sourceSha256": "5ce7b9f962423f42540eb3737c815c143be0bdb213314326044710d3a1230200",
+      "destination": "runtime/adapters/openai-responses-agent-adapter.js",
+      "sha256": "5ce7b9f962423f42540eb3737c815c143be0bdb213314326044710d3a1230200"
+    },
+    {
+      "source": "agent-api/src/openai-responses-function-adapter.js",
+      "sourceBlob": "4d6c11982821e90087a4b42a524ca30c6772d6ee",
+      "sourceSha256": "3a79fae8df166ac86038c4782b170f09c914ca03572472b783707bf507f5d452",
+      "destination": "runtime/adapters/openai-responses-function-adapter.js",
+      "sha256": "3a79fae8df166ac86038c4782b170f09c914ca03572472b783707bf507f5d452"
+    },
+    {
+      "source": "agent-api/src/programmatic-tool-contract.js",
+      "sourceBlob": "1d6d262dc4d8238237e980eb2508e50b4ac7450b",
+      "sourceSha256": "80a7f05fce117f92c4deaea05a347b18560f0a72d3b9d85eae1ad71964ecab1d",
+      "destination": "runtime/adapters/programmatic-tool-contract.js",
+      "sha256": "92f0eeb188e499aabf735b2620f91729b8a432e74f356f89fcc8df0584829857"
+    },
+    {
+      "source": "agent-api/src/programmatic-tool-routing.js",
+      "sourceBlob": "c0bbd8fd6e6ac9f8735c20cc55266e06bf064837",
+      "sourceSha256": "16f0d421493b917dad985cbdc04de5a453d863aab33f5b85a4030249884c7d65",
+      "destination": "runtime/adapters/programmatic-tool-routing.js",
+      "sha256": "16f0d421493b917dad985cbdc04de5a453d863aab33f5b85a4030249884c7d65"
+    },
+    {
+      "source": "agent-api/src/programmatic-tool-calling.js",
+      "sourceBlob": "6fbfd111ff79f7f16a820d914ba21c5c814a8892",
+      "sourceSha256": "7ca445afdbaa586c0c76e4c02843638a13c786f14f14200fb3f9a6923f0d65c3",
+      "destination": "runtime/adapters/programmatic-tool-calling.js",
+      "sha256": "5da4b70ec75df5931a667d816d1fac28b3525d27cfc0e6d2e95175b8e2a5e540"
+    },
+    {
+      "source": "agent-api/src/podman-command-runner.js",
+      "sourceBlob": "612158e157b46da923fc385a4bd42ab668d5062a",
+      "sourceSha256": "dd0e8660f3ef2afecb2087fc54b08e96aee54ae5d3ca5ff199ac5c2ecb2ee28f",
+      "destination": "runtime/adapters/podman-command-runner.js",
+      "sha256": "dd0e8660f3ef2afecb2087fc54b08e96aee54ae5d3ca5ff199ac5c2ecb2ee28f"
+    },
+    {
+      "source": "agent-api/src/podman-containment-verifier.js",
+      "sourceBlob": "5e7fb14c16ad7dba54701c324601d18ac71c1e20",
+      "sourceSha256": "9c952ed292c82b2457a8e4a5128a1d1f9de90c15f4a7c4d951d1159ed612773b",
+      "destination": "runtime/adapters/podman-containment-verifier.js",
+      "sha256": "9c952ed292c82b2457a8e4a5128a1d1f9de90c15f4a7c4d951d1159ed612773b"
+    },
+    {
+      "source": "agent-api/src/podman-sandbox-adapter.js",
+      "sourceBlob": "a8a9b21c4082bdab02c56bd255cf74a99dd734c7",
+      "sourceSha256": "9ec26aadeb010da4d44fd59cdb0f21166d5ef00648cc8da040d0fad336f81752",
+      "destination": "runtime/adapters/podman-sandbox-adapter.js",
+      "sha256": "9ec26aadeb010da4d44fd59cdb0f21166d5ef00648cc8da040d0fad336f81752"
+    },
+    {
+      "source": "agent-api/src/sandbox-application-authorizer.js",
+      "sourceBlob": "d500fe9d8a58171ba2210250ee29e7a8b5e5ab45",
+      "sourceSha256": "ecc0c0d4de551db836e993182b9f3733eb9e77452fee223fa9af4637ec683ab1",
+      "destination": "runtime/adapters/sandbox-application-authorizer.js",
+      "sha256": "af1f92d2be5782cbae72932e1b45318434cf269913d4d98253ed0a137cea89e9"
+    },
+    {
+      "source": "agent-api/src/autonomous-runtime-config.js",
+      "sourceBlob": "8dfb35eca6d8abd86da79daba3a842af7a4e4c5d",
+      "sourceSha256": "930e269199a397369bbb59ab1060c29b36660383fde10a1d8c59caee2dd1ff0f",
+      "destination": "runtime/adapters/autonomous-runtime-config.js",
+      "sha256": "930e269199a397369bbb59ab1060c29b36660383fde10a1d8c59caee2dd1ff0f"
+    },
+    {
+      "source": "agent-api/src/live-agent-provider-proof.js",
+      "sourceBlob": "52301ad773b924dca7c9384ab80aa9d63eb2c224",
+      "sourceSha256": "e0ef61d497eca25544dd3534a58e0f26d1d2beb59204c57222fab7d47e620c7c",
+      "destination": "runtime/adapters/live-agent-provider-proof.js",
+      "sha256": "94b747297496df01b82b06a8dd7b2eb7d334342cef91e18a4225ddcebddfa764"
+    },
+    {
+      "source": "src/fail-soft-fan-out.js",
+      "sourceBlob": "d51e60d922f35ecdf7bdc5e7fb0c1da58fb6af73",
+      "sourceSha256": "080c79e78ce904c1a6498edafd48f221c1560b56305d0488c4bc198776a98a09",
+      "destination": "runtime/adapters/fail-soft-fan-out.js",
+      "sha256": "080c79e78ce904c1a6498edafd48f221c1560b56305d0488c4bc198776a98a09"
+    }
+  ],
+  "tests": [
+    "programmatic-tool-calling",
+    "podman-sandbox-provider",
+    "fail-soft-fan-out",
+    "openai-agent-live-proof",
+    "agent-api-forwarder"
+  ],
+  "transformations": [
+    "Relocate relative imports to the OS runtime owner.",
+    "Retain the owned P2 authenticated durable-operation handler, recorded by input digest.",
+    "Move bundled offline proof fixtures to OS-owned test assets. Optional paid-provider compatibility is never a default or a grant."
+  ],
+  "sourceBytes": 172268,
+  "destinationBytes": 171901
+}

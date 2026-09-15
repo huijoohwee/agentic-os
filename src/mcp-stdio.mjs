@@ -20,6 +20,8 @@ function abortError() {
 
 /** Execute the existing CLI with an argument array and bounded process-group resources. */
 export function runCli(argv, options = {}) {
+  if (options.stdin !== undefined && (typeof options.stdin !== 'string' || Buffer.byteLength(options.stdin) > 200_000))
+    return Promise.reject(new TypeError('CLI stdin must be a bounded string.'));
   const cwd = options.cwd ?? process.cwd();
   const timeoutMs = options.timeoutMs ?? CLI_TIMEOUT_MS;
   const effectful = options.effectful === true;
@@ -29,8 +31,9 @@ export function runCli(argv, options = {}) {
     if (signal?.aborted) return reject(abortError());
     const child = spawn(process.execPath, [CLI_PATH, ...argv], {
       cwd, detached: isolatedProcessGroup, env: options.env ?? process.env,
-      shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false, stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (child.stdin) { child.stdin.on('error', () => {}); child.stdin.end(options.stdin); }
     let stdout = '', stderr = '', finished = false, forcedReason = '', killTimer;
     const terminate = (terminationSignal) => {
       if (isolatedProcessGroup && Number.isInteger(child.pid)) {

@@ -291,19 +291,25 @@ export function withDeadline(operation, externalSignal, timeoutMs, controller) {
       reject(new RunningAgentBlock("aborted", "Agent turn was aborted."));
       return;
     }
+    let settled = false;
+    const finish = (complete, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      externalSignal?.removeEventListener("abort", onAbort);
+      complete(value);
+    };
     const timer = setTimeout(() => {
       controller.abort();
-      reject(new RunningAgentBlock("timeout", `Agent step exceeded ${timeoutMs} milliseconds.`));
+      finish(reject, new RunningAgentBlock("timeout", `Agent step exceeded ${timeoutMs} milliseconds.`));
     }, timeoutMs);
     const onAbort = () => {
       controller.abort();
-      reject(new RunningAgentBlock("aborted", "Agent turn was aborted."));
+      finish(reject, new RunningAgentBlock("aborted", "Agent turn was aborted."));
     };
     externalSignal?.addEventListener("abort", onAbort, { once: true });
-    Promise.resolve().then(operation).then(resolve, reject).finally(() => {
-      clearTimeout(timer);
-      externalSignal?.removeEventListener("abort", onAbort);
-    });
+    Promise.resolve().then(() => settled ? undefined : operation())
+      .then(value => finish(resolve, value), error => finish(reject, error));
   });
 }
 

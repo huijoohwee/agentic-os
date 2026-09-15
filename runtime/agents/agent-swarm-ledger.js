@@ -6,6 +6,7 @@ import {
   assertLedgerSize,
   isTerminalTask,
 } from "./agent-swarm-contract.js";
+import { clearTaskExecution as clearExecution, nextSwarmWake, retryAt, scheduleTaskFailure } from "./agent-swarm-recovery.js";
 import { aggregateCosts } from "./running-agent-contract.js";
 
 function iso(at) {
@@ -34,15 +35,9 @@ function appendEvent(ledger, limits, at, type, fields = {}) {
 
 function touch(ledger, limits, at) {
   ledger.updatedAt = iso(at);
-  ledger.expiresAt = ledger.deadlineAt;
+  // Retention is fixed at admission; observations never extend it.
+  if (["completed", "blocked", "canceled"].includes(ledger.status)) ledger.completedAt ??= iso(at);
   return assertLedgerSize(ledger, limits);
-}
-
-function clearExecution(task) {
-  delete task.workerId;
-  delete task.executionId;
-  delete task.leaseExpiresAt;
-  delete task.startedAt;
 }
 
 function taskCounts(tasks) {
@@ -72,10 +67,13 @@ function skipBlockedDependencies(ledger, limits, at) {
 }
 
 export function recoverSwarmLedger(ledger, limits, at) {
+  if (["completed", "blocked", "canceled"].includes(ledger.status)) return ledger;
+  if (at >= ledger.deadlineAt) return blockSwarmLedger(ledger, "run_deadline_elapsed", limits, at);
   if (ledger.status === "synthesizing" && ledger.synthesis?.leaseExpiresAt <= at) {
     if (ledger.synthesis.attempts < limits.maxAttempts) {
       ledger.status = "running";
       ledger.synthesis.status = "pending";
+      ledger.synthesis.nextEligibleAt = retryAt(ledger.synthesis.attempts, limits, at);
       delete ledger.synthesis.executionId;
       delete ledger.synthesis.leaseExpiresAt;
       ledger.metrics.retries += 1;
@@ -88,25 +86,18 @@ export function recoverSwarmLedger(ledger, limits, at) {
   }
   for (const task of ledger.tasks) {
     if (task.status !== "running" || task.leaseExpiresAt > at) continue;
-    if (task.attempts < limits.maxAttempts) {
-      task.status = "pending";
-      clearExecution(task);
-      ledger.metrics.retries += 1;
-      appendEvent(ledger, limits, at, "task_recovered", { taskId: task.taskId, attempt: task.attempts });
-    } else {
-      task.status = "failed";
-      task.reasonCode = "task_attempts_exhausted";
-      task.completedAt = iso(at);
-      clearExecution(task);
-      appendEvent(ledger, limits, at, "task_failed", { taskId: task.taskId, reasonCode: task.reasonCode });
-    }
+    const failure = scheduleTaskFailure(task, {
+      kind: "transient", effectState: task.effectPolicy === "read-only" ? "absent" : "unknown",
+    }, "task_lease_expired", ledger, limits, at);
+    appendEvent(ledger, limits, at, failure.reconciling ? "task_reconciliation_required" : failure.retryable ? "task_recovered" : "task_failed",
+      { taskId: task.taskId, attempt: task.attempts, reasonCode: task.reasonCode });
   }
   skipBlockedDependencies(ledger, limits, at);
   ledger.metrics.activeClaims = ledger.tasks.filter((task) => task.status === "running").length;
   return touch(ledger, limits, at);
 }
 
-export function createSwarmLedger({ request, plan, authorization, principalId, limits, admittedAt, at }) {
+export function createSwarmLedger({ request, plan, authorization, principalId, policyDigest, requestDigest, taskEffect, limits, admittedAt, at }) {
   const ledger = {
     schema: AGENT_SWARM_RUN_SCHEMA,
     runId: request.runId,
@@ -118,11 +109,13 @@ export function createSwarmLedger({ request, plan, authorization, principalId, l
     status: "running",
     authorization,
     ownerPrincipalId: principalId,
+    policyDigest,
+    requestDigest,
     planId: plan.planId,
     createdAt: iso(admittedAt),
     updatedAt: iso(at),
     deadlineAt: admittedAt + limits.runTtlMs,
-    expiresAt: admittedAt + limits.runTtlMs,
+    expiresAt: admittedAt + limits.runTtlMs + limits.retentionMs,
     tasks: plan.tasks.map((task) => ({
       taskId: task.taskId,
       objective: task.objective,
@@ -132,6 +125,9 @@ export function createSwarmLedger({ request, plan, authorization, principalId, l
       wave: task.wave,
       status: "pending",
       attempts: 0,
+      effectPolicy: taskEffect,
+      effectState: "absent",
+      nextEligibleAt: admittedAt,
       idempotencyKey: taskIdempotencyKey(request.runId, task.taskId),
     })),
     synthesis: { status: "pending", attempts: 0 },
@@ -155,7 +151,7 @@ export function createSwarmLedger({ request, plan, authorization, principalId, l
   return touch(ledger, limits, at);
 }
 
-export function claimSwarmTask(ledger, { workerId, limits, at }) {
+export function claimSwarmTask(ledger, { workerId, limits, at, principalExpiresAt = Infinity }) {
   recoverSwarmLedger(ledger, limits, at);
   if (ledger.status !== "running") return null;
   if (at + limits.taskLeaseMs >= ledger.deadlineAt) {
@@ -167,6 +163,7 @@ export function claimSwarmTask(ledger, { workerId, limits, at }) {
   if (ledger.metrics.activeClaims >= ledger.maxParallel) return null;
   const task = ledger.tasks.find((candidate) => (
     candidate.status === "pending"
+    && candidate.nextEligibleAt <= at
     && candidate.dependencies.every((dependencyId) => (
       ledger.tasks.find((dependency) => dependency.taskId === dependencyId)?.status === "completed"
     ))
@@ -177,10 +174,11 @@ export function claimSwarmTask(ledger, { workerId, limits, at }) {
     delete task.reasonCode;
   }
   task.status = "running";
+  task.effectState = task.effectPolicy === "read-only" ? "absent" : "unknown";
   task.attempts += 1;
   task.workerId = workerId;
   task.executionId = taskExecutionId(ledger.runId, task.taskId, task.attempts);
-  task.leaseExpiresAt = at + limits.taskLeaseMs;
+  task.leaseExpiresAt = Math.min(at + limits.taskLeaseMs, principalExpiresAt);
   task.startedAt = iso(at);
   ledger.attemptedCalls += 1;
   ledger.metrics.claimedTasks += 1;
@@ -211,7 +209,10 @@ export function claimSwarmTask(ledger, { workerId, limits, at }) {
       dependencyResults,
     },
     execution: {
+      schema: ledger.schema,
       runId: ledger.runId,
+      ownerPrincipalId: ledger.ownerPrincipalId,
+      requestDigest: ledger.requestDigest,
       conversationId: ledger.conversationId,
       agent: ledger.agent,
       goal: ledger.goal,
@@ -233,6 +234,7 @@ export function completeSwarmTask(ledger, executionId, outcome, limits, at) {
   task.output = outcome.output;
   task.resultDigest = digest(outcome.output);
   task.effect = outcome.effect;
+  task.effectState = outcome.effect === "read-only" ? "absent" : "confirmed";
   if (outcome.receipt) task.receipt = outcome.receipt;
   task.completedByWorkerId = task.workerId;
   task.completedAt = iso(at);
@@ -245,7 +247,7 @@ export function completeSwarmTask(ledger, executionId, outcome, limits, at) {
   return task.resultDigest;
 }
 
-export function failSwarmTask(ledger, executionId, reasonCode, limits, at) {
+export function failSwarmTask(ledger, executionId, reasonCode, limits, at, failure = { kind: "unknown", effectState: "unknown" }) {
   const task = ledger.tasks.find((candidate) => candidate.executionId === executionId && candidate.status === "running");
   if (!task || ledger.status !== "running") return { accepted: false, retryable: false };
   if (task.leaseExpiresAt <= at + limits.storeClaimTtlMs) {
@@ -253,25 +255,17 @@ export function failSwarmTask(ledger, executionId, reasonCode, limits, at) {
     recoverSwarmLedger(ledger, limits, at);
     return { accepted: false, retryable: false };
   }
-  const retryable = task.attempts < limits.maxAttempts;
-  task.lastWorkerId = task.workerId;
-  task.status = retryable ? "pending" : "failed";
-  task.reasonCode = reasonCode;
-  if (!retryable) task.completedAt = iso(at);
-  clearExecution(task);
+  const result = scheduleTaskFailure(task, failure, reasonCode, ledger, limits, at);
   ledger.metrics.activeClaims = Math.max(0, ledger.metrics.activeClaims - 1);
-  if (retryable) ledger.metrics.retries += 1;
-  appendEvent(ledger, limits, at, retryable ? "task_retry_scheduled" : "task_failed", {
-    taskId: task.taskId,
-    reasonCode,
-    attempt: task.attempts,
+  appendEvent(ledger, limits, at, result.reconciling ? "task_reconciliation_required" : result.retryable ? "task_retry_scheduled" : "task_failed", {
+    taskId: task.taskId, reasonCode, attempt: task.attempts, failureKind: failure.kind,
   });
   skipBlockedDependencies(ledger, limits, at);
   touch(ledger, limits, at);
-  return { accepted: true, retryable };
+  return result;
 }
 
-export function claimSwarmSynthesis(ledger, limits, at) {
+export function claimSwarmSynthesis(ledger, limits, at, principalExpiresAt = Infinity) {
   recoverSwarmLedger(ledger, limits, at);
   if (["completed", "blocked", "canceled"].includes(ledger.status)) return { terminal: true };
   if (ledger.tasks.some((task) => !isTerminalTask(task))) return { pending: true };
@@ -283,7 +277,7 @@ export function claimSwarmSynthesis(ledger, limits, at) {
     touch(ledger, limits, at);
     return { terminal: true };
   }
-  if (ledger.status === "synthesizing") return { pending: true };
+  if (ledger.status === "synthesizing" || (ledger.synthesis.nextEligibleAt ?? 0) > at) return { pending: true };
   if (at + limits.taskLeaseMs >= ledger.deadlineAt) {
     blockSwarmLedger(ledger, "run_deadline_capacity", limits, at);
     return { terminal: true };
@@ -292,13 +286,15 @@ export function claimSwarmSynthesis(ledger, limits, at) {
   ledger.synthesis.status = "running";
   ledger.synthesis.attempts += 1;
   ledger.synthesis.executionId = `${ledger.runId}:synthesis:attempt-${ledger.synthesis.attempts}`;
-  ledger.synthesis.leaseExpiresAt = at + limits.taskLeaseMs;
+  ledger.synthesis.leaseExpiresAt = Math.min(at + limits.taskLeaseMs, principalExpiresAt);
   ledger.attemptedCalls += 1;
   ledger.metrics.synthesisCalls += 1;
   appendEvent(ledger, limits, at, "synthesis_claimed", { attempt: ledger.synthesis.attempts });
   touch(ledger, limits, at);
   return {
     executionId: ledger.synthesis.executionId,
+    authorizationContext: { schema: ledger.schema, runId: ledger.runId, ownerPrincipalId: ledger.ownerPrincipalId,
+      agent: ledger.agent, conversationId: ledger.conversationId, requestDigest: ledger.requestDigest },
     leaseExpiresAt: ledger.synthesis.leaseExpiresAt,
     deadlineAt: ledger.deadlineAt,
     payload: {
@@ -341,16 +337,18 @@ export function completeSwarmSynthesis(ledger, executionId, outcome, limits, at)
   return true;
 }
 
-export function failSwarmSynthesis(ledger, executionId, reasonCode, limits, at) {
+export function failSwarmSynthesis(ledger, executionId, reasonCode, limits, at, failureKind = "transient") {
   if (ledger.status !== "synthesizing" || ledger.synthesis.executionId !== executionId) return false;
   if (ledger.synthesis.leaseExpiresAt <= at + limits.storeClaimTtlMs) {
     ledger.synthesis.leaseExpiresAt = at;
     recoverSwarmLedger(ledger, limits, at);
     return false;
   }
-  if (ledger.synthesis.attempts < limits.maxAttempts) {
+  ledger.synthesis.failureKind = failureKind;
+  if (failureKind === "transient" && ledger.synthesis.attempts < limits.maxAttempts) {
     ledger.status = "running";
     ledger.synthesis.status = "pending";
+    ledger.synthesis.nextEligibleAt = retryAt(ledger.synthesis.attempts, limits, at);
     ledger.metrics.retries += 1;
     appendEvent(ledger, limits, at, "synthesis_retry_scheduled", { reasonCode });
   } else {
@@ -370,7 +368,7 @@ export function cancelSwarmLedger(ledger, reason, limits, at) {
   ledger.status = "canceled";
   ledger.reasonCode = reason;
   for (const task of ledger.tasks) {
-    if (task.status !== "pending" && task.status !== "running") continue;
+    if (!["pending", "running", "reconciling"].includes(task.status)) continue;
     task.status = "canceled";
     task.reasonCode = reason;
     task.completedAt = iso(at);
@@ -386,7 +384,7 @@ export function blockSwarmLedger(ledger, reason, limits, at) {
   ledger.status = "blocked";
   ledger.reasonCode = reason;
   for (const task of ledger.tasks) {
-    if (task.status !== "pending" && task.status !== "running") continue;
+    if (!["pending", "running", "reconciling"].includes(task.status)) continue;
     task.status = "canceled";
     task.reasonCode = reason;
     task.completedAt = iso(at);
@@ -418,6 +416,10 @@ export function projectSwarmLedger(ledger, stateStoreStats = {}) {
     status: ledger.status,
     stage: "agent-swarm",
     runId: ledger.runId,
+    requestDigest: ledger.requestDigest,
+    deadlineAt: ledger.deadlineAt,
+    expiresAt: ledger.expiresAt,
+    nextEligibleAt: nextSwarmWake(ledger),
     conversationId: ledger.conversationId,
     agent: ledger.agent,
     finalAnswerOwner: ledger.agent,
@@ -434,6 +436,9 @@ export function projectSwarmLedger(ledger, stateStoreStats = {}) {
       wave: task.wave,
       status: task.status,
       attempts: task.attempts,
+      ...(task.nextEligibleAt !== undefined ? { nextEligibleAt: task.nextEligibleAt } : {}),
+      ...(task.effectState ? { effectState: task.effectState } : {}),
+      ...(task.failureKind ? { failureKind: task.failureKind } : {}),
       ...(task.workerId || task.completedByWorkerId || task.lastWorkerId
         ? { workerId: task.workerId || task.completedByWorkerId || task.lastWorkerId }
         : {}),
@@ -472,9 +477,12 @@ export function blockedSwarmResult(runId, reasonCode, message, costLogs = [], at
   });
 }
 
-export function requireLedger(value, runId) {
+export function requireLedger(value, runId, { readOnly = false } = {}) {
   if (!value) throw new AgentSwarmBlock("run_missing", `Agent Swarm run ${runId} is unavailable.`);
-  if (value.schema !== AGENT_SWARM_RUN_SCHEMA || value.runId !== runId) {
+  if (value.schema === "agent-swarm-run/v1" && !readOnly) {
+    throw new AgentSwarmBlock("ledger_migration_required", "Legacy state is readable; execution requires an explicit migration.");
+  }
+  if (![AGENT_SWARM_RUN_SCHEMA, ...(readOnly ? ["agent-swarm-run/v1"] : [])].includes(value.schema) || value.runId !== runId) {
     throw new AgentSwarmBlock("ledger_invalid", "Agent Swarm durable ledger identity is invalid.");
   }
   return value;

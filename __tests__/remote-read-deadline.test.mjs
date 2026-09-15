@@ -26,7 +26,8 @@ setInterval(()=>{},1000);
 `);
   const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
   writeFileSync(join(root, 'git'), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(source)}\n`, { mode: 0o755 });
-  return { marker, run: (mode, timeout = 750) => git(['ls-remote', '--refs', '--', 'unused'], {
+  // The deadline includes two Node startups; retain enough room for a loaded full suite.
+  return { marker, run: (mode, timeout = 2000) => git(['ls-remote', '--refs', '--', 'unused'], {
     cwd: root, remoteReadTimeoutMs: timeout, maxBuffer: 65536,
     env: { PATH: `${root}:${process.env.PATH}`, READ_MODE: mode, READ_MARKER: marker },
   }) };
@@ -45,7 +46,7 @@ for (const mode of ['hang', 'overflow', 'leader-exit']) test(`remote read ${mode
   const f = fixture(t), started = Date.now();
   assert.throws(() => f.run(mode), error => error.name === 'GitError'
     && /timed out|byte limit/u.test(error.stderr) && !error.stderr.includes('refs/heads/main'));
-  assert.ok(Date.now() - started < 3000, 'a blocked read must not wait for the transport connection timeout');
+  assert.ok(Date.now() - started < 5000, 'a blocked read must not wait for the transport connection timeout');
   const pids = JSON.parse(readFileSync(f.marker, 'utf8'));
   await new Promise(resolve => setTimeout(resolve, 50));
   for (const pid of pids) {

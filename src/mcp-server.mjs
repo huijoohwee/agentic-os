@@ -1,5 +1,6 @@
 /** MCP protocol surface for the existing ADLC CLI. Zero dependencies, no shell. */
 
+import { loadCatalog, validateCatalog } from '../bin/agentic-os-invocation.mjs';
 import { readFileSync } from 'node:fs';
 import { CAPABILITY_COMMAND, capabilityArguments } from '../bin/agentic-os-argv.mjs';
 import { assertScope, isLaneRef } from './lane-id.mjs';
@@ -74,7 +75,15 @@ const CLI_OUTPUT = {
   additionalProperties: false,
 };
 
+const invocationCatalog = loadCatalog();
+if (!validateCatalog(invocationCatalog).ok) throw new TypeError('Invocation catalog is invalid.');
+const RUN_TOOLS = invocationCatalog.entries.filter(entry => entry.action === 'run').map(entry => ({
+  name: entry.token.slice(1), description: entry.summary, inputSchema: entry.inputSchema, outputSchema: CLI_OUTPUT,
+  annotations: { readOnlyHint: entry.semantic === 'read-only', destructiveHint: false,
+    idempotentHint: entry.token !== '/run.retry', openWorldHint: true },
+}));
 export const TOOLS = deepFreeze([
+  ...RUN_TOOLS,
   { ...CAPABILITY_COMMAND, outputSchema: CLI_OUTPUT },
   {
     name: 'collaborate', title: 'Coordinate optional shared work',
@@ -85,66 +94,26 @@ export const TOOLS = deepFreeze([
     }, required: ['operation'], additionalProperties: false }, outputSchema: CLI_OUTPUT,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
-  {
-    name: 'doctor',
-    title: 'Inspect ADLC invariants',
+  { name: 'doctor', title: 'Inspect ADLC invariants',
     description: 'Report local harness and remote configuration drift without changing it.',
-    inputSchema: EMPTY_INPUT,
-    outputSchema: CLI_OUTPUT,
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-    },
-  },
-  {
-    name: 'status',
-    title: 'Inspect lanes and queue',
+    inputSchema: EMPTY_INPUT, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
+  { name: 'status', title: 'Inspect lanes and queue',
     description: 'Report registered lanes and provider queue state without changing them.',
-    inputSchema: EMPTY_INPUT,
-    outputSchema: CLI_OUTPUT,
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-    },
-  },
-  {
-    name: 'checks',
-    title: 'Discover repository checks',
+    inputSchema: EMPTY_INPUT, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
+  { name: 'checks', title: 'Discover repository checks',
     description: 'Read owner checks, deduplicated validation plans and unsigned results without running checks or fetching.',
-    inputSchema: CHECKS_INPUT,
-    outputSchema: CLI_OUTPUT,
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  },
-  {
-    name: 'reap',
-    title: 'Survey integrated lanes',
+    inputSchema: CHECKS_INPUT, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'reap', title: 'Survey integrated lanes',
     description: 'Survey exact integration identity; fetch may update remote-tracking refs.',
-    inputSchema: REAP_INPUT,
-    outputSchema: CLI_OUTPUT,
-    annotations: {
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-    },
-  },
-  {
-    name: 'lane',
-    title: 'Open a guarded ADLC lane',
+    inputSchema: REAP_INPUT, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
+  { name: 'lane', title: 'Open a guarded ADLC lane',
     description: 'Create one lane worktree and branch at the fetched profile canonical ref.',
-    inputSchema: LANE_INPUT,
-    outputSchema: CLI_OUTPUT,
-    annotations: {
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-  },
+    inputSchema: LANE_INPUT, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
 ]);
 
 export class RpcError extends Error {
@@ -208,6 +177,10 @@ function validateEmptyArguments(args) {
 }
 
 export function toolArguments(name, args) {
+  if (RUN_TOOLS.some(tool => tool.name === name)) {
+    if (!plainObject(args)) invalidParams('run operation requires a JSON object');
+    return ['run', name.slice(4), '--input=-'];
+  }
   if (name === 'capabilities') return capabilityArguments(args, invalidParams);
   if (name === 'collaborate') {
     if (!plainObject(args) || !onlyKeys(args, ['operation', 'input', 'offline'])
@@ -299,14 +272,25 @@ async function callResult(params, modern, options) {
   if (typeof params.name !== 'string' || !onlyKeys(params, ['name', 'arguments', '_meta'])) {
     invalidParams('tools/call requires a tool name and optional arguments object');
   }
+  let stdin;
+  if (RUN_TOOLS.some(tool => tool.name === params.name)) {
+    try { stdin = JSON.stringify((await import('../runtime/agents/invocation.js')).validateRunInput(params.name.slice(4), params.arguments)); }
+    catch { invalidParams('Invalid durable run input'); }
+  }
   const argv = toolArguments(params.name, params.arguments);
   const run = options.runCli;
   if (typeof run !== 'function') throw new Error('CLI runner is unavailable');
-  const effectful = ['lane', 'reap', 'collaborate'].includes(params.name);
+  const effectful = ['lane', 'reap', 'collaborate'].includes(params.name) || (stdin !== undefined && params.name !== 'run.status');
   if (effectful) options.onEffectful?.();
-  const payload = await run(argv, {
-    cwd: options.cwd, signal: effectful ? undefined : options.signal, effectful,
+  let payload = await run(argv, {
+    cwd: options.cwd, signal: effectful ? undefined : options.signal, effectful, ...(stdin === undefined ? {} : { stdin }),
   });
+  if (stdin !== undefined && effectful && typeof payload?.stdout === 'string') {
+    try {
+      if (JSON.parse(payload.stdout).writeResultUnknown === true) payload = { ...payload,
+        writeResultUnknown: true, terminationReason: 'runtime response left the operation outcome unknown' };
+    } catch { /* Invalid CLI output still passes through the existing result checks below. */ }
+  }
   if (!plainObject(payload) || !Number.isInteger(payload.exitCode)
     || typeof payload.stdout !== 'string' || typeof payload.stderr !== 'string'
     || !onlyKeys(payload, [

@@ -31,6 +31,8 @@ function exact(argv, {
 
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'run': return ['start', 'status', 'cancel', 'retry'].includes(argv[0])
+      ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'run requires start, status, cancel or retry';
     case 'capabilities': return exact(argv, {
       options: ['query', 'kind', 'limit', 'id', 'root', 'revision'], flags: ['include-content'],
     });
