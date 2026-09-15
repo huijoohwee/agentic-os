@@ -43,6 +43,8 @@ test('invocation literals are metadata while adjacent and quoted readiness asser
     '| `/runtime-ready.check` | Requires `#runtime-ready` and `@runtime-proof`. |',
     '`/runtime-ready.check #runtime-ready @local-harness`',
     '``#runtime-ready``',
+    '      /sme-care-agent @source.body @runtime-proof #runtime-ready #approval-gate',
+    '  #runtime-ready',
   ].join('\n')), []);
   for (const source of [
     '`/runtime-ready.check` is runtime-ready.',
@@ -54,6 +56,11 @@ test('invocation literals are metadata while adjacent and quoted readiness asser
     '`/runtime-ready:invalid`',
     'Runtime-ready using `#runtime-ready`.',
     '`#runtime-ready` and production-ready.',
+    '      /sme-care-agent #runtime-ready is true',
+    '      /runtime-ready:invalid @runtime-proof',
+    '      /sme-care-agent #runtime-ready:invalid',
+    '      /sme-care-agent #runtime-ready,',
+    '      /sme-care-agent @source.body runtime-ready',
   ]) assert.deepEqual(claimLines(source), [1], source);
 });
 

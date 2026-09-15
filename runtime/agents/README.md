@@ -5,6 +5,32 @@ Implementation authority: approved `DURABLE-AGENT-WORKFLOWS-001@0.1.0`,
 Consumer cutover, remaining application assets and production proof are separate gates.
 `MIGRATION.json` records the native source revision and original file hashes.
 
+## Current ownership handoff
+
+The approved plan remains `DURABLE-AGENT-WORKFLOWS-001@0.1.0`; its acceptance criteria
+are unchanged. This dated source handoff supplements the historical P1 observations below.
+
+| Protected source, observed 2026-09-15 | Completed scope |
+| --- | --- |
+| [OS PR #167](https://github.com/huijoohwee/agentic-os/pull/167), `69c869816885c754fb1ee3d131d2b45e63b9896b` | Generic execution, persistence, optional adapters, Worker factory and local application host; [required source checks](https://github.com/huijoohwee/agentic-os/actions/runs/34970128434). |
+| [Canvas PR #931](https://github.com/huijoohwee/agentic-canvas-os/pull/931), `8460fc01c7dbd8af6880d346a71829e20887c44e` | Callers import the protected OS package and the Commerce admission extension; [consumer checks](https://github.com/huijoohwee/agentic-canvas-os/actions/runs/34974395012). |
+| [Commerce PR #54](https://github.com/huijoohwee/agentic-commerce-os/pull/54), `38662008dae8b3fc20905c7fb09d67036c878611` | Durable fulfillment and compatible draft reader; new workflow writes require executor availability; [consumer checks](https://github.com/huijoohwee/agentic-commerce-os/actions/runs/34975131015). |
+| [Graph PR #1017](https://github.com/huijoohwee/agentic-graph/pull/1017), `3b424d9e80f113dbab93b195798bd9521241aafe` | Four browser run operations and the private Dev bridge; [consumer checks](https://github.com/huijoohwee/agentic-graph/actions/runs/34972814915). |
+
+Nineteen native contracts and catalogs are available as explicit
+`agentic-os/agent-docs/<NAME>.md` package assets. Resolve only the requested asset;
+discovery imports no executor and starts no process. [MIGRATION-DOCS.json](MIGRATION-DOCS.json)
+records each original digest, resulting digest and source revision. Historical proof
+remains attached to its original source; relocation supplies no new provider proof.
+The migrated status vocabulary and literal invocation templates are metadata.
+
+Consumer document cutover and old-body removal are pending. The main plan and fleet
+registry remain reserved by their existing lanes. Remaining Canvas renderer, asset,
+lifecycle and deployment sources still require individual ownership assignment and
+cutover. Public executor activation, version-bound state recovery, generated mirror
+publication and final public E2E verification remain unfinished. These source receipts
+do not establish production completion, payment collection or customer demand.
+
 Import only the capability required by the caller:
 
 | Package path | Responsibility |

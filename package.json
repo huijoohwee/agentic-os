@@ -152,7 +152,26 @@
     "./agents/local-host": "./runtime/agents/local-host.js",
     "./agents/podman-model": "./runtime/adapters/podman-containment-verifier.js",
     "./agents/cloudflare-worker": "./runtime/adapters/cloudflare-worker.js",
-    "./tests/agents/cloudflare-worker": "./__tests__/cloudflare-worker.test.mjs"
+    "./tests/agents/cloudflare-worker": "./__tests__/cloudflare-worker.test.mjs",
+    "./agent-docs/AGENT-DEFINITIONS.md": "./runtime/agents/docs/AGENT-DEFINITIONS.md",
+    "./agent-docs/AGENT-ORCHESTRATION.md": "./runtime/agents/docs/AGENT-ORCHESTRATION.md",
+    "./agent-docs/AGENT-RUNTIME-COMPOSITION.md": "./runtime/agents/docs/AGENT-RUNTIME-COMPOSITION.md",
+    "./agent-docs/AGENT-SWARM.md": "./runtime/agents/docs/AGENT-SWARM.md",
+    "./agent-docs/AGENT-TOOLKIT.md": "./runtime/agents/docs/AGENT-TOOLKIT.md",
+    "./agent-docs/RUNNING-AGENTS.md": "./runtime/agents/docs/RUNNING-AGENTS.md",
+    "./agent-docs/PROGRESSIVE-AGENTS.md": "./runtime/agents/docs/PROGRESSIVE-AGENTS.md",
+    "./agent-docs/CACHE-CONTEXT.md": "./runtime/agents/docs/CACHE-CONTEXT.md",
+    "./agent-docs/FUNCTION-CALLING.md": "./runtime/agents/docs/FUNCTION-CALLING.md",
+    "./agent-docs/GUARDRAILS-HUMAN-REVIEW.md": "./runtime/agents/docs/GUARDRAILS-HUMAN-REVIEW.md",
+    "./agent-docs/MODELS-AND-PROVIDERS.md": "./runtime/agents/docs/MODELS-AND-PROVIDERS.md",
+    "./agent-docs/SANDBOX-AGENTS.md": "./runtime/agents/docs/SANDBOX-AGENTS.md",
+    "./agent-docs/SANDBOX-RUNTIME.md": "./runtime/agents/docs/SANDBOX-RUNTIME.md",
+    "./agent-docs/PROGRAMMATIC-TOOL-CALLING.md": "./runtime/agents/docs/PROGRAMMATIC-TOOL-CALLING.md",
+    "./agent-docs/TOOL-SEARCH.md": "./runtime/agents/docs/TOOL-SEARCH.md",
+    "./agent-docs/AUTONOMOUS-RUNTIME.md": "./runtime/agents/docs/AUTONOMOUS-RUNTIME.md",
+    "./agent-docs/SKILLS.md": "./runtime/agents/docs/SKILLS.md",
+    "./agent-docs/PROMPT-PRESETS.md": "./runtime/agents/docs/PROMPT-PRESETS.md",
+    "./agent-docs/AGENT-TEAM.md": "./runtime/agents/docs/AGENT-TEAM.md"
   },
   "engines": {
     "node": ">=20.11"

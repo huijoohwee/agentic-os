@@ -121,6 +121,8 @@ function negated(line, claimIndex) {
 function withoutInvocationReferences(source) {
   // Only exact literal declarations/tuples are metadata. Prose, status fields,
   // malformed tokens and quoted readiness assertions still require evidence.
+  const tuple = source.trim().split(/\s+/);
+  if (tuple.every(token => !parseInvocationToken(token).error)) return '';
   const declaration = source.match(/^\s*-\s+(["'])([^"']+)\1\s*$/);
   if (declaration && !parseInvocationToken(declaration[2]).error) return '';
   return source.replace(/(?<!`)(`+)(?!`)(.*?)\1(?!`)/g, (span, fence, body) => {

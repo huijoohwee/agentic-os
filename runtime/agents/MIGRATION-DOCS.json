@@ -1,0 +1,145 @@
+{
+  "schema": "agentic-os/native-doc-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "approvedRevision": "0.1.0",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "8460fc01c7dbd8af6880d346a71829e20887c44e",
+  "phase": "owner-assets-prepared-consumer-cutover-pending",
+  "loadPolicy": "on-demand",
+  "sourceHistoryRetained": true,
+  "files": [
+    {
+      "source": "docs/AGENT-DEFINITIONS.md",
+      "sourceSha256": "c0cdc7c39b20ca8369f6e86f07d429ff93778e2ff4804e402dabd176f0305891",
+      "destination": "runtime/agents/docs/AGENT-DEFINITIONS.md",
+      "export": "./agent-docs/AGENT-DEFINITIONS.md",
+      "sha256": "f3be9e5200508d2a40a465198fb1ad99989c511c5d4f606aa851f74bde32d500"
+    },
+    {
+      "source": "docs/AGENT-ORCHESTRATION.md",
+      "sourceSha256": "3e73563482bbea98bb006b5397375543f88b7b10766e1ba41e19ea159fbb6e36",
+      "destination": "runtime/agents/docs/AGENT-ORCHESTRATION.md",
+      "export": "./agent-docs/AGENT-ORCHESTRATION.md",
+      "sha256": "69cb5d785905855cd569cfee686aa136ba940ece6e2ff4acd645a519a1e6ef6b"
+    },
+    {
+      "source": "docs/AGENT-RUNTIME-COMPOSITION.md",
+      "sourceSha256": "4f3dd4f1d0fbaa8b38212e17b0b68ec347055c85290215b304f62b28b6799be8",
+      "destination": "runtime/agents/docs/AGENT-RUNTIME-COMPOSITION.md",
+      "export": "./agent-docs/AGENT-RUNTIME-COMPOSITION.md",
+      "sha256": "1c477584aab954c0c979f19680592defd58fab2cf80e5a28e62908dd2cac8483"
+    },
+    {
+      "source": "docs/AGENT-SWARM.md",
+      "sourceSha256": "e200ab55be3d4fcac336491eec21f74f9836009a3016bb9e9cc22b6b2d145aee",
+      "destination": "runtime/agents/docs/AGENT-SWARM.md",
+      "export": "./agent-docs/AGENT-SWARM.md",
+      "sha256": "e91c4edd04ac6ad7dacd0b148f8641ce2adafb21f2b1431a10719438d9200e31"
+    },
+    {
+      "source": "docs/AGENT-TOOLKIT.md",
+      "sourceSha256": "776cd9b6026e528b7ea914eea8ca0642f82e5a35d5f5bc72840b707b15ecc39b",
+      "destination": "runtime/agents/docs/AGENT-TOOLKIT.md",
+      "export": "./agent-docs/AGENT-TOOLKIT.md",
+      "sha256": "ce37e7ce0a9bd3f14ca6790396e3f7de6305d8092966a78b0d47d31239241b0e"
+    },
+    {
+      "source": "docs/RUNNING-AGENTS.md",
+      "sourceSha256": "b45877532ceb318842b9a87396a5dd4eddbf964c4b0dab8bb421408a31aa5f31",
+      "destination": "runtime/agents/docs/RUNNING-AGENTS.md",
+      "export": "./agent-docs/RUNNING-AGENTS.md",
+      "sha256": "756fddf1b1804f871c2ec28324a116183a0aa07d13362204c9f750d420cdd984"
+    },
+    {
+      "source": "docs/PROGRESSIVE-AGENTS.md",
+      "sourceSha256": "3643ccda1aedb39871f2e2bd6718c65a25fefffed7d69e32f996b33ea5ff7202",
+      "destination": "runtime/agents/docs/PROGRESSIVE-AGENTS.md",
+      "export": "./agent-docs/PROGRESSIVE-AGENTS.md",
+      "sha256": "5637eb733aeb3a7d33e02655017ea3df3cac9f79172034995a7a8c65a4ae12bc"
+    },
+    {
+      "source": "docs/CACHE-CONTEXT.md",
+      "sourceSha256": "ccc3aec6884d7f92f88cea65545e4bb38c13994652e877b7bcb5c2d8f4922629",
+      "destination": "runtime/agents/docs/CACHE-CONTEXT.md",
+      "export": "./agent-docs/CACHE-CONTEXT.md",
+      "sha256": "36d3c3d2703be28d5d75c31a95d6ee242eaa45e71fc617652a0e408619fbb30c"
+    },
+    {
+      "source": "docs/FUNCTION-CALLING.md",
+      "sourceSha256": "1e700af05967063454654448f4905c32f73de35bcbc429059aaec8f77cd58e55",
+      "destination": "runtime/agents/docs/FUNCTION-CALLING.md",
+      "export": "./agent-docs/FUNCTION-CALLING.md",
+      "sha256": "eeebfda2f5f7226998256a35a94c5e5a2e2318b1f2e475ebb8e5cb4f2cf3990b"
+    },
+    {
+      "source": "docs/GUARDRAILS-HUMAN-REVIEW.md",
+      "sourceSha256": "4ec005fc30a81c008e087349aeecac4b2f9e962cc690420dce50a5c32ae35edd",
+      "destination": "runtime/agents/docs/GUARDRAILS-HUMAN-REVIEW.md",
+      "export": "./agent-docs/GUARDRAILS-HUMAN-REVIEW.md",
+      "sha256": "56d1c80802659d47dd4cf20c002da513bd458b05e695cdab237c40e878272cf8"
+    },
+    {
+      "source": "docs/MODELS-AND-PROVIDERS.md",
+      "sourceSha256": "8a10215b265e14c66ef909903b88e88fe85292e90ef104487aea269462950312",
+      "destination": "runtime/agents/docs/MODELS-AND-PROVIDERS.md",
+      "export": "./agent-docs/MODELS-AND-PROVIDERS.md",
+      "sha256": "15afaf75b723ea0989c8e5de68b2da6d9572ef53eb602cc29622e0064042dfde"
+    },
+    {
+      "source": "docs/SANDBOX-AGENTS.md",
+      "sourceSha256": "fdb319dfc478282ae1300acf846ddd8f96ffffd266e848c04e78f86d206f88ff",
+      "destination": "runtime/agents/docs/SANDBOX-AGENTS.md",
+      "export": "./agent-docs/SANDBOX-AGENTS.md",
+      "sha256": "8b85f0a23779c499387ac16c14e9dbe22329f6c3bdac77417c56ad3f2e785645"
+    },
+    {
+      "source": "docs/SANDBOX-RUNTIME.md",
+      "sourceSha256": "0e6eddbbae8b03aef274c253c6d677f58e402e3aaeb19b2a23d24f7585a70792",
+      "destination": "runtime/agents/docs/SANDBOX-RUNTIME.md",
+      "export": "./agent-docs/SANDBOX-RUNTIME.md",
+      "sha256": "dec942892f96f114df061a5f099e636e5574b13b3c2d82eaadef6946381381c4"
+    },
+    {
+      "source": "docs/PROGRAMMATIC-TOOL-CALLING.md",
+      "sourceSha256": "ba17b7fe961262e2e04af411bb958a51da4310219f94dd61d8e41189bef13d49",
+      "destination": "runtime/agents/docs/PROGRAMMATIC-TOOL-CALLING.md",
+      "export": "./agent-docs/PROGRAMMATIC-TOOL-CALLING.md",
+      "sha256": "966750804c47eb1de7abcb63591d79f19dd13d5efe272002e2b9377e0c169d42"
+    },
+    {
+      "source": "docs/TOOL-SEARCH.md",
+      "sourceSha256": "8d2d1ae99037584eb8755f6933f088e6e4f9bcb1db86b22ee9d18b7ebe76fc7b",
+      "destination": "runtime/agents/docs/TOOL-SEARCH.md",
+      "export": "./agent-docs/TOOL-SEARCH.md",
+      "sha256": "62e572c9bb5d5e1f9aca57c38932f021e3f1c570d5419238204e565227ffbb54"
+    },
+    {
+      "source": "docs/AUTONOMOUS-RUNTIME.md",
+      "sourceSha256": "86f1470b231618500483e2b8760f9d0945158567005990a98ee2434ebe30dffc",
+      "destination": "runtime/agents/docs/AUTONOMOUS-RUNTIME.md",
+      "export": "./agent-docs/AUTONOMOUS-RUNTIME.md",
+      "sha256": "98a9dbd913ea6baa2524504288ca5556a249416ddb2c8976067ebd5cc17b1d1a"
+    },
+    {
+      "source": "docs/SKILLS.md",
+      "sourceSha256": "3aca53931271e6e892069a430892560d876032ac84a9f82b74d18800042cbb64",
+      "destination": "runtime/agents/docs/SKILLS.md",
+      "export": "./agent-docs/SKILLS.md",
+      "sha256": "0cf917fb74d873e27a8ef32e945dcec5cf4e9262b5cd0586acf971a50d900e09"
+    },
+    {
+      "source": "docs/PROMPT-PRESETS.md",
+      "sourceSha256": "31b9ea80832ae391bb4cccef87c9ddc1e0d35569de1175f6dc63bf5efaf8e2fd",
+      "destination": "runtime/agents/docs/PROMPT-PRESETS.md",
+      "export": "./agent-docs/PROMPT-PRESETS.md",
+      "sha256": "f002ed5445077d518c79ad6425249643439250010e29c148fc438d0ba999dfc8"
+    },
+    {
+      "source": "docs/AGENT-TEAM.md",
+      "sourceSha256": "fbf43fd7af9f60b8bb364512f2a66d861ea4d47c711be13d45f37de7af9164fb",
+      "destination": "runtime/agents/docs/AGENT-TEAM.md",
+      "export": "./agent-docs/AGENT-TEAM.md",
+      "sha256": "5428a6b47c3bb9a002663fe95c400234614e74379a4b574dfefe5679eed6136c"
+    }
+  ]
+}
