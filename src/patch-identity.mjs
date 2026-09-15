@@ -14,6 +14,21 @@ import {
 
 export const SOURCE_HEAD_TRAILER = 'Source-Head';
 
+/** Local byte-preservation check only; never historical integration or cleanup authority. */
+export function assertPreservedSuccessorJoins(base, tip, protectedRef, cwd) {
+  const refuse = message => { throw Object.assign(new Error(message), { reason: 'blocked-successor-merge' }); };
+  const joins = observeGitLines(['rev-list', '--min-parents=2', '--max-count=33', `${base}..${tip}`], { cwd });
+  if (joins.length > 32) refuse('successor preserved-join inventory exceeds 32 commits');
+  for (const revision of joins) {
+    const parents = observeGit(['show', '--no-patch', '--format=%P', revision], { cwd }).trim().split(' ');
+    if (parents.length !== 2 || !isAncestor(parents[1], protectedRef, cwd))
+      refuse('successor requires an exact two-parent protected join');
+    const trees = observeGitLines(['rev-parse', ...[revision, ...parents].map(value => `${value}^{tree}`)], { cwd });
+    if (trees.length !== 3 || trees.some(tree => tree !== trees[0]))
+      refuse('successor refuses joins that change either parent tree');
+  }
+}
+
 /** Trailer line the merge queue puts in the squash message. */
 export function sourceHeadTrailer(sha) {
   return `${SOURCE_HEAD_TRAILER}: ${sha}`;

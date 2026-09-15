@@ -122,3 +122,15 @@ refs/review, clean commits and worktree; then land. If effects remain, do not ed
 collision; rerun the exact emitted `npm run successor -- <same-scope>
 --expected-head=<published-oid>`; then `land`.
 
+### Preserved joins during durable-workflow continuation
+
+Approved `DURABLE-AGENT-WORKFLOWS-001@0.1.0` requires dependent migration batches to continue
+without discarding their published history. A successor may preserve up to 32 two-parent joins
+only when the result tree equals both parent trees and the second parent is contained by the
+observed protected ref. Ordinary commit paths still pass the inherited reservation check, including
+paths later reverted. Changed trees, other merges, missing ancestry and excess inventory stay blocked.
+This repairs continuation after an exact source/protected-tree join; it grants no integration,
+retirement, cleanup or deployment authority and does not rewrite any ref or historical method choice.
+The [preservation tests](../__tests__/successor-preserved-join.test.mjs) and existing successor suite
+cover exact-ref retention, hidden-path rejection and bounded refusal. Required protected checks must
+pass before this implementation can be used by migration lanes. Product delivery and WTP remain unproved.
