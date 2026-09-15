@@ -1,0 +1,109 @@
+{
+  "schema": "agentic-os/native-runtime-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "approvedRevision": "0.1.0",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "c6c9b84a67f1b1aadc09adca4c1b2322274a538f",
+  "phase": "core-published-before-consumer-cutover",
+  "files": [
+    {
+      "source": "agent-api/src/agent-orchestration-contract.js",
+      "sha256": "17c2827d5710e2518b425f5b53cfc007d107a4f85a5319dd47cd6d668266b66b",
+      "destination": "runtime/agents/agent-orchestration-contract.js"
+    },
+    {
+      "source": "agent-api/src/agent-orchestration.js",
+      "sha256": "035fc16565cccdf265ccac21046287188f2ff4f5109604d2e390b6668a30c598",
+      "destination": "runtime/agents/agent-orchestration.js"
+    },
+    {
+      "source": "agent-api/src/agent-runtime-composition.js",
+      "sha256": "50140b25d86bcc17db6ee978a40fa4b805b7bbf5aed0d8028abf3de09e2482c4",
+      "destination": "runtime/agents/agent-runtime-composition.js"
+    },
+    {
+      "source": "agent-api/src/agent-swarm-contract.js",
+      "sha256": "572e79adff3a87f6328fce15fef43af0e95e035161b12eb1da95e5b1951c0fc3",
+      "destination": "runtime/agents/agent-swarm-contract.js"
+    },
+    {
+      "source": "agent-api/src/agent-swarm-ledger.js",
+      "sha256": "1678e812aace563b5cc196a73520cba985ce75521d388de98f6fc49ffef589c5",
+      "destination": "runtime/agents/agent-swarm-ledger.js"
+    },
+    {
+      "source": "agent-api/src/agent-swarm-store.js",
+      "sha256": "f324fe2a0801a85fe5bc7b9a352e94262f687c52cb8123ead6456c5c2a23bf64",
+      "destination": "runtime/agents/agent-swarm-store.js"
+    },
+    {
+      "source": "agent-api/src/agent-swarm.js",
+      "sha256": "9ede8c4dc3c7b8a9041309ef7b96ec35d86bbc25e03d567a6edf4249838a49e4",
+      "destination": "runtime/agents/agent-swarm.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-admission.js",
+      "sha256": "18652b2933a0f5041cb20c91672dd10bbfb4bf1e6bce391c322d789eb0ce2ffe",
+      "destination": "runtime/agents/agent-toolkit-admission.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-contract.js",
+      "sha256": "df8011e1b4200c66a1775d19f2398d0eb2de2213c833918271266cfbf269750a",
+      "destination": "runtime/agents/agent-toolkit-contract.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-ledger.js",
+      "sha256": "f174e61b24d31da42a8cff3f891735a1f9eadacbbc98d88116aa16c6f58f5fa6",
+      "destination": "runtime/agents/agent-toolkit-ledger.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-limits.js",
+      "sha256": "113e23c192b46cd3d3eaf21861768a5ef5542cfb55c24cc59696b5baa285008c",
+      "destination": "runtime/agents/agent-toolkit-limits.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-observability.js",
+      "sha256": "db0b0ddd6a23e63b4b2d985e410a028ade2fb9a8e913af804fb2c84e76d39ea5",
+      "destination": "runtime/agents/agent-toolkit-observability.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-optimizer.js",
+      "sha256": "ac63fd84802c5b96f63229d57157c093979b17a00083f1532accded95aa0c03c",
+      "destination": "runtime/agents/agent-toolkit-optimizer.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-profiler.js",
+      "sha256": "1d92eba085fe4f631cfd23f96c0d804187b14f4885c94387dbd3263ddaa0ea03",
+      "destination": "runtime/agents/agent-toolkit-profiler.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit-store.js",
+      "sha256": "a4577a4e1f3eb3df72cdd3c5e0a02faa4efcce32318bd89d0eac95ac7a7e5466",
+      "destination": "runtime/agents/agent-toolkit-store.js"
+    },
+    {
+      "source": "agent-api/src/agent-toolkit.js",
+      "sha256": "e1514909873a528d019757d4bce87e4a6f74e0d161a2c3fce1f7ac6c0cd1c500",
+      "destination": "runtime/agents/agent-toolkit.js"
+    },
+    {
+      "source": "agent-api/src/running-agent-contract.js",
+      "sha256": "e1d9eb7b7c96beb37b0896559c1c6a31454c61b976c95292f9fe1524268df3bc",
+      "destination": "runtime/agents/running-agent-contract.js"
+    },
+    {
+      "source": "agent-api/src/running-agents.js",
+      "sha256": "5cfbe9e6589f0394dcbd503d8f9847c4af4d62039dcd64fa27f4602772716b5b",
+      "destination": "runtime/agents/running-agents.js"
+    }
+  ],
+  "storeSeam": {
+    "source": "agent-api/src/durable-object-state-store.js",
+    "sha256": "6d1ac0faca1b03243d04e56f44738e1a4f9f41aec861c165f00afc5d05e729fd",
+    "exports": [
+      "createDurableObjectSwarmRunStore",
+      "createDurableObjectAgentToolkitStore"
+    ],
+    "destination": "runtime/agents/durable-object-store.js"
+  }
+}
