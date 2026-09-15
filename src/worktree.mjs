@@ -8,6 +8,7 @@ import {
 } from './git.mjs';
 import { isLaneRef, laneDirName, laneRef, parseLaneRef } from './lane-id.mjs';
 import { successorRecordPlan, transition } from './lane-state.mjs';
+import { assertPreservedSuccessorJoins } from './patch-identity.mjs';
 import * as laneRecords from './lane-records.mjs';
 export const LANE_BRANCH_LIMIT = 256;
 /** One registry parent, then one repository directory; override only the parent. */
@@ -304,8 +305,7 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     const currentPaths = (currentRecord.writePaths ?? []).flatMap((path) => parseWritePaths(path));
     if (currentPaths.length === 0) throw successorError('blocked-write-scope-missing',
       'successor requires inherited write paths');
-    if (gitLines(['rev-list', '--min-parents=2', `${currentRecord.baseSha}..${tip}`], { cwd }).length)
-      throw successorError('blocked-successor-merge', 'successor refuses merge commits in preserved history');
+    assertPreservedSuccessorJoins(currentRecord.baseSha, tip, protectedRef, cwd);
     const committed = decodeNulFields(git(['log', '--format=', '--name-only', '-z',
       `${currentRecord.baseSha}..${tip}`], { cwd, binary: true }));
     if (committed === null) throw successorError(
