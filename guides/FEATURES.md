@@ -132,7 +132,7 @@ The existing ranker was observed with catalog digest `sha256:17714ee450c8d72ac1f
 
 **AC-F10 / VCC-F10:** Given a registered capability and valid bounded input, when the facade dispatches it, then the owning executor supplies structured output or failure while retaining state and safety boundaries. Verify with [owner check](https://github.com/huijoohwee/agentic-canvas-os/blob/954de91689abc1ab99a783e54f5ca7ac61387449/__tests__/agent-runtime-composition.test.mjs); grounding: [source](https://github.com/huijoohwee/agentic-canvas-os/blob/954de91689abc1ab99a783e54f5ca7ac61387449/agent-api/src/agent-runtime-composition.js).
 
-**Dependencies / TAD–ADR join:** F14, selected provider and applicable native-skill-harness checks; F07 applies when invoking Commerce effects. DR-7/8; Division of Work.
+**Dependencies / TAD–ADR join:** F14, selected provider and applicable native-skill-harness checks; F07 applies when invoking Commerce effects. DR-7/8; Division of Work. The [durable workflow proposal](DURABLE-WORKFLOWS.md) plans consolidation into OS; the current owner and historical evidence above do not change until migration passes.
 
 ### F11 — Commerce MCP and WebMCP interaction
 

@@ -466,14 +466,14 @@ This adds no runtime module, dependency or always-load bytes. Package relocation
 resolution are checked by [portable-skills.test.mjs](../__tests__/portable-skills.test.mjs); native host rendering requires
 the selected host's own verification. Skill packaging is not automatic IDE registration.
 
-Ownership review (2026-09-09): retain ACOS `agent-api` and product docs rather than relocating
+Historical ownership review (2026-09-09): retain ACOS `agent-api` and product docs rather than relocating
 directories by name. Its [reasoning-continuity.js][continuity-source] is a possible small extraction, but currently
 joins generic continuity policy with Responses-shaped request fields; no second consumer was
 established. A transfer must isolate that adapter, migrate callers and tests, and update pinned
 consumers in dependency order before removing the replaced source. Constraints preserve owner
 state and acyclic dependencies; argumentation favors existing tested product code; outranking
 selects portable authoring guidance now over an unneeded runtime migration. Universal lifecycle
-guidance already lives in OS; product schemas, deployment and rollback remain owner-local.
+guidance already lives in OS; product schemas, deployment and rollback remain owner-local. The proposed [durable workflow consolidation](DURABLE-WORKFLOWS.md) records the 2026-09-15 successor scope; implementation approval and migration evidence are pending, so this observed ownership remains current.
 
 [continuity-source]: https://github.com/huijoohwee/agentic-canvas-os/blob/954de91689abc1ab99a783e54f5ca7ac61387449/agent-api/src/reasoning-continuity.js
 
