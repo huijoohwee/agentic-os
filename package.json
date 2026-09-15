@@ -149,7 +149,8 @@
     "./tests/agents/openai-function-gateway": "./__tests__/openai-function-gateway.test.mjs",
     "./tests/agents/function-calling-continuation": "./__tests__/function-calling-continuation.test.mjs",
     "./agents/durable-object-transport": "./runtime/agents/durable-object-transport.js",
-    "./agents/local-host": "./runtime/agents/local-host.js"
+    "./agents/local-host": "./runtime/agents/local-host.js",
+    "./agents/podman-model": "./runtime/adapters/podman-containment-verifier.js"
   },
   "engines": {
     "node": ">=20.11"
