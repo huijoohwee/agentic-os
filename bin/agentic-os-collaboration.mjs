@@ -106,7 +106,8 @@ export function transitionBoard(input, operation, request, { repository, now = D
       selected.expiresAt = Math.min(now + COLLAB_LIMITS.leaseMs, now + selected.maxSeconds * 1000);
       selected.state = 'active';
     } else {
-      if (selected.state !== (operation === 'archive' ? 'reported' : 'active') || request.epoch !== selected.epoch
+      const eligibleStates = operation === 'archive' ? ['reported', 'released'] : ['active'];
+      if (!eligibleStates.includes(selected.state) || request.epoch !== selected.epoch
         || governanceDigest(request.actor) !== governanceDigest(selected.actor)) fail('fence');
       // Expiry never releases a writer: the old process may still be executing.
       if (!['release', 'archive'].includes(operation) && now >= selected.expiresAt) fail('expired-stop-and-release');
