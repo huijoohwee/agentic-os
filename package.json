@@ -181,7 +181,9 @@
     "./planning/goal": "./runtime/planning/goal-completion-runtime-contract.mjs",
     "./planning/scheduler-cli": "./runtime/planning/coordination-scheduler.mjs",
     "./planning/goal-cli": "./runtime/planning/goal-completion-runtime.mjs",
-    "./planning/scheduler-schema": "./runtime/planning/coordination-scheduler-report.v1.schema.json"
+    "./planning/scheduler-schema": "./runtime/planning/coordination-scheduler-report.v1.schema.json",
+    "./agents/cloudflare-entry": "./runtime/adapters/cloudflare-entry.js",
+    "./agents/cloudflare-config": "./runtime/adapters/cloudflare-config.js"
   },
   "engines": {
     "node": ">=20.11"

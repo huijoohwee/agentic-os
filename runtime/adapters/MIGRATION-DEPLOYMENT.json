@@ -1,0 +1,24 @@
+{
+  "schema": "agentic-os/native-adapter-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "8460fc01c7dbd8af6880d346a71829e20887c44e",
+  "phase": "source-transfer-before-deployment-and-retirement",
+  "batch": 4,
+  "modules": [
+    {
+      "source": "worker/index.js",
+      "sourceSha256": "08dd9389118c65aa51712aa8b90957ba9fd2855839c573f8ef8b463ae5fbc826",
+      "destination": "runtime/adapters/cloudflare-entry.js",
+      "destinationSha256": "41706b62287b043d44493450173001d67a7fc609dbdb55ad116485c7515ca95a",
+      "selection": "Generic entry; Commerce composition stays in the Commerce owner."
+    },
+    {
+      "source": "wrangler.jsonc",
+      "sourceSha256": "19c6e34f1d449f0530570123e148a4116de601bc944cdde7387f1b80f39f7729",
+      "destination": "runtime/adapters/cloudflare-config.js",
+      "destinationSha256": "01b0f62ebf84648aaf66fa5a331a5430e1309b7370729c73b7f73dc8d93941bb",
+      "selection": "Headless runtime configuration; deployment identities and product bindings supplied explicitly. Existing class names and migration tags retained."
+    }
+  ]
+}

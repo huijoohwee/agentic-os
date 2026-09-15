@@ -42,7 +42,7 @@ test('agent package closure has one JSON owner, no consumer imports and no cycle
   assert.ok(modules.length <= 28);
   assert.ok(bytes <= 300_000);
   const adapters = readdirSync(join(root, 'runtime/adapters')).filter(name => /\.(?:mjs|js)$/u.test(name));
-  assert.ok(adapters.length <= 58);
+  assert.ok(adapters.length <= 60);
   let adapterBytes = 0;
   for (const name of adapters) {
     const source = readFileSync(join(root, 'runtime/adapters', name), 'utf8');
@@ -51,7 +51,7 @@ test('agent package closure has one JSON owner, no consumer imports and no cycle
   }
   assert.ok(adapterBytes <= 900_000);
   const assigned = new Set();
-  for (const name of ['MIGRATION.json', 'MIGRATION-HTTP.json', 'MIGRATION-APPLICATION.json']) {
+  for (const name of ['MIGRATION.json', 'MIGRATION-HTTP.json', 'MIGRATION-APPLICATION.json', 'MIGRATION-DEPLOYMENT.json']) {
     const manifest = JSON.parse(readFileSync(join(root, 'runtime/adapters', name), 'utf8'));
     assert.ok(manifest.modules.length <= 20, name);
     let batchBytes = 0;
