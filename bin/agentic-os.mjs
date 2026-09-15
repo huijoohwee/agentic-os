@@ -3,13 +3,8 @@
 import { existsSync } from 'node:fs';
 import {
   git, gitLines, repoRoot, currentBranch, configuredRemote, remoteTransport,
-  acquireOperationLock,
-  finishOperationLock,
-  headSha,
-  publishExactNewRef,
-  remoteRefSha,
-  fetch as gitFetch,
-  worktrees,
+  acquireOperationLock, finishOperationLock, headSha, publishExactNewRef,
+  remoteRefSha, fetch as gitFetch, worktrees,
 } from '../src/git.mjs';
 import { assertDevice, deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { legalEvents, providerAdapterRequired, successorLineage,
@@ -174,6 +169,8 @@ function cmdLand(cwd, argv, profile, policy) {
   const bodyFile = option(argv, 'body-file');
   validateReviewBody(root, ref, bodyFile);
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
+  const remote = remoteName(policy, root);
+  const capturedRemote = remoteTransport(remote, root);
   const message = option(argv, 'message');
   if (message !== null) {
     if (writePaths.length === 0) {
@@ -182,6 +179,11 @@ function cmdLand(cwd, argv, profile, policy) {
     }
     assertDisjointReservation({ cwd: root, ref, writePaths,
       protectedRef: policy.protectedRef, records: laneStore.lanes });
+    const advertised = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
+    if (advertised && (advertised !== headSha('HEAD', root) || publicationByteRisks(root).blocked)) {
+      err(`blocked-published-head-drift: preserve changes; commit locally, then run npm run successor -- <scope> --expected-head=${advertised}`);
+      return 1;
+    }
     const committed = commitReservedChanges({ cwd: root, writePaths, message });
     if (committed) out(`committed ${committed.head.slice(0, 9)} (${committed.paths.length} path(s))`);
   }
@@ -190,8 +192,6 @@ function cmdLand(cwd, argv, profile, policy) {
     err(`blocked-provider-adapter-${kind}: no landing adapter matches the selected profile policy`);
     return 1;
   }
-  const remote = remoteName(policy, root);
-  const capturedRemote = remoteTransport(remote, root);
   // A present invalid optional cache must fail before fetch mutates local provider evidence.
   store.load(root);
   const laneHeadSha = assertPublicationPreflight(root, null, configuredFlight);
@@ -223,11 +223,9 @@ function cmdLand(cwd, argv, profile, policy) {
     return 1;
   }
 
-  if (publishedHead) {
-    if (publishedHead !== laneHeadSha) {
-      err('blocked-published-head-drift: the exact remote lane revision is immutable');
-      return 1;
-    }
+  if (publishedHead && publishedHead !== laneHeadSha) {
+    err('blocked-published-head-drift: the exact remote lane revision is immutable');
+    return 1;
   }
   // Only the exact advertised ref determines publication; stale cache states cannot block recovery.
   const state = publishedHead ? 'published' : 'active';
