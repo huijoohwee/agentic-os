@@ -52,10 +52,65 @@
       "sourceSha256": "6554fafeb17947b6a3056387aafff03dba96da78635b04b17953ee2e32a2d2ef",
       "destination": "__tests__/fixtures/source-backed-agent.json",
       "destinationSha256": "6554fafeb17947b6a3056387aafff03dba96da78635b04b17953ee2e32a2d2ef"
+    },
+    {
+      "source": "__tests__/agent-run-http.test.mjs",
+      "sourceSha256": "5d56401f40ff35a10c2021d9f1c96d1fb21b8ac7ee0305828c3206e9d1f63988",
+      "destination": "__tests__/agent-run-http.test.mjs",
+      "destinationSha256": "6ece2257a4754e283961151410479484467f897d8e65f5ef578db6b2eed4af48"
+    },
+    {
+      "source": "__tests__/autonomous-runtime.test.mjs",
+      "sourceSha256": "0f95007cdf939eaa9c68be982a41c31fc955d62c6ca0900ba7f0af95bc0407b4",
+      "destination": "__tests__/autonomous-runtime.test.mjs",
+      "destinationSha256": "7b5ed3175adc988174fd61b64d7985122d8c0a22361b05c8d78366208d1cfc19"
+    },
+    {
+      "source": "__tests__/upstream-dependency-admission-application.test.mjs",
+      "sourceSha256": "9a48c605e4cdb3a7627a34ccf9ddca70742b92d44ff99c9af1a2e9020ed4cc6d",
+      "destination": "__tests__/upstream-dependency-admission-application.test.mjs",
+      "destinationSha256": "ef23e55607948981208df2024b0beceff8fb3c74f63f3bfa34a92090f6391f50"
+    },
+    {
+      "source": "__tests__/upstream-dependency-admission.test.mjs",
+      "sourceSha256": "e1670397979cfe17e85cb8b6a532ef8e56b06a8c158b9038b303242784395157",
+      "destination": "__tests__/upstream-dependency-admission.test.mjs",
+      "destinationSha256": "9876c0ada8219a9efca7c6978c45ac281f17a17fee76ebd181f3c4776dcca5a2"
+    },
+    {
+      "source": "__tests__/agent-toolkit.test.mjs",
+      "sourceSha256": "09b7ca1a083999519b4f0ca49711abe1bac607bf5496a3b456b9fc90b6d91d0e",
+      "destination": "__tests__/agent-application-seams.test.mjs",
+      "destinationSha256": "096de69dfcd9d03bc57e8af862ff62f41f5510f2ac236bce99c19a364d0a14d8",
+      "selection": {
+        "testTitle": "reports production readiness only with every application-owned runtime seam"
+      },
+      "transformation": "Original application assertions retained; shared native test fixtures reused; continuity title names the application owner."
+    },
+    {
+      "source": "__tests__/agent-toolkit-integrity.test.mjs",
+      "sourceSha256": "27f135ea6791a0b2832656c186bdb3fba00fea66b94c3c5dbbc84311d72fe155",
+      "destination": "__tests__/agent-application-seams.test.mjs",
+      "destinationSha256": "096de69dfcd9d03bc57e8af862ff62f41f5510f2ac236bce99c19a364d0a14d8",
+      "selection": {
+        "testTitle": "Agent API handlers authenticate Toolkit mutations and reject caller-owned signals"
+      },
+      "transformation": "Original application assertions retained; shared native test fixtures reused; continuity title names the application owner."
+    },
+    {
+      "source": "__tests__/reasoning-continuity.test.mjs",
+      "sourceSha256": "709db671d7511af619963639342539a845fd30fc2c1198f026b621762f750bf1",
+      "destination": "__tests__/agent-application-seams.test.mjs",
+      "destinationSha256": "096de69dfcd9d03bc57e8af862ff62f41f5510f2ac236bce99c19a364d0a14d8",
+      "selection": {
+        "testTitle": "Canvas consumes upstream continuity with opaque response IDs and sanitized readiness"
+      },
+      "transformation": "Original application assertions retained; shared native test fixtures reused; continuity title names the application owner."
     }
   ],
   "transformations": [
     "Relative imports resolve the existing native runtime owner. Original assertions, property seeds, fixtures and test titles are preserved.",
-    "Existing fast-check 3.23.2 is a development-only test dependency; the runtime dependency set remains empty."
+    "Existing fast-check 3.23.2 is a development-only test dependency; the runtime dependency set remains empty.",
+    "Application and HTTP tests use the existing OS Worker factory. The admission document retains exact guideline provenance while its current status and deployment owner reflect source transfer."
   ]
 }

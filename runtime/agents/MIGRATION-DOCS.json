@@ -156,6 +156,13 @@
       "destination": "runtime/agents/docs/AGENT-TEAM.md",
       "export": "./agent-docs/AGENT-TEAM.md",
       "sha256": "5428a6b47c3bb9a002663fe95c400234614e74379a4b574dfefe5679eed6136c"
+    },
+    {
+      "source": "docs/UPSTREAM-DEPENDENCY-ADMISSION.md",
+      "sourceSha256": "c5b43ea8e54ec6e135cd4ce245dd69c50da95dc73dc3ad3305ec639a78f70895",
+      "destination": "runtime/agents/docs/UPSTREAM-DEPENDENCY-ADMISSION.md",
+      "export": "./agent-docs/UPSTREAM-DEPENDENCY-ADMISSION.md",
+      "sha256": "3ca7a0c19d115543887e32c2380224f0fc8595143150619982c0aa03b8a81e80"
     }
   ]
 }
