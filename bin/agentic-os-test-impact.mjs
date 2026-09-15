@@ -133,8 +133,12 @@ export function selectTests({ before, after, changed, forceAll = false }) {
   }
   if (broadReasons.length) tests.forEach(path => add(path, 'broad-impact'));
   const packaging = new Set(contracts.packaging.map(testPath));
+  // A broad trigger already obligates every suite. Keep its complete causes once
+  // at plan level; repeating each incidental dependency at every suite inflates
+  // full-run receipts without changing the selected checks or their evidence.
   const suites = [...selected].sort(([a], [b]) => a.localeCompare(b)).map(([path, reasons]) =>
-    ({ path, reasons: [...reasons].sort(), stage: packaging.has(path) ? 'packaging' : 'behavior' }));
+    ({ path, reasons: broadReasons.length ? ['broad-impact'] : [...reasons].sort(),
+      stage: packaging.has(path) ? 'packaging' : 'behavior' }));
   return { schema: IMPACT_VERSION, mode: broadReasons.length ? 'broad' : 'affected',
     reasons: unique(broadReasons), changed: unique(changed), available: tests.length, suites,
     stages: ['behavior', 'packaging'].map(name => ({ name, tests: suites.filter(suite => suite.stage === name).map(suite => suite.path) })) };

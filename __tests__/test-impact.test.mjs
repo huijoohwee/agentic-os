@@ -42,6 +42,32 @@ function fixture() {
 }
 const paths = plan => plan.suites.map(suite => suite.path);
 
+test('broad plans retain every obligation and result within the receipt cap under dense dependencies', t => {
+  const f = fixture();
+  const sources = Array.from({ length: 64 }, (_, i) => `src/shared-${i}.mjs`);
+  for (const source of sources) f.after.set(source, file('export const value = 1;'));
+  const imports = sources.map(source => `import '../${source}';`).join('\n');
+  for (let i = 0; i < 180; i++) f.after.set(`__tests__/dense-${i}.test.mjs`, file(imports));
+  const plan = selectTests({ ...f, changed: ['package.json', ...sources] });
+  assert.equal(plan.mode, 'broad');
+  assert.ok(plan.reasons.includes('selector-or-command:package.json'));
+  assert.deepEqual(paths(plan), [...f.after.keys()].filter(p => /^__tests__\/[^/]+\.test\.mjs$/.test(p)).sort());
+  assert.deepEqual(plan.stages[1].tests, ['__tests__/package.test.mjs']);
+  assert.ok(plan.suites.every(suite => suite.reasons.includes('broad-impact')));
+  const value = { schema: 'agentic-os/test-receipt/v2', authority: false, plan,
+    results: plan.suites.map(suite => ({ name: suite.path, stage: suite.stage, exitCode: 0,
+      reason: null, elapsedMs: 100, outputDigest: 'a'.repeat(64), log: 'check-' + 'b'.repeat(24) + '.log',
+      counts: { tests: 1, pass: 1, fail: 0, cancelled: 0, skipped: 0, todo: 0 },
+      reused: false, validatedAt: 1 })) };
+  const directory = mkdtempSync(join(tmpdir(), 'dense-suite-receipt-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  writeReceipt(directory, 'last.json', value);
+  const bytes = readFileSync(join(directory, 'last.json'));
+  assert.ok(bytes.length <= LIMITS.receiptBytes);
+  assert.deepEqual(JSON.parse(bytes), value);
+  assert.equal(JSON.parse(bytes).results.length, plan.available);
+});
+
 test('transitive imports, re-exports and package exports select consumers without unrelated packaging', () => {
   const f = fixture(), plan = selectTests({ ...f, changed: ['src/a.mjs'] });
   assert.equal(plan.mode, 'affected');

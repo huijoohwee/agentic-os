@@ -91,7 +91,7 @@ Use the selected task worktree when checking an unpublished candidate. Do not cr
 | Discoverable concern | Authored owner |
 |---|---|
 | Shared command dictionaries, ADLC prompt and canvas skill | Agentic OS |
-| Chat prompt presets, skills catalog and provider-neutral agent facade | Canvas OS |
+| Chat prompt presets, skills catalog and provider-neutral agent facade | Agentic OS |
 | Graph operations, Launch Copilot product plan and native Chat runbook | Graph |
 | Commerce coordination, planning guidelines and GameXR frontend | Their existing Commerce, website and GameXR owners |
 | Public entry and generated deployment | `81rv10` remains a reference; `huijoohwee` remains a projection |
@@ -101,7 +101,7 @@ Invoke the installed, pinned OS CLI, or the selected OS checkout directly:
 ```sh
 node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --kind=prompt --limit=5
 node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --query=81rv10
-node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --id=chat-prompt-presets --root=/absolute/path/to/agentic-canvas-os --revision=<exact-commit> --include-content
+node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --id=chat-prompt-presets --root=/absolute/path/to/agentic-os --revision=<exact-commit> --include-content
 ```
 
 The existing stdio MCP server exposes the read-only `capabilities` tool with equivalent `{query, kind, limit}` discovery or `{id, root, revision, includeContent}` resolution arguments. Discovery returns `agentic-os/capability-discovery/v1`, at most 20 references (default 10), with an index digest and truncation indicator. It does no repository traversal, fetch, provider call or asset-body loading. Search is deterministic lexical filtering, not model inference. Narrow by kind or query when truncated.

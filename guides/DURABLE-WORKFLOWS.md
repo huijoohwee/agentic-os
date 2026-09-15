@@ -45,8 +45,9 @@ below is retained as the historical baseline; its revisions are not current depe
 |---|---|---|
 | Shared runtime and invocation | [OS protected source](https://github.com/huijoohwee/agentic-os/tree/57c8c66b58bf46469c23416e10e43aacdfe174fd/runtime/agents) owns durable runs, SQLite, retries, leases and shared operation dispatch. [PR 169](https://github.com/huijoohwee/agentic-os/pull/169) passed 1,411 tests and the required integration gate. | Full source retirement and all public caller paths remain separate. |
 | Canvas composition | [Protected Canvas source](https://github.com/huijoohwee/agentic-canvas-os/tree/8460fc01c7dbd8af6880d346a71829e20887c44e) forwards migrated runtime modules to OS and product admission to Commerce. | Remaining application, lifecycle, docs and deployment ownership transfer; zero active legacy consumers. |
-| Original runtime coverage | [Test migration manifest](../runtime/agents/MIGRATION-TESTS.json) maps six original Canvas composition and skill suites plus two fixtures to OS. Assertions and property seeds stay intact; test-only dependencies are isolated from the runtime. | Protected owner checks and subsequent Canvas test retirement. |
-| Runtime docs and catalog | [Migration manifest](../runtime/agents/MIGRATION-DOCS.json) binds 19 native documents and a separately preserved immutable historical proof. Fleet discovery points presets, skills and the progressive facade to their existing OS owners. | Graph source and browser documentation cutover; remove replaced Canvas bodies after consumer checks. |
+| Original runtime coverage | [Test migration manifest](../runtime/agents/MIGRATION-TESTS.json) maps six original Canvas composition and skill suites plus two fixtures to OS. Assertions and property seeds stay intact; test-only dependencies are isolated from the runtime. | [PR 171](https://github.com/huijoohwee/agentic-os/pull/171) passed 1,482 tests; subsequent Canvas test retirement remains. |
+| Alignment auditor | [Native migration manifest](../bin/alignment-audit-migration.json) maps the original 33 modules, 42 suites, two test helpers and four config/fixture files to optional OS tool paths. Tests retain assertions, property seeds and 25 independent 100-run properties. | Protected owner checks and Canvas source retirement. |
+| Runtime docs and catalog | [Migration manifest](../runtime/agents/MIGRATION-DOCS.json) binds 19 native documents and a separately preserved immutable historical proof. Fleet discovery points presets, skills and the progressive facade to their existing OS owners. | [Graph PR 1018](https://github.com/huijoohwee/agentic-graph/pull/1018) completed source/browser documentation cutover and passed its Integration Gate; Canvas body retirement remains. |
 | Commerce public sandbox | [Release 34998738855](https://github.com/huijoohwee/agentic-commerce-os/actions/runs/34998738855) binds source `033bcb56e9d6d3839fef29e65962f34ceccc3c4a`, Worker version `e9fb843e-1aab-4058-bf37-e013e8801c8b`, the public route and 11 browser groups. The device-session model generated a listing; test-mode checkout, reload and download events were observed. | Full retained-job provider rollback proof. Test-mode payment is not buyer, WTP or real-revenue evidence. |
 | Graph invocation and routing | [PR 1017](https://github.com/huijoohwee/agentic-graph/pull/1017) integrates lazy durable-run invocation and the GameXR route alias at `3b424d9e80f113dbab93b195798bd9521241aafe`. | Protected Graph production release, public invocation/readback and generated mirror parity. |
 
@@ -55,6 +56,11 @@ authenticated relay. Availability depends on that device session; this is not an
 hosted executor. Technical review checkboxes are automated test observations, not an actual buyer review.
 Historical provider proof retains its original paid Dev scope and cannot establish current free-core
 readiness. WTP, accepted price, customers and real revenue remain unvalidated.
+
+The optional alignment auditor is invoked with `npm run alignment-audit:verify` for its native fixtures,
+or `node bin/alignment-audit.mjs <config.json> --mode verify` for explicitly selected sources. Verification
+uses an in-memory output sink. `--mode run` writes only under the configured output directory; neither
+mode grants deployment, lifecycle or runtime authority. The main OS command loads no auditor modules.
 
 ## PRD — reference implementation
 
