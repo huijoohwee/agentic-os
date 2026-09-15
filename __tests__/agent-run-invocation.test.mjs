@@ -99,7 +99,7 @@ test('untrusted tools cannot choose endpoint, principal, credentials, shell, sig
 test('transport failure and server uncertainty retain unknown mutation outcome without automatic retry', async () => {
   let calls = 0;
   const client = createAgentRunClient({ endpoint: 'https://runtime.example/api/agent-swarm/',
-    fetchImpl: async (_url, options) => { calls++; assert.equal(options.redirect, 'error'); throw Error('private bearer details'); } });
+    fetchImpl: async (_url, options) => { calls++; assert.equal(options.redirect, 'manual'); throw Error('private bearer details'); } });
   await assert.rejects(client.invoke('start', request), error => {
     assert.equal(error.writeResultUnknown, true); assert.equal(error.message.includes('private'), false); return true;
   });

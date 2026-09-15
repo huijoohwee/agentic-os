@@ -52,7 +52,12 @@ export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, g
       if (controller.signal.aborted) throw new Error('request aborted');
       dispatched = true;
       const response = await fetchImpl(new URL(operation, base).href, { method: 'POST', headers,
-        body: JSON.stringify(value), signal: controller.signal, redirect: 'error', credentials: 'same-origin', cache: 'no-store' });
+        body: JSON.stringify(value), signal: controller.signal, redirect: 'manual', credentials: 'same-origin', cache: 'no-store' });
+      // Edge runtimes support manual redirects; browsers may expose an opaque redirect.
+      // Neither form may replay an authenticated operation at a different location.
+      if (response.redirected || response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400) {
+        await response.body?.cancel(); throw new TypeError('Run endpoint redirected.');
+      }
       if (!response.headers.get('content-type')?.includes('application/json')) throw new TypeError('Run endpoint returned a non-JSON response.');
       const reader = response.body?.getReader();
       if (!reader) throw new TypeError('Run response body is missing.');
