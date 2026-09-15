@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readlinkSync, symlinkSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
@@ -11,7 +11,7 @@ import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recove
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-function fixture(t, concurrentBase = false) {
+function fixture(t, concurrentBase = false, detached = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-consent-recovery-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'root'), target = join(parent, 'lane'); mkdirSync(root);
@@ -28,6 +28,11 @@ function fixture(t, concurrentBase = false) {
   git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD'); ensureRepositoryTrust(root, profile, { allowCreate: true });
   git(root, 'worktree', 'add', '--quiet', '-b', branch, target);
   writeFileSync(join(target, 'source.txt'), 'delivered\n'); git(target, 'add', '.'); git(target, 'commit', '--quiet', '-m', 'source');
+  const originalHead = git(target, 'rev-parse', 'HEAD');
+  if (detached) {
+    writeFileSync(join(target, 'successor.txt'), 'reviewed successor\n');
+    git(target, 'add', '.'); git(target, 'commit', '--quiet', '-m', 'successor');
+  }
   const head = git(target, 'rev-parse', 'HEAD');
   if (concurrentBase) {
     writeFileSync(join(root, 'peer.txt'), 'peer work\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'peer');
@@ -36,6 +41,7 @@ function fixture(t, concurrentBase = false) {
   const merge = git(root, 'rev-parse', 'HEAD'); git(root, 'update-ref', 'refs/remotes/origin/main', merge);
   git(root, 'remote', 'add', 'origin', `https://github.com/${repository}.git`);
   git(root, 'config', '--local', 'agentic-os.userCleanup', 'quarantine-recovery');
+  if (detached) git(target, 'switch', '--detach', originalHead);
   mkdirSync(join(target, 'runtime')); writeFileSync(join(target, 'runtime/evidence.txt'), 'retained local evidence');
   symlinkSync('/unavailable/device/runtime', join(target, 'runtime/link'));
   const workflow = '.github/workflows/ci.yml';
@@ -56,12 +62,12 @@ function fixture(t, concurrentBase = false) {
     if (path.endsWith('/actions/runs/456')) return structuredClone(run);
     assert.fail(`unexpected provider effect or read: ${path}`);
   };
-  const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true };
+  const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true, detached };
   const options = { api, now: () => NOW, observeRemote: () => `${merge}\trefs/heads/main` };
   const plan = () => planUserCleanup(input, options);
   const apply = (p, overrides = {}) => applyUserCleanup(p, { cwd: root, ...options,
     authorization: `agentic-os:user-cleanup:${p.planDigest}`, stopped: true, ...overrides });
-  return { root, target, profile, head, merge, branch, input, options, plan, apply, pull, check, checks, run, calls };
+  return { root, target, profile, head, originalHead, merge, branch, input, options, plan, apply, pull, check, checks, run, calls };
 }
 test('explicit governed recovery preserves retain policy, exact branches, ignored bytes and replay', t => {
   const s = fixture(t), p = s.plan(), refs = git(s.root, 'show-ref');
@@ -125,4 +131,74 @@ test('CLI requires an explicit recovery selection while keeping apply exact and 
   assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
     '--workflow=.github/workflows/ci.yml', '--recovery']), null);
   assert.ok(validateCommandArguments('cleanup-user', ['apply', '--plan=x', '--authorize=y', '--recovery', '--stopped']));
+});
+
+test('explicit detached ancestor recovery keeps the checked PR head distinct and preserves history and replay', t => {
+  const s = fixture(t, true, true), p = s.plan(), refs = git(s.root, 'show-ref');
+  assert.notEqual(p.detachedHead, p.head); assert.equal(p.detachedHead, s.originalHead);
+  assert.equal(p.review.head, s.head); assert.equal(p.integration.detached.reviewedHead, s.head);
+  assert.equal(p.integration.detached.inclusion.kind, 'exact-tree-projection');
+  const receipt = s.apply(p);
+  assert.equal(receipt.detachedHead, s.originalHead); assert.equal(existsSync(s.target), false);
+  assert.equal(git(s.root, 'show-ref'), refs);
+  assert.equal(readFileSync(join(receipt.registrationQuarantinePath, 'HEAD'), 'utf8').trim(), s.originalHead);
+  assert.equal(readFileSync(join(receipt.projectionQuarantinePath, 'runtime/evidence.txt'), 'utf8'), 'retained local evidence');
+  assert.equal(receipt.providerAuthority, false); assert.equal(receipt.claimRetired, false);
+  assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
+});
+test('detached cleanup requires explicit recovery and a truly detached target', t => {
+  const s = fixture(t);
+  assert.throws(() => planUserCleanup({ ...s.input, detached: true }, s.options), /target-not-detached/);
+  assert.throws(() => planUserCleanup({ ...s.input, detached: true, recovery: false }, s.options), /detached-recovery-required/);
+  git(s.target, 'switch', '--detach', s.head);
+  assert.throws(s.plan);
+  const p = planUserCleanup({ ...s.input, detached: true }, s.options);
+  git(s.target, 'switch', s.branch);
+  assert.throws(() => s.apply(p), { reason: 'blocked-target-identity' });
+  assert.ok(existsSync(s.target));
+});
+test('matching detached content without reviewed ancestry is insufficient', t => {
+  const s = fixture(t, false, true);
+  const sibling = git(s.root, 'commit-tree', `${s.originalHead}^{tree}`, '-p', `${s.originalHead}^`, '-m', 'unreviewed sibling');
+  git(s.target, 'switch', '--detach', sibling);
+  assert.throws(s.plan, /detached-not-reviewed-ancestor/);
+  assert.ok(existsSync(s.target));
+});
+test('reviewed ancestry cannot hide source content overwritten before merge', t => {
+  const s = fixture(t, false, true);
+  git(s.target, 'switch', s.branch);
+  writeFileSync(join(s.target, 'source.txt'), 'superseded\n'); git(s.target, 'add', '.');
+  git(s.target, 'commit', '--quiet', '-m', 'overwrite ancestor');
+  s.pull.head.sha = git(s.target, 'rev-parse', 'HEAD'); s.check.head_sha = s.pull.head.sha; s.run.head_sha = s.pull.head.sha;
+  writeFileSync(join(s.root, 'source.txt'), 'superseded\n'); git(s.root, 'add', '.');
+  git(s.root, 'commit', '--quiet', '-m', 'merge overwrite');
+  s.pull.merge_commit_sha = git(s.root, 'rev-parse', 'HEAD');
+  git(s.root, 'update-ref', 'refs/remotes/origin/main', s.pull.merge_commit_sha);
+  git(s.target, 'switch', '--detach', s.originalHead);
+  assert.throws(s.plan, /source-not-integrated/);
+});
+test('detached target drift and malformed bindings preserve the worktree', t => {
+  const s = fixture(t, false, true), p = s.plan();
+  const altered = { ...p, detachedHead: null }; const { planDigest, ...body } = altered;
+  altered.planDigest = governanceDigest(body);
+  assert.throws(() => s.apply(altered), /plan-binding/);
+  git(s.target, 'switch', '--detach', s.head);
+  assert.throws(() => s.apply(p), { reason: 'blocked-target-identity' });
+  assert.ok(existsSync(s.target));
+  assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
+    '--workflow=.github/workflows/ci.yml', '--recovery', '--detached']), null);
+});
+
+test('recovery preserves dependency hardlinks and detects writes through retained aliases', t => {
+  const s = fixture(t), original = join(s.target, 'runtime/evidence.txt');
+  const alias = join(s.target, 'runtime/dependency-binary'); linkSync(original, alias);
+  const p = s.plan(), receipt = s.apply(p);
+  const preserved = join(receipt.projectionQuarantinePath, 'runtime');
+  assert.equal(statSync(join(preserved, 'evidence.txt')).ino, statSync(join(preserved, 'dependency-binary')).ino);
+  assert.equal(statSync(join(preserved, 'evidence.txt')).nlink, 2);
+  const other = fixture(t), outside = join(other.root, 'runtime'); mkdirSync(outside);
+  linkSync(join(other.target, 'runtime/evidence.txt'), join(outside, 'alias'));
+  const before = other.plan(); writeFileSync(join(outside, 'alias'), 'changed through alias');
+  assert.throws(() => other.apply(before), /inventory|observation/);
+  assert.ok(existsSync(other.target));
 });
