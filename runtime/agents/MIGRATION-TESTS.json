@@ -106,6 +106,32 @@
         "testTitle": "Canvas consumes upstream continuity with opaque response IDs and sanitized readiness"
       },
       "transformation": "Original application assertions retained; shared native test fixtures reused; continuity title names the application owner."
+    },
+    {
+      "source": "__tests__/cloudflare-economics.test.mjs",
+      "sourceSha256": "5ff32e06a998b4674f27b3662b27464fd7e08b7d139eae610e5508c6838d72bf",
+      "destination": "__tests__/agent-worker-economics.test.mjs",
+      "destinationSha256": "616448384692e419c6d574784cc4ba98d6e08f6f008ac17b3dd407a9ac23988e",
+      "selection": {
+        "testTitles": [
+          "invalid canvas requests do not consume a Durable Object request",
+          "a valid scoped canvas session reaches its Durable Object exactly once",
+          "room admission limits stop valid abuse before Durable Object dispatch",
+          "session admission limits fail closed before token issuance"
+        ]
+      }
+    },
+    {
+      "source": "__tests__/native-skill-harness-structure.test.mjs",
+      "sourceSha256": "d109521ccfff6b67bd069733122953f2d5060a8a6405474a26b1f404b7a8c0bb",
+      "destination": "__tests__/agent-skill-independence.test.mjs",
+      "destinationSha256": "7ca51c8661a93fd80e72861dfe35830cb031bd819defc2db73dc34e8be2abd13",
+      "selection": {
+        "testTitles": [
+          "the gate accepts no model-adapter-shaped and no fetch-shaped parameter",
+          "Property 14: Evaluator independence as a structural invariant"
+        ]
+      }
     }
   ],
   "transformations": [

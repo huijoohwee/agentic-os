@@ -43,12 +43,12 @@ test('namespace routing is isolated and absent telemetry never implies a provide
   assert.equal(normalizeCacheUsage({ usage: { input_tokens: 42,
     input_tokens_details: { cached_tokens: 100 } } }).provider_cache_status, 'unreported');
 });
-test('the portable context runtime retains its closed budget independently of optional agents', () => {
+test('the portable context runtime retains its closed budget independently of optional components', () => {
   const root = new URL('../runtime/', import.meta.url);
   const entries = readdirSync(root, { withFileTypes: true });
   const contextFiles = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort();
   assert.deepEqual(contextFiles, ['cache-context.mjs', 'json-contract.mjs', 'reasoning-continuity.mjs']);
-  assert.deepEqual(entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort(), ['adapters', 'agents']);
+  assert.deepEqual(entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort(), ['adapters', 'agents', 'planning']);
   let bytes = 0;
   for (const name of contextFiles) {
     const source = readFileSync(new URL(name, root), 'utf8'); bytes += Buffer.byteLength(source);

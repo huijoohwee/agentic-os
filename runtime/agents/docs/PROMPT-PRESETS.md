@@ -223,7 +223,7 @@ links remain pinned to that source. Current package checks run with `npm run che
 
 Launch Copilot r3 is an on-demand native Graph composition action. Its shared
 prompt, five-role source joins, claim validator and document serializer live in
-`../src/launch-copilot-contract.js`; consumers load that owner without copying it
+[Graph’s native contract](https://github.com/huijoohwee/agentic-graph/blob/c5527b6f80ecbd6b8d1340ccda99e5f3f9e1473f/mcp/agent-graph/launch-copilot-contract.js); consumers load that owner without copying it
 into a preset or adding a provider route. Graph retains import/parse, selection,
 Chat, canvas and workspace persistence. An editable outline is explicitly not
 AI drafting. Validation proves source membership only; human review and OS
