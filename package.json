@@ -245,5 +245,7 @@
     "context:check": "node --test __tests__/cache-context.test.mjs __tests__/reasoning-continuity.test.mjs __tests__/context-runtime.test.mjs __tests__/codebase-context.test.mjs"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "fast-check": "3.23.2"
+  }
 }
