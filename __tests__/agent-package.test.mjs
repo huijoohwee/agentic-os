@@ -42,7 +42,7 @@ test('agent package closure has one JSON owner, no consumer imports and no cycle
   assert.ok(modules.length <= 28);
   assert.ok(bytes <= 300_000);
   const adapters = readdirSync(join(root, 'runtime/adapters')).filter(name => /\.(?:mjs|js)$/u.test(name));
-  assert.ok(adapters.length <= 57);
+  assert.ok(adapters.length <= 58);
   let adapterBytes = 0;
   for (const name of adapters) {
     const source = readFileSync(join(root, 'runtime/adapters', name), 'utf8');

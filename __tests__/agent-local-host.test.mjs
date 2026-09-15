@@ -144,17 +144,27 @@ test('restarted HTTP process resumes its persisted retry without another start r
   async function spawn(mode) {
     const child = fork(join(import.meta.dirname, 'agents/local-host-fixture.mjs'), [JSON.stringify({ path, effectPath, mode })],
       { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    const ready = Promise.withResolvers(), outcome = Promise.withResolvers();
+    // Capture both phases before yielding: recovery may finish before readiness is observed.
+    child.on('message', message => {
+      if (message.endpoint) ready.resolve(message.endpoint); else outcome.resolve(message);
+    });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4096); });
+    const failed = error => { ready.reject(error); outcome.reject(error); };
+    child.once('error', failed);
+    child.once('exit', (code, signal) => failed(Error(`Fixture exited (${code ?? signal}): ${stderr}`)));
+    // An early failure of either phase must not become an unhandled rejection.
+    ready.promise.catch(() => {}); outcome.promise.catch(() => {});
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
-    return { child, endpoint: (await once(child, 'message'))[0].endpoint };
+    return { child, endpoint: await ready.promise, outcome: outcome.promise };
   }
   const first = await spawn('fail-once');
-  const failed = once(first.child, 'message');
   await client(first).invoke('start', request);
-  assert.equal((await failed)[0].retry, 'persisted');
+  assert.deepEqual(await first.outcome, { retry: 'persisted' });
   const exited = once(first.child, 'exit'); first.child.kill('SIGKILL'); await exited;
   const second = await spawn('resume');
-  const done = once(second.child, 'message');
-  assert.equal((await done)[0].status, 'completed');
+  assert.deepEqual(await second.outcome, { status: 'completed' });
   assert.equal((await client(second).invoke('status', { runId: request.runId })).status, 'completed');
   assert.equal((await client(second).invoke('start', request)).status, 'completed');
   assert.equal(readFileSync(effectPath, 'utf8'), 'completed\n');
