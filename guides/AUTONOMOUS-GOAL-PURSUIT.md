@@ -28,6 +28,29 @@ authority, approval, destructive effect, deployment, or product decision.
 - After the same approach fails twice, diagnose the owner and change approach. A renamed third attempt is
   still a loop.
 
+## Mandatory resource economy
+
+The global prompt forbids guessed inputs, optional setup detours and duplicate checks. Apply this before
+each command, including after compaction; resuming a task does not invalidate its evidence.
+
+- Derive paths, commands, package location, enrollment and pins from the selected repository and existing
+  owner. Reuse a working invocation. Never guess a CLI context or add optional enrollment to unblock a
+  different operation; use the supported admitted path and preserve required ownership checks.
+- Run the existing validation planner before execution. Prefer dependency and contract impact over file
+  type alone. Name the invalidated contract, missing coverage or exact mandatory rule before broadening.
+  Consumer-required checks still apply; repair an overbroad mapping at its owner instead of waiving a gate.
+- Reuse successful receipts only when their source, environment, configuration, scope and effect bindings
+  remain valid. Never repeat a completed check merely because a turn, lane, summary or package pin changed;
+  establish which inputs changed first. A local receipt cannot replace a required protected CI receipt.
+- Execute each selected check once per valid input set. Do not run both a broad aggregate and the narrow
+  checks it already contains. Partition only through the owner's supported plan and retain coverage.
+- On failure, stop the aggregate, read the retained diagnostic and verify the smallest repair first.
+  An unchanged retry needs a new observation, such as a repaired environment; record that reason before
+  execution. Do not use fresh/all flags, raise a cap or restart the full suite to erase a failure.
+- Bound discovery and output to the next decision. Do not reread completed inventories, dump full logs,
+  poll unchanged state or repeat narrative updates. Preserve one receipt and link it; refresh volatile
+  inputs immediately before their dependent effect, and state gaps without claiming full parity.
+
 ## Authorization continuity
 
 Carry the operator's actual decisions and owner-issued receipts across turns, compaction, retries and
@@ -61,9 +84,9 @@ Product promotion and provider trust stay consumer-owned. Updating this guide or
 change a protected environment or enroll delegated authority. Consumers adopt the reviewed upstream package
 pin; never patch an installed package or reinterpret a candidate receipt as a standing grant.
 
-This change adds no module, dependency, provider operation or controller. Always-load guidance grows by
-71 UTF-8 bytes: 68 in the existing ADLC/release documents and three in the prompt (996 to 999), within
-the unchanged documentation and 1,000-byte prompt caps. The detailed policy stays on demand.
+The resource-economy policy adds no module, dependency, provider operation or controller. Its global prompt
+is 993 UTF-8 bytes, six fewer than the prior 999, within the unchanged 1,000-byte cap. The existing evaluator
+pins the reviewed bytes and digest; these detailed rules stay on demand.
 
 ## Deadlock avoidance
 
