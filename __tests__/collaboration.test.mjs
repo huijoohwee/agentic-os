@@ -173,3 +173,43 @@ test('CLI and MCP expose only bounded explicit operations; offline mutation and 
   assert.equal(result.status, 0, result.stderr); assert.match(result.stdout, /"status":"published"/);
   assert.equal(s.invoke('collaborate', 'status', '--offline').status, 0);
 });
+
+test('archive accepts only stopped reported or released holders and preserves the monotonic fence', () => {
+  let board = change(emptyBoard(), 'submit', submit('released', ['src']));
+  assert.throws(() => change(board, 'archive', own('released')), /fence/);
+  board = change(board, 'claim', { expectedRevision: sha, id: 'released', actor: alice });
+  assert.throws(() => change(board, 'archive', own('released')), /fence/);
+  assert.throws(() => change(board, 'archive', own('released'), 601001), /fence/);
+  board = change(board, 'release', { ...own('released'), stopped: true }, 601001);
+  assert.equal(board.tasks[0].result, null);
+  assert.throws(() => change(board, 'archive', own('released', bob), 601002), /fence/);
+  assert.throws(() => change(board, 'archive', own('released', alice, 2), 601002), /fence/);
+  assert.throws(() => transitionBoard(board, 'archive', own('released'),
+    { repository: 'local:other', now: 601002 }), /task-scope/);
+  const archived = change(board, 'archive', own('released'), 601002);
+  assert.equal(archived.tasks.length, 0); assert.equal(archived.sequence, 1);
+  assert.equal(board.tasks[0].state, 'released');
+  const reused = change(change(archived, 'submit', submit('released'), 601003), 'claim',
+    { expectedRevision: sha, id: 'released', actor: bob }, 601004);
+  assert.equal(reused.tasks[0].epoch, 2);
+  assert.throws(() => change(reused, 'archive', own('released'), 601005), /fence/);
+});
+test('released-task archival uses exact shared revision and retains stopped records across independent clones', t => {
+  const s = setup(t), other = peer(s);
+  const initial = updateBoard(s.context, 'submit', s.input('released'));
+  const claimed = updateBoard(other, 'claim', { expectedRevision: initial.revision, id: 'released', actor: bob });
+  const released = updateBoard(other, 'release',
+    { ...own('released', bob), expectedRevision: claimed.revision, stopped: true });
+  assert.throws(() => updateBoard(s.context, 'archive',
+    { ...own('released', bob), expectedRevision: claimed.revision }), /stale-revision/);
+  assert.equal(observeBoard(s.context).revision, released.revision);
+  const archived = updateBoard(other, 'archive',
+    { ...own('released', bob), expectedRevision: released.revision });
+  assert.equal(archived.grantsAuthority, false);
+  assert.equal(observeBoard(s.context).tasks.length, 0);
+  const retained = JSON.parse(s.run(s.container, ['show', released.revision + ':board.json']));
+  assert.equal(retained.tasks[0].state, 'released'); assert.equal(retained.tasks[0].result, null);
+  assert.equal(s.run(s.container, ['rev-parse', archived.revision + '^']), released.revision);
+  assert.equal(s.run(s.container, ['rev-parse', 'HEAD']), s.memory);
+  assert.equal(s.run(s.container, ['diff', '--cached']), '');
+});

@@ -1,13 +1,13 @@
 ---
 title: "On-demand shared collaboration"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.1"
+version: "1.1.2"
 date: "2026-09-12"
 owner: "agentic-os"
 continuity_id: "SHARED-COLLABORATION-001"
-prd_revision: "1.1.1"
-tad_revision: "1.1.1"
-adr_revision: "1.1.1"
+prd_revision: "1.1.2"
+tad_revision: "1.1.2"
+adr_revision: "1.1.2"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a0940a"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.1.1"
-gtm_revision: "1.1.1"
+mvp_revision: "1.1.2"
+gtm_revision: "1.1.2"
 ---
 
 # On-demand shared collaboration
@@ -35,7 +35,7 @@ It does not spawn models, grant permissions, meter provider spend or authenticat
 
 Acceptance: independent clones discover the same pinned task, race an exact board revision with at most
 one winner, admit disjoint work with different provider/model labels, reject overlapping writers and stale
-fences, retain expired reservations, report bounded handoffs and archive stopped results without losing
+fences, retain expired reservations, report bounded handoffs and archive stopped released or reported tasks without losing
 Git history. Offline reads never admit or renew work. Source, index and dirty owner bytes stay untouched.
 
 ## TAD: shared metadata and local execution
@@ -110,7 +110,7 @@ All remaining operations use `agentic-os collaborate <operation> --input=<file>`
 | renew | `actor,epoch` |
 | release | `actor,epoch,stopped` with `stopped:true` |
 | report | `actor,epoch,result` |
-| archive | `actor,epoch`; only a reported task may leave the current board |
+| archive | `actor,epoch`; only a released or reported task may leave the current board |
 
 `actor` is exactly `{device,agent,provider,model}`, using explicit portable string identifiers. Provider
 and model are opaque metadata, not a registry or automatic selection. Use the returned epoch, never guess.
@@ -119,8 +119,10 @@ and model are opaque metadata, not a registry or automatic selection. Use the re
 the source pin. Write results name the produced commit; the coordinator independently observes its diff
 and checks. `reported` does not mean accepted, merged or deployed. Release/archive are not worktree cleanup.
 
-After review and durable handoff preservation, archive removes only the current reported record; prior
-commits and the fence counter remain. Use unique IDs for new work. Status alone accepts `--offline`.
+After review and durable handoff preservation, archive removes only the current released or reported record; prior
+commits and the fence counter remain. A released task already records the holder's stopped acknowledgement;
+archiving it requires the same holder and epoch, and does not invent a result or token measurement.
+Active and pending tasks cannot be archived. Use unique IDs for new work. Status alone accepts `--offline`.
 The existing MCP server's `collaborate` tool accepts `operation`, local `input` pathname, and `offline` only
 for status. Array argv is used, never shell interpolation. No additional server or custom agent TOML is needed.
 
@@ -143,7 +145,7 @@ shared commands automatically or treat a result as independent test, merge, runt
 History rewrites fail against an accepted snapshot; first admission has no previous history trust anchor.
 
 Validation: `__tests__/collaboration.test.mjs` covers independent clones, actual concurrent processes with
-different provider labels, cap/overlap/fence/expiry behavior, pinned reads, reported budgets, archive/reuse,
+different provider labels, cap/overlap/fence/expiry behavior, pinned reads, reported budgets, released/reported archive and reuse,
 dirty preservation, rejected publication, offline operation, identity/history drift and CLI/MCP grammar.
 Run affected checks. These are local protocol/process tests, not live proof of multiple physical devices,
 multiple LLM APIs or independent enforcement of model spend. Measure total task time/tokens before ROI claims.
@@ -198,11 +200,11 @@ product execution remain outside this proof. Local regression: `node --test __te
 
 ## MVP — reference implementation
 
-`SHARED-COLLABORATION-001@1.1.1` selects one cooperative claim, checked handoff and retained outcome. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+`SHARED-COLLABORATION-001@1.1.2` selects one cooperative claim, checked handoff and retained outcome. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
 Verify that acceptance with `node --test __tests__/collaboration.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
-Experience assessment for `SHARED-COLLABORATION-001@1.1.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `SHARED-COLLABORATION-001@1.1.2` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
