@@ -26,13 +26,22 @@ export function recoveryPolicy(root, repository) {
     protectedCleanupPolicy: profile.cleanup, limits: RECOVERY_LIMITS };
 }
 
-export function recoveryIntegration(plan, read) {
-  const headTree = read(plan.root, ['rev-parse', '--verify', `${plan.head}^{tree}`]);
+function contentInclusion(plan, head, read) {
+  const headTree = read(plan.root, ['rev-parse', '--verify', `${head}^{tree}`]);
   const mergeTree = read(plan.root, ['rev-parse', '--verify', `${plan.merge}^{tree}`]);
   if (headTree === mergeTree) return { kind: 'equal-tree', headTree, mergeTree };
-  const projection = exactTreeProjectionProof(plan.merge, plan.head, { cwd: plan.root });
+  const projection = exactTreeProjectionProof(plan.merge, head, { cwd: plan.root });
   if (!projection) refuse('source-not-integrated');
   return { kind: projection.kind, pathCount: projection.pathCount, headTree, mergeTree };
+}
+
+export function recoveryIntegration(plan, read) {
+  const integration = contentInclusion(plan, plan.head, read);
+  if (!plan.detachedHead) return integration;
+  if (read(plan.root, ['merge-base', '--is-ancestor', plan.detachedHead, plan.head], { allowFail: true }) === null)
+    refuse('detached-not-reviewed-ancestor');
+  return { ...integration, detached: { head: plan.detachedHead, reviewedHead: plan.head,
+    inclusion: contentInclusion(plan, plan.detachedHead, read) } };
 }
 
 /** Select complete successful runs of the named workflow, before the observed merge. */

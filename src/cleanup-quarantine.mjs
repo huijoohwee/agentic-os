@@ -166,16 +166,19 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   const entry = targets[0], projectionStat = strictStat(plan.targetPath, 'target-projection');
   if (`refs/heads/${entry.branch}` === trusted.profile.canonical.localRef)
     fail('blocked-cleanup-canonical-projection', 'canonical worktree projection must be retained');
-  const retainedHead = observeGit(['rev-parse', '--verify', `refs/heads/${plan.expectedBranch}^{commit}`],
-    { cwd: controller, allowFail: true });
+  const detachedRecovery = plan.mode === 'explicit-local-user-consent-recovery'
+    && plan.detachedRecovery === true && plan.expectedBranch === null;
+  const retainedHead = detachedRecovery ? null
+    : observeGit(['rev-parse', '--verify', `refs/heads/${plan.expectedBranch}^{commit}`],
+      { cwd: controller, allowFail: true });
   if (!projectionStat.isDirectory() || projectionStat.isSymbolicLink()
     || realpathSync(plan.targetPath) !== plan.targetPath)
     fail('blocked-target-projection', 'target projection is not one direct directory');
   if (entry.head !== plan.expectedHeadRevision || entry.branch !== plan.expectedBranch
-    || retainedHead !== plan.expectedHeadRevision)
+    || (detachedRecovery ? !entry.detached : retainedHead !== plan.expectedHeadRevision))
     fail('blocked-target-identity', 'target branch or head changed');
   const recoveryInventory = collectRecoveryInventory({ cwd: plan.targetPath,
-    canonicalRef: plan.expectedCanonicalRef });
+    canonicalRef: plan.expectedCanonicalRef, allowDetached: detachedRecovery });
   const recoveryInventoryDigest = governanceDigest(recoveryInventory);
   if (recoveryInventoryDigest !== plan.recoveryInventoryDigest
     || recoveryInventory.inventoryEntries.content !== plan.recoveryInventoryContentEntries
@@ -186,6 +189,7 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   const admin = adminFor(plan.targetPath, common, plan.sharedStateEntryCeiling);
   const projectionManifest = observeQuarantineManifest(plan.targetPath, {
     byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling,
+    retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery',
   });
   const registrationManifest = observeRegistrationManifest(admin.adminPath, {
     byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
@@ -245,6 +249,7 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
     fail('blocked-cleanup-retained-artifact', 'quarantine coordinate is partial or ambiguous');
   const projectionManifest = observeQuarantineManifest(projectionPath, {
     byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling,
+    retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery',
   });
   const retainedRegistrationManifest = observeRegistrationManifest(registrationPath, {
     byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,
@@ -324,6 +329,7 @@ export function quarantineWorktreeTarget(plan, before, {
     const shared = sharedState(common, afterEntries, null, plan);
     const projectionManifest = observeQuarantineManifest(projectionPath, {
       byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling,
+      retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery',
     });
     const retainedRegistrationManifest = observeRegistrationManifest(registrationPath, {
       byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling,

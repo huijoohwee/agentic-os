@@ -254,14 +254,16 @@ function listedContent(raw, label, root, category) {
   })), label).map(({ path }) => contentRecord(root, category, path));
 }
 
-function inventorySnapshot(root, canonicalRef) {
+function inventorySnapshot(root, canonicalRef, allowDetached) {
   const headRevision = strictText(gitLine(
     ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'], root, 'HEAD revision'),
   'HEAD revision');
   const canonicalRevision = strictText(gitLine([
     'rev-parse', '--verify', '--end-of-options', `${canonicalRef}^{commit}`,
   ], root, 'canonical revision'), 'canonical revision');
-  const branch = strictText(gitLine(
+  const detached = allowDetached && strictText(gitLine(
+    ['rev-parse', '--abbrev-ref', 'HEAD'], root, 'HEAD kind'), 'HEAD kind') === 'HEAD';
+  const branch = detached ? null : strictText(gitLine(
     ['symbolic-ref', '--quiet', '--short', 'HEAD'], root, 'branch'), 'branch');
   const objectFormat = strictText(gitLine(
     ['rev-parse', '--show-object-format'], root, 'object format'), 'object format');
@@ -323,7 +325,8 @@ function frozen(value) {
 }
 
 /** Collect twice and return only an exact, stable, path-free observation. */
-export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef } = {}) {
+export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, allowDetached = false } = {}) {
+  if (typeof allowDetached !== 'boolean') throw new TypeError('allowDetached must be a boolean');
   if (typeof canonicalRef !== 'string' || !canonicalRef.startsWith('refs/')
     || canonicalRef.includes('\0')) throw new TypeError('canonicalRef must be a full Git ref');
   const initialRoot = strictText(gitPath(['rev-parse', '--show-toplevel'], cwd,
@@ -333,8 +336,8 @@ export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef } =
   if (gitBytes(['check-ref-format', canonicalRef], root, { allowFail: true }) === null) {
     throw new TypeError('canonicalRef must be a valid full Git ref');
   }
-  const first = inventorySnapshot(root, canonicalRef);
-  const second = inventorySnapshot(root, canonicalRef);
+  const first = inventorySnapshot(root, canonicalRef, allowDetached);
+  const second = inventorySnapshot(root, canonicalRef, allowDetached);
   const finalRoot = realpathSync(strictText(gitPath(['rev-parse', '--show-toplevel'], root,
     'repository root'), 'repository root'));
   const finalIdentity = lstatSync(finalRoot, { bigint: true, throwIfNoEntry: false });

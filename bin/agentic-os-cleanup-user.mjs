@@ -54,7 +54,9 @@ function observePolicy(mechanics, root) {
 }
 function mechanics(plan) {
   return { ...(plan.mode === RECOVERY_MODE ? RECOVERY_LIMITS : LIMITS), mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
-    expectedBranch: plan.branch, expectedHeadRevision: plan.head, expectedCanonicalRef: 'refs/heads/main',
+    expectedBranch: plan.detachedHead ? null : plan.branch,
+    expectedHeadRevision: plan.detachedHead ?? plan.head, detachedRecovery: Boolean(plan.detachedHead),
+    expectedCanonicalRef: 'refs/heads/main',
     expectedCanonicalRevision: plan.canonical, profileDigest: plan.policyDigest,
     recoveryInventoryDigest: plan.inventoryDigest, recoveryInventoryContentEntries: plan.inventoryContentEntries,
     planDigest: plan.planDigest };
@@ -87,7 +89,8 @@ function validatePlan(input) {
   const bytes = canonicalJson(input); if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
   const plan = JSON.parse(bytes);
   fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest'
-    + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : ''));
+    + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : '')
+    + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : ''));
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
   if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE, RECOVERY_MODE].includes(plan.mode) || governanceDigest(content) !== planDigest
@@ -96,6 +99,8 @@ function validatePlan(input) {
     || !['policyDigest', 'inventoryDigest', 'planDigest'].every(k => /^[a-f0-9]{64}$/u.test(plan[k]))
     || !Number.isSafeInteger(plan.issuedAt) || !Number.isSafeInteger(plan.expiresAt)
     || plan.issuedAt < 0 || plan.expiresAt <= plan.issuedAt || plan.expiresAt - plan.issuedAt > 900000
+    || (Object.hasOwn(plan, 'detachedHead') && (plan.mode !== RECOVERY_MODE
+      || typeof plan.detachedHead !== 'string' || !/^[a-f0-9]{40}$/u.test(plan.detachedHead)))
     || plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch)
     refuse('plan-binding');
   return plan;
@@ -107,9 +112,10 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false, recovery = false }, options = {}) {
+  noCI = false, recovery = false, detached = false }, options = {}) {
   const root = realpathSync(repoRoot(cwd));
   if (noCI && recovery) refuse('incompatible-modes');
+  if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
   const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
   reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
   return locked(root, () => {
@@ -118,14 +124,16 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
-    const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main' });
+    const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main', allowDetached: detached });
+    if (detached && inventory.branch !== null) refuse('target-not-detached');
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
     const issuedAt = options.now?.() ?? Date.now();
     const plan = { schema: SCHEMA, mode, root, repository: current.repository, remoteUrl: current.remoteUrl,
       pr, requiredChecks, workflow, targetPath, branch: review.branch, head: review.head, canonical: current.canonical,
       merge: review.merge, review, inventoryDigest: governanceDigest(inventory),
       inventoryContentEntries: inventory.inventoryEntries.content, policyDigest: governanceDigest(current),
-      observation: null, issuedAt, expiresAt: issuedAt + 900000 };
+      observation: null, issuedAt, expiresAt: issuedAt + 900000,
+      ...(detached ? { detachedHead: inventory.headRevision } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
     plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root, observePolicy });
@@ -167,7 +175,8 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy,
         integration: plan.integration, historicalIntegrationMethodProven: false } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
-      review: plan.review, ...applied.result, ...applied.artifacts, result: 'quarantined',
+      review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
+      ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
@@ -175,7 +184,8 @@ export function runUserCleanup(root, argv, out = console.log) {
   if (argv[0] === 'plan') {
     const pr = Number(option(argv, 'pr'));
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
-      requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow'), recovery: argv.includes('--recovery') });
+      requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow'),
+      recovery: argv.includes('--recovery'), detached: argv.includes('--detached') });
     out(canonicalJson(plan)); return 0;
   }
   const plan = JSON.parse(new TextDecoder('utf-8', { fatal: true })
