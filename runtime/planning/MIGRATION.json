@@ -52,11 +52,24 @@
       "sourceSha256": "1802e530e7b2dc0ad4391396df62c792b41e69016fab3220b874e712c32703b2",
       "destination": "runtime/planning/coordination-scheduler-report.v1.schema.json",
       "destinationSha256": "1802e530e7b2dc0ad4391396df62c792b41e69016fab3220b874e712c32703b2"
+    },
+    {
+      "source": "docs/COORDINATION-SCHEDULER.md",
+      "sourceSha256": "65ac358fa73bcea88847f6be39e0d38105b21fdd941a4e2cdeccd2a7e58ca476",
+      "destination": "runtime/planning/COORDINATION-SCHEDULER.md",
+      "destinationSha256": "fa6d50515087c97a4364b513e39be4188301557195cb5f4f8bd302092c68147e"
+    },
+    {
+      "source": "docs/GOAL-COMPLETION-RUNTIME.md",
+      "sourceSha256": "0685cde175393d9cb89c089d4a7c4839d610cbc47f136570a135837978e24caa",
+      "destination": "runtime/planning/GOAL-COMPLETION-RUNTIME.md",
+      "destinationSha256": "5b38b940c8310d96fa0cad2c400dad8ad641e11673dbcc2d20561240e32b5874"
     }
   ],
   "transformations": [
     "Use the existing bounded JSON canonicalizer; preserve schema identifiers, normalized finite-JSON digests, write-set semantics and original cases.",
     "CLI reads reuse the existing race-bounded regular-file reader, capped at 128000 bytes, with fatal UTF-8 decoding.",
-    "Reports remain advisory; supplied authority labels and goal authorization IDs grant no effect authority."
+    "Reports remain advisory; supplied authority labels and goal authorization IDs grant no effect authority.",
+    "Planning document status records source transfer; local contract checks do not assert live-provider readiness."
   ]
 }
