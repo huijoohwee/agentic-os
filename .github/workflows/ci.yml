@@ -36,6 +36,7 @@ jobs:
           git config --global user.name "ADLC CI"
           git config --global init.defaultBranch main
       # Event-bound affected closure; packaging runs when its contracts are affected.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run check:ci
       - name: Retain selection, timing and bounded diagnostics
         if: always()

@@ -1,0 +1,61 @@
+{
+  "schema": "agentic-os/native-test-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "8460fc01c7dbd8af6880d346a71829e20887c44e",
+  "phase": "source-transfer-before-retirement",
+  "records": [
+    {
+      "source": "__tests__/agent-runtime-composition.test.mjs",
+      "sourceSha256": "f4c086e183489aa94baf74b6dba6ca1ecd2eb8bc5d944afc4b44b511ddb3cb30",
+      "destination": "__tests__/agent-runtime-composition.test.mjs",
+      "destinationSha256": "ffc386cc3a38be39f2fd54c8eb3ab833e63bc4ac73424b4a1b1fe81836ab7335"
+    },
+    {
+      "source": "__tests__/native-skill-harness-gate.test.mjs",
+      "sourceSha256": "b8e429e5f75d90d1c9955f59c821dd483b029342d1bd2f1d14f0833e304d2d28",
+      "destination": "__tests__/native-skill-harness-gate.test.mjs",
+      "destinationSha256": "25603bfbd26e352a98829da3e14fff0c254e81598036732f2197a8373b01bdcd"
+    },
+    {
+      "source": "__tests__/native-skill-harness-registry-snapshot.test.mjs",
+      "sourceSha256": "86a9714a982e8d56ac7b5c88a29f56b8925d7dcb8e71e1f13d56ad0e728b33d3",
+      "destination": "__tests__/native-skill-harness-registry-snapshot.test.mjs",
+      "destinationSha256": "4e23ef198fddfc33589d0607a918e5b91b35a44fa0637406cb28ab7d470b9ab2"
+    },
+    {
+      "source": "__tests__/native-skill-harness-latency.test.mjs",
+      "sourceSha256": "3e22591d3c03c9a3b63688ddb1dfccd351edb55719552fe254b7331dfe7c3423",
+      "destination": "__tests__/native-skill-harness-latency.test.mjs",
+      "destinationSha256": "0dd565b9bfbccafd8603c3b304271a9f560b2fd4dbf483819b4d478e8b8bd9d9"
+    },
+    {
+      "source": "__tests__/native-skill-harness-registration.test.mjs",
+      "sourceSha256": "429b81fcb319e691e92c4150e61330b06611bb7df752982273631f66c734dced",
+      "destination": "__tests__/native-skill-harness-registration.test.mjs",
+      "destinationSha256": "b9079dd5f48170fd402ca1983b7891885acff463a37c4ec0b915932f1238365f"
+    },
+    {
+      "source": "__tests__/native-skill-harness-proposer.test.mjs",
+      "sourceSha256": "122293c2cf80ba887aa21f95784afc3eacc59e918e3c746c2844e11902cefaf7",
+      "destination": "__tests__/native-skill-harness-proposer.test.mjs",
+      "destinationSha256": "cea9742182676409e2cee05dfc0b57441250e94d83a64e5c76d95da6344c6914"
+    },
+    {
+      "source": "__tests__/lib/native-skill-harness-fakes.mjs",
+      "sourceSha256": "071041316d5748624dd87fe8d42c11af53238362257eb9b5ee2d39531558584b",
+      "destination": "__tests__/lib/native-skill-harness-fakes.mjs",
+      "destinationSha256": "071041316d5748624dd87fe8d42c11af53238362257eb9b5ee2d39531558584b"
+    },
+    {
+      "source": "__tests__/fixtures/source-backed-agent.json",
+      "sourceSha256": "6554fafeb17947b6a3056387aafff03dba96da78635b04b17953ee2e32a2d2ef",
+      "destination": "__tests__/fixtures/source-backed-agent.json",
+      "destinationSha256": "6554fafeb17947b6a3056387aafff03dba96da78635b04b17953ee2e32a2d2ef"
+    }
+  ],
+  "transformations": [
+    "Relative imports resolve the existing native runtime owner. Original assertions, property seeds, fixtures and test titles are preserved.",
+    "Existing fast-check 3.23.2 is a development-only test dependency; the runtime dependency set remains empty."
+  ]
+}

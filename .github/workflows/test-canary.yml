@@ -30,6 +30,7 @@ jobs:
           git config --global user.email ci@example.invalid
           git config --global user.name "ADLC CI"
           git config --global init.defaultBranch main
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run check:all
       - uses: actions/upload-artifact@v4
         if: always()
