@@ -44,7 +44,27 @@
     "./generation": "./bin/agentic-os-generation.mjs",
     "./skills/esp-idf/SKILL.md": "./skills/esp-idf/SKILL.md",
     "./skills/esp-idf/references/editors.md": "./skills/esp-idf/references/editors.md",
-    "./skills/esp-idf/references/debugging.md": "./skills/esp-idf/references/debugging.md"
+    "./skills/esp-idf/references/debugging.md": "./skills/esp-idf/references/debugging.md",
+    "./agents/orchestration-contract": "./runtime/agents/agent-orchestration-contract.js",
+    "./agents/orchestration": "./runtime/agents/agent-orchestration.js",
+    "./agents/composition": "./runtime/agents/agent-runtime-composition.js",
+    "./agents/swarm-contract": "./runtime/agents/agent-swarm-contract.js",
+    "./agents/swarm-ledger": "./runtime/agents/agent-swarm-ledger.js",
+    "./agents/swarm-store": "./runtime/agents/agent-swarm-store.js",
+    "./agents/swarm": "./runtime/agents/agent-swarm.js",
+    "./agents/toolkit-admission": "./runtime/agents/agent-toolkit-admission.js",
+    "./agents/toolkit-contract": "./runtime/agents/agent-toolkit-contract.js",
+    "./agents/toolkit-ledger": "./runtime/agents/agent-toolkit-ledger.js",
+    "./agents/toolkit-limits": "./runtime/agents/agent-toolkit-limits.js",
+    "./agents/toolkit-observability": "./runtime/agents/agent-toolkit-observability.js",
+    "./agents/toolkit-optimizer": "./runtime/agents/agent-toolkit-optimizer.js",
+    "./agents/toolkit-profiler": "./runtime/agents/agent-toolkit-profiler.js",
+    "./agents/toolkit-store": "./runtime/agents/agent-toolkit-store.js",
+    "./agents/toolkit": "./runtime/agents/agent-toolkit.js",
+    "./agents/running-contract": "./runtime/agents/running-agent-contract.js",
+    "./agents/running": "./runtime/agents/running-agents.js",
+    "./agents/durable-object-store": "./runtime/agents/durable-object-store.js",
+    "./agents/sqlite-store": "./runtime/agents/sqlite-store.js"
   },
   "engines": {
     "node": ">=20.11"

@@ -43,11 +43,14 @@ test('namespace routing is isolated and absent telemetry never implies a provide
   assert.equal(normalizeCacheUsage({ usage: { input_tokens: 42,
     input_tokens_details: { cached_tokens: 100 } } }).provider_cache_status, 'unreported');
 });
-test('the separately exported portable runtime has a closed budget and no host imports or external dependencies', () => {
+test('the portable context runtime retains its closed budget independently of optional agents', () => {
   const root = new URL('../runtime/', import.meta.url);
-  assert.deepEqual(readdirSync(root).sort(), ['cache-context.mjs', 'json-contract.mjs', 'reasoning-continuity.mjs']);
+  const entries = readdirSync(root, { withFileTypes: true });
+  const contextFiles = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort();
+  assert.deepEqual(contextFiles, ['cache-context.mjs', 'json-contract.mjs', 'reasoning-continuity.mjs']);
+  assert.deepEqual(entries.filter(entry => entry.isDirectory()).map(entry => entry.name), ['agents']);
   let bytes = 0;
-  for (const name of readdirSync(root)) {
+  for (const name of contextFiles) {
     const source = readFileSync(new URL(name, root), 'utf8'); bytes += Buffer.byteLength(source);
     assert.ok(source.split('\n').length < 400, name);
     assert.doesNotMatch(source, /(?:node:|process\.|\bBuffer\b|\bfetch\s*\()/u);
