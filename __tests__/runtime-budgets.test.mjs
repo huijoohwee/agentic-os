@@ -46,16 +46,16 @@ test('this repository is inside its own documentation budget', (t) => {
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const bytes = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
+  assert.equal(bytes.byteLength, 993, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 991);
+  assert.equal([...prompt].length, 987);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'c4cb3b5cc96a2b35e80b10ae98883a54be2b7923d582afccc41fe2778523bb69');
+    '481747af5f00aa5f03d21731e78a45bfabcca2b33e149d9e1584c56b9697e4ac');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -93,12 +93,12 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Authenticated cleanup: `LIFECYCLE-COMPLETION.md`.',
     ]],
     ['templates/SYSTEM-PROMPT-RUNTIME.md', [
-      'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md; obey always.',
-      'Free-tier-only/FOSS; no paid plans/addons/overages.',
-      'min resource/token/time→prod/value;',
-      'Simplify/fix owner/remove replacements; contract-only shims.',
-      'Lean time-bound sprints: state ETA+time/byte/module caps;',
-      'lazy-load beyond always-load; refresh on drift.',
+      'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md.',
+      'Free-tier/FOSS; no paid plans/addons/overages;',
+      'FORBID guessed inputs, optional detours, duplicate checks.',
+      'Fix owner/reuse/remove replacements; contract-only shims.',
+      'Sprint: ETA+time/byte/module caps;',
+      'lazy-load; refresh on drift.',
       'External wait: blocker+recheck, not ETA.',
       'authority+green proof per effect/receipt; never infer.',
     ]],
