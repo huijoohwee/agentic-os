@@ -7,7 +7,7 @@ lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
 load_policy: "on-demand"
-status: "proposed-awaiting-implementation-authorization"
+status: "implementation-in-progress"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
@@ -24,7 +24,7 @@ guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e9675f27d1eb1e30ae6b8f82669ff7e546d85c65/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 guideline_sha256: "ae7dff38da1f98386f1b45ee54857734cef8f480b453152c30a4330dae2f31c4"
 reviewed_source_revision: "c6ab75f579e993ff811d205a9cbab74fb7d5d9cd"
-verification_scope: "proposal and bounded source baseline; no migration or deployment proof"
+verification_scope: "Integrated runtime and sandbox release receipts; full application migration and Graph production pending"
 ---
 
 # Reference implementation — Durable Agent Workflows
@@ -32,9 +32,28 @@ verification_scope: "proposal and bounded source baseline; no migration or deplo
 `DURABLE-AGENT-WORKFLOWS-001@0.1.0` joins the five roles below. This capability plan extends
 [composition DR-8](TECH-STACK.md#dr-8--specify-future-ownership-transfer-without-migrating-repositories)
 and [F10](FEATURES.md#f10--native-agent-composition-and-skill-harness) without replacing their historical evidence.
-The existing composition plan is 599 lines; this new capability has no prior accepted migration scope.
+The original proposal introduced the migration scope; implementation was explicitly approved on 2026-09-15.
 [Fleet](../FLEET.md) and its policy remain the ownership registry.
 The [native feature policy](PRD-TAD-ADR-MVP-GTM.md#native-feature-inspiration-default) governs scope approval.
+
+### Implementation receipts and remaining acceptance
+
+This table separates integrated source, deployed behavior and remaining work. The proposal inspection
+below is retained as the historical baseline; its revisions are not current dependency pins.
+
+| Surface | Verified observation | Remaining acceptance |
+|---|---|---|
+| Shared runtime and invocation | [OS protected source](https://github.com/huijoohwee/agentic-os/tree/57c8c66b58bf46469c23416e10e43aacdfe174fd/runtime/agents) owns durable runs, SQLite, retries, leases and shared operation dispatch. [PR 169](https://github.com/huijoohwee/agentic-os/pull/169) passed 1,411 tests and the required integration gate. | Full source retirement and all public caller paths remain separate. |
+| Canvas composition | [Protected Canvas source](https://github.com/huijoohwee/agentic-canvas-os/tree/8460fc01c7dbd8af6880d346a71829e20887c44e) forwards migrated runtime modules to OS and product admission to Commerce. | Remaining application, lifecycle, docs and deployment ownership transfer; zero active legacy consumers. |
+| Runtime docs and catalog | [Migration manifest](../runtime/agents/MIGRATION-DOCS.json) binds 19 native documents and a separately preserved immutable historical proof. Fleet discovery points presets, skills and the progressive facade to their existing OS owners. | Graph source and browser documentation cutover; remove replaced Canvas bodies after consumer checks. |
+| Commerce public sandbox | [Release 34996283147](https://github.com/huijoohwee/agentic-commerce-os/actions/runs/34996283147) binds source `393d680c7f68f0b9eb33458bca8359c15908f871`, Worker version `5d3520e0-a009-4f5a-ad89-694cfd248fdd`, the public route and browser checks. | A matching receipt for the actual model-generated listing and full retained-job rollback proof. Sandbox fixtures alone do not satisfy these. |
+| Graph invocation and routing | [PR 1017](https://github.com/huijoohwee/agentic-graph/pull/1017) integrates lazy durable-run invocation and the GameXR route alias at `3b424d9e80f113dbab93b195798bd9521241aafe`. | Protected Graph production release, public invocation/readback and generated mirror parity. |
+
+The public Commerce execution host is a pinned, device-session local FOSS model reached through the
+authenticated relay. Availability depends on that device session; this is not an always-on or elastic
+hosted executor. Technical review checkboxes are automated test observations, not an actual buyer review.
+Historical provider proof retains its original paid Dev scope and cannot establish current free-core
+readiness. WTP, accepted price, customers and real revenue remain unvalidated.
 
 ## PRD — reference implementation
 
@@ -76,7 +95,7 @@ provider wait separately. Long work consists of checkpointed, bounded attempts. 
 
 ## TAD — reference implementation
 
-### Grounding and current gaps
+### Proposal grounding and original gaps
 
 Inspection subjects below are not dependency pins. All eight checkouts matched fetched `origin/main`
 with empty visible status. Refresh HEAD and authority before implementation.
@@ -114,7 +133,7 @@ and HTTP route declarations do not establish executable MCP/WebMCP parity.
 
 ### Migration partition and dependency order
 
-This is the proposed delta to the fleet registry, not a competing current owner registry. Each row has
+This is the approved migration partition, not a competing current owner registry. Each row has
 one destination; migration commits update the registry only after the destination source exists.
 
 | Component / current source | Destination and required change | Remove/retain condition |
@@ -239,10 +258,10 @@ Refresh scope/caps on drift. External waits record owner, blocker, condition and
 |---|---|
 | E01 | OS doctor/status and `fleet:check -- --ownership=<eight explicit roots>` passed at the inspected baseline: 8 repos, 17 responsibilities, 546 artifacts, zero findings. Local scope observation is not cloud-exclusive ownership. |
 | E02 | Canvas `node --test __tests__/durable-agent-state.test.mjs __tests__/agent-swarm.test.mjs __tests__/agent-runtime-composition.test.mjs`: 30/30 passed, 0 skipped, 2.315 seconds; local fixtures at the exact Canvas revision above. This is existing behavior, not migration or production evidence. |
-| E03 | Required after implementation: OS `npm run check:all`; Canvas `npm run check:all`; focused migrated runtime and fresh-process durable-store tests. Add process-kill tests around effect/commit boundaries, fake-clock delayed retry, stale-writer and duplicate-request races; require real persistent state in restart tests. Not run for this unimplemented migration. |
+| E03 | OS full validation passed at the PR 169 source above: 1,411 tests in 149 suites, including migrated runtime and recovery coverage. Canvas's protected composition checks passed for PR 931. These receipts cover those exact candidates; rerun affected and final applicable checks for remaining migration changes. |
 | E04 | Required after caller changes: Commerce `npm run test`, `npm run check`, `npm run test:browser`; Graph owner-selected runtime and browser suites, MCP stdio/WebMCP parity; mobile offline and sandbox receipt replay. Preserve entire applicable suite coverage; a filtered smoke cannot claim E2E parity. |
 | E05 | Required at release: affected-owner full validation and builds, exact provider required checks, package pin/composition checks, fresh public route/browser evidence, state migration/recovery and exact cleanup receipts. GameXR tests/build only if its source/imports/routes change; mirror checks run through Graph's controller. |
-| E06 | Proposal validation is pending until its scoped diff, link/frontmatter joins, fleet scan, OS affected and full suite results are recorded in the handoff. Structural success does not upgrade runtime readiness. |
+| E06 | Proposal implementation was approved on 2026-09-15. Link/frontmatter, fleet and source validation remain required for each changed candidate; structural success does not upgrade runtime readiness. |
 
 Use existing affected selection while editing and full applicable owner/E2E checks at release. Bind results
 to SHA/tree, dependencies, command, environment and coverage; preserve provider check identities.

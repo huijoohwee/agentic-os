@@ -7,6 +7,22 @@
   "phase": "owner-assets-prepared-consumer-cutover-pending",
   "loadPolicy": "on-demand",
   "sourceHistoryRetained": true,
+  "history": [
+    {
+      "source": "docs/LIVE-AGENT-PROVIDER-PROOF.md",
+      "sourceRevision": "dae927d40f3e8e55687334ed47c2be5dffe14b36",
+      "sourceUrl": "https://github.com/huijoohwee/agentic-canvas-os/blob/dae927d40f3e8e55687334ed47c2be5dffe14b36/docs/LIVE-AGENT-PROVIDER-PROOF.md",
+      "destination": "runtime/agents/history/LIVE-AGENT-PROVIDER-PROOF.md",
+      "export": "./agent-docs/history/LIVE-AGENT-PROVIDER-PROOF.md",
+      "sha256": "c0ae67936003a10837a4c84876e95f9b137d91dac8eb5bbf20491c0036263247",
+      "sourceSha256": "563f38ae5325d06fbdf6b701b77eb7a9300ffc211700ab9cd6b0b48392addf4a",
+      "sourceBytes": 5001,
+      "encoding": "fenced-original-markdown/v1",
+      "editable": false,
+      "currentRuntimeProof": false,
+      "scope": "Historical 2026-07-18 bounded paid Dev observation; no current free-core or production authority."
+    }
+  ],
   "files": [
     {
       "source": "docs/AGENT-DEFINITIONS.md",
