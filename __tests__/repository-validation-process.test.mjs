@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { runRepositoryValidation, validationPlanReceipt } from '../bin/agentic-os-validation.mjs';
 import { selectValidationChecks } from '../bin/agentic-os-validation-policy.mjs';
 import { hash, LIMITS } from '../bin/agentic-os-test-inputs.mjs';
-import { executeCommand, previousCheck, writeCheck, receiptDirectory } from '../bin/agentic-os-test-receipt.mjs';
+import { executeCommand, previousCheck, writeCheck, receiptDirectory, COMMAND_PROGRESS_INTERVAL_MS } from '../bin/agentic-os-test-receipt.mjs';
 
 function fixture(t) {
   const keys = ['CI','GITHUB_ACTIONS','GITHUB_EVENT_PATH','GITHUB_EVENT_NAME','GITHUB_SHA','AGENTIC_OS_VALIDATION_ACTIVE'];
@@ -107,6 +107,34 @@ test('execution timeout and changed log bytes cannot become reusable success', a
   const directory=receiptDirectory(f.root);writeCheck(directory,check,result);
   writeFileSync(join(directory,'consumer-tamper.log'),'different');
   assert.equal(previousCheck(directory,check),null);
+});
+
+test('long command progress is bounded, numeric and stops on completion without changing its result', async t => {
+  const f=fixture(t), progress=[];
+  t.mock.timers.enable({apis:['setInterval']});
+  const pending=executeCommand(f.root,process.execPath,['-e',"console.log('retained child output')"],
+    {timeoutMs:3000,onProgress:value=>progress.push(value)});
+  t.mock.timers.tick(COMMAND_PROGRESS_INTERVAL_MS-1);assert.equal(progress.length,0);
+  t.mock.timers.tick(1);assert.equal(progress.length,1);
+  assert.deepEqual(Object.keys(progress[0]).sort(),['elapsedMs','observedOutputBytes','quietMs','timeoutMs']);
+  assert.ok(Object.values(progress[0]).every(value=>Number.isFinite(value)&&value>=0));
+  assert.equal(Object.isFrozen(progress[0]),true);
+  const result=await pending;
+  assert.equal(result.exitCode,0);assert.equal(result.reason,null);
+  assert.equal(result.output,'retained child output\n');
+  assert.equal(result.outputDigest,hash(Buffer.from(result.output)));
+  t.mock.timers.tick(COMMAND_PROGRESS_INTERVAL_MS*3);assert.equal(progress.length,1);
+});
+
+test('failed progress reporting terminates the command and cannot become passing evidence', async t => {
+  const f=fixture(t);
+  t.mock.timers.enable({apis:['setInterval']});
+  assert.throws(()=>executeCommand(f.root,process.execPath,[],{onProgress:true}),/progress-handler/);
+  const pending=executeCommand(f.root,process.execPath,['-e','setInterval(()=>{},1000)'],
+    {timeoutMs:3000,onProgress:()=>{throw new Error('reporter failed')}});
+  t.mock.timers.tick(COMMAND_PROGRESS_INTERVAL_MS);
+  const result=await pending;assert.equal(result.reason,'progress-handler-failed');
+  t.mock.timers.tick(COMMAND_PROGRESS_INTERVAL_MS);
 });
 
 test('ordinary run in hosted CI verifies its event, executes fresh and refuses baseline overrides or dirt', async t => {

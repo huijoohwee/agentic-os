@@ -62,14 +62,16 @@ export function writeCheck(directory, check, result, finishedAt = Date.now()) {
   writeReceipt(directory, `${check.id}.json`, receipt);
   return receipt;
 }
+export const COMMAND_PROGRESS_INTERVAL_MS = 30_000;
 export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes,
-  outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024 } = {}) {
+  outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024, onProgress } = {}) {
   if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
+  if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
   return new Promise(resolveResult => {
     const started = performance.now();
     const child = spawn(command, args, { cwd: root, env: executionEnvironment(),
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    const chunks = []; let length = 0, observedBytes = 0, reason = null;
+    const chunks = []; let length = 0, observedBytes = 0, reason = null, lastOutputAt = started;
     const kill = () => {
       try { process.platform === 'win32' ? child.kill('SIGKILL') : process.kill(-child.pid, 'SIGKILL'); }
       catch { child.kill('SIGKILL'); }
@@ -77,8 +79,17 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     const stop = code => { reason ||= code; kill(); };
     const cancel = () => stop('cancelled');
     const timer = setTimeout(() => stop('timeout'), timeoutMs);
+    // Diagnostics are rate bounded and contain no child output, credentials or source bytes.
+    // Keep them outside the content-bound result and release authority.
+    const progressTimer = onProgress ? setInterval(() => {
+      const now = performance.now();
+      try { onProgress(Object.freeze({ elapsedMs: now - started, timeoutMs,
+        observedOutputBytes: observedBytes, quietMs: now - lastOutputAt })); }
+      catch { stop('progress-handler-failed'); }
+    }, COMMAND_PROGRESS_INTERVAL_MS) : null;
     process.once('SIGTERM', cancel); process.once('SIGINT', cancel);
     for (const channel of ['stdout', 'stderr']) child[channel].on('data', bytes => {
+      lastOutputAt = performance.now();
       observedBytes += bytes.length;
       if (outputMode === 'tail') {
         chunks.push(bytes); length += bytes.length;
@@ -97,6 +108,7 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     child.once('error', () => { reason ||= 'spawn-failed'; });
     child.once('exit', kill);
     child.once('close', (exitCode, signal) => {
+      if (progressTimer !== null) clearInterval(progressTimer);
       clearTimeout(timer); process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);
       let output = Buffer.concat(chunks).toString('utf8');
       while (outputMode === 'tail' && Buffer.byteLength(output) > outputBytes) output = output.slice(1);

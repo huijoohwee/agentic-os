@@ -149,13 +149,17 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
         if (remaining <= 0) throw new Error('blocked-validation-time-budget');
         out(`running ${check.name}: ${[check.command, ...check.args].join(' ')}`);
         const result = await executeCommand(root, check.command, check.args,
-          { timeoutMs: Math.min(check.timeoutMs, remaining), outputMode: 'tail' });
+          { timeoutMs: Math.min(check.timeoutMs, remaining), outputMode: 'tail',
+            onProgress: progress => out(`running ${check.name}: ${Math.floor(progress.elapsedMs / 1000)}s elapsed, `
+              + `${Math.ceil(Math.max(0, progress.timeoutMs - progress.elapsedMs) / 1000)}s budget remaining, `
+              + `${progress.observedOutputBytes} output bytes, ${Math.floor(progress.quietMs / 1000)}s since output`) });
         stable();
         const saved = writeCheck(directory, check, result);
         const regression = observeCost(economy, check, result);
         if (regression) { receipt.costRegressions.push(regression); out(`cost regression ${check.name}: ${Math.round(regression.previousMeanMs)}ms mean -> ${Math.round(result.elapsedMs)}ms`); }
         writeReceipt(directory, ECONOMY_FILE, economy);
         receipt.results.push({ id: check.name, reused: false, ...saved.result, validatedAt: saved.finishedAt });
+        writeReceipt(directory, 'validation-last.json', receipt);
         out(`${check.name}: exit ${result.exitCode}, ${(result.elapsedMs / 1000).toFixed(2)}s${result.outputTruncated ? ', bounded log tail retained' : ''}`);
         if (result.exitCode !== 0 || result.reason) {
           receipt.outcome = 'failed'; out(result.output.slice(-12_000)); break;
