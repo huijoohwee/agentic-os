@@ -37,6 +37,9 @@
     }
   ],
   "dependencies": {
+    "__tests__/lib/alignment-audit-fast-check.mjs": ["package.json", "package-lock.json"],
+    "bin/alignment-audit/guideline-lines.mjs": ["bin/alignment-audit/guideline-lines.mjs"],
+    "bin/alignment-audit/guideline-parser.mjs": ["bin/alignment-audit/frontmatter.mjs", "bin/alignment-audit/finding.mjs", "bin/alignment-audit/guideline-model.mjs", "bin/alignment-audit/guideline-lines.mjs", "bin/alignment-audit/normalize.mjs"],
     "src/readiness-proof.mjs": ["src/"],
     "bin/agentic-os-hook-runtime.mjs": [".githooks/", "__tests__/fixtures/"],
     "__tests__/github-transition-client.test.mjs": ["bin/agentic-os-transition.mjs"],

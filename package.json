@@ -172,7 +172,10 @@
     "./agent-docs/SKILLS.md": "./runtime/agents/docs/SKILLS.md",
     "./agent-docs/PROMPT-PRESETS.md": "./runtime/agents/docs/PROMPT-PRESETS.md",
     "./agent-docs/AGENT-TEAM.md": "./runtime/agents/docs/AGENT-TEAM.md",
-    "./agent-docs/history/LIVE-AGENT-PROVIDER-PROOF.md": "./runtime/agents/history/LIVE-AGENT-PROVIDER-PROOF.md"
+    "./agent-docs/history/LIVE-AGENT-PROVIDER-PROOF.md": "./runtime/agents/history/LIVE-AGENT-PROVIDER-PROOF.md",
+    "./audit/alignment": "./bin/alignment-audit/alignment-auditor.mjs",
+    "./audit/alignment-cli": "./bin/alignment-audit.mjs",
+    "./audit/alignment-contract": "./bin/alignment-audit-contract.mjs"
   },
   "engines": {
     "node": ">=20.11"
@@ -242,7 +245,8 @@
     "test:all": "npm run check:all",
     "test:fast": "node bin/agentic-os-tests.mjs fast",
     "test:git": "node bin/agentic-os-tests.mjs git",
-    "context:check": "node --test __tests__/cache-context.test.mjs __tests__/reasoning-continuity.test.mjs __tests__/context-runtime.test.mjs __tests__/codebase-context.test.mjs"
+    "context:check": "node --test __tests__/cache-context.test.mjs __tests__/reasoning-continuity.test.mjs __tests__/context-runtime.test.mjs __tests__/codebase-context.test.mjs",
+    "alignment-audit:verify": "node bin/alignment-audit.mjs bin/alignment-audit/alignment-audit.config.json --mode verify"
   },
   "dependencies": {},
   "devDependencies": {
