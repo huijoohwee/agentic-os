@@ -1,0 +1,89 @@
+---
+title: "Programmatic Tool Calling Runtime Contract"
+graphId: "md:programmatic-tool-calling-runtime"
+doc_type: "Runtime Contract"
+date: "2026-07-18"
+lang: "en-US"
+schema: "programmatic-tool-calling-contract/v1"
+frontmatter_contract: "required"
+status: "source-migrated-consumer-cutover-pending"
+authority: "bounded hosted-program orchestration policy for Agentic Canvas OS"
+runtime_scope: "provider-neutral hosted JavaScript controller and client-owned tool gateway boundary"
+runtime_claim: "Implementation and local test owners are linked below; deployed capability is unverified for this migration"
+runtime_owner: "../../adapters/programmatic-tool-calling.js"
+runtime_proof: "../../../__tests__/programmatic-tool-calling.test.mjs"
+external_pattern_source: "https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling"
+external_source_policy: "concept reference only; forbid copied code, examples, prompts, schemas, fixtures, tests, or prose"
+publish_policy: "Dev-only until explicit operator approval"
+owner: "agentic-os"
+load_policy: "on-demand"
+migration_source_revision: "8460fc01c7dbd8af6880d346a71829e20887c44e"
+---
+
+# Programmatic Tool Calling Runtime
+
+This on-demand contract is owned by `agentic-os` under
+[DURABLE-AGENT-WORKFLOWS-001@0.1.0](../../../guides/DURABLE-WORKFLOWS.md).
+The [migration record](../MIGRATION-DOCS.json) binds its native source. Runtime and
+live-provider observations below retain their original scope; historical proof
+links remain pinned to that source. Current package checks run with `npm run check:all`.
+
+The runtime converts open-ended tool use into bounded application stages while keeping code execution outside the Agentic Canvas OS process. A downstream adapter owns the model request and hosted sandbox. This repository owns capability validation, caller lineage, tool policy, schema checks, limits, cost evidence, and sanitized readiness.
+
+The cited OpenAI guide informs the capability class only. No external implementation, example, prompt, response fixture, or prose is copied. Model eligibility is not inferred from a model family name; the downstream adapter must validate the exact selected model against current provider capabilities.
+
+## Ownership Boundary
+
+| Owner | Responsibility | Forbidden claim |
+|---|---|---|
+| Model adapter | Request program generation, continue by response identity, normalize returned items, and report actual token and cost fields. | A configured route does not prove hosted execution or context isolation. |
+| Hosted sandbox | Execute generated JavaScript in a fresh isolated environment and expose only enabled tools. | Agentic Canvas OS never emulates this boundary with local evaluation, shell, subprocess, or in-process JavaScript execution. |
+| Programmatic controller | Validate capability flags and provider attestation, preserve caller lineage, enforce bounds, and dispatch eligible client-owned tool calls. | The controller never executes, persists, logs, or returns generated program source. |
+| Tool gateway | Revalidate every argument, permission, risk class, and output under the real tool identity. | Programmatic caller identity never bypasses policy, approval, audit, hooks, or cost controls. |
+| Direct-call path | Own writes, approvals, semantic judgment, citations, and final native-artifact validation. | High-impact actions never inherit programmatic eligibility. |
+
+## Typed Contract
+
+The controller accepts one run id, JSON-compatible task input, explicit capability flags, a continuation mode, and a client-function catalog. Every function declares its type, specific name and description, `allowedCallers`, risk class, idempotency, approval requirement, object-shaped input and output schemas, and executable validators. Malformed input fails before any provider or tool call.
+
+A normalized hosted turn contains a response id, completed status, actual cost log, fresh-isolation attestation, and typed items. Program items carry generated source, caller identity, and an opaque replay fingerprint only inside the active adapter loop. A nested `function_call` must carry `caller.callerId` equal to a known program `callId`; its client-owned result becomes `function_call_output` with the original call id and structurally unchanged caller object. The adapter alone maps provider wire fields such as `call_id` and `caller_id` to this canonical local camel-case contract and decodes or encodes JSON strings.
+
+Stored continuation sends only new function outputs plus the previous response id. Stateless continuation retains the initial request and every returned program, opaque reasoning, function-call, function-output, and program-output item in order for the active run, then replays that sequence without a previous response id. Neither mode persists or returns generated source, reasoning items, fingerprints, or intermediate payloads after finalization.
+
+The completed result contains final output, aggregate cost, and compact evidence: model turns, tool count, tool names, hosted-program count, execution boundary, context-isolation attestation, fail-soft tool-settlement totals, and the fact that intermediate results were not returned. Each independently dispatched tool call settles into an input-ordered success or sanitized typed failure output, so one unavailable, invalid, oversized, or timed-out read cannot erase successful siblings. It contains no generated source or intermediate tool payloads.
+
+## Predictable Stages
+
+| Stage | Input | Output | Stop condition |
+|---|---|---|---|
+| Validate | Run, capabilities, tools, schemas, validators | Normalized immutable request or typed rejection | Missing hosted sandbox, continuation, lineage, adapter, or gateway blocks before spend. |
+| Advance | Initial request, stored response identity plus new outputs, or full stateless replay | Provider-normalized hosted turn | Provider error, incomplete response, missing cost, missing continuation capability, or missing attestation blocks. |
+| Authorize | Program lineage and requested tool identity | Eligible read-only idempotent call or direct-route requirement | Unknown, direct-only, mutating, approval-sensitive, or non-idempotent tools block. |
+| Execute tools | Schema-valid arguments through the injected gateway | Input-ordered bounded results or sanitized typed failure outputs plus settlement totals | Invalid arguments or abort block; unavailable, invalid, oversized, or timed-out tool results settle fail-soft without erasing successful siblings. |
+| Continue | Stored response identity or ordered replay plus caller-preserving results | Next hosted turn | Repeated call id, missing fingerprint, turn limit, call limit, or program-size limit blocks. |
+| Finalize | Final message from a provider-attested turn | Output, evidence, and cost log | No source or intermediate result crosses the final result boundary. |
+
+## Bounds And Concurrency
+
+Default limits are eight model turns, 32 tool calls, eight parallel calls, 100,000 program characters, 200,000 serialized characters per tool result, and 60 seconds per provider or tool stage. Duplicate run ids serialize behind one active owner. Duplicate tool-call ids fail instead of repeating completed work.
+
+Parallel execution is allowed only inside the configured batch width and only for independently validated read-only idempotent tools. The controller never automatically retries provider calls or tool calls. A downstream retry policy must name an idempotency rule and remain inside these bounds.
+
+## Cost And Context Evidence
+
+Every hosted turn must report `model`, `prompt_tokens`, `completion_tokens`, `cache_hits`, and `estimated_cost_usd`. The controller aggregates returned values without converting missing evidence to zero. A blocked preflight uses the explicit `not-run` zero-cost state; a failed provider attempt without any returned usage reports nullable `unreported` fields, while mixed reported and missing turns preserve known totals as `partial` with explicit reported and unreported turn counts.
+
+`providerContextIsolation` remains `unverified` in `/api/ready`. A successful injected run may report `provider-attested` only when every turn states that execution was hosted, isolation was fresh, intermediate results remained sandbox-only, and local code execution was false. Offline tests prove enforcement of this evidence contract; they do not prove any live provider environment.
+
+## Selection Rule
+
+`agent-api/src/programmatic-tool-routing.js` makes route selection executable. It chooses the programmatic path only when several calls have predictable control flow and can yield a smaller structured result. It chooses direct calls for a single action, semantic adaptation, missing reduction evidence, citation or native-artifact validation, approval, or mutation. The controller then rechecks every actual call, so route selection never grants tool permission.
+
+## VCCs
+
+- Given two eligible read-only tools, when a provider-attested hosted program requests both, then the gateway validates and runs them within bounds, stored continuation preserves the prior response identity, stateless continuation replays every opaque item in order, and both preserve exact caller identity while returning only final output and compact evidence.
+- Given an independently dispatched tool is unavailable, returns invalid or oversized output, or times out, when sibling calls settle, then successful values remain available and the failed call continues as a sanitized typed output with compact settlement evidence; malformed arguments, missing hosted execution evidence, continuation capability, fingerprint, lineage, a mutating or approval-sensitive tool, excess turns or calls, duplicate work, or run abort still returns a typed block without local JavaScript execution.
+- Given an unconfigured Worker, when `/api/ready` is read, then the contract is visible as ready while execution and provider context isolation remain explicitly unverified.
+- Given a task-shape packet, when route selection runs, then only predictable multi-call structured reductions select programmatic execution; all authorization, semantic, citation, native-artifact, or single-call cases stay direct.
+
+VCC: run `npm run programmatic-tool-calling:check` and the affected app and Worker tests; require zero failures, no generated code in returned results, no Prod mirror mutation, and no Cloudflare action.
