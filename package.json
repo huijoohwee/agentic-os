@@ -150,7 +150,9 @@
     "./tests/agents/function-calling-continuation": "./__tests__/function-calling-continuation.test.mjs",
     "./agents/durable-object-transport": "./runtime/agents/durable-object-transport.js",
     "./agents/local-host": "./runtime/agents/local-host.js",
-    "./agents/podman-model": "./runtime/adapters/podman-containment-verifier.js"
+    "./agents/podman-model": "./runtime/adapters/podman-containment-verifier.js",
+    "./agents/cloudflare-worker": "./runtime/adapters/cloudflare-worker.js",
+    "./tests/agents/cloudflare-worker": "./__tests__/cloudflare-worker.test.mjs"
   },
   "engines": {
     "node": ">=20.11"

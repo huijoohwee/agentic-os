@@ -126,6 +126,14 @@
       "sourceSha256": "c1a0df37c39a66c0780e8c27c356520c4504f772b2600a22aa2a60836d389142",
       "destination": "runtime/adapters/agent-state.js",
       "sha256": "02c3c0c4ec0a099ff27d04f2fb55ea4d2cc0fd75a066831bff53613431576a9c"
+    },
+    {
+      "source": "worker/index.js",
+      "sourceBlob": "baa67ee3f134549ee6b3df4abcfc6380e50242e4",
+      "sourceSha256": "4b3cd03002754b83cb492ca3cebb930e3c5f7e404bb4a6893c965765d54424e2",
+      "ownedCandidateInputSha256": "0e25c9c2139765faf1f5563f620af7a5ef029af88a691679c99812f557a42284",
+      "destination": "runtime/adapters/cloudflare-worker.js",
+      "sha256": "9da7ba4b5ab1db59f263478818cb160958de9b954287f1a13ea6138f0c47ff6c"
     }
   ],
   "tests": [
@@ -137,15 +145,17 @@
     "agentic-graph-mcp-client",
     "durable-agent-state",
     "openai-function-gateway",
-    "function-calling-continuation"
+    "function-calling-continuation",
+    "cloudflare-worker"
   ],
   "transformations": [
     "Relocate native application imports and reuse OS context owners.",
     "Preserve the owned P2 application and readiness changes by input digest.",
     "Extract generic AgentState behavior with a fail-closed product-operation extension, preserving stored keys and existing record bounds.",
     "Keep Commerce admission storage and its authority rules at the product boundary.",
-    "Centralize the existing atomic transport helpers with the OS swarm and Toolkit stores."
+    "Centralize the existing atomic transport helpers with the OS swarm and Toolkit stores.",
+    "Retain the native optional Worker host in OS and inject product-owned request/readiness handlers; preserve deployment bindings and namespaces."
   ],
-  "sourceBytes": 205028,
-  "destinationBytes": 182809
+  "sourceBytes": 226685,
+  "destinationBytes": 202181
 }

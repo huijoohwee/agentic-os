@@ -2,7 +2,7 @@
 
 These are the first three application-transfer batches under
 [`DURABLE-AGENT-WORKFLOWS-001@0.1.0`](../../guides/DURABLE-WORKFLOWS.md).
-The three `MIGRATION*.json` manifests bind 57 modules to native source bytes
+The three `MIGRATION*.json` manifests bind 58 modules to native source bytes
 and destination hashes. Each batch has at most 20 modules and is below 300 KB;
 every module is below 600 lines.
 
@@ -36,6 +36,14 @@ The extracted state class also passed 53 existing product/state integration test
 through a candidate-only loader. These checks do not replace a protected consumer
 pin, Workers platform execution or namespace recovery proof.
 
-Status: source transfer in progress. Canvas consumer pins, remaining application
-adapters, assets, state composition and deployment proof are outstanding.
+The optional `agentic-os/agents/cloudflare-worker` export creates an isolated host
+with `createCloudflareWorker({ createExtension })`. Its injected product factory
+receives the environment and the host's agent-definition registry. The factory
+runs once per environment on first request; its `handle(request, context)` returns
+a Response or null, and `beforeReadiness()` restores product registrations before
+readiness is read. Invalid extensions fail closed. Product policy stays outside OS.
+The 19 original Worker tests retain their test bodies at this source owner.
+
+Status: source transfer in progress. Canvas consumer pins, application assets,
+product state composition and deployment proof are outstanding.
 This batch does not establish application cutover or production readiness.
