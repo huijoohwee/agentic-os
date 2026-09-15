@@ -1,0 +1,162 @@
+{
+  "schema": "agentic-os/native-adapter-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "697c47a1508fbf7184f11d41e77575b316fed768",
+  "status": "source-transfer-awaiting-consumer-pin",
+  "batch": 1,
+  "modules": [
+    {
+      "source": "agent-api/src/adapter-registration.js",
+      "sourceBlob": "03431f9e34e84a8b7ec9ce537cac21f361e836fa",
+      "sourceSha256": "e6f5b5ca77ba8f56e27aaee1e86867944f628a123d8068845881c04166e8bf14",
+      "destination": "runtime/adapters/adapter-registration.js",
+      "sha256": "e6f5b5ca77ba8f56e27aaee1e86867944f628a123d8068845881c04166e8bf14"
+    },
+    {
+      "source": "agent-api/src/agent-definitions.js",
+      "sourceBlob": "c9375bf84899e33cbf66b8c9fb379c85585c3728",
+      "sourceSha256": "05477c35c503e169af54837fa907d52923ecab6289e815ae1763ed2ab82f3db4",
+      "destination": "runtime/adapters/agent-definitions.js",
+      "sha256": "3a84598166b3fd64731f0a2a174358760b10dac37fe18b76966a9f98ad14b5aa"
+    },
+    {
+      "source": "agent-api/src/model-config.js",
+      "sourceBlob": "41118232f4dabbc051b39435dbdf03a2df8475f2",
+      "sourceSha256": "09e476cf1ae6ca92074071d31c5453e0e6c4fe52a954154de968aa231f2fad5e",
+      "destination": "runtime/adapters/model-config.js",
+      "sha256": "09e476cf1ae6ca92074071d31c5453e0e6c4fe52a954154de968aa231f2fad5e"
+    },
+    {
+      "source": "agent-api/src/model-providers.js",
+      "sourceBlob": "ca414bec06f9d6d97a5c102b4a41b53d88fcc1e7",
+      "sourceSha256": "2d5131ae5d81284305d31f38f35100488ece8c58778c988aa945a9efe2b00397",
+      "destination": "runtime/adapters/model-providers.js",
+      "sha256": "bd7c2d670e3af0a1c4a22313b457e9cc50c9060948ec6f344718b1d137ab9f34"
+    },
+    {
+      "source": "agent-api/src/guardrails-human-review.js",
+      "sourceBlob": "6a41ea20e5e730caf26d6a52d6d455b55c2ac052",
+      "sourceSha256": "220d0d6eeb62d284f9f8d30453d8bb0473441bb6f5e212508953804a159e7e21",
+      "destination": "runtime/adapters/guardrails-human-review.js",
+      "sha256": "915323d8d4ad9163cb10ae43080217ada4a186fdedb59905f97e178df47e95c8"
+    },
+    {
+      "source": "agent-api/src/skill-proposer.js",
+      "sourceBlob": "a0f98a29bd83f49392c9400df2fcc245530f755e",
+      "sourceSha256": "40cac21cb8130b109c31000c6d24ec1930226e6615084d12c8abbe0792acc02a",
+      "destination": "runtime/adapters/skill-proposer.js",
+      "sha256": "37a0fe34291c13d87410bd0c122febe19c479ac3ac7bf52f5043b8e1921825c9"
+    },
+    {
+      "source": "agent-api/src/skill-registry-gate.js",
+      "sourceBlob": "fa63bed35c30d8826da9777462a0241530c96115",
+      "sourceSha256": "b9fb4150e4f171efed98571ccaec038cb943dc4826967534bf2f6ed15066cb89",
+      "destination": "runtime/adapters/skill-registry-gate.js",
+      "sha256": "b9fb4150e4f171efed98571ccaec038cb943dc4826967534bf2f6ed15066cb89"
+    },
+    {
+      "source": "agent-api/src/tool-search.js",
+      "sourceBlob": "28a97db9f4da34c53a0bf4bb3bb078576427d985",
+      "sourceSha256": "d2db14bc67a299105f23ecc508338f5fe7dc89d918007f1c0f18d84d4910cefb",
+      "destination": "runtime/adapters/tool-search.js",
+      "sha256": "5c1cbab4276d3d23fb9bb581ad0ebd256dea10621561ef2afff3bfac3bc307ad"
+    },
+    {
+      "source": "agent-api/src/tool-search-config.js",
+      "sourceBlob": "524cfa1c8bce5d5940ae9e7647a408fb19379f74",
+      "sourceSha256": "0358e5ff3d7c43dae35a4fdaec5dd020633f84a282fcc7e087446b023dbb3e44",
+      "destination": "runtime/adapters/tool-search-config.js",
+      "sha256": "0358e5ff3d7c43dae35a4fdaec5dd020633f84a282fcc7e087446b023dbb3e44"
+    },
+    {
+      "source": "agent-api/src/progressive-agents.js",
+      "sourceBlob": "7cfafabbfc6be99c790150141c9b40ccf599f0e1",
+      "sourceSha256": "500f4b4f0c72576099b3724a651d4cf39bfc16224dbeb9e3954700e5886dd206",
+      "destination": "runtime/adapters/progressive-agents.js",
+      "sha256": "d8151177114e6ccfbc2b1dc3f16b2de3ddbd51ef73f9d13f966d22c42343026f"
+    },
+    {
+      "source": "agent-api/src/function-calling.js",
+      "sourceBlob": "0ca93182b48c967fcd9dd0104cea388ba165e137",
+      "sourceSha256": "b28db24a9f0da7edaa531ed0699156c17a3b0c0bd46fdbedee24586453f0073c",
+      "destination": "runtime/adapters/function-calling.js",
+      "sha256": "24ca3c9d047414c9c1df4860ff871b125f36832bc88bf1b611111f09f5c32c98"
+    },
+    {
+      "source": "agent-api/src/function-calling-continuation.js",
+      "sourceBlob": "07f22d23a71533ab82b10a717dd18c9d01bf2f96",
+      "sourceSha256": "aa2e91ce9cc03ae7c53a994b1403809294b7d4b8db56a1dc1671ff9ef56980eb",
+      "destination": "runtime/adapters/function-calling-continuation.js",
+      "sha256": "d6d3513996385d450d149c2f300a95ae3fec605964fd0cc68fb457d99d248116"
+    },
+    {
+      "source": "agent-api/src/function-calling-contract.js",
+      "sourceBlob": "cba7b515a07ef3130887e33eb559bcddc5766b50",
+      "sourceSha256": "bee8f82304b06c18c5475017a7ff28f0a199488b7c5660431bb2aa5f6e488891",
+      "destination": "runtime/adapters/function-calling-contract.js",
+      "sha256": "9814626201208f0f3db3173c1a6424f8124bd6ca7b27f6bbedcdf95381ca9866"
+    },
+    {
+      "source": "agent-api/src/function-calling-manager.js",
+      "sourceBlob": "9c14bd481620e42f0f6fe3a19fc4e090f48af978",
+      "sourceSha256": "0ca08fad0508a6deea5eba35443b5d842e82837736db132720e82a0c4070d8f7",
+      "destination": "runtime/adapters/function-calling-manager.js",
+      "sha256": "ce867b0cf5b208de6dd846e84350d209b8cd2b5dff64ae83505b00a0a94f8f61"
+    },
+    {
+      "source": "agent-api/src/function-calling-runtime-support.js",
+      "sourceBlob": "92cc812edd8acc85ec0a2af0a86787797dd8342e",
+      "sourceSha256": "fe902ada12893039dd247a826758b18c601ea4c6cbb688f7e042b246f6509194",
+      "destination": "runtime/adapters/function-calling-runtime-support.js",
+      "sha256": "fe902ada12893039dd247a826758b18c601ea4c6cbb688f7e042b246f6509194"
+    },
+    {
+      "source": "agent-api/src/function-execution-receipts.js",
+      "sourceBlob": "38dc7f7b6ac00051720784c39e58ac399d0ce749",
+      "sourceSha256": "11bb97cfd90f61ab6782066efd05ea05ed65a5c05cd9487aaaebd425725928ef",
+      "destination": "runtime/adapters/function-execution-receipts.js",
+      "sha256": "b015ea22b2c666511744e55aeecb6e2f64cc44b8c87b0ac5c3b677aca0caab10"
+    },
+    {
+      "source": "agent-api/src/sandbox-agent-contract.js",
+      "sourceBlob": "f2b5542c85d12caecb48da8cce9d981839a57d80",
+      "sourceSha256": "3aa36bfb224aa5ea55dbbbc3629f1d0a286cc540ba578026042c8fc93f1d14e3",
+      "destination": "runtime/adapters/sandbox-agent-contract.js",
+      "sha256": "6a8c5397cca3d36f1276b9f34c3144e5e09f817a5673e2cb4f26c3e1f90c41e3"
+    },
+    {
+      "source": "agent-api/src/sandbox-agent-runtime-support.js",
+      "sourceBlob": "38ce2475138d670c74b62c2995aa0a5010446ac7",
+      "sourceSha256": "3d7e92ba52764666ea1334c17584af8c10d67303409ffa07b7c6ff6a987f0677",
+      "destination": "runtime/adapters/sandbox-agent-runtime-support.js",
+      "sha256": "3d7e92ba52764666ea1334c17584af8c10d67303409ffa07b7c6ff6a987f0677"
+    },
+    {
+      "source": "agent-api/src/sandbox-agents.js",
+      "sourceBlob": "556cac63444cf5ad961679ac40ae2f9a7008aea8",
+      "sourceSha256": "563465d9c2f6fdec10b9851a06cdf2c5dfe4c9f58b32887b25e580f146060681",
+      "destination": "runtime/adapters/sandbox-agents.js",
+      "sha256": "7f52cc03fb3ced177315cb81ceed40ff9a0246e2d0dccde118c0f39ef62d7634"
+    },
+    {
+      "source": "agent-api/src/sandbox-file-state-store.js",
+      "sourceBlob": "ff832790531b90a635cccda2fe2a4995ea150a5b",
+      "sourceSha256": "760da5e257faf5d0b07cd429a37ab0b38d10f877a93b9608ed6eb8b88a100c53",
+      "destination": "runtime/adapters/sandbox-file-state-store.js",
+      "sha256": "5d22c38517e98d2a2363b7a59c00b389200ee586c15622d56e11420a3ad51d11"
+    }
+  ],
+  "tests": [
+    "agent-definitions",
+    "model-providers",
+    "guardrails-human-review",
+    "progressive-agents",
+    "tool-search",
+    "tool-search-config",
+    "sandbox-agents",
+    "function-calling"
+  ],
+  "sourceBytes": 252452,
+  "transformation": "Native relocation; JSON imports use the existing OS owner; new skill proposals name their OS package subpath."
+}

@@ -1,8 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import {
   AGENT_SWARM_DEFAULTS,
+  AGENT_SWARM_RUN_SCHEMA,
   AgentSwarmBlock,
+  AgentSwarmFailure,
+  assertExactKeys,
   assertIdentifier,
   assertPositiveInteger,
   normalizeAccessContext,
@@ -28,10 +31,14 @@ import {
   failSwarmSynthesis,
   failSwarmTask,
   projectSwarmLedger,
+  recoverSwarmLedger,
   requireLedger,
   requireLedgerOwner,
 } from "./agent-swarm-ledger.js";
 import { createAgentSwarmMemoryStore } from "./agent-swarm-store.js";
+import { createSwarmCoordinator, digest, requestDigest } from "./agent-swarm-coordinator.js";
+import { createSwarmReconciler } from "./agent-swarm-reconcile.js";
+import { classifyTaskFailure } from "./agent-swarm-recovery.js";
 import { withDeadline } from "./running-agent-contract.js";
 
 function assertAdapter(value, field) {
@@ -47,7 +54,7 @@ function assertStore(value) {
 }
 
 function errorReason(error, fallback) {
-  if (error instanceof AgentSwarmBlock) return error.reasonCode;
+  if (error instanceof AgentSwarmBlock || error instanceof AgentSwarmFailure) return error.reasonCode;
   if (error?.reasonCode === "timeout") return `${fallback}_timeout`;
   if (error?.reasonCode === "aborted") return `${fallback}_aborted`;
   return fallback;
@@ -67,15 +74,20 @@ export function createAgentSwarmRuntime({
   executeTask,
   synthesize,
   verifyReceipt,
+  reconcileTask,
   authorize,
+  taskEffect = "unknown",
+  planningEffect = "unknown",
   stateStore = createAgentSwarmMemoryStore(),
   now = () => Date.now(),
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   ...limitOverrides
 } = {}) {
-  for (const [field, value] of Object.entries({ resolveAgent, planTasks, executeTask, synthesize, verifyReceipt, authorize })) {
+  for (const [field, value] of Object.entries({ resolveAgent, planTasks, executeTask, synthesize, verifyReceipt, reconcileTask, authorize })) {
     assertAdapter(value, field);
   }
+  if (!["unknown", "read-only"].includes(taskEffect)) throw new TypeError("taskEffect must be unknown or read-only.");
+  if (!["unknown", "read-only"].includes(planningEffect)) throw new TypeError("planningEffect must be unknown or read-only.");
   const store = assertStore(stateStore);
   if (typeof now !== "function") throw new TypeError("now must be a function.");
   if (typeof wait !== "function") throw new TypeError("wait must be a function.");
@@ -87,6 +99,8 @@ export function createAgentSwarmRuntime({
   if (limits.runTtlMs <= limits.taskLeaseMs) {
     throw new TypeError("runTtlMs must exceed taskLeaseMs.");
   }
+  if (limits.retryBaseMs > limits.retryMaxMs || limits.runTtlMs > 7 * 24 * 60 * 60_000
+    || limits.retentionMs > 30 * 24 * 60 * 60_000) throw new TypeError("Retry, execution or retention bound is invalid.");
   const configured = Boolean(resolveAgent && planTasks && executeTask && synthesize && verifyReceipt && authorize);
   const activeExecutions = new Map();
   let starts = 0;
@@ -111,69 +125,60 @@ export function createAgentSwarmRuntime({
     return withDeadline(() => operation(controller.signal), signal, limits.taskTimeoutMs, controller);
   }
 
-  async function withLedger(runId, operationId, principalId, transition) {
-    for (let attempt = 1; attempt <= limits.storeClaimAttempts; attempt += 1) {
-      const at = instant();
-      const claimId = `${operationId}:ledger-${attempt}`;
-      const ledger = await store.claim(runId, claimId, at + limits.storeClaimTtlMs);
-      if (!ledger) {
-        if (!await store.get(runId)) throw new AgentSwarmBlock("run_missing", `Agent Swarm run ${runId} is unavailable.`);
-        if (attempt < limits.storeClaimAttempts) await wait(limits.storeClaimRetryMs);
-        continue;
-      }
-      try {
-        requireLedgerOwner(requireLedger(ledger, runId), principalId);
-        const value = await transition(ledger, instant());
-        if (!await store.replace(runId, claimId, ledger)) {
-          throw new AgentSwarmBlock("ledger_conflict", "Agent Swarm ledger claim expired before commit.");
-        }
-        return value;
-      } catch (error) {
-        await store.release(runId, claimId).catch(() => false);
-        throw error;
-      }
-    }
-    throw new AgentSwarmBlock("run_busy", "Agent Swarm run is busy under another bounded coordinator operation.");
+  const policyDigest = digest({ limits, taskEffect, planningEffect });
+  const { withLedger, reserveStart, commitStart, discardStart, replayStart, cancelPlanning, project } =
+    createSwarmCoordinator({ store, limits, instant, wait, policyDigest, planningEffect });
+
+  function currentSession(context, at = instant()) {
+    if (context.principalExpiresAt !== undefined && context.principalExpiresAt <= at)
+      throw new AgentSwarmBlock("principal_expired", "Authenticate again before resuming the run.");
   }
 
-  async function reserveStart(runId) {
-    const at = instant();
-    const reservationId = `swarm-start-${randomUUID()}`;
-    const stored = await store.put({
-      schema: "agent-swarm-start/v1",
-      runId,
-      reservationId,
-      status: "planning",
-      createdAt: new Date(at).toISOString(),
-      expiresAt: at + Math.max(limits.taskTimeoutMs * 2, limits.storeClaimTtlMs * 2),
-    });
-    return stored ? reservationId : null;
+  async function authorizeOperation(action, request, context, snapshot) {
+    currentSession(context);
+    const record = requireLedgerOwner(requireLedger(snapshot ?? await store.get(request.runId), request.runId,
+      { readOnly: action === 'migrate' }), context.principalId);
+    const grant = normalizeAuthorization(await bounded(signal => authorize(freezeCall({
+      action: `agent.swarm.${action}`, runId: request.runId, principalId: context.principalId,
+      conversationId: record.conversationId, agent: record.agent, requestDigest: record.requestDigest,
+      policyDigest, sourceDigest: action === 'migrate' ? digest(record) : null,
+      taskId: request.taskId ?? null, signal,
+    })), request.signal));
+    if (!action.endsWith('.commit')) normalizeAgentResolution(await bounded(signal =>
+      resolveAgent(freezeCall({ agent: record.agent, signal })), request.signal), record.agent);
+    currentSession(context);
+    return grant;
   }
+  const retry = createSwarmReconciler({ withLedger, authorizeOperation, reconcileTask, verifyReceipt,
+    bounded, limits, instant, stateStats });
 
-  async function withStartReservation(runId, reservationId, operation, transition) {
-    for (let attempt = 1; attempt <= limits.storeClaimAttempts; attempt += 1) {
-      const claimId = `${reservationId}:${operation}-${attempt}`;
-      const reservation = await store.claim(runId, claimId, instant() + limits.storeClaimTtlMs);
-      if (!reservation) {
-        if (attempt < limits.storeClaimAttempts) await wait(limits.storeClaimRetryMs);
-        continue;
+  // Explicit administration seam; not exposed as a general model/browser tool.
+  async function migrate(value, contextValue = {}) {
+    assertExactKeys(value, ['runId', 'operationId', 'expectedDigest'], 'migration');
+    const request = normalizeRunOperation({ runId: value.runId, operationId: value.operationId });
+    if (!/^[a-f0-9]{64}$/.test(value.expectedDigest)) throw new TypeError('Expected legacy digest is required.');
+    if (taskEffect !== 'unknown') throw new AgentSwarmBlock('migration_effect_policy', 'Legacy effects cannot acquire a new read-only assertion.');
+    const context = normalizeAccessContext(contextValue);
+    await authorizeOperation('migrate', request, context);
+    return withLedger(request.runId, request.operationId, context.principalId, (ledger, at) => {
+      const original = normalizeStartRequest({ runId: ledger.runId, conversationId: ledger.conversationId,
+        agent: ledger.agent, goal: ledger.goal, input: ledger.input, maxParallel: ledger.maxParallel }, limits);
+      if (ledger.deadlineAt <= at) throw new AgentSwarmBlock('migration_deadline', 'Legacy execution deadline elapsed.');
+      ledger.schema = AGENT_SWARM_RUN_SCHEMA;
+      ledger.requestDigest = requestDigest(original); ledger.policyDigest = policyDigest;
+      ledger.expiresAt = ledger.deadlineAt + limits.retentionMs;
+      ledger.migration = { sourceSchema: 'agent-swarm-run/v1', sourceDigest: value.expectedDigest, at };
+      for (const task of ledger.tasks) {
+        task.effectPolicy = 'unknown'; task.nextEligibleAt = at;
+        task.effectState = task.status === 'completed' ? (task.effect === 'read-only' ? 'absent' : 'confirmed')
+          : ['pending', 'skipped'].includes(task.status) ? 'absent' : 'unknown';
+        if (task.status === 'running') task.leaseExpiresAt = at;
+        if (ledger.status === 'running' && task.status === 'failed') task.status = 'reconciling';
       }
-      if (reservation.schema !== "agent-swarm-start/v1" || reservation.runId !== runId
-        || reservation.reservationId !== reservationId) {
-        await store.release(runId, claimId).catch(() => false);
-        return false;
-      }
-      return transition(claimId);
-    }
-    return false;
-  }
-
-  function commitStart(runId, reservationId, ledger) {
-    return withStartReservation(runId, reservationId, "commit", (claimId) => store.replace(runId, claimId, ledger));
-  }
-
-  function discardStart(runId, reservationId) {
-    return withStartReservation(runId, reservationId, "discard", (claimId) => store.commit(runId, claimId));
+      if (ledger.synthesis.status === 'running') ledger.synthesis.leaseExpiresAt = at;
+      recoverSwarmLedger(ledger, limits, at);
+      return projectSwarmLedger(ledger, stateStats());
+    }, value.expectedDigest);
   }
 
   async function start(value = {}, contextValue = {}) {
@@ -186,9 +191,9 @@ export function createAgentSwarmRuntime({
       return blockedSwarmResult(request.runId, "runtime_unconfigured", "Agent resolver, planner, worker, synthesizer, receipt verifier, and authorizer are required.");
     }
     if (context.principalExpiresAt !== undefined
-      && context.principalExpiresAt < admittedAt + limits.runTtlMs) {
+      && context.principalExpiresAt <= admittedAt + limits.taskTimeoutMs) {
       blockedRuns += 1;
-      return blockedSwarmResult(request.runId, "session_too_short", "The authenticated principal expires before the fixed run deadline.");
+      return blockedSwarmResult(request.runId, "session_too_short", "The authenticated principal cannot cover initial admission; authenticate again.");
     }
     let authorization;
     try {
@@ -213,17 +218,18 @@ export function createAgentSwarmRuntime({
       blockedRuns += 1;
       return blockedSwarmResult(request.runId, errorReason(error, "agent_resolution_failed"), "Base-agent verification failed.");
     }
-    let reservationId;
+    let reservation;
     try {
-      reservationId = await reserveStart(request.runId);
-      if (!reservationId) {
-        blockedRuns += 1;
-        return blockedSwarmResult(request.runId, "run_reused", "Agent Swarm run identity already exists.");
+      currentSession(context, instant() + limits.taskTimeoutMs);
+      reservation = await reserveStart(request, context.principalId);
+      if (!reservation) {
+        return await replayStart(request, context.principalId);
       }
-    } catch {
+    } catch (error) {
       blockedRuns += 1;
-      return blockedSwarmResult(request.runId, "state_store_failed", "Agent Swarm run reservation failed.");
+      return blockedSwarmResult(request.runId, errorReason(error, "state_store_failed"), "Agent Swarm run reservation failed.");
     }
+    const { reservationId } = reservation;
     let plan;
     try {
       plan = normalizePlanOutcome(await bounded((signal) => planTasks(freezeCall({
@@ -251,9 +257,12 @@ export function createAgentSwarmRuntime({
         request,
         plan,
         authorization,
+        policyDigest,
+        requestDigest: requestDigest(request),
+        taskEffect,
         principalId: context.principalId,
         limits,
-        admittedAt,
+        admittedAt: Date.parse(reservation.createdAt),
         at: instant(),
       });
     } catch (error) {
@@ -262,6 +271,11 @@ export function createAgentSwarmRuntime({
       return blockedSwarmResult(request.runId, errorReason(error, "ledger_invalid"), "Dynamic task ledger creation failed.", [plan.costLog], 1);
     }
     try {
+      currentSession(context);
+      normalizeAuthorization(await bounded(signal => authorize(freezeCall({ action: 'agent.swarm.start.commit',
+        runId: request.runId, principalId: context.principalId, agent: request.agent,
+        requestDigest: requestDigest(request), policyDigest, signal })), request.signal));
+      currentSession(context);
       if (!await commitStart(request.runId, reservationId, ledger)) throw new AgentSwarmBlock("ledger_conflict", "Agent Swarm run reservation changed before commit.");
     } catch (error) {
       blockedRuns += 1;
@@ -276,7 +290,8 @@ export function createAgentSwarmRuntime({
     const ledger = await store.get(runId);
     if (!ledger) return blockedSwarmResult(runId, "run_missing", "Agent Swarm run is unavailable.");
     try {
-      return projectSwarmLedger(requireLedgerOwner(requireLedger(ledger, runId), context.principalId), stateStats());
+      currentSession(context);
+      return project(ledger, context.principalId);
     } catch (error) {
       return blockedSwarmResult(runId, errorReason(error, "ledger_invalid"), "Agent Swarm ledger is invalid.");
     }
@@ -289,8 +304,10 @@ export function createAgentSwarmRuntime({
     if (!configured) return blockedSwarmResult(request.runId, "runtime_unconfigured", "Agent Swarm runtime is unconfigured.");
     let claim;
     try {
+      await authorizeOperation("work", request, context);
       claim = await withLedger(request.runId, `${request.operationId}:claim`, context.principalId, (ledger, at) => {
-        const taskClaim = claimSwarmTask(ledger, { workerId: request.workerId, limits, at });
+        currentSession(context, at + limits.taskTimeoutMs + limits.storeClaimTtlMs);
+        const taskClaim = claimSwarmTask(ledger, { workerId: request.workerId, limits, at, principalExpiresAt: context.principalExpiresAt });
         return {
           taskClaim,
           snapshot: taskClaim ? null : projectSwarmLedger(ledger, stateStats()),
@@ -308,10 +325,12 @@ export function createAgentSwarmRuntime({
         runId: request.runId,
         workerId: request.workerId,
         runStatus: snapshot.status,
+        nextEligibleAt: snapshot.nextEligibleAt,
       });
     }
     const { task, execution } = claim.taskClaim;
     const controller = new AbortController();
+    let executionStarted = false;
     activeExecutions.set(task.executionId, { runId: request.runId, controller, kind: "task" });
     try {
       const launchAt = instant();
@@ -320,6 +339,7 @@ export function createAgentSwarmRuntime({
         throw new AgentSwarmBlock("task_launch_deadline", "The task cannot finish inside its lease and run deadline.");
       }
       const outcome = await withDeadline(async () => {
+        executionStarted = true;
         const raw = await executeTask(freezeCall({
           runId: task.executionId,
           conversationId: taskConversationId(request.runId, task.taskId),
@@ -351,6 +371,7 @@ export function createAgentSwarmRuntime({
         }
         return normalized;
       }, request.signal, limits.taskTimeoutMs, controller);
+      await authorizeOperation("work.commit", request, context, execution);
       const resultDigest = await withLedger(request.runId, `${request.operationId}:complete`, context.principalId, (ledger, at) => (
         completeSwarmTask(ledger, task.executionId, outcome, limits, at)
       ));
@@ -371,13 +392,14 @@ export function createAgentSwarmRuntime({
       let failure;
       try {
         failure = await withLedger(request.runId, `${request.operationId}:fail`, context.principalId, (ledger, at) => (
-          failSwarmTask(ledger, task.executionId, reasonCode, limits, at)
+          failSwarmTask(ledger, task.executionId, reasonCode, limits, at, classifyTaskFailure(error, executionStarted, taskEffect))
         ));
       } catch {
         failure = { accepted: false, retryable: false };
       }
       return Object.freeze({
-        status: failure.accepted ? (failure.retryable ? "retryable" : "failed") : "stale",
+        status: failure.accepted ? (failure.reconciling ? "reconciling" : failure.retryable ? "retryable" : "failed") : "stale",
+        ...(failure.nextEligibleAt ? { nextEligibleAt: failure.nextEligibleAt } : {}),
         stage: "agent-swarm-worker",
         runId: request.runId,
         taskId: task.taskId,
@@ -395,8 +417,10 @@ export function createAgentSwarmRuntime({
     if (!configured) return blockedSwarmResult(request.runId, "runtime_unconfigured", "Agent Swarm runtime is unconfigured.");
     let claim;
     try {
+      await authorizeOperation("settle", request, context);
       claim = await withLedger(request.runId, `${request.operationId}:claim`, context.principalId, (ledger, at) => {
-        const synthesisClaim = claimSwarmSynthesis(ledger, limits, at);
+        currentSession(context, at + limits.taskTimeoutMs + limits.storeClaimTtlMs);
+        const synthesisClaim = claimSwarmSynthesis(ledger, limits, at, context.principalExpiresAt);
         return {
           synthesisClaim,
           snapshot: synthesisClaim.terminal ? projectSwarmLedger(ledger, stateStats()) : null,
@@ -423,6 +447,7 @@ export function createAgentSwarmRuntime({
         signal: controller.signal,
       })), request.signal, limits.taskTimeoutMs, controller);
       const outcome = normalizeSynthesisOutcome(raw, limits);
+      await authorizeOperation("settle.commit", request, context, claim.authorizationContext);
       const completed = await withLedger(request.runId, `${request.operationId}:complete`, context.principalId, (ledger, at) => (
         completeSwarmSynthesis(ledger, claim.executionId, outcome, limits, at)
           ? projectSwarmLedger(ledger, stateStats())
@@ -434,7 +459,7 @@ export function createAgentSwarmRuntime({
     } catch (error) {
       const reasonCode = errorReason(error, "synthesis_failed");
       const failed = await withLedger(request.runId, `${request.operationId}:fail`, context.principalId, (ledger, at) => {
-        failSwarmSynthesis(ledger, claim.executionId, reasonCode, limits, at);
+        failSwarmSynthesis(ledger, claim.executionId, reasonCode, limits, at, classifyTaskFailure(error, true, "read-only").kind);
         return projectSwarmLedger(ledger, stateStats());
       }).catch(() => null);
       return failed || blockedSwarmResult(request.runId, "synthesis_settlement_failed", "Synthesis failure could not be settled durably.");
@@ -447,6 +472,15 @@ export function createAgentSwarmRuntime({
     const request = normalizeRunOperation(value, { reason: true });
     const context = normalizeAccessContext(contextValue);
     try {
+      currentSession(context);
+      const planning = await cancelPlanning(request, context.principalId, async record => {
+        normalizeAuthorization(await bounded(signal => authorize(freezeCall({ action: 'agent.swarm.cancel',
+          runId: request.runId, principalId: context.principalId, agent: record.request?.agent,
+          requestDigest: record.requestDigest, policyDigest, signal })), request.signal));
+        currentSession(context);
+      });
+      if (planning) return planning;
+      await authorizeOperation("cancel", request, context);
       const canceled = await withLedger(request.runId, `${request.operationId}:cancel`, context.principalId, (ledger, at) => (
         projectSwarmLedger(cancelSwarmLedger(ledger, request.reason, limits, at), stateStats())
       ));
@@ -468,7 +502,8 @@ export function createAgentSwarmRuntime({
     const rounds = limits.maxTasks * limits.maxAttempts + limits.maxWaves;
     for (let round = 1; round <= rounds; round += 1) {
       const snapshot = await status(request.runId, context);
-      if (["completed", "blocked", "canceled"].includes(snapshot.status)) return snapshot;
+      if (["completed", "blocked", "canceled", "planning"].includes(snapshot.status)) return snapshot;
+      if (snapshot.nextEligibleAt === null || snapshot.nextEligibleAt > instant()) return snapshot;
       const terminalTasks = snapshot.tasks.every((task) => ["completed", "failed", "skipped", "canceled"].includes(task.status));
       if (terminalTasks) {
         const result = await settle({
@@ -499,6 +534,8 @@ export function createAgentSwarmRuntime({
     settle,
     status,
     cancel,
+    retry,
+    migrate,
     run,
     stats: () => Object.freeze({
       configured,
@@ -526,4 +563,5 @@ export function createAgentSwarmRuntime({
   });
 }
 
+export { AgentSwarmFailure } from "./agent-swarm-contract.js";
 export { createAgentSwarmMemoryStore } from "./agent-swarm-store.js";

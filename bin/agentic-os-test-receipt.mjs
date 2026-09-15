@@ -24,8 +24,11 @@ export function lockReceipts(directory) {
   };
 }
 export function writeReceipt(directory, name, value) {
-  const bytes = typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n';
-  if (Buffer.byteLength(bytes) > (name.endsWith('.json') ? LIMITS.receiptBytes : LIMITS.outputBytes))
+  const limit = name.endsWith('.json') ? LIMITS.receiptBytes : LIMITS.outputBytes;
+  let bytes = typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n';
+  // Preserve every result while avoiding indentation overhead for expanded suites.
+  if (typeof value !== 'string' && Buffer.byteLength(bytes) > limit) bytes = JSON.stringify(value) + '\n';
+  if (Buffer.byteLength(bytes) > limit)
     throw new Error('blocked-test-receipt-byte-budget');
   const temporary = join(directory, `${name}.${process.pid}.tmp`);
   writeFileSync(temporary, bytes, { flag: 'wx', mode: 0o600 });

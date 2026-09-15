@@ -3,56 +3,7 @@ import test from "node:test";
 
 import { createAgentSwarmMemoryStore, createAgentSwarmRuntime } from "../runtime/agents/agent-swarm.js";
 
-const COST = Object.freeze({ model: "offline-swarm-model", prompt_tokens: 3, completion_tokens: 2, cache_hits: 1, estimated_cost_usd: 0 });
-
-const REQUEST = Object.freeze({
-  runId: "swarm-run",
-  conversationId: "swarm-conversation",
-  agent: Object.freeze({ agentId: "base-agent", revision: "base-agent-v1" }),
-  goal: "Investigate the goal and return one verified answer.",
-  input: Object.freeze({ source: "offline-fixture" }),
-  maxParallel: 2,
-});
-
-function task(taskId, dependencies = [], context = null) {
-  return { taskId, objective: `Complete ${taskId}.`, dependencies, context };
-}
-
-function createHarness({
-  tasks = [task("alpha"), task("beta"), task("final", ["alpha", "beta"])],
-  executeTask,
-  synthesize,
-  verifyReceipt,
-  resolveAgent,
-  stateStore,
-  now,
-  ...limits
-} = {}) {
-  const plannerCalls = [];
-  const workerCalls = [];
-  const synthesisCalls = [];
-  const runtime = createAgentSwarmRuntime({
-    resolveAgent: resolveAgent || (async ({ agent }) => ({ status: "ready", ...agent })),
-    planTasks: async (call) => {
-      plannerCalls.push(call);
-      return { status: "completed", planId: "dynamic-plan-v1", tasks, costLog: COST };
-    },
-    executeTask: executeTask || (async (call) => {
-      workerCalls.push(call);
-      return { status: "completed", output: `${call.input.task.taskId}-result`, effect: "read-only", costLog: COST };
-    }),
-    synthesize: synthesize || (async (call) => {
-      synthesisCalls.push(call);
-      return { status: "completed", output: "one public answer", costLog: COST };
-    }),
-    verifyReceipt: verifyReceipt || (async ({ receipt }) => ({ verified: true, ...receipt })),
-    authorize: async () => ({ allowed: true, approvalId: "offline-swarm-approval" }),
-    ...(stateStore ? { stateStore } : {}),
-    ...(now ? { now } : {}),
-    ...limits,
-  });
-  return { runtime, plannerCalls, workerCalls, synthesisCalls };
-}
+import { COST, REQUEST, task, createHarness } from "./agents/swarm-fixture.mjs";
 
 test("dynamically plans dependency work and records genuine bounded parallel overlap", async () => {
   let active = 0;
@@ -175,7 +126,8 @@ test("reserves a run identity before dynamic planning spend", async () => {
   const first = runtime.start({ ...REQUEST, runId: "reserved-run" });
   await started;
   const replay = await runtime.start({ ...REQUEST, runId: "reserved-run" });
-  assert.equal(replay.reasonCode, "run_reused");
+  releasePlanner();
+  assert.equal(replay.status, "planning");
   assert.equal(plannerCalls, 1);
   releasePlanner();
   assert.equal((await first).status, "running");
@@ -213,7 +165,7 @@ test("fails closed on cyclic dynamic plans and over-capacity parallel requests",
   });
   const shortPrincipal = await deadlineHarness.runtime.start(
     { ...REQUEST, runId: "short-principal-run", maxParallel: 1 },
-    { principalId: "short-principal", principalExpiresAt: deadlineClock + 299 },
+    { principalId: "short-principal", principalExpiresAt: deadlineClock + 49 },
   );
   assert.equal(shortPrincipal.reasonCode, "session_too_short");
   assert.equal(deadlineHarness.plannerCalls.length, 0);
@@ -286,7 +238,7 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
   const firstOutput = new Promise((resolve) => { releaseFirst = resolve; });
   const store = createAgentSwarmMemoryStore({ now: () => clock });
   const first = createHarness({
-    tasks: [task("recoverable")],
+    tasks: [task("recoverable")], taskEffect: "read-only", retryBaseMs: 1,
     stateStore: store,
     now: () => clock,
     taskTimeoutMs: 50,
@@ -300,7 +252,7 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
     },
   }).runtime;
   const second = createHarness({
-    tasks: [task("recoverable")],
+    tasks: [task("recoverable")], taskEffect: "read-only", retryBaseMs: 1,
     stateStore: store,
     now: () => clock,
     taskTimeoutMs: 50,
@@ -316,6 +268,8 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
   const staleWork = first.work({ runId: "recovery-run", workerId: "lost-worker", operationId: "lost-work" });
   await started;
   clock += 101;
+  assert.equal((await second.work({ runId: "recovery-run", workerId: "waiting-worker", operationId: "waiting" })).status, "idle");
+  clock += 2;
   const recovered = await second.work({ runId: "recovery-run", workerId: "replacement-worker", operationId: "replacement-work" });
   releaseFirst();
   const stale = await staleWork;
@@ -332,7 +286,7 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
   let leaseClock = 5_000;
   let leaseAttempts = 0;
   const leaseRuntime = createHarness({
-    tasks: [task("lease-fenced")],
+    tasks: [task("lease-fenced")], taskEffect: "read-only", retryBaseMs: 1,
     stateStore: createAgentSwarmMemoryStore({ now: () => leaseClock }),
     now: () => leaseClock,
     taskTimeoutMs: 50,
@@ -346,6 +300,7 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
   }).runtime;
   await leaseRuntime.start({ ...REQUEST, runId: "lease-fence-run", maxParallel: 1 });
   const expired = await leaseRuntime.work({ runId: "lease-fence-run", workerId: "late-worker", operationId: "late-work" });
+  leaseClock += 2;
   const retried = await leaseRuntime.work({ runId: "lease-fence-run", workerId: "fresh-worker", operationId: "fresh-work" });
   assert.equal(expired.status, "stale");
   assert.equal(retried.status, "completed");
@@ -369,13 +324,15 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
 
   let transientAttempts = 0;
   const transient = createHarness({
-    tasks: [task("transient")],
+    tasks: [task("transient")], taskEffect: "read-only", retryBaseMs: 1,
     executeTask: async () => {
       transientAttempts += 1;
       if (transientAttempts === 1) throw new Error("transient private failure");
       return { status: "completed", output: "recovered", effect: "read-only", costLog: COST };
     },
   }).runtime;
+  await transient.run({ ...REQUEST, runId: "transient-retry-run", maxParallel: 1 });
+  await new Promise(resolve => setTimeout(resolve, 2));
   const transientResult = await transient.run({ ...REQUEST, runId: "transient-retry-run", maxParallel: 1 });
   assert.equal(transientResult.status, "completed");
   assert.equal(Object.hasOwn(transientResult.tasks[0], "reasonCode"), false);
@@ -421,7 +378,7 @@ test("shares atomic task claims across runtimes and fences a stale worker after 
   assert.equal(guardedGetAttempts, 0);
   guardedGet = false;
   const failedOnly = createHarness({
-    tasks: [task("failed-only")],
+    tasks: [task("failed-only")], taskEffect: "read-only",
     stateStore: postCommitStore,
     maxAttempts: 1,
     executeTask: async () => { throw new Error("expected private failure"); },
@@ -446,8 +403,8 @@ test("requires matching execution receipts for idempotent effects", async () => 
     executeTask: async () => ({ status: "completed", output: "changed", effect: "idempotent", costLog: COST }),
   });
   const blocked = await missing.runtime.run({ ...REQUEST, runId: "missing-receipt-run", maxParallel: 1 });
-  assert.equal(blocked.status, "blocked");
-  assert.equal(blocked.reasonCode, "no_completed_tasks");
+  assert.equal(blocked.status, "running");
+  assert.equal(blocked.counts.reconciling, 1);
 
   const valid = createHarness({
     tasks: [task("mutation")],
@@ -475,8 +432,8 @@ test("requires matching execution receipts for idempotent effects", async () => 
     verifyReceipt: async ({ receipt }) => ({ verified: false, ...receipt }),
   });
   const rejected = await unverified.runtime.run({ ...REQUEST, runId: "unverified-receipt-run", maxParallel: 1 });
-  assert.equal(rejected.status, "blocked");
-  assert.equal(rejected.counts.failed, 1);
+  assert.equal(rejected.status, "running");
+  assert.equal(rejected.counts.reconciling, 1);
   assert.equal(rejected.evidence.receipts.length, 0);
 
   let verifierStarted = false;
@@ -510,8 +467,8 @@ test("requires matching execution receipts for idempotent effects", async () => 
   });
   const deadlineResult = await oneDeadline.runtime.run({ ...REQUEST, runId: "one-deadline-run", maxParallel: 1 });
   assert.equal(verifierStarted, true);
-  assert.equal(deadlineResult.status, "blocked");
-  assert.equal(deadlineResult.counts.failed, 1);
+  assert.equal(deadlineResult.status, "running");
+  assert.equal(deadlineResult.counts.reconciling, 1);
 });
 
 test("cancels active local work, preserves terminal state, and suppresses stale output", async () => {
@@ -569,7 +526,7 @@ test("cancels active local work, preserves terminal state, and suppresses stale 
 
 test("synthesizes useful partial results after bounded worker failure", async () => {
   const { runtime, synthesisCalls } = createHarness({
-    tasks: [task("good"), task("bad")],
+    tasks: [task("good"), task("bad")], taskEffect: "read-only", retryBaseMs: 1,
     executeTask: async (call) => {
       if (call.input.task.taskId === "bad") throw new Error("private provider failure");
       return { status: "completed", output: "usable", effect: "read-only", costLog: COST };
@@ -579,6 +536,8 @@ test("synthesizes useful partial results after bounded worker failure", async ()
       return { status: "completed", output: "partial public answer", costLog: COST };
     },
   });
+  await runtime.run({ ...REQUEST, runId: "partial-run" });
+  await new Promise(resolve => setTimeout(resolve, 2));
   const result = await runtime.run({ ...REQUEST, runId: "partial-run" });
   assert.equal(result.status, "completed");
   assert.equal(result.output, "partial public answer");

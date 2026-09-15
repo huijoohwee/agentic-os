@@ -96,12 +96,17 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
     const principal = assertIdentifier(safe.ownerPrincipalId ?? 'unassigned', 'record.ownerPrincipalId');
     const body = JSON.stringify(safe);
     if (Buffer.byteLength(body) > limits.maxRecordBytes) throw new RangeError('Agent record byte capacity exceeded.');
-    const active = (safe.tasks ?? []).filter(task => task.status === 'running' && task.leaseExpiresAt > at).length
+    const active = (safe.tasks ?? []).filter(task => (task.status === 'running' && task.leaseExpiresAt > at) || (task.status === 'reconciling' && task.reconciliation?.expiresAt > at)).length
       + (safe.synthesis?.status === 'running' && safe.synthesis.leaseExpiresAt > at ? 1 : 0);
     return { id, principal, body, expires: safe.expiresAt, active };
   }
 
-  function admit(candidate, insert) {
+  function admit(candidate, insert, at) {
+    // Recompute expired peer execution leases atomically; a crash cannot retain capacity forever.
+    for (const row of db.prepare('SELECT id, body FROM agent_records').all()) {
+      const active = record(JSON.parse(row.body), at).active;
+      db.prepare('UPDATE agent_records SET active_tasks=? WHERE id=?').run(active, row.id);
+    }
     const peers = db.prepare(`SELECT COUNT(*) AS total,
       COALESCE(SUM(principal=?), 0) AS owned, COALESCE(SUM(active_tasks), 0) AS active,
       COALESCE(SUM(CASE WHEN principal=? THEN active_tasks ELSE 0 END), 0) AS owned_active
@@ -122,7 +127,7 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
       return transaction(at => {
         const item = record(value, at);
         if (read(item.id)) return false;
-        admit(item, true);
+        admit(item, true, at);
         db.prepare('INSERT INTO agent_records VALUES (?, ?, ?, ?, NULL, NULL, ?)')
           .run(item.id, item.principal, item.body, item.expires, item.active);
         return true;
@@ -131,6 +136,14 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
     async get(value) {
       const id = key(value);
       return transaction(() => { const row = read(id); return row ? JSON.parse(row.body) : null; });
+    },
+    async listPending({ limit = 8 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > limits.maxRecords)
+        throw new TypeError('Pending run scan exceeds its configured bound.');
+      return transaction(() => db.prepare('SELECT body FROM agent_records ORDER BY id').all()
+        .map(row => JSON.parse(row.body)).filter(row => !['completed', 'blocked', 'canceled'].includes(row.status))
+        .sort((a, b) => Date.parse(a.updatedAt ?? a.createdAt) - Date.parse(b.updatedAt ?? b.createdAt))
+        .slice(0, limit));
     },
     async claim(value, claimValue, claimExpiresAt) {
       const id = key(value), claim = claimKey(claimValue);
@@ -154,7 +167,7 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
         if (JSON.parse(prior.body).ownerPrincipalId !== undefined && item.principal !== prior.principal) {
           throw new TypeError('Replacement run principal changed.');
         }
-        admit(item, false);
+        admit(item, false, at);
         db.prepare(`UPDATE agent_records SET principal=?, body=?, expires=?, active_tasks=?,
           claim=NULL, claim_expires=NULL WHERE id=?`).run(item.principal, item.body, item.expires, item.active, id);
         return true;

@@ -1,0 +1,151 @@
+{
+  "schema": "agentic-os/native-adapter-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "697c47a1508fbf7184f11d41e77575b316fed768",
+  "status": "source-transfer-awaiting-consumer-pin",
+  "batch": 3,
+  "modules": [
+    {
+      "source": "agent-api/src/app.js",
+      "sourceBlob": "aca29b66d90d4a90859e415ca2e77606d9f952ae",
+      "sourceSha256": "bcf21ed6d49527a78f4ce75c96a63c553a2c38e88f4245966d0eef011b1075f0",
+      "destination": "runtime/adapters/app.js",
+      "sha256": "dbe1354fd95a5b6bc777b82a94f26881ef097a8cfcd15a34254c83387915261d",
+      "ownedCandidateInputSha256": "5e6d16531add78ceda26a9b6519a77603367d8573feea195fb516950f07ba150"
+    },
+    {
+      "source": "agent-api/src/app-readiness.js",
+      "sourceBlob": "11d2e93a711c7c3781555ce294f328c300592ccd",
+      "sourceSha256": "6d0a998d3375327ecff684b85b3917d3e45fe19d5946e1e99355398f6ad138e5",
+      "destination": "runtime/adapters/app-readiness.js",
+      "sha256": "d0af127c6065454de87cb82319ab216ebed0b001ec08c4a865e754438c53d4a2",
+      "ownedCandidateInputSha256": "d0af127c6065454de87cb82319ab216ebed0b001ec08c4a865e754438c53d4a2"
+    },
+    {
+      "source": "agent-api/src/upstream-dependency-admission.js",
+      "sourceBlob": "168873b826f79ee2960d56044a0ffee74ff619de",
+      "sourceSha256": "0e8f907f178e52070fc3bb06cf20f9a34de7e3ffa7503fee85365ccf8c132395",
+      "destination": "runtime/adapters/upstream-dependency-admission.js",
+      "sha256": "d193fac13aa03998f8afc359f6916585151ecb55c4cb236079a9ac9c8c70cece"
+    },
+    {
+      "source": "agent-api/src/upstream-dependency-admission-handler.js",
+      "sourceBlob": "7e144b134ba698873ed42f2f13a272b0289330c8",
+      "sourceSha256": "6f85f03efd3a391e5b09384909ee5c081bf670726db1ca324b17c669bab15367",
+      "destination": "runtime/adapters/upstream-dependency-admission-handler.js",
+      "sha256": "6f85f03efd3a391e5b09384909ee5c081bf670726db1ca324b17c669bab15367"
+    },
+    {
+      "source": "agent-api/src/durable-object-state-store.js",
+      "sourceBlob": "540bd527ae0640e72060b04b518ba6793007ff33",
+      "sourceSha256": "58864e0e4e8240770701cf5398968205520ed6c570e2b4895c4a1ef6c46c7394",
+      "destination": "runtime/adapters/durable-object-state-store.js",
+      "sha256": "48b06b1f63eebb63f971b9409e4d292b920d9bb16ceec343fb111e66f41ac1a4"
+    },
+    {
+      "source": "src/agentic-graph-mcp-client.js",
+      "sourceBlob": "752b4aea6a115d058507e9cb5c5c9a9d66e138e2",
+      "sourceSha256": "e811f15298863e71c8c3a5dcc04b00e460525c313cc9a2b7ac7470a378a4eefd",
+      "destination": "runtime/adapters/agentic-graph-mcp-client.js",
+      "sha256": "e811f15298863e71c8c3a5dcc04b00e460525c313cc9a2b7ac7470a378a4eefd"
+    },
+    {
+      "source": "src/agentic-graph-mcp-contract.js",
+      "sourceBlob": "542bc1d912e49c945556d7276852a3f46810d56e",
+      "sourceSha256": "7353998433cd8fc10d584c9d871024de8cc052056b897d5f178dc7693fba38da",
+      "destination": "runtime/adapters/agentic-graph-mcp-contract.js",
+      "sha256": "7353998433cd8fc10d584c9d871024de8cc052056b897d5f178dc7693fba38da"
+    },
+    {
+      "source": "src/agentic-graph-mcp-contract-utils.js",
+      "sourceBlob": "75c037d41586a5ae0ee54930323313c7c2645e02",
+      "sourceSha256": "286f5964e40e336b52fa0ef2a2e706216a1d28e6d1fb8be19a66b65150005f47",
+      "destination": "runtime/adapters/agentic-graph-mcp-contract-utils.js",
+      "sha256": "286f5964e40e336b52fa0ef2a2e706216a1d28e6d1fb8be19a66b65150005f47"
+    },
+    {
+      "source": "src/agentic-graph-mcp-parser-contract.js",
+      "sourceBlob": "fd69092ccb3083e4ce8216a3b1b1fe6092fedd71",
+      "sourceSha256": "4c979b14d274d9c203fb5eab49df8133756b26277e69751a3159652fe56e0a25",
+      "destination": "runtime/adapters/agentic-graph-mcp-parser-contract.js",
+      "sha256": "4c979b14d274d9c203fb5eab49df8133756b26277e69751a3159652fe56e0a25"
+    },
+    {
+      "source": "src/agentic-graph-mcp-result-contract.js",
+      "sourceBlob": "3b34233e898f8e333de565896ec4d1c33ce5619f",
+      "sourceSha256": "23e19116179cd96657f2846754154ee459dcacf116902210842ec175e9d993f3",
+      "destination": "runtime/adapters/agentic-graph-mcp-result-contract.js",
+      "sha256": "23e19116179cd96657f2846754154ee459dcacf116902210842ec175e9d993f3"
+    },
+    {
+      "source": "src/skill-evolution-result.js",
+      "sourceBlob": "a95d4dfc197e0502e237b77f25f777464ae561ea",
+      "sourceSha256": "e488477d97fb9a7b1a78f07b388a4b6c9eae3b73c721236c9634c6e59bf3db0d",
+      "destination": "runtime/adapters/skill-evolution-result.js",
+      "sha256": "e488477d97fb9a7b1a78f07b388a4b6c9eae3b73c721236c9634c6e59bf3db0d"
+    },
+    {
+      "source": "src/collab-room.js",
+      "sourceBlob": "c824e54415aca21bd6885aa4b67975fd72815396",
+      "sourceSha256": "a100699cc3a83e8b22bdfc058246daa2cde7b5a21081e31d71cdabb6ac6be4ee",
+      "destination": "runtime/adapters/collab-room.js",
+      "sha256": "a100699cc3a83e8b22bdfc058246daa2cde7b5a21081e31d71cdabb6ac6be4ee"
+    },
+    {
+      "source": "src/collab-metrics.js",
+      "sourceBlob": "91bfcb5d2409e7be23523869ec5b6768457b4333",
+      "sourceSha256": "27e4edcc8b30c453f1f369e5de6691b0a5a9047c945156ca726a350938c959a0",
+      "destination": "runtime/adapters/collab-metrics.js",
+      "sha256": "27e4edcc8b30c453f1f369e5de6691b0a5a9047c945156ca726a350938c959a0"
+    },
+    {
+      "source": "src/canvas-embed.js",
+      "sourceBlob": "42c3a1d7f04f410a72c4bcb23ffc305b332213d1",
+      "sourceSha256": "ff0f4be6455ab9ff832f760bd787270d46ef4278960037b7d811fe007db25b90",
+      "destination": "runtime/adapters/canvas-embed.js",
+      "sha256": "ff0f4be6455ab9ff832f760bd787270d46ef4278960037b7d811fe007db25b90"
+    },
+    {
+      "source": "scripts/lexical-compare.mjs",
+      "sourceBlob": "420a7f44eb2e00dd0eb26257698698914d6901e7",
+      "sourceSha256": "0bef8d271d02ff5677253b1614e6cab720218f8a42b660098cf473157cf7627a",
+      "destination": "runtime/adapters/lexical-compare.mjs",
+      "sha256": "0bef8d271d02ff5677253b1614e6cab720218f8a42b660098cf473157cf7627a"
+    },
+    {
+      "source": "worker/canvas-room.js",
+      "sourceBlob": "4cbfa61bd86b0f732cfdf19c3ced9ecdb6a3ee35",
+      "sourceSha256": "54eb88dad7a32903b48837de60376633e8cb41bb2432fdf05e12c6ff40dd3723",
+      "destination": "runtime/adapters/canvas-room.js",
+      "sha256": "9b4e505f88871f6d9396ff130c1fbd5248e94fceb85fe7372e975195f332e990"
+    },
+    {
+      "source": "worker/agent-state.js",
+      "sourceBlob": "7e1eba3aaecdb23883f5d273429964abed8907be",
+      "sourceSha256": "c1a0df37c39a66c0780e8c27c356520c4504f772b2600a22aa2a60836d389142",
+      "destination": "runtime/adapters/agent-state.js",
+      "sha256": "02c3c0c4ec0a099ff27d04f2fb55ea4d2cc0fd75a066831bff53613431576a9c"
+    }
+  ],
+  "tests": [
+    "agent-api-app",
+    "collab-room",
+    "collab-metrics",
+    "canvas-room",
+    "canvas-embed",
+    "agentic-graph-mcp-client",
+    "durable-agent-state",
+    "openai-function-gateway",
+    "function-calling-continuation"
+  ],
+  "transformations": [
+    "Relocate native application imports and reuse OS context owners.",
+    "Preserve the owned P2 application and readiness changes by input digest.",
+    "Extract generic AgentState behavior with a fail-closed product-operation extension, preserving stored keys and existing record bounds.",
+    "Keep Commerce admission storage and its authority rules at the product boundary.",
+    "Centralize the existing atomic transport helpers with the OS swarm and Toolkit stores."
+  ],
+  "sourceBytes": 205028,
+  "destinationBytes": 182809
+}

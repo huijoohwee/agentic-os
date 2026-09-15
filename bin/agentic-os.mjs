@@ -505,7 +505,7 @@ function cmdQueue(root, argv, profile) {
 }
 async function main() {
   const supplied = process.argv.slice(2);
-  let [command, ...argv] = supplied;
+  let [command = 'help', ...argv] = supplied;
   if (isInvocationTuple(supplied)) {
     const resolution = resolveInvocation(supplied);
     const dispatch = dispatchInvocation(resolution);
@@ -516,13 +516,13 @@ async function main() {
     command = dispatch.command;
     argv = dispatch.argv;
   }
-  if (command === undefined) return cmdHelp();
   const argumentError = validateCommandArguments(command, argv);
   if (argumentError) {
     err(`blocked-invalid-arguments: ${command}: ${argumentError}`);
     return 1;
   }
   if (command === 'help' || command === '--help') return cmdHelp();
+  if (command === 'run') return (await import('./agentic-os-run.mjs')).runAgentCommand(argv, out);
   if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);
   if (command === 'request') return runRequest(argv);
   if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);

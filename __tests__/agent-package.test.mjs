@@ -17,10 +17,11 @@ test('agent package closure has one JSON owner, no consumer imports and no cycle
     if (visited.has(path)) return;
     visiting.add(path);
     const source = readFileSync(path, 'utf8');
-    for (const match of source.matchAll(/(?:from\s+|import\s*\()?["']([^"']+)["']/gu)) {
+    for (const match of source.matchAll(/(?:from\s+|import\s*\()["']([^"']+)["']/gu)) {
       const specifier = match[1];
-      if (!specifier.endsWith('.js') && !specifier.endsWith('.mjs')) continue;
+      if (specifier.startsWith('node:')) continue;
       assert.ok(specifier.startsWith('.'), `nonlocal runtime import: ${specifier}`);
+      if (!specifier.endsWith('.js') && !specifier.endsWith('.mjs')) continue;
       const dependency = resolve(dirname(path), specifier);
       assert.ok(dependency.startsWith(join(root, 'runtime') + '/'), dependency);
       visit(dependency);
@@ -38,8 +39,30 @@ test('agent package closure has one JSON owner, no consumer imports and no cycle
     bytes += Buffer.byteLength(source);
     assert.ok(source.trimEnd().split('\n').length < 600, name);
   }
-  assert.ok(modules.length <= 24);
+  assert.ok(modules.length <= 28);
   assert.ok(bytes <= 300_000);
+  const adapters = readdirSync(join(root, 'runtime/adapters')).filter(name => /\.(?:mjs|js)$/u.test(name));
+  assert.ok(adapters.length <= 57);
+  let adapterBytes = 0;
+  for (const name of adapters) {
+    const source = readFileSync(join(root, 'runtime/adapters', name), 'utf8');
+    adapterBytes += Buffer.byteLength(source);
+    assert.ok(source.trimEnd().split('\n').length < 600, name);
+  }
+  assert.ok(adapterBytes <= 900_000);
+  const assigned = new Set();
+  for (const name of ['MIGRATION.json', 'MIGRATION-HTTP.json', 'MIGRATION-APPLICATION.json']) {
+    const manifest = JSON.parse(readFileSync(join(root, 'runtime/adapters', name), 'utf8'));
+    assert.ok(manifest.modules.length <= 20, name);
+    let batchBytes = 0;
+    for (const module of manifest.modules) {
+      assert.equal(assigned.has(module.destination), false, module.destination);
+      assigned.add(module.destination);
+      batchBytes += readFileSync(join(root, module.destination)).length;
+    }
+    assert.ok(batchBytes <= 300_000, name);
+  }
+  assert.equal(assigned.size, adapters.length);
 });
 
 test('packed agent subpaths import independently and lifecycle discovery stays lazy', (t) => {

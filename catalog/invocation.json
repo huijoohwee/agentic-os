@@ -1,22 +1,313 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
-  "entryCount": 15,
-  "digest": "sha256:07dc77fde162d8d40cc8d0ba388e06ceb5ba39b459a77bdd6605a33c7d91e3fe",
+  "entryCount": 19,
+  "digest": "sha256:9240d377b8545f81026f928dce53ab79924ef9dfb9ddcf4f87136f9ebbfb39ce",
   "entries": [
-    { "token": "/setup", "kind": "command", "action": "setup", "semantic": "mutating", "summary": "Configure local Git and hooks." },
-    { "token": "/doctor", "kind": "command", "action": "doctor", "semantic": "read-only", "summary": "Report local and remote harness drift." },
-    { "token": "/lane", "kind": "command", "action": "start", "semantic": "mutating", "accepts": ["scope"], "requires": ["scope"], "summary": "Open one guarded lane worktree." },
-    { "token": "/land", "kind": "command", "action": "land", "semantic": "mutating", "summary": "Publish the exact lane and project its selected handoff." },
-    { "token": "/status", "kind": "command", "action": "status", "semantic": "read-only", "accepts": ["device"], "summary": "Show registered lanes and observed ordering state." },
-    { "token": "/checks", "kind": "command", "action": "observe", "argv": ["--checks"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Discover owner check references and unsigned result bindings." },
-    { "token": "/reap", "kind": "command", "action": "reap", "semantic": "mutating", "summary": "Fetch and survey integrated lanes without deleting them." },
-    { "token": "/reconcile", "kind": "command", "action": "reconcile", "semantic": "mutating", "summary": "Classify and safely reconcile the canonical branch." },
-    { "token": "/queue.show", "kind": "command", "action": "queue", "argv": ["show"], "semantic": "read-only", "summary": "Inspect required provider configuration." },
-    { "token": "/help", "kind": "command", "action": "help", "semantic": "read-only", "summary": "Show the CLI command map." },
-    { "token": "#read-only", "kind": "semantic", "value": "read-only", "summary": "No authored or shared-state mutation is requested." },
-    { "token": "#mutating", "kind": "semantic", "value": "mutating", "summary": "The guarded command may mutate declared state." },
-    { "token": "@scope:", "kind": "binding", "name": "scope", "mode": "positional", "summary": "Bind one lane semantic scope." },
-    { "token": "@device:", "kind": "binding", "name": "device", "mode": "option", "summary": "Bind a normalized device selector." },
-    { "token": "@input:", "kind": "binding", "name": "input", "mode": "option", "summary": "Bind a bounded local JSON input file." }
+    {
+      "token": "/setup",
+      "kind": "command",
+      "action": "setup",
+      "semantic": "mutating",
+      "summary": "Configure local Git and hooks."
+    },
+    {
+      "token": "/doctor",
+      "kind": "command",
+      "action": "doctor",
+      "semantic": "read-only",
+      "summary": "Report local and remote harness drift."
+    },
+    {
+      "token": "/lane",
+      "kind": "command",
+      "action": "start",
+      "semantic": "mutating",
+      "accepts": [
+        "scope"
+      ],
+      "requires": [
+        "scope"
+      ],
+      "summary": "Open one guarded lane worktree."
+    },
+    {
+      "token": "/land",
+      "kind": "command",
+      "action": "land",
+      "semantic": "mutating",
+      "summary": "Publish the exact lane and project its selected handoff."
+    },
+    {
+      "token": "/status",
+      "kind": "command",
+      "action": "status",
+      "semantic": "read-only",
+      "accepts": [
+        "device"
+      ],
+      "summary": "Show registered lanes and observed ordering state."
+    },
+    {
+      "token": "/checks",
+      "kind": "command",
+      "action": "observe",
+      "argv": [
+        "--checks"
+      ],
+      "semantic": "read-only",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Discover owner check references and unsigned result bindings."
+    },
+    {
+      "token": "/reap",
+      "kind": "command",
+      "action": "reap",
+      "semantic": "mutating",
+      "summary": "Fetch and survey integrated lanes without deleting them."
+    },
+    {
+      "token": "/reconcile",
+      "kind": "command",
+      "action": "reconcile",
+      "semantic": "mutating",
+      "summary": "Classify and safely reconcile the canonical branch."
+    },
+    {
+      "token": "/queue.show",
+      "kind": "command",
+      "action": "queue",
+      "argv": [
+        "show"
+      ],
+      "semantic": "read-only",
+      "summary": "Inspect required provider configuration."
+    },
+    {
+      "token": "/help",
+      "kind": "command",
+      "action": "help",
+      "semantic": "read-only",
+      "summary": "Show the CLI command map."
+    },
+    {
+      "token": "/run.start",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "start"
+      ],
+      "semantic": "mutating",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Start or retrieve the same authenticated durable job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "conversationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "agent": {
+            "type": "object",
+            "properties": {
+              "agentId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "agentId",
+              "revision"
+            ],
+            "additionalProperties": false
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40000
+          },
+          "input": {},
+          "maxParallel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          }
+        },
+        "required": [
+          "runId",
+          "conversationId",
+          "agent",
+          "goal"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "token": "/run.status",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "status"
+      ],
+      "semantic": "read-only",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Read one authenticated durable job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "token": "/run.cancel",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "cancel"
+      ],
+      "semantic": "mutating",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Cancel future work and retain observed effect state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "runId",
+          "operationId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "token": "/run.retry",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "retry"
+      ],
+      "semantic": "mutating",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Reconcile one uncertain effect before permitting a retry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "runId",
+          "operationId",
+          "taskId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "token": "#read-only",
+      "kind": "semantic",
+      "value": "read-only",
+      "summary": "No authored or shared-state mutation is requested."
+    },
+    {
+      "token": "#mutating",
+      "kind": "semantic",
+      "value": "mutating",
+      "summary": "The guarded command may mutate declared state."
+    },
+    {
+      "token": "@scope:",
+      "kind": "binding",
+      "name": "scope",
+      "mode": "positional",
+      "summary": "Bind one lane semantic scope."
+    },
+    {
+      "token": "@device:",
+      "kind": "binding",
+      "name": "device",
+      "mode": "option",
+      "summary": "Bind a normalized device selector."
+    },
+    {
+      "token": "@input:",
+      "kind": "binding",
+      "name": "input",
+      "mode": "option",
+      "summary": "Bind a bounded local JSON input file."
+    }
   ]
 }
