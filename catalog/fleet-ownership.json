@@ -275,8 +275,8 @@
     },
     {
       "id": "chat-prompt-presets",
-      "owner": "github.com/huijoohwee/agentic-canvas-os",
-      "source": "docs/PROMPT-PRESETS.md",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "runtime/agents/docs/PROMPT-PRESETS.md",
       "consumers": [],
       "discovery": {
         "kinds": [
@@ -289,8 +289,8 @@
     },
     {
       "id": "agent-facade",
-      "owner": "github.com/huijoohwee/agentic-canvas-os",
-      "source": "agent-api/src/progressive-agents.js",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "runtime/adapters/progressive-agents.js",
       "consumers": [],
       "discovery": {
         "kinds": [
@@ -303,8 +303,8 @@
     },
     {
       "id": "skills-catalog",
-      "owner": "github.com/huijoohwee/agentic-canvas-os",
-      "source": "docs/SKILLS.md",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "runtime/agents/docs/SKILLS.md",
       "consumers": [],
       "discovery": {
         "kinds": [

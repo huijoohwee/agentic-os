@@ -171,7 +171,8 @@
     "./agent-docs/AUTONOMOUS-RUNTIME.md": "./runtime/agents/docs/AUTONOMOUS-RUNTIME.md",
     "./agent-docs/SKILLS.md": "./runtime/agents/docs/SKILLS.md",
     "./agent-docs/PROMPT-PRESETS.md": "./runtime/agents/docs/PROMPT-PRESETS.md",
-    "./agent-docs/AGENT-TEAM.md": "./runtime/agents/docs/AGENT-TEAM.md"
+    "./agent-docs/AGENT-TEAM.md": "./runtime/agents/docs/AGENT-TEAM.md",
+    "./agent-docs/history/LIVE-AGENT-PROVIDER-PROOF.md": "./runtime/agents/history/LIVE-AGENT-PROVIDER-PROOF.md"
   },
   "engines": {
     "node": ">=20.11"
