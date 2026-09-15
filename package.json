@@ -176,7 +176,12 @@
     "./audit/alignment": "./bin/alignment-audit/alignment-auditor.mjs",
     "./audit/alignment-cli": "./bin/alignment-audit.mjs",
     "./audit/alignment-contract": "./bin/alignment-audit-contract.mjs",
-    "./agent-docs/UPSTREAM-DEPENDENCY-ADMISSION.md": "./runtime/agents/docs/UPSTREAM-DEPENDENCY-ADMISSION.md"
+    "./agent-docs/UPSTREAM-DEPENDENCY-ADMISSION.md": "./runtime/agents/docs/UPSTREAM-DEPENDENCY-ADMISSION.md",
+    "./planning/scheduler": "./runtime/planning/coordination-scheduler-contract.mjs",
+    "./planning/goal": "./runtime/planning/goal-completion-runtime-contract.mjs",
+    "./planning/scheduler-cli": "./runtime/planning/coordination-scheduler.mjs",
+    "./planning/goal-cli": "./runtime/planning/goal-completion-runtime.mjs",
+    "./planning/scheduler-schema": "./runtime/planning/coordination-scheduler-report.v1.schema.json"
   },
   "engines": {
     "node": ">=20.11"

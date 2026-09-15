@@ -1,0 +1,62 @@
+{
+  "schema": "agentic-os/native-planning-migration/v1",
+  "continuityId": "DURABLE-AGENT-WORKFLOWS-001",
+  "sourceRepository": "github.com/huijoohwee/agentic-canvas-os",
+  "sourceRevision": "8460fc01c7dbd8af6880d346a71829e20887c44e",
+  "phase": "source-transfer-before-retirement",
+  "records": [
+    {
+      "source": "scripts/product-contract-primitives.mjs",
+      "sourceSha256": "255d7f785247058c5c2133267dfb768e69bd870d5287957f611089fecdafef2a",
+      "destination": "runtime/planning/product-contract-primitives.mjs",
+      "destinationSha256": "2f547a6547320a8e7b259c3cffaa69a20afd6ed3421fd0143007fdcac2adb3cb"
+    },
+    {
+      "source": "scripts/coordination-scheduler-contract.mjs",
+      "sourceSha256": "4d7330cc4e9dc39b117a9e9ced0fd98862c43488c620865d4aa60532238522a2",
+      "destination": "runtime/planning/coordination-scheduler-contract.mjs",
+      "destinationSha256": "4d7330cc4e9dc39b117a9e9ced0fd98862c43488c620865d4aa60532238522a2"
+    },
+    {
+      "source": "scripts/coordination-scheduler.mjs",
+      "sourceSha256": "fafdc02950ba99d862761c876dcb5c47ff0df552bf5ee21fe5e0ab087cf1e89c",
+      "destination": "runtime/planning/coordination-scheduler.mjs",
+      "destinationSha256": "8d16f7e0b1fad07aac23ba675f3d4c95398e4418d24ff812616505cd518ccea5"
+    },
+    {
+      "source": "scripts/goal-completion-runtime-contract.mjs",
+      "sourceSha256": "7357a653937211fbcb6b8e3a532a43db1dfaa2d67390208d685db3e0374e249b",
+      "destination": "runtime/planning/goal-completion-runtime-contract.mjs",
+      "destinationSha256": "7357a653937211fbcb6b8e3a532a43db1dfaa2d67390208d685db3e0374e249b"
+    },
+    {
+      "source": "scripts/goal-completion-runtime.mjs",
+      "sourceSha256": "742fe339ec5c9e96df0bca359abf3d4fdf7e45b3b7bd483d83d957b8e1e1221d",
+      "destination": "runtime/planning/goal-completion-runtime.mjs",
+      "destinationSha256": "719193f1a5aaa32746ca33f99b10baba422b2656c887537da11f35ed89dafcec"
+    },
+    {
+      "source": "__tests__/coordination-scheduler.test.mjs",
+      "sourceSha256": "4289329d07023c4d85773ea51f88cc644ccb47815ac3ae5d799d45a382d3d624",
+      "destination": "__tests__/coordination-scheduler.test.mjs",
+      "destinationSha256": "00ac9151b0068b7026be77279a3a0da6a216ed8885365a534cdaabeeadbdbd2b"
+    },
+    {
+      "source": "__tests__/goal-completion-runtime.test.mjs",
+      "sourceSha256": "18bcb3d1cff60b051f19841541882220318d536f4b4c257186356870050bd947",
+      "destination": "__tests__/goal-completion-runtime.test.mjs",
+      "destinationSha256": "d75f42491e678bdd1283994b9a19fb84549ed9ecd53d32020635ec735744059b"
+    },
+    {
+      "source": "docs/schemas/coordination-scheduler-report.v1.schema.json",
+      "sourceSha256": "1802e530e7b2dc0ad4391396df62c792b41e69016fab3220b874e712c32703b2",
+      "destination": "runtime/planning/coordination-scheduler-report.v1.schema.json",
+      "destinationSha256": "1802e530e7b2dc0ad4391396df62c792b41e69016fab3220b874e712c32703b2"
+    }
+  ],
+  "transformations": [
+    "Use the existing bounded JSON canonicalizer; preserve schema identifiers, normalized finite-JSON digests, write-set semantics and original cases.",
+    "CLI reads reuse the existing race-bounded regular-file reader, capped at 128000 bytes, with fatal UTF-8 decoding.",
+    "Reports remain advisory; supplied authority labels and goal authorization IDs grant no effect authority."
+  ]
+}
