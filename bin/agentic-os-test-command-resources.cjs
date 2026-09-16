@@ -1,5 +1,5 @@
 /** Optional waited-process accounting. No sampling, shell, output parsing or authority. */
-import { spawnSync } from 'node:child_process';
+const { spawnSync } = require('node:child_process');
 
 const LIMIT = 4096;
 let capability;
@@ -23,7 +23,7 @@ if code < 0:
 sys.exit(code)
 `;
 
-export function resourceCommand(command, args, environment, platform = process.platform) {
+function resourceCommand(command, args, environment, platform = process.platform) {
   const direct = reason => ({ command, args, measured: false, reason });
   if (!['darwin', 'linux'].includes(platform)) return direct('unsupported-host');
   const key = JSON.stringify([environment.PATH, platform]);
@@ -37,7 +37,7 @@ export function resourceCommand(command, args, environment, platform = process.p
     : direct('native-accounting-unavailable');
 }
 
-export function commandResourceReader(plan) {
+function commandResourceReader(plan) {
   const chunks = []; let bytes = 0;
   return {
     accept(chunk) { bytes += chunk.length; if (bytes <= LIMIT) chunks.push(chunk); },
@@ -58,3 +58,6 @@ export function commandResourceReader(plan) {
     },
   };
 }
+
+exports.resourceCommand = resourceCommand;
+exports.commandResourceReader = commandResourceReader;

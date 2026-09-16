@@ -14,7 +14,7 @@ const runtimeRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
 const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validation-policy.mjs',
   'bin/agentic-os-validation-inputs.mjs', 'bin/agentic-os-test-inputs.mjs', 'bin/agentic-os-test-receipt.mjs',
   'bin/agentic-os-test-ci.mjs', 'bin/agentic-os-validation-economy.mjs',
-  'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs', 'bin/agentic-os-test-command-resources.mjs'];
+  'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs', 'bin/agentic-os-test-command-resources.cjs'];
 const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
 export function validationArguments(argv) {
   const [mode = 'run', ...flags] = argv;

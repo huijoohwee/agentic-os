@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeCommand } from '../bin/agentic-os-test-receipt.mjs';
 import { validationChecks } from '../bin/agentic-os-tests.mjs';
-import { resourceCommand, commandResourceReader } from '../bin/agentic-os-test-command-resources.mjs';
+import { resourceCommand, commandResourceReader } from '../bin/agentic-os-test-command-resources.cjs';
 
 test('real command resources stay outside output and preserve command exit status', async () => {
   const result = await executeCommand(process.cwd(), process.execPath, ['-e', `
@@ -62,10 +62,10 @@ test('changing accounting invalidates cached results even for an unrelated bound
     packaging: ['package.test.mjs'], broad: ['package.json', 'test/impact-contracts.json'], rules: [], dependencies: {} };
   const after = new Map(Object.entries({ 'package.json': '{}', 'test/impact-contracts.json': JSON.stringify(contracts),
     '__tests__/safety.test.mjs': '', '__tests__/package.test.mjs': '', '__tests__/pure.test.mjs': 'assert.equal(1,1)',
-    'bin/agentic-os-test-command-resources.mjs': 'accounting-v1' }).map(([path, text]) => [path, file(text)]));
+    'bin/agentic-os-test-command-resources.cjs': 'accounting-v1' }).map(([path, text]) => [path, file(text)]));
   const plan = { suites: [{ path: '__tests__/pure.test.mjs', stage: 'behavior' }] };
   const observe = () => validationChecks({ after, identity: { root: '/fixture' } }, plan)[1];
   const before = observe(); assert.equal(before.inputs.scope, 'inputs');
-  after.set('bin/agentic-os-test-command-resources.mjs', file('accounting-v2'));
+  after.set('bin/agentic-os-test-command-resources.cjs', file('accounting-v2'));
   assert.notEqual(observe().fingerprint, before.fingerprint);
 });

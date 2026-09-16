@@ -1,4 +1,5 @@
 /** Private worktree test receipts; never provider or deployment proof. */
+import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { lstatSync, mkdirSync, realpathSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -72,16 +73,17 @@ export function writeCheck(directory, check, result, finishedAt = Date.now()) {
   writeReceipt(directory, `${check.id}.json`, receipt);
   return receipt;
 }
+const require = createRequire(import.meta.url);
 export const COMMAND_PROGRESS_INTERVAL_MS = 30_000;
 export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes,
   outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024, onProgress } = {}) {
   if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
   if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
-  return import('./agentic-os-test-command-resources.mjs').then(({ resourceCommand, commandResourceReader }) => {
+  const started = performance.now(), startedAt = Date.now();
+  const { resourceCommand, commandResourceReader } = require('./agentic-os-test-command-resources.cjs');
   const environment = executionEnvironment(), plan = resourceCommand(command, args, environment);
   const accounting = commandResourceReader(plan);
   return new Promise(resolveResult => {
-    const started = performance.now(), startedAt = Date.now();
     const child = spawn(plan.command, plan.args, { cwd: root, env: environment,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(plan.measured ? ['pipe'] : [])] });
     if (plan.measured) child.stdio[3].on('data', accounting.accept);
@@ -98,7 +100,7 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
       signalGroup('SIGTERM'); forceTimer = setTimeout(kill, 250);
     };
     const cancel = () => stop('cancelled');
-    const timer = setTimeout(() => stop('timeout'), timeoutMs);
+    const timer = setTimeout(() => stop('timeout'), Math.max(1, timeoutMs - (performance.now() - started)));
     // Diagnostics are rate bounded and contain no child output, credentials or source bytes.
     // Keep them outside the content-bound result and release authority.
     const progressTimer = onProgress ? setInterval(() => {
@@ -141,6 +143,5 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]
           .map(match => [match[1], Number(match[2])])) });
     });
-  });
   });
 }
