@@ -12,7 +12,8 @@ function requireRecord(value, now) {
   return clone(value);
 }
 
-export function createAgentSwarmMemoryStore({ now = () => Date.now() } = {}) {
+export function createMemoryRecordStore({ now = () => Date.now(), identityField = "runId", validate = assertIdentifier, countField = "activeRuns" } = {}) {
+  const identity = value => validate(value, identityField, identityField === "recordId" ? 512 : 256);
   if (typeof now !== "function") throw new TypeError("now must be a function.");
   const records = new Map();
   const claims = new Map();
@@ -48,20 +49,20 @@ export function createAgentSwarmMemoryStore({ now = () => Date.now() } = {}) {
     async put(value) {
       const at = instant();
       const record = requireRecord(value, at);
-      const runId = assertIdentifier(record.runId, "record.runId");
+      const runId = identity(record[identityField]);
       if (liveClaim(runId, at) || liveRecord(runId, at)) return false;
       records.set(runId, record);
       return true;
     },
     async get(value) {
-      const runId = assertIdentifier(value, "runId");
+      const runId = identity(value);
       const at = instant();
       const claim = liveClaim(runId, at);
       return clone(claim?.record || liveRecord(runId, at));
     },
     async claim(value, claimIdValue, claimExpiresAt) {
-      const runId = assertIdentifier(value, "runId");
-      const claimId = assertIdentifier(claimIdValue, "claimId", 512);
+      const runId = identity(value);
+      const claimId = validate(claimIdValue, "claimId", 512);
       const at = instant();
       if (!Number.isFinite(claimExpiresAt) || claimExpiresAt <= at) {
         throw new TypeError("claimExpiresAt must be a future timestamp.");
@@ -74,20 +75,20 @@ export function createAgentSwarmMemoryStore({ now = () => Date.now() } = {}) {
       return clone(record);
     },
     async replace(value, claimIdValue, replacement) {
-      const runId = assertIdentifier(value, "runId");
-      const claimId = assertIdentifier(claimIdValue, "claimId", 512);
+      const runId = identity(value);
+      const claimId = validate(claimIdValue, "claimId", 512);
       const at = instant();
       const claim = liveClaim(runId, at);
       if (!claim || claim.claimId !== claimId) return false;
       const record = requireRecord(replacement, at);
-      if (record.runId !== runId) throw new TypeError("Replacement run identity changed.");
+      if (record[identityField] !== runId) throw new TypeError("Replacement run identity changed.");
       claims.delete(runId);
       records.set(runId, record);
       return true;
     },
     async release(value, claimIdValue) {
-      const runId = assertIdentifier(value, "runId");
-      const claimId = assertIdentifier(claimIdValue, "claimId", 512);
+      const runId = identity(value);
+      const claimId = validate(claimIdValue, "claimId", 512);
       const at = instant();
       const claim = liveClaim(runId, at);
       if (!claim || claim.claimId !== claimId) return false;
@@ -96,8 +97,8 @@ export function createAgentSwarmMemoryStore({ now = () => Date.now() } = {}) {
       return true;
     },
     async commit(value, claimIdValue) {
-      const runId = assertIdentifier(value, "runId");
-      const claimId = assertIdentifier(claimIdValue, "claimId", 512);
+      const runId = identity(value);
+      const claimId = validate(claimIdValue, "claimId", 512);
       const at = instant();
       const claim = liveClaim(runId, at);
       if (!claim || claim.claimId !== claimId) return false;
@@ -105,7 +106,7 @@ export function createAgentSwarmMemoryStore({ now = () => Date.now() } = {}) {
       return true;
     },
     async delete(value) {
-      const runId = assertIdentifier(value, "runId");
+      const runId = identity(value);
       records.delete(runId);
       claims.delete(runId);
       return true;
@@ -114,7 +115,9 @@ export function createAgentSwarmMemoryStore({ now = () => Date.now() } = {}) {
       persistence: "isolate-memory",
       atomicClaims: true,
       horizontalRecovery: false,
-      activeRuns: records.size + claims.size,
+      [countField]: records.size + claims.size,
     }),
   });
 }
+
+export const createAgentSwarmMemoryStore = ({ now } = {}) => createMemoryRecordStore({ now });

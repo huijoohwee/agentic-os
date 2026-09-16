@@ -1,15 +1,21 @@
 import { normalizeJson } from '../json-contract.mjs';
 import { AGENT_SWARM_DEFAULTS, assertExactKeys, assertIdentifier, normalizeRunOperation,
   normalizeStartRequest } from './agent-swarm-contract.js';
+import { normalizeTraceQuery, normalizeEvaluateRequest, normalizeCompareRequest, AGENT_TOOLKIT_DEFAULTS } from './agent-toolkit-contract.js';
 
-const OPERATIONS = new Set(['start', 'status', 'cancel', 'retry']);
+export const RUN_OPERATIONS = Object.freeze(['start', 'status', 'cancel', 'retry', 'query', 'trace', 'evaluate', 'compare']);
+const OPERATIONS = new Set(RUN_OPERATIONS);
+const readOnly = operation => ['status', 'query', 'trace', 'compare'].includes(operation);
 export const RUN_INPUT_BYTES = 200_000;
 export function validateRunInput(operation, input) {
   if (!OPERATIONS.has(operation)) throw new TypeError('Unknown durable run operation.');
   const value = normalizeJson(input, 'run input');
   if (new TextEncoder().encode(JSON.stringify(value)).byteLength > RUN_INPUT_BYTES) throw new RangeError('Run input exceeds its byte bound.');
   if (Object.hasOwn(value ?? {}, 'signal')) throw new TypeError('signal is owned by the transport.');
-  if (operation === 'start') normalizeStartRequest(value, AGENT_SWARM_DEFAULTS);
+  if (operation === 'query' || operation === 'trace') normalizeTraceQuery(value, operation === 'trace');
+  else if (operation === 'evaluate') normalizeEvaluateRequest(value);
+  else if (operation === 'compare') normalizeCompareRequest(value, AGENT_TOOLKIT_DEFAULTS.comparison);
+  else if (operation === 'start') normalizeStartRequest(value, AGENT_SWARM_DEFAULTS);
   else if (operation === 'status') { assertExactKeys(value, ['runId'], 'request'); assertIdentifier(value.runId, 'runId'); }
   else if (operation === 'cancel') normalizeRunOperation(value, { reason: true });
   else {
@@ -24,6 +30,7 @@ export async function dispatchRunOperation(runtime, operation, input, context, s
   const value = validateRunInput(operation, input);
   if (typeof runtime?.[operation] !== 'function') throw new TypeError('Durable run operation is unavailable.');
   if (operation === 'status') return runtime.status(value.runId, context);
+  if (['query', 'trace', 'compare'].includes(operation)) return runtime[operation](value, context);
   return runtime[operation]({ ...value, ...(signal && operation !== 'cancel' ? { signal } : {}) }, context);
 }
 
@@ -77,13 +84,14 @@ export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, g
       if (!response.ok) return Object.freeze({ status: 'blocked', stage: 'agent-swarm', runId: value.runId,
         reasonCode: response.status === 401 ? 'principal_expired' : response.status === 403 ? 'run_forbidden'
           : typeof result.reasonCode === 'string' ? result.reasonCode : typeof result.code === 'string' ? result.code : 'run_request_rejected',
-        httpStatus: response.status, ...(response.status >= 500 && operation !== 'status' ? { writeResultUnknown: true } : {}) });
-      if (result.runId !== value.runId || !['planning', 'running', 'completed', 'blocked', 'canceled', 'pending', 'idle', 'reconciling', 'synthesizing'].includes(result.status))
+        httpStatus: response.status, ...(response.status >= 500 && !readOnly(operation) ? { writeResultUnknown: true } : {}) });
+      if ((value.runId !== undefined && result.runId !== value.runId)
+        || !['planning', 'running', 'completed', 'blocked', 'canceled', 'pending', 'idle', 'reconciling', 'synthesizing', 'failed', 'insufficient-evidence'].includes(result.status))
         throw new TypeError('Run response identity or status is invalid.');
       return normalizeJson(result, 'run response');
     } catch {
       throw Object.assign(new Error('Run transport failed; inspect the same run before retrying.'), {
-        reasonCode: 'run_transport_failed', writeResultUnknown: dispatched && operation !== 'status' });
+        reasonCode: 'run_transport_failed', writeResultUnknown: dispatched && !readOnly(operation) });
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   } });
 }

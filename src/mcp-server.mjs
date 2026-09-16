@@ -280,7 +280,7 @@ async function callResult(params, modern, options) {
   const argv = toolArguments(params.name, params.arguments);
   const run = options.runCli;
   if (typeof run !== 'function') throw new Error('CLI runner is unavailable');
-  const effectful = ['lane', 'reap', 'collaborate'].includes(params.name) || (stdin !== undefined && params.name !== 'run.status');
+  const effectful = ['lane', 'reap', 'collaborate'].includes(params.name) || (stdin !== undefined && RUN_TOOLS.find(tool => tool.name === params.name)?.annotations.readOnlyHint !== true);
   if (effectful) options.onEffectful?.();
   let payload = await run(argv, {
     cwd: options.cwd, signal: effectful ? undefined : options.signal, effectful, ...(stdin === undefined ? {} : { stdin }),

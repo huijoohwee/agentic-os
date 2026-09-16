@@ -1,3 +1,4 @@
+import { withDeadline } from "./running-agent-contract.js";
 import { digestToolkitEvidence } from "./agent-toolkit-ledger.js";
 
 const SCHEMA = "agent-toolkit-telemetry/v1";
@@ -28,7 +29,7 @@ export function createAgentToolkitObservability({ exporter, now } = {}) {
       durationMs: Math.max(0, finishedAt - startedAt),
     });
     try {
-      await exporter(event);
+      await withDeadline(() => exporter(event), undefined, 100, new AbortController());
       return true;
     } catch {
       return false;

@@ -1,5 +1,5 @@
 import { normalizeJson, serializedJsonLength } from "../json-contract.mjs";
-import { normalizeCostLog } from "./running-agent-contract.js";
+import { normalizeCostLog, assertIdentifier as identifier, assertExactKeys, normalizeSignal } from "./running-agent-contract.js";
 
 export const AGENT_TOOLKIT_RUN_SCHEMA = "agent-toolkit-run/v1";
 export const AGENT_TOOLKIT_COHORT_SCHEMA = "agent-toolkit-cohort/v1";
@@ -55,16 +55,9 @@ export class AgentToolkitBlock extends Error {
   }
 }
 
-export function assertExactKeys(value, keys, field) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object.`);
-  const unknown = Object.keys(value).filter((key) => !keys.includes(key));
-  if (unknown.length) throw new TypeError(`${field} contains unsupported fields: ${unknown.join(", ")}.`);
-}
-
+export { assertExactKeys };
 export function assertIdentifier(value, field, maxChars = 256) {
-  if (typeof value !== "string" || !value.trim()) throw new TypeError(`${field} must be a non-empty string.`);
-  const normalized = value.trim();
-  if (normalized.length > maxChars) throw new RangeError(`${field} exceeds ${maxChars} characters.`);
+  const normalized = identifier(value, field, maxChars);
   if (!MACHINE_TOKEN.test(normalized)) throw new TypeError(`${field} must be an opaque machine token.`);
   return normalized;
 }
@@ -73,15 +66,6 @@ function assertDigest(value, field) {
   const digest = assertIdentifier(value, field, 64).toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(digest)) throw new TypeError(`${field} must be a SHA-256 digest.`);
   return digest;
-}
-
-function normalizeSignal(value, field) {
-  if (value !== undefined && (
-    typeof value?.aborted !== "boolean"
-    || typeof value?.addEventListener !== "function"
-    || typeof value?.removeEventListener !== "function"
-  )) throw new TypeError(`${field} must be an AbortSignal when provided.`);
-  return value;
 }
 
 export function normalizeAccessContext(value = {}) {
@@ -98,8 +82,8 @@ export function normalizeAccessContext(value = {}) {
   });
 }
 
-function normalizeRevisionRef(value, field) {
-  assertExactKeys(value, ["id", "revision", "digest"], field);
+function normalizeRevisionRef(value, field, extras = []) {
+  assertExactKeys(value, ["id", "revision", "digest", ...extras], field);
   return Object.freeze({
     id: assertIdentifier(value.id, `${field}.id`),
     revision: assertIdentifier(value.revision, `${field}.revision`),
@@ -107,35 +91,18 @@ function normalizeRevisionRef(value, field) {
   });
 }
 
-export function normalizeCandidate(value, field = "candidate") {
-  assertExactKeys(value, ["id", "revision", "digest"], field);
-  return Object.freeze({
-    id: assertIdentifier(value.id, `${field}.id`),
-    revision: assertIdentifier(value.revision, `${field}.revision`),
-    digest: assertDigest(value.digest, `${field}.digest`),
-  });
-}
+export const normalizeCandidate = (value, field = 'candidate') => normalizeRevisionRef(value, field);
 
 function normalizeTarget(value) {
-  assertExactKeys(value, ["kind", "id", "revision", "digest"], "request.target");
-  if (!TARGET_KINDS.has(value.kind)) throw new TypeError("request.target.kind must be agent or team.");
-  return Object.freeze({
-    kind: value.kind,
-    id: assertIdentifier(value.id, "request.target.id"),
-    revision: assertIdentifier(value.revision, "request.target.revision"),
-    digest: assertDigest(value.digest, "request.target.digest"),
-  });
+  const reference = normalizeRevisionRef(value, 'request.target', ['kind']);
+  if (!TARGET_KINDS.has(value.kind)) throw new TypeError('request.target.kind must be agent or team.');
+  return Object.freeze({ ...reference, kind: value.kind });
 }
 
-function normalizeMetric(value, field = "request.profile.metric") {
-  assertExactKeys(value, ["id", "revision", "digest", "direction"], field);
+function normalizeMetric(value, field = 'request.profile.metric') {
+  const reference = normalizeRevisionRef(value, field, ['direction']);
   if (!DIRECTIONS.has(value.direction)) throw new TypeError(`${field}.direction is unsupported.`);
-  return Object.freeze({
-    id: assertIdentifier(value.id, `${field}.id`),
-    revision: assertIdentifier(value.revision, `${field}.revision`),
-    digest: assertDigest(value.digest, `${field}.digest`),
-    direction: value.direction,
-  });
+  return Object.freeze({ ...reference, direction: value.direction });
 }
 
 function normalizeProfile(value) {
@@ -149,7 +116,7 @@ function normalizeProfile(value) {
 
 export function normalizeStartRequest(value) {
   assertExactKeys(value, [
-    "runId", "cohortId", "target", "candidate", "adapter", "operation", "profile", "signal",
+    "runId", "cohortId", "target", "candidate", "adapter", "operation", "profile", "signal", "context",
   ], "request");
   return Object.freeze({
     runId: assertIdentifier(value.runId, "request.runId"),
@@ -159,13 +126,76 @@ export function normalizeStartRequest(value) {
     adapter: normalizeRevisionRef(value.adapter, "request.adapter"),
     operation: assertIdentifier(value.operation, "request.operation"),
     profile: normalizeProfile(value.profile),
+    ...(value.context === undefined ? {} : { context: normalizeRunContext(value.context) }),
     signal: normalizeSignal(value.signal, "request.signal"),
   });
 }
 
+/** References only. The host must resolve the enrolled source before dispatch. */
+export function normalizeRunContext(value) {
+  assertExactKeys(value, ['projectId', 'goalId', 'taskId', 'plan', 'receipt'], 'context');
+  const plan = value.plan;
+  assertExactKeys(plan, ['repository', 'path', 'revision', 'digest', 'continuityId', 'revisions'], 'context.plan');
+  const roles = ['prd', 'tad', 'adr', 'mvp', 'gtm'];
+  assertExactKeys(plan.revisions, roles, 'context.plan.revisions');
+  const revisions = Object.fromEntries(roles.map(role => [role, assertIdentifier(plan.revisions[role], role, 64)]));
+  if (new Set(Object.values(revisions)).size !== 1 || !/^[a-f0-9]{40}$/.test(plan.revision)
+    || !/^[a-z0-9.-]+\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(plan.repository)
+    || typeof plan.path !== 'string' || plan.path.startsWith('/') || plan.path.split('/').some(p => !p || p === '.' || p === '..'))
+    throw new AgentToolkitBlock('context_join_invalid', 'Exact source and five-role revision join required.');
+  return Object.freeze({ ...Object.fromEntries(['projectId', 'goalId', 'taskId'].map(k => [k, assertIdentifier(value[k], k, 128)])),
+    plan: { repository: assertIdentifier(plan.repository, 'repository', 256), path: assertIdentifier(plan.path, 'path', 256), revision: plan.revision,
+      digest: assertDigest(plan.digest, 'plan.digest'), continuityId: assertIdentifier(plan.continuityId, 'continuityId'), revisions },
+    ...(value.receipt === undefined ? {} : { receipt: normalizeEvidenceRef(value.receipt, 'receipt') }) });
+}
+
+export const RESOURCE_UNITS = Object.freeze(['inputTokens', 'outputTokens', 'attempts', 'elapsedMs']);
+export function normalizeResources(value) {
+  assertExactKeys(value, RESOURCE_UNITS, 'resources');
+  return Object.freeze(Object.fromEntries(RESOURCE_UNITS.map(k => {
+    if (!Number.isSafeInteger(value[k]) || value[k] < 0 || value[k] > 1_000_000_000_000)
+      throw new TypeError(`Invalid resource unit: ${k}`);
+    return [k, value[k]];
+  })));
+}
+
+export function normalizeAllocation(value) {
+  assertExactKeys(value, ['id', 'revision', 'windowId', 'startsAt', 'endsAt', 'project', 'agent', 'run', 'bounds', 'providerCostMicros'], 'allocation');
+  if (value.providerCostMicros !== 0 || !Number.isSafeInteger(value.startsAt) || !Number.isSafeInteger(value.endsAt)
+    || value.startsAt < 0 || value.endsAt <= value.startsAt || value.endsAt - value.startsAt > 7 * 86400_000
+    || value.bounds?.attempts !== 1 || value.bounds?.elapsedMs < 1 || value.bounds?.elapsedMs > 60_000)
+    throw new AgentToolkitBlock('allocation_invalid', 'A bounded free allocation is required.');
+  return Object.freeze({ ...Object.fromEntries(['id', 'revision', 'windowId'].map(k => [k, assertIdentifier(value[k], k, 128)])),
+    startsAt: value.startsAt, endsAt: value.endsAt, providerCostMicros: 0,
+    ...Object.fromEntries(['project', 'agent', 'run', 'bounds'].map(k => [k, normalizeResources(value[k])])) });
+}
+
+export function normalizeTraceQuery(value = {}, detail = false) {
+  assertExactKeys(value, detail ? ['runId', 'limit', 'cursor'] : ['limit', 'cursor', 'from', 'to', 'projectId', 'agentId', 'status'], 'trace query');
+  const limit = value.limit ?? 16;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32) throw new TypeError('Trace page limit must be 1..32.');
+  const result = { limit };
+  for (const key of detail ? ['runId'] : ['projectId', 'agentId', 'status']) {
+    if (value[key] !== undefined || detail) result[key] = assertIdentifier(value[key], key, 256);
+  }
+  for (const key of ['from', 'to']) if (value[key] !== undefined) {
+    if (!Number.isSafeInteger(value[key]) || value[key] < 0) throw new TypeError('Invalid trace time window.');
+    result[key] = value[key];
+  }
+  if (value.cursor !== undefined) {
+    if (typeof value.cursor !== 'string' || value.cursor.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(value.cursor)) throw new TypeError('Invalid trace cursor.');
+    result.cursor = value.cursor;
+  }
+  return Object.freeze(result);
+}
+
 export function normalizeSpanStartRequest(value) {
-  assertExactKeys(value, ["runId", "spanId", "parentSpanId", "kind", "operation", "component"], "request");
+  assertExactKeys(value, ["runId", "spanId", "parentSpanId", "kind", "operation", "component", "taskId", "attempt", "links"], "request");
   if (!SPAN_KINDS.has(value.kind)) throw new TypeError("request.kind is unsupported.");
+  const correlation = value.taskId === undefined && value.attempt === undefined ? {} : { taskId: assertIdentifier(value.taskId, 'taskId'), attempt: value.attempt };
+  if (Object.keys(correlation).length && (!Number.isSafeInteger(value.attempt) || value.attempt < 1 || value.attempt > 128)) throw new TypeError('Invalid attempt.');
+  const links = value.links === undefined ? undefined : value.links;
+  if (links !== undefined && (!Array.isArray(links) || links.length > 32)) throw new TypeError('Bounded span links required.');
   return Object.freeze({
     runId: assertIdentifier(value.runId, "request.runId"),
     spanId: assertIdentifier(value.spanId, "request.spanId"),
@@ -175,11 +205,18 @@ export function normalizeSpanStartRequest(value) {
     kind: value.kind,
     operation: assertIdentifier(value.operation, "request.operation"),
     component: normalizeRevisionRef(value.component, "request.component"),
+    ...correlation,
+    ...(links === undefined ? {} : { links: links.map(link => {
+      assertExactKeys(link, ['spanId', 'kind'], 'link');
+      if (!['dependency', 'handoff'].includes(link.kind)) throw new TypeError('Invalid causal link kind.');
+      return { spanId: assertIdentifier(link.spanId, 'link.spanId'), kind: link.kind };
+    }) }),
   });
 }
 
 export function normalizeSpanFinishRequest(value) {
-  assertExactKeys(value, ["runId", "spanId", "status", "reasonCode"], "request");
+  assertExactKeys(value, ["runId", "spanId", "status", "reasonCode", "effectId", "costLog"], "request");
+  if (value.costLog !== undefined && value.effectId === undefined) throw new TypeError('Usage requires an effect identity.');
   if (!TERMINAL_STATUSES.has(value.status)) throw new TypeError("request.status is unsupported.");
   if (value.status === "completed" && value.reasonCode !== undefined) {
     throw new TypeError("Completed spans cannot include a reasonCode.");
@@ -188,6 +225,8 @@ export function normalizeSpanFinishRequest(value) {
     runId: assertIdentifier(value.runId, "request.runId"),
     spanId: assertIdentifier(value.spanId, "request.spanId"),
     status: value.status,
+    ...(value.effectId === undefined ? {} : { effectId: assertIdentifier(value.effectId, 'effectId') }),
+    ...(value.costLog === undefined ? {} : { costLog: normalizeToolkitCostLog(value.costLog) }),
     ...(value.reasonCode === undefined ? {} : { reasonCode: normalizeReasonCode(value.reasonCode, "request.reasonCode") }),
   });
 }
@@ -216,11 +255,13 @@ export function normalizeEvidenceRef(value, field = "request.evidence") {
 }
 
 export function normalizeEvaluateRequest(value) {
-  assertExactKeys(value, ["runId", "operationId", "evidence", "signal"], "request");
+  assertExactKeys(value, ["runId", "operationId", "evidence", "signal", "spanId", "subjectDigest"], "request");
   return Object.freeze({
     runId: assertIdentifier(value.runId, "request.runId"),
     operationId: assertIdentifier(value.operationId, "request.operationId"),
     evidence: normalizeEvidenceRef(value.evidence),
+    ...(value.spanId === undefined ? {} : { spanId: assertIdentifier(value.spanId, 'spanId') }),
+    ...(value.subjectDigest === undefined && value.spanId === undefined ? {} : { subjectDigest: assertDigest(value.subjectDigest, 'subjectDigest') }),
     signal: normalizeSignal(value.signal, "request.signal"),
   });
 }

@@ -1,5 +1,6 @@
 import { constants, closeSync, lstatSync, mkdirSync, openSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { canonicalizeJson } from '../json-contract.mjs';
 import { assertIdentifier } from './agent-swarm-contract.js';
 
@@ -13,6 +14,26 @@ function privatePath(path, directory = false) {
     || (stat.mode & 0o077) !== 0 || (process.getuid && stat.uid !== process.getuid())) {
     throw new TypeError('Agent state requires a private owned directory and regular files.');
   }
+}
+
+/** Toolkit records reuse the same local atomic storage protocol in an inert envelope. */
+export async function createAgentToolkitSqliteStore(options) {
+  const store = await createAgentSwarmSqliteStore(options);
+  const key = id => `toolkit:${createHash('sha256').update(assertIdentifier(id, 'recordId', 512)).digest('hex')}`;
+  const wrap = value => ({ runId: key(value.recordId), ownerPrincipalId: value.ownerPrincipalId ?? value.principalDigest ?? 'toolkit-admission',
+    expiresAt: value.expiresAt, status: 'completed', payload: value });
+  return Object.freeze({
+    put: value => store.put(wrap(value)),
+    get: async id => (await store.get(key(id)))?.payload ?? null,
+    claim: async (id, claim, expires) => (await store.claim(key(id), claim, expires))?.payload ?? null,
+    replace: (id, claim, value) => {
+      if (id !== value.recordId) throw new TypeError('Toolkit record identity changed.');
+      return store.replace(key(id), claim, wrap(value));
+    },
+    release: (id, claim) => store.release(key(id), claim),
+    commit: (id, claim) => store.commit(key(id), claim),
+    delete: id => store.delete(key(id)), stats: store.stats, close: store.close,
+  });
 }
 
 function preparePath(directory) {
@@ -52,7 +73,15 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
     if (tables.length && !tables.some(({ name }) => name === 'agent_store_meta')) {
       throw new TypeError('Unknown agent state database; no migration was authorized.');
     }
-    db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; BEGIN IMMEDIATE');
+    // SQLite may reject a simultaneous first WAL transition without waiting on busy_timeout.
+    for (let attempt = 0; ; attempt++) {
+      try { db.exec('PRAGMA journal_mode=WAL'); break; }
+      catch (error) {
+        if (error.errcode !== 5 || attempt >= 7) throw error;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    }
+    db.exec('PRAGMA synchronous=FULL; BEGIN IMMEDIATE');
     db.exec(`CREATE TABLE IF NOT EXISTS agent_store_meta
       (id INTEGER PRIMARY KEY CHECK(id=1), schema TEXT NOT NULL, config TEXT NOT NULL, clock INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS agent_records

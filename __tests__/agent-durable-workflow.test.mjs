@@ -87,6 +87,27 @@ test('local model adapter is bounded, revision-bound, read-only and honest about
     error instanceof AgentSwarmFailure && error.kind === 'transient' && error.effectState === 'absent');
 });
 
+test('resource bounds require a verified input limit and cap local output and execution time', async () => {
+  const modelDigest = 'a'.repeat(64), imageDigest = `sha256:${'b'.repeat(64)}`;
+  const call = { input: {}, execution: { idempotencyKey: 'bound' },
+    resourceBounds: { inputTokens: 1024, outputTokens: 7, attempts: 1, elapsedMs: 20 } };
+  let dispatched = 0;
+  const options = { endpoint: 'http://localhost:1234/', modelDigest, imageDigest, inputTokenLimit: 1024,
+    fetchImpl: async (_, init) => {
+      dispatched++;
+      assert.equal(JSON.parse(init.body).max_tokens, 7);
+      await new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(Error('bounded')), { once: true }));
+    } };
+  for (const inputTokenLimit of [undefined, 2048]) {
+    await assert.rejects(createLocalModelExecutor({ ...options, inputTokenLimit })(call), error => error.reasonCode === 'local_budget_ineligible');
+  }
+  assert.equal(dispatched, 0);
+  const before = Date.now();
+  await assert.rejects(createLocalModelExecutor(options)(call), error => error.reasonCode === 'local_model_unavailable');
+  assert.equal(dispatched, 1);
+  assert.ok(Date.now() - before < 1000);
+});
+
 test('duplicate request keys preserve one normalized request, owner and definition', async () => {
   const stateStore = createAgentSwarmMemoryStore({ now: () => 1_000 });
   const runtime = fixture({ stateStore });

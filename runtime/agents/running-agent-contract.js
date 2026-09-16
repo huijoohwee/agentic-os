@@ -42,10 +42,10 @@ export function assertPositiveInteger(value, field) {
   return value;
 }
 
-export function assertIdentifier(value, field) {
+export function assertIdentifier(value, field, maxChars = 512) {
   if (typeof value !== "string" || !value.trim()) throw new TypeError(`${field} must be a non-empty string.`);
   const normalized = value.trim();
-  if (normalized.length > 512) throw new RangeError(`${field} exceeds 512 characters.`);
+  if (normalized.length > maxChars) throw new RangeError(`${field} exceeds ${maxChars} characters.`);
   return normalized;
 }
 
@@ -55,6 +55,21 @@ export function normalizeBoundedJson(value, field, maxChars) {
     throw new RangeError(`${field} exceeds ${maxChars} serialized characters.`);
   }
   return normalized;
+}
+
+export function assertExactKeys(value, keys, field) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object.`);
+  const unknown = Object.keys(value).filter((key) => !keys.includes(key));
+  if (unknown.length) throw new TypeError(`${field} contains unsupported fields: ${unknown.join(", ")}.`);
+}
+
+export function normalizeSignal(value, field) {
+  if (value !== undefined && (
+    typeof value?.aborted !== "boolean"
+    || typeof value?.addEventListener !== "function"
+    || typeof value?.removeEventListener !== "function"
+  )) throw new TypeError(`${field} must be an AbortSignal when provided.`);
+  return value;
 }
 
 function normalizeHistory(value, maxHistoryItems, maxStateChars) {

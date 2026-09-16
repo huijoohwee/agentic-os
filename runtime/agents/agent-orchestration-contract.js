@@ -1,5 +1,4 @@
-import { normalizeJson, serializedJsonLength } from "../json-contract.mjs";
-import { normalizeCostLog } from "./running-agent-contract.js";
+import { normalizeCostLog, assertPositiveInteger, assertIdentifier as identifier, assertExactKeys, normalizeBoundedJson } from "./running-agent-contract.js";
 
 export const ORCHESTRATION_MODES = Object.freeze(["delegate", "handoff"]);
 const MODE_SET = new Set(ORCHESTRATION_MODES);
@@ -22,29 +21,8 @@ export class AgentOrchestrationBlock extends Error {
   }
 }
 
-export function assertPositiveInteger(value, field) {
-  if (!Number.isInteger(value) || value < 1) throw new TypeError(`${field} must be a positive integer.`);
-  return value;
-}
-
-export function assertIdentifier(value, field) {
-  if (typeof value !== "string" || !value.trim()) throw new TypeError(`${field} must be a non-empty string.`);
-  const normalized = value.trim();
-  if (normalized.length > 256) throw new RangeError(`${field} exceeds 256 characters.`);
-  return normalized;
-}
-
-export function assertExactKeys(value, keys, field) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object.`);
-  const unknown = Object.keys(value).filter((key) => !keys.includes(key));
-  if (unknown.length) throw new TypeError(`${field} contains unsupported fields: ${unknown.join(", ")}.`);
-}
-
-export function normalizeBoundedJson(value, field, maxChars) {
-  const normalized = normalizeJson(value, field);
-  if (serializedJsonLength(normalized) > maxChars) throw new RangeError(`${field} exceeds ${maxChars} characters.`);
-  return normalized;
-}
+export { assertPositiveInteger, assertExactKeys, normalizeBoundedJson };
+export const assertIdentifier = (value, field, maxChars = 256) => identifier(value, field, maxChars);
 
 function normalizeAgentReference(value, field) {
   assertExactKeys(value, ["agentId", "revision"], field);

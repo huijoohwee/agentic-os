@@ -17,14 +17,14 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:881634367e1688839e2ed0d616b25e217aaf94bcf8a94826d72004f5adfd7b80'],
+  claims: ['sha256:0d34860bc49c056824d8041624ac253e783a3aee0ba5342e2b2443ad1dbeff5f'],
 });
 
 const clone = (value) => structuredClone(value);
 
-test('the packaged catalog has nineteen unique entries behind count and digest fences', () => {
+test('the packaged catalog has twenty-three unique entries behind count and digest fences', () => {
   const catalog = loadCatalog();
-  assert.equal(catalog.entryCount, 19);
+  assert.equal(catalog.entryCount, 23);
   assert.equal(catalog.digest, catalogDigest(catalog.entries));
   assert.deepEqual(validateCatalog(catalog), { ok: true, findings: [] });
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));

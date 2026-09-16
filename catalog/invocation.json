@@ -1,7 +1,7 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
-  "entryCount": 19,
-  "digest": "sha256:9240d377b8545f81026f928dce53ab79924ef9dfb9ddcf4f87136f9ebbfb39ce",
+  "entryCount": 23,
+  "digest": "sha256:bfb36ced306f030a8f37d1b03da39af4070746400af9d955b0863225467c3c44",
   "entries": [
     {
       "token": "/setup",
@@ -109,59 +109,7 @@
         "input"
       ],
       "summary": "Start or retrieve the same authenticated durable job.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "conversationId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "agent": {
-            "type": "object",
-            "properties": {
-              "agentId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256
-              },
-              "revision": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256
-              }
-            },
-            "required": [
-              "agentId",
-              "revision"
-            ],
-            "additionalProperties": false
-          },
-          "goal": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40000
-          },
-          "input": {},
-          "maxParallel": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 8
-          }
-        },
-        "required": [
-          "runId",
-          "conversationId",
-          "agent",
-          "goal"
-        ],
-        "additionalProperties": false
-      }
+      "inputSchema": {"type":"object","properties":{"runId":{"type":"string","minLength":1,"maxLength":256},"conversationId":{"type":"string","minLength":1,"maxLength":256},"agent":{"type":"object","properties":{"agentId":{"type":"string","minLength":1,"maxLength":256},"revision":{"type":"string","minLength":1,"maxLength":256}},"required":["agentId","revision"],"additionalProperties":false},"goal":{"type":"string","minLength":1,"maxLength":40000},"input":{},"maxParallel":{"type":"integer","minimum":1,"maximum":8},"context":{"type":"object","properties":{"projectId":{"type":"string","minLength":1,"maxLength":128},"goalId":{"type":"string","minLength":1,"maxLength":128},"taskId":{"type":"string","minLength":1,"maxLength":128},"plan":{"type":"object","properties":{"repository":{"type":"string","minLength":1,"maxLength":256},"path":{"type":"string","minLength":1,"maxLength":256},"revision":{"type":"string","pattern":"^[a-f0-9]{40}$"},"digest":{"type":"string","pattern":"^[a-f0-9]{64}$"},"continuityId":{"type":"string","minLength":1,"maxLength":256},"revisions":{"type":"object","properties":{"prd":{"type":"string","minLength":1,"maxLength":64},"tad":{"type":"string","minLength":1,"maxLength":64},"adr":{"type":"string","minLength":1,"maxLength":64},"mvp":{"type":"string","minLength":1,"maxLength":64},"gtm":{"type":"string","minLength":1,"maxLength":64}},"required":["prd","tad","adr","mvp","gtm"],"additionalProperties":false}},"required":["repository","path","revision","digest","continuityId","revisions"],"additionalProperties":false},"receipt":{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":256},"digest":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","digest"],"additionalProperties":false}},"required":["projectId","goalId","taskId","plan"],"additionalProperties":false}},"required":["runId","conversationId","agent","goal"],"additionalProperties":false}
     },
     {
       "token": "/run.status",
@@ -178,20 +126,7 @@
         "input"
       ],
       "summary": "Read one authenticated durable job.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "runId"
-        ],
-        "additionalProperties": false
-      }
+      "inputSchema": {"type":"object","properties":{"runId":{"type":"string","minLength":1,"maxLength":256}},"required":["runId"],"additionalProperties":false}
     },
     {
       "token": "/run.cancel",
@@ -208,31 +143,7 @@
         "input"
       ],
       "summary": "Cancel future work and retain observed effect state.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "operationId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
-          }
-        },
-        "required": [
-          "runId",
-          "operationId"
-        ],
-        "additionalProperties": false
-      }
+      "inputSchema": {"type":"object","properties":{"runId":{"type":"string","minLength":1,"maxLength":256},"operationId":{"type":"string","minLength":1,"maxLength":256},"reason":{"type":"string","minLength":1,"maxLength":512}},"required":["runId","operationId"],"additionalProperties":false}
     },
     {
       "token": "/run.retry",
@@ -249,32 +160,7 @@
         "input"
       ],
       "summary": "Reconcile one uncertain effect before permitting a retry.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "operationId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "taskId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "runId",
-          "operationId",
-          "taskId"
-        ],
-        "additionalProperties": false
-      }
+      "inputSchema": {"type":"object","properties":{"runId":{"type":"string","minLength":1,"maxLength":256},"operationId":{"type":"string","minLength":1,"maxLength":256},"taskId":{"type":"string","minLength":1,"maxLength":256}},"required":["runId","operationId","taskId"],"additionalProperties":false}
     },
     {
       "token": "#read-only",
@@ -308,6 +194,74 @@
       "name": "input",
       "mode": "option",
       "summary": "Bind a bounded local JSON input file."
+    },
+    {
+      "token": "/run.query",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "query"
+      ],
+      "semantic": "read-only",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "List bounded authorized run summaries.",
+      "inputSchema": {"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":32},"cursor":{"type":"string","minLength":1,"maxLength":2048},"from":{"type":"integer","minimum":0},"to":{"type":"integer","minimum":0},"projectId":{"type":"string","minLength":1,"maxLength":256},"agentId":{"type":"string","minLength":1,"maxLength":256},"status":{"type":"string","minLength":1,"maxLength":256}},"required":[],"additionalProperties":false}
+    },
+    {
+      "token": "/run.trace",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "trace"
+      ],
+      "semantic": "read-only",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Read a bounded page of native run spans.",
+      "inputSchema": {"type":"object","properties":{"runId":{"type":"string","minLength":1,"maxLength":256},"limit":{"type":"integer","minimum":1,"maximum":32},"cursor":{"type":"string","minLength":1,"maxLength":2048}},"required":["runId"],"additionalProperties":false}
+    },
+    {
+      "token": "/run.evaluate",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "evaluate"
+      ],
+      "semantic": "mutating",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Evaluate an exact run or span subject once.",
+      "inputSchema": {"type":"object","properties":{"runId":{"type":"string","minLength":1,"maxLength":256},"spanId":{"type":"string","minLength":1,"maxLength":256},"subjectDigest":{"type":"string","pattern":"^[a-f0-9]{64}$"},"operationId":{"type":"string","minLength":1,"maxLength":256},"evidence":{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":256},"digest":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","digest"],"additionalProperties":false}},"required":["runId","operationId","evidence"],"additionalProperties":false}
+    },
+    {
+      "token": "/run.compare",
+      "kind": "command",
+      "action": "run",
+      "argv": [
+        "compare"
+      ],
+      "semantic": "read-only",
+      "accepts": [
+        "input"
+      ],
+      "requires": [
+        "input"
+      ],
+      "summary": "Compare eligible evidence for exact candidate revisions.",
+      "inputSchema": {"type":"object","properties":{"cohortId":{"type":"string","minLength":1,"maxLength":256},"baseline":{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":256},"revision":{"type":"string","minLength":1,"maxLength":256},"digest":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","revision","digest"],"additionalProperties":false},"candidate":{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":256},"revision":{"type":"string","minLength":1,"maxLength":256},"digest":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","revision","digest"],"additionalProperties":false},"policy":{"type":"object","properties":{"minSamples":{"type":"integer","minimum":1,"maximum":4096},"qualityBoundary":{"type":"number"},"minimumQualityImprovement":{"type":"number","minimum":0},"maxLatencyRegressionRatio":{"type":"number","minimum":0},"maxCostRegressionRatio":{"type":"number","minimum":0}},"required":["minSamples","qualityBoundary","minimumQualityImprovement","maxLatencyRegressionRatio","maxCostRegressionRatio"],"additionalProperties":false}},"required":["cohortId","baseline","candidate"],"additionalProperties":false}
     }
   ]
 }

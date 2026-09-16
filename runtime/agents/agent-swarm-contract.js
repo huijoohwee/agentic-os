@@ -1,5 +1,6 @@
-import { normalizeJson, serializedJsonLength } from "../json-contract.mjs";
-import { normalizeCostLog } from "./running-agent-contract.js";
+import { serializedJsonLength } from "../json-contract.mjs";
+import { normalizeCostLog, assertPositiveInteger, assertIdentifier as identifier, assertExactKeys, normalizeSignal, normalizeBoundedJson } from "./running-agent-contract.js";
+import { normalizeRunContext } from './agent-toolkit-contract.js';
 
 export const AGENT_SWARM_RUN_SCHEMA = "agent-swarm-run/v2";
 
@@ -49,29 +50,8 @@ export class AgentSwarmFailure extends Error {
   }
 }
 
-export function assertPositiveInteger(value, field) {
-  if (!Number.isInteger(value) || value < 1) throw new TypeError(`${field} must be a positive integer.`);
-  return value;
-}
-
-export function assertIdentifier(value, field, maxChars = 256) {
-  if (typeof value !== "string" || !value.trim()) throw new TypeError(`${field} must be a non-empty string.`);
-  const normalized = value.trim();
-  if (normalized.length > maxChars) throw new RangeError(`${field} exceeds ${maxChars} characters.`);
-  return normalized;
-}
-
-export function assertExactKeys(value, keys, field) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object.`);
-  const unknown = Object.keys(value).filter((key) => !keys.includes(key));
-  if (unknown.length) throw new TypeError(`${field} contains unsupported fields: ${unknown.join(", ")}.`);
-}
-
-export function normalizeBoundedJson(value, field, maxChars) {
-  const normalized = normalizeJson(value, field);
-  if (serializedJsonLength(normalized) > maxChars) throw new RangeError(`${field} exceeds ${maxChars} characters.`);
-  return normalized;
-}
+export { assertPositiveInteger, assertExactKeys, normalizeBoundedJson };
+export const assertIdentifier = (value, field, maxChars = 256) => identifier(value, field, maxChars);
 
 function normalizeAgent(value, field = "agent") {
   assertExactKeys(value, ["agentId", "revision"], field);
@@ -81,16 +61,6 @@ function normalizeAgent(value, field = "agent") {
   });
 }
 
-function normalizeSignal(value, field) {
-  if (value !== undefined && (
-    typeof value?.aborted !== "boolean"
-    || typeof value?.addEventListener !== "function"
-    || typeof value?.removeEventListener !== "function"
-  )) {
-    throw new TypeError(`${field} must be an AbortSignal when provided.`);
-  }
-  return value;
-}
 
 export function normalizeAccessContext(value = {}) {
   assertExactKeys(value, ["principalId", "principalExpiresAt"], "access context");
@@ -112,6 +82,7 @@ export function normalizeStartRequest(value, limits) {
     "input",
     "maxParallel",
     "signal",
+    "context",
   ], "request");
   const goal = assertIdentifier(value.goal, "request.goal", limits.maxGoalChars);
   const maxParallel = value.maxParallel === undefined ? limits.maxParallel : value.maxParallel;
@@ -126,6 +97,7 @@ export function normalizeStartRequest(value, limits) {
     goal,
     input: normalizeBoundedJson(value.input ?? null, "request.input", limits.maxInputChars),
     maxParallel,
+    ...(value.context === undefined ? {} : { context: normalizeRunContext(value.context) }),
     signal: normalizeSignal(value.signal, "request.signal"),
   });
 }

@@ -1,3 +1,4 @@
+import { assertIdentifier, assertPositiveInteger, assertExactKeys } from "./agent-orchestration-contract.js";
 import { createRunningAgentRuntime } from "./running-agents.js";
 
 const DEFAULT_MAX_CONVERSATIONS = 256;
@@ -8,18 +9,6 @@ const CONTINUATION_STRATEGIES = new Set([
   "previous-response",
 ]);
 
-function assertIdentifier(value, field) {
-  if (typeof value !== "string" || !value.trim()) throw new TypeError(`${field} must be a non-empty string.`);
-  const normalized = value.trim();
-  if (normalized.length > 256) throw new RangeError(`${field} exceeds 256 characters.`);
-  return normalized;
-}
-
-function assertPositiveInteger(value, field) {
-  if (!Number.isInteger(value) || value < 1) throw new TypeError(`${field} must be a positive integer.`);
-  return value;
-}
-
 function assertOwner(value, methods, field) {
   if (value === undefined) return;
   if (!value || typeof value !== "object") throw new TypeError(`${field} must be an object when provided.`);
@@ -29,11 +18,7 @@ function assertOwner(value, methods, field) {
 }
 
 function normalizeRequirements(value = {}) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("requirements must be an object.");
-  }
-  const unknown = Object.keys(value).filter((key) => !["features", "delivery", "connection"].includes(key));
-  if (unknown.length) throw new TypeError(`requirements contains unsupported fields: ${unknown.join(", ")}.`);
+  assertExactKeys(value, ['features', 'delivery', 'connection'], 'requirements');
   if (value.features !== undefined && !Array.isArray(value.features)) {
     throw new TypeError("requirements.features must be an array.");
   }

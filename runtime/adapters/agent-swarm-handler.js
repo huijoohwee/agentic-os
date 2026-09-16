@@ -1,7 +1,8 @@
 import { verifySessionToken } from "./auth.js";
-import { dispatchRunOperation } from "../agents/invocation.js";
+import { dispatchRunOperation, RUN_OPERATIONS } from "../agents/invocation.js";
 
 function json(statusCode, body) {
+  if (Buffer.byteLength(JSON.stringify(body)) > 256 * 1024) return json(500, { code: 'run_response_too_large' });
   return { statusCode, headers: { "content-type": "application/json" }, body };
 }
 
@@ -14,7 +15,7 @@ function bearer(headers) {
 function responseStatus(action, result) {
   if (result.reasonCode === "run_forbidden") return 403;
   if (result.reasonCode === "principal_expired") return 401;
-  if (result.status === "completed") return 200;
+  if (["completed", "failed", "insufficient-evidence"].includes(result.status)) return 200;
   if (result.status === "canceled") return 200;
   if (["planning", "running", "pending", "idle", "retryable", "synthesizing", "reconciling"].includes(result.status)) return 202;
   return 409;
@@ -62,11 +63,8 @@ export function createAgentSwarmHandlers({ secret, agentSwarm, now } = {}) {
   }
 
   return Object.freeze({
-    start: handler("start"),
-    work: handler("work", (body, context) => agentSwarm.work(body, context)),
-    settle: handler("settle", (body, context) => agentSwarm.settle(body, context)),
-    status: handler("status"),
-    cancel: handler("cancel"),
-    retry: handler("retry"),
+    ...Object.fromEntries(RUN_OPERATIONS.map(operation => [operation, handler(operation)])),
+    work: handler('work', (body, context) => agentSwarm.work(body, context)),
+    settle: handler('settle', (body, context) => agentSwarm.settle(body, context)),
   });
 }
