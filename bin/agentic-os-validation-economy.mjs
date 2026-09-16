@@ -2,6 +2,8 @@
 import { hash, readRegular } from './agentic-os-test-inputs.mjs';
 export const ECONOMY_FILE = 'validation-economy.json';
 const SCHEMA = 'agentic-os/validation-economy/v1', TTL = 14 * 86_400_000;
+// Observation bounds are independent of execution deadlines: process teardown can overrun a deadline.
+const OBSERVATION_MS = 86_400_000;
 const finite = (n, min, max) => Number.isFinite(n) && n >= min && n <= max;
 export function economyContext(policyDigest, ownerDigest, identity) {
   const { root, environmentDigest, node, executable, platform, arch } = identity;
@@ -17,7 +19,7 @@ export function readEconomy(directory, context, now = Date.now(), checkIds = nul
     for (const [id, v] of Object.entries(value.checks)) {
       if (!/^[a-z][a-z0-9.-]{0,95}$/u.test(id) || checkIds && !checkIds.includes(id) || !v || typeof v !== 'object'
         || !Number.isInteger(v.samples) || !finite(v.samples, 1, 32)
-        || !finite(v.meanMs, 0, 900_000) || !finite(v.failureRate, 0, 1)
+        || !finite(v.meanMs, 0, OBSERVATION_MS) || !finite(v.failureRate, 0, 1)
         || !finite(v.observedAt, now - TTL, now)) return empty('invalid-or-expired');
     }
     return { schema: SCHEMA, authority: false, context, status: 'observed',
@@ -26,7 +28,7 @@ export function readEconomy(directory, context, now = Date.now(), checkIds = nul
   } catch (error) { return empty(error.code === 'ENOENT' ? 'missing' : 'unavailable'); }
 }
 export function observeCost(state, check, result, now = Date.now()) {
-  if (!finite(result.elapsedMs, 0, 900_000) || !finite(now, 0, Number.MAX_SAFE_INTEGER))
+  if (!finite(result.elapsedMs, 0, OBSERVATION_MS) || !finite(now, 0, Number.MAX_SAFE_INTEGER))
     throw new Error('blocked-validation-cost-observation');
   const old = Object.hasOwn(state.checks, check.name) ? state.checks[check.name] : null;
   const failed = result.exitCode !== 0 || Boolean(result.reason);
@@ -68,6 +70,7 @@ export function resourcePlan(checks, state, previews, { checkout, observedBytes,
     order: checks.map(c => c.name), observedSourceBytes: observedBytes,
     estimatedMs: known.length === estimates.length ? Math.ceil(known.reduce((a, b) => a + b, 0)) : null,
     unknownCosts: estimates.length - known.length, runBudgetMs: runMs,
+    unchangedFailures: previews.filter(check => check.unchangedFailure).map(check => check.id),
     checkout: { surface: checkout ?? 'working-tree',
       diffMinimumDepth: checkout === 'pull-request-merge' ? 2 : null,
       automaticFetch: false,

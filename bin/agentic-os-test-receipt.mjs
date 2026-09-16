@@ -1,12 +1,17 @@
 /** Private worktree test receipts; never provider or deployment proof. */
 import { spawn } from 'node:child_process';
 import { lstatSync, mkdirSync, realpathSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
+import { observeGit } from '../src/git-tracked.mjs';
 import { executionEnvironment, hash, LIMITS, readGit, readRegular } from './agentic-os-test-inputs.mjs';
 
 export function receiptDirectory(root) {
   const git = realpathSync(readGit(root, ['rev-parse', '--absolute-git-dir']).trim());
-  const directory = join(git, 'agentic-os-tests');
+  const configured = observeGit(['config', '--local', '--get', 'agentic-os.validationArtifactsRoot'], { cwd: root, allowFail: true });
+  if (configured && (!isAbsolute(configured) || realpathSync(configured) !== configured))
+    throw new Error('blocked-test-artifact-root');
+  // Explicit device-local storage; CI and unenrolled clones retain Git-private defaults.
+  const directory = configured ? join(configured, `validation-${hash(git).slice(0, 24)}`) : join(git, 'agentic-os-tests');
   try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
   if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory)
     throw new Error('blocked-test-receipt-directory');
@@ -47,7 +52,7 @@ export function previousCheck(directory, check, now = Date.now(), { allowFailure
       || !passed && !failed
       || !Number.isFinite(receipt.finishedAt) || now - receipt.finishedAt < 0
       || now - receipt.finishedAt > 3_600_000 || !Number.isFinite(receipt.result.elapsedMs)
-      || receipt.result.elapsedMs < 0 || receipt.result.elapsedMs > Math.max(LIMITS.testMs, check.timeoutMs || 0)
+      || receipt.result.elapsedMs < 0 || receipt.result.elapsedMs > (failed ? 86_400_000 : Math.max(LIMITS.testMs, check.timeoutMs || 0))
       || receipt.result.log !== `${check.id}.log`
       || readRegular(directory, receipt.result.log, LIMITS.outputBytes).digest !== receipt.result.outputDigest
       || passed && check.report !== 'exit' && check.stage !== 'evaluators' && (!receipt.result.counts?.tests
@@ -71,15 +76,21 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
   if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
   if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
   return new Promise(resolveResult => {
-    const started = performance.now();
+    const started = performance.now(), startedAt = Date.now();
     const child = spawn(command, args, { cwd: root, env: executionEnvironment(),
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    const chunks = []; let length = 0, observedBytes = 0, reason = null, lastOutputAt = started;
-    const kill = () => {
-      try { process.platform === 'win32' ? child.kill('SIGKILL') : process.kill(-child.pid, 'SIGKILL'); }
-      catch { child.kill('SIGKILL'); }
+    const chunks = []; let length = 0, observedBytes = 0, reason = null, lastOutputAt = started, forceTimer;
+    const signalGroup = signal => {
+      try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
+      catch { child.kill(signal); }
     };
-    const stop = code => { reason ||= code; kill(); };
+    const kill = () => signalGroup('SIGKILL');
+    const stop = code => {
+      if (reason) return;
+      reason = code;
+      // Nested native executors get a bounded opportunity to terminate their own process groups.
+      signalGroup('SIGTERM'); forceTimer = setTimeout(kill, 250);
+    };
     const cancel = () => stop('cancelled');
     const timer = setTimeout(() => stop('timeout'), timeoutMs);
     // Diagnostics are rate bounded and contain no child output, credentials or source bytes.
@@ -112,10 +123,11 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     child.once('exit', kill);
     child.once('close', (exitCode, signal) => {
       if (progressTimer !== null) clearInterval(progressTimer);
+      clearTimeout(forceTimer);
       clearTimeout(timer); process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);
       let output = Buffer.concat(chunks).toString('utf8');
       while (outputMode === 'tail' && Buffer.byteLength(output) > outputBytes) output = output.slice(1);
-      resolveResult({ exitCode, reason: reason ?? (signal ? 'signal' : null), elapsedMs: performance.now() - started,
+      resolveResult({ exitCode, reason: reason ?? (signal ? 'signal' : null), startedAt, finishedAt: Date.now(), elapsedMs: performance.now() - started,
         output, outputDigest: hash(Buffer.from(output)),
         ...(outputMode === 'tail' ? { observedOutputBytes: observedBytes, outputTruncated: observedBytes > outputBytes } : {}),
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]

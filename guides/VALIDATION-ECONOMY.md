@@ -1,8 +1,24 @@
 # Validation economy
 
+## Native validation observation (ADLC-OBS-001@0.1.0)
+
+PRD / AO-01: the solo operator must locate an expensive or failed validation stage without rerunning it. Record child-stage wall time, output bytes, result and source identity; keep CPU, tokens and monetary cost unknown unless measured. AO-02/AO-03/AO-04 belong to Graph: recover the Apex catalog after a transient failure, inspect connected tree/timing/topology views, and import this bounded read-only observation into the existing JSON/Markdown/Viewer/Canvas workspace. These criteria share CID ADLC-OBS-001, revision 0.1.0 and the subject/operator, action/inspect, outcome/next-validation-decision relationship.
+
+TAD / AO-01: extend the existing validation runner, command executor, private receipts and cost model. The trusted consumer supplies its existing ordered commands; the shared owner records stages and bounds process groups, time and output. Keep child output in bounded local logs and emit concise progress. Export sanitized metadata on demand through the validation CLI; exclude environment values, absolute paths, raw output and command arguments. Graph consumes the portable observation, not private receipt paths. Imported observations grant no execution, evaluation, release or payment authority.
+
+ADR / AO-01: constraints retain exact source checks, mandatory coverage and fresh provider CI. Argumentation rejects another polling service, telemetry database or renderer. Outranking selects structured observations at the existing execution boundary and an early unchanged-failure guard. An unchanged known failure blocks before unrelated expensive checks; it never becomes a cached pass. Provider waits remain distinct from measured local execution. Rollback reverts these source changes and the consumer pin while preserving receipts.
+
+MVP / AO-01–AO-04: baseline OS `2e9b3b9842460e3e29cf2d414f0eb45c07a42281`, Graph `6ecb7192f9017b2e7630d79ccf8975e2b56a59f5`. Budget: 90 active minutes, two repositories, at most 16 source modules and 200 KB changed content; no new dependencies or always-running service. Bound observations to 128 stages and 128 KB; Canvas retains at most 32 spans per imported page. Verify ordered execution, failure/cancellation, output redaction/bounds, unknown resources, malformed imports, recovery, selection synchronization and unchanged authored state. Measure emitted versus observed output bytes separately from elapsed time; no full-suite parity follows from focused checks.
+
+GTM / AO-01–AO-04: use this actual validation loop as the free local pilot. Record time to identify the slowest stage and the next check chosen. The observed prior Graph check block took 794.72 seconds in [the protected PR run](https://github.com/huijoohwee/agentic-graph/actions/runs/35097953831); this is a baseline observation, not savings or buyer proof. Demand, willingness to pay, CPU cost and commercial conversion remain unmeasured.
+
 Use the source owner's existing runner and validators. Profile a completed run before rerunning it.
 Batch related repairs, then run the dependency-closed affected checks on final bytes.
 Repeat a passing check only when changed inputs, a failure, or an unresolved concern requires it.
+
+Generated logs, receipts, portable observations and screenshots belong to device-local `.workspace/.artifacts`, outside the published source tree. Set clone-local `git config --local agentic-os.validationArtifactsRoot <absolute-real-artifact-directory>` after creating that private directory. The existing receipt owner isolates each worktree by Git-directory digest; missing enrollment retains the Git-private default for portable clones and CI. Existing records are preserved, not migrated or deleted. Workspace publication remains essential-only; do not force-add artifact bodies.
+
+Export the most recent child-stage metadata with `node node_modules/agentic-os/bin/agentic-os-validation.mjs observe --root=.`. Use `--input=<private-validation-last.json>` for an aggregate owner receipt, or `--input=<private-last.json>` for the existing OS test receipt. OS test observations retain concurrent timing and unknown historical dirty state; no sequential edges are inferred. More than 128 recorded checks require another bounded export with `--offset=128`; coverage reports captured, recorded and expected counts. Exports are bounded, unsigned observations; timestamps do not establish provider proof.
 
 ## Affected validation (TEST-IMPACT-001@1.0.0)
 
