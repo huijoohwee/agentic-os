@@ -2,13 +2,16 @@
 import { remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { hostname } from 'node:os';
 import { hash, readGit } from './agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
+import { economyContext, readEconomy, recordEconomy, economyFeedback } from './agentic-os-validation-economy.mjs';
 
 export const STAGES_FILE = 'validation-stages.json';
 export const STAGES_SCHEMA = 'agentic-os/validation-stages/v1';
-export function validationStageDirectory(root) {
-  const directory = join(receiptDirectory(root), 'stages');
+export function validationStageDirectory(root, kind = 'stages') {
+  if (!['stages', 'ci'].includes(kind)) throw Error('blocked-validation-stage-directory');
+  const directory = join(receiptDirectory(root), kind);
   try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
   if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory) throw Error('blocked-validation-stage-directory');
   return directory;
@@ -34,8 +37,14 @@ export async function runValidationStages(root, stages, { out = console.log } = 
     dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()),
   });
   const initial = source(), startedAt = Date.now(), started = performance.now();
+  const feedbackDirectory = receiptDirectory(root, 'feedback-stages');
+  const context = economyContext(hash(JSON.stringify(stages)), 'validation-stages/v1', { root: initial.repository,
+    environmentDigest: hash(JSON.stringify([hostname(), process.env.NODE_OPTIONS, process.env.CI])), node: process.version, executable: process.execPath,
+    platform: process.platform, arch: process.arch });
+  const economy = readEconomy(feedbackDirectory, context, startedAt, stages.map(stage => stage.id));
   const receipt = { schema: STAGES_SCHEMA, authority: false, source: initial, startedAt, expectedStages: stages.length,
-    outcome: 'running', results: [], active: null, observedOutputBytes: 0, emittedDiagnosticBytes: 0 };
+    outcome: 'running', results: [], active: null, observedOutputBytes: 0, emittedDiagnosticBytes: 0,
+    feedback: economyFeedback(economy), costRegressions: [] };
   const emit = message => { receipt.emittedDiagnosticBytes += Buffer.byteLength(message) + 1; out(message); };
   const save = () => writeReceipt(directory, STAGES_FILE, receipt);
   const release = lockReceipts(directory);
@@ -59,6 +68,12 @@ export async function runValidationStages(root, stages, { out = console.log } = 
         command: stage.command[0], args: stage.command.slice(1), fingerprint: hash(JSON.stringify({ source: initial, stage })) };
       const saved = writeCheck(directory, check, result);
       receipt.results.push({ id: stage.id, ...saved.result, reused: false });
+      try {
+        const { regression, feedback } = recordEconomy(feedbackDirectory, context, { name: stage.id }, { ...result, sourceRevision: initial.revision,
+          observationId: hash(JSON.stringify([initial, startedAt, stage.id])) }, Date.now(), stages.map(stage => stage.id));
+        if (regression) receipt.costRegressions.push(regression);
+        receipt.feedback = feedback;
+      } catch (error) { receipt.feedbackError = error.message; }
       receipt.observedOutputBytes += result.observedOutputBytes ?? 0;
       receipt.active = null;
       emit(`stage ${index + 1}/${stages.length} ${stage.id}: ${(result.elapsedMs / 1000).toFixed(2)}s, exit ${result.exitCode}`);

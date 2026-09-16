@@ -1,17 +1,20 @@
 /** Private worktree test receipts; never provider or deployment proof. */
+import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { lstatSync, mkdirSync, realpathSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { observeGit } from '../src/git-tracked.mjs';
 import { executionEnvironment, hash, LIMITS, readGit, readRegular } from './agentic-os-test-inputs.mjs';
 
-export function receiptDirectory(root) {
-  const git = realpathSync(readGit(root, ['rev-parse', '--absolute-git-dir']).trim());
+export function receiptDirectory(root, scope = 'validation') {
+  if (!['validation', 'feedback-stages', 'feedback-ci'].includes(scope)) throw Error('blocked-test-receipt-scope');
+  const git = realpathSync(resolve(root, readGit(root, ['rev-parse', scope === 'validation' ? '--absolute-git-dir' : '--git-common-dir']).trim()));
   const configured = observeGit(['config', '--local', '--get', 'agentic-os.validationArtifactsRoot'], { cwd: root, allowFail: true });
   if (configured && (!isAbsolute(configured) || realpathSync(configured) !== configured))
     throw new Error('blocked-test-artifact-root');
   // Explicit device-local storage; CI and unenrolled clones retain Git-private defaults.
-  const directory = configured ? join(configured, `validation-${hash(git).slice(0, 24)}`) : join(git, 'agentic-os-tests');
+  const directory = configured ? join(configured, `${scope}-${hash(git).slice(0, 24)}`)
+    : join(git, scope === 'validation' ? 'agentic-os-tests' : `agentic-os-${scope}`);
   try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
   if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory)
     throw new Error('blocked-test-receipt-directory');
@@ -33,6 +36,18 @@ export function writeReceipt(directory, name, value) {
   let bytes = typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n';
   // Preserve every result while avoiding indentation overhead for expanded suites.
   if (typeof value !== 'string' && Buffer.byteLength(bytes) > limit) bytes = JSON.stringify(value) + '\n';
+  if (Buffer.byteLength(bytes) > limit && value?.schema === 'agentic-os/test-receipt/v2' && Array.isArray(value.results)) {
+    // The per-check receipt keeps its output digest; the aggregate keeps the log link.
+    // Stage membership is already present in plan.suites and each result.
+    const { stages, ...plan } = value.plan;
+    const resourceDefaults = { method: 'wait4', scope: 'waited-process-tree', memoryScope: 'maximum-single-process-rss' };
+    const results = value.results.map(({ outputDigest, ...result }) => {
+      if (result.resources?.status !== 'measured' || Object.entries(resourceDefaults).some(([key, v]) => result.resources[key] !== v)) return result;
+      const { method, scope, memoryScope, ...resources } = result.resources;
+      return { ...result, resources };
+    });
+    bytes = JSON.stringify({ ...value, plan, results, resourceDefaults, diagnostics: 'per-check-receipts' }) + '\n';
+  }
   if (Buffer.byteLength(bytes) > limit)
     throw new Error('blocked-test-receipt-byte-budget');
   const temporary = join(directory, `${name}.${process.pid}.tmp`);
@@ -70,15 +85,20 @@ export function writeCheck(directory, check, result, finishedAt = Date.now()) {
   writeReceipt(directory, `${check.id}.json`, receipt);
   return receipt;
 }
+const require = createRequire(import.meta.url);
 export const COMMAND_PROGRESS_INTERVAL_MS = 30_000;
 export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes,
   outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024, onProgress } = {}) {
   if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
   if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
+  const started = performance.now(), startedAt = Date.now();
+  const { resourceCommand, commandResourceReader } = require('./agentic-os-test-command-resources.cjs');
+  const environment = executionEnvironment(), plan = resourceCommand(command, args, environment);
+  const accounting = commandResourceReader(plan);
   return new Promise(resolveResult => {
-    const started = performance.now(), startedAt = Date.now();
-    const child = spawn(command, args, { cwd: root, env: executionEnvironment(),
-      detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(plan.command, plan.args, { cwd: root, env: environment,
+      detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(plan.measured ? ['pipe'] : [])] });
+    if (plan.measured) child.stdio[3].on('data', accounting.accept);
     const chunks = []; let length = 0, observedBytes = 0, reason = null, lastOutputAt = started, forceTimer;
     const signalGroup = signal => {
       try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
@@ -92,7 +112,7 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
       signalGroup('SIGTERM'); forceTimer = setTimeout(kill, 250);
     };
     const cancel = () => stop('cancelled');
-    const timer = setTimeout(() => stop('timeout'), timeoutMs);
+    const timer = setTimeout(() => stop('timeout'), Math.max(1, timeoutMs - (performance.now() - started)));
     // Diagnostics are rate bounded and contain no child output, credentials or source bytes.
     // Keep them outside the content-bound result and release authority.
     const progressTimer = onProgress ? setInterval(() => {
@@ -127,8 +147,10 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
       clearTimeout(timer); process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);
       let output = Buffer.concat(chunks).toString('utf8');
       while (outputMode === 'tail' && Buffer.byteLength(output) > outputBytes) output = output.slice(1);
+      const resources = accounting.finish();
+      if (resources.spawnFailed) reason ||= 'spawn-failed';
       resolveResult({ exitCode, reason: reason ?? (signal ? 'signal' : null), startedAt, finishedAt: Date.now(), elapsedMs: performance.now() - started,
-        output, outputDigest: hash(Buffer.from(output)),
+        output, outputDigest: hash(Buffer.from(output)), resources,
         ...(outputMode === 'tail' ? { observedOutputBytes: observedBytes, outputTruncated: observedBytes > outputBytes } : {}),
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]
           .map(match => [match[1], Number(match[2])])) });
