@@ -22,15 +22,16 @@ export function validationArguments(argv) {
   const options = { mode, root: process.cwd(), base: 'origin/main', all: false, fresh: false };
   const seen = new Set();
   for (const flag of flags) {
-    const match = /^--(root|base|only|input)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
+    const match = /^--(root|base|only|input|offset)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
     if (seen.has(key)) throw new Error('duplicate validation option'); seen.add(key);
     if (match) options[key] = key === 'only' ? match[2].split(',') : match[2];
     else if (['--all', '--fresh'].includes(flag)) options[key] = true;
     else throw new Error('unknown validation option');
   }
   if (mode === 'ci' && (seen.has('base') || seen.has('all'))) throw new Error('CI owns its validation baseline');
-  if (seen.has('input') && mode !== 'observe' || mode === 'observe' && [...seen].some(key => !['root', 'input'].includes(key)))
-    throw new Error('observation accepts only root and input');
+  if (seen.has('input') && mode !== 'observe' || mode === 'observe' && [...seen].some(key => !['root', 'input', 'offset'].includes(key)))
+    throw new Error('observation accepts only root, input and offset');
+  if (seen.has('offset') && (mode !== 'observe' || !/^(0|[1-9][0-9]*)$/u.test(options.offset))) throw new Error('invalid observation offset');
   return options;
 }
 export function resolveValidationCi(root, environment = process.env) {
@@ -89,7 +90,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
   const options = validationArguments(argv), root = realpathSync(resolve(options.root));
   if (options.mode === 'observe') {
     const { readValidationObservation } = await import('./agentic-os-validation-observation.mjs');
-    out(JSON.stringify(readValidationObservation(root, options.input), null, 2));
+    out(JSON.stringify(readValidationObservation(root, options.input, Number(options.offset ?? 0)), null, 2));
     return 0;
   }
   const ci = options.mode === 'ci' || Boolean(process.env.CI || process.env.GITHUB_ACTIONS);

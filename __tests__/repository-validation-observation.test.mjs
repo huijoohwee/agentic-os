@@ -51,3 +51,20 @@ test('projection bounds records, rejects duplicates and accepts measured deadlin
   assert.equal(validationObservation(receipt).stages[0].elapsedMs, 900123);
   receipt.results.push(receipt.results[0]); assert.throws(() => validationObservation(receipt), /observation/);
 });
+
+test('existing OS receipts export bounded concurrent pages without inventing source cleanliness', t => {
+  const { root, git } = fixture(t), file = join(root, '.git', 'native.json');
+  const receipt = { schema: 'agentic-os/test-receipt/v2', authority: false, outcome: 'passed', startedAt: 1000,
+    finishedAt: 2000, elapsedMs: 1000, identity: { root, headRevision: git('rev-parse', 'HEAD'), headTree: git('rev-parse', 'HEAD^{tree}') },
+    plan: { suites: Array(129).fill({}) }, results: Array.from({ length: 130 }, (_, i) => ({ name: `__tests__/check-${i}.test.mjs`,
+      exitCode: 0, reason: null, elapsedMs: 10, startedAt: 1000, finishedAt: 1010, reused: false })) };
+  writeFileSync(file, JSON.stringify(receipt));
+  const first = readValidationObservation(root, file), second = readValidationObservation(root, file, 128);
+  assert.equal(first.executionOrder, 'concurrent'); assert.equal(first.source.dirty, null);
+  assert.equal(first.stages.length, 128); assert.equal(second.stages.length, 2);
+  assert.equal(first.coverage.totalStages, 130); assert.equal(first.coverage.partial, true);
+  assert.equal(second.coverage.offset, 128); assert.equal(first.resources.observedOutputBytes, null);
+  assert.throws(() => readValidationObservation(root, file, 1), /observation/);
+  receipt.identity.root = '/foreign'; writeFileSync(file, JSON.stringify(receipt));
+  assert.throws(() => readValidationObservation(root, file), /observation/);
+});

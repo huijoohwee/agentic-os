@@ -18,7 +18,7 @@ Repeat a passing check only when changed inputs, a failure, or an unresolved con
 
 Generated logs, receipts, portable observations and screenshots belong to device-local `.workspace/.artifacts`, outside the published source tree. Set clone-local `git config --local agentic-os.validationArtifactsRoot <absolute-real-artifact-directory>` after creating that private directory. The existing receipt owner isolates each worktree by Git-directory digest; missing enrollment retains the Git-private default for portable clones and CI. Existing records are preserved, not migrated or deleted. Workspace publication remains essential-only; do not force-add artifact bodies.
 
-Export the most recent child-stage metadata with `node node_modules/agentic-os/bin/agentic-os-validation.mjs observe --root=.`. Use `--input=<private-validation-last.json>` for an aggregate owner receipt. Exports are bounded, unsigned observations; timestamps do not establish provider proof.
+Export the most recent child-stage metadata with `node node_modules/agentic-os/bin/agentic-os-validation.mjs observe --root=.`. Use `--input=<private-validation-last.json>` for an aggregate owner receipt, or `--input=<private-last.json>` for the existing OS test receipt. OS test observations retain concurrent timing and unknown historical dirty state; no sequential edges are inferred. More than 128 recorded checks require another bounded export with `--offset=128`; coverage reports captured, recorded and expected counts. Exports are bounded, unsigned observations; timestamps do not establish provider proof.
 
 ## Affected validation (TEST-IMPACT-001@1.0.0)
 
