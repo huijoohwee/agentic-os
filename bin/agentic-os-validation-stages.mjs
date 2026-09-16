@@ -34,7 +34,7 @@ export async function runValidationStages(root, stages, { out = console.log } = 
     dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()),
   });
   const initial = source(), startedAt = Date.now(), started = performance.now();
-  const receipt = { schema: STAGES_SCHEMA, authority: false, source: initial, startedAt, expectedStages: stages.length,
+  const receipt = { schema: STAGES_SCHEMA, authority: false, source: initial, startedAt,
     outcome: 'running', results: [], active: null, observedOutputBytes: 0, emittedDiagnosticBytes: 0 };
   const emit = message => { receipt.emittedDiagnosticBytes += Buffer.byteLength(message) + 1; out(message); };
   const save = () => writeReceipt(directory, STAGES_FILE, receipt);

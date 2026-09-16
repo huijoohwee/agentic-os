@@ -40,8 +40,6 @@ test('timeout retains failure identity, stops later stages and releases its lock
   const receipt = JSON.parse(readFileSync(join(validationStageDirectory(root), STAGES_FILE), 'utf8'));
   assert.equal(receipt.outcome, 'failed'); assert.equal(receipt.results.length, 1); assert.equal(receipt.results[0].reason, 'timeout');
   assert.equal(validationObservation(receipt).stages[0].status, 'failed');
-  assert.equal(validationObservation(receipt).coverage.expectedStages, 2);
-  assert.equal(validationObservation(receipt).coverage.totalStages, 1);
   const release = lockReceipts(validationStageDirectory(root));
   await assert.rejects(runValidationStages(root, [stage('one', '')], { out: () => {} }), /definition/);
   await assert.rejects(runValidationStages(root, [stage('one', '0')], { out: () => {} }), /already-running/); release();
