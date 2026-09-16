@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ciTimingReceipt } from '../bin/agentic-os-ci-observation.mjs';
+import { ciTimingReceipt, ciObservationId } from '../bin/agentic-os-ci-observation.mjs';
 import { validationObservation } from '../bin/agentic-os-validation-observation.mjs';
 import { validationArguments } from '../bin/agentic-os-validation.mjs';
 const source = { repository: 'github.com/example/project', revision: 'a'.repeat(40), tree: 'b'.repeat(40), dirty: null };
@@ -44,4 +44,11 @@ test('retry timing starts at the current attempt and skips jobs which never exec
   assert.equal(retry.elapsedMs, 11000);
   assert.throws(() => ciTimingReceipt({ ...run, attempt: 2 }, source, 1, base + 16000), /ci-observation/);
   assert.throws(() => ciTimingReceipt({ ...run, status: 'in_progress', jobs: [{ status: 'in_progress', startedAt: at(20000) }] }, source, 1, base + 16000), /ci-observation/);
+});
+
+
+test('provider metadata refreshes do not retrain a completed attempt', () => {
+  const receipt = ciTimingReceipt(run, source, 1, base + 16000);
+  assert.equal(ciObservationId(receipt, 'ci-execution'), ciObservationId({ ...receipt, finishedAt: base + 16000 }, 'ci-execution'));
+  assert.notEqual(ciObservationId(receipt, 'ci-execution'), ciObservationId({ ...receipt, ci: { ...receipt.ci, attempt: 2 } }, 'ci-execution'));
 });

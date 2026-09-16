@@ -33,6 +33,8 @@ export function ciTimingReceipt(value, source, runId, now = Date.now()) {
     results, active, ci: { runId, attempt: value.attempt, url: value.url, queueWaitMs: start === null ? null : start - created } };
 }
 
+export const ciObservationId = (receipt, stageId) => hash(JSON.stringify([receipt.ci.runId, receipt.ci.attempt, receipt.source.revision, stageId]));
+
 export function readCiObservation(root, runId) {
   if (!/^[1-9][0-9]{0,15}$/u.test(String(runId)) || !Number.isSafeInteger(Number(runId))) fail();
   const repository = remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim())?.repository;
@@ -52,7 +54,7 @@ export function readCiObservation(root, runId) {
     receipt.feedback = economyFeedback(readEconomy(feedbackDirectory, context));
     try { if (receipt.outcome !== 'running') for (const result of receipt.results) {
       receipt.feedback = recordEconomy(feedbackDirectory, context, { name: result.id }, { ...result, sourceRevision: source.revision,
-        observationId: hash(JSON.stringify([runId, value.attempt, source.revision, result.id, receipt.finishedAt])) }).feedback;
+        observationId: ciObservationId(receipt, result.id) }).feedback;
     }
     } catch { receipt.feedbackError = 'feedback-capture-unavailable'; }
     writeReceipt(directory, 'validation-stages.json', receipt);
