@@ -20,6 +20,18 @@ dictionary_links:
   semantic: "DICTIONARY-SEMANTIC.md"
   binding: "DICTIONARY-BINDING.md"
 prompt_presets:
+  - id: "agent-observability"
+    label: "Agent observability"
+    slash_command: "/agent-observability-prompt-preset"
+    runtime_command: "/canvas.view.set"
+    description: "Open authorized agent runs, spans, timing, topology, source, allocation and evaluations in the existing workspace. Selection is inert; activate explicitly."
+    activation: "chat-agent"
+    invocation_modes: ["native-chat-response", "mcp-invocation"]
+    chat_route: "active native shared runtime"
+    mcp_tool: "agentic-graph.agentic_canvas_os.docs.invoke"
+    mcp_token: "/canvas.view.set"
+    prompt: |-
+      /canvas.view.set #canvas-view @canvas-view option=agent-run:tree
   - id: "xr-physics"
     label: "Physics Playground"
     slash_command: "/xr-physics-prompt-preset"
