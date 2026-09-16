@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import {
-  CACHE_LIMITS, SCHEMA, get, load, put, save, storePath,
+  CACHE_LIMITS, CACHE_REF, SCHEMA, get, load, put, save, storePath,
 } from '../src/lane-records.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -56,6 +56,28 @@ test('a recognized legacy cache projects retired ejections without rewriting its
   save(load(root), root);
   assert.equal(readFileSync(file, 'utf8'), bytes);
   assert.equal(get(ref, root).ejections, undefined);
+});
+
+test('cache capacity retains every record without charging presentation whitespace', (t) => {
+  const root = repository(t);
+  save(validStore(), root);
+  const previous = runGit(root, 'rev-parse', CACHE_REF);
+  const retained = runGit(root, 'cat-file', 'blob', previous);
+  const value = { schema: SCHEMA, lanes: {} };
+  for (let index = 0; index < 100; index++) {
+    const ref = `agent/device/cache-${index}`;
+    value.lanes[ref] = { ref, state: 'published', handoff: { samples: Array(300).fill(4294967295) } };
+  }
+  assert(Buffer.byteLength(JSON.stringify(value, null, 2)) > CACHE_LIMITS.bytes);
+  assert(Buffer.byteLength(JSON.stringify(value)) < CACHE_LIMITS.bytes);
+  save(value, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(load(root))), value);
+  const current = runGit(root, 'rev-parse', CACHE_REF);
+  assert(Number(runGit(root, 'cat-file', '-s', current)) <= CACHE_LIMITS.bytes);
+  assert.equal(runGit(root, 'cat-file', 'blob', previous), retained);
+  for (const record of Object.values(value.lanes)) record.handoff.samples.fill(Number.MAX_VALUE);
+  assert.throws(() => save(value, root), /write byte budget exceeded/u);
+  assert.equal(runGit(root, 'rev-parse', CACHE_REF), current);
 });
 
 test('concurrent distinct-ref cache updates retain every device projection', async (t) => {

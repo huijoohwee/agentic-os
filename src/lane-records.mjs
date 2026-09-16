@@ -270,7 +270,7 @@ export function load(cwd = process.cwd()) {
 /** Publish one immutable blob through an exact, direct-ref compare-and-swap. */
 function publish(value, cwd, expected, artifacts = null) {
   const store = normalizeStore(value);
-  const bytes = Buffer.from(`${JSON.stringify(store, null, 2)}\n`);
+  const bytes = Buffer.from(`${JSON.stringify(store)}\n`);
   if (bytes.length > CACHE_LIMITS.bytes) throw invalid('write byte budget exceeded');
   const candidateOid = git(['hash-object', '-w', '--stdin'], { cwd, input: bytes });
   if (artifacts) Object.assign(artifacts, {
