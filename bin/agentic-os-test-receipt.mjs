@@ -1,17 +1,19 @@
 /** Private worktree test receipts; never provider or deployment proof. */
 import { spawn } from 'node:child_process';
 import { lstatSync, mkdirSync, realpathSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { observeGit } from '../src/git-tracked.mjs';
 import { executionEnvironment, hash, LIMITS, readGit, readRegular } from './agentic-os-test-inputs.mjs';
 
-export function receiptDirectory(root) {
-  const git = realpathSync(readGit(root, ['rev-parse', '--absolute-git-dir']).trim());
+export function receiptDirectory(root, scope = 'validation') {
+  if (!['validation', 'feedback-stages', 'feedback-ci'].includes(scope)) throw Error('blocked-test-receipt-scope');
+  const git = realpathSync(resolve(root, readGit(root, ['rev-parse', scope === 'validation' ? '--absolute-git-dir' : '--git-common-dir']).trim()));
   const configured = observeGit(['config', '--local', '--get', 'agentic-os.validationArtifactsRoot'], { cwd: root, allowFail: true });
   if (configured && (!isAbsolute(configured) || realpathSync(configured) !== configured))
     throw new Error('blocked-test-artifact-root');
   // Explicit device-local storage; CI and unenrolled clones retain Git-private defaults.
-  const directory = configured ? join(configured, `validation-${hash(git).slice(0, 24)}`) : join(git, 'agentic-os-tests');
+  const directory = configured ? join(configured, `${scope}-${hash(git).slice(0, 24)}`)
+    : join(git, scope === 'validation' ? 'agentic-os-tests' : `agentic-os-${scope}`);
   try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
   if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory)
     throw new Error('blocked-test-receipt-directory');
@@ -75,10 +77,14 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
   outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024, onProgress } = {}) {
   if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
   if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
+  return import('./agentic-os-test-command-resources.mjs').then(({ resourceCommand, commandResourceReader }) => {
+  const environment = executionEnvironment(), plan = resourceCommand(command, args, environment);
+  const accounting = commandResourceReader(plan);
   return new Promise(resolveResult => {
     const started = performance.now(), startedAt = Date.now();
-    const child = spawn(command, args, { cwd: root, env: executionEnvironment(),
-      detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(plan.command, plan.args, { cwd: root, env: environment,
+      detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(plan.measured ? ['pipe'] : [])] });
+    if (plan.measured) child.stdio[3].on('data', accounting.accept);
     const chunks = []; let length = 0, observedBytes = 0, reason = null, lastOutputAt = started, forceTimer;
     const signalGroup = signal => {
       try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
@@ -127,11 +133,14 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
       clearTimeout(timer); process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);
       let output = Buffer.concat(chunks).toString('utf8');
       while (outputMode === 'tail' && Buffer.byteLength(output) > outputBytes) output = output.slice(1);
+      const resources = accounting.finish();
+      if (resources.spawnFailed) reason ||= 'spawn-failed';
       resolveResult({ exitCode, reason: reason ?? (signal ? 'signal' : null), startedAt, finishedAt: Date.now(), elapsedMs: performance.now() - started,
-        output, outputDigest: hash(Buffer.from(output)),
+        output, outputDigest: hash(Buffer.from(output)), resources,
         ...(outputMode === 'tail' ? { observedOutputBytes: observedBytes, outputTruncated: observedBytes > outputBytes } : {}),
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]
           .map(match => [match[1], Number(match[2])])) });
     });
+  });
   });
 }

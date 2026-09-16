@@ -1,16 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync, realpathSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { receiptDirectory, lockReceipts } from '../bin/agentic-os-test-receipt.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ECONOMY_FILE, economyContext, readEconomy, observeCost, costOrderedChecks,
-  resourcePlan } from '../bin/agentic-os-validation-economy.mjs';
+  resourcePlan, economyFeedback, recordEconomy } from '../bin/agentic-os-validation-economy.mjs';
 const check = (name, requires = [], mandatory = false) => ({ name, requires,
   reasons: mandatory ? ['mandatory'] : ['input:source'], command: 'node', args: [name], timeoutMs: 900000 });
 const state = checks => ({ schema: 'agentic-os/validation-economy/v1', authority: false,
   context: 'context', status: 'observed', checks });
 const cost = (meanMs, failureRate = 0, samples = 3) => ({ meanMs, failureRate, samples, observedAt: Date.now() });
 const names = checks => checks.map(c => c.name);
+
+test('resource feedback flags measured regressions, excludes reuse and deduplicates older CI observations', () => {
+  const s = state({}), c = check('ci-queue'), now = Date.now();
+  const sample = i => ({ elapsedMs: 100, queueWaitMs: 100, exitCode: 0, reason: null,
+    finishedAt: now - 1000 + i, observationId: String(i).padStart(64, '0'), sourceRevision: 'a'.repeat(40),
+    resources: { status: 'measured', method: 'wait4', scope: 'waited-process-tree',
+      memoryScope: 'maximum-single-process-rss', cpuMs: 10, peakMemoryBytes: 1000 } });
+  for (let i = 1; i <= 3; i++) observeCost(s, c, sample(i), now);
+  const prior = JSON.stringify(s);
+  observeCost(s, c, sample(2), now); observeCost(s, c, { ...sample(4), reused: true }, now);
+  assert.equal(JSON.stringify(s), prior);
+  const result = sample(4); result.resources.cpuMs = 100;
+  const regression = observeCost(s, c, result, now);
+  assert.equal(regression.resources[0].metric, 'cpuMs');
+  const feedback = economyFeedback(s);
+  assert.equal(feedback.authority, false); assert.equal(feedback.ranking[0].nextAction, 'inspect-ci-queue');
+  assert.equal(feedback.ranking[0].sourceRevision, 'a'.repeat(40));
+  assert.equal(feedback.ranking[0].resourceMeans.tokens, undefined);
+});
 
 test('cost learning preserves exact coverage, prerequisites and mandatory precedence', () => {
   const checks = [check('mandatory', ['prepare'], true), check('slow'), check('quick'), check('prepare'), check('failing')];
@@ -78,4 +99,26 @@ test('timeout teardown remains an observation without extending the execution de
   assert.equal(s.checks.timeout.failureRate, 1);
   assert.equal(c.timeoutMs, 900000);
   assert.deepEqual(resourcePlan([c], s, [{ id: c.name, unchangedFailure: true }], {}).unchangedFailures, ['timeout']);
+});
+
+
+test('worktrees share bounded feedback, isolate receipts, and serialize baseline writes', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'feedback-worktrees-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, 'repo'), lane = join(root, 'lane'), artifacts = join(root, 'artifacts');
+  mkdirSync(repo); mkdirSync(artifacts);
+  const git = (...args) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' }).toString().trim();
+  git('init', '-q'); git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'fixture');
+  git('config', '--local', 'agentic-os.validationArtifactsRoot', artifacts);
+  git('worktree', 'add', '--detach', lane, 'HEAD');
+  const directory = receiptDirectory(repo, 'feedback-stages');
+  assert.equal(receiptDirectory(lane, 'feedback-stages'), directory);
+  assert.notEqual(receiptDirectory(repo), receiptDirectory(lane));
+  const sample = { elapsedMs: 10, exitCode: 0, observationId: '1'.repeat(64), finishedAt: Date.now(), sourceRevision: git('rev-parse', 'HEAD') };
+  assert.equal(recordEconomy(directory, 'cohort', check('build'), sample).feedback.ranking[0].samples, 1);
+  assert.equal(recordEconomy(directory, 'cohort', check('build'), sample).feedback.ranking[0].samples, 1);
+  const unlock = lockReceipts(directory);
+  try { assert.throws(() => recordEconomy(directory, 'cohort', check('build'), sample), /already-running/); } finally { unlock(); }
+  git('worktree', 'remove', lane);
+  assert.equal(readEconomy(directory, 'cohort').checks.build.samples, 1);
 });

@@ -28,11 +28,38 @@ test('stage executor records ordered timings and reduces emitted output; export 
   assert.ok(receipt.observedOutputBytes > 72000); assert.ok(receipt.emittedDiagnosticBytes < 1000);
   assert.equal(receipt.results[0].outputTruncated, true);
   const exported = readValidationObservation(root);
-  assert.equal(exported.resources.cpuMs, null); assert.equal(exported.resources.tokens, null);
+  assert.equal(exported.resources.cpuMs, receipt.results.every(r => r.resources.status === 'measured')
+    ? receipt.results.reduce((n, r) => n + r.resources.cpuMs, 0) : null);
+  assert.equal(exported.resources.tokens, null);
   assert.equal(exported.coverage.providerAuthority, false); assert.equal(exported.source.dirty, false);
   const json = JSON.stringify(exported);
   for (const secret of ['PRIVATE', root, 'console.log', '.log', 'command']) assert.ok(!json.includes(secret));
   assert.ok(output.every(line => !line.includes('PRIVATE')));
+});
+
+test('resource exports retain known zero, estimates, partial coverage and historical reuse', async t => {
+  const { root } = fixture(t);
+  const receipt = await runValidationStages(root, [stage('one', '0'), stage('two', '0')], { out: () => {} });
+  for (const [i, result] of receipt.results.entries()) {
+    result.resources = { status: 'measured', method: 'wait4', scope: 'waited-process-tree',
+      memoryScope: 'maximum-single-process-rss', cpuMs: 10 + i, peakMemoryBytes: 100 + i };
+    result.cost = { status: 'reported', prompt_tokens: i, completion_tokens: 0, estimated_cost_usd: 0 };
+  }
+  let output = validationObservation(receipt);
+  assert.equal(output.resources.cpuMs, 21); assert.equal(output.resources.peakMemoryBytes, 101);
+  assert.equal(output.resources.tokens, 1); assert.equal(output.resources.costUsd, 0);
+  assert.equal(output.resources.costBasis, 'estimated');
+  assert.equal(output.stages[0].resources.tokens, 0);
+  receipt.results[1].reused = true;
+  output = validationObservation(receipt);
+  assert.equal(output.resources.cpuMs, 10); assert.equal(output.resources.tokens, 0);
+  assert.equal(output.resources.coverage.expectedStages, 1);
+  assert.equal(output.stages[1].resources.cpuMs, 11, 'reuse retains historical measurement without charging it again');
+  receipt.results[1].reused = false; delete receipt.results[1].resources;
+  output = validationObservation(receipt);
+  assert.equal(output.resources.cpuMs, null); assert.equal(output.resources.coverage.cpuMs, 1);
+  receipt.results[0].cost.prompt_tokens = -1;
+  assert.throws(() => validationObservation(receipt), /observation/);
 });
 test('timeout retains failure identity, stops later stages and releases its lock', async t => {
   const { root } = fixture(t);
