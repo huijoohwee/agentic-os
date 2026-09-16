@@ -580,3 +580,29 @@ keep separate evidence. Feed the measured outcome into the existing workspace su
 [queue-price]: https://developers.cloudflare.com/queues/platform/pricing/
 [state-price]: https://developers.cloudflare.com/durable-objects/platform/pricing/
 [container-price]: https://developers.cloudflare.com/containers/platform/pricing/
+
+
+### v0.2.0 activation increment
+
+PRD/TAD/ADR/MVP/GTM share `DURABLE-AGENT-WORKFLOWS-001@0.2.0`, AC-D06 and
+AC-D11. The operator begins with **Agent observability** in Apex Catalog / Prompt
+Presets. Selection only seeds the existing prompt; explicit activation opens the
+native authenticated observation workspace. The same `/canvas.view.set #canvas-view
+@canvas-view option=agent-run:tree` tuple reaches the existing Canvas owner through
+native Chat or browser-local WebMCP. No model, evaluator, paid service, synthetic
+trace or execution starts during discovery.
+
+`runtime/agents/docs/PROMPT-PRESETS.md` owns the preset. Graph owns activation,
+authenticated transport and JSON → Markdown → Viewer/Canvas presentation. OS still
+owns run/evaluation/resource authority; Commerce retains its existing host/session
+and fulfillment contracts. Reuse the eight Canvas views and one expiring selection.
+A missing host/session, denied access, empty authorized result and offline state
+remain distinct. Source-owned Graph acceptance covers cold Apex entry, inert
+selection, explicit activation, bounded SSE readback, panel isolation and preserved
+authored content. Runtime/public delivery claims require their separate receipts.
+
+The Constraints → Argumentation → Outranking decision extends the existing catalog
+and Canvas owner without another dashboard, command registry or external package.
+The timed seller-job pilot measures catalog-to-first-evidence time; WTP and revenue
+remain unverified. Rollback reverts the preset and consumer activation increment;
+never delete durable observations, evaluations or reservations.
