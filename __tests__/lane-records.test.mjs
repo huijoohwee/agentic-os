@@ -80,6 +80,24 @@ test('cache capacity retains every record without charging presentation whitespa
   assert.equal(runGit(root, 'rev-parse', CACHE_REF), current);
 });
 
+test('repeated cache strings share the bounded pool while unique strings and blob bytes remain bounded', (t) => {
+  const root = repository(t), value = { schema: SCHEMA, lanes: {} };
+  const shared = 'scope/'.repeat(800);
+  for (let index = 0; index < 90; index++) {
+    const ref = `agent/device/intern-${index}`;
+    value.lanes[ref] = { ref, state: 'published', writePaths: [shared] };
+  }
+  assert(Buffer.byteLength(shared) * 90 > CACHE_LIMITS.aggregateStringBytes);
+  assert(Buffer.byteLength(JSON.stringify(value)) < CACHE_LIMITS.bytes);
+  save(value, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(load(root))), value);
+  const current = runGit(root, 'rev-parse', CACHE_REF), bytes = runGit(root, 'cat-file', 'blob', current);
+  for (const [index, record] of Object.values(value.lanes).entries()) record.writePaths[0] = `${index}/${shared}`;
+  assert.throws(() => save(value, root), /aggregate string byte budget exceeded/u);
+  assert.equal(runGit(root, 'rev-parse', CACHE_REF), current);
+  assert.equal(runGit(root, 'cat-file', 'blob', current), bytes);
+});
+
 test('concurrent distinct-ref cache updates retain every device projection', async (t) => {
   const root = repository(t, 'agentic-os-lane-cache-concurrent-');
   const moduleUrl = new URL('../src/lane-records.mjs', import.meta.url).href;

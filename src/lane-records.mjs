@@ -19,7 +19,7 @@ export const CACHE_LIMITS = Object.freeze({
   depth: 20,
   nodes: 50_000,
   stringBytes: 16_384,
-  aggregateStringBytes: 400_000,
+  aggregateStringBytes: 400_000, // Interned strings; occurrences retain node/blob bounds.
 });
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const CACHE_LOCK_WAIT_MS = 30_000;
@@ -49,20 +49,20 @@ function plainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 function accountString(value, state) {
+  if (state.strings.has(value)) return state.strings.get(value);
   const bytes = Buffer.byteLength(value, 'utf8');
   if (bytes > CACHE_LIMITS.stringBytes) throw invalid('string byte budget exceeded');
   state.stringBytes += bytes;
   if (state.stringBytes > CACHE_LIMITS.aggregateStringBytes)
     throw invalid('aggregate string byte budget exceeded');
+  state.strings.set(value, value);
+  return value;
 }
 function cloneJson(value, state, depth = 0) {
   state.nodes += 1;
   if (state.nodes > CACHE_LIMITS.nodes) throw invalid('node budget exceeded');
   if (depth > CACHE_LIMITS.depth) throw invalid('depth budget exceeded');
-  if (typeof value === 'string') {
-    accountString(value, state);
-    return value;
-  }
+  if (typeof value === 'string') return accountString(value, state);
   if (value === null || typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (Array.isArray(value)) {
@@ -111,7 +111,7 @@ function normalizeStore(value) {
   if (refs.length > CACHE_LIMITS.lanes) throw invalid('lane count budget exceeded');
   if (refs.some((ref) => typeof ref !== 'string' || !isLaneRef(ref)))
     throw invalid('lane key is invalid');
-  const state = { nodes: 0, stringBytes: 0 };
+  const state = { nodes: 0, stringBytes: 0, strings: new Map() };
   const normalized = empty();
   for (const ref of refs) {
     accountString(ref, state);
@@ -263,11 +263,9 @@ function loadSnapshot(cwd) {
     store: parseBytes(bytes), cursor: Object.freeze({ oid: before, legacy: null }),
   });
 }
-/** Missing cache is normal recovery; every present invalid cache fails loudly. */
 export function load(cwd = process.cwd()) {
   return loadSnapshot(cwd).store;
 }
-/** Publish one immutable blob through an exact, direct-ref compare-and-swap. */
 function publish(value, cwd, expected, artifacts = null) {
   const store = normalizeStore(value);
   const bytes = Buffer.from(`${JSON.stringify(store)}\n`);
