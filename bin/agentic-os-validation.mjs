@@ -13,21 +13,24 @@ import { VALIDATION_POLICY, VALIDATION_VERSION, validateValidationPolicy, select
 const runtimeRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
 const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validation-policy.mjs',
   'bin/agentic-os-validation-inputs.mjs', 'bin/agentic-os-test-inputs.mjs', 'bin/agentic-os-test-receipt.mjs',
-  'bin/agentic-os-test-ci.mjs', 'bin/agentic-os-validation-economy.mjs'];
+  'bin/agentic-os-test-ci.mjs', 'bin/agentic-os-validation-economy.mjs',
+  'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs'];
 const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
 export function validationArguments(argv) {
   const [mode = 'run', ...flags] = argv;
-  if (!['plan', 'run', 'ci'].includes(mode)) throw new Error('expected validation plan, run or ci');
+  if (!['plan', 'run', 'ci', 'observe'].includes(mode)) throw new Error('expected validation plan, run, ci or observe');
   const options = { mode, root: process.cwd(), base: 'origin/main', all: false, fresh: false };
   const seen = new Set();
   for (const flag of flags) {
-    const match = /^--(root|base|only)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
+    const match = /^--(root|base|only|input)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
     if (seen.has(key)) throw new Error('duplicate validation option'); seen.add(key);
     if (match) options[key] = key === 'only' ? match[2].split(',') : match[2];
     else if (['--all', '--fresh'].includes(flag)) options[key] = true;
     else throw new Error('unknown validation option');
   }
   if (mode === 'ci' && (seen.has('base') || seen.has('all'))) throw new Error('CI owns its validation baseline');
+  if (seen.has('input') && mode !== 'observe' || mode === 'observe' && [...seen].some(key => !['root', 'input'].includes(key)))
+    throw new Error('observation accepts only root and input');
   return options;
 }
 export function resolveValidationCi(root, environment = process.env) {
@@ -84,6 +87,11 @@ export function validationPlanReceipt(plan) {
 }
 export async function runRepositoryValidation(argv, { out = console.log } = {}) {
   const options = validationArguments(argv), root = realpathSync(resolve(options.root));
+  if (options.mode === 'observe') {
+    const { readValidationObservation } = await import('./agentic-os-validation-observation.mjs');
+    out(JSON.stringify(readValidationObservation(root, options.input), null, 2));
+    return 0;
+  }
   const ci = options.mode === 'ci' || Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
   const marker = hash(root), previousMarker = process.env.AGENTIC_OS_VALIDATION_ACTIVE;
   if (previousMarker?.split(':').includes(marker)) throw new Error('blocked-validation-recursive-run');
@@ -99,8 +107,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     if (origin?.repository.toLowerCase() !== policy.repository.toLowerCase()) throw new Error('blocked-validation-repository-identity');
     const observe = consumerSnapshotReader({ root, base: options.base, head: options.head || 'HEAD', committed: options.committed });
     const observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest();
-    const gitDirectory = realpathSync(readGit(root, ['rev-parse', '--absolute-git-dir']).trim());
-    const directory = join(gitDirectory, 'agentic-os-tests');
+    const directory = receiptDirectory(root);
     const context = economyContext(policyFile.digest, ownerDigest, observed.identity);
     const readCosts = () => readEconomy(directory, context, Date.now(), policy.checks.map(check => check.id));
     const economy = readCosts();
@@ -129,6 +136,9 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     const receipt = { schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
       identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
       policyDigest: policyFile.digest, ownerDigest, plan: validationPlanReceipt(plan),
+      source: { repository: policy.repository, revision: readGit(root, ['rev-parse', 'HEAD']).trim(),
+        tree: readGit(root, ['rev-parse', 'HEAD^{tree}']).trim(),
+        dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()) },
       outcome: 'running', startedAt: Date.now(), results: [], resources, costRegressions: [] };
     const stable = () => {
       if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest() !== ownerDigest)
@@ -137,6 +147,9 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     out(`${plan.mode}: ${checks.length}/${plan.available} owner checks; ${observed.changed.length} changed paths; no full-suite parity inferred`);
     try {
       stable(); writeReceipt(directory, 'validation-last.json', receipt);
+      // A prior unchanged failure is already a sufficient blocker; do not spend on earlier checks first.
+      if (resources.unchangedFailures.length)
+        throw new Error(`blocked-validation-unchanged-failure:${resources.unchangedFailures.join(',')}; inspect retained log or use --fresh after a new observation`);
       for (const check of checks) {
         stable();
         const prior = priorFor(check);
@@ -155,11 +168,17 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
               + `${progress.observedOutputBytes} output bytes, ${Math.floor(progress.quietMs / 1000)}s since output`) });
         stable();
         const saved = writeCheck(directory, check, result);
-        const regression = observeCost(economy, check, result);
-        if (regression) { receipt.costRegressions.push(regression); out(`cost regression ${check.name}: ${Math.round(regression.previousMeanMs)}ms mean -> ${Math.round(result.elapsedMs)}ms`); }
-        writeReceipt(directory, ECONOMY_FILE, economy);
         receipt.results.push({ id: check.name, reused: false, ...saved.result, validatedAt: saved.finishedAt });
+        if (result.exitCode !== 0 || result.reason) receipt.outcome = 'failed';
         writeReceipt(directory, 'validation-last.json', receipt);
+        try {
+          const regression = observeCost(economy, check, result);
+          if (regression) { receipt.costRegressions.push(regression); out(`cost regression ${check.name}: ${Math.round(regression.previousMeanMs)}ms mean -> ${Math.round(result.elapsedMs)}ms`); }
+          writeReceipt(directory, ECONOMY_FILE, economy);
+        } catch (error) {
+          receipt.costObservationError = error.message;
+          out(`cost observation unavailable: ${error.message}`);
+        }
         out(`${check.name}: exit ${result.exitCode}, ${(result.elapsedMs / 1000).toFixed(2)}s${result.outputTruncated ? ', bounded log tail retained' : ''}`);
         if (result.exitCode !== 0 || result.reason) {
           receipt.outcome = 'failed'; out(result.output.slice(-12_000)); break;

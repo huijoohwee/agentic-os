@@ -70,3 +70,12 @@ test('context isolates runtime and environment; estimates are observations rathe
   assert.equal(warm.checkout.automaticFetch, false); assert.equal(warm.authority, false);
   assert.equal(resourcePlan(checks, state({}), previews, { ...options, checkout: 'pull-request-head' }).checkout.diffMinimumDepth, null);
 });
+
+test('timeout teardown remains an observation without extending the execution deadline', () => {
+  const s = state({}), c = check('timeout');
+  observeCost(s, c, { elapsedMs: 900123, exitCode: null, reason: 'timeout' });
+  assert.equal(s.checks.timeout.meanMs, 900123);
+  assert.equal(s.checks.timeout.failureRate, 1);
+  assert.equal(c.timeoutMs, 900000);
+  assert.deepEqual(resourcePlan([c], s, [{ id: c.name, unchangedFailure: true }], {}).unchangedFailures, ['timeout']);
+});
