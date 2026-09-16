@@ -9,7 +9,7 @@ Modern requests carry version and capabilities in `params._meta`. `server/discov
 identity and deterministic tools; results include identity metadata. `initialize` selects legacy
 semantics for the process.
 
-Five tools invoke the existing CLI with argument arrays, without a shell:
+Harness tools invoke the existing CLI with argument arrays, without a shell:
 
 - `doctor` and `status` inspect the harness;
 - `checks` accepts `{ "input": "./checks-input.json" }` and reads owner references and unsigned results;
@@ -23,3 +23,5 @@ End-of-file terminates remaining work.
 
 `checks` maps to `observe --checks --input=<path>` without fetching or executing owner suites.
 Its [source bindings and coverage](../README.md#shared-check-discovery) grant no integration authority.
+
+`run.*` tools share [invocation](INVOCATION.md) schemas, permissions and limits. Discovery is lazy.

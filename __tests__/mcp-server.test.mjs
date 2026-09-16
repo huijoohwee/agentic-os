@@ -25,7 +25,7 @@ import {
 
 export const READINESS_PROOF = Object.freeze({
   schema: CONTRACT_PROOF_SCHEMA,
-  claims: ['sha256:1466972ee8f62e30ce246d27539e7091df7d031804e93adfa4f4c49ce7dd32dc'],
+  claims: ['sha256:6c197283c7072933528760c8d3026854199b627f447986c9c85b5531659d8b6c'],
 });
 
 const CLIENT_META = Object.freeze({
@@ -54,7 +54,7 @@ function legacyInitialize(id = 1) {
 const okRunner = async () => ({ exitCode: 0, stdout: 'ok\n', stderr: '' });
 
 test('the packaged fixed tool surface is deterministic and deeply frozen', () => {
-  assert.deepEqual(TOOLS.map((tool) => tool.name), ['run.start', 'run.status', 'run.cancel', 'run.retry', 'capabilities', 'collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
+  assert.deepEqual(TOOLS.map((tool) => tool.name), ['run.start', 'run.status', 'run.cancel', 'run.retry', 'run.query', 'run.trace', 'run.evaluate', 'run.compare', 'capabilities', 'collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
   assert.equal(Object.isFrozen(TOOLS), true);
   assert.equal(TOOLS.find(tool => tool.name === 'capabilities').annotations.readOnlyHint, true);
   assert.equal(TOOLS.find(tool => tool.name === 'capabilities').annotations.openWorldHint, false);

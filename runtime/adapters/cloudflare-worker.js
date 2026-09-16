@@ -1,4 +1,5 @@
 /** Optional, explicitly selected Cloudflare application host. Product policy is injected. */
+import { RUN_OPERATIONS } from "../agents/invocation.js";
 import { createAgentApiApp } from "./app.js";
 import {
   createAutonomousAgentDefinitionRegistry,
@@ -48,7 +49,7 @@ export function createWorkerFetch(env = {}, publicFetch) {
   };
 }
 
-const JSON_HEADERS = Object.freeze({ "content-type": "application/json" });
+const JSON_HEADERS = Object.freeze({ "content-type": "application/json", "cache-control": "no-store" });
 const MAX_JSON_BODY_BYTES = 512 * 1024;
 export function createCloudflareWorker({ createExtension } = {}) {
   if (createExtension !== undefined && typeof createExtension !== 'function')
@@ -408,17 +409,10 @@ export function createCloudflareWorker({ createExtension } = {}) {
     const swarmAction = url.pathname.startsWith("/api/agent-swarm/")
       ? url.pathname.slice("/api/agent-swarm/".length)
       : "";
-    if (["start", "work", "settle", "status", "cancel", "retry"].includes(swarmAction)) {
+    if ([...RUN_OPERATIONS, "work", "settle"].includes(swarmAction)) {
       if (request.method !== "POST") return json(405, { error: "method not allowed" });
       const body = await readJsonBody(request);
-      const handler = {
-        start: app.agentSwarmStart,
-        work: app.agentSwarmWork,
-        settle: app.agentSwarmSettle,
-        status: app.agentSwarmStatus,
-        cancel: app.agentSwarmCancel,
-        retry: app.agentSwarmRetry,
-      }[swarmAction];
+      const handler = app['agentSwarm' + swarmAction[0].toUpperCase() + swarmAction.slice(1)];
       return toResponse(await handler({ headers: headerBag(request), body, signal: request.signal }));
     }
 

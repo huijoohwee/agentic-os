@@ -36,9 +36,10 @@ import {
   requireLedgerOwner,
 } from "./agent-swarm-ledger.js";
 import { createAgentSwarmMemoryStore } from "./agent-swarm-store.js";
-import { createSwarmCoordinator, digest, requestDigest } from "./agent-swarm-coordinator.js";
+import { createSwarmCoordinator, createSwarmInstrumentation, digest, requestDigest } from "./agent-swarm-coordinator.js";
 import { createSwarmReconciler } from "./agent-swarm-reconcile.js";
 import { classifyTaskFailure } from "./agent-swarm-recovery.js";
+import { AgentToolkitBlock } from "./agent-toolkit-contract.js";
 import { withDeadline } from "./running-agent-contract.js";
 
 function assertAdapter(value, field) {
@@ -54,7 +55,7 @@ function assertStore(value) {
 }
 
 function errorReason(error, fallback) {
-  if (error instanceof AgentSwarmBlock || error instanceof AgentSwarmFailure) return error.reasonCode;
+  if (error instanceof AgentToolkitBlock || error instanceof AgentSwarmBlock || error instanceof AgentSwarmFailure) return error.reasonCode;
   if (error?.reasonCode === "timeout") return `${fallback}_timeout`;
   if (error?.reasonCode === "aborted") return `${fallback}_aborted`;
   return fallback;
@@ -76,6 +77,7 @@ export function createAgentSwarmRuntime({
   verifyReceipt,
   reconcileTask,
   authorize,
+  toolkit, resources, traceProfile, requireContext = false,
   taskEffect = "unknown",
   planningEffect = "unknown",
   stateStore = createAgentSwarmMemoryStore(),
@@ -102,6 +104,7 @@ export function createAgentSwarmRuntime({
   if (limits.retryBaseMs > limits.retryMaxMs || limits.runTtlMs > 7 * 24 * 60 * 60_000
     || limits.retentionMs > 30 * 24 * 60 * 60_000) throw new TypeError("Retry, execution or retention bound is invalid.");
   const configured = Boolean(resolveAgent && planTasks && executeTask && synthesize && verifyReceipt && authorize);
+  const instrumentation = createSwarmInstrumentation({ store, toolkit, resources, profile: traceProfile, requireContext, now });
   const activeExecutions = new Map();
   let starts = 0;
   let workerDispatches = 0;
@@ -125,7 +128,7 @@ export function createAgentSwarmRuntime({
     return withDeadline(() => operation(controller.signal), signal, limits.taskTimeoutMs, controller);
   }
 
-  const policyDigest = digest({ limits, taskEffect, planningEffect });
+  const policyDigest = digest({ limits, taskEffect, planningEffect, ...(toolkit || resources || requireContext ? { mission: 'v2' } : {}) });
   const { withLedger, reserveStart, commitStart, discardStart, replayStart, cancelPlanning, project } =
     createSwarmCoordinator({ store, limits, instant, wait, policyDigest, planningEffect });
 
@@ -197,6 +200,8 @@ export function createAgentSwarmRuntime({
     }
     let authorization;
     try {
+      if (requireContext && !request.context) throw new AgentSwarmBlock("context_required", "Plan context is required.");
+      if (request.context && (!toolkit || !resources || !traceProfile)) throw new AgentSwarmBlock('mission_unconfigured', 'Plan-bound runs require trace and resource owners.');
       authorization = normalizeAuthorization(await bounded((signal) => authorize(freezeCall({
         action: "agent.swarm.start",
         runId: request.runId,
@@ -232,7 +237,9 @@ export function createAgentSwarmRuntime({
     const { reservationId } = reservation;
     let plan;
     try {
-      plan = normalizePlanOutcome(await bounded((signal) => planTasks(freezeCall({
+      plan = normalizePlanOutcome(await bounded((signal) => instrumentation.observe(request.runId, context.principalId,
+        `${request.runId}:planning:${reservation.planningAttempts}`, "plan", observation => planTasks(freezeCall({
+        ...observation,
         runId: request.runId,
         conversationId: request.conversationId,
         agent: request.agent,
@@ -244,8 +251,8 @@ export function createAgentSwarmRuntime({
           maxWaves: limits.maxWaves,
           maxAttempts: limits.maxAttempts,
         }),
-        signal,
-      })), request.signal), limits);
+        signal: observation.signal,
+      })), signal), request.signal), limits);
     } catch (error) {
       await discardStart(request.runId, reservationId).catch(() => false);
       blockedRuns += 1;
@@ -340,7 +347,8 @@ export function createAgentSwarmRuntime({
       }
       const outcome = await withDeadline(async () => {
         executionStarted = true;
-        const raw = await executeTask(freezeCall({
+        const raw = await instrumentation.observe(request.runId, context.principalId, task.executionId, "work", observation => executeTask(freezeCall({
+          ...observation,
           runId: task.executionId,
           conversationId: taskConversationId(request.runId, task.taskId),
           agent: execution.agent,
@@ -357,8 +365,8 @@ export function createAgentSwarmRuntime({
             attempt: task.attempt,
             workerId: request.workerId,
           }),
-          signal: controller.signal,
-        }));
+          signal: observation.signal,
+        })), controller.signal);
         const normalized = normalizeWorkerOutcome(raw, limits, task.idempotencyKey);
         if (normalized.receipt) {
           normalizeReceiptVerification(await verifyReceipt(freezeCall({
@@ -407,6 +415,7 @@ export function createAgentSwarmRuntime({
       });
     } finally {
       activeExecutions.delete(task.executionId);
+      await instrumentation.sync(request.runId, context.principalId).catch(() => {});
     }
   }
 
@@ -442,10 +451,9 @@ export function createAgentSwarmRuntime({
         || launchAt + limits.taskTimeoutMs + limits.storeClaimTtlMs >= claim.deadlineAt) {
         throw new AgentSwarmBlock("synthesis_launch_deadline", "Synthesis cannot finish inside its lease and run deadline.");
       }
-      const raw = await withDeadline(() => synthesize(freezeCall({
-        ...claim.payload,
-        signal: controller.signal,
-      })), request.signal, limits.taskTimeoutMs, controller);
+      const raw = await withDeadline(() => instrumentation.observe(request.runId, context.principalId, claim.executionId, "synthesize", observation => synthesize(freezeCall({
+        ...claim.payload, ...observation,
+      })), controller.signal), request.signal, limits.taskTimeoutMs, controller);
       const outcome = normalizeSynthesisOutcome(raw, limits);
       await authorizeOperation("settle.commit", request, context, claim.authorizationContext);
       const completed = await withLedger(request.runId, `${request.operationId}:complete`, context.principalId, (ledger, at) => (
@@ -465,6 +473,7 @@ export function createAgentSwarmRuntime({
       return failed || blockedSwarmResult(request.runId, "synthesis_settlement_failed", "Synthesis failure could not be settled durably.");
     } finally {
       activeExecutions.delete(claim.executionId);
+      await instrumentation.sync(request.runId, context.principalId).catch(() => {});
     }
   }
 
@@ -487,6 +496,7 @@ export function createAgentSwarmRuntime({
       for (const execution of activeExecutions.values()) {
         if (execution.runId === request.runId) execution.controller.abort();
       }
+      await instrumentation.sync(request.runId, context.principalId);
       canceledRuns += 1;
       return canceled;
     } catch (error) {
@@ -530,6 +540,10 @@ export function createAgentSwarmRuntime({
 
   return Object.freeze({
     start,
+    ...Object.fromEntries(['query', 'trace', 'evaluate', 'compare'].map(action => [action, async (input, context = {}) => {
+      context = normalizeAccessContext(context); currentSession(context);
+      return toolkit ? toolkit[action](input, context) : blockedSwarmResult(input.runId, 'mission_unconfigured', 'Observation owner unavailable.');
+    }])),
     work,
     settle,
     status,

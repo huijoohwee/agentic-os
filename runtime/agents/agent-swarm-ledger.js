@@ -9,6 +9,8 @@ import {
 import { clearTaskExecution as clearExecution, nextSwarmWake, retryAt, scheduleTaskFailure } from "./agent-swarm-recovery.js";
 import { aggregateCosts } from "./running-agent-contract.js";
 
+const pick = (value, keys) => Object.fromEntries(keys.filter(k => value[k] !== undefined).map(k => [k, value[k]]));
+
 function iso(at) {
   return new Date(at).toISOString();
 }
@@ -100,6 +102,7 @@ export function recoverSwarmLedger(ledger, limits, at) {
 export function createSwarmLedger({ request, plan, authorization, principalId, policyDigest, requestDigest, taskEffect, limits, admittedAt, at }) {
   const ledger = {
     schema: AGENT_SWARM_RUN_SCHEMA,
+    ...(request.context ? { context: request.context } : {}),
     runId: request.runId,
     conversationId: request.conversationId,
     agent: request.agent,
@@ -413,15 +416,8 @@ export function projectSwarmLedger(ledger, stateStoreStats = {}) {
       ...(task.receipt ? { receiptId: task.receipt.receiptId, idempotencyKey: task.receipt.idempotencyKey } : {}),
     }));
   return Object.freeze({
-    status: ledger.status,
-    stage: "agent-swarm",
-    runId: ledger.runId,
-    requestDigest: ledger.requestDigest,
-    deadlineAt: ledger.deadlineAt,
-    expiresAt: ledger.expiresAt,
-    nextEligibleAt: nextSwarmWake(ledger),
-    conversationId: ledger.conversationId,
-    agent: ledger.agent,
+    ...pick(ledger, ['status', 'runId', 'context', 'requestDigest', 'deadlineAt', 'expiresAt', 'conversationId', 'agent']),
+    stage: 'agent-swarm', nextEligibleAt: nextSwarmWake(ledger),
     finalAnswerOwner: ledger.agent,
     plan: Object.freeze({
       planId: ledger.planId,
@@ -430,15 +426,7 @@ export function projectSwarmLedger(ledger, stateStoreStats = {}) {
       maxParallel: ledger.maxParallel,
     }),
     tasks: Object.freeze(ledger.tasks.map((task) => Object.freeze({
-      taskId: task.taskId,
-      objective: task.objective,
-      dependencies: task.dependencies,
-      wave: task.wave,
-      status: task.status,
-      attempts: task.attempts,
-      ...(task.nextEligibleAt !== undefined ? { nextEligibleAt: task.nextEligibleAt } : {}),
-      ...(task.effectState ? { effectState: task.effectState } : {}),
-      ...(task.failureKind ? { failureKind: task.failureKind } : {}),
+      ...pick(task, ['taskId', 'objective', 'dependencies', 'wave', 'status', 'attempts', 'nextEligibleAt', 'effectState', 'failureKind']),
       ...(task.workerId || task.completedByWorkerId || task.lastWorkerId
         ? { workerId: task.workerId || task.completedByWorkerId || task.lastWorkerId }
         : {}),

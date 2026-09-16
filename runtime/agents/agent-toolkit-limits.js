@@ -3,28 +3,7 @@ import {
   normalizeComparisonPolicy,
 } from "./agent-toolkit-contract.js";
 
-const LIMIT_FIELDS = new Set([
-  "maxSpans",
-  "maxSamples",
-  "maxProposals",
-  "maxOptimizationCandidates",
-  "maxRecordChars",
-  "runTtlMs",
-  "cohortTtlMs",
-  "operationTimeoutMs",
-  "evaluationLeaseMs",
-  "storeClaimTtlMs",
-  "storeClaimAttempts",
-  "storeClaimRetryMs",
-  "maxEvaluationAttempts",
-  "requestWindowMs",
-  "maxRequestsPerWindow",
-  "maxPrincipalRuns",
-  "maxPrincipalCohorts",
-  "principalShardCount",
-  "maxPrincipalsPerShard",
-  "comparison",
-]);
+const LIMIT_FIELDS = new Set(Object.keys(AGENT_TOOLKIT_DEFAULTS));
 const TIMER_MAX_MS = 2_147_483_647;
 
 export function normalizeAgentToolkitLimits(overrides) {
@@ -40,26 +19,7 @@ export function normalizeAgentToolkitLimits(overrides) {
       AGENT_TOOLKIT_DEFAULTS.comparison,
     ),
   };
-  for (const field of [
-    "maxSpans",
-    "maxSamples",
-    "maxProposals",
-    "maxOptimizationCandidates",
-    "maxRecordChars",
-    "runTtlMs",
-    "cohortTtlMs",
-    "operationTimeoutMs",
-    "evaluationLeaseMs",
-    "storeClaimTtlMs",
-    "storeClaimAttempts",
-    "maxEvaluationAttempts",
-    "requestWindowMs",
-    "maxRequestsPerWindow",
-    "maxPrincipalRuns",
-    "maxPrincipalCohorts",
-    "principalShardCount",
-    "maxPrincipalsPerShard",
-  ]) {
+  for (const field of [...LIMIT_FIELDS].filter(k => !['comparison', 'storeClaimRetryMs'].includes(k))) {
     if (!Number.isSafeInteger(limits[field]) || limits[field] < 1) {
       throw new TypeError(`${field} must be a positive safe integer.`);
     }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   AgentToolkitBlock,
   assertIdentifier,
@@ -13,6 +14,7 @@ import {
   normalizeSpanFinishRequest,
   normalizeSpanStartRequest,
   normalizeStartRequest,
+  normalizeTraceQuery,
 } from "./agent-toolkit-contract.js";
 import {
   appendToolkitProposal,
@@ -25,32 +27,27 @@ import {
   completeToolkitRun,
   createToolkitCohort,
   createToolkitRun,
-  digestToolkitEvidence,
   failToolkitEvaluation,
   finishToolkitSpan,
   projectToolkitRun,
   reserveToolkitEvaluation,
   runRecordId,
-  startToolkitSpan,
+  startToolkitSpan, toolkitSubjectDigest,
 } from "./agent-toolkit-ledger.js";
-import { createAgentToolkitAdmissionController } from "./agent-toolkit-admission.js";
+import { createAgentToolkitAdmissionController, mutateToolkitRecord } from "./agent-toolkit-admission.js";
 import { normalizeAgentToolkitLimits } from "./agent-toolkit-limits.js";
 import { createAgentToolkitObservability } from "./agent-toolkit-observability.js";
 import {
   normalizeOptimizationRequest,
   optimizeToolkitCohort,
 } from "./agent-toolkit-optimizer.js";
-import { profileToolkitRun } from "./agent-toolkit-profiler.js";
+import { profileToolkitRun, createToolkitQueries } from "./agent-toolkit-profiler.js";
 import { createAgentToolkitMemoryStore } from "./agent-toolkit-store.js";
 import { normalizeJson } from "../json-contract.mjs";
 import { RunningAgentBlock, withDeadline } from "./running-agent-contract.js";
 
 function blocked(reasonCode, status = "blocked") {
   return Object.freeze({ status, reasonCode });
-}
-
-function pause(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function publicRequest(request) {
@@ -80,10 +77,12 @@ export function createAgentToolkitRuntime({
   evaluate: evaluateAdapter,
   telemetry,
   now = () => Date.now(),
+  clockOrigin = randomUUID(),
+  resources,
   ...overrides
 } = {}) {
   if (typeof now !== "function") throw new TypeError("now must be a function.");
-  const limits = normalizeAgentToolkitLimits(overrides);
+  const limits = { ...normalizeAgentToolkitLimits(overrides), clockOrigin: assertIdentifier(clockOrigin, "clockOrigin") };
   const store = stateStore || createAgentToolkitMemoryStore({ now });
   const admission = createAgentToolkitAdmissionController({ stateStore: store, now, limits });
   const observability = createAgentToolkitObservability({ exporter: telemetry, now });
@@ -96,40 +95,25 @@ export function createAgentToolkitRuntime({
     return value;
   }
 
-  async function claimRecord(recordId, operationId, transform) {
-    for (let attempt = 1; attempt <= limits.storeClaimAttempts; attempt += 1) {
-      const at = instant();
-      const claimId = `toolkit-claim-${digestToolkitEvidence([recordId, operationId, at, attempt]).slice(0, 48)}`;
-      const record = await store.claim(recordId, claimId, at + limits.storeClaimTtlMs);
-      if (!record) {
-        if (!(await store.get(recordId))) return { missing: true };
-        if (attempt < limits.storeClaimAttempts) await pause(limits.storeClaimRetryMs);
-        continue;
-      }
-      try {
-        const transformed = await transform(record, at);
-        const replacement = transformed?.record || record;
-        if (!(await store.replace(recordId, claimId, replacement))) {
-          throw new AgentToolkitBlock("state_conflict", "Agent Toolkit state claim became stale.");
-        }
-        return { missing: false, value: transformed?.value, record: replacement };
-      } catch (error) {
-        await store.release(recordId, claimId);
-        throw error;
-      }
-    }
-    throw new AgentToolkitBlock("state_busy", "Agent Toolkit state remained busy.");
-  }
+  const claimRecord = (id, operationId, transform) => mutateToolkitRecord({ store, id, now: instant, limits, transform });
 
   async function authorizeAction(action, request, context) {
+    if (context.principalExpiresAt !== undefined && context.principalExpiresAt <= instant()) throw new AgentToolkitBlock('principal_expired', 'Current principal required.');
     if (!configured) throw new AgentToolkitBlock("runtime_unconfigured", "Agent Toolkit authorizer is not configured.");
     const verdict = await authorize({
       action,
       principalId: context.principalId,
       request: publicRequest(request),
     });
+    if (context.principalExpiresAt !== undefined && context.principalExpiresAt <= instant()) throw new AgentToolkitBlock('principal_expired', 'Current principal required.');
     return normalizeAuthorization(verdict);
   }
+
+  const queries = createToolkitQueries({ store, admission, now: instant, limits, authorize: authorizeAction, resources });
+  const query = async (value, access) => { try { return await queries.query(value, normalizeAccessContext(access)); }
+    catch (e) { if (e instanceof AgentToolkitBlock) return blocked(e.reasonCode); throw e; } };
+  const trace = async (value, access) => { try { return await queries.trace(value, normalizeAccessContext(access)); }
+    catch (e) { if (e instanceof AgentToolkitBlock) return blocked(e.reasonCode); throw e; } };
 
   async function ensureCohort(request, context, at) {
     const recordId = cohortRecordId(context.principalId, request.cohortId);
@@ -157,12 +141,7 @@ export function createAgentToolkitRuntime({
     if (!run.completion) return;
     const result = await claimRecord(cohortRecordId(context.principalId, run.cohortId), operationId, async (cohort, at) => {
       assertToolkitOwner(cohort, context.principalId);
-      if (digestToolkitEvidence(cohort.target) !== digestToolkitEvidence(run.target)
-        || digestToolkitEvidence(cohort.adapter) !== digestToolkitEvidence(run.adapter)
-        || cohort.operation !== run.operation
-        || digestToolkitEvidence(cohort.profile) !== digestToolkitEvidence(run.profile)) {
-        throw new AgentToolkitBlock("cohort_mismatch", "Run no longer matches its cohort provenance.");
-      }
+      assertToolkitCohort(cohort, run, context.principalId);
       return { record: appendToolkitSample(cohort, run, limits, at) };
     });
     if (result.missing) throw new AgentToolkitBlock("cohort_not_found", "Agent Toolkit cohort was not found.");
@@ -183,6 +162,10 @@ export function createAgentToolkitRuntime({
     let authorization;
     try {
       authorization = await authorizeAction("observe", request, context);
+      if (request.context) {
+        if (!resources) throw new AgentToolkitBlock('allocation_unconfigured', 'Context requires trusted resource admission.');
+        await resources.resolve(request.context, context.principalId, 'observe');
+      }
       await ensureCohort(request, context, at);
       const stored = await store.put(createToolkitRun({
         request,
@@ -200,31 +183,15 @@ export function createAgentToolkitRuntime({
     }
   }
 
-  async function startSpan(value, access = {}) {
-    const request = normalizeSpanStartRequest(value);
-    const context = normalizeAccessContext(access);
+  async function spanTransition(value, access, normalize, apply, starting = false) {
+    const request = normalize(value), context = normalizeAccessContext(access);
     try {
-      return await mutateRun(request.runId, `span-start:${request.spanId}`, context, (record, at) => (
-        startToolkitSpan(record, request, limits, at)
-      ));
-    } catch (error) {
-      if (error instanceof AgentToolkitBlock) return blocked(error.reasonCode);
-      throw error;
-    }
+      const result = await mutateRun(request.runId, `span:${request.spanId}`, context, (record, at) => apply(record, request, limits, at));
+      return starting && !result.spans.some(s => s.spanId === request.spanId) ? { ...blocked('span_limit'), traceTruncated: true } : result;
+    } catch (error) { if (error instanceof AgentToolkitBlock) return blocked(error.reasonCode); throw error; }
   }
-
-  async function finishSpan(value, access = {}) {
-    const request = normalizeSpanFinishRequest(value);
-    const context = normalizeAccessContext(access);
-    try {
-      return await mutateRun(request.runId, `span-finish:${request.spanId}`, context, (record, at) => (
-        finishToolkitSpan(record, request, limits, at)
-      ));
-    } catch (error) {
-      if (error instanceof AgentToolkitBlock) return blocked(error.reasonCode);
-      throw error;
-    }
-  }
+  const startSpan = (value, access = {}) => spanTransition(value, access, normalizeSpanStartRequest, startToolkitSpan, true);
+  const finishSpan = (value, access = {}) => spanTransition(value, access, normalizeSpanFinishRequest, finishToolkitSpan);
 
   async function complete(value, access = {}) {
     const request = normalizeCompleteRequest(value);
@@ -260,7 +227,7 @@ export function createAgentToolkitRuntime({
         assertToolkitOwner(record, context.principalId);
         const reservation = reserveToolkitEvaluation(record, {
           operationId: request.operationId,
-          evidence: request.evidence,
+          evidence: request.evidence, spanId: request.spanId, subjectDigest: request.subjectDigest,
           limits,
           at,
         });
@@ -270,12 +237,19 @@ export function createAgentToolkitRuntime({
       );
       if (reserved.missing) return blocked("run_not_found");
       if (reserved.value.replay) {
-        await syncSample(reserved.record, context, `sample-evaluation-replay:${request.operationId}`);
+        if (!request.spanId) await syncSample(reserved.record, context, `sample-evaluation-replay:${request.operationId}`);
         return projectToolkitRun(reserved.record);
       }
 
-      let outcome;
+      let outcome, resourceReservation, resourceStartedAt;
       try {
+        if (initial.context) {
+          if (!resources) throw new AgentToolkitBlock("allocation_unconfigured", "Evaluation requires resource admission.");
+          resourceReservation = await resources.reserve({ context: initial.context, principalId: context.principalId,
+            runId: initial.runId, agentId: initial.target.id, operationId: reserved.value.idempotencyKey, phase: "evaluate" });
+          if (resourceReservation.replay) throw new AgentToolkitBlock("allocation_usage_unknown", "Read prior evaluator usage before retry.");
+          resourceStartedAt = instant();
+        }
         const expectedMetric = normalizeJson(reserved.record.profile.metric, "expected evaluation metric");
         const evaluatorMetadata = normalizeJson({
           target: reserved.record.target,
@@ -283,6 +257,8 @@ export function createAgentToolkitRuntime({
           adapter: reserved.record.adapter,
           profile: reserved.record.profile,
           evidence: request.evidence,
+          subject: { runId: initial.runId, principalId: context.principalId, ...(request.spanId ? { spanId: request.spanId } : {}), digest: toolkitSubjectDigest(reserved.record, request.spanId) },
+          ...(resourceReservation ? { resourceBounds: resourceReservation.bounds } : {}),
           idempotencyKey: reserved.value.idempotencyKey,
         }, "evaluator input");
         const controller = new AbortController();
@@ -292,17 +268,24 @@ export function createAgentToolkitRuntime({
             signal: controller.signal,
           })),
           request.signal,
-          limits.operationTimeoutMs,
+          Math.min(limits.operationTimeoutMs, resourceReservation?.bounds.elapsedMs ?? limits.operationTimeoutMs),
           controller,
         );
         outcome = normalizeEvaluationOutcome(raw, expectedMetric);
+        if (resourceReservation) {
+          if (outcome.costLog?.estimated_cost_usd > 0) throw new AgentToolkitBlock('paid_execution_forbidden', 'Free execution required.');
+          const settled = await resources.settle(resourceReservation, context.principalId, outcome.costLog ? {
+            inputTokens: outcome.costLog.prompt_tokens, outputTokens: outcome.costLog.completion_tokens, attempts: 1, elapsedMs: instant() - resourceStartedAt } : null);
+          if (settled.state !== 'settled') throw new AgentToolkitBlock('allocation_usage_unknown', 'Reconcile evaluator usage.');
+        }
       } catch (error) {
-        const reasonCode = safeReason(error, "evaluation_failed", ["evaluation_metric_mismatch"]);
+        if (resourceReservation && !resourceReservation.replay) await resources.settle(resourceReservation, context.principalId, null).catch(() => {});
+        const reasonCode = safeReason(error, "evaluation_failed", ["evaluation_metric_mismatch", "allocation_unconfigured", "allocation_usage_unknown", "budget_project_exhausted", "budget_agent_exhausted", "budget_run_exhausted"]);
         await mutateRun(request.runId, `evaluation-fail:${reservationId}`, context, (record, at) => (
           failToolkitEvaluation(record, reservationId, reasonCode, limits, at)
         ));
         const failed = await store.get(runRecordId(context.principalId, request.runId));
-        await syncSample(failed, context, `sample-evaluation-fail:${reservationId}`);
+        if (!request.spanId) await syncSample(failed, context, `sample-evaluation-fail:${reservationId}`);
         return blocked(reasonCode);
       }
 
@@ -313,7 +296,7 @@ export function createAgentToolkitRuntime({
         (record, at) => commitToolkitEvaluation(record, reservationId, outcome, limits, at),
       );
       const run = await store.get(runRecordId(context.principalId, request.runId));
-      await syncSample(run, context, `sample-evaluation:${reservationId}`);
+      if (!request.spanId) await syncSample(run, context, `sample-evaluation:${reservationId}`);
       return committed;
     } catch (error) {
       if (error instanceof AgentToolkitBlock) return blocked(error.reasonCode);
@@ -321,32 +304,24 @@ export function createAgentToolkitRuntime({
     }
   }
 
-  async function status(runId, access = {}) {
-    const context = normalizeAccessContext(access);
-    const normalizedRunId = assertIdentifier(runId, "runId");
-    const record = await store.get(runRecordId(context.principalId, normalizedRunId));
-    if (!record) return blocked("run_not_found");
+  async function readOwned(id, context, project, request) {
+    const record = await store.get(id);
+    if (!record) return blocked(id.startsWith('cohort:') ? 'cohort_not_found' : 'run_not_found');
     try {
       assertToolkitOwner(record, context.principalId);
-      return projectToolkitRun(record);
-    } catch (error) {
-      return blocked(error.reasonCode);
-    }
+      await authorizeAction('observe', request, context);
+      return project(record);
+    } catch (error) { if (error instanceof AgentToolkitBlock) return blocked(error.reasonCode); throw error; }
   }
-
-  async function compare(value, access = {}) {
-    const request = normalizeCompareRequest(value, limits.comparison);
+  const readRun = (runId, access, project) => {
     const context = normalizeAccessContext(access);
-    const cohort = await store.get(cohortRecordId(context.principalId, request.cohortId));
-    if (!cohort) return blocked("cohort_not_found");
-    try {
-      assertToolkitOwner(cohort, context.principalId);
-      return compareToolkitCohort(cohort, request);
-    } catch (error) {
-      if (error instanceof AgentToolkitBlock) return blocked(error.reasonCode);
-      throw error;
-    }
-  }
+    return readOwned(runRecordId(context.principalId, assertIdentifier(runId, 'runId')), context, project, { runId });
+  };
+  const status = (runId, access = {}) => readRun(runId, access, projectToolkitRun);
+  const compare = (value, access = {}) => {
+    const request = normalizeCompareRequest(value, limits.comparison), context = normalizeAccessContext(access);
+    return readOwned(cohortRecordId(context.principalId, request.cohortId), context, r => compareToolkitCohort(r, request), request);
+  };
 
   async function propose(value, access = {}) {
     const request = normalizeProposalRequest(value, limits.comparison);
@@ -374,18 +349,7 @@ export function createAgentToolkitRuntime({
     }
   }
 
-  async function profile(runId, access = {}) {
-    const context = normalizeAccessContext(access);
-    const normalizedRunId = assertIdentifier(runId, "runId");
-    const record = await store.get(runRecordId(context.principalId, normalizedRunId));
-    if (!record) return blocked("run_not_found");
-    try {
-      assertToolkitOwner(record, context.principalId);
-      return profileToolkitRun(record);
-    } catch (error) {
-      return blocked(error.reasonCode);
-    }
-  }
+  const profile = (runId, access = {}) => readRun(runId, access, profileToolkitRun);
 
   async function optimize(value, access = {}) {
     const request = normalizeOptimizationRequest(value, limits);
@@ -403,103 +367,50 @@ export function createAgentToolkitRuntime({
   }
 
   async function instrument(value, operation, access = {}) {
-    if (typeof operation !== "function") throw new TypeError("operation must be a function.");
-    const request = normalizeStartRequest(value);
-    const context = trustedContext(access);
-    const transitionResult = async (reasonCode) => {
+    if (typeof operation !== 'function') throw new TypeError('operation must be a function.');
+    const request = normalizeStartRequest(value), context = trustedContext(access);
+    // Plan-bound effects use the budgeted execution bridge, never this legacy convenience adapter.
+    if (request.context) return blocked('budgeted_executor_required');
+    const transition = async reasonCode => {
       const observation = await status(request.runId, context);
-      if (["completed", "failed", "canceled"].includes(observation.status)) {
-        return Object.freeze({
-          status: observation.status,
-          ...(observation.completion?.reasonCode
-            ? { reasonCode: observation.completion.reasonCode }
-            : {}),
-          observation,
-        });
-      }
-      return Object.freeze({ status: "blocked", reasonCode, observation });
+      return Object.freeze({ status: ['completed', 'failed', 'canceled'].includes(observation.status) ? observation.status : 'blocked',
+        reasonCode: observation.completion?.reasonCode ?? reasonCode, observation });
     };
     const started = await start(request, context);
-    if (started.status !== "running") return started;
-    const rootSpan = {
-      runId: request.runId,
-      spanId: "root",
-      kind: request.target.kind,
-      operation: request.operation,
-      component: {
-        id: request.target.id,
-        revision: request.target.revision,
-        digest: request.target.digest,
-      },
+    if (started.status !== 'running') return started;
+    const span = { runId: request.runId, spanId: 'root' };
+    const spanStarted = await startSpan({ ...span, kind: request.target.kind, operation: request.operation,
+      component: { id: request.target.id, revision: request.target.revision, digest: request.target.digest } }, context);
+    if (spanStarted.status === 'blocked') return transition(spanStarted.reasonCode);
+    const finish = async (state, outcome = {}) => {
+      const spanFinished = await finishSpan({ ...span, status: state, ...(outcome.reasonCode ? { reasonCode: outcome.reasonCode } : {}) }, context);
+      if (spanFinished.status === 'blocked') return transition(spanFinished.reasonCode);
+      const result = await complete({ runId: request.runId, operationId: 'instrument-complete', status: state,
+        ...(outcome.costLog ? { costLog: outcome.costLog } : {}), ...(outcome.reasonCode ? { reasonCode: outcome.reasonCode } : {}) }, context);
+      if (result.status === 'blocked' || result.completion?.operationId !== 'instrument-complete' || result.completion?.status !== state)
+        return transition(result.reasonCode || 'run_terminal');
+      return { status: result.status, observation: result };
     };
-    const spanStarted = await startSpan(rootSpan, context);
-    if (spanStarted.status === "blocked") return transitionResult(spanStarted.reasonCode);
     try {
       const controller = new AbortController();
-      const raw = await withDeadline(
-        () => operation({
-          signal: controller.signal,
-          target: request.target,
-          candidate: request.candidate,
-          adapter: request.adapter,
-        }),
-        request.signal,
-        limits.operationTimeoutMs,
-        controller,
-      );
-      const outcome = normalizeInstrumentOutcome(raw);
-      const spanFinished = await finishSpan({
-        runId: request.runId, spanId: "root", status: "completed",
-      }, context);
-      if (spanFinished.status === "blocked") return transitionResult(spanFinished.reasonCode);
-      const completion = await complete({
-        runId: request.runId,
-        operationId: "instrument-complete",
-        status: "completed",
-        ...(outcome.costLog ? { costLog: outcome.costLog } : {}),
-      }, context);
-      if (completion.status === "blocked"
-        || completion.completion?.operationId !== "instrument-complete"
-        || completion.completion?.status !== "completed") {
-        return transitionResult(completion.reasonCode || "run_terminal");
-      }
-      if (outcome.evidence && evaluatorConfigured) {
-        await evaluate({
-          runId: request.runId,
-          operationId: "instrument-evaluate",
-          evidence: outcome.evidence,
-          signal: request.signal,
-        }, context);
-      }
+      const outcome = normalizeInstrumentOutcome(await withDeadline(() => operation({ signal: controller.signal,
+        target: request.target, candidate: request.candidate, adapter: request.adapter }), request.signal, limits.operationTimeoutMs, controller));
+      const result = await finish('completed', outcome);
+      if (result.status !== 'completed' || result.observation.completion?.operationId !== 'instrument-complete') return result;
+      if (outcome.evidence && evaluatorConfigured) await evaluate({ runId: request.runId, operationId: 'instrument-evaluate',
+        evidence: outcome.evidence, signal: request.signal }, context);
       const observation = await status(request.runId, context);
-      return Object.freeze({
-        status: observation.status,
-        value: outcome.value,
-        observation,
-      });
+      return Object.freeze({ status: observation.status, value: outcome.value, observation });
     } catch (error) {
-      const reasonCode = safeReason(error, "adapter_failed");
-      const spanFinished = await finishSpan({
-        runId: request.runId, spanId: "root", status: "failed", reasonCode,
-      }, context);
-      if (spanFinished.status === "blocked") return transitionResult(spanFinished.reasonCode);
-      const completion = await complete({
-        runId: request.runId,
-        operationId: "instrument-complete",
-        status: "failed",
-        reasonCode,
-      }, context);
-      if (completion.status === "blocked"
-        || completion.completion?.operationId !== "instrument-complete") {
-        return transitionResult(completion.reasonCode || "run_terminal");
-      }
-      return Object.freeze({ status: completion.status, reasonCode, observation: completion });
+      const reasonCode = safeReason(error, 'adapter_failed');
+      return Object.freeze({ ...await finish('failed', { reasonCode }), reasonCode });
     }
   }
 
   async function executeObserved(action, identity, access, operation) {
     const context = normalizeAccessContext(access);
     const startedAt = instant();
+    if (context.principalExpiresAt !== undefined && context.principalExpiresAt <= startedAt) return blocked("principal_expired");
     let verdict;
     try {
       verdict = await admission.admit({ action, principalId: context.principalId, ...identity });
@@ -517,54 +428,29 @@ export function createAgentToolkitRuntime({
     return result;
   }
 
+  const observed = (action, normalize, identity, operation) => async (value, access = {}) => {
+    const request = normalize(value);
+    return executeObserved(action, identity(request), access, () => operation(value, access));
+  };
+  const runIdentity = request => ({ runId: request.runId });
+  const cohortIdentity = request => ({ cohortId: request.cohortId });
+  const comparison = value => normalizeCompareRequest(value, limits.comparison);
   return Object.freeze({
-    start: async (value, access = {}) => {
-      const request = normalizeStartRequest(value);
-      return executeObserved("start", {
-        runId: request.runId, cohortId: request.cohortId,
-      }, access, () => start(value, access));
-    },
-    startSpan: async (value, access = {}) => {
-      const request = normalizeSpanStartRequest(value);
-      return executeObserved("start-span", { runId: request.runId }, access, () => startSpan(value, access));
-    },
-    finishSpan: async (value, access = {}) => {
-      const request = normalizeSpanFinishRequest(value);
-      return executeObserved("finish-span", { runId: request.runId }, access, () => finishSpan(value, access));
-    },
-    complete: async (value, access = {}) => {
-      const request = normalizeCompleteRequest(value);
-      return executeObserved("complete", { runId: request.runId }, access, () => complete(value, access));
-    },
-    evaluate: async (value, access = {}) => {
-      const request = normalizeEvaluateRequest(value);
-      return executeObserved("evaluate", { runId: request.runId }, access, () => evaluate(value, access));
-    },
-    status: async (runId, access = {}) => {
-      const normalizedRunId = assertIdentifier(runId, "runId");
-      return executeObserved("status", { runId: normalizedRunId }, access, () => status(normalizedRunId, access));
-    },
-    compare: async (value, access = {}) => {
-      const request = normalizeCompareRequest(value, limits.comparison);
-      return executeObserved("compare", { cohortId: request.cohortId }, access, () => compare(value, access));
-    },
-    propose: async (value, access = {}) => {
-      const request = normalizeProposalRequest(value, limits.comparison);
-      return executeObserved("propose", { cohortId: request.cohortId }, access, () => propose(value, access));
-    },
-    profile: async (runId, access = {}) => {
-      const normalizedRunId = assertIdentifier(runId, "runId");
-      return executeObserved("profile", { runId: normalizedRunId }, access, () => profile(normalizedRunId, access));
-    },
-    optimize: async (value, access = {}) => {
-      const request = normalizeOptimizationRequest(value, limits);
-      return executeObserved("optimize", { cohortId: request.cohortId }, access, () => optimize(value, access));
-    },
+    start: observed('start', normalizeStartRequest, r => ({ runId: r.runId, cohortId: r.cohortId }), start),
+    startSpan: observed('start-span', normalizeSpanStartRequest, runIdentity, startSpan),
+    finishSpan: observed('finish-span', normalizeSpanFinishRequest, runIdentity, finishSpan),
+    complete: observed('complete', normalizeCompleteRequest, runIdentity, complete),
+    evaluate: observed('evaluate', normalizeEvaluateRequest, runIdentity, evaluate),
+    query: observed('query', normalizeTraceQuery, () => ({}), query),
+    trace: observed('trace', v => normalizeTraceQuery(v, true), runIdentity, trace),
+    status: observed('status', v => assertIdentifier(v, 'runId'), runId => ({ runId }), status),
+    compare: observed('compare', comparison, cohortIdentity, compare),
+    propose: observed('propose', v => normalizeProposalRequest(v, limits.comparison), cohortIdentity, propose),
+    profile: observed('profile', v => assertIdentifier(v, 'runId'), runId => ({ runId }), profile),
+    optimize: observed('optimize', v => normalizeOptimizationRequest(v, limits), cohortIdentity, optimize),
     instrument: async (value, operation, access = {}) => {
       const request = normalizeStartRequest(value);
-      return executeObserved("instrument", {
-        runId: request.runId, cohortId: request.cohortId,
-      }, access, () => instrument(value, operation, access));
+      return executeObserved('instrument', { runId: request.runId, cohortId: request.cohortId }, access, () => instrument(value, operation, access));
     },
     stats: () => Object.freeze({
       configured,

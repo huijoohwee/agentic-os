@@ -125,3 +125,33 @@ test('MCP discovery loads metadata without loading any agent module or connectin
     `const { TOOLS } = await import(${JSON.stringify(new URL('../src/mcp-server.mjs', import.meta.url).href)});
      if (!TOOLS.some(tool => tool.name === 'run.start')) throw Error('tool missing');`], { timeout: 5_000 });
 });
+
+test('query, trace, evaluation and comparison share CLI, MCP and browser authority semantics', async t => {
+  const inputs = {
+    query: { limit: 2, projectId: 'seller' }, trace: { runId: 'run', limit: 2 },
+    evaluate: { runId: 'run', operationId: 'evaluate', evidence: { id: 'fixture', digest: 'a'.repeat(64) } },
+    compare: { cohortId: 'cohort', baseline: { id: 'source', revision: 'v1', digest: 'b'.repeat(64) },
+      candidate: { id: 'source', revision: 'v2', digest: 'c'.repeat(64) } },
+  };
+  const runtime = Object.fromEntries(Object.keys(inputs).map(operation => [operation, async (value, access) => {
+    assert.equal(access.principalId, context.principalId);
+    return { status: 'completed', ...(value.runId ? { runId: value.runId } : {}), operation };
+  }]));
+  const host = await server(t, runtime), client = createAgentRunClient({ endpoint: host.endpoint,
+    getHeaders: () => ({ authorization: 'Bearer fixture-session' }) });
+  for (const [operation, input] of Object.entries(inputs)) {
+    const mutation = operation === 'evaluate';
+    assert.equal((await client.invoke(operation, input)).operation, operation);
+    const invocation = dispatchInvocation(resolveInvocation([`/run.${operation}`, '@input:fixture.json', mutation ? '#mutating' : '#read-only']));
+    assert.equal(invocation.argv[0], operation);
+    const result = await handleRequest(call(`run.${operation}`, input), {
+      runCli: async (argv, options) => {
+        assert.equal(options.effectful, mutation); assert.equal(argv[1], operation);
+        return { exitCode: 0, stdout: JSON.stringify(await client.invoke(operation, JSON.parse(options.stdin))), stderr: '' };
+      },
+    });
+    assert.equal(result.result.isError, false);
+    assert.equal(TOOLS.find(t => t.name === `run.${operation}`).annotations.readOnlyHint, !mutation);
+    assert.throws(() => validateRunInput(operation, { ...input, principalId: 'other' }));
+  }
+});

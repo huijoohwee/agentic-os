@@ -1,10 +1,11 @@
 /** The optional transport validates JSON at runtime; tool data carries no authorization. */
-export type RunOperation = 'start' | 'status' | 'cancel' | 'retry';
+export type RunOperation = 'start' | 'status' | 'cancel' | 'retry' | 'query' | 'trace' | 'evaluate' | 'compare';
+export const RUN_OPERATIONS: readonly RunOperation[];
 export type RunInput = Readonly<Record<string, unknown>>;
 export type RunResult = Readonly<Record<string, unknown> & {
-  runId: string;
+  runId?: string;
   status: 'planning' | 'running' | 'completed' | 'blocked' | 'canceled' | 'pending'
-    | 'idle' | 'reconciling' | 'synthesizing';
+    | 'idle' | 'reconciling' | 'synthesizing' | 'failed' | 'insufficient-evidence';
   reasonCode?: string;
   writeResultUnknown?: boolean;
 }>;

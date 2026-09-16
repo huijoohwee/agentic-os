@@ -9,6 +9,8 @@ import {
 import { aggregateCosts } from "./running-agent-contract.js";
 import { normalizeJson } from "../json-contract.mjs";
 
+const pick = (value, keys) => Object.fromEntries(keys.filter(k => value[k] !== undefined).map(k => [k, value[k]]));
+
 function iso(at) {
   return new Date(at).toISOString();
 }
@@ -40,7 +42,7 @@ export function cohortRecordId(principalId, cohortId) {
 
 export function assertToolkitOwner(record, principalId) {
   if (record.ownerPrincipalId !== principalId) {
-    throw new AgentToolkitBlock("run_forbidden", "Agent Toolkit evidence belongs to another principal.");
+    throw new AgentToolkitBlock("run_forbidden", "Evidence belongs to another principal.");
   }
 }
 
@@ -48,13 +50,9 @@ export function createToolkitRun({ request, authorization, principalId, telemetr
   const record = {
     schema: AGENT_TOOLKIT_RUN_SCHEMA,
     recordId: runRecordId(principalId, request.runId),
-    runId: request.runId,
-    cohortId: request.cohortId,
-    target: request.target,
-    candidate: request.candidate,
-    adapter: request.adapter,
-    operation: request.operation,
-    profile: request.profile,
+    ...pick(request, ['runId', 'cohortId', 'target', 'candidate', 'adapter', 'operation', 'profile', 'context']),
+    ...(request.context ? { traceRevision: 2 } : {}),
+    clockOrigin: limits.clockOrigin ?? 'legacy',
     authorization,
     ownerPrincipalId: principalId,
     telemetryTrust,
@@ -73,23 +71,17 @@ export function createToolkitRun({ request, authorization, principalId, telemetr
 }
 
 export function startToolkitSpan(record, request, limits, at) {
-  if (record.status !== "running") throw new AgentToolkitBlock("run_terminal", "Agent Toolkit run is terminal.");
-  if (at >= record.deadlineAt) throw new AgentToolkitBlock("run_expired", "Agent Toolkit run deadline elapsed.");
+  if (record.status !== "running") throw new AgentToolkitBlock("run_terminal", "Run is terminal.");
+  if (at >= record.deadlineAt) throw new AgentToolkitBlock("run_expired", "Run deadline elapsed.");
   const existing = record.spans.find((span) => span.spanId === request.spanId);
   if (existing) {
-    const identity = {
-      runId: record.runId,
-      spanId: existing.spanId,
-      ...(existing.parentSpanId ? { parentSpanId: existing.parentSpanId } : {}),
-      kind: existing.kind,
-      operation: existing.operation,
-      component: existing.component,
-    };
+    const identity = { runId: record.runId, ...pick(existing, ['spanId', 'parentSpanId', 'kind', 'operation', 'component', 'taskId', 'attempt', 'links']) };
     if (!same(identity, request)) throw new AgentToolkitBlock("span_reused", "Span identity was reused with different metadata.");
     return touch(record, limits, at);
   }
   if (record.spans.length >= limits.maxSpans) {
-    throw new AgentToolkitBlock("span_limit", "Agent Toolkit span limit reached.");
+    record.traceTruncated = true; record.droppedSpans = (record.droppedSpans ?? 0) + 1;
+    return touch(record, limits, at);
   }
   if (request.parentSpanId !== undefined) {
     const parent = record.spans.find((span) => span.spanId === request.parentSpanId);
@@ -97,12 +89,11 @@ export function startToolkitSpan(record, request, limits, at) {
       throw new AgentToolkitBlock("span_parent_invalid", "Parent span must exist and remain open.");
     }
   }
+  if (request.links?.some(link => !record.spans.some(span => span.spanId === link.spanId)))
+    throw new AgentToolkitBlock('span_link_invalid', 'Causal link must name an earlier span.');
   record.spans.push({
-    spanId: request.spanId,
-    ...(request.parentSpanId === undefined ? {} : { parentSpanId: request.parentSpanId }),
-    kind: request.kind,
-    operation: request.operation,
-    component: request.component,
+    ...pick(request, ['spanId', 'parentSpanId', 'kind', 'operation', 'component', 'taskId', 'attempt', 'links']),
+    clockOrigin: limits.clockOrigin ?? 'legacy',
     status: "running",
     startedAt: iso(at),
     startedAtMs: at,
@@ -112,18 +103,22 @@ export function startToolkitSpan(record, request, limits, at) {
 
 export function finishToolkitSpan(record, request, limits, at) {
   const span = record.spans.find((candidate) => candidate.spanId === request.spanId);
-  if (!span) throw new AgentToolkitBlock("span_not_found", "Agent Toolkit span was not found.");
+  if (!span) throw new AgentToolkitBlock("span_not_found", "Span was not found.");
   if (span.status !== "running") {
-    if (span.status === request.status && span.reasonCode === request.reasonCode) return touch(record, limits, at);
-    throw new AgentToolkitBlock("span_terminal", "Agent Toolkit span is already terminal.");
+    if (span.finishDigest ? span.finishDigest === digestToolkitEvidence(request) : span.status === request.status && span.reasonCode === request.reasonCode) return touch(record, limits, at);
+    throw new AgentToolkitBlock("span_terminal", "Span is already terminal.");
   }
-  if (record.status !== "running") throw new AgentToolkitBlock("run_terminal", "Agent Toolkit run is terminal.");
+  if (record.status !== "running") throw new AgentToolkitBlock("run_terminal", "Run is terminal.");
   if (record.spans.some((candidate) => candidate.parentSpanId === span.spanId && candidate.status === "running")) {
     throw new AgentToolkitBlock("span_children_running", "Finish child spans before their parent.");
   }
+  if (request.costLog && record.spans.some(s => s.parentSpanId === span.spanId)) throw new AgentToolkitBlock('aggregate_usage_forbidden', 'Parent usage is derived.');
+  if (request.effectId && record.spans.some(s => s !== span && s.effectId === request.effectId)) throw new AgentToolkitBlock('effect_usage_reused', 'Effect usage was already attributed.');
   span.status = request.status;
+  span.finishDigest = digestToolkitEvidence(request);
+  if (request.effectId) { span.effectId = request.effectId; span.cost = aggregateCosts([request.costLog], 1); }
   span.completedAt = iso(at);
-  span.durationMs = Math.max(0, at - span.startedAtMs);
+  span.durationMs = span.clockOrigin === (limits.clockOrigin ?? 'legacy') && at >= span.startedAtMs ? at - span.startedAtMs : null;
   delete span.startedAtMs;
   if (request.reasonCode) span.reasonCode = request.reasonCode;
   return touch(record, limits, at);
@@ -136,14 +131,14 @@ export function completeToolkitRun(record, request, limits, at) {
     if (record.completion.operationId === request.operationId) {
       throw new AgentToolkitBlock("completion_reused", "Completion operation identity was reused with different evidence.");
     }
-    throw new AgentToolkitBlock("run_terminal", "Agent Toolkit run is already terminal.");
+    throw new AgentToolkitBlock("run_terminal", "Run is already terminal.");
   }
   for (const span of record.spans) {
     if (span.status !== "running") continue;
     span.status = "canceled";
     span.reasonCode = "run_terminal";
     span.completedAt = iso(at);
-    span.durationMs = Math.max(0, at - span.startedAtMs);
+    span.durationMs = span.clockOrigin === (limits.clockOrigin ?? "legacy") && at >= span.startedAtMs ? at - span.startedAtMs : null;
     delete span.startedAtMs;
   }
   record.status = request.status;
@@ -153,7 +148,7 @@ export function completeToolkitRun(record, request, limits, at) {
     status: request.status,
     ...(request.reasonCode ? { reasonCode: request.reasonCode } : {}),
     completedAt: iso(at),
-    durationMs: Math.max(0, at - record.admittedAt),
+    durationMs: record.clockOrigin === (limits.clockOrigin ?? 'legacy') && at >= record.admittedAt ? at - record.admittedAt : null,
     cost: aggregateCosts([request.costLog], 1),
   };
   return touch(record, limits, at);
@@ -163,7 +158,15 @@ function sameEvaluationRequest(evaluation, operationId, evidence) {
   return evaluation.operationId === operationId && same(evaluation.subjectEvidence, evidence);
 }
 
-export function reserveToolkitEvaluation(record, { operationId, evidence, limits, at }) {
+export function reserveToolkitEvaluation(record, { operationId, evidence, limits, at, spanId, subjectDigest }) {
+  if (subjectDigest !== undefined && subjectDigest !== toolkitSubjectDigest(record, spanId)) throw new AgentToolkitBlock('evaluation_subject_changed', 'Evaluation subject changed.');
+  if (spanId !== undefined) {
+    const span = record.spans.find(s => s.spanId === spanId);
+    const view = { ...record, runId: `${record.runId}:${spanId}`, completion: span.status === 'running' ? null : {}, evaluation: span.evaluation ?? { status: 'pending', attempts: 0 } };
+    const result = reserveToolkitEvaluation(view, { operationId, evidence, limits, at });
+    span.evaluation = view.evaluation;
+    return { ...result, record: touch(record, limits, at) };
+  }
   if (!record.completion) throw new AgentToolkitBlock("run_not_terminal", "Complete the observed run before evaluation.");
   if (record.evaluation.status === "reported" || record.evaluation.status === "unreported") {
     if (!sameEvaluationRequest(record.evaluation, operationId, evidence)) {
@@ -173,7 +176,7 @@ export function reserveToolkitEvaluation(record, { operationId, evidence, limits
   }
   if (["running", "in_doubt"].includes(record.evaluation.status)
     && record.evaluation.leaseExpiresAt > at) {
-    throw new AgentToolkitBlock("evaluation_busy", "Agent Toolkit evaluation is already running.");
+    throw new AgentToolkitBlock("evaluation_busy", "Evaluation is already running.");
   }
   if (record.evaluation.subjectEvidence
     && !sameEvaluationRequest(record.evaluation, operationId, evidence)) {
@@ -213,11 +216,14 @@ export function reserveToolkitEvaluation(record, { operationId, evidence, limits
 }
 
 export function commitToolkitEvaluation(record, reservationId, outcome, limits, at) {
+  const span = record.spans.find(s => s.evaluation?.reservationId === reservationId);
+  if (span) { const view = { ...record, spans: [], evaluation: span.evaluation };
+    commitToolkitEvaluation(view, reservationId, outcome, limits, at); span.evaluation = view.evaluation; return touch(record, limits, at); }
   if (record.evaluation.status !== "running" || record.evaluation.reservationId !== reservationId) {
-    throw new AgentToolkitBlock("evaluation_stale", "Agent Toolkit evaluation reservation is stale.");
+    throw new AgentToolkitBlock("evaluation_stale", "Evaluation reservation is stale.");
   }
   if (record.evaluation.leaseExpiresAt <= at) {
-    throw new AgentToolkitBlock("evaluation_stale", "Agent Toolkit evaluation reservation expired.");
+    throw new AgentToolkitBlock("evaluation_stale", "Evaluation reservation expired.");
   }
   record.evaluation = {
     status: outcome.status,
@@ -235,6 +241,9 @@ export function commitToolkitEvaluation(record, reservationId, outcome, limits, 
 }
 
 export function failToolkitEvaluation(record, reservationId, reasonCode, limits, at) {
+  const span = record.spans.find(s => s.evaluation?.reservationId === reservationId);
+  if (span) { const view = { ...record, spans: [], evaluation: span.evaluation };
+    failToolkitEvaluation(view, reservationId, reasonCode, limits, at); span.evaluation = view.evaluation; return touch(record, limits, at); }
   if (record.evaluation.status !== "running" || record.evaluation.reservationId !== reservationId) {
     return touch(record, limits, at);
   }
@@ -257,32 +266,22 @@ export function failToolkitEvaluation(record, reservationId, reasonCode, limits,
 }
 
 export function projectToolkitRun(record) {
-  const completion = record.completion ? { ...record.completion } : null;
-  if (completion) delete completion.requestDigest;
-  const evaluation = { ...record.evaluation };
-  delete evaluation.idempotencyKey;
-  delete evaluation.reservationId;
-  delete evaluation.leaseExpiresAt;
+  const redact = value => Object.fromEntries(Object.entries(value).filter(([k]) =>
+    !['idempotencyKey', 'reservationId', 'leaseExpiresAt', 'requestDigest', 'startedAtMs', 'finishDigest'].includes(k)));
+  const completion = record.completion ? redact(record.completion) : null;
+  const evaluation = redact(record.evaluation);
   return Object.freeze({
-    schema: record.schema,
-    runId: record.runId,
-    cohortId: record.cohortId,
-    target: record.target,
-    candidate: record.candidate,
-    adapter: record.adapter,
-    operation: record.operation,
-    profile: record.profile,
-    status: record.status,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-    deadlineAt: record.deadlineAt,
-    expiresAt: record.expiresAt,
+    ...pick(record, ['schema', 'runId', 'cohortId', 'target', 'candidate', 'adapter', 'operation', 'profile', 'context', 'traceRevision',
+      'clockOrigin', 'status', 'createdAt', 'updatedAt', 'deadlineAt', 'expiresAt']),
     spans: record.spans.map((span) => {
-      const sanitized = { ...span };
-      delete sanitized.startedAtMs;
+      const sanitized = redact(span);
+      if (span.evaluation) sanitized.evaluation = redact(span.evaluation);
+      sanitized.subjectDigest = toolkitSubjectDigest(record, span.spanId);
       return sanitized;
     }),
+    subjectDigest: toolkitSubjectDigest(record),
     traceTruncated: record.traceTruncated,
+    droppedSpans: record.droppedSpans ?? 0,
     completion,
     telemetryTrust: record.telemetryTrust,
     evaluation: ["running", "in_doubt"].includes(record.evaluation.status)
@@ -294,6 +293,14 @@ export function projectToolkitRun(record) {
       : evaluation,
     telemetryPolicy: "metadata-only-no-default-egress",
   });
+}
+
+export function toolkitSubjectDigest(record, spanId) {
+  if (spanId === undefined && !record.completion) return null;
+  const span = spanId === undefined ? record.completion : record.spans.find(s => s.spanId === spanId);
+  if (!span) throw new AgentToolkitBlock('span_not_found', 'Span subject is unavailable.');
+  const { evaluation, ...subject } = span;
+  return digestToolkitEvidence([record.runId, record.candidate, record.profile, record.context ?? null, subject]);
 }
 
 export function createToolkitCohort({ request, principalId, limits, at }) {
@@ -380,122 +387,67 @@ function mean(values) {
 }
 
 function candidateSamples(cohort, candidate) {
-  const matching = cohort.samples.filter((sample) => sample.status === "completed"
-    && sample.quality.status !== "invalid"
-    && same(sample.candidate, candidate));
-  const remoteUnverified = matching.filter((sample) => sample.telemetryTrust === "remote-unverified").length;
-  const trusted = matching.filter((sample) => sample.telemetryTrust !== "remote-unverified");
-  const unique = [];
-  const evidenceDigests = new Set();
-  let duplicates = 0;
-  for (const sample of trusted) {
-    const digest = sample.quality?.subjectEvidence?.digest;
-    if (digest && evidenceDigests.has(digest)) {
-      duplicates += 1;
-      continue;
-    }
-    if (digest) evidenceDigests.add(digest);
-    unique.push(sample);
+  const matching = cohort.samples.filter(s => same(s.candidate, candidate));
+  const exclusions = { failed: 0, invalid: 0, untrusted: 0, duplicate: 0, quality: 0, cost: 0, clock: 0 };
+  const seen = new Set(), samples = [];
+  for (const sample of matching) {
+    if (sample.status !== 'completed') { exclusions.failed++; continue; }
+    if (sample.quality.status === 'invalid') { exclusions.invalid++; continue; }
+    if (sample.telemetryTrust === 'remote-unverified') { exclusions.untrusted++; continue; }
+    const digest = sample.quality.subjectEvidence?.digest;
+    if (digest && seen.has(digest)) { exclusions.duplicate++; continue; }
+    if (digest) seen.add(digest);
+    if (sample.quality.status !== 'reported') exclusions.quality++;
+    if (sample.cost.status !== 'reported') exclusions.cost++;
+    if (!Number.isFinite(sample.durationMs)) exclusions.clock++;
+    samples.push(sample);
   }
-  return Object.freeze({ samples: unique, remoteUnverified, duplicates });
+  return { samples, exclusions, population: matching.length };
 }
 
-function ratio(candidate, baseline) {
-  if (baseline === 0) return candidate === 0 ? 1 : null;
-  return candidate / baseline;
-}
+function ratio(candidate, baseline) { return baseline === 0 ? candidate === 0 ? 1 : null : candidate / baseline; }
 
 export function compareToolkitCohort(cohort, request) {
-  const baselineEvidence = candidateSamples(cohort, request.baseline);
-  const candidateEvidence = candidateSamples(cohort, request.candidate);
-  const baselineSamples = baselineEvidence.samples;
-  const candidateSet = candidateEvidence.samples;
-  const sampleCounts = { baseline: baselineSamples.length, candidate: candidateSet.length };
-  const untrustedSampleCounts = {
-    baseline: baselineEvidence.remoteUnverified,
-    candidate: candidateEvidence.remoteUnverified,
+  const sides = ['baseline', 'candidate'];
+  const evidence = Object.fromEntries(sides.map(k => [k, candidateSamples(cohort, request[k])]));
+  const counts = fn => Object.fromEntries(sides.map(k => [k, fn(evidence[k])]));
+  const common = {
+    reviewRequired: true, applied: false, cohortId: cohort.cohortId,
+    ...pick(request, ['baseline', 'candidate', 'policy']),
+    ...pick(cohort.profile, ['metric', 'evaluator', 'dataset']),
+    adapter: cohort.adapter, operation: cohort.operation,
+    sampleCounts: counts(e => e.samples.length),
+    untrustedSampleCounts: counts(e => e.exclusions.untrusted),
+    duplicateEvidenceCounts: counts(e => e.exclusions.duplicate),
+    coverage: counts(e => ({ population: e.population, excluded: e.exclusions })),
   };
-  const duplicateEvidenceCounts = {
-    baseline: baselineEvidence.duplicates,
-    candidate: candidateEvidence.duplicates,
+  const hold = reasonCode => Object.freeze({ ...common, status: 'insufficient-evidence', reasonCode, recommendation: 'hold' });
+  const enough = predicate => sides.every(k => evidence[k].samples.filter(predicate).length >= request.policy.minSamples);
+  if (!enough(() => true)) return hold('trusted_sample_count');
+  if (!enough(s => s.quality.status === 'reported')) return hold('quality_unreported');
+  if (!enough(s => s.cost.status === 'reported')) return hold('cost_unreported');
+  if (!enough(s => Number.isFinite(s.durationMs))) return hold('latency_unreported');
+  const eligible = s => s.quality.status === 'reported' && s.cost.status === 'reported' && Number.isFinite(s.durationMs);
+  if (!enough(eligible)) return hold('comparable_sample_count');
+  const metrics = side => {
+    const samples = evidence[side].samples.filter(eligible);
+    return { count: samples.length, quality: mean(samples.map(s => s.quality.score)),
+      latencyMs: mean(samples.map(s => s.durationMs)), costUsd: mean(samples.map(s => s.cost.estimated_cost_usd)) };
   };
-  const insufficient = (reasonCode) => Object.freeze({
-    status: "insufficient-evidence",
-    reasonCode,
-    recommendation: "hold",
-    reviewRequired: true,
-    applied: false,
-    cohortId: cohort.cohortId,
-    baseline: request.baseline,
-    candidate: request.candidate,
-    policy: request.policy,
-    sampleCounts,
-    untrustedSampleCounts,
-    duplicateEvidenceCounts,
-  });
-  if (Math.min(...Object.values(sampleCounts)) < request.policy.minSamples) {
-    return insufficient("trusted_sample_count");
-  }
-  const baselineQuality = baselineSamples.filter((sample) => sample.quality.status === "reported");
-  const candidateQuality = candidateSet.filter((sample) => sample.quality.status === "reported");
-  if (Math.min(baselineQuality.length, candidateQuality.length) < request.policy.minSamples) {
-    return insufficient("quality_unreported");
-  }
-  const baselineCost = baselineSamples.filter((sample) => sample.cost.status === "reported");
-  const candidateCost = candidateSet.filter((sample) => sample.cost.status === "reported");
-  if (Math.min(baselineCost.length, candidateCost.length) < request.policy.minSamples) {
-    return insufficient("cost_unreported");
-  }
-  const baselineMetrics = {
-    quality: mean(baselineQuality.map((sample) => sample.quality.score)),
-    latencyMs: mean(baselineSamples.map((sample) => sample.durationMs)),
-    costUsd: mean(baselineCost.map((sample) => sample.cost.estimated_cost_usd)),
-  };
-  const candidateMetrics = {
-    quality: mean(candidateQuality.map((sample) => sample.quality.score)),
-    latencyMs: mean(candidateSet.map((sample) => sample.durationMs)),
-    costUsd: mean(candidateCost.map((sample) => sample.cost.estimated_cost_usd)),
-  };
-  const direction = cohort.profile.metric.direction;
-  const improvement = direction === "maximize"
-    ? candidateMetrics.quality - baselineMetrics.quality
-    : baselineMetrics.quality - candidateMetrics.quality;
-  const qualityBoundaryPassed = direction === "maximize"
-    ? candidateMetrics.quality >= request.policy.qualityBoundary
-    : candidateMetrics.quality <= request.policy.qualityBoundary;
+  const baselineMetrics = metrics('baseline'), candidateMetrics = metrics('candidate');
+  const maximize = cohort.profile.metric.direction === 'maximize';
+  const improvement = (candidateMetrics.quality - baselineMetrics.quality) * (maximize ? 1 : -1);
   const latencyRatio = ratio(candidateMetrics.latencyMs, baselineMetrics.latencyMs);
   const costRatio = ratio(candidateMetrics.costUsd, baselineMetrics.costUsd);
   const checks = {
-    qualityBoundary: qualityBoundaryPassed,
+    qualityBoundary: maximize ? candidateMetrics.quality >= request.policy.qualityBoundary : candidateMetrics.quality <= request.policy.qualityBoundary,
     qualityImprovement: improvement >= request.policy.minimumQualityImprovement,
     latencyRegression: latencyRatio !== null && latencyRatio <= request.policy.maxLatencyRegressionRatio,
     costRegression: costRatio !== null && costRatio <= request.policy.maxCostRegressionRatio,
   };
-  const recommendation = Object.values(checks).every(Boolean) ? "propose" : "hold";
-  const result = {
-    status: "completed",
-    recommendation,
-    reviewRequired: true,
-    applied: false,
-    cohortId: cohort.cohortId,
-    baseline: request.baseline,
-    candidate: request.candidate,
-    metric: cohort.profile.metric,
-    evaluator: cohort.profile.evaluator,
-    dataset: cohort.profile.dataset,
-    adapter: cohort.adapter,
-    operation: cohort.operation,
-    policy: request.policy,
-    sampleCounts,
-    untrustedSampleCounts,
-    duplicateEvidenceCounts,
-    baselineMetrics,
-    candidateMetrics,
-    observed: { qualityImprovement: improvement, latencyRatio, costRatio },
-    checks,
-  };
-  result.comparisonDigest = digestToolkitEvidence(result);
-  return Object.freeze(result);
+  const result = { ...common, status: 'completed', recommendation: Object.values(checks).every(Boolean) ? 'propose' : 'hold',
+    baselineMetrics, candidateMetrics, observed: { qualityImprovement: improvement, latencyRatio, costRatio }, checks };
+  return Object.freeze({ ...result, comparisonDigest: digestToolkitEvidence(result) });
 }
 
 export function appendToolkitProposal(cohort, request, comparison, limits, at) {

@@ -3,9 +3,9 @@
 # Invocation
 
 The invocation grammar is contract-ready. `catalog/invocation.json` lists implemented commands as
-packaged data. Every resolution verifies its entry count and SHA-256 digest.
+packaged data. Resolution verifies count and digest.
 
-An invocation contains at most one exact token per prefix:
+Use one exact token per prefix:
 
 - `/` selects one command;
 - `#` optionally states its mutation semantic;
@@ -28,3 +28,7 @@ governance operation. Semantic tokens describe commands and grant no authority.
 
 `/checks` reads owner references and optional results without executing tests.
 [Input and result format](../README.md#shared-check-discovery).
+
+`/run.*` uses authenticated typed dispatch with `@input:<JSON-file>`; the catalog owns schemas.
+`query`, `trace` and `compare` are read-only. `evaluate` reserves an exact run/span evaluation.
+Credentials, source resolution and resource limits remain trusted host inputs.

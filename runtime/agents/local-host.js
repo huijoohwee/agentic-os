@@ -1,11 +1,11 @@
 import { createServer } from 'node:http';
 import { createAgentSwarmWorker } from './worker.js';
-import { dispatchRunOperation, RUN_INPUT_BYTES } from './invocation.js';
+import { dispatchRunOperation, RUN_INPUT_BYTES, RUN_OPERATIONS } from './invocation.js';
 import { withDeadline } from './running-agent-contract.js';
 import { AgentSwarmBlock } from './agent-swarm-contract.js';
 
 const ROOT = '/api/agent-swarm/';
-const OPERATIONS = new Set(['start', 'status', 'cancel', 'retry']);
+const OPERATIONS = new Set(RUN_OPERATIONS);
 const RESPONSE_BYTES = 256 * 1024;
 const HOST_FAILURE = Symbol('host-failure');
 const failure = (status, code) => Object.assign(new Error(code), { [HOST_FAILURE]: true, status, code });

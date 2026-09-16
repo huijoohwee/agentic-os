@@ -13,7 +13,11 @@ import { createAgentRunClient } from '../runtime/agents/invocation.js';
 import { withDeadline } from '../runtime/agents/running-agent-contract.js';
 import { runCli } from '../src/mcp-stdio.mjs';
 import { handleRequest, MODERN_VERSION } from '../src/mcp-server.mjs';
-import { fixture, request, context, output } from './agents/workflow-fixture.mjs';
+import { fixture as workflowFixture, request, context, output } from './agents/workflow-fixture.mjs';
+
+// HTTP/SQLite tests use real scheduling, not the shared fixture's 10 ms fake-clock lease.
+const fixture = options => workflowFixture({ taskTimeoutMs: 500, taskLeaseMs: 1_500,
+  storeClaimTtlMs: 500, ...options });
 
 function directory(t) {
   const path = mkdtempSync(join(tmpdir(), 'agent-host-'));
@@ -34,9 +38,12 @@ async function complete(runtime, runId = request.runId) {
 
 test('authenticated host continues after the browser leaves, sleeps when idle, and replays one job', { timeout: 10_000 }, async t => {
   const path = directory(t);
-  const stateStore = await createAgentSwarmSqliteStore({ directory: path });
+  const sqlite = await createAgentSwarmSqliteStore({ directory: path });
+  const stateStore = { ...sqlite, async claim(...args) {
+    const record = await sqlite.claim(...args); await pause(25); return record;
+  } };
   let executions = 0;
-  const runtime = fixture({ stateStore, now: Date.now, taskTimeoutMs: 500, taskLeaseMs: 1_000,
+  const runtime = fixture({ stateStore, now: Date.now,
     executeTask: async () => { executions++; return output; } });
   const host = await startLocalAgentHost({ runtime, stateStore, authenticate, resolveContext: async () => context });
   t.after(async () => { await host.close(); stateStore.close(); });
