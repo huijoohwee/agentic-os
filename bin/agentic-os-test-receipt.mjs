@@ -36,6 +36,18 @@ export function writeReceipt(directory, name, value) {
   let bytes = typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n';
   // Preserve every result while avoiding indentation overhead for expanded suites.
   if (typeof value !== 'string' && Buffer.byteLength(bytes) > limit) bytes = JSON.stringify(value) + '\n';
+  if (Buffer.byteLength(bytes) > limit && value?.schema === 'agentic-os/test-receipt/v2' && Array.isArray(value.results)) {
+    // The per-check receipt keeps its output digest; the aggregate keeps the log link.
+    // Stage membership is already present in plan.suites and each result.
+    const { stages, ...plan } = value.plan;
+    const resourceDefaults = { method: 'wait4', scope: 'waited-process-tree', memoryScope: 'maximum-single-process-rss' };
+    const results = value.results.map(({ outputDigest, ...result }) => {
+      if (result.resources?.status !== 'measured' || Object.entries(resourceDefaults).some(([key, v]) => result.resources[key] !== v)) return result;
+      const { method, scope, memoryScope, ...resources } = result.resources;
+      return { ...result, resources };
+    });
+    bytes = JSON.stringify({ ...value, plan, results, resourceDefaults, diagnostics: 'per-check-receipts' }) + '\n';
+  }
   if (Buffer.byteLength(bytes) > limit)
     throw new Error('blocked-test-receipt-byte-budget');
   const temporary = join(directory, `${name}.${process.pid}.tmp`);

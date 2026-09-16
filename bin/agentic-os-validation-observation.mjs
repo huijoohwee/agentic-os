@@ -97,6 +97,9 @@ function nativeTestReceipt(receipt, root) {
     || readGit(root, ['rev-parse', `${identity.headRevision}^{tree}`]).trim() !== identity.headTree
     || !Array.isArray(receipt.results) || receipt.results.length > 256) fail();
   const repository = remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim())?.repository;
+  const defaults = receipt.resourceDefaults;
+  if (defaults !== undefined && (defaults.method !== 'wait4' || defaults.scope !== 'waited-process-tree'
+    || defaults.memoryScope !== 'maximum-single-process-rss' || Object.keys(defaults).length !== 3)) fail();
   return { ...receipt, schema: STAGES_SCHEMA, executionOrder: 'concurrent',
     outcome: receipt.outcome === 'interrupted' ? 'failed' : receipt.outcome,
     source: { repository, revision: identity.headRevision, tree: identity.headTree, dirty: null },
@@ -104,7 +107,8 @@ function nativeTestReceipt(receipt, root) {
     results: receipt.results.map(result => {
       if (typeof result.name !== 'string' || !/^(?:evaluators|__tests__\/[a-z0-9.-]+\.test\.mjs)$/u.test(result.name)) fail();
       const label = result.name.replace(/^__tests__\//u, '').replace(/\.test\.mjs$/u, '');
-      return { ...result, id: `test-${label.slice(0, 60)}-${hash(result.name).slice(0, 8)}` };
+      return { ...result, ...(defaults && result.resources?.status === 'measured'
+        ? { resources: { ...defaults, ...result.resources } } : {}), id: `test-${label.slice(0, 60)}-${hash(result.name).slice(0, 8)}` };
     }) };
 }
 export function readValidationObservation(root, input, offset = 0) {

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { runValidationStages, validationStageDirectory, STAGES_FILE } from '../bin/agentic-os-validation-stages.mjs';
 import { validationObservation, readValidationObservation } from '../bin/agentic-os-validation-observation.mjs';
-import { lockReceipts, receiptDirectory } from '../bin/agentic-os-test-receipt.mjs';
+import { lockReceipts, receiptDirectory, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'validation-observation-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -96,4 +96,31 @@ test('existing OS receipts export bounded concurrent pages without inventing sou
   assert.throws(() => readValidationObservation(root, file, 1), /observation/);
   receipt.identity.root = '/foreign'; writeFileSync(file, JSON.stringify(receipt));
   assert.throws(() => readValidationObservation(root, file), /observation/);
+});
+
+test('expanded aggregate receipts retain every result and resource within the existing byte limit', t => {
+  const { root, git } = fixture(t), directory = receiptDirectory(root), now = Date.now();
+  const resources = { status: 'measured', method: 'wait4', scope: 'waited-process-tree',
+    memoryScope: 'maximum-single-process-rss', cpuMs: 3, cpuUserMs: 2, cpuSystemMs: 1, peakMemoryBytes: 65000000 };
+  const results = Array.from({ length: 215 }, (_, i) => ({ name: `__tests__/resource-accounting-regression-${i}.test.mjs`,
+    stage: 'behavior', exitCode: 0, reason: null, startedAt: now - 100, finishedAt: now, elapsedMs: 100,
+    outputDigest: 'a'.repeat(64), log: `check-${String(i).padStart(24, '0')}.log`, resources,
+    counts: { tests: 3, pass: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0 }, reused: i === 0, validatedAt: now }));
+  const receipt = { schema: 'agentic-os/test-receipt/v2', authority: false, outcome: 'passed',
+    identity: { root, headRevision: git('rev-parse', 'HEAD'), headTree: git('rev-parse', 'HEAD^{tree}') },
+    startedAt: now - 100, finishedAt: now, elapsedMs: 100,
+    plan: { suites: results.slice(1).map(r => ({ path: r.name, stage: 'behavior', reasons: ['broad-impact'] })),
+      stages: { behavior: results.map(r => r.name) } }, results };
+  writeReceipt(directory, 'last.json', receipt);
+  const bytes = readFileSync(join(directory, 'last.json')), saved = JSON.parse(bytes);
+  assert.ok(bytes.length <= 128000); assert.equal(saved.results.length, 215);
+  assert.equal(saved.diagnostics, 'per-check-receipts'); assert.equal(saved.results[0].resources.cpuUserMs, 2);
+  assert.equal(saved.results[0].log, results[0].log); assert.equal(receipt.results[0].outputDigest, 'a'.repeat(64));
+  const first = readValidationObservation(root, join(directory, 'last.json'));
+  const second = readValidationObservation(root, join(directory, 'last.json'), 128);
+  assert.equal(first.stages.length + second.stages.length, 215);
+  assert.equal(first.resources.cpuMs, 214 * 3); assert.equal(first.resources.peakMemoryBytes, 65000000);
+  assert.equal(first.stages[0].status, 'reused'); assert.equal(second.stages[0].resources.measurement, 'wait4');
+  saved.resourceDefaults.scope = 'inferred'; writeFileSync(join(directory, 'last.json'), JSON.stringify(saved));
+  assert.throws(() => readValidationObservation(root, join(directory, 'last.json')), /observation/);
 });
