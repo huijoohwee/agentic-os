@@ -234,7 +234,8 @@ cost stays unknown. Ranking is advisory, and receipt coverage is not a savings o
 
 The returned `manifest.json` is the single entry point. Its `phases`, optional `traces`, and `archive`
 reference immutable receipt JSON, span-page JSON and `recommendations.json` with SHA-256 digests.
-All captured spans survive the 32-span Canvas page bound; upstream omissions remain explicit.
+All captured spans survive the 32-span transport page bound; Canvas resolves every page from one root,
+up to 2,048 spans / 16 MiB. Upstream omissions remain explicit.
 The default storage stays `.workspace/.artifacts/workflows`; targets stay registered `.worktrees`.
 Each collection is a content-addressed snapshot: collect again when evidence changes and hand off
 that exact manifest locator. No mutable latest pointer, directory scan or second history ledger is added.
@@ -312,3 +313,34 @@ checks first. A finished check releases its slot immediately; evaluator/behavior
 exact-input reuse, source-drift checks, failure stops and the total deadline remain mandatory.
 Reused span measurements are historical evidence and are excluded from current consumption.
 Compare the same selected check set, environment and quality before claiming savings.
+
+## SSOT manifest location and Apex demo (WORKFLOW-OBS-005)
+
+The immutable entry point is the exact `manifestPath` returned by `workflow collect`:
+`.workspace/.artifacts/workflows/<repository-digest>/<manifest-digest>/manifest.json`.
+`repository-digest` is the first 24 SHA-256 hex characters of the repository identity;
+`manifest-digest` is the full SHA-256 of the stored manifest bytes. Resolve the actual path from
+`workflow collect`; never guess either digest or choose an arbitrary newest directory.
+`workflow targets` reports the configured storage and registered `.worktrees` target inventory.
+The clone-local `agentic-os.workspaceRoot` setting overrides the default workspace root for that
+repository; keep the local bridge and collector on the same workspace configuration.
+
+For one E2E START-WORKFLOW → RELEASE-WORKFLOW, use its workflow-group root when it has multiple
+members, or its individual workflow root when it has one worktree. Keep child manifests, receipt
+JSON, span pages and recommendations at their digest-bound locations. A newer observation creates
+a successor root; hand off its new exact locator and retain the previous immutable evidence.
+An exported inspection JSON is a portable derived snapshot, not a replacement archive SSOT.
+
+Apex Catalog → Agent observability → Import local file selects this `manifest.json` in the local
+Dev runtime. The existing translucent preset panel overlays the full Canvas dashboard. One import
+resolves all captured pages through the existing JSON/SSE reader; Span tree includes scoped timing,
+D3 Topology and JSON/Markdown/Viewer share selection, and original reused resources stay historical.
+The source-owned preset retains `/canvas.view.set #canvas-view @canvas-view option=agent-run:tree`;
+MCP uses the same Canvas view owner. Selecting a preset neither reads private evidence nor starts a
+model run. Import requires the user's file choice; unresolved references fail the whole import.
+
+PRD: remove ambiguity about which file to choose. TAD/ADR: document the existing content-addressed
+owner and reuse the catalog description, with no mutable latest pointer or duplicate registry.
+MVP/GTM: demonstrate import → inspect → recorded evaluation → export; WTP and savings stay unproven.
+Validation: native document digests/catalog checks and Canvas manifest/browser tests. Rollback the
+catalog/guidance update independently; all immutable archives and source receipts remain intact.
