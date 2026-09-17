@@ -123,7 +123,8 @@ test('production deployment and runtime remain separate missing evidence; advice
  manifest.releaseEvidence=[{memberId:'right',kind:'deployment',environment:'production',digest:'d'.repeat(64)}];
  view=workflowGroup(manifest,load);assert.deepEqual(view.profile.workflow.missing,['right:runtime']);
  const advice=workflowGroup(manifest,load,{adviceOnly:true});assert.equal(advice.totals.tokens,null);assert.equal(advice.executable,false);
- assert(advice.recommendations.every(row=>['left','right'].includes(row.memberId)&&row.manifestDigest));
+ assert(advice.recommendations.filter(row=>row.id!=='release-coverage').every(row=>['left','right'].includes(row.memberId)&&row.manifestDigest));
+ assert(advice.recommendations.some(row=>row.id==='release-coverage'));
  assert.deepEqual(toolArguments('workflow.export',{input:'index.json',format:'sse'}),['workflow','export','--input=index.json','--format=sse']);
  assert.throws(()=>toolArguments('workflow.export',{input:'index.json',format:'html'}));
 });
@@ -137,4 +138,29 @@ test('shared ADLC keeps distinct repositories source-bound and loads only reques
  assert.equal(advice.members[1].source.repository,'github.com/example/other');assert(reads.every(file=>file.endsWith('recommendations.json')));
  reads.length=0;const page=workflowGroup(group.manifest,load,{offset:32,now:1000});
  assert.equal(page.spans.length,32);assert(!reads.some(file=>file.startsWith('right:spans-')));
+});
+
+
+test('measurement index counts known zero without summing overlapping spans or reused usage',()=>{
+ const trace=nativeTrace();trace.spans[1].model='local-model';
+ const {manifest,read}=fixture(1,trace),index=manifest.archive.measurements;
+ assert.equal(index.models.captured,1);assert.equal(index.models.identified,1);assert.equal(index.models.usageReported,1);
+ assert.equal(index.reported.costUsd,1);assert.equal(index.reported.tokens,1);assert.equal(index.totals,null);
+ assert.equal(index.actualCostUsd,null);assert.equal(index.units.costUsd,'estimated-USD');
+ assert.equal(index.evaluations.reported,2);assert.equal(index.authorityVerified,false);
+ trace.spans[1].status='reused';const reused=fixture(1,trace).manifest.archive.measurements;
+ assert.equal(reused.models.captured,0);assert.equal(reused.reported.costUsd,0);assert.equal(reused.historicalSpans,1);
+ assert.equal(readArchive(manifest,read,{adviceOnly:true}).models.evidence[0].model,'local-model');
+});
+test('group advice exposes member phase gaps and model evidence without loading span pages',()=>{
+ const group=groupFixture();group.left.manifest.expected.push('runtime');const reads=[];
+ const load=ref=>{const value=group.load(ref);return {...value,read:file=>{reads.push(file);return value.read(file);}};};
+ const advice=workflowGroup(group.manifest,load,{adviceOnly:true});
+ assert.deepEqual(advice.members[0].missing,['runtime']);assert(advice.members[0].recommendations.digest);
+ assert.equal(advice.members[1].measurements.models.identified,1);
+ assert.equal(advice.models[1].evidence[0].cost.prompt_tokens,124);
+ assert(reads.every(file=>file==='recommendations.json'));
+ assert(workflowGroup(group.manifest,group.load).profile.workflow.missing.includes('left:phase:runtime'));
+ delete group.left.manifest.archive.measurements;
+ assert.equal(workflowGroup(group.manifest,group.load,{adviceOnly:true}).members[0].measurements,null);
 });

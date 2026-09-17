@@ -26,9 +26,17 @@ export function workflowPaths(root, repository) {
   assertDirectoryAncestors(join(workspace, 'entry'), sep, { allowMissing: true });
   return { workspace, targets: join(parent, '.worktrees'), storage: join(workspace, '.artifacts', 'workflows', hash(repository).slice(0, 24)) };
 }
+function lifecycleMetadata() {
+  return { start: 'agentic-os/docs/START-WORKFLOW.md', release: 'agentic-os/docs/RELEASE-WORKFLOW.md', phases: WORKFLOW_PHASES,
+    storage: '.workspace/.artifacts/workflows/<repository-digest>/<manifest-digest>/manifest.json', targetRoot: '.worktrees',
+    reader: 'agentic-os', authority: false,
+    invocation: { mcp: ['workflow.targets','workflow.collect','workflow.export','workflow.recommend'],
+      inspect: '/workflow.export #read-only @input:<manifest>', recommend: '/workflow.recommend #read-only @input:<manifest>',
+      formats: ['json','sse'] } };
+}
 function decorate(observation) {
   const workflow = observation.profile.workflow;
-  workflow.lifecycle = { start: 'agentic-os/docs/START-WORKFLOW.md', release: 'agentic-os/docs/RELEASE-WORKFLOW.md', phases: WORKFLOW_PHASES };
+  workflow.lifecycle = lifecycleMetadata();
   workflow.optimization ??= { authority: false, strategy: 'observe-rank-execute-reevaluate',
     ranking: workflow.phases.flatMap(phase => (phase.feedback ?? []).map(row => ({ ...row, phase: phase.id,
       evidenceDigest: phase.digest, revision: phase.revision }))).sort((a, b) => b.meanMs - a.meanMs || a.id.localeCompare(b.id)).slice(0, 5),
@@ -43,7 +51,7 @@ export function discoverWorkflowTargets(root, repository) {
     observations: inventory.filter(row => inside(paths.targets, row.path)).map(row => ({
       path: row.path, branch: row.branch, revision: row.head, detached: row.detached,
       locked: row.locked, prunable: row.prunable, contentLoaded: false,
-    })), next: 'Collect an exact workflow manifest, then export its returned stored manifest path into Canvas.' };
+    })), next: 'Collect an exact workflow manifest, then use Canvas Import local file with the returned manifest path; retain its referenced files.' };
 }
 export function collectWorkflow(root, repository, input) {
   const inputPath = resolve(input), manifest = JSON.parse(read(inputPath, 32000));
@@ -70,7 +78,7 @@ export function collectWorkflow(root, repository, input) {
     receipts.set(ref.file, bytes);
   }
   const captured = buildArchive(manifest, file => receipts.get(file), receiptClock(receipts));
-  const stored = { ...manifest, phases: manifest.phases.map(phase => ({ ...phase, file: `${phase.id}.json` })),
+  const stored = { ...manifest, lifecycle: lifecycleMetadata(), phases: manifest.phases.map(phase => ({ ...phase, file: `${phase.id}.json` })),
     traces: traces.map((ref, index) => ({ ...ref, file: `trace-${index}.json` })), archive: captured.archive };
   const files = new Map(stored.phases.map((ref,index) => [ref.file,receipts.get(manifest.phases[index].file)]));
   stored.traces.forEach((ref,index) => files.set(ref.file,receipts.get(traces[index].file)));
@@ -211,7 +219,7 @@ function collectGroup(root, repository, manifest, inputPath) {
     }
     sequence=older.sequence+1;
   }
-  const stored={schema:WORKFLOW_GROUP,id:manifest.id,source:manifest.source,planning,members,
+  const stored={schema:WORKFLOW_GROUP,id:manifest.id,source:manifest.source,lifecycle:lifecycleMetadata(),planning,members,
     releaseTargets:manifest.releaseTargets,releaseEvidence,sequence,...(previous?{previous}:{})};
   // Validate every referenced archive and all pages at collection; exports load requested pages only.
   workflowGroup(stored,load,{adviceOnly:true});

@@ -99,7 +99,7 @@ function traceSpans(manifest, read) {
 }
 
 export function recommendations(observation) {
-  const workflow = observation.profile.workflow, models = observation.spans.filter(row => row.kind === 'model');
+  const workflow = observation.profile.workflow, models = observation.spans.filter(row => row.kind === 'model' || row.model || row.cost);
   const modelEvidence = models.map(row => ({ spanId: row.spanId, model: row.model ?? null, modelIdentityBasis: row.modelIdentityBasis, cost: row.cost,
     resources: row.resources, digest: row.subjectDigest, revision: row.component.revision }));
   const ranking = workflow.phases.flatMap(phase => (phase.feedback ?? []).map(row => ({ ...row, phase: phase.id,
@@ -133,6 +133,21 @@ export function recommendations(observation) {
     savingsClaim: null };
 }
 
+// Counts describe captured fields, never additive resource totals or provider authority.
+function measurementCoverage(spans) {
+  const current = spans.filter(row => !['reused','skipped'].includes(row.status));
+  const models = current.filter(row => row.kind === 'model' || row.model || row.cost);
+  return { scope: 'captured-spans', currentSpans: current.length,
+    historicalSpans: spans.filter(row => row.status === 'reused').length,
+    units: { cpuMs: 'milliseconds', peakMemoryBytes: 'bytes', tokens: 'tokens', costUsd: 'estimated-USD' },
+    reported: Object.fromEntries(Object.keys(blank()).map(key => [key, current.filter(row => number(row.resources?.[key]) !== null).length])),
+    models: { captured: models.length, identified: models.filter(row => Boolean(row.model)).length,
+      usageReported: models.filter(row => row.cost?.status === 'reported').length },
+    evaluations: { reported: spans.filter(row => ['reported','completed','failed'].includes(row.evaluation?.status)).length,
+      unevaluated: spans.filter(row => !['reported','completed','failed'].includes(row.evaluation?.status)).length },
+    totals: null, actualCostUsd: null, authorityVerified: false };
+}
+
 export function buildArchive(manifest, read, observedAt) {
   const observation = workflowObservation(manifest, read, observedAt, { all: true });
   const traces = traceSpans(manifest, read);
@@ -161,7 +176,7 @@ export function buildArchive(manifest, read, observedAt) {
   const bytes=json(recommendations(observation)); requireFact(Buffer.byteLength(bytes)<=128000,'advice-budget');
   files.set('recommendations.json',bytes);
   return { files, archive: { version:1, observedAt, status:observation.status, total:observation.spans.length, pages,
-    coverage:observation.coverage, traces:traces.coverage, recommendations:reference('recommendations.json',bytes) } };
+    coverage:observation.coverage, measurements:measurementCoverage(observation.spans), traces:traces.coverage, recommendations:reference('recommendations.json',bytes) } };
 }
 
 export function readArchive(manifest, read, { offset=0, now=Date.now(), adviceOnly=false }={}) {
@@ -223,12 +238,17 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
   }
   const missingRelease=manifest.releaseTargets.flatMap(memberId=>['deployment','runtime'].filter(kind=>!releaseKeys.has(`${memberId}:${kind}`)).map(kind=>({memberId,kind})));
   const summaries=members.map(({ref,child})=>({id:ref.id,digest:ref.digest,source:child.source,context:child.context,
-    total:child.archive.total,coverage:child.archive.coverage,manifest:ref.file}));
+    total:child.archive.total,coverage:child.archive.coverage,manifest:ref.file,
+    expected:child.expected,missing:child.expected.filter(id=>!child.phases.some(row=>row.id===id)),
+    measurements:child.archive.measurements??null,recommendations:child.archive.recommendations}));
   const common={schema:'agentic-os/workflow-group-recommendations/v1',authority:false,executable:false,
     source:manifest.source,workflowId:manifest.id,planning:manifest.planning,appliesTo:['next-workflow','next-session','next-turn','next-thread'],
     members:summaries,release:{boundary:'production-runtime-ready',targets:manifest.releaseTargets,
       evidence:manifest.releaseEvidence??[],missing:missingRelease,authorityVerified:false},
-    recommendations:members.flatMap(({ref,advice})=>advice.recommendations.slice(0,5).map(row=>({...row,memberId:ref.id,manifestDigest:ref.digest}))),
+    recommendations:[...members.flatMap(({ref,advice})=>advice.recommendations.slice(0,5).map(row=>({...row,memberId:ref.id,manifestDigest:ref.digest}))),
+      ...(missingRelease.length ? [{id:'release-coverage',action:'Capture the missing production deployment and runtime receipts before claiming end-to-end completion.',
+        evidence:{missing:missingRelease},condition:'Only authorized provider-native verification can establish production readiness.'}] : [])],
+    models:members.map(({ref,advice})=>({memberId:ref.id,manifestDigest:ref.digest,...advice.models})),
     totals:{tokens:null,costUsd:null,actualCostUsd:null},savingsClaim:null,
     policy:'Recommendations only. Revalidate source, cohort, quality and exact-input eligibility; provider-native release verification remains separate.'};
   if(adviceOnly)return common;
@@ -267,7 +287,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
   return {schema:'agent-toolkit-run/v1',authority:false,importedObservation:true,runId:`workflow-${manifest.id}`,
     status:root.status,subjectDigest:candidate.digest,candidate,cohortId:manifest.id,context:null,
     profile:{workflow:{source:manifest.source,expected:['planning','worktrees','production-deployment','production-runtime'],
-      missing:missingRelease.map(ref=>`${ref.memberId}:${ref.kind}`),phases:[],planning:manifest.planning,members:summaries,
+      missing:[...summaries.flatMap(row=>row.missing.map(phase=>`${row.id}:phase:${phase}`)),...missingRelease.map(ref=>`${ref.memberId}:${ref.kind}`)],phases:[],planning:manifest.planning,members:summaries,
       release:common.release,optimization:common,receiptAuthorityVerified:false,
       measurementScope:'Per worktree and phase; concurrent clocks, nested tokens and costs must not be summed'}},
     evaluation:root.evaluation,observedAt:now,expiresAt:now+60000,spans,

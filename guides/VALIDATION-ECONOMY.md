@@ -353,3 +353,13 @@ owner and reuse the catalog description, with no mutable latest pointer or dupli
 MVP/GTM: demonstrate import → inspect → recorded evaluation → export; WTP and savings stay unproven.
 Validation: native document digests/catalog checks and Canvas manifest/browser tests. Rollback the
 catalog/guidance update independently; all immutable archives and source receipts remain intact.
+
+
+Newly collected roots carry owner-generated `lifecycle` metadata: START/RELEASE contracts, default
+storage/target locations, and the existing MCP plus `/ @ #` JSON/SSE inspection/recommendation routes.
+Each child archive's `measurements` counts captured current resource/model fields and evaluations;
+reused spans are counted separately. Counts are coverage, not additive cost totals or quality scores.
+The group export/recommendation exposes each member's missing phases, measurement index, recommendation
+reference and source-bound model evidence. Missing production receipts produce a release-coverage
+recommendation. Older archives without this index remain readable with a null index; collect a new
+immutable snapshot to add it. No archive rewrite, inferred usage or production authority is introduced.
