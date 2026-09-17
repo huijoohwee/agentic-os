@@ -84,7 +84,7 @@ const RUN_TOOLS = invocationCatalog.entries.filter(entry => entry.action === 'ru
 }));
 const WORKFLOW_TOOLS = invocationCatalog.entries.filter(entry => entry.action === 'workflow').map(entry => ({
   name: entry.token.slice(1), description: entry.summary, inputSchema: entry.token === '/workflow.targets' ? EMPTY_INPUT
-    : { ...CHECKS_INPUT, properties: { input: { ...CHECKS_INPUT.properties.input, description: 'Exact local lifecycle manifest path; collection retains digest-bound native receipts.' } } }, outputSchema: CLI_OUTPUT,
+    : { ...CHECKS_INPUT, properties: { input: { ...CHECKS_INPUT.properties.input, description: 'Exact local lifecycle manifest path; collection retains digest-bound native receipts.' }, ...(entry.token === '/workflow.export' ? { offset: { type: 'integer', minimum: 0, multipleOf: 32 }, format: { type: 'string', enum: ['json','sse'] } } : {}) } }, outputSchema: CLI_OUTPUT,
   annotations: { readOnlyHint: entry.semantic === 'read-only', destructiveHint: false, idempotentHint: true, openWorldHint: false },
 }));
 export const TOOLS = deepFreeze([
@@ -207,12 +207,14 @@ export function toolArguments(name, args) {
     return [name];
   }
   if (name === 'workflow.targets') { validateEmptyArguments(args); return ['workflow', 'targets']; }
-  if (name === 'checks' || name === 'workflow.collect' || name === 'workflow.export') {
-    if (!plainObject(args) || !onlyKeys(args, ['input']) || typeof args.input !== 'string'
+  if (name === 'checks' || name === 'workflow.collect' || name === 'workflow.export' || name === 'workflow.recommend') {
+    if (!plainObject(args) || !onlyKeys(args, name === 'workflow.export' ? ['input', 'offset', 'format'] : ['input']) || typeof args.input !== 'string'
       || !args.input.trim() || Buffer.byteLength(args.input) > 4096 || /[\u0000-\u001f\u007f]/u.test(args.input))
       invalidParams('checks requires one bounded local input path');
+    if (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0 || args.offset % 32)) invalidParams('invalid workflow offset');
+    if (args.format !== undefined && !['json','sse'].includes(args.format)) invalidParams('invalid workflow format');
     return name === 'checks' ? ['observe', '--checks', `--input=${args.input}`]
-      : ['workflow', name.slice(9), `--input=${args.input}`];
+      : ['workflow', name.slice(9), `--input=${args.input}`, ...(args.offset === undefined ? [] : [`--offset=${args.offset}`]), ...(args.format === undefined ? [] : [`--format=${args.format}`])];
   }
   if (name === 'reap') {
     const value = args === undefined ? {} : args;

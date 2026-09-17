@@ -31,6 +31,7 @@ export const ENTRY_CONTRACTS = deepFreeze({
   '/status': { kind: 'command', action: 'status', argv: [], semantic: 'read-only', accepts: ['device'], requires: [] },
   '/workflow.targets': { kind: 'command', action: 'workflow', argv: ['targets'], semantic: 'read-only', accepts: [], requires: [] },
   '/workflow.collect': { kind: 'command', action: 'workflow', argv: ['collect'], semantic: 'mutating', accepts: ['input'], requires: ['input'] },
+  '/workflow.recommend': { kind: 'command', action: 'workflow', argv: ['recommend'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/workflow.export': { kind: 'command', action: 'workflow', argv: ['export'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/checks': { kind: 'command', action: 'observe', argv: ['--checks'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/reap': { kind: 'command', action: 'reap', argv: [], semantic: 'mutating', accepts: [], requires: [] },

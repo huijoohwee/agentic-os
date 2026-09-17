@@ -13,7 +13,7 @@ const resources = value => Object.fromEntries(Object.keys(blankResources()).map(
 function nativeReceipt(value, phase, source) {
   const revision = phase.revision || source.revision;
   requireFact(revisionPattern.test(revision), 'revision');
-  const result = { status: 'completed', start: null, finish: null, elapsedMs: null, resources: blankResources(), children: [], feedback: null };
+  const result = { status: 'completed', start: null, finish: null, elapsedMs: null, resources: blankResources(), children: [], feedback: null, partial: false };
   switch (value.schema) {
     case 'agentic-os/validation-observation/v1': {
       requireFact(value.authority === false && value.source?.repository === source.repository && value.source?.revision === revision
@@ -22,6 +22,7 @@ function nativeReceipt(value, phase, source) {
       result.status = value.status === 'passed' ? 'completed' : value.status;
       result.start = time(value.startedAt); result.finish = time(value.finishedAt); result.elapsedMs = number(value.elapsedMs);
       result.resources = resources(value.resources);
+      result.partial = value.coverage?.partial === true || (value.coverage?.totalStages ?? value.stages.length) > value.stages.length;
       result.children = value.stages.map(stage => {
         requireFact(identifier(stage.id) || typeof stage.id === 'string' && /^[a-z][a-z0-9.-]{0,95}$/u.test(stage.id), 'stage-id');
         requireFact(['passed', 'failed', 'reused', 'running'].includes(stage.status), 'stage-status');
@@ -32,7 +33,9 @@ function nativeReceipt(value, phase, source) {
       // Existing ranked feedback remains advisory. Do not export arbitrary receipt payloads.
       if (value.feedback?.authority === false && Array.isArray(value.feedback.ranking)) result.feedback = value.feedback.ranking.slice(0, 5)
         .filter(row => identifier(row.id) && number(row.meanMs) !== null).map(row => ({ id: row.id, meanMs: row.meanMs,
-          samples: number(row.samples), failureRate: number(row.failureRate) }));
+          samples: number(row.samples), failureRate: number(row.failureRate),
+          resourceMeans: Object.fromEntries(Object.entries(row.resourceMeans ?? {}).filter(([key,value]) =>
+            ['cpuMs','peakMemoryBytes','tokens','costUsd','queueWaitMs'].includes(key) && number(value) !== null)) }));
       break;
     }
     case 'agentic-os/flight-observation/v1':
@@ -90,7 +93,7 @@ function pipelineReceipt(events, phase, source, observedAt) {
     start, finish, elapsedMs: start === null ? null : (finish ?? observedAt) - start, resources: blankResources(), children, feedback: null } };
 }
 
-export function workflowObservation(manifest, read, exportedAt = Date.now()) {
+export function workflowObservation(manifest, read, exportedAt = Date.now(), { all = false } = {}) {
   requireFact(manifest?.schema === SCHEMA && identifier(manifest.id) && number(exportedAt) !== null, 'manifest');
   const source = { repository: manifest.source?.repository, revision: manifest.source?.revision, tree: manifest.source?.tree };
   requireFact(/^github\.com\/[a-z0-9._-]+\/[a-z0-9._-]+$/iu.test(source?.repository)
@@ -142,10 +145,10 @@ export function workflowObservation(manifest, read, exportedAt = Date.now()) {
       phases: phases.map(({ id, digest, revision, schema, feedback }) => ({ id, digest, revision, schema, feedback })),
       receiptAuthorityVerified: false, measurementScope: 'individual phases; nested values must not be summed' } },
     evaluation: root.evaluation, observedAt: exportedAt, expiresAt: exportedAt + 60000,
-    spans: [root, ...rows.slice(0, 31)], page: { total: rows.length + 1, offset: 0, nextCursor: null },
-    coverage: { partial: missing.length > 0 || rows.length > 31 || status !== 'completed', droppedEvents: null, projectedSpansOmitted: Math.max(0, rows.length - 31),
+    spans: [root, ...(all ? rows : rows.slice(0, 31))], page: { total: rows.length + 1, offset: 0, nextCursor: null },
+    coverage: { partial: missing.length > 0 || phases.some(row => row.partial) || !all && rows.length > 31 || status !== 'completed', droppedEvents: null, projectedSpansOmitted: all ? 0 : Math.max(0, rows.length - 31),
       expectedSpans: rows.length + 1 } };
-  requireFact(Buffer.byteLength(JSON.stringify(output)) <= 128000, 'output-budget');
+  requireFact(Buffer.byteLength(JSON.stringify(output)) <= (all ? 2000000 : 128000), 'output-budget');
   return output;
 }
 export function readWorkflowObservation(file) {

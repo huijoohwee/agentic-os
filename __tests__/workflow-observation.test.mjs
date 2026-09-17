@@ -89,7 +89,7 @@ function localWorkflow(t) {
   t.after(() => rmSync(base, { recursive: true, force: true })); mkdirSync(root);
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
   git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
-  writeFileSync(join(root, 'owned'), 'source'); git('add', 'owned'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'source');
+  writeFileSync(join(root, 'owned'), 'source'); writeFileSync(join(root,'PRD-TAD-ADR-MVP-GTM.md'),'planning'); git('add', 'owned','PRD-TAD-ADR-MVP-GTM.md'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'source');
   const revision = git('rev-parse', 'HEAD'), tree = git('rev-parse', 'HEAD^{tree}');
   const receipt = JSON.stringify({ ...finish, laneHead: revision });
   const file = join(base, 'manifest.json'); writeFileSync(join(base, 'finish.json'), receipt);
@@ -145,7 +145,7 @@ test('default target discovery is registered-only, bounded, and metadata-only; c
   assert.throws(() => discoverWorkflowTargets(root, source.repository), /directory ancestor/);
 });
 test('CLI, MCP and slash bindings share one workflow owner and exact effect semantics', () => {
-  for (const operation of ['targets', 'collect', 'export']) {
+  for (const operation of ['targets', 'collect', 'export', 'recommend']) {
     const args = operation === 'targets' ? {} : { input: './receipt manifest.json' };
     const argv = toolArguments(`workflow.${operation}`, args);
     assert.equal(validateCommandArguments(argv[0], argv.slice(1)), null);
@@ -157,4 +157,27 @@ test('CLI, MCP and slash bindings share one workflow owner and exact effect sema
   assert.throws(() => toolArguments('workflow.export', { input: 'x', authority: true }));
   assert.notEqual(validateCommandArguments('workflow', ['collect']), null);
   assert.equal(resolveInvocation(['/workflow.collect', '#read-only', '@input:x']).ok, false);
+});
+
+test('immutable multi-worktree root binds planning, survives pagination, and streams the existing JSON/SSE envelope',t=>{
+ const {root,base,file,manifest}=localWorkflow(t),members=[];
+ for(const worktreeId of ['source','deployment']){
+  writeFileSync(file,JSON.stringify({...manifest,id:worktreeId,context:{workflowId:'whole-adlc',worktreeId}}));
+  const child=collectWorkflow(root,source.repository,file);members.push({id:worktreeId,file:child.manifest,digest:child.digest});
+ }
+ const group={schema:'agentic-os/workflow-group/v1',id:'whole-adlc',source:manifest.source,members,releaseTargets:['deployment'],
+  planning:{repository:source.repository,revision:manifest.source.revision,path:'PRD-TAD-ADR-MVP-GTM.md',digest:digest('planning')}};
+ writeFileSync(file,JSON.stringify(group));const saved=collectWorkflow(root,source.repository,file);
+ assert.equal(saved.members,2);assert.equal(saved.sequence,1);assert.equal(collectWorkflow(root,source.repository,file).reused,true);
+ let stream;runWorkflow(root,['export',`--input=${saved.manifest}`,'--format=sse'],{repository:source.repository},text=>stream=text);
+ assert(stream.endsWith('data: [DONE]\n'));const snapshot=JSON.parse(stream.split('\n')[0].slice(6));
+ assert.equal(snapshot.schema,'agent-toolkit-run/v1');assert.equal(snapshot.spans.length,5);
+ assert.equal(snapshot.profile.workflow.members.length,2);assert.equal(snapshot.profile.workflow.release.authorityVerified,false);
+ const prior=readFileSync(saved.manifest,'utf8');
+ group.previous={file:saved.manifest,digest:saved.digest};writeFileSync(file,JSON.stringify(group));
+ const updated=collectWorkflow(root,source.repository,file);assert.equal(updated.sequence,2);assert.equal(readFileSync(saved.manifest,'utf8'),prior);
+ group.members.pop();writeFileSync(file,JSON.stringify(group));assert.throws(()=>collectWorkflow(root,source.repository,file),/previous-binding/);
+ group.members=members;group.previous=undefined;group.planning.digest='0'.repeat(64);writeFileSync(file,JSON.stringify(group));
+ assert.throws(()=>collectWorkflow(root,source.repository,file),/planning-digest/);
+ writeFileSync(members[0].file,'{}');assert.throws(()=>runWorkflow(root,['export',`--input=${saved.manifest}`],{repository:source.repository},()=>{}),/member-digest/);
 });

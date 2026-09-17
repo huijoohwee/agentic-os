@@ -1,7 +1,7 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
-  "entryCount": 26,
-  "digest": "sha256:e716512f9198ffc8accd834efdecb1459a70ca1831a6db946cac7e6c63cfaff5",
+  "entryCount": 27,
+  "digest": "sha256:ddd5c6c5e333fc25047c0c26374eff600bbafc542bf9af6abf79bb7b441edfd7",
   "entries": [
     {
       "token": "/setup",
@@ -265,6 +265,7 @@
     },
     {"token": "/workflow.targets", "kind": "command", "action": "workflow", "argv": ["targets"], "semantic": "read-only", "accepts": [], "requires": [], "summary": "Discover registered workflow targets in .worktrees without loading content."},
     {"token": "/workflow.collect", "kind": "command", "action": "workflow", "argv": ["collect"], "semantic": "mutating", "accepts": ["input"], "requires": ["input"], "summary": "Preserve exact lifecycle receipts in private .workspace storage without running phases."},
-    {"token": "/workflow.export", "kind": "command", "action": "workflow", "argv": ["export"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Export collected start-to-release evidence and ranked economics into native Canvas JSON."}
+    {"token": "/workflow.export", "kind": "command", "action": "workflow", "argv": ["export"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Export collected start-to-release evidence and ranked economics into native Canvas JSON."},
+    {"token": "/workflow.recommend", "kind": "command", "action": "workflow", "argv": ["recommend"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Read source-bound recommendations for the next workflow, session, turn or thread."}
   ]
 }

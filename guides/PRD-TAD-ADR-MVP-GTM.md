@@ -540,3 +540,41 @@ mandatory/dependency ordering, and re-measure before claiming improvement. GTM: 
 receipt assembly and bottleneck diagnosis; paid demand and measured savings remain unvalidated.
 Validation: `__tests__/workflow-observation.test.mjs`, invocation/MCP tests and `npm run check`.
 Rollback: stop calling the opt-in workflow commands; retained evidence and phase owners stay intact.
+
+### WORKFLOW-OBS-003 · Complete capture and next-context advice
+
+PRD / RAO: a solo operator carries one ADLC workflow's worktree evidence and economics advice into the
+next workflow, session, turn or thread. SVO: the operator collects one immutable JSON manifest that
+references phase receipts, every captured span page and recommendations; reported model identity,
+prompt/completion tokens and estimated USD retain their source digest. TAD: extend the existing lazy
+workflow collector, trace projector and native cost-log validator; store bounded JSON pages beneath
+`.workspace/.artifacts/workflows`, discover only registered `.worktrees`, and expose the same owner
+through CLI/MCP and `/workflow.recommend #read-only @input:<manifest>`. ADR: paging never discards
+captured spans; upstream gaps stay explicit, source clocks stay separate, unreported values stay null,
+and estimates never become cash charges. Advice is read-only, source-bound and revalidated against
+the next context; it neither switches models nor edits code nor bypasses mandatory checks.
+MVP: collect → retain one manifest → export each page → recommend → authorized change → remeasure
+on the same quality cohort. GTM: reduce repeat diagnosis and unnecessary validation; willingness to
+pay and measured savings remain unvalidated. Acceptance: archive, projector and invocation/MCP tests
+plus `npm run check`; reject digest drift, duplicate spans, false completeness and invalid cost logs.
+Rollback: stop optional collection/recommendation calls; preserve old manifests and original receipts.
+
+
+### WORKFLOW-OBS-004 · One planning-to-production workflow across worktrees
+
+PRD / RAO: the same planning intent may span several repositories/worktrees; one immutable root
+must retain their relationship through START-WORKFLOW to RELEASE-WORKFLOW, deployment and runtime.
+SVO: the operator declares a workflow ID, source-bound PRD-TAD-ADR-MVP-GTM planning digest, worktree
+members and production targets. TAD: extend the existing collector with a reference-only group root;
+reuse child archives, native JSON observation envelopes, bounded SSE snapshot/DONE framing and the
+existing Canvas SSE reader. No duplicated span pages, second dashboard, watcher or model call.
+ADR: membership is explicit and each child context binds the workflow/worktree ID. Root revisions
+link the previous immutable root; member identities cannot silently disappear. Deployment and runtime
+receipts are separate production evidence references. Their bytes and source labels are retained;
+provider-native verification remains authoritative, and receipt coverage never grants release authority.
+MVP: planning → collect each participating worktree → collect one root → JSON/SSE page export →
+existing Canvas/Markdown inspection → recommend per member → authorized improvement → remeasure.
+GTM: shorten cross-worktree diagnosis and handoff; savings/WTP stay unvalidated until measured.
+Acceptance: cross-member pagination, identity rejection, immutable revision linkage, planning/digest
+checks, missing production evidence, existing SSE parser compatibility and required checks pass.
+Rollback: stop optional group exports; retain all immutable roots and independent child receipts.
