@@ -583,6 +583,7 @@ async function main() {
     case 'queue': return cmdQueue(root, argv, profile);
     case 'autonomy-class': return runAutonomyClass(root, argv, policy);
     case 'flight': return runFlight(root, argv, profile);
+    case 'workflow': return (await import('./agentic-os-workflow.mjs')).runWorkflow(root, argv, profile, out);
     case 'observe': return runObserve(root, argv, profile);
     default:
       err(`unknown command "${command}"`);

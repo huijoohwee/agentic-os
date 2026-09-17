@@ -524,3 +524,19 @@ through native Chat or `agentic-graph.control_local_canvas_view`. GTM: reduce se
 savings and willingness to pay remain unvalidated. Acceptance: Graph's desktop/mobile mission smoke
 proves full-width inert entry, import, shared selection and authored-byte preservation. Rollback the
 preset description independently of runtime routes; no new provider, dependency or invocation registry.
+
+### WORKFLOW-OBS-002 · Durable local lifecycle economics
+
+PRD: a solo operator needs one surviving start-to-release evidence bundle after worktree retirement.
+TAD: `bin/agentic-os-workflow.mjs` discovers only registered repository targets under `.worktrees`,
+collects bounded native receipts into `.workspace/.artifacts/workflows`, and reuses the existing
+workflow trace projector and validation economy ranking. ADR: content-addressed, exclusive, private
+collection; no second ledger, remote polling, execution grant or invented resource measurement.
+The seven required phases remain visible until individually evidenced. MCP and `/workflow.*` route
+to the same lazy CLI owner, with `@input:` and exact `#read-only`/`#mutating` semantics.
+MVP: discover → collect → export → Canvas import; retain CPU, peak process RSS, token and estimated
+cost provenance, rank observed expensive checks, let the existing validation scheduler preserve
+mandatory/dependency ordering, and re-measure before claiming improvement. GTM: reduce manual
+receipt assembly and bottleneck diagnosis; paid demand and measured savings remain unvalidated.
+Validation: `__tests__/workflow-observation.test.mjs`, invocation/MCP tests and `npm run check`.
+Rollback: stop calling the opt-in workflow commands; retained evidence and phase owners stay intact.

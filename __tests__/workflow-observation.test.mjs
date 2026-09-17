@@ -74,3 +74,83 @@ test('bounded detail retains all phases and does not call projection omission dr
   assert.equal(result.coverage.partial, true); assert.equal(result.coverage.droppedEvents, null);
   assert.equal(result.coverage.projectedSpansOmitted, 11);
 });
+
+// Native lifecycle collection reuses the projector; no subprocess or provider is invoked by exports.
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, symlinkSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { WORKFLOW_PHASES, collectWorkflow, discoverWorkflowTargets, runWorkflow } from '../bin/agentic-os-workflow.mjs';
+import { dispatchInvocation, resolveInvocation } from '../bin/agentic-os-invocation.mjs';
+import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
+import { toolArguments, TOOLS } from '../src/mcp-server.mjs';
+function localWorkflow(t) {
+  const base = mkdtempSync(join(realpathSync(tmpdir()), 'workflow-')), root = join(base, 'project');
+  t.after(() => rmSync(base, { recursive: true, force: true })); mkdirSync(root);
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
+  writeFileSync(join(root, 'owned'), 'source'); git('add', 'owned'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'source');
+  const revision = git('rev-parse', 'HEAD'), tree = git('rev-parse', 'HEAD^{tree}');
+  const receipt = JSON.stringify({ ...finish, laneHead: revision });
+  const file = join(base, 'manifest.json'); writeFileSync(join(base, 'finish.json'), receipt);
+  const manifest = { schema: 'agentic-os/workflow-observation-input/v1', id: 'local-loop',
+    source: { repository: source.repository, revision, tree }, expected: [...WORKFLOW_PHASES],
+    phases: [{ id: 'integration', file: 'finish.json', digest: digest(receipt) }] };
+  writeFileSync(file, JSON.stringify(manifest)); return { base, root, git, file, manifest };
+}
+test('collection retains exact receipts privately and survives source removal with explicit missing phases', t => {
+  const { base, root, file, manifest } = localWorkflow(t);
+  const first = collectWorkflow(root, source.repository, file);
+  assert.equal(first.reused, false); assert(first.manifest.startsWith(join(base, '.workspace', '.artifacts', 'workflows')));
+  assert.equal(statSync(first.manifest).mode & 0o777, 0o600);
+  assert.equal(collectWorkflow(root, source.repository, file).reused, true);
+  rmSync(join(base, 'finish.json')); rmSync(file);
+  let output; runWorkflow(root, ['export', `--input=${first.manifest}`], { repository: source.repository }, value => { output = JSON.parse(value); });
+  assert.equal(output.status, 'running'); assert.equal(output.profile.workflow.missing.length, 6);
+  assert.equal(output.profile.workflow.source.revision, manifest.source.revision);
+  assert.equal(output.profile.workflow.optimization.authority, false);
+  assert.equal(output.spans[0].resources.cpuMs, null);
+  writeFileSync(join(dirname(first.manifest), 'integration.json'), '{}');
+  assert.throws(() => runWorkflow(root, ['export', `--input=${first.manifest}`], { repository: source.repository }, () => {}), /digest/);
+});
+test('collection refuses mismatched repository, tree, reduced lifecycle coverage, and corrupt existing storage', t => {
+  const { root, file, manifest } = localWorkflow(t);
+  assert.throws(() => collectWorkflow(root, 'github.com/other/repo', file), /repository-binding/);
+  writeFileSync(file, JSON.stringify({ ...manifest, source: { ...manifest.source, tree: sha } }));
+  assert.throws(() => collectWorkflow(root, source.repository, file), /tree-binding/);
+  writeFileSync(file, JSON.stringify({ ...manifest, expected: ['integration'] }));
+  assert.throws(() => collectWorkflow(root, source.repository, file), /phase-coverage/);
+  writeFileSync(file, JSON.stringify({ ...manifest, phases: [{ ...manifest.phases[0], id: 'runtime' }] }));
+  assert.throws(() => collectWorkflow(root, source.repository, file), /phase-schema/);
+  writeFileSync(file, JSON.stringify(manifest)); const stored = collectWorkflow(root, source.repository, file);
+  writeFileSync(join(dirname(stored.manifest), 'integration.json'), '{}');
+  assert.throws(() => collectWorkflow(root, source.repository, file), /storage-drift/);
+  assert.throws(() => collectWorkflow(root, source.repository, file), /storage-drift/); // Failed attempts release the lock.
+});
+test('default target discovery is registered-only, bounded, and metadata-only; configured workspace is respected', t => {
+  const { base, root, git } = localWorkflow(t), lane = join(base, '.worktrees', 'project', 'active');
+  mkdirSync(dirname(lane), { recursive: true }); git('worktree', 'add', '-b', 'lane', lane);
+  mkdirSync(join(base, '.worktrees', 'unregistered'));
+  const discovery = discoverWorkflowTargets(root, source.repository);
+  assert.equal(discovery.observations.length, 1); assert.equal(discovery.observations[0].path, lane);
+  assert.equal(discovery.observations[0].contentLoaded, false);
+  const selected = join(base, 'private-workspace'); git('config', 'agentic-os.workspaceRoot', selected);
+  assert.equal(discoverWorkflowTargets(root, source.repository).workspace, selected);
+  git('config', '--unset', 'agentic-os.workspaceRoot');
+  symlinkSync(root, join(base, '.workspace'));
+  assert.throws(() => discoverWorkflowTargets(root, source.repository), /directory ancestor/);
+});
+test('CLI, MCP and slash bindings share one workflow owner and exact effect semantics', () => {
+  for (const operation of ['targets', 'collect', 'export']) {
+    const args = operation === 'targets' ? {} : { input: './receipt manifest.json' };
+    const argv = toolArguments(`workflow.${operation}`, args);
+    assert.equal(validateCommandArguments(argv[0], argv.slice(1)), null);
+    const semantic = operation === 'collect' ? 'mutating' : 'read-only';
+    const tuple = [`/workflow.${operation}`, `#${semantic}`, ...(args.input ? [`@input:${args.input}`] : [])];
+    assert.deepEqual(dispatchInvocation(resolveInvocation(tuple)).argv, argv.slice(1));
+    assert.equal(TOOLS.find(tool => tool.name === `workflow.${operation}`).annotations.readOnlyHint, operation !== 'collect');
+  }
+  assert.throws(() => toolArguments('workflow.export', { input: 'x', authority: true }));
+  assert.notEqual(validateCommandArguments('workflow', ['collect']), null);
+  assert.equal(resolveInvocation(['/workflow.collect', '#read-only', '@input:x']).ok, false);
+});

@@ -82,7 +82,13 @@ const RUN_TOOLS = invocationCatalog.entries.filter(entry => entry.action === 'ru
   annotations: { readOnlyHint: entry.semantic === 'read-only', destructiveHint: false,
     idempotentHint: entry.token !== '/run.retry', openWorldHint: true },
 }));
+const WORKFLOW_TOOLS = invocationCatalog.entries.filter(entry => entry.action === 'workflow').map(entry => ({
+  name: entry.token.slice(1), description: entry.summary, inputSchema: entry.token === '/workflow.targets' ? EMPTY_INPUT
+    : { ...CHECKS_INPUT, properties: { input: { ...CHECKS_INPUT.properties.input, description: 'Exact local lifecycle manifest path; collection retains digest-bound native receipts.' } } }, outputSchema: CLI_OUTPUT,
+  annotations: { readOnlyHint: entry.semantic === 'read-only', destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}));
 export const TOOLS = deepFreeze([
+  ...WORKFLOW_TOOLS,
   ...RUN_TOOLS,
   { ...CAPABILITY_COMMAND, outputSchema: CLI_OUTPUT },
   {
@@ -200,11 +206,13 @@ export function toolArguments(name, args) {
     validateEmptyArguments(args);
     return [name];
   }
-  if (name === 'checks') {
+  if (name === 'workflow.targets') { validateEmptyArguments(args); return ['workflow', 'targets']; }
+  if (name === 'checks' || name === 'workflow.collect' || name === 'workflow.export') {
     if (!plainObject(args) || !onlyKeys(args, ['input']) || typeof args.input !== 'string'
       || !args.input.trim() || Buffer.byteLength(args.input) > 4096 || /[\u0000-\u001f\u007f]/u.test(args.input))
       invalidParams('checks requires one bounded local input path');
-    return ['observe', '--checks', `--input=${args.input}`];
+    return name === 'checks' ? ['observe', '--checks', `--input=${args.input}`]
+      : ['workflow', name.slice(9), `--input=${args.input}`];
   }
   if (name === 'reap') {
     const value = args === undefined ? {} : args;
@@ -280,7 +288,7 @@ async function callResult(params, modern, options) {
   const argv = toolArguments(params.name, params.arguments);
   const run = options.runCli;
   if (typeof run !== 'function') throw new Error('CLI runner is unavailable');
-  const effectful = ['lane', 'reap', 'collaborate'].includes(params.name) || (stdin !== undefined && RUN_TOOLS.find(tool => tool.name === params.name)?.annotations.readOnlyHint !== true);
+  const effectful = ['lane', 'reap', 'collaborate', 'workflow.collect'].includes(params.name) || (stdin !== undefined && RUN_TOOLS.find(tool => tool.name === params.name)?.annotations.readOnlyHint !== true);
   if (effectful) options.onEffectful?.();
   let payload = await run(argv, {
     cwd: options.cwd, signal: effectful ? undefined : options.signal, effectful, ...(stdin === undefined ? {} : { stdin }),
