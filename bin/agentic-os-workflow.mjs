@@ -19,8 +19,8 @@ export function workflowPaths(root, repository) {
   if (basename(common) !== '.git') fail('canonical-layout');
   const parent = dirname(dirname(common));
   const configured = observeGit(['config', '--local', '--get-all', 'agentic-os.workspaceRoot'], { cwd: root, allowFail: true });
-  if (configured !== null && (!isAbsolute(configured) || /[\r\n\x00]/u.test(configured))) fail('workspace-root');
-  const workspace = configured ?? join(parent, '.workspace');
+  if (configured !== null && (!configured || /[\r\n\x00]/u.test(configured))) fail('workspace-root');
+  const workspace = configured === null ? join(parent, '.workspace') : resolve(dirname(common), configured);
   assertDirectoryAncestors(join(workspace, 'entry'), sep, { allowMissing: true });
   return { workspace, targets: join(parent, '.worktrees'), storage: join(workspace, '.artifacts', 'workflows', hash(repository).slice(0, 24)) };
 }

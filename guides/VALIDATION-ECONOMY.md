@@ -198,7 +198,7 @@ trace partial. This is one on-demand read, with no new polling, execution, stora
 
 `agentic-os workflow targets` lazily lists this repository's registered targets under the sibling
 `.worktrees` root. Storage defaults to sibling `.workspace/.artifacts/workflows/<repository-hash>`;
-explicit local `agentic-os.workspaceRoot` enrollment takes precedence. Nothing scans arbitrary files
+Explicit local `agentic-os.workspaceRoot` enrollment takes precedence; relative paths resolve from the canonical repository. Nothing scans arbitrary files
 or starts a runtime. Detached, locked and prunable targets remain observations, never cleanup grants.
 
 Use the existing `agentic-os/workflow-observation-input/v1` manifest with expected phases in order:

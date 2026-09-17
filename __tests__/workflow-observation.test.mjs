@@ -136,6 +136,8 @@ test('default target discovery is registered-only, bounded, and metadata-only; c
   assert.equal(discovery.observations[0].contentLoaded, false);
   const selected = join(base, 'private-workspace'); git('config', 'agentic-os.workspaceRoot', selected);
   assert.equal(discoverWorkflowTargets(root, source.repository).workspace, selected);
+  git('config', 'agentic-os.workspaceRoot', '../private-workspace');
+  assert.equal(discoverWorkflowTargets(lane, source.repository).workspace, selected);
   git('config', '--unset', 'agentic-os.workspaceRoot');
   symlinkSync(root, join(base, '.workspace'));
   assert.throws(() => discoverWorkflowTargets(root, source.repository), /directory ancestor/);
