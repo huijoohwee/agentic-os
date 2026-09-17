@@ -306,3 +306,9 @@ and one page; use `nextCursor` to request the next 32-span page. Collection afte
 creates a new immutable root to hand off on the existing stream; there is no automatic reconnect loop.
 Recommendations retain member/root digests and are consumed on demand in the next context. Each
 member archive remains ≤2048 spans, group roots ≤32 KB, output ≤256 KB; oversized output fails loud.
+
+Release validation fills up to four execution slots within each existing stage, longest observed
+checks first. A finished check releases its slot immediately; evaluator/behavior/packaging barriers,
+exact-input reuse, source-drift checks, failure stops and the total deadline remain mandatory.
+Reused span measurements are historical evidence and are excluded from current consumption.
+Compare the same selected check set, environment and quality before claiming savings.

@@ -28,7 +28,10 @@ function nativeReceipt(value, phase, source) {
         requireFact(['passed', 'failed', 'reused', 'running'].includes(stage.status), 'stage-status');
         return { id: stage.id, status: stage.status === 'passed' ? 'completed' : stage.status,
           start: time(stage.startedAt), finish: time(stage.finishedAt), elapsedMs: number(stage.elapsedMs),
-          resources: stage.status === 'reused' ? blankResources() : resources(stage.resources) };
+          resources: stage.status === 'reused' ? blankResources() : resources(stage.resources),
+          ...(stage.status === 'reused' ? { historicalResources: resources(stage.resources) } : {}),
+          model: typeof stage.model === 'string' ? stage.model.slice(0, 128) : null,
+          modelIdentityBasis: stage.modelIdentityBasis === 'reported-cost-log' ? 'reported-cost-log' : 'unreported' };
       });
       // Existing ranked feedback remains advisory. Do not export arbitrary receipt payloads.
       if (value.feedback?.authority === false && Array.isArray(value.feedback.ranking)) result.feedback = value.feedback.ranking.slice(0, 5)
@@ -49,7 +52,7 @@ function nativeReceipt(value, phase, source) {
     case 'agentic-os/user-cleanup-receipt/v1':
       requireFact(value.review?.head === revision && value.providerAuthority === false && value.result === 'quarantined'
         && value.bytesDeleted === false && value.branchesMutated === false, 'cleanup-binding');
-      break;
+      result.start = result.finish = time(value.executedAt); result.elapsedMs = result.start === null ? null : 0; break;
     case 'agentic-os-canonical-sync-receipt/v2':
       requireFact(value.targetHead === revision && value.sourceRetired === true && value.copyOnly === false, 'sync-binding');
       result.status = value.visibleStatusClean === true && value.ignoredPathsPreservedInPlace === true ? 'completed' : 'blocked'; break;
@@ -119,10 +122,14 @@ export function workflowObservation(manifest, read, exportedAt = Date.now(), { a
   const complete = phases.filter(row => row.status === 'completed').length;
   const missing = manifest.expected.filter(id => !ids.has(id));
   const failed = phases.some(row => ['failed', 'blocked'].includes(row.status));
-  const starts = phases.map(row => row.start).filter(value => value !== null), origin = starts.length ? Math.min(...starts) : null;
+  const timed = phases.flatMap(row => [row, ...row.children]);
+  const starts = timed.map(row => row.start).filter(value => value !== null), origin = starts.length ? Math.min(...starts) : null;
+  const finishes = timed.map(row => row.finish).filter(value => value !== null), end = finishes.length ? Math.max(...finishes) : null;
   const span = (row, parentSpanId, component) => ({ spanId: row.id, parentSpanId, kind: parentSpanId === 'root' ? 'agent' : 'check',
     operation: row.label || row.id, taskId: row.id, status: row.status, attempt: null, subjectDigest: component.digest,
-    component, links: [], timing: { startOffsetMs: row.start === null || origin === null ? null : row.start - origin,
+    component, links: [], model: row.model ?? null, modelIdentityBasis: row.modelIdentityBasis ?? 'unreported',
+    ...(row.historicalResources ? { historicalResources: row.historicalResources } : {}),
+    observedStartAt: row.start, timing: { startOffsetMs: row.start === null || origin === null ? null : row.start - origin,
       inclusiveMs: row.elapsedMs, exclusiveObservedMs: null }, resources: row.resources, cost: null,
     evaluation: { status: 'unevaluated', score: null } });
   const roots = [], children = [];
@@ -136,7 +143,8 @@ export function workflowObservation(manifest, read, exportedAt = Date.now(), { a
   const status = failed ? 'blocked' : complete === manifest.expected.length ? 'completed' : 'running';
   const root = { spanId: 'root', parentSpanId: null, kind: 'workflow', operation: manifest.id, taskId: manifest.id,
     status, subjectDigest: candidate.digest, component: candidate, links: [], cost: null,
-    resources: blankResources(), timing: { startOffsetMs: 0, inclusiveMs: null, exclusiveObservedMs: null },
+    resources: blankResources(), timing: { startOffsetMs: origin === null ? null : 0, inclusiveMs: end === null || origin === null ? null : end - origin,
+      exclusiveObservedMs: null, basis: 'observed-extent' },
     evaluation: { status: 'reported', score: complete / manifest.expected.length,
       reasonCode: 'receipt coverage only; no release or payment authority', evidence: { id: manifest.id, digest: candidate.digest } } };
   const output = { schema: 'agent-toolkit-run/v1', authority: false, importedObservation: true, runId: `workflow-${manifest.id}`,

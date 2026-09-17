@@ -45,6 +45,21 @@ export function validationChecks(observed, plan) {
   });
 }
 
+/** Fill idle slots without crossing stage barriers; stop new work after any failure. */
+export async function runCheckPool(checks, run, concurrency = 4) {
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 4) throw Error('invalid-check-concurrency');
+  const pending = [...checks].sort((a,b) => (b.estimatedMs ?? 0) - (a.estimatedMs ?? 0) || a.name.localeCompare(b.name));
+  let next = 0, stopped = false, failure;
+  await Promise.all(Array.from({length: Math.min(concurrency, pending.length)}, async () => {
+    while (!stopped && next < pending.length) {
+      const check = pending[next++];
+      try { if (await run(check) === false) stopped = true; }
+      catch (error) { stopped = true; failure ??= error; }
+    }
+  }));
+  if (failure) throw failure;
+}
+
 export async function runTests(argv, { root = ROOT, out = console.log } = {}) {
   const options = parseArguments(argv);
   if (['fast', 'git'].includes(options.mode)) {
@@ -98,32 +113,25 @@ export async function runTests(argv, { root = ROOT, out = console.log } = {}) {
           out(`reused local check: ${check.name}`);
         } else pending.push(check);
       }
-      for (let index = 0; index < pending.length; index += 4) {
+      await runCheckPool(pending, async check => {
         stable();
         const remaining = LIMITS.testMs - (performance.now() - started);
         if (remaining <= 0) throw new Error('blocked-test-time-budget');
-        const batch = pending.slice(index, index + 4);
-        batch.forEach(check => out(`running ${check.name}`));
-        const results = await Promise.all(batch.map(async check => {
-          const result = await executeCommand(root, check.command, check.args,
-            { timeoutMs: Math.min(remaining, stage === 'evaluators' ? 60_000 : LIMITS.testMs) });
-          if (stage !== 'evaluators' && result.exitCode === 0 && (!result.counts.tests
-            || result.counts.fail !== 0 || result.counts.cancelled !== 0)) result.reason ||= 'incomplete-test-report';
-          return { check, result };
-        }));
-        // Do not preserve successful check evidence if any input drifted during this batch.
+        out(`running ${check.name}`);
+        const result = await executeCommand(root, check.command, check.args,
+          { timeoutMs: Math.min(remaining, stage === 'evaluators' ? 60_000 : LIMITS.testMs) });
+        if (stage !== 'evaluators' && result.exitCode === 0 && (!result.counts.tests
+          || result.counts.fail !== 0 || result.counts.cancelled !== 0)) result.reason ||= 'incomplete-test-report';
         stable();
-        for (const { check, result } of results) {
-          const saved = writeCheck(directory, check, result);
-          receipt.results.push({ name: check.name, stage, ...saved.result, reused: false, validatedAt: saved.finishedAt });
-          out(`${check.name}: exit ${result.exitCode}, ${(result.elapsedMs / 1000).toFixed(2)}s, ${JSON.stringify(result.counts)}`);
-          if (result.exitCode !== 0 || result.reason) {
-            receipt.outcome = result.reason ? 'interrupted' : 'failed'; receipt.exitCode = 1;
-            out(result.output.slice(-16_000));
-          }
+        const saved = writeCheck(directory, check, result);
+        receipt.results.push({ name: check.name, stage, ...saved.result, reused: false, validatedAt: saved.finishedAt });
+        out(`${check.name}: exit ${result.exitCode}, ${(result.elapsedMs / 1000).toFixed(2)}s, ${JSON.stringify(result.counts)}`);
+        if (result.exitCode !== 0 || result.reason) {
+          receipt.outcome = result.reason ? 'interrupted' : 'failed'; receipt.exitCode = 1;
+          out(result.output.slice(-16_000)); return false;
         }
-        if (receipt.outcome !== 'running') break;
-      }
+        return true;
+      });
       if (receipt.outcome !== 'running') break;
     }
     stable();

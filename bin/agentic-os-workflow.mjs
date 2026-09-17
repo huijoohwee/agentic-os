@@ -122,7 +122,7 @@ export function runWorkflow(root, argv, profile, out = console.log) {
   out(format === 'sse' ? `data: ${JSON.stringify(streamed)}\n\ndata: [DONE]\n` : output.trimEnd()); return 0;
 }
 
-function exportWorkflow(root, repository, input, operation, offset) {
+export function exportWorkflow(root, repository, input, operation, offset) {
   const path = resolve(input), manifestBytes = read(path, 32000), manifest = JSON.parse(manifestBytes);
   if (manifest.source?.repository !== repository) fail('repository-binding');
   if (manifest.schema === WORKFLOW_GROUP) {
@@ -236,4 +236,18 @@ function collectGroup(root, repository, manifest, inputPath) {
       sequence,members:members.length,storage:paths.storage,targetRoot:paths.targets,bytes:Buffer.byteLength(bytes)};
   }catch(caught){error=caught;}
   return finishOperationLock(lock,{label:'workflow collection',result,error});
+}
+
+/** User-selected bytes identify an existing immutable root; never accept a browser filesystem path. */
+export function readWorkflowManifestPage(root, manifestText, offset = 0) {
+  if (typeof manifestText !== 'string' || Buffer.byteLength(manifestText) > 32000) fail('manifest-budget');
+  const manifest = JSON.parse(manifestText), repository = manifest.source?.repository;
+  if (!/^github\.com\/[a-z0-9._-]+\/[a-z0-9._-]+$/iu.test(repository ?? '')
+    || repository.split('/').some(part => part === '.' || part === '..')
+    || ![WORKFLOW_GROUP, 'agentic-os/workflow-observation-input/v1'].includes(manifest.schema)) fail('manifest');
+  const digest = hash(manifestText), paths = workflowPaths(root, repository);
+  const path = join(paths.storage, digest, 'manifest.json');
+  if (read(path, 32000) !== manifestText) fail('manifest-digest');
+  const observation = exportWorkflow(root, repository, path, 'export', offset);
+  return { ...observation, manifestDigest: digest };
 }

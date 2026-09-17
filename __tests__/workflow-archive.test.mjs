@@ -51,7 +51,7 @@ test('native model usage preserves known zero and source evidence without payloa
  const {manifest,read}=fixture(1,nativeTrace());const page=readArchive(manifest,read,{now:1000});
  const row=page.spans.find(s=>s.kind==='model');assert.equal(row.model,'local-model');assert.equal(row.resources.cpuMs,20);assert.equal(row.links[0].kind,'dependency');assert.equal(row.resources.tokens,175);
  assert.equal(row.evaluation.score,1);assert.equal(row.evaluation.evidence.id,'eval-1');assert.equal(row.cost.estimated_cost_usd,0);assert.equal(row.cost.actual_cost_usd,null);assert.equal(row.cost.basis,'estimated');
- assert.equal(row.timing.startOffsetMs,null);assert.equal(row.timing.inclusiveMs,80);
+ assert.equal(row.timing.startOffsetMs,10);assert.equal(row.timing.inclusiveMs,80);
  assert.equal(row.subjectDigest,manifest.traces[0].digest);assert.equal(page.spans[0].resources.tokens,null);
  for(const secret of ['never-export','private prompt','private response'])assert(!JSON.stringify(page).includes(secret));
  assert.equal(page.profile.workflow.optimization.models.reported,1);
@@ -106,7 +106,8 @@ test('one ADLC root traverses two worktrees without duplicate ids or copied span
  assert.equal(rows.length,78);assert.equal(new Set(rows.map(row=>row.spanId)).size,78);
  const ids=new Set(rows.map(row=>row.spanId));assert(rows.filter(row=>row.parentSpanId).every(row=>ids.has(row.parentSpanId)));
  assert.equal(rows.find(row=>row.kind==='model').resources.tokens,175);
- assert(rows.slice(1).every(row=>row.timing.startOffsetMs===null));
+ assert(rows.slice(1).every(row=>typeof row.timing.scope==='string'));
+ assert(rows.slice(1).some(row=>row.timing.startOffsetMs!==null));
  assert(!('spans' in manifest));assert(!('archive' in manifest));
 });
 test('ADLC rejects unrelated workflows, repeated worktree identity, duplicate roots and dropped release targets',()=>{

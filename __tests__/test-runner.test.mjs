@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArguments, runTests, validationChecks } from '../bin/agentic-os-tests.mjs';
+import { parseArguments, runTests, validationChecks, runCheckPool } from '../bin/agentic-os-tests.mjs';
 import { snapshot } from '../bin/agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 
@@ -133,4 +133,26 @@ test('passing siblings survive a failed batch and only the corrected check rerun
   assert.equal(await f.invoke(), 0);
   assert.equal(f.receipt().results.find(result => result.name === passed.name).reused, true);
   assert.equal(f.receipt().results.find(result => result.name === '__tests__/failure.test.mjs').reused, false);
+});
+
+test('release check pool fills freed slots, bounds concurrency and preserves stage failure', async () => {
+  const started=[], complete=new Map(); let active=0,max=0;
+  const checks=Array.from({length:6},(_,i)=>({name:String(i),estimatedMs:6-i}));
+  const running=runCheckPool(checks, async check=>{
+    started.push(check.name);max=Math.max(max,++active);
+    const ok=await new Promise(resolve=>complete.set(check.name,resolve));active--;return ok;
+  });
+  assert.deepEqual(started,['0','1','2','3']);
+  complete.get('1')(true); await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(started,['0','1','2','3','4']);
+  complete.get('2')(false); await new Promise(resolve=>setImmediate(resolve));
+  for(const id of ['0','3','4'])complete.get(id)(true);
+  await running; assert.equal(max,4);assert.equal(active,0);assert(!started.includes('5'));
+});
+test('release pool waits for active work after a rejection and runs every successful check once',async()=>{
+ const checks=Array.from({length:7},(_,i)=>({name:String(i),estimatedMs:i})),visited=[];
+ await runCheckPool(checks,async check=>{visited.push(check.name);return true}); assert.equal(new Set(visited).size,7);
+ let release,done=false;const gate=new Promise(r=>release=r);
+ const result=runCheckPool(checks,async check=>{if(check.name==='6')throw Error('drift');await gate;done=true;return true});
+ release();await assert.rejects(result,/drift/);assert.equal(done,true);
 });

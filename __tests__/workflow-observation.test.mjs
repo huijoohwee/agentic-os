@@ -80,7 +80,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSy
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { WORKFLOW_PHASES, collectWorkflow, discoverWorkflowTargets, runWorkflow } from '../bin/agentic-os-workflow.mjs';
+import { WORKFLOW_PHASES, collectWorkflow, discoverWorkflowTargets, runWorkflow, readWorkflowManifestPage } from '../bin/agentic-os-workflow.mjs';
 import { dispatchInvocation, resolveInvocation } from '../bin/agentic-os-invocation.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { toolArguments, TOOLS } from '../src/mcp-server.mjs';
@@ -180,4 +180,24 @@ test('immutable multi-worktree root binds planning, survives pagination, and str
  group.members=members;group.previous=undefined;group.planning.digest='0'.repeat(64);writeFileSync(file,JSON.stringify(group));
  assert.throws(()=>collectWorkflow(root,source.repository,file),/planning-digest/);
  writeFileSync(members[0].file,'{}');assert.throws(()=>runWorkflow(root,['export',`--input=${saved.manifest}`],{repository:source.repository},()=>{}),/member-digest/);
+});
+
+test('selected manifest resolves by exact digest without accepting an arbitrary path', t => {
+  const { root, file } = localWorkflow(t);
+  const stored = collectWorkflow(root, source.repository, file), bytes = readFileSync(stored.manifest, 'utf8');
+  const view = readWorkflowManifestPage(root, bytes);
+  assert.equal(view.manifestDigest, digest(bytes)); assert.equal(view.page.offset, 0);
+  assert.throws(() => readWorkflowManifestPage(root, bytes + ' '));
+  assert.throws(() => readWorkflowManifestPage(root, bytes, 1));
+  assert.throws(() => readWorkflowManifestPage(root, JSON.stringify({schema:'agentic-os/workflow-group/v1',source:{repository:'github.com/../private'}})));
+});
+test('reused historical resources and per-worktree clocks survive verified reprojection', () => {
+  const validation = { schema:'agentic-os/validation-observation/v1',authority:false,source,status:'passed',
+    startedAt:200,finishedAt:300,elapsedMs:100,stages:[{id:'unit',status:'reused',startedAt:100,finishedAt:150,elapsedMs:50,
+      resources:{cpuMs:30,peakMemoryBytes:1024,tokens:0,costUsd:0},model:'reported-model',modelIdentityBasis:'reported-cost-log'}] };
+  const {manifest,read}=setup({checks:validation}); const view=workflowObservation(manifest,read,1000);
+  const row=view.spans.find(row=>row.spanId==='checks/unit');
+  assert.equal(row.resources.cpuMs,null); assert.equal(row.historicalResources.cpuMs,30);
+  assert.equal(row.timing.startOffsetMs,0); assert.equal(view.spans[1].timing.startOffsetMs,100);
+  assert.equal(view.spans[0].timing.inclusiveMs,200); assert.equal(row.model,'reported-model');
 });
