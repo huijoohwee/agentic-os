@@ -578,3 +578,20 @@ GTM: shorten cross-worktree diagnosis and handoff; savings/WTP stay unvalidated 
 Acceptance: cross-member pagination, identity rejection, immutable revision linkage, planning/digest
 checks, missing production evidence, existing SSE parser compatibility and required checks pass.
 Rollback: stop optional group exports; retain all immutable roots and independent child receipts.
+
+### WORKFLOW-OBS-005 · Resolve one root and retain measurement provenance
+
+PRD / RAO / SVO: the operator imports one immutable workflow manifest to inspect every captured
+span across its worktrees, with source-reported resources/model identity and scoped timing. Explicit
+user FIX authorization covers this successor. TAD: the existing local bridge resolves a uploaded
+root by digest in the owner's workspace; the native exporter verifies referenced pages and streams
+bounded JSON/SSE pages to the existing Canvas projection. No arbitrary file path or new datastore.
+ADR: preserve immutable archive bytes; reproject lifecycle fields from digest-verified receipts when
+reading older archives. Reused measurements remain historical, not current consumption. Worktree
+clocks retain their scope; no global timeline is invented. Model identity is reported or unavailable.
+MVP: one root → verified pages → tree/resources/model → evidence export; a missing page or digest
+mismatch fails the complete import. Release economy: fill available execution slots within each
+existing validation stage, retain exact input checks, cache eligibility, failures and time limits.
+GTM: reduce incomplete diagnosis and idle validation capacity; WTP and savings remain unvalidated.
+Checks: workflow archive/observation tests, affected owner checks, browser import and scoped timing.
+Rollback: revert this reader/scheduler change; all original manifests and receipts remain readable.

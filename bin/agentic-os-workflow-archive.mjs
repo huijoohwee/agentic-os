@@ -18,7 +18,7 @@ export function receiptClock(receipts) {
     requireFact(++nodes <= 100000 && depth <= 32, 'clock-budget');
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      if (['observedAt', 'exportedAt', 'startedAt', 'finishedAt', 'completedAt', 'verifiedAt'].includes(key)) {
+      if (['observedAt', 'exportedAt', 'startedAt', 'finishedAt', 'completedAt', 'verifiedAt', 'executedAt'].includes(key)) {
         const at = timestamp(child); if (at !== null) latest = Math.max(latest, at);
       } else if (typeof child === 'object') visit(child, depth + 1);
     }
@@ -60,6 +60,8 @@ function traceSpans(manifest, read) {
     coverage.push({ id: ref.id, runId: run.runId, offset: run.page.offset, retained: run.spans.length, total: run.page.total,
       partial: run.coverage?.partial !== false || run.page.total > run.spans.length, upstreamIncomplete: run.traceTruncated === true || (run.coverage?.droppedEvents ?? 0) > 0 || (run.coverage?.expectedSpans ?? run.page.total) > run.page.total, digest: ref.digest });
     const prefix = `trace/${hash(run.runId).slice(0,16)}/`;
+    const starts = run.spans.map(row=>timestamp(row.startedAt)).filter(value=>value!==null);
+    const origin = timestamp(run.startedAt) ?? (starts.length ? Math.min(...starts) : null);
     for (const row of run.spans) {
       requireFact(id(row.spanId) && (row.parentSpanId == null || id(row.parentSpanId)) && typeof row.operation === 'string'
         && row.operation.length <= 256 && ['agent','model','tool','retriever','workflow','check'].includes(row.kind)
@@ -73,7 +75,7 @@ function traceSpans(manifest, read) {
         cost = { ...normalizeToolkitCostLog(row.cost), status: row.cost.status, basis: 'estimated', actual_cost_usd: null };
       }
       const at = timestamp(row.startedAt), duration = number(row.durationMs ?? row.timing?.inclusiveMs);
-      requireFact(at === null || at <= Date.now(), 'trace-clock');
+      requireFact(at === null || at <= Date.now() && (origin === null || at >= origin), 'trace-clock');
       spans.push({ spanId, parentSpanId: row.parentSpanId == null ? (manifest.phases.some(phase=>phase.id===ref.phase) ? ref.phase : 'root') : `${prefix}${row.parentSpanId}`,
         phase: ref.phase, kind: row.kind, operation: row.operation, taskId: id(row.taskId) ? row.taskId : row.spanId, status: row.status,
         subjectDigest: ref.digest, component: { id: ref.id, revision: manifest.source.revision, digest: ref.digest },
@@ -81,7 +83,7 @@ function traceSpans(manifest, read) {
         model: cost?.model ?? (id(row.model) ? row.model : null), modelIdentityBasis: cost ? 'reported-cost-log' : id(row.model) ? 'reported-span' : 'unreported', cost, resources: { ...blank(), cpuMs: row.status === 'reused' ? null : number(row.resources?.cpuMs),
           peakMemoryBytes: row.status === 'reused' ? null : number(row.resources?.peakMemoryBytes), tokens: cost ? cost.prompt_tokens + cost.completion_tokens : null,
           costUsd: cost?.estimated_cost_usd ?? null },
-        timing: { startOffsetMs: null, inclusiveMs: duration, exclusiveObservedMs: null }, observedStartAt: at,
+        timing: { startOffsetMs: number(row.timing?.startOffsetMs) ?? (at === null || origin === null ? null : at-origin), inclusiveMs: duration, exclusiveObservedMs: null, scope: ref.id }, observedStartAt: at,
         evaluation: { status: ['reported','completed','failed','pending','unevaluated'].includes(row.evaluation?.status) ? row.evaluation.status : 'unevaluated',
           score: number(row.evaluation?.score), ...(id(row.evaluation?.evidence?.id) && /^[a-f0-9]{64}$/u.test(row.evaluation?.evidence?.digest)
             ? {evidence:{id:row.evaluation.evidence.id,digest:row.evaluation.evidence.digest}} : {}) } });
@@ -182,11 +184,12 @@ export function readArchive(manifest, read, { offset=0, now=Date.now(), adviceOn
   const page=verified(archive.pages[offset/32]);
   requireFact(page.schema==='agentic-os/workflow-spans/v1' && page.offset===offset && page.total===archive.total
     && page.spans?.length===archive.pages[offset/32].count,'page-binding');
-  const observation=workflowObservation(manifest,read,now);
-  observation.spans=page.spans; observation.profile.workflow.archive=archive;
+  const observation=workflowObservation(manifest,read,now,{all:true});
+  const projected=new Map([...observation.spans, ...(page.spans.some(row=>row.spanId.startsWith('trace/')) ? traceSpans(manifest,read).spans : [])].map(row=>[row.spanId,row]));
+  observation.spans=page.spans.map(row=>projected.get(row.spanId)??row); observation.profile.workflow.archive=archive;
   observation.profile.workflow.context=manifest.context??null; observation.profile.workflow.optimization=advice;
   observation.page={total:archive.total,offset,nextCursor:offset+32<archive.total?String(offset+32):null};
-  observation.coverage={...archive.coverage,partial:archive.coverage.partial||archive.total>page.spans.length,
+  observation.coverage={...archive.coverage,sourcePartial:archive.coverage.partial,partial:archive.coverage.partial||archive.total>page.spans.length,
     projectedSpansOmitted:archive.total-page.spans.length};
   return observation;
 }
@@ -255,7 +258,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
         spans.push({...row,spanId:prefix+row.spanId,parentSpanId:row.parentSpanId===null?'root':prefix+row.parentSpanId,
           links:(row.links??[]).map(link=>({...link,spanId:prefix+link.spanId})),
           memberId:ref.id,source:child.source,worktreeId:child.context.worktreeId,
-          timing:{...row.timing,startOffsetMs:null}});
+          timing:{...row.timing,scope:row.timing?.scope?`${ref.id}/${row.timing.scope}`:ref.id}});
       }
     }
     start=end;
@@ -269,5 +272,5 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
       measurementScope:'Per worktree and phase; concurrent clocks, nested tokens and costs must not be summed'}},
     evaluation:root.evaluation,observedAt:now,expiresAt:now+60000,spans,
     page:{total,offset,nextCursor:offset+32<total?String(offset+32):null},
-    coverage:{partial:partial||total>spans.length,expectedSpans:total,droppedEvents:null,projectedSpansOmitted:total-spans.length}};
+    coverage:{sourcePartial:partial,partial:partial||total>spans.length,expectedSpans:total,droppedEvents:null,projectedSpansOmitted:total-spans.length}};
 }

@@ -66,7 +66,9 @@ export function validationObservation(receipt, exportedAt = Date.now(), offset =
     if (start !== null && finish !== null && finish < start) fail();
     return { id, status: value.reused === true ? 'reused' : value.exitCode === 0 && !value.reason ? 'passed' : 'failed',
       startedAt: start, finishedAt: finish, elapsedMs, observedOutputBytes: number(value.observedOutputBytes),
-      outputTruncated: value.outputTruncated === true, resources: resourceObservation(value) };
+      outputTruncated: value.outputTruncated === true, resources: resourceObservation(value),
+      model: value.cost?.status === 'reported' && typeof value.cost.model === 'string' ? value.cost.model.slice(0,128) : null,
+      modelIdentityBasis: value.cost?.status === 'reported' && typeof value.cost.model === 'string' ? 'reported-cost-log' : 'unreported' };
   });
   const active = receipt.active ? { id: identifier(receipt.active.id), status: 'running',
     startedAt: number(receipt.active.startedAt), finishedAt: null, elapsedMs: number(receipt.active.elapsedMs),
