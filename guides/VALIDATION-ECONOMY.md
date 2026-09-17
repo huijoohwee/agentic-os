@@ -214,14 +214,15 @@ Collection verifies repository, commit tree and receipt bindings before writing 
 bundle. Repeating identical collection reuses verified bytes; mismatches and symlinks fail closed.
 A new phase produces a new bundle; no latest pointer or shared receipt is overwritten. Failed partial
 collections stay private for diagnosis. Limits: 64 registered targets, 16 receipts × 128 KB, a 32 KB
-manifest, 32 rendered spans with explicit omission coverage, and 256 KB CLI output. Receipt sources
+manifest, 32 spans per exported page with explicit coverage, and 256 KB CLI output. Receipt sources
 remain intact; collection survives worktree retirement. Export remains a read-only observation with
 60-second freshness, not proof of current provider status or release authority.
 
 MCP tools `workflow.targets`, `workflow.collect`, `workflow.export` use this same owner. Equivalent
 invocations are `/workflow.targets #read-only`, `/workflow.collect #mutating @input:/path/input.json`,
-and `/workflow.export #read-only @input:/path/stored/manifest.json`. Import exported native JSON into
-Canvas to synchronize JSON, Markdown, Viewer and Span tree with timing.
+and `/workflow.export #read-only @input:/path/stored/manifest.json`. For local Canvas inspection,
+import the stored manifest directly as described below; exported native JSON remains a portable
+snapshot. Both use the existing JSON, Markdown, Viewer and Span tree projection.
 
 The exported optimization ranking keeps the original evidence digest, revision and sample count.
 The existing validation economy owner remains the only learning history: it updates bounded cohort
@@ -330,6 +331,14 @@ members, or its individual workflow root when it has one worktree. Keep child ma
 JSON, span pages and recommendations at their digest-bound locations. A newer observation creates
 a successor root; hand off its new exact locator and retain the previous immutable evidence.
 An exported inspection JSON is a portable derived snapshot, not a replacement archive SSOT.
+
+Task log directories such as `.workspace/.artifacts/<task-name>/` are separate from this archive;
+they need not contain `manifest.json`. Their handoff README should link to the exact existing
+collector-returned `manifest` path, identify its workflow/snapshot, and say whether the task's newer
+receipts have been collected into it. Verify the link resolves before sharing it. Do not copy, rename,
+symlink or synthesize another `manifest.json` in the log directory, and never present that directory
+as the import location. Collect changed evidence through the same owner to obtain a new root, then
+update the handoff link; a README link is navigation, not a mutable latest-manifest authority.
 
 Apex Catalog → Agent observability → Import local file selects this `manifest.json` in the local
 Dev runtime. The existing translucent preset panel overlays the full Canvas dashboard. One import
