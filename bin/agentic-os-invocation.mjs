@@ -29,6 +29,7 @@ export const ENTRY_CONTRACTS = deepFreeze({
   '/lane': { kind: 'command', action: 'start', argv: [], semantic: 'mutating', accepts: ['scope'], requires: ['scope'] },
   '/land': { kind: 'command', action: 'land', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/status': { kind: 'command', action: 'status', argv: [], semantic: 'read-only', accepts: ['device'], requires: [] },
+  '/workflow.trace': { kind: 'command', action: 'workflow', argv: ['trace'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/workflow.targets': { kind: 'command', action: 'workflow', argv: ['targets'], semantic: 'read-only', accepts: [], requires: [] },
   '/workflow.collect': { kind: 'command', action: 'workflow', argv: ['collect'], semantic: 'mutating', accepts: ['input'], requires: ['input'] },
   '/workflow.recommend': { kind: 'command', action: 'workflow', argv: ['recommend'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },

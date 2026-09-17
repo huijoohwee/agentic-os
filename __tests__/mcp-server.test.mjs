@@ -54,7 +54,7 @@ function legacyInitialize(id = 1) {
 const okRunner = async () => ({ exitCode: 0, stdout: 'ok\n', stderr: '' });
 
 test('the packaged fixed tool surface is deterministic and deeply frozen', () => {
-  assert.deepEqual(TOOLS.map((tool) => tool.name), ['workflow.targets', 'workflow.collect', 'workflow.export', 'workflow.recommend', 'run.start', 'run.status', 'run.cancel', 'run.retry', 'run.query', 'run.trace', 'run.evaluate', 'run.compare', 'capabilities', 'collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
+  assert.deepEqual(TOOLS.map((tool) => tool.name), ['workflow.trace', 'workflow.targets', 'workflow.collect', 'workflow.export', 'workflow.recommend', 'run.start', 'run.status', 'run.cancel', 'run.retry', 'run.query', 'run.trace', 'run.evaluate', 'run.compare', 'capabilities', 'collaborate', 'doctor', 'status', 'checks', 'reap', 'lane']);
   assert.equal(Object.isFrozen(TOOLS), true);
   assert.equal(TOOLS.find(tool => tool.name === 'capabilities').annotations.readOnlyHint, true);
   assert.equal(TOOLS.find(tool => tool.name === 'capabilities').annotations.openWorldHint, false);

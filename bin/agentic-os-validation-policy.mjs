@@ -21,7 +21,13 @@ export function inputPath(value) {
 export const matchesInput = (file, input) => input === '*' || file === input
   || input.endsWith('/') && file.startsWith(input);
 export function validateValidationPolicy(value) {
-  exact(value, ['schema', 'repository', 'broadInputs', 'always', 'fallback', 'checks']);
+  exact(value, ['schema', 'repository', 'broadInputs', 'always', 'fallback', 'checks',
+    ...(Object.hasOwn(value ?? {}, 'reviewBodyCheck') ? ['reviewBodyCheck'] : [])]);
+  if (value.reviewBodyCheck !== undefined) {
+    if (typeof value.reviewBodyCheck !== 'string' || value.reviewBodyCheck.length > 512
+      || !/^[a-zA-Z0-9._/-]+\.mjs$/u.test(value.reviewBodyCheck)) fail('review-body-check');
+    inputPath(value.reviewBodyCheck);
+  }
   if (value.schema !== 'agentic-os/repository-validation-policy/v1'
     || !/^github\.com\/[a-z0-9._-]+\/[a-z0-9._-]+$/iu.test(value.repository)) fail('identity');
   names(value.broadInputs).forEach(inputPath);

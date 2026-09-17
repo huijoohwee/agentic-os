@@ -1,3 +1,4 @@
+export { validateReviewBody, pullRequestText } from './agentic-os-review-body.mjs';
 /** Bounded evidence, request-construction, and protected-maintenance CLI commands. */
 import { ghAvailable } from '../src/github-provider.mjs';
 import { isAbsolute, relative, resolve } from 'node:path';
@@ -22,14 +23,13 @@ import {
 } from '../src/git-repository.mjs';
 import { canonicalJson, governance, OPERATIONS } from '../src/governance.mjs';
 import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import { integrationProof, sourceHeadTrailer } from '../src/patch-identity.mjs';
+import { integrationProof } from '../src/patch-identity.mjs';
 import * as queue from '../src/queue.mjs';
 import { laneBranchSummary, staleWorktrees } from '../src/worktree.mjs';
 import { providerAdapterRequired } from '../src/lane-state.mjs';
 import { hookDoctorEntries } from './agentic-os-hooks.mjs';
 import * as report from './agentic-os-report.mjs';
 const MAX_REQUEST_INPUT_BYTES = 500_000, UTF8 = new TextDecoder('utf-8', { fatal: true });
-const MAX_REVIEW_BODY_BYTES = 65_536;
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
 const flag = (argv, name) => argv.includes(`--${name}`);
@@ -170,45 +170,6 @@ export function classifyPromotion(root, baseRevision, head = 'HEAD') {
   return classifyWriteSet(collectWriteSet({
     repository: root, base: baseRevision, head,
   }));
-}
-
-function readReviewBody(path, suffix) {
-  try {
-    const bytes = readBoundedFile(path,
-      MAX_REVIEW_BODY_BYTES - Buffer.byteLength(suffix, 'utf8'), 'pull request body');
-    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-    if (!text.trim() || text.includes('\0'))
-      throw new TypeError('pull request body must be nonempty text without NUL');
-    if (/^[\t \uFEFF]*(?:Lane|Base-Revision|Source-Head):/imu.test(text))
-      throw new TypeError('pull request body must not contain native identity trailer lines');
-    return text + suffix;
-  } catch (error) {
-    throw Object.assign(new Error(`invalid pull request body: ${error.message}`), {
-      reason: 'blocked-review-body-invalid',
-    });
-  }
-}
-
-const reviewIdentity = (ref, head, base) => [
-  `Lane: ${ref}`, `Base-Revision: ${base}`, sourceHeadTrailer(head),
-].join('\n');
-/** Reserve exact trailer space before commit/fetch; actual identity is appended after commit. */
-export function validateReviewBody(root, ref, file) {
-  if (file !== null) readReviewBody(resolve(root, file), `\n\n${reviewIdentity(ref, headSha('HEAD', root), headSha('HEAD', root))}`);
-}
-/** Capture review text before publication; identity trailers are not integration proof. */
-export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null) {
-  const subjects = gitLines(['log', '--format=%s', `${baseSha}..${laneHeadSha}`, '--reverse'], {
-    cwd: root,
-  });
-  const scope = parseLaneRef(ref)?.scope ?? ref;
-  const title = subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`;
-  const identity = reviewIdentity(ref, laneHeadSha, baseSha);
-  const body = bodyFile === null ? [
-    ...(subjects.length > 1 ? [...subjects.map((subject) => `- ${subject}`), ''] : []),
-    identity,
-  ].join('\n') : readReviewBody(resolve(root, bodyFile), `\n\n${identity}`);
-  return { title, body };
 }
 
 export function runCanonicalSync(root, argv, policy) {

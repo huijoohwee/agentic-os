@@ -363,3 +363,46 @@ The group export/recommendation exposes each member's missing phases, measuremen
 reference and source-bound model evidence. Missing production receipts produce a release-coverage
 recommendation. Older archives without this index remain readable with a null index; collect a new
 immutable snapshot to add it. No archive rewrite, inferred usage or production authority is introduced.
+
+## Source traversal and CI economy (ADLC-OBS-002@0.1.0)
+
+PRD: locate expensive validation at its authored owner before spending on another run. The observed
+Graph run 35191714591 took 22m 1s: 15m 46s in integration, including 13m 16s in the affected owner,
+and 5m 1s in XR. This is wall time, not CPU, billed cash or model usage. Prior publication retries
+included stale successor scope and document limits; validate cheap metadata before publication.
+
+TAD: reuse native context snapshots, stage receipts, validation policy and invocation routing. Optional
+`reviewBodyCheck` in `.agentic-os-validation.json` names one repository-relative `.mjs` validator.
+`land` supplies bounded `{schema:"agentic-os/review-body-input/v1",ref,body}` JSON on stdin before
+commit/fetch/publication, then rechecks the captured publication body. The consumer owns metadata
+syntax. Exit nonzero, timeout, missing body or unsafe path blocks; no shell or new parser is installed.
+The outer runner projects fresh source-matched child stages from the existing private receipt, retaining
+known zero and suppressing stale or foreign observations. CI exports sanitized observations on success
+and failure to its retained artifact; logs, credentials and raw child output remain private.
+
+ADR: keep required gates and exact-source proofs. Remove Graph's second invocation of the same XR
+browser script at its authored workflow. Do not add another renderer, telemetry daemon or result store.
+Source tracing is advisory lexical evidence, not an execution graph or permission to delete checks.
+
+MVP: `/workflow.trace #read-only @input:trace.json` and MCP `workflow.trace` accept a local input JSON
+such as `{"path":"package.json","script":"ci:integration"}`. Optional `observation` references an existing
+native validation receipt relative to that input file. Traverse literal npm script calls, node entrypoints
+and imports through the native source reader; preserve per-file digests and unresolved references.
+Bound to 20 nodes/files, 64 edges, depth 6, 512 KB source, 16 KB output and 10 seconds; narrow the entry
+when exhausted. No network, execution, model calls, writes or silent sampling. Attached timing/model/
+resource evidence must match the clean current commit/tree. Repeated invocation paths are review
+candidates, never proven savings. Recommendations target the next workflow/session/turn/task.
+
+GTM: run this change as the free local pilot; retain baseline and subsequent protected timings under
+`.workspace/.artifacts`, separate from immutable workflow roots. Compare compatible source/cohorts
+before claiming savings; token and cash costs stay unreported without source receipts. Scope: two authored repos,
+32 files, 150 KB, 90 active minutes; provider waits separate. Validation covers stale metadata before
+side effects, bounded/private child progress, cycles, unsafe paths, invocation parity, and unchanged XR
+coverage. Rollback is a source revert preserving observations and prior manifests.
+
+Graph parsing remains owned by `agentic-graph/mcp/agent-graph`; the existing OS adapter and Canvas
+compatibility export share `/agentic.graph.ingest`, `/agentic.graph.query`, and `/agentic.graph.explain`.
+Use existing files/folder/URL import and D3 projection for AST/document/SQL/config/PDF evidence.
+Workflow lexical traversal is a smaller validation-navigation view, not a replacement AST parser.
+Literal dynamic import and require-call syntax are source evidence; repository target matches remain
+inferred and never prove execution. Parser identity changes invalidate prior extraction caches.

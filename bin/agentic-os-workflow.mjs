@@ -1,3 +1,4 @@
+import { traceWorkflow } from './agentic-os-workflow-trace.mjs';
 /** Native lifecycle evidence collection. Local artifacts are not execution or release authority. */
 import { lstatSync, mkdirSync, mkdtempSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -120,6 +121,7 @@ export function runWorkflow(root, argv, profile, out = console.log) {
   if (!['json','sse'].includes(format) || format === 'sse' && operation !== 'export') fail('format');
   if (offsetText !== undefined && !/^(0|[1-9][0-9]*)$/u.test(offsetText)) fail('offset');
   const result = operation === 'targets' ? discoverWorkflowTargets(root, profile.repository)
+    : operation === 'trace' ? traceWorkflow(root, input)
     : operation === 'collect' ? collectWorkflow(root, profile.repository, input)
       : ['export', 'recommend'].includes(operation) ? exportWorkflow(root, profile.repository, input, operation, Number(offsetText ?? 0)) : fail('operation');
   const output = json(result);

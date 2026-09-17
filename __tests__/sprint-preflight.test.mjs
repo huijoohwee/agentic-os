@@ -9,6 +9,8 @@ import { git } from '../src/git.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
+import { validateReviewBody } from '../bin/agentic-os-review-body.mjs';
+import { validateValidationPolicy } from '../bin/agentic-os-validation-policy.mjs';
 
 test('invalid review input preserves authored bytes and stops before commit hooks or fetch', t => {
   const parent = mkdtempSync(join(tmpdir(), 'sprint-preflight-'));
@@ -48,4 +50,29 @@ test('invalid review input preserves authored bytes and stops before commit hook
   assert.equal(existsSync(effect), false);
   assert.equal(existsSync(join(root, '.git', 'FETCH_HEAD')), false);
   assert.equal(run(['--git-dir', bare, 'for-each-ref', '--format=%(refname)', `refs/heads/${ref}`]), '');
+});
+
+test('repository-owned review metadata rejects stale successor scope before publication', t => {
+  const root = mkdtempSync(join(tmpdir(), 'review-body-check-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  git(['init', '-q', '--initial-branch=main'], { cwd: root });
+  git(['config', 'user.name', 'Fixture'], { cwd: root }); git(['config', 'user.email', 'fixture@example.invalid'], { cwd: root });
+  writeFileSync(join(root, 'source'), 'base'); git(['add', '.'], { cwd: root }); git(['commit', '-qm', 'base'], { cwd: root });
+  const policy = { schema: 'agentic-os/repository-validation-policy/v1', repository: 'github.com/example/repo',
+    broadInputs: [], always: [], fallback: ['check'], checks: [{ id: 'check', command: ['node', 'check.mjs'],
+      inputs: ['*'], requires: [], reuse: 'never', timeoutMs: 1000 }], reviewBodyCheck: 'review.mjs' };
+  writeFileSync(join(root, '.agentic-os-validation.json'), JSON.stringify(policy));
+  writeFileSync(join(root, 'review.mjs'), `import {readFileSync} from 'node:fs';
+    const {schema,ref,body}=JSON.parse(readFileSync(0,'utf8'));
+    if(schema!=='agentic-os/review-body-input/v1'||!body.includes('scope: #'+ref.split('/')[2]+'\\n'))process.exit(1);`);
+  const body = join(root, 'review.md');
+  writeFileSync(body, '---\nscope: #old\n---\nReview');
+  assert.throws(() => validateReviewBody(root, 'agent/test/new', body), { reason: 'blocked-review-body-invalid' });
+  assert.throws(() => validateReviewBody(root, 'agent/test/new', null), { reason: 'blocked-review-body-invalid' });
+  writeFileSync(body, '---\nscope: #new\n---\nReview');
+  assert.doesNotThrow(() => validateReviewBody(root, 'agent/test/new', body));
+  for (const reviewBodyCheck of ['../escape.mjs', '/absolute.mjs', 'script.mjs;echo', null])
+    assert.throws(() => validateValidationPolicy({ ...policy, reviewBodyCheck }));
+  writeFileSync(join(root, 'review.mjs'), 'process.stderr.write("invalid scope");process.exit(2)');
+  assert.throws(() => validateReviewBody(root, 'agent/test/new', body), /invalid scope/);
 });

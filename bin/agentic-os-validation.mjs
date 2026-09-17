@@ -14,7 +14,8 @@ const runtimeRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
 const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validation-policy.mjs',
   'bin/agentic-os-validation-inputs.mjs', 'bin/agentic-os-test-inputs.mjs', 'bin/agentic-os-test-receipt.mjs',
   'bin/agentic-os-test-ci.mjs', 'bin/agentic-os-validation-economy.mjs',
-  'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs', 'bin/agentic-os-test-command-resources.cjs'];
+  'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs',
+  'bin/agentic-os-validation-progress.mjs', 'bin/agentic-os-test-command-resources.cjs'];
 const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
 export function validationArguments(argv) {
   const [mode = 'run', ...flags] = argv;
@@ -173,11 +174,15 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
         const remaining = CONSUMER_LIMITS.runMs - (performance.now() - started);
         if (remaining <= 0) throw new Error('blocked-validation-time-budget');
         out(`running ${check.name}: ${[check.command, ...check.args].join(' ')}`);
+        const { validationProgress } = await import('./agentic-os-validation-progress.mjs');
+        const childProgress = validationProgress(root, receipt.source, Date.now(), { out });
         const result = await executeCommand(root, check.command, check.args,
           { timeoutMs: Math.min(check.timeoutMs, remaining), outputMode: 'tail',
-            onProgress: progress => out(`running ${check.name}: ${Math.floor(progress.elapsedMs / 1000)}s elapsed, `
+            onProgress: progress => { out(`running ${check.name}: ${Math.floor(progress.elapsedMs / 1000)}s elapsed, `
               + `${Math.ceil(Math.max(0, progress.timeoutMs - progress.elapsedMs) / 1000)}s budget remaining, `
-              + `${progress.observedOutputBytes} output bytes, ${Math.floor(progress.quietMs / 1000)}s since output`) });
+              + `${progress.observedOutputBytes} output bytes, ${Math.floor(progress.quietMs / 1000)}s since output`);
+              childProgress(); } });
+        childProgress();
         stable();
         const saved = writeCheck(directory, check, result);
         receipt.results.push({ id: check.name, reused: false, ...saved.result, validatedAt: saved.finishedAt });
