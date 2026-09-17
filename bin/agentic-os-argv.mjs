@@ -53,7 +53,7 @@ export function validateCommandArguments(command, argv) {
       : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
         ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';
     case 'workflow': return argv[0] === 'targets' ? exact(argv, { min: 1 })
-      : ['collect', 'export', 'recommend'].includes(argv[0]) ? exact(argv, { min: 1, options: argv[0] === 'export' ? ['input', 'offset'] : ['input'], requiredOptions: ['input'] })
+      : ['collect', 'export', 'recommend'].includes(argv[0]) ? exact(argv, { min: 1, options: argv[0] === 'export' ? ['input', 'offset', 'format'] : ['input'], requiredOptions: ['input'] })
         : 'workflow requires targets, collect, export, or recommend';
     case 'pipeline': return exact(argv, { options: ['repo', 'run', 'head', 'attempt', 'timeout-ms'],
       requiredOptions: ['repo', 'run', 'head', 'attempt'] });

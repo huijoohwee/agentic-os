@@ -239,7 +239,7 @@ The default storage stays `.workspace/.artifacts/workflows`; targets stay regist
 Each collection is a content-addressed snapshot: collect again when evidence changes and hand off
 that exact manifest locator. No mutable latest pointer, directory scan or second history ledger is added.
 
-Optional `context` contains bounded `worktreeId`, `sessionId`, `turnId`, `threadId` identifiers. Optional
+Optional `context` contains bounded `workflowId`, `worktreeId`, `sessionId`, `turnId`, `threadId` identifiers. Optional
 `traces` contains at most 16 `{id, phase, file, digest}` references to existing `agent-toolkit-run/v1`
 JSON pages, each at most 32 spans/128 KB. Candidate and plan repository/revision must match the
 workflow source; foreign runs cannot be silently assigned to this worktree. Keep missing pages,
@@ -253,7 +253,7 @@ agentic-os workflow export --input=/returned/manifest.json --offset=32
 agentic-os /workflow.recommend '#read-only' @input:/returned/manifest.json
 ```
 
-MCP `workflow.export` accepts `{input, offset}` (offset defaults to zero, multiples of 32); page
+MCP `workflow.export` accepts `{input, offset, format}` (offset defaults to zero, multiples of 32); page
 `nextCursor` supplies the next offset. `workflow.recommend` accepts `{input}` and reads only the
 recommendation reference after checking its digest/source binding. Carry the exact manifest path
 into the next workflow/session/turn/thread and call recommend on demand before expensive work.
@@ -265,3 +265,44 @@ model advice requests a quality-preserving comparison, never an automatic cheape
 Bounds: one input manifest ≤32 KB, each source/page/advice ≤128 KB, ≤2048 captured spans and 32
 spans per export. There are no model/network calls, background watchers or unbounded file crawls.
 Old receipt-only manifests still export; recollect them to obtain the archive and recommendations.
+
+
+## One ADLC workflow across worktrees (WORKFLOW-OBS-004)
+
+Use `agentic-os/workflow-group/v1` as the single root for one or more participating worktrees.
+Each child is an existing collected archive with `context.workflowId` equal to the group `id` and
+its own `context.worktreeId`. Membership is explicit; unrelated `.worktrees` are not swept in.
+The group input has the usual owner `source`, plus:
+
+- `planning`: `{repository, revision, path, digest}` binds the owner's committed
+  `PRD-TAD-ADR-MVP-GTM.md` text (SHA-256 after trimming terminal whitespace as the native Git reader does).
+- `members`: up to 32 `{id, file, digest}` references to existing immutable child manifests.
+  Supply absolute file paths; stored references are relative to `.workspace` for portability.
+- `releaseTargets`: nonempty member IDs expected to reach production.
+- `releaseEvidence`: optional `{memberId, kind, environment, repository, revision, file, digest}`
+  references, `kind` deployment/runtime and `environment` production. Original JSON bytes are retained;
+  schema and caller-supplied source labels are observations, not authenticated provider verification.
+- `previous`: optional `{file, digest}` exact earlier group root. New collection increments `sequence`,
+  retains prior roots and members, and never overwrites a latest pointer.
+
+Run the same `workflow collect --input=<group-input>` from the owner repository. The returned root
+references each child's phase receipts, span pages and advice transitively; it does not duplicate
+those pages. A registered child may reside in another repository under the shared `.workspace`.
+Cross-worktree span IDs and links are namespaced. Separate clocks are not merged into a misleading
+timeline and overlapping CPU/tokens/cost are not summed. Missing deployment/runtime links remain
+visible even when all local lifecycle receipts pass; `authorityVerified` remains false. Coverage is
+an inventory of captured evidence, not a declaration of production readiness.
+
+```sh
+agentic-os workflow export --input=/returned/group/manifest.json --offset=0 --format=sse
+agentic-os /workflow.export '#read-only' @input:/returned/group/manifest.json
+agentic-os /workflow.recommend '#read-only' @input:/returned/group/manifest.json
+```
+
+MCP export accepts `format: "sse"` or default `"json"`. SSE reuses the existing finite observation
+protocol: a native `agent-toolkit-run/v1` JSON snapshot in `data:`, followed by `[DONE]`. HTTP adapters
+must keep `Cache-Control: no-store` and `Content-Type: text/event-stream`. One response pins one root
+and one page; use `nextCursor` to request the next 32-span page. Collection after a lifecycle change
+creates a new immutable root to hand off on the existing stream; there is no automatic reconnect loop.
+Recommendations retain member/root digests and are consumed on demand in the next context. Each
+member archive remains ≤2048 spans, group roots ≤32 KB, output ≤256 KB; oversized output fails loud.

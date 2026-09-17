@@ -5,13 +5,13 @@ import { buildArchive, readArchive, receiptClock } from '../bin/agentic-os-workf
 import { toolArguments } from '../src/mcp-server.mjs';
 const hash = value => createHash('sha256').update(value).digest('hex');
 const source = { repository:'github.com/example/project', revision:'a'.repeat(40), tree:'b'.repeat(40) };
-function fixture(count=70, trace) {
+function fixture(count=70, trace, owner=source) {
   const files=new Map();
-  const checks={schema:'agentic-os/validation-observation/v1',authority:false,source,status:'passed',startedAt:100,finishedAt:200,
+  const checks={schema:'agentic-os/validation-observation/v1',authority:false,source:owner,status:'passed',startedAt:100,finishedAt:200,
     stages:Array.from({length:count},(_,i)=>({id:`check-${i}`,status:'passed',elapsedMs:1})),
     feedback:{authority:false,ranking:[{id:'expensive-check',meanMs:5000,samples:3,failureRate:0}]}};
   const bytes=JSON.stringify(checks); files.set('checks.json',bytes);
-  const manifest={schema:'agentic-os/workflow-observation-input/v1',id:'complete-worktree',source,expected:['checks'],
+  const manifest={schema:'agentic-os/workflow-observation-input/v1',id:'complete-worktree',source:owner,expected:['checks'],
     context:{worktreeId:'lane-1',sessionId:'session-1',turnId:'turn-1',threadId:'thread-1'},
     phases:[{id:'checks',file:'checks.json',digest:hash(bytes)}]};
   if(trace){const body=JSON.stringify(trace);files.set('trace.json',body);manifest.traces=[{id:'model-run',phase:'checks',file:'trace.json',digest:hash(body)}];}
@@ -88,4 +88,52 @@ test('CLI/MCP page selection rejects invalid or misplaced offsets',()=>{
  for(const offset of [-1,1,1.5,'32'])assert.throws(()=>toolArguments('workflow.export',{input:'x',offset}));
  assert.throws(()=>toolArguments('workflow.recommend',{input:'x',offset:32}));
  assert.deepEqual(toolArguments('workflow.recommend',{input:'x'}),['workflow','recommend','--input=x']);
+});
+
+import { workflowGroup, WORKFLOW_GROUP } from '../bin/agentic-os-workflow-archive.mjs';
+function groupFixture(){
+ const left=fixture(70),right=fixture(1,nativeTrace());
+ left.manifest.context={workflowId:'shared-adlc',worktreeId:'left'};
+ right.manifest.context={workflowId:'shared-adlc',worktreeId:'right'};
+ const members=[left,right].map((value,i)=>({id:i?'right':'left',file:`member-${i}.json`,digest:hash(JSON.stringify(value.manifest))}));
+ return {left,right,manifest:{schema:WORKFLOW_GROUP,id:'shared-adlc',source,planning:{digest:'c'.repeat(64)},members,releaseTargets:['right'],releaseEvidence:[]},
+  load:ref=>ref.id==='left'?left:right};
+}
+test('one ADLC root traverses two worktrees without duplicate ids or copied span pages',()=>{
+ const {manifest,load}=groupFixture(),rows=[];let next=0;
+ do{const view=workflowGroup(manifest,load,{offset:next,now:1000});rows.push(...view.spans);next=view.page.nextCursor===null?null:Number(view.page.nextCursor);
+ assert(view.spans.length<=32);assert.equal(view.authority,false);}while(next!==null);
+ assert.equal(rows.length,78);assert.equal(new Set(rows.map(row=>row.spanId)).size,78);
+ const ids=new Set(rows.map(row=>row.spanId));assert(rows.filter(row=>row.parentSpanId).every(row=>ids.has(row.parentSpanId)));
+ assert.equal(rows.find(row=>row.kind==='model').resources.tokens,175);
+ assert(rows.slice(1).every(row=>row.timing.startOffsetMs===null));
+ assert(!('spans' in manifest));assert(!('archive' in manifest));
+});
+test('ADLC rejects unrelated workflows, repeated worktree identity, duplicate roots and dropped release targets',()=>{
+ for(const change of [g=>g.right.manifest.context.workflowId='unrelated',g=>g.right.manifest.context.worktreeId='left',
+  g=>g.manifest.members[1].digest=g.manifest.members[0].digest,g=>g.manifest.releaseTargets=['absent']]){
+  const group=groupFixture();change(group);assert.throws(()=>workflowGroup(group.manifest,group.load));
+ }
+});
+test('production deployment and runtime remain separate missing evidence; advice stays per worktree',()=>{
+ const {manifest,load}=groupFixture();let view=workflowGroup(manifest,load);
+ assert.equal(view.status,'running');assert.equal(view.profile.workflow.release.authorityVerified,false);
+ assert.deepEqual(view.profile.workflow.missing,['right:deployment','right:runtime']);
+ manifest.releaseEvidence=[{memberId:'right',kind:'deployment',environment:'production',digest:'d'.repeat(64)}];
+ view=workflowGroup(manifest,load);assert.deepEqual(view.profile.workflow.missing,['right:runtime']);
+ const advice=workflowGroup(manifest,load,{adviceOnly:true});assert.equal(advice.totals.tokens,null);assert.equal(advice.executable,false);
+ assert(advice.recommendations.every(row=>['left','right'].includes(row.memberId)&&row.manifestDigest));
+ assert.deepEqual(toolArguments('workflow.export',{input:'index.json',format:'sse'}),['workflow','export','--input=index.json','--format=sse']);
+ assert.throws(()=>toolArguments('workflow.export',{input:'index.json',format:'html'}));
+});
+
+test('shared ADLC keeps distinct repositories source-bound and loads only requested span pages',()=>{
+ const group=groupFixture(),other=fixture(1,undefined,{...source,repository:'github.com/example/other'});
+ other.manifest.context={workflowId:'shared-adlc',worktreeId:'other'};
+ group.manifest.members[1].digest=hash(JSON.stringify(other.manifest));
+ const reads=[];const load=ref=>{const value=ref.id==='left'?group.left:other;return {...value,read:file=>{reads.push(`${ref.id}:${file}`);return value.read(file);}};};
+ const advice=workflowGroup(group.manifest,load,{adviceOnly:true});
+ assert.equal(advice.members[1].source.repository,'github.com/example/other');assert(reads.every(file=>file.endsWith('recommendations.json')));
+ reads.length=0;const page=workflowGroup(group.manifest,load,{offset:32,now:1000});
+ assert.equal(page.spans.length,32);assert(!reads.some(file=>file.startsWith('right:spans-')));
 });

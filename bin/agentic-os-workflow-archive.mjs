@@ -42,7 +42,7 @@ export function traceReferences(manifest) {
   if (manifest.context !== undefined) {
     requireFact(manifest.context && !Array.isArray(manifest.context), 'context');
     for (const [key, value] of Object.entries(manifest.context))
-      requireFact(['worktreeId', 'sessionId', 'turnId', 'threadId'].includes(key) && id(value), 'context');
+      requireFact(['workflowId', 'worktreeId', 'sessionId', 'turnId', 'threadId'].includes(key) && id(value), 'context');
   }
   return refs;
 }
@@ -158,7 +158,7 @@ export function buildArchive(manifest, read, observedAt) {
   }
   const bytes=json(recommendations(observation)); requireFact(Buffer.byteLength(bytes)<=128000,'advice-budget');
   files.set('recommendations.json',bytes);
-  return { files, archive: { version:1, observedAt, total:observation.spans.length, pages,
+  return { files, archive: { version:1, observedAt, status:observation.status, total:observation.spans.length, pages,
     coverage:observation.coverage, traces:traces.coverage, recommendations:reference('recommendations.json',bytes) } };
 }
 
@@ -189,4 +189,85 @@ export function readArchive(manifest, read, { offset=0, now=Date.now(), adviceOn
   observation.coverage={...archive.coverage,partial:archive.coverage.partial||archive.total>page.spans.length,
     projectedSpansOmitted:archive.total-page.spans.length};
   return observation;
+}
+
+// An ADLC root is a reference graph, not a second copy of each worktree's spans.
+export const WORKFLOW_GROUP = 'agentic-os/workflow-group/v1';
+export function workflowGroup(manifest, load, { offset=0, now=Date.now(), adviceOnly=false }={}) {
+  requireFact(manifest.schema===WORKFLOW_GROUP && id(manifest.id), 'group');
+  requireFact(Array.isArray(manifest.members) && manifest.members.length>0 && manifest.members.length<=32, 'members');
+  const ids=new Set(), worktrees=new Set(), digests=new Set();
+  const members=manifest.members.map(ref=>{
+    requireFact(id(ref.id) && !ids.has(ref.id) && /^[a-f0-9]{64}$/u.test(ref.digest) && !digests.has(ref.digest), 'member-reference');
+    ids.add(ref.id); digests.add(ref.digest);
+    const loaded=load(ref), child=loaded.manifest;
+    requireFact(child.schema==='agentic-os/workflow-observation-input/v1' && child.archive
+      && child.context?.workflowId===manifest.id && id(child.context?.worktreeId), 'member-workflow-binding');
+    const identity=`${child.source.repository}:${child.context.worktreeId}`;
+    requireFact(!worktrees.has(identity), 'duplicate-worktree'); worktrees.add(identity);
+    const advice=readArchive(child,loaded.read,{adviceOnly:true});
+    return {ref,child,read:loaded.read,advice};
+  });
+  requireFact(Array.isArray(manifest.releaseTargets) && manifest.releaseTargets.length>0
+    && new Set(manifest.releaseTargets).size===manifest.releaseTargets.length && manifest.releaseTargets.every(value=>ids.has(value)), 'release-targets');
+  requireFact(Array.isArray(manifest.releaseEvidence??[]) && (manifest.releaseEvidence??[]).length<=64, 'release-budget');
+  const releaseKeys=new Set();
+  for (const ref of manifest.releaseEvidence??[]) {
+    const key=`${ref.memberId}:${ref.kind}`;
+    requireFact(manifest.releaseTargets.includes(ref.memberId) && ['deployment','runtime'].includes(ref.kind)
+      && /^[a-f0-9]{64}$/u.test(ref.digest) && !releaseKeys.has(key) && ref.environment==='production', 'release-reference');
+    releaseKeys.add(key);
+  }
+  const missingRelease=manifest.releaseTargets.flatMap(memberId=>['deployment','runtime'].filter(kind=>!releaseKeys.has(`${memberId}:${kind}`)).map(kind=>({memberId,kind})));
+  const summaries=members.map(({ref,child})=>({id:ref.id,digest:ref.digest,source:child.source,context:child.context,
+    total:child.archive.total,coverage:child.archive.coverage,manifest:ref.file}));
+  const common={schema:'agentic-os/workflow-group-recommendations/v1',authority:false,executable:false,
+    source:manifest.source,workflowId:manifest.id,planning:manifest.planning,appliesTo:['next-workflow','next-session','next-turn','next-thread'],
+    members:summaries,release:{boundary:'production-runtime-ready',targets:manifest.releaseTargets,
+      evidence:manifest.releaseEvidence??[],missing:missingRelease,authorityVerified:false},
+    recommendations:members.flatMap(({ref,advice})=>advice.recommendations.slice(0,5).map(row=>({...row,memberId:ref.id,manifestDigest:ref.digest}))),
+    totals:{tokens:null,costUsd:null,actualCostUsd:null},savingsClaim:null,
+    policy:'Recommendations only. Revalidate source, cohort, quality and exact-input eligibility; provider-native release verification remains separate.'};
+  if(adviceOnly)return common;
+  const releaseRows=(manifest.releaseEvidence??[]).map(ref=>({spanId:`release/${hash(ref.memberId).slice(0,16)}/${ref.kind}`,
+    parentSpanId:`member/${hash(ref.memberId).slice(0,16)}/root`,kind:'check',operation:`Production ${ref.kind} evidence`,taskId:ref.kind,
+    memberId:ref.memberId,status:['completed','failed'].includes(ref.observedStatus)?ref.observedStatus:'queued',
+    subjectDigest:ref.digest,component:{id:ref.schema,revision:ref.revision,digest:ref.digest},links:[],cost:null,resources:blank(),
+    timing:{startOffsetMs:null,inclusiveMs:null,exclusiveObservedMs:null},evaluation:{status:'unevaluated',score:null}}));
+  const total=1+members.reduce((sum,row)=>sum+row.child.archive.total,0)+releaseRows.length;
+  requireFact(total<=65601 && Number.isSafeInteger(offset) && offset>=0 && offset%32===0 && offset<total,'group-offset');
+  const partial=missingRelease.length>0 || releaseRows.some(row=>row.status!=='completed') || members.some(row=>row.child.archive.coverage.partial || row.child.archive.status!=='completed');
+  const failed=members.some(row=>['blocked','failed'].includes(row.child.archive.status)) || releaseRows.some(row=>row.status==='failed');
+  const candidate={id:manifest.id,revision:manifest.source.revision,digest:hash(JSON.stringify(manifest))};
+  const root={spanId:'root',parentSpanId:null,kind:'workflow',operation:manifest.id,taskId:manifest.id,
+    status:failed?'failed':partial?'running':'completed',subjectDigest:candidate.digest,component:candidate,links:[],cost:null,resources:blank(),
+    timing:{startOffsetMs:null,inclusiveMs:null,exclusiveObservedMs:null},
+    evaluation:{status:'unevaluated',score:null,reasonCode:'Captured receipt coverage; production authority is not verified by this projection.'}};
+  const spans=offset===0?[root]:[]; let start=1;
+  for(const {ref,child,read} of members){
+    const end=start+child.archive.total, first=Math.max(offset,start), last=Math.min(offset+32,end);
+    if(first<last){
+      const prefix=`member/${hash(ref.id).slice(0,16)}/`, cache=new Map();
+      for(let global=first;global<last;global++){
+        const local=global-start, pageOffset=Math.floor(local/32)*32;
+        if(!cache.has(pageOffset))cache.set(pageOffset,readArchive(child,read,{offset:pageOffset,now}).spans);
+        const row=cache.get(pageOffset)[local%32];
+        spans.push({...row,spanId:prefix+row.spanId,parentSpanId:row.parentSpanId===null?'root':prefix+row.parentSpanId,
+          links:(row.links??[]).map(link=>({...link,spanId:prefix+link.spanId})),
+          memberId:ref.id,source:child.source,worktreeId:child.context.worktreeId,
+          timing:{...row.timing,startOffsetMs:null}});
+      }
+    }
+    start=end;
+  }
+  spans.push(...releaseRows.slice(Math.max(0,offset-start),Math.max(0,offset+32-start)));
+  return {schema:'agent-toolkit-run/v1',authority:false,importedObservation:true,runId:`workflow-${manifest.id}`,
+    status:root.status,subjectDigest:candidate.digest,candidate,cohortId:manifest.id,context:null,
+    profile:{workflow:{source:manifest.source,expected:['planning','worktrees','production-deployment','production-runtime'],
+      missing:missingRelease.map(ref=>`${ref.memberId}:${ref.kind}`),phases:[],planning:manifest.planning,members:summaries,
+      release:common.release,optimization:common,receiptAuthorityVerified:false,
+      measurementScope:'Per worktree and phase; concurrent clocks, nested tokens and costs must not be summed'}},
+    evaluation:root.evaluation,observedAt:now,expiresAt:now+60000,spans,
+    page:{total,offset,nextCursor:offset+32<total?String(offset+32):null},
+    coverage:{partial:partial||total>spans.length,expectedSpans:total,droppedEvents:null,projectedSpansOmitted:total-spans.length}};
 }
