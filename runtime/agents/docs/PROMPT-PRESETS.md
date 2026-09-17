@@ -24,7 +24,7 @@ prompt_presets:
     label: "Agent observability"
     slash_command: "/agent-observability-prompt-preset"
     runtime_command: "/canvas.view.set"
-    description: "Open authorized agent runs, spans, timing, topology, source, allocation and evaluations in the existing workspace. Selection is inert; activate explicitly."
+    description: "Import a local run or workflow JSON file, inspect spans, timing, D3 topology, CPU, memory, tokens, cost, source and allocation, review evaluation and comparison evidence, then export. Apex shows the native full-Canvas dashboard; runtime connection is explicit. The same / @ # view tuple resolves through Chat and browser-local MCP."
     activation: "chat-agent"
     invocation_modes: ["native-chat-response", "mcp-invocation"]
     chat_route: "active native shared runtime"
