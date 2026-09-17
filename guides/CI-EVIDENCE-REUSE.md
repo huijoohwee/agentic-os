@@ -22,7 +22,7 @@ Graph release run `34851156370` repeated `ci:integration` for 862 seconds on sou
 `413d798dfdec86d262eeacf03a2885bd658ca8d2` after its protected main Integration Gate passed.
 This is an observed duplication, not a measured saving from this implementation.
 The user authorized improving release, CI, Integration Gate and runtime economics on 2026-09-14.
-Paid plans, extra services, widened permissions and automatic production approval are excluded.
+Paid plans, extra services, increased write permissions and automatic production approval are excluded.
 
 | Criterion | Owner and validation |
 |---|---|
@@ -30,7 +30,7 @@ Paid plans, extra services, widened permissions and automatic production approva
 | C2: reject fork, stale, failed, skipped, partial and changed evidence | Provider/receipt rejection tests |
 | C3: reobserve the provider after downloading evidence | Attempt and artifact drift tests |
 | C4: unavailable evidence runs fresh validation | Consumer workflow fallback and CLI disposition |
-| C5: build, browser, live runtime and human authorization remain separate | Consumer release workflow |
+| C5: release build, live browser/runtime and human authorization remain separate | Consumer release workflow |
 
 ## TAD / CI-EVIDENCE-001
 
@@ -71,7 +71,7 @@ node "$CI_EVIDENCE" verify --policy=.agentic-os-ci-evidence.json \
 ```
 
 Records are limited to 64 KiB, run lookup to ten results, jobs/artifacts to 100 each,
-and provider lookup to eight calls within 30 seconds using the existing bounded adapter.
+and provider reads to twelve calls within 30 seconds using the existing bounded adapter.
 Git reads retain existing ten-second and 16 MiB bounds. Artifact download remains consumer-owned.
 Only GitHub-hosted workflows on github.com are supported initially; unsupported environments
 retain the fresh path. This is explicit provider scope, not a universal provider claim.
