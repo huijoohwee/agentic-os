@@ -84,7 +84,7 @@ export function validateCommandArguments(command, argv) {
       return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
     }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
-    case 'land': return exact(argv, { options: ['message', 'body-file'] });
+    case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
@@ -165,7 +165,7 @@ export function cmdHelp() {
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
       '  npm run doctor            report harness and remote drift, change nothing',
       '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
-      '  npm run land -- [--body-file=<file>]  publish the exact lane head and request provider handoff',
+      '  npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head and request provider handoff',
       '  npm run successor -- <scope>  preserve a published lane and continue in-place',
       '  npm run finish -- --ref=<lane>  observe exact integration; retain worktree for governed cleanup',
       '  agentic-os completion status --ref=<lane>  read-only completion blockers and owner actions',
