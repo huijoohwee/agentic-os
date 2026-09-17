@@ -22,17 +22,18 @@ export function validationArguments(argv) {
   const options = { mode, root: process.cwd(), base: 'origin/main', all: false, fresh: false };
   const seen = new Set();
   for (const flag of flags) {
-    const match = /^--(root|base|only|input|offset|ci-run)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
+    const match = /^--(root|base|only|input|offset|ci-run|workflow)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
     if (seen.has(key)) throw new Error('duplicate validation option'); seen.add(key);
     if (match) options[key] = key === 'only' ? match[2].split(',') : match[2];
     else if (['--all', '--fresh'].includes(flag)) options[key] = true;
     else throw new Error('unknown validation option');
   }
   if (mode === 'ci' && (seen.has('base') || seen.has('all'))) throw new Error('CI owns its validation baseline');
-  if ((seen.has('input') || seen.has('ci-run')) && mode !== 'observe' || mode === 'observe' && [...seen].some(key => !['root', 'input', 'offset', 'ci-run'].includes(key)))
+  if ((seen.has('input') || seen.has('ci-run') || seen.has('workflow')) && mode !== 'observe' || mode === 'observe' && [...seen].some(key => !['root', 'input', 'offset', 'ci-run', 'workflow'].includes(key)))
     throw new Error('observation accepts only root, input, offset or ci-run');
   if (seen.has('ci-run') && (seen.has('input') || seen.has('offset') || !/^[1-9][0-9]{0,15}$/u.test(options['ci-run'])))
     throw new Error('CI observation requires one positive run id');
+  if (seen.has('workflow') && (seen.has('input') || seen.has('ci-run') || seen.has('offset'))) throw new Error('workflow observation requires one manifest');
   if (seen.has('offset') && (mode !== 'observe' || !/^(0|[1-9][0-9]*)$/u.test(options.offset))) throw new Error('invalid observation offset');
   return options;
 }
@@ -91,6 +92,10 @@ export function validationPlanReceipt(plan) {
 export async function runRepositoryValidation(argv, { out = console.log } = {}) {
   const options = validationArguments(argv), root = realpathSync(resolve(options.root));
   if (options.mode === 'observe') {
+    if (options.workflow) {
+      const { readWorkflowObservation } = await import('./agentic-os-workflow-observation.mjs');
+      out(JSON.stringify(readWorkflowObservation(options.workflow), null, 2)); return 0;
+    }
     if (options['ci-run']) {
       const { readCiObservation } = await import('./agentic-os-ci-observation.mjs');
       out(JSON.stringify(readCiObservation(root, options['ci-run']), null, 2)); return 0;

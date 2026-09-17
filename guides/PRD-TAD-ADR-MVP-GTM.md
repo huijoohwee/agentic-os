@@ -497,3 +497,16 @@ Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.1` in the authoring
 
 [planning-record]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-planning-record.md
 [handover-continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/adlc-artifact-continuity.md
+
+### WORKFLOW-OBS-001 · Lifecycle observation
+
+PRD: a solo operator can identify time/resource bottlenecks from preparation through checks, CI,
+integration, cleanup, synchronization and runtime using existing receipts. TAD: the validation observation
+CLI lazily calls the receipt projector; source bindings and bounded native trace output remain separate
+from execution and authority. ADR: preserve each phase's original evidence digest/revision; never sum
+nested resource measurements or infer missing phases, timing, credentials or completion. MVP: exact
+local receipt import, full phase coverage with explicitly bounded step detail, native Canvas-compatible
+JSON and advisory ranked feedback. GTM: shorten diagnosis and time to first verified run; willingness to
+pay and measured time savings remain unvalidated. Acceptance: `__tests__/workflow-observation.test.mjs`
+and `npm run check`; operating limits and invocation are in `guides/VALIDATION-ECONOMY.md`. Rollback:
+remove the opt-in manifest use; existing validation, integration, cleanup and runtime owners are unchanged.
