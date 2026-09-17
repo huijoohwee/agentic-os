@@ -316,7 +316,7 @@ Compare the same selected check set, environment and quality before claiming sav
 
 ## SSOT manifest location and Apex demo (WORKFLOW-OBS-005)
 
-The immutable entry point is the exact `manifestPath` returned by `workflow collect`:
+The immutable entry point is the exact path in the `manifest` field returned by `workflow collect`:
 `.workspace/.artifacts/workflows/<repository-digest>/<manifest-digest>/manifest.json`.
 `repository-digest` is the first 24 SHA-256 hex characters of the repository identity;
 `manifest-digest` is the full SHA-256 of the stored manifest bytes. Resolve the actual path from

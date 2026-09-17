@@ -24,7 +24,7 @@ prompt_presets:
     label: "Agent observability"
     slash_command: "/agent-observability-prompt-preset"
     runtime_command: "/canvas.view.set"
-    description: "Demo: import the manifestPath returned by workflow collect from .workspace/.artifacts/workflows/<repository-digest>/<manifest-digest>/manifest.json. Keep referenced files in place. Inspect every captured worktree, timing, CPU, memory and reported model/token/cost; review evaluations, then export. Selection makes no model call. / @ # and MCP use the same view owner."
+    description: "Demo: import the path in the manifest field returned by workflow collect from .workspace/.artifacts/workflows/<repository-digest>/<manifest-digest>/manifest.json. Keep referenced files in place. Inspect every captured worktree, timing, CPU, memory and reported model/token/cost; review evaluations, then export. Selection makes no model call. / @ # and MCP use the same view owner."
     activation: "chat-agent"
     invocation_modes: ["native-chat-response", "mcp-invocation"]
     chat_route: "active native shared runtime"
