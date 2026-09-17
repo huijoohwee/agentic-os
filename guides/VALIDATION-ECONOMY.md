@@ -193,3 +193,39 @@ proof or release authority. Unreported phase timing remains unknown.
 Bounds: 16 expected phases, 128 KB per receipt, 32 KB manifest, 128 KB output and 32 visible spans.
 Every observed phase is visible before optional step detail; omitted steps and missing phases mark the
 trace partial. This is one on-demand read, with no new polling, execution, storage service or dependency.
+
+## Native start-to-release collection
+
+`agentic-os workflow targets` lazily lists this repository's registered targets under the sibling
+`.worktrees` root. Storage defaults to sibling `.workspace/.artifacts/workflows/<repository-hash>`;
+Explicit local `agentic-os.workspaceRoot` enrollment takes precedence; relative paths resolve from the canonical repository. Nothing scans arbitrary files
+or starts a runtime. Detached, locked and prunable targets remain observations, never cleanup grants.
+
+Use the existing `agentic-os/workflow-observation-input/v1` manifest with expected phases in order:
+`preparation`, `checks`, `ci`, `integration`, `cleanup`, `synchronization`, `runtime`. Include only
+available receipts with exact SHA-256 digests; missing phases remain incomplete. Then run:
+
+```sh
+agentic-os workflow collect --input=/absolute/workflow-input.json
+agentic-os workflow export --input=/returned/storage/digest/manifest.json
+```
+
+Collection verifies repository, commit tree and receipt bindings before writing a private immutable
+bundle. Repeating identical collection reuses verified bytes; mismatches and symlinks fail closed.
+A new phase produces a new bundle; no latest pointer or shared receipt is overwritten. Failed partial
+collections stay private for diagnosis. Limits: 64 registered targets, 16 receipts × 128 KB, a 32 KB
+manifest, 32 rendered spans with explicit omission coverage, and 256 KB CLI output. Receipt sources
+remain intact; collection survives worktree retirement. Export remains a read-only observation with
+60-second freshness, not proof of current provider status or release authority.
+
+MCP tools `workflow.targets`, `workflow.collect`, `workflow.export` use this same owner. Equivalent
+invocations are `/workflow.targets #read-only`, `/workflow.collect #mutating @input:/path/input.json`,
+and `/workflow.export #read-only @input:/path/stored/manifest.json`. Import exported native JSON into
+Canvas to synchronize JSON, Markdown, Viewer and Span tree with timing.
+
+The exported optimization ranking keeps the original evidence digest, revision and sample count.
+The existing validation economy owner remains the only learning history: it updates bounded cohort
+baselines, orders eligible checks by observed failure/time economics, preserves required checks and
+re-measures subsequent runs. Collection never trains on imported, reused or duplicated observations.
+CPU is waited-process CPU; memory is maximum process RSS, not total machine RAM; unknown token/cash
+cost stays unknown. Ranking is advisory, and receipt coverage is not a savings or release claim.
