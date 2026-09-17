@@ -116,6 +116,8 @@ test('collection retains exact receipts privately and survives source removal wi
 test('collection refuses mismatched repository, tree, reduced lifecycle coverage, and corrupt existing storage', t => {
   const { root, file, manifest } = localWorkflow(t);
   assert.throws(() => collectWorkflow(root, 'github.com/other/repo', file), /repository-binding/);
+  writeFileSync(file, JSON.stringify({ ...manifest, source: { ...manifest.source, revision: manifest.source.tree } }));
+  assert.throws(() => collectWorkflow(root, source.repository, file), /source-binding/);
   writeFileSync(file, JSON.stringify({ ...manifest, source: { ...manifest.source, tree: sha } }));
   assert.throws(() => collectWorkflow(root, source.repository, file), /tree-binding/);
   writeFileSync(file, JSON.stringify({ ...manifest, expected: ['integration'] }));

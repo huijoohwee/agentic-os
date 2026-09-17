@@ -47,6 +47,7 @@ export function collectWorkflow(root, repository, input) {
   const inputPath = resolve(input), manifest = JSON.parse(read(inputPath, 32000));
   if (manifest.source?.repository !== repository) fail('repository-binding');
   if (!/^[a-f0-9]{40}$/u.test(manifest.source?.revision ?? '') || !/^[a-f0-9]{40}$/u.test(manifest.source?.tree ?? '')) fail('source-binding');
+  if (observeGit(['cat-file', '-t', manifest.source.revision], { cwd: root }) !== 'commit') fail('source-binding');
   if (observeGit(['rev-parse', '--verify', `${manifest.source.revision}^{tree}`], { cwd: root }) !== manifest.source.tree) fail('tree-binding');
   // Lifecycle completeness is fixed by the owner; a caller cannot omit release phases to claim completion.
   if (JSON.stringify(manifest.expected) !== JSON.stringify(WORKFLOW_PHASES)) fail('phase-coverage');
