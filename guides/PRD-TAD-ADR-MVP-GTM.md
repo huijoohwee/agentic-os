@@ -510,3 +510,17 @@ JSON and advisory ranked feedback. GTM: shorten diagnosis and time to first veri
 pay and measured time savings remain unvalidated. Acceptance: `__tests__/workflow-observation.test.mjs`
 and `npm run check`; operating limits and invocation are in `guides/VALIDATION-ECONOMY.md`. Rollback:
 remove the opt-in manifest use; existing validation, integration, cleanup and runtime owners are unchanged.
+
+### APEX-OBS-001 · Import-first observation
+
+PRD: a solo operator can open workflow evidence without configuring a runtime first. TAD: the
+[preset catalog](../runtime/agents/docs/PROMPT-PRESETS.md) retains the canonical `/canvas.view.set`
+command, `#canvas-view` semantic and `@canvas-view` binding; Graph owns file selection, bounded native
+trace parsing, the existing dashboard, synchronized editor panes and D3 rendering. ADR: selecting the
+preset loads an empty full-width dashboard; only explicit connection reads a runtime. Local imports
+remain observations with original timestamps and unknown measurements, never execution authority.
+MVP: import → inspect spans/resources → review evaluation/comparison → export; use the same view
+through native Chat or `agentic-graph.control_local_canvas_view`. GTM: reduce setup and diagnosis time;
+savings and willingness to pay remain unvalidated. Acceptance: Graph's desktop/mobile mission smoke
+proves full-width inert entry, import, shared selection and authored-byte preservation. Rollback the
+preset description independently of runtime routes; no new provider, dependency or invocation registry.
