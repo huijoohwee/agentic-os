@@ -588,7 +588,8 @@ root by digest in the owner's workspace; the native exporter verifies referenced
 bounded JSON/SSE pages to the existing Canvas projection. No arbitrary file path or new datastore.
 ADR: preserve immutable archive bytes; reproject lifecycle fields from digest-verified receipts when
 reading older archives. Reused measurements remain historical, not current consumption. Worktree
-clocks retain their scope; no global timeline is invented. Model identity is reported or unavailable.
+clocks retain their scope; no global timeline is invented. Root lifecycle/invocation metadata and child
+measurement/evaluation coverage expose missing phases and source-bound model advice without summing costs.
 MVP: one root → verified pages → tree/resources/model → evidence export; a missing page or digest
 mismatch fails the complete import. Release economy: fill available execution slots within each
 existing validation stage, retain exact input checks, cache eligibility, failures and time limits.
