@@ -47,18 +47,28 @@ function readReviewBody(path, suffix) {
 const reviewIdentity = (ref, head, base) => [
   `Lane: ${ref}`, `Base-Revision: ${base}`, sourceHeadTrailer(head),
 ].join('\n');
+function validateReviewTitle(title) {
+  if (title === null) return;
+  if (typeof title !== 'string' || !title.trim() || title !== title.trim()
+      || [...title].length > 256 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(title))
+    throw Object.assign(new TypeError('pull request title must be 1-256 characters without surrounding whitespace or control characters'),
+      { reason: 'blocked-review-title-invalid' });
+}
+
 /** Reserve exact trailer space before commit/fetch; actual identity is appended after commit. */
-export function validateReviewBody(root, ref, file) {
+export function validateReviewBody(root, ref, file, title = null) {
+  validateReviewTitle(title);
   const body = file === null ? null : readReviewBody(resolve(root, file), `\n\n${reviewIdentity(ref, headSha('HEAD', root), headSha('HEAD', root))}`);
   validateOwnerBody(root, ref, body);
 }
 /** Capture review text before publication; identity trailers are not integration proof. */
-export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null) {
+export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null, authoredTitle = null) {
+  validateReviewTitle(authoredTitle);
   const subjects = gitLines(['log', '--format=%s', `${baseSha}..${laneHeadSha}`, '--reverse'], {
     cwd: root,
   });
   const scope = parseLaneRef(ref)?.scope ?? ref;
-  const title = subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`;
+  const title = authoredTitle ?? (subjects.length === 1 ? subjects[0] : `${scope}: ${subjects.length} commits`);
   const identity = reviewIdentity(ref, laneHeadSha, baseSha);
   const body = bodyFile === null ? [
     ...(subjects.length > 1 ? [...subjects.map((subject) => `- ${subject}`), ''] : []),

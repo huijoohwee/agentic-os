@@ -9,7 +9,7 @@ import { git } from '../src/git.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
-import { validateReviewBody } from '../bin/agentic-os-review-body.mjs';
+import { validateReviewBody, pullRequestText } from '../bin/agentic-os-review-body.mjs';
 import { validateValidationPolicy } from '../bin/agentic-os-validation-policy.mjs';
 
 test('invalid review input preserves authored bytes and stops before commit hooks or fetch', t => {
@@ -40,16 +40,24 @@ test('invalid review input preserves authored bytes and stops before commit hook
   run(['config', 'core.hooksPath', hooks]);
   const body = join(parent, 'review.md'); writeFileSync(body, 'Source-Head: invented');
   const before = run(['status', '--porcelain'], lane);
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url)),
-    'land', '--message=change', `--body-file=${body}`], { cwd: lane, encoding: 'utf8', timeout: 20000 });
-  assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /blocked-review-body-invalid/);
-  assert.equal(run(['rev-parse', 'HEAD'], lane), head);
-  assert.equal(run(['status', '--porcelain'], lane), before);
-  assert.equal(readFileSync(join(lane, 'source.txt'), 'utf8'), 'authored change\n');
-  assert.equal(existsSync(effect), false);
-  assert.equal(existsSync(join(root, '.git', 'FETCH_HEAD')), false);
-  assert.equal(run(['--git-dir', bare, 'for-each-ref', '--format=%(refname)', `refs/heads/${ref}`]), '');
+  for (const title of [null, 'invalid\ntitle']) {
+    if (title !== null) writeFileSync(body, 'Valid body');
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url)),
+      'land', '--message=change', `--body-file=${body}`, ...(title === null ? [] : [`--title=${title}`])], { cwd: lane, encoding: 'utf8', timeout: 20000 });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, title === null ? /blocked-review-body-invalid/ : /blocked-review-title-invalid/);
+    assert.equal(run(['rev-parse', 'HEAD'], lane), head);
+    assert.equal(run(['status', '--porcelain'], lane), before);
+    assert.equal(readFileSync(join(lane, 'source.txt'), 'utf8'), 'authored change\n');
+    assert.equal(existsSync(effect), false);
+    assert.equal(existsSync(join(root, '.git', 'FETCH_HEAD')), false);
+    assert.equal(run(['--git-dir', bare, 'for-each-ref', '--format=%(refname)', `refs/heads/${ref}`]), '');
+  }
+  for (const title of ['', ' ', ' padded', 'trailing ', 'x'.repeat(257), 'x\rY', 'x\0Y', 'x\u007fY', 'x\u0085Y', 'x\u2028Y', 'x\u2029Y'])
+    assert.throws(() => validateReviewBody(lane, ref, body, title), { reason: 'blocked-review-title-invalid' });
+  for (const title of ['Final review', 'é'.repeat(256), 'Literal $() `title`'])
+    assert.equal(pullRequestText(lane, ref, head, head, body, title).title, title);
+  assert.equal(pullRequestText(lane, ref, head, head).title, 'sprint-preflight: 0 commits');
 });
 
 test('repository-owned review metadata rejects stale successor scope before publication', t => {

@@ -166,8 +166,8 @@ function cmdLand(cwd, argv, profile, policy) {
     return 1;
   }
   const configuredFlight = assertFlightRequirements(root, 'pre');
-  const bodyFile = option(argv, 'body-file');
-  validateReviewBody(root, ref, bodyFile);
+  const bodyFile = option(argv, 'body-file'), title = option(argv, 'title');
+  validateReviewBody(root, ref, bodyFile, title);
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   const remote = remoteName(policy, root);
   const capturedRemote = remoteTransport(remote, root);
@@ -203,15 +203,13 @@ function cmdLand(cwd, argv, profile, policy) {
   }
   const commits = gitLines(['rev-list', `${baseSha}..${laneHeadSha}`], { cwd: root }).length;
   const reviewText = bodyFile !== null || kind === 'github' && policy.pullRequestRequired
-    ? pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile) : null;
+    ? pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile, title) : null;
   const publishedHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
   assertPublicationPreflight(root, laneHeadSha, configuredFlight);
-
   if (integrationProof(baseSha, laneHeadSha, { cwd: root })) {
     err('blocked-already-integrated: do not republish; reap can classify for public governance');
     return 1;
   }
-
   const providerPreflight = kind === 'github' && providerAdapterRequired(policy)
     ? queue.observe({ cwd: root, profile }) : null;
   const providerBlockers = providerPreflight

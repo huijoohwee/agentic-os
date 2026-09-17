@@ -81,6 +81,9 @@ function reviewProjectionFixture(t, {
     `    list) printf '%s\\n' '${JSON.stringify(existingReview ? [review] : [])}' ;;`,
     '    create)',
     '      if [ -n "$AGENTIC_OS_TEST_EFFECTS_LOG" ]; then echo review >> "$AGENTIC_OS_TEST_EFFECTS_LOG"; fi',
+    '      if [ -n "$AGENTIC_OS_TEST_TITLE_CAPTURE" ]; then',
+    '        printf \'%s\\n\' "$@" > "$AGENTIC_OS_TEST_TITLE_CAPTURE"',
+    '      fi',
     '      if [ -n "$AGENTIC_OS_TEST_BODY_CAPTURE" ]; then',
     '        while [ "$#" -gt 0 ]; do',
     '          if [ "$1" = --body ]; then printf %s "$2" > "$AGENTIC_OS_TEST_BODY_CAPTURE"; break; fi',
@@ -303,10 +306,15 @@ test('land captures metadata bytes before push and appends exact native identity
   const subject = reviewProjectionFixture(t, { exactBody: true });
   const authored = '---\r\naction: publish\r\nscope: café\r\n---\r\n\r\nA $() `literal` summary.\r\n';
   writeFileSync(subject.bodyFile, authored);
-  const result = land(subject, [`--body-file=${subject.bodyFile}`], {
+  const title = 'Finalize café $() `literal` review';
+  const titleCapture = join(subject.parent, 'title-arguments');
+  const result = land(subject, [`--body-file=${subject.bodyFile}`, `--title=${title}`], {
+    AGENTIC_OS_TEST_TITLE_CAPTURE: titleCapture,
     AGENTIC_OS_TEST_MUTATE_BODY: subject.bodyFile,
   });
   assert.equal(result.status, 0, result.stderr);
+  const args = readFileSync(titleCapture, 'utf8').split('\n');
+  assert.equal(args[args.indexOf('--title') + 1], title);
   assert.equal(readFileSync(subject.bodyFile, 'utf8'), 'changed during push');
   const captured = readFileSync(subject.bodyCapture, 'utf8');
   assert.equal(captured, `${authored}\n\n${identity(subject)}`);

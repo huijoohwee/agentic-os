@@ -406,3 +406,28 @@ Use existing files/folder/URL import and D3 projection for AST/document/SQL/conf
 Workflow lexical traversal is a smaller validation-navigation view, not a replacement AST parser.
 Literal dynamic import and require-call syntax are source evidence; repository target matches remain
 inferred and never prove execution. Parser identity changes invalidate prior extraction caches.
+
+## Final review metadata before publication (ADLC-OBS-003@0.1.0)
+
+PRD: avoid restarting protected CI merely to replace a generated multi-commit PR title. Operator /
+finalize / publish one review uses the same title and captured body at the first provider handoff.
+The observed title correction cancelled Graph run 35197357999 after 64 seconds; this is an avoidable
+attempt, not proof of cash savings or a provider outage.
+
+TAD: `land --title="<final title>" --body-file=<file>` reuses the bounded review-text owner. Validate
+an explicitly supplied title before commit, fetch or publication: 1–256 Unicode code points, no
+surrounding whitespace, line separators or control characters. Pass it as one provider argument;
+never interpolate it into shell code. Omission preserves existing generated-title behavior.
+Retries without a body file preserve all existing PR text, including its title. An explicit body file
+uses the existing review replacement path with the selected title. Title/body replacement keeps
+the existing protected update path and can retrigger CI; finalize both before the first publication.
+
+ADR: retain metadata-triggered checks and exact source identity. Skipping the required job after a
+metadata event could cancel source validation without replacing its proof. No new workflow, service,
+cache or dependency is introduced; default `/land` and MCP invocation remain unchanged.
+
+MVP: verify invalid titles preserve authored bytes and stop before hooks/fetch/push; verify literal
+Unicode and shell-looking title text reaches PR creation intact, and multi-commit defaults remain
+compatible. Scope: six source/test/doc modules, 40 KB, 20 active minutes; provider waits separate.
+GTM: use the native publication of this change as the free pilot; record CI attempts separately from
+execution and report only observed savings. Rollback reverts the checked source while retaining receipts.
