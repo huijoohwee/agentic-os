@@ -106,6 +106,12 @@ async function cmdStart(root, argv, policy, profile) {
       }
       const context = (await import('./agentic-os-workspace.mjs')).hydrateWorkspace(root, policy, { revision: baseSha });
       if (context.status !== 'disabled') out(`${context.schema ? 'workspace' : 'memory'} ${JSON.stringify(context)}`);
+      const planningPath = option(argv, 'plan');
+      if (planningPath !== null) {
+        const workflow = (await import('./agentic-os-workflow.mjs')).startWorkflow(root, profile.repository,
+          { revision: baseSha, planningPath, worktreeId: `${device}--${scope}` });
+        out(`workflow ${JSON.stringify(workflow)}`);
+      }
       const facts = { baseFetched: true };
       const result = transition('planned', 'provision', facts);
       if (!result.ok) {
@@ -220,7 +226,6 @@ function cmdLand(cwd, argv, profile, policy) {
     err(`blocked-provider-observation-incomplete: ${providerBlockers.join(', ')}`);
     return 1;
   }
-
   if (publishedHead && publishedHead !== laneHeadSha) {
     err('blocked-published-head-drift: the exact remote lane revision is immutable');
     return 1;
@@ -235,7 +240,6 @@ function cmdLand(cwd, argv, profile, policy) {
     err(report.formatRefusal(preflight, 'commit your work, then run npm run land again'));
     return 1;
   }
-
   if (state === 'active') {
     assertFlightRequirements(root, 'in', configuredFlight);
     assertProtectedRefCurrent(root, policy.protectedRef, baseSha);
@@ -264,12 +268,10 @@ function cmdLand(cwd, argv, profile, policy) {
     }
   }
   projectCache({ ref, state: 'published', head: laneHeadSha }, root);
-
   if (kind !== 'github' || !policy.pullRequestRequired) {
     out('published exact lane ref; no pull-request integration capability selected');
     return 0;
   }
-
   const observed = queue.observe({ cwd: root, profile });
   const promotion = classifyPromotion(root, baseSha, laneHeadSha);
   const observedBlockers = queue.providerBlockingReasons(observed, policy);
