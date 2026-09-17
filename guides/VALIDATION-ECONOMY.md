@@ -229,3 +229,39 @@ baselines, orders eligible checks by observed failure/time economics, preserves 
 re-measures subsequent runs. Collection never trains on imported, reused or duplicated observations.
 CPU is waited-process CPU; memory is maximum process RSS, not total machine RAM; unknown token/cash
 cost stays unknown. Ranking is advisory, and receipt coverage is not a savings or release claim.
+
+## Complete worktree capture and next-context recommendations (WORKFLOW-OBS-003)
+
+The returned `manifest.json` is the single entry point. Its `phases`, optional `traces`, and `archive`
+reference immutable receipt JSON, span-page JSON and `recommendations.json` with SHA-256 digests.
+All captured spans survive the 32-span Canvas page bound; upstream omissions remain explicit.
+The default storage stays `.workspace/.artifacts/workflows`; targets stay registered `.worktrees`.
+Each collection is a content-addressed snapshot: collect again when evidence changes and hand off
+that exact manifest locator. No mutable latest pointer, directory scan or second history ledger is added.
+
+Optional `context` contains bounded `worktreeId`, `sessionId`, `turnId`, `threadId` identifiers. Optional
+`traces` contains at most 16 `{id, phase, file, digest}` references to existing `agent-toolkit-run/v1`
+JSON pages, each at most 32 spans/128 KB. Candidate and plan repository/revision must match the
+workflow source; foreign runs cannot be silently assigned to this worktree. Keep missing pages,
+parents and unknown resources explicit. Do not export prompts, completions, logs or credentials.
+A reported native cost log exposes model, prompt/completion tokens, cache hits and estimated USD;
+actual cash cost remains null. Different runtime clocks are not presented as one causal timeline.
+
+```sh
+agentic-os workflow collect --input=/exact/source-manifest.json
+agentic-os workflow export --input=/returned/manifest.json --offset=32
+agentic-os /workflow.recommend '#read-only' @input:/returned/manifest.json
+```
+
+MCP `workflow.export` accepts `{input, offset}` (offset defaults to zero, multiples of 32); page
+`nextCursor` supplies the next offset. `workflow.recommend` accepts `{input}` and reads only the
+recommendation reference after checking its digest/source binding. Carry the exact manifest path
+into the next workflow/session/turn/thread and call recommend on demand before expensive work.
+`sourceMatches` describes the current Git revision, not authority or guaranteed applicability.
+Revalidate revision/scope, quality cohort and cache eligibility before applying recommendations;
+rerun the same cohort afterward. Ranked historical checks reuse the existing economy feedback;
+model advice requests a quality-preserving comparison, never an automatic cheaper-model switch.
+
+Bounds: one input manifest ≤32 KB, each source/page/advice ≤128 KB, ≤2048 captured spans and 32
+spans per export. There are no model/network calls, background watchers or unbounded file crawls.
+Old receipt-only manifests still export; recollect them to obtain the archive and recommendations.

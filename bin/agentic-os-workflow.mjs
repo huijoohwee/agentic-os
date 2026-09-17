@@ -5,6 +5,8 @@ import { commonDir, observeGit, worktreeInventory, acquireOperationLock, finishO
 import { hash, readRegular } from './agentic-os-test-inputs.mjs';
 import { readWorkflowObservation, workflowObservation } from './agentic-os-workflow-observation.mjs';
 
+import { buildArchive, readArchive, receiptClock, traceReferences } from './agentic-os-workflow-archive.mjs';
+
 export const WORKFLOW_PHASES = Object.freeze(['preparation', 'checks', 'ci', 'integration', 'cleanup', 'synchronization', 'runtime']);
 const fail = reason => { throw Error(`blocked-workflow-${reason}`); };
 const inside = (root, path) => { const p = relative(root, path); return p !== '' && !p.startsWith(`..${sep}`) && p !== '..' && !isAbsolute(p); };
@@ -27,7 +29,7 @@ export function workflowPaths(root, repository) {
 function decorate(observation) {
   const workflow = observation.profile.workflow;
   workflow.lifecycle = { start: 'agentic-os/docs/START-WORKFLOW.md', release: 'agentic-os/docs/RELEASE-WORKFLOW.md', phases: WORKFLOW_PHASES };
-  workflow.optimization = { authority: false, strategy: 'observe-rank-execute-reevaluate',
+  workflow.optimization ??= { authority: false, strategy: 'observe-rank-execute-reevaluate',
     ranking: workflow.phases.flatMap(phase => (phase.feedback ?? []).map(row => ({ ...row, phase: phase.id,
       evidenceDigest: phase.digest, revision: phase.revision }))).sort((a, b) => b.meanMs - a.meanMs || a.id.localeCompare(b.id)).slice(0, 5),
     policy: 'Reuse the validation economy scheduler and exact-input cache; preserve mandatory checks and dependency order. Re-measure the same cohort before claiming savings.' };
@@ -59,9 +61,22 @@ export function collectWorkflow(root, repository, input) {
     if (receipt.schema !== PHASE_SCHEMAS[phase.id]) fail('phase-schema');
     receipts.set(file, text); return text;
   });
-  const stored = { ...manifest, phases: manifest.phases.map(phase => ({ ...phase, file: `${phase.id}.json` })) };
+  const traces = traceReferences(manifest);
+  for (const ref of traces) {
+    const bytes = read(resolve(dirname(inputPath), ref.file), 128000);
+    if (hash(bytes) !== ref.digest) fail('trace-digest');
+    if (receipts.has(ref.file)) fail('duplicate-file');
+    receipts.set(ref.file, bytes);
+  }
+  const captured = buildArchive(manifest, file => receipts.get(file), receiptClock(receipts));
+  const stored = { ...manifest, phases: manifest.phases.map(phase => ({ ...phase, file: `${phase.id}.json` })),
+    traces: traces.map((ref, index) => ({ ...ref, file: `trace-${index}.json` })), archive: captured.archive };
+  const files = new Map(stored.phases.map((ref,index) => [ref.file,receipts.get(manifest.phases[index].file)]));
+  stored.traces.forEach((ref,index) => files.set(ref.file,receipts.get(traces[index].file)));
+  for (const [file, content] of captured.files) files.set(file, content);
   const bytes = json(stored), digest = hash(bytes), paths = workflowPaths(root, repository);
   const directory = join(paths.storage, digest), manifestPath = join(directory, 'manifest.json');
+  if (Buffer.byteLength(bytes) > 32000) fail('manifest-budget');
   const lock = acquireOperationLock('agentic-os-workflow', root);
   if (!lock) fail('busy');
   let error, result;
@@ -71,11 +86,11 @@ export function collectWorkflow(root, repository, input) {
     assertDirectoryAncestors(join(directory, 'entry'), sep, { allowMissing: true });
     if (lstatSync(directory, { throwIfNoEntry: false })) {
       if (read(manifestPath, 32000) !== bytes) fail('storage-drift');
-      for (const phase of stored.phases) if (hash(read(join(directory, phase.file), 128000)) !== phase.digest) fail('storage-drift');
+      for (const [file, content] of files) if (read(join(directory, file), 128000) !== content) fail('storage-drift');
       result = { reused: true };
     } else {
       const staging = mkdtempSync(join(paths.storage, '.collect-'));
-      for (const [index, phase] of stored.phases.entries()) writeFileSync(join(staging, phase.file), receipts.get(manifest.phases[index].file), { flag: 'wx', mode: 0o600 });
+      for (const [file, content] of files) writeFileSync(join(staging, file), content, { flag: 'wx', mode: 0o600 });
       writeFileSync(join(staging, 'manifest.json'), bytes, { flag: 'wx', mode: 0o600 });
       // One clone-wide exclusive writer; a failed partial collection remains private for diagnosis.
       if (lstatSync(directory, { throwIfNoEntry: false })) fail('storage-race');
@@ -84,18 +99,39 @@ export function collectWorkflow(root, repository, input) {
     }
     result = { schema: 'agentic-os/workflow-collection/v1', authority: false, ...result,
       source: manifest.source, digest, manifest: manifestPath, bytes: Buffer.byteLength(bytes)
-        + [...receipts.values()].reduce((sum, text) => sum + Buffer.byteLength(text), 0),
+        + [...files.values()].reduce((sum, text) => sum + Buffer.byteLength(text), 0),
       storage: paths.storage, targetRoot: paths.targets, expected: WORKFLOW_PHASES };
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'workflow collection', result, error });
 }
 export function runWorkflow(root, argv, profile, out = console.log) {
   const operation = argv[0], input = argv.find(value => value.startsWith('--input='))?.slice(8);
+  const offsetText = argv.find(value => value.startsWith('--offset='))?.slice(9);
+  if (offsetText !== undefined && !/^(0|[1-9][0-9]*)$/u.test(offsetText)) fail('offset');
   const result = operation === 'targets' ? discoverWorkflowTargets(root, profile.repository)
     : operation === 'collect' ? collectWorkflow(root, profile.repository, input)
-      : operation === 'export' ? decorate(readWorkflowObservation(input)) : fail('operation');
-  if (operation === 'export' && result.profile.workflow.source.repository !== profile.repository) fail('repository-binding');
+      : ['export', 'recommend'].includes(operation) ? exportWorkflow(root, profile.repository, input, operation, Number(offsetText ?? 0)) : fail('operation');
   const output = json(result);
   if (Buffer.byteLength(output) > 256000) fail('output-budget');
   out(output.trimEnd()); return 0;
+}
+
+function exportWorkflow(root, repository, input, operation, offset) {
+  const path = resolve(input), manifestBytes = read(path, 32000), manifest = JSON.parse(manifestBytes);
+  if (manifest.source?.repository !== repository) fail('repository-binding');
+  if (!manifest.archive) {
+    if (operation === 'recommend' || offset !== 0) fail('archive-required-recollect');
+    return decorate(readWorkflowObservation(path));
+  }
+  if (basename(dirname(path)) !== hash(manifestBytes)) fail('archive-manifest-digest');
+  const result = readArchive(manifest, file => {
+    if (basename(file) !== file) fail('archive-path');
+    return read(join(dirname(path),file),128000);
+  }, {offset, adviceOnly: operation === 'recommend'});
+  if (operation === 'recommend') {
+    const currentRevision = observeGit(['rev-parse','HEAD'],{cwd:root});
+    return {...result, currentRevision, sourceMatches:currentRevision===manifest.source.revision,
+      disposition:'recommendations-only-revalidate-before-change', manifestDigest:hash(manifestBytes)};
+  }
+  return decorate(result);
 }

@@ -53,8 +53,8 @@ export function validateCommandArguments(command, argv) {
       : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
         ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';
     case 'workflow': return argv[0] === 'targets' ? exact(argv, { min: 1 })
-      : ['collect', 'export'].includes(argv[0]) ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] })
-        : 'workflow requires targets, collect, or export';
+      : ['collect', 'export', 'recommend'].includes(argv[0]) ? exact(argv, { min: 1, options: argv[0] === 'export' ? ['input', 'offset'] : ['input'], requiredOptions: ['input'] })
+        : 'workflow requires targets, collect, export, or recommend';
     case 'pipeline': return exact(argv, { options: ['repo', 'run', 'head', 'attempt', 'timeout-ms'],
       requiredOptions: ['repo', 'run', 'head', 'attempt'] });
     case 'help': case '--help': return exact(argv, {});
@@ -177,7 +177,7 @@ export function cmdHelp() {
       '  agentic-os pipeline --repo=<owner/repo> --run=<id> --head=<sha> --attempt=<n>  watch exact CI progress',
       '  agentic-os flight plan|pre|in|post  preview all phase prerequisites, inspect drift and completion',
       '  agentic-os flight gate --operation=<id> --context=<json>  run enrolled checks before an effect',
-      '  agentic-os workflow targets | collect --input=<manifest> | export --input=<stored-manifest>  local lifecycle evidence',
+      '  agentic-os workflow targets | collect --input=<manifest> | export --input=<stored-manifest> [--offset=32] | recommend --input=<stored-manifest>  local lifecycle evidence',
       '  agentic-os observe        emit a shallow profile-bound repository observation',
       '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
       '  agentic-os request ...    construct an unsigned Coordination Request from JSON',

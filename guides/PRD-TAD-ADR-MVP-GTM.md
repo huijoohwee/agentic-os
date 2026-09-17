@@ -540,3 +540,21 @@ mandatory/dependency ordering, and re-measure before claiming improvement. GTM: 
 receipt assembly and bottleneck diagnosis; paid demand and measured savings remain unvalidated.
 Validation: `__tests__/workflow-observation.test.mjs`, invocation/MCP tests and `npm run check`.
 Rollback: stop calling the opt-in workflow commands; retained evidence and phase owners stay intact.
+
+### WORKFLOW-OBS-003 · Complete capture and next-context advice
+
+PRD / RAO: a solo operator carries one worktree's evidence and actionable economics advice into the
+next workflow, session, turn or thread. SVO: the operator collects one immutable JSON manifest that
+references phase receipts, every captured span page and recommendations; reported model identity,
+prompt/completion tokens and estimated USD retain their source digest. TAD: extend the existing lazy
+workflow collector, trace projector and native cost-log validator; store bounded JSON pages beneath
+`.workspace/.artifacts/workflows`, discover only registered `.worktrees`, and expose the same owner
+through CLI/MCP and `/workflow.recommend #read-only @input:<manifest>`. ADR: paging never discards
+captured spans; upstream gaps stay explicit, source clocks stay separate, unreported values stay null,
+and estimates never become cash charges. Advice is read-only, source-bound and revalidated against
+the next context; it neither switches models nor edits code nor bypasses mandatory checks.
+MVP: collect → retain one manifest → export each page → recommend → authorized change → remeasure
+on the same quality cohort. GTM: reduce repeat diagnosis and unnecessary validation; willingness to
+pay and measured savings remain unvalidated. Acceptance: archive, projector and invocation/MCP tests
+plus `npm run check`; reject digest drift, duplicate spans, false completeness and invalid cost logs.
+Rollback: stop optional collection/recommendation calls; preserve old manifests and original receipts.

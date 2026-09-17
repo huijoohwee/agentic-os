@@ -145,7 +145,7 @@ test('default target discovery is registered-only, bounded, and metadata-only; c
   assert.throws(() => discoverWorkflowTargets(root, source.repository), /directory ancestor/);
 });
 test('CLI, MCP and slash bindings share one workflow owner and exact effect semantics', () => {
-  for (const operation of ['targets', 'collect', 'export']) {
+  for (const operation of ['targets', 'collect', 'export', 'recommend']) {
     const args = operation === 'targets' ? {} : { input: './receipt manifest.json' };
     const argv = toolArguments(`workflow.${operation}`, args);
     assert.equal(validateCommandArguments(argv[0], argv.slice(1)), null);
