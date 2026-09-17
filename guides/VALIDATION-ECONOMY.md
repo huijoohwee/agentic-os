@@ -168,3 +168,28 @@ For Git-backed test fixtures, materialize only their declared source surfaces an
 files when the check does not need a full working tree. Native sparse checkout can retain the full
 index and commit history. Verify the unchanged checks and exact committed-tree identity before
 claiming equivalent fixture coverage; record avoided files/bytes separately from observed timings.
+
+## Observe a complete lifecycle
+
+`node bin/agentic-os-validation.mjs observe --workflow=/absolute/private/workflow.json`
+joins existing receipts without running their commands. Keep the manifest and outputs in the configured
+local `.workspace` artifact directory. The manifest uses `agentic-os/workflow-observation-input/v1`, a
+bounded `id`, exact `source: {repository,revision,tree}`, an `expected` list of phase IDs, and `phases`.
+Each phase supplies its `id`, local `file`, SHA-256 `digest` of the exact UTF-8 bytes, and optional
+`revision` when that phase observes the separately integrated main revision. Expected phases can include
+preparation, checks, CI, integration, cleanup, synchronization and runtime. Do not omit an expected phase
+to manufacture completion. Capture native JSON separately from command diagnostics.
+
+Accepted owners are flight, validation observation, pipeline JSONL, sprint finish, user cleanup,
+canonical sync and local runtime readiness. Unknown schemas, source/revision drift, mixed CI attempts,
+duplicate receipts and changed bytes fail. Missing phases remain explicit. The output reuses the native
+`agent-toolkit-run/v1` trace contract for local JSON import; it never exports source paths, command argv,
+environment, logs or credentials. Lifecycle and child spans retain their original receipt digest and
+revision. The root's resource totals stay unknown because phases may contain nested measurements.
+Known zero is retained, reused-stage current consumption is unknown, and the existing ranked validation
+feedback is carried as advisory data. Receipt coverage is an evaluation metric, not authenticated effect
+proof or release authority. Unreported phase timing remains unknown.
+
+Bounds: 16 expected phases, 128 KB per receipt, 32 KB manifest, 128 KB output and 32 visible spans.
+Every observed phase is visible before optional step detail; omitted steps and missing phases mark the
+trace partial. This is one on-demand read, with no new polling, execution, storage service or dependency.
