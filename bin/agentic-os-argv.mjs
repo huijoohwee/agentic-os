@@ -83,7 +83,7 @@ export function validateCommandArguments(command, argv) {
         : operation === 'read' ? ['line', 'lines'] : [];
       return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
     }
-    case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write'] });
+    case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
     case 'status': return exact(argv, { options: ['device'] });

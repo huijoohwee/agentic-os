@@ -24,34 +24,21 @@ reviewed_source_revision: "66ccb8fe17879b4c3ac33392961cabd001fce060"
 mvp_revision: "1.3.1"
 gtm_revision: "1.3.1"
 ---
-
 # Reference implementation — As-built ADLC pipeline
-
 This document owns source-to-completion governance; acceptance grants no deployment authority.
 Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
 [TECH-STACK.md](TECH-STACK.md) owns refresh commands. Historical evidence retains its exact subject.
-
 [TECH-STACK.md](TECH-STACK.md) owns technology selection, product composition and deployment topology. [FEATURES.md](FEATURES.md) owns the derived feature index; [catalog/features.json](../catalog/features.json) owns commercial ranking input. The website [guidelines][guideline], [templates][templates], [continuity module][continuity] and [CID contract][cid] own authoring semantics. This guide adds pipeline requirements and traceability, without copying those contracts or product requirements.
-
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
-
 ## Identity and opening directive
-
 [PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.1`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
-
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
-
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
-
 ## PRD
-
 **Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.3.1`.
-
 ### Problem, personas and minimum outcome
-
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
-
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
 
 The minimum outcome is one source-owned change that can be authored, checked, integrated and handed to the product's release/evidence owner. A runtime outcome additionally needs that owner's deployed acceptance results. A paid loop additionally needs actual payment and replay receipts.
@@ -559,7 +546,6 @@ pay and measured savings remain unvalidated. Acceptance: archive, projector and 
 plus `npm run check`; reject digest drift, duplicate spans, false completeness and invalid cost logs.
 Rollback: stop optional collection/recommendation calls; preserve old manifests and original receipts.
 
-
 ### WORKFLOW-OBS-004 · One planning-to-production workflow across worktrees
 
 PRD / RAO: the same planning intent may span several repositories/worktrees; one immutable root
@@ -596,3 +582,14 @@ existing validation stage, retain exact input checks, cache eligibility, failure
 GTM: reduce incomplete diagnosis and idle validation capacity; WTP and savings remain unvalidated.
 Checks: workflow archive/observation tests, affected owner checks, browser import and scoped timing.
 Rollback: revert this reader/scheduler change; all original manifests and receipts remain readable.
+
+### WORKFLOW-OBS-006 · Evidence available at start
+
+PRD / RAO / SVO: the operator binds the selected committed planning document when starting a lane
+and receives an immutable evidence root before provisioning. TAD: `start --plan=<path>` lazily calls
+the existing collector, retaining one group root and its initial child; all absent phases remain missing.
+ADR: explicit planning selection, deterministic input identity, no invented preparation/resource receipt,
+no duplicate store or poller. The 2026-09-17 enhancement instruction covers this implementation.
+MVP: start → returned root → existing JSON/SSE export → collect real receipts into immutable successors.
+GTM: reduce manual first-manifest assembly; payer evidence and measured savings remain unvalidated.
+Checks: workflow collection plus affected startup/CLI checks; rollback by omitting the optional plan flag.

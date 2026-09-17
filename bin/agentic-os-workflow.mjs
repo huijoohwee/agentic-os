@@ -56,6 +56,9 @@ export function discoverWorkflowTargets(root, repository) {
 }
 export function collectWorkflow(root, repository, input) {
   const inputPath = resolve(input), manifest = JSON.parse(read(inputPath, 32000));
+  return collectManifest(root, repository, manifest, inputPath);
+}
+function collectManifest(root, repository, manifest, inputPath) {
   if (manifest.source?.repository !== repository) fail('repository-binding');
   if (!/^[a-f0-9]{40}$/u.test(manifest.source?.revision ?? '') || !/^[a-f0-9]{40}$/u.test(manifest.source?.tree ?? '')) fail('source-binding');
   if (observeGit(['cat-file', '-t', manifest.source.revision], { cwd: root }) !== 'commit') fail('source-binding');
@@ -114,6 +117,21 @@ export function collectWorkflow(root, repository, input) {
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'workflow collection', result, error });
 }
+/** Capture a planning-bound initial root before lane provisioning; no phase is fabricated. */
+export function startWorkflow(root, repository, { revision, planningPath, worktreeId }) {
+  if (!/^[a-f0-9]{40}$/u.test(revision) || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(worktreeId)) fail('start-binding');
+  const planning = { repository, revision, path: planningPath };
+  validatePlanning(root, repository, planning, false);
+  planning.digest = hash(observeGit(['show', `${revision}:${planningPath}`], { cwd: root }));
+  const source = { repository, revision, tree: observeGit(['rev-parse', `${revision}^{tree}`], { cwd: root }) };
+  const id = `workflow-${hash(json({ source, planning, worktreeId })).slice(0, 32)}`;
+  const inputPath = join(root, 'workflow-input.json'); // Resolution base only; never written.
+  const child = collectManifest(root, repository, { schema: 'agentic-os/workflow-observation-input/v1',
+    id, source, context: { workflowId: id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, inputPath);
+  return collectManifest(root, repository, { schema: WORKFLOW_GROUP, id, source, planning,
+    members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
+}
+
 export function runWorkflow(root, argv, profile, out = console.log) {
   const operation = argv[0], input = argv.find(value => value.startsWith('--input='))?.slice(8);
   const offsetText = argv.find(value => value.startsWith('--offset='))?.slice(9);
@@ -179,15 +197,23 @@ function verifyGroupRelease(manifest, path) {
     if(hash(bytes)!==ref.digest)fail('release-digest');
   }
 }
+function validatePlanning(root, repository, planning, checkDigest = true) {
+  if (!planning || planning.repository !== repository || !/^[a-f0-9]{40}$/u.test(planning.revision ?? '')
+    || typeof planning.path !== 'string' || /[\\\x00-\x1f]/u.test(planning.path) || planning.path.startsWith('/')
+    || planning.path.split('/').some(part => !part || part === '..' || part === '.')
+    || !/prd-tad-adr-mvp-gtm\.md$/iu.test(planning.path)
+    || checkDigest && !/^[a-f0-9]{64}$/u.test(planning.digest ?? '')) fail('planning-binding');
+  const entry = observeGit(['ls-tree', planning.revision, '--', planning.path], { cwd: root });
+  if (!/^100644 blob [a-f0-9]{40}\t/u.test(entry ?? '')) fail('planning-file');
+  const planned = observeGit(['show', `${planning.revision}:${planning.path}`], { cwd: root });
+  if (Buffer.byteLength(planned) > 128000) fail('planning-budget');
+  // The native Git reader trims terminal newlines; historical group digests use that text.
+  if (checkDigest && hash(planned) !== planning.digest) fail('planning-digest');
+}
 function collectGroup(root, repository, manifest, inputPath) {
   const paths=workflowPaths(root,repository), load=groupLoader(root,repository), files=new Map();
   const planning=manifest.planning;
-  if(!planning || planning.repository!==repository || !/^[a-f0-9]{40}$/u.test(planning.revision??'')
-    || typeof planning.path!=='string' || planning.path.startsWith('/') || planning.path.split('/').some(part=>!part||part==='..')
-    || !/PRD-TAD-ADR-MVP-GTM\.md$/u.test(planning.path) || !/^[a-f0-9]{64}$/u.test(planning.digest??''))fail('planning-binding');
-  const planned=observeGit(['show',`${planning.revision}:${planning.path}`],{cwd:root});
-  // observeGit trims terminal newlines; the planning digest binds that canonical text.
-  if(hash(planned)!==planning.digest)fail('planning-digest');
+  validatePlanning(root, repository, planning);
   if(!Array.isArray(manifest.members))fail('members');
   const members=manifest.members.map(ref=>{
     const normalized={...ref,file:relative(paths.workspace,resolve(dirname(inputPath),ref.file))};

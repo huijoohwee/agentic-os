@@ -431,3 +431,27 @@ Unicode and shell-looking title text reaches PR creation intact, and multi-commi
 compatible. Scope: six source/test/doc modules, 40 KB, 20 active minutes; provider waits separate.
 GTM: use the native publication of this change as the free pilot; record CI attempts separately from
 execution and report only observed savings. Rollback reverts the checked source while retaining receipts.
+
+
+## Planning-bound startup evidence (WORKFLOW-OBS-006)
+
+Pass `--plan=<repository-relative-prd-tad-adr-mvp-gtm.md>` to the existing `agentic-os start`
+command to capture the initial immutable group root after preflight/context hydration and before
+worktree provisioning. The path must name a regular committed planning document at the fetched
+base revision; mixed-case native filenames are accepted. No path or plan is guessed. Calls without
+this option retain their existing behavior. A local non-host-qualified profile cannot opt into
+this GitHub-bound collector. Use the returned `workflow` JSON's `manifest` locator directly.
+
+The initial child contains every expected lifecycle phase as missing and unreported resources as
+unknown. It is a planning snapshot, not a successful preparation/admission receipt. If provisioning
+fails, its printed root survives with that same incomplete meaning. Identical inputs reuse exact
+bytes. There is no mutable latest file. Continue via existing `workflow collect`: retain the root's
+workflow/worktree identity, collect actual phase receipts at their original revisions, and bind
+`previous` when collecting its successor group. Existing JSON/SSE export and recommendations read
+these roots immediately. Production targets remain incomplete until separate deployment/runtime
+receipts are captured and independently verified by their owners. No stream polling is installed.
+
+Acceptance: initial root exists before provisioning; planning digest and tree match committed source;
+all absent phases and release evidence remain incomplete; repeated start capture reuses its root;
+invalid, absent or symbolic-link planning input fails before capture. Test: workflow collection suite.
+Rollback: omit `--plan` or revert startup integration; preserve all already collected evidence.
