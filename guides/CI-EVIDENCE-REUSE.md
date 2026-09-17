@@ -2,12 +2,12 @@
 title: Protected CI evidence reuse
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CI-EVIDENCE-001
-version: 1.0.0
-prd_revision: 1.0.0
-tad_revision: 1.0.0
-adr_revision: 1.0.0
-mvp_revision: 1.0.0
-gtm_revision: 1.0.0
+version: 1.1.0
+prd_revision: 1.1.0
+tad_revision: 1.1.0
+adr_revision: 1.1.0
+mvp_revision: 1.1.0
+gtm_revision: 1.1.0
 owner: agentic-os
 status: protected-consumer-reuse-observed
 load_policy: on-demand
@@ -22,7 +22,7 @@ Graph release run `34851156370` repeated `ci:integration` for 862 seconds on sou
 `413d798dfdec86d262eeacf03a2885bd658ca8d2` after its protected main Integration Gate passed.
 This is an observed duplication, not a measured saving from this implementation.
 The user authorized improving release, CI, Integration Gate and runtime economics on 2026-09-14.
-Paid plans, extra services, widened permissions and automatic production approval are excluded.
+Paid plans, extra services, increased write permissions and automatic production approval are excluded.
 
 | Criterion | Owner and validation |
 |---|---|
@@ -30,7 +30,7 @@ Paid plans, extra services, widened permissions and automatic production approva
 | C2: reject fork, stale, failed, skipped, partial and changed evidence | Provider/receipt rejection tests |
 | C3: reobserve the provider after downloading evidence | Attempt and artifact drift tests |
 | C4: unavailable evidence runs fresh validation | Consumer workflow fallback and CLI disposition |
-| C5: build, browser, live runtime and human authorization remain separate | Consumer release workflow |
+| C5: release build, live browser/runtime and human authorization remain separate | Consumer release workflow |
 
 ## TAD / CI-EVIDENCE-001
 
@@ -71,7 +71,7 @@ node "$CI_EVIDENCE" verify --policy=.agentic-os-ci-evidence.json \
 ```
 
 Records are limited to 64 KiB, run lookup to ten results, jobs/artifacts to 100 each,
-and provider lookup to eight calls within 30 seconds using the existing bounded adapter.
+and provider reads to twelve calls within 30 seconds using the existing bounded adapter.
 Git reads retain existing ten-second and 16 MiB bounds. Artifact download remains consumer-owned.
 Only GitHub-hosted workflows on github.com are supported initially; unsupported environments
 retain the fresh path. This is explicit provider scope, not a universal provider claim.
@@ -114,3 +114,41 @@ These are observed step durations and one avoided command, not a general speed b
 The consumer subsequently failed source-to-mirror parity because the schema document map
 lacked the new guide; deployment did not run. Build, parity, browser, human authorization,
 production availability and live sign-in retain separate results.
+
+
+## Merged source-plan reuse / CI-EVIDENCE-002
+
+PRD: the same Graph tree was validated by PR run 35202961742 and main run 35205041378.
+Mission validation took 518 and 567 seconds respectively; neither repetition nor a faster single
+sample establishes improvement. The release maintainer should execute a stable source plan once,
+then explain reuse through its original run while retaining current commit-specific checks.
+
+TAD: opt into `agentic-os/ci-evidence-policy/v2` with `reuse: merged-pr-tree` for a declared
+source-only command. Version 1 remains the exact-revision release contract. This is one shared
+owner with two explicit input-binding contracts, not a second cache or runner. Version 2 seals
+same-repository PR merge-checkout evidence and names its artifact
+`agentic-os-ci-source-evidence-<run>-<attempt>`. Main lookup requires the current protected tip,
+one exact merged PR, matching repository identities, the latest successful PR run/attempt, a
+successful named job/step, and current artifact identity. Verification reobserves all provider
+facts and resolves the tested merge commit's tree and both parents against the merged PR.
+Only the primary source revision may differ; tree, policy, helper bytes, dependencies, runner
+image, tools and declared environment remain exact. No fuzzy match or older-pass fallback exists.
+
+Consumer ownership: classify source-only checks and bind the exact expanded command selection.
+Keep PR metadata, merge/branch identity, mutable services, production/runtime readiness and
+approval gates outside the reusable plan. Do not omit an input simply to obtain a hit. A mismatch
+runs the original plan and reports the failed binding. Provider reads are capped at twelve calls
+and thirty seconds; the existing pinned download action still owns archive handling.
+
+ADR: reuse same-tree PR evidence only by explicit opt-in and a provider-verified merge join.
+Do not promote unsigned local receipts into provider proof. `recordCiStageReuse` projects only a
+verified result into the existing stage store: original run/revision linkage, current target,
+per-stage reused status, no fresh execution duration and unknown resource consumption. It does
+not add old CPU, memory, tokens or cash to current totals or train performance feedback on reuse.
+Existing JSON/SSE, CLI and MCP observation paths read that single stage store.
+
+MVP: tests cover distinct revisions with equal trees, parent/merge/fork mismatch, newer failures,
+changed tools/dependencies/environment, preserved exact-revision semantics and native reused
+observations. Adoption requires the protected OS revision and source-owner workflow checks.
+GTM: measure avoided command executions and lookup overhead on a real PR-to-main transition.
+There is no paid infrastructure, production authority, guaranteed latency or cash-saving claim.

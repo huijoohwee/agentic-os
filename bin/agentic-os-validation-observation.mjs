@@ -75,12 +75,19 @@ export function validationObservation(receipt, exportedAt = Date.now(), offset =
     observedOutputBytes: number(receipt.active.observedOutputBytes), outputTruncated: false, resources: resourceObservation({}) } : null;
   if (active && ids.has(active.id)) fail();
   const all = active ? [...stages, active] : stages, visible = all.slice(offset, offset + 128);
+  const reuse = receipt.reuseEvidence;
+  if (reuse && (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/actions\/runs\/[1-9][0-9]*$/u.test(reuse.runUrl)
+    || !Number.isSafeInteger(reuse.runId) || reuse.runId < 1 || !Number.isSafeInteger(reuse.runAttempt) || reuse.runAttempt < 1
+    || !/^[a-f0-9]{64}$/u.test(reuse.inputDigest) || !/^[a-f0-9]{40}$/u.test(reuse.sourceRevision)
+    || reuse.targetRevision !== source.revision || stages.some(s => s.status !== 'reused'))) fail();
   const output = { schema: VALIDATION_OBSERVATION_SCHEMA, authority: false, exportedAt,
     source: { repository: source.repository, revision: source.revision, tree: source.tree, dirty: source.dirty },
     runId: `validation-${hash(JSON.stringify([source, receipt.startedAt])).slice(0, 24)}`,
     executionOrder: receipt.executionOrder === 'concurrent' ? 'concurrent' : 'sequential',
     status: receipt.outcome, startedAt: receipt.startedAt, finishedAt: number(receipt.finishedAt),
     elapsedMs: number(receipt.elapsedMs), stages: visible,
+    ...(reuse ? { reuseEvidence: { runUrl: reuse.runUrl, runId: reuse.runId, runAttempt: reuse.runAttempt,
+      inputDigest: reuse.inputDigest, sourceRevision: reuse.sourceRevision, targetRevision: reuse.targetRevision } } : {}),
     ...(receipt.feedbackError || receipt.costObservationError ? { feedbackUnavailable: true } : {}),
     ...(receipt.feedback === undefined ? {} : { feedback: feedbackProjection(receipt.feedback) }),
     resources: { observedOutputBytes: number(receipt.observedOutputBytes), emittedDiagnosticBytes: number(receipt.emittedDiagnosticBytes),
