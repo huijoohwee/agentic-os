@@ -6,14 +6,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { captureCiInputs, sealCiEvidence, lookupCiEvidence, verifyCiEvidence,
-  validateCiEvidencePolicy, ciEvidenceArguments } from '../bin/agentic-os-ci-evidence.mjs';
+  validateCiEvidencePolicy, ciEvidenceArguments, evidenceArtifactName } from '../bin/agentic-os-ci-evidence.mjs';
 
+import { recordCiStageReuse } from '../bin/agentic-os-validation-stages.mjs';
+import { validationObservation } from '../bin/agentic-os-validation-observation.mjs';
+import { governanceDigest } from '../src/governance.mjs';
 const policy = () => ({ schema: 'agentic-os/ci-evidence-policy/v1', repository: 'github.com/owner/app',
   workflow: '.github/workflows/integration.yml', branch: 'main', job: 'Integration Gate',
   step: 'Check source', command: ['npm', 'run', 'check'], maxAgeSeconds: 3600,
   dependencies: [{ id: 'docs', repository: 'github.com/owner/docs', path: '../docs' }], environment: ['NODE_OPTIONS'] });
 const now = Date.parse('2026-09-14T14:00:00Z');
-function fixture(t) {
+function fixture(t, policyValue = policy()) {
   const folder = mkdtempSync(join(tmpdir(), 'ci-evidence-')); t.after(() => rmSync(folder, { recursive: true, force: true }));
   const root = join(folder, 'app'), docs = join(folder, 'docs');
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -22,7 +25,7 @@ function fixture(t) {
     git(cwd, 'config', 'user.email', 'test@example.invalid'); git(cwd, 'config', 'core.hooksPath', '/dev/null');
     git(cwd, 'remote', 'add', 'origin', `https://github.com/owner/${repo}.git`);
     writeFileSync(join(cwd, 'source.txt'), 'source\n');
-    if (repo === 'app') writeFileSync(join(cwd, 'policy.json'), JSON.stringify(policy()));
+    if (repo === 'app') writeFileSync(join(cwd, 'policy.json'), JSON.stringify(policyValue));
     git(cwd, 'add', '.'); git(cwd, 'commit', '-m', 'fixture');
   }
   const env = { GITHUB_ACTIONS: 'true', GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'owner/app',
@@ -133,4 +136,56 @@ test('the real CLI falls back without leaking input or contacting a provider out
   assert.equal(result.reused, false); assert.equal(result.authority, false);
   assert.equal(result.reason, 'blocked-ci-evidence:runner-context');
   assert.equal(stdout.includes('do-not-print'), false);
+});
+
+function treeFixture(t) {
+  const f = fixture(t, { ...policy(), schema: 'agentic-os/ci-evidence-policy/v2', reuse: 'merged-pr-tree' });
+  const base = 'a'.repeat(40), head = 'b'.repeat(40), tested = 'c'.repeat(40);
+  f.pull = { number: 10, merged: true, state: 'closed', merged_at: new Date(now - 500).toISOString(),
+    merge_commit_sha: f.env.GITHUB_SHA, base: { ref: 'main', sha: base, repo: { id: 7, full_name: 'owner/app' } },
+    head: { ref: 'agent/test', sha: head, repo: { id: 7, full_name: 'owner/app' } } };
+  Object.assign(f.run, { event: 'pull_request', head_sha: head, head_branch: 'agent/test' });
+  f.job.head_sha = head; f.artifact.name = evidenceArtifactName(100, 1, f.current.policy); f.artifact.workflow_run.head_sha = head;
+  const producer = structuredClone(f.current); producer.input.sources[0].revision = tested;
+  producer.inputDigest = governanceDigest(producer.input);
+  f.evidence = sealCiEvidence(producer, producer, { ...f.env, GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_REF: 'refs/pull/10/merge', GITHUB_WORKFLOW_REF: 'owner/app/.github/workflows/integration.yml@refs/pull/10/merge' }, now - 2000);
+  f.commit = { sha: tested, tree: { sha: producer.input.sources[0].tree }, parents: [{ sha: base }, { sha: head }] };
+  const original = f.api;
+  f.api = endpoint => endpoint.includes('/git/commits/') ? structuredClone(f.commit)
+    : endpoint.endsWith('/pulls?per_page=10') ? [structuredClone(f.pull)]
+    : endpoint.endsWith('/pulls/10') ? structuredClone(f.pull) : original(endpoint);
+  return f;
+}
+test('explicit tree policy joins the merged PR and tested merge tree across distinct revisions', t => {
+  const f = treeFixture(t), lookup = lookupCiEvidence(f.current, f.api, now);
+  const result = verifyCiEvidence(f.evidence, f.current, lookup, f.api, now);
+  assert.equal(result.reused, true); assert.equal(result.basis, 'merged-pr-tree');
+  assert.notEqual(result.source.revision, result.target.revision);
+  assert.equal(result.source.tree, result.target.tree); assert.equal(result.authority, false);
+  const observation = validationObservation(recordCiStageReuse(f.root, [{ id: 'native-source-check' }], result));
+  assert.equal(observation.stages[0].status, 'reused'); assert.equal(observation.resources.cpuMs, null);
+  assert.equal(observation.resources.coverage.expectedStages, 0); assert.equal(observation.reuseEvidence.runId, 100);
+  assert.throws(() => recordCiStageReuse(f.root, [{ id: 'native-source-check' }], { ...result, reused: false }), /blocked-ci-stage/);
+  assert.equal(captureCiInputs(f.root, 'policy.json', { ...f.env, GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/10/merge' }).inputDigest, f.current.inputDigest);
+  assert.throws(() => captureCiInputs(f.root, 'policy.json', { ...f.env, GITHUB_EVENT_NAME: 'pull_request_target', GITHUB_REF: 'refs/pull/10/merge' }), /runner-context/);
+});
+test('tree reuse rejects foreign or ambiguous merges, altered parentage, inputs and newer failed runs', t => {
+  const f = treeFixture(t), baseline = { pull: structuredClone(f.pull), commit: structuredClone(f.commit), data: structuredClone(f.data) };
+  for (const mutate of [
+    () => { f.pull.merged = false; }, () => { f.pull.merge_commit_sha = 'f'.repeat(40); },
+    () => { f.pull.head.repo.id = 999; }, () => { f.pull.base.ref = 'other'; },
+    () => { f.commit.tree.sha = 'e'.repeat(40); }, () => { f.commit.parents.reverse(); },
+    () => { f.data.runs.workflow_runs[0].conclusion = 'failure'; },
+  ]) {
+    f.pull = structuredClone(baseline.pull); f.commit = structuredClone(baseline.commit); Object.assign(f.data, structuredClone(baseline.data));
+    mutate(); assert.throws(() => { const l = lookupCiEvidence(f.current, f.api, now); verifyCiEvidence(f.evidence, f.current, l, f.api, now); }, /blocked-ci-evidence/);
+  }
+  f.pull = baseline.pull; f.commit = baseline.commit; Object.assign(f.data, baseline.data);
+  const lookup = lookupCiEvidence(f.current, f.api, now);
+  for (const mutate of [i => { i.sources[0].tree = 'd'.repeat(40); }, i => { i.sources[1].revision = 'e'.repeat(40); },
+    i => { i.environmentDigest = 'e'.repeat(64); }, i => { i.runner.ImageVersion = 'other'; }, i => { i.sources[0].revision = '../wrong'; }]) {
+    const e = structuredClone(f.evidence); mutate(e.input); e.inputDigest = governanceDigest(e.input);
+    assert.throws(() => verifyCiEvidence(e, f.current, lookup, f.api, now), /blocked-ci-evidence/);
+  }
 });

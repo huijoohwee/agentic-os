@@ -95,3 +95,25 @@ export async function runValidationStages(root, stages, { out = console.log } = 
     try { save(); } finally { release(); }
   }
 }
+
+/** Project a provider-verified plan reuse; never count historical execution as current consumption. */
+export function recordCiStageReuse(root, stages, verified) {
+  const revision = readGit(root, ['rev-parse', 'HEAD']).trim(), tree = readGit(root, ['rev-parse', 'HEAD^{tree}']).trim();
+  if (verified?.reused !== true || verified.basis !== 'merged-pr-tree' || verified.authority !== false
+    || verified.target?.revision !== revision || verified.target.tree !== tree || verified.source?.tree !== tree
+    || !Array.isArray(stages) || !stages.length || stages.length > 128
+    || new Set(stages.map(s => s.id)).size !== stages.length
+    || stages.some(s => !/^[a-z][a-z0-9.-]{0,95}$/u.test(s.id))) throw Error('blocked-ci-stage-reuse');
+  const dirty = Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim());
+  if (dirty) throw Error('blocked-ci-stage-source-drift');
+  const at = Date.now(), directory = validationStageDirectory(root), release = lockReceipts(directory);
+  const receipt = { schema: STAGES_SCHEMA, authority: false, source: { ...verified.target, dirty },
+    startedAt: at, finishedAt: at, elapsedMs: 0, expectedStages: stages.length, outcome: 'passed', active: null,
+    observedOutputBytes: 0, emittedDiagnosticBytes: 0,
+    reuseEvidence: { runUrl: verified.runUrl, runId: verified.runId, runAttempt: verified.runAttempt,
+      inputDigest: verified.evidenceInputDigest, sourceRevision: verified.source.revision, targetRevision: revision },
+    results: stages.map(s => ({ id: s.id, reused: true, exitCode: 0, startedAt: at, finishedAt: at,
+      elapsedMs: 0, observedOutputBytes: 0, outputTruncated: false })) };
+  try { writeReceipt(directory, STAGES_FILE, receipt); } finally { release(); }
+  return receipt;
+}

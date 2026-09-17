@@ -7,9 +7,15 @@ import { gh, remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { hash, readGit, readRegular, safePath } from './agentic-os-test-inputs.mjs';
 
 export const CI_EVIDENCE = 'agentic-os/protected-ci-evidence/v1';
-const POLICY = 'agentic-os/ci-evidence-policy/v1', INPUT = 'agentic-os/ci-evidence-input/v1';
+const POLICY = 'agentic-os/ci-evidence-policy/v1', TREE_POLICY = 'agentic-os/ci-evidence-policy/v2', INPUT = 'agentic-os/ci-evidence-input/v1';
 const HEX = /^[a-f0-9]{40}$/u, DIGEST = /^[a-f0-9]{64}$/u, MAX_BYTES = 65_536;
 const fail = reason => { throw new Error(`blocked-ci-evidence:${reason}`); };
+const treePolicy = p => p?.schema === TREE_POLICY;
+const comparisonInput = (input, policy) => {
+  if (!treePolicy(policy)) return input;
+  if (!Array.isArray(input?.sources) || input.sources[0]?.id !== 'source' || !HEX.test(input.sources[0].revision)) fail('evidence-binding');
+  return { ...input, sources: input.sources.map(s => s.id === 'source' ? { ...s, revision: null } : s) };
+};
 const same = (a, b) => canonicalJson(a) === canonicalJson(b);
 const integer = n => Number.isSafeInteger(n) && n > 0;
 const text = s => typeof s === 'string' && s.length > 0 && s.length <= 256 && !/[\x00-\x1f]/u.test(s);
@@ -23,8 +29,8 @@ function save(file, value) {
   writeFileSync(resolve(file), bytes, { flag: 'wx', mode: 0o600 });
 }
 export function validateCiEvidencePolicy(p) {
-  if (!exact(p, ['schema', 'repository', 'workflow', 'branch', 'job', 'step', 'command', 'dependencies', 'environment', 'maxAgeSeconds'])
-    || p.schema !== POLICY || !/^github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(p.repository)
+  if (!exact(p, ['schema', 'repository', 'workflow', 'branch', 'job', 'step', 'command', 'dependencies', 'environment', 'maxAgeSeconds', ...(p?.schema === TREE_POLICY ? ['reuse'] : [])])
+    || ![POLICY, TREE_POLICY].includes(p.schema) || treePolicy(p) && p.reuse !== 'merged-pr-tree' || !/^github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(p.repository)
     || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(p.workflow)
     || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/u.test(p.branch) || p.branch.includes('..')
     || !text(p.job) || !text(p.step) || !Array.isArray(p.command) || !p.command.length || p.command.length > 16
@@ -57,7 +63,9 @@ export function captureCiInputs(root, policyFile, environment = process.env) {
     ...policy.dependencies.map(d => ({ id: d.id, ...sourceIdentity(resolve(root, d.path), d.repository) }))];
   if (environment.GITHUB_ACTIONS !== 'true' || environment.GITHUB_SERVER_URL !== 'https://github.com'
     || environment.GITHUB_REPOSITORY !== policy.repository.slice(11)
-    || environment.GITHUB_SHA !== sources[0].revision || environment.GITHUB_REF !== `refs/heads/${policy.branch}`
+    || environment.GITHUB_SHA !== sources[0].revision
+    || !(environment.GITHUB_REF === `refs/heads/${policy.branch}`
+      || treePolicy(policy) && environment.GITHUB_EVENT_NAME === 'pull_request' && /^refs\/pull\/[1-9][0-9]*\/merge$/u.test(environment.GITHUB_REF))
     || environment.RUNNER_ENVIRONMENT !== 'github-hosted'
     || !['ImageOS', 'ImageVersion', 'RUNNER_OS', 'RUNNER_ARCH'].every(k => text(environment[k]))) fail('runner-context');
   const facts = Object.fromEntries(['ImageOS', 'ImageVersion', 'RUNNER_OS', 'RUNNER_ARCH'].map(k => [k, environment[k]]));
@@ -68,21 +76,23 @@ export function captureCiInputs(root, policyFile, environment = process.env) {
   return { policy, input, inputDigest: digest(input) };
 }
 export function sealCiEvidence(before, current, environment = process.env, now = Date.now()) {
-  if (!same(before, current) || environment.GITHUB_EVENT_NAME !== 'push'
-    || environment.GITHUB_WORKFLOW_REF !== `${current.policy.repository.slice(11)}/${current.policy.workflow}@refs/heads/${current.policy.branch}`
+  const eventAllowed = environment.GITHUB_EVENT_NAME === 'push' && environment.GITHUB_REF === `refs/heads/${current.policy.branch}`
+    || treePolicy(current.policy) && environment.GITHUB_EVENT_NAME === 'pull_request' && /^refs\/pull\/[1-9][0-9]*\/merge$/u.test(environment.GITHUB_REF);
+  if (!same(before, current) || !eventAllowed
+    || environment.GITHUB_WORKFLOW_REF !== `${current.policy.repository.slice(11)}/${current.policy.workflow}@${environment.GITHUB_REF}`
     || !integer(Number(environment.GITHUB_RUN_ID)) || !integer(Number(environment.GITHUB_RUN_ATTEMPT))) fail('seal-context');
   return { schema: CI_EVIDENCE, authority: false, input: current.input, inputDigest: current.inputDigest,
     runId: Number(environment.GITHUB_RUN_ID), runAttempt: Number(environment.GITHUB_RUN_ATTEMPT),
     workflow: current.policy.workflow, job: current.policy.job, step: current.policy.step,
     command: current.policy.command, sealedAt: new Date(now).toISOString() };
 }
-function runBinding(run, policy, current, now) {
+function runBinding(run, policy, current, now, pull = null) {
   const repo = policy.repository.slice(11);
   if (!integer(run?.id) || !integer(run.run_attempt) || !integer(run.workflow_id)
     || run.repository?.full_name !== repo || run.head_repository?.full_name !== repo
     || run.repository?.id !== run.head_repository?.id || !integer(run.repository.id)
-    || run.head_sha !== current.input.sources[0].revision || run.head_branch !== policy.branch
-    || run.event !== 'push' || run.path !== policy.workflow || run.status !== 'completed' || run.conclusion !== 'success'
+    || run.head_sha !== (pull?.head ?? current.input.sources[0].revision) || run.head_branch !== (pull?.branch ?? policy.branch)
+    || run.event !== (pull ? 'pull_request' : 'push') || run.path !== policy.workflow || run.status !== 'completed' || run.conclusion !== 'success'
     || !Number.isFinite(Date.parse(run.run_started_at)) || !Number.isFinite(Date.parse(run.updated_at))
     || Date.parse(run.updated_at) > now || now - Date.parse(run.run_started_at) > policy.maxAgeSeconds * 1000
     || run.html_url !== `https://github.com/${repo}/actions/runs/${run.id}`) fail('run-not-reusable');
@@ -102,16 +112,31 @@ function artifactBinding(artifact, run, name) {
     || artifact.workflow_run?.head_repository_id !== run.repository.id) fail('artifact-binding');
   return artifact;
 }
-export function evidenceArtifactName(runId, attempt) { return `agentic-os-ci-evidence-${runId}-${attempt}`; }
+export function evidenceArtifactName(runId, attempt, policy) { return `agentic-os-ci-${treePolicy(policy ?? {}) ? 'source-' : ''}evidence-${runId}-${attempt}`; }
+function mergedPull(current, api) {
+  const { policy, input } = current, repo = policy.repository.slice(11), revision = input.sources[0].revision;
+  const values = api(`repos/${repo}/commits/${revision}/pulls?per_page=10`);
+  if (!Array.isArray(values) || !values.length || values.length >= 10) fail('pull-inventory');
+  const matches = values.filter(p => p.merge_commit_sha === revision && p.merged_at);
+  if (matches.length !== 1 || !integer(matches[0].number)) fail('merged-pull');
+  const p = api(`repos/${repo}/pulls/${matches[0].number}`);
+  if (p.number !== matches[0].number || p.merged !== true || p.state !== 'closed' || p.merge_commit_sha !== revision
+    || p.base?.ref !== policy.branch || p.base.repo?.full_name !== repo || p.head?.repo?.full_name !== repo
+    || !integer(p.base.repo.id) || p.base.repo.id !== p.head.repo.id
+    || !HEX.test(p.base.sha) || !HEX.test(p.head.sha) || !text(p.head.ref)) fail('merged-pull');
+  return { number: p.number, base: p.base.sha, head: p.head.sha, branch: p.head.ref, merge: revision, repositoryId: p.base.repo.id };
+}
 /** Provider must be a current authenticated GitHub API reader; local receipts alone never qualify. */
 export function lookupCiEvidence(current, api, now = Date.now()) {
   const { policy } = current, repo = policy.repository.slice(11), base = `repos/${repo}`;
   const branch = api(`${base}/branches/${encodeURIComponent(policy.branch)}`);
   if (branch?.protected !== true || branch.commit?.sha !== current.input.sources[0].revision) fail('protected-tip');
-  const payload = api(`${base}/actions/workflows/${encodeURIComponent(policy.workflow.split('/').at(-1))}/runs?head_sha=${current.input.sources[0].revision}&event=push&per_page=10`);
+  const pull = treePolicy(policy) ? mergedPull(current, api) : null;
+  const payload = api(`${base}/actions/workflows/${encodeURIComponent(policy.workflow.split('/').at(-1))}/runs?head_sha=${pull?.head ?? current.input.sources[0].revision}&event=${pull ? 'pull_request' : 'push'}&per_page=10`);
   const runs = items(payload, 'workflow_runs', 10).sort((a, b) => b.id - a.id);
   // Never select an older pass behind a newer pending, failed or cancelled run.
-  const run = runBinding(runs[0], policy, current, now);
+  const run = runBinding(runs[0], policy, current, now, pull);
+  if (pull && run.repository.id !== pull.repositoryId) fail('pull-repository');
   const jobs = items(api(`${base}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`), 'jobs', 100);
   const selected = jobs.filter(j => j.name === policy.job);
   if (selected.length !== 1) fail('job-identity');
@@ -119,13 +144,13 @@ export function lookupCiEvidence(current, api, now = Date.now()) {
   if (!integer(job.id) || job.run_id !== run.id || job.head_sha !== run.head_sha || job.run_attempt !== run.run_attempt
     || job.status !== 'completed' || job.conclusion !== 'success' || steps?.length !== 1
     || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') fail('job-not-passed');
-  const name = evidenceArtifactName(run.id, run.run_attempt);
+  const name = evidenceArtifactName(run.id, run.run_attempt, policy);
   const artifacts = items(api(`${base}/actions/runs/${run.id}/artifacts?per_page=100`), 'artifacts', 100)
     .filter(a => a.name === name);
   if (artifacts.length !== 1) fail('artifact-identity');
   const artifact = artifactBinding(artifacts[0], run, name);
   return { schema: 'agentic-os/ci-evidence-lookup/v1', authority: false,
-    inputDigest: current.inputDigest, runId: run.id, runAttempt: run.run_attempt,
+    inputDigest: current.inputDigest, ...(pull ? { pull } : {}), runId: run.id, runAttempt: run.run_attempt,
     runUrl: run.html_url, workflowId: run.workflow_id, jobId: job.id, artifactId: artifact.id,
     artifactName: name, artifactDigest: artifact.digest, observedAt: new Date(now).toISOString() };
 }
@@ -135,14 +160,22 @@ export function verifyCiEvidence(evidence, current, previousLookup, api, now = D
   if (!same(binding(observed), binding(previousLookup))) fail('provider-drift');
   if (!exact(evidence, ['schema', 'authority', 'input', 'inputDigest', 'runId', 'runAttempt', 'workflow', 'job', 'step', 'command', 'sealedAt'])
     || evidence.schema !== CI_EVIDENCE || evidence.authority !== false
-    || !same(evidence.input, current.input) || evidence.inputDigest !== current.inputDigest
+    || !same(comparisonInput(evidence.input, current.policy), comparisonInput(current.input, current.policy))
+    || !treePolicy(current.policy) && evidence.inputDigest !== current.inputDigest
     || digest(evidence.input) !== evidence.inputDigest || !DIGEST.test(evidence.inputDigest)
     || evidence.runId !== observed.runId || evidence.runAttempt !== observed.runAttempt
     || evidence.workflow !== current.policy.workflow || evidence.job !== current.policy.job
     || evidence.step !== current.policy.step || !same(evidence.command, current.policy.command)
     || !Number.isFinite(Date.parse(evidence.sealedAt)) || Date.parse(evidence.sealedAt) > now
     || now - Date.parse(evidence.sealedAt) > current.policy.maxAgeSeconds * 1000) fail('evidence-binding');
+  if (treePolicy(current.policy)) {
+    const source = evidence.input.sources[0], commit = api(`repos/${current.policy.repository.slice(11)}/git/commits/${source.revision}`);
+    if (commit?.sha !== source.revision || commit.tree?.sha !== source.tree
+      || !same(commit.parents?.map(p => p.sha), [observed.pull.base, observed.pull.head])) fail('tested-merge-binding');
+  }
   return { schema: 'agentic-os/ci-evidence-reuse/v1', authority: false, reused: true,
+    ...(treePolicy(current.policy) ? { source: evidence.input.sources[0], target: current.input.sources[0],
+      basis: 'merged-pr-tree', evidenceInputDigest: evidence.inputDigest } : {}),
     inputDigest: current.inputDigest, runUrl: observed.runUrl, runId: observed.runId,
     runAttempt: observed.runAttempt, artifactId: observed.artifactId, artifactDigest: observed.artifactDigest,
     command: current.policy.command, observedAt: observed.observedAt };
@@ -151,7 +184,7 @@ function provider(root) {
   const deadline = Date.now() + 30_000; let calls = 0;
   return endpoint => {
     const remaining = deadline - Date.now();
-    if (++calls > 8 || remaining <= 0) fail('provider-budget');
+    if (++calls > 12 || remaining <= 0) fail('provider-budget');
     const value = gh(['api', endpoint, '--hostname', 'github.com'], { cwd: root, timeoutMs: Math.min(10_000, remaining) });
     if (value === null || Buffer.byteLength(JSON.stringify(value)) > 512_000) fail('provider-unavailable');
     return value;
