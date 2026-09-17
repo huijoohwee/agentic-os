@@ -8,6 +8,7 @@ import { acquireDirectoryLock, finishOperationLock } from './file-integrity.mjs'
 import { commonDir, git } from './git.mjs';
 import { projectLegacyLaneCache } from './lane-cache-legacy.mjs';
 import { isLaneRef } from './lane-id.mjs';
+import { WORKSPACE_CACHE_SCHEMA, encodeWorkspaceLaneCache, decodeWorkspaceLaneCache } from './lane-cache-legacy.mjs';
 export const SCHEMA = 'agentic-os/lanes/v1';
 export const CACHE_REF = 'refs/agentic-os/cache/lanes-v1';
 export const CACHE_LIMITS = Object.freeze({
@@ -176,7 +177,7 @@ function parentIdentity(path) {
     throw invalid(`directory must be owned by the current user: ${path}`);
   return stat;
 }
-function parseBytes(bytes) {
+function parseBytes(bytes, cwd) {
   let text;
   try { text = UTF8.decode(bytes); } catch (error) {
     throw invalid('must be UTF-8', error);
@@ -185,6 +186,8 @@ function parseBytes(bytes) {
   try { parsed = JSON.parse(text); } catch (error) {
     throw invalid('must be JSON', error);
   }
+  if (parsed?.schema === WORKSPACE_CACHE_SCHEMA)
+    parsed = decodeWorkspaceLaneCache(parsed, cwd, SCHEMA, CACHE_LIMITS);
   try { return normalizeStore(parsed); } catch (error) {
     const projected = projectLegacyLaneCache(parsed, SCHEMA); if (!projected) throw error;
     return normalizeStore(projected);
@@ -242,7 +245,7 @@ function loadSnapshot(cwd) {
     const after = directRefOid(cwd);
     if (after !== null) throw invalid(`ref appeared during legacy observation: ${CACHE_REF}`);
     return Object.freeze({
-      store: legacy.bytes ? parseBytes(legacy.bytes) : empty(),
+      store: legacy.bytes ? parseBytes(legacy.bytes, cwd) : empty(),
       cursor: Object.freeze({ oid: null, legacy }),
     });
   }
@@ -259,8 +262,10 @@ function loadSnapshot(cwd) {
   if (computed !== before) throw invalid(`ref blob identity mismatch: ${CACHE_REF}`);
   const after = directRefOid(cwd);
   if (after !== before) throw invalid(`ref changed during observation: ${CACHE_REF}`);
+  const store = parseBytes(bytes, cwd);
+  if (directRefOid(cwd) !== before) throw invalid(`ref changed during hydration: ${CACHE_REF}`);
   return Object.freeze({
-    store: parseBytes(bytes), cursor: Object.freeze({ oid: before, legacy: null }),
+    store, cursor: Object.freeze({ oid: before, legacy: null }),
   });
 }
 export function load(cwd = process.cwd()) {
@@ -268,7 +273,7 @@ export function load(cwd = process.cwd()) {
 }
 function publish(value, cwd, expected, artifacts = null) {
   const store = normalizeStore(value);
-  const bytes = Buffer.from(`${JSON.stringify(store)}\n`);
+  const bytes = Buffer.from(`${JSON.stringify(encodeWorkspaceLaneCache(store, cwd, CACHE_LIMITS))}\n`);
   if (bytes.length > CACHE_LIMITS.bytes) throw invalid('write byte budget exceeded');
   const candidateOid = git(['hash-object', '-w', '--stdin'], { cwd, input: bytes });
   if (artifacts) Object.assign(artifacts, {

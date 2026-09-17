@@ -21,12 +21,31 @@ GitHub/.workspace/       one Git repository and remote
   .memory/              curated knowledge; generated indexes stay in .git locally
   .todo/                immutable task records and current Kanban coordination
   .artifacts/           local evidence; only its README is shared in essential publication mode
+  .local/lane-cache/    clone-scoped immutable lane records; never shared
 ```
 
 `agentic-os` owns startup composition; each subfolder has one content responsibility.
 Hidden names do not establish privacy. Verify repository visibility and keep device credentials,
 Git metadata, caches and personal assistant indexes local. Historical references retain their
 original identities; new content links use the consolidated source and an exact commit.
+
+Opt in once with `git config --local agentic-os.laneCacheStorage workspace-v1` after upgrading
+the clone's clients. Local lane metadata then lives in `.local/lane-cache/<clone-digest>/<record-digest>.json`
+under the selected `agentic-os.workspaceRoot`, or the sibling `.workspace` when not selected.
+This storage opt-in does not enroll shared context or require a private workspace remote.
+The existing clone-common Git ref remains the atomic compare-and-swap index; it contains digests
+and byte counts, not record bodies. The first successful write migrates the accepted v1 cache in
+memory and retains its original Git blob and legacy file. Clones without the opt-in retain v1 behavior.
+Upgrade every CLI using the same clone before the first workspace-cache write: older clients
+fail closed on the new index. Changing or removing enrollment also fails closed; preserve the
+original workspace and records. This is local storage, not multi-device claim authority.
+
+Each record and index stays below 500,000 bytes, with at most 1,024 records and 8 MB total payload;
+existing schema, node, string and array limits still apply. Records use exclusive private writes
+and exact digest verification; unchanged records are reused. Concurrent updates reuse the existing
+clone lock and Git CAS. No record eviction, automatic garbage collection, network sync or public
+publication is added. Missing, altered, aliased or mismatched records reject the observation.
+Validate with `node --test __tests__/lane-cache-workspace.test.mjs __tests__/lane-cache-publication-race.test.mjs`.
 
 ## Enroll once per consuming clone
 
