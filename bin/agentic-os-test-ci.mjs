@@ -29,6 +29,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const head = readGit(root, ['rev-parse', 'HEAD']).trim();
     const parents = readGit(root, ['show', '-s', '--format=%P', head]).trim().split(' ');
     if (process.env.GITHUB_SHA !== head) throw new Error('blocked-test-ci-checkout');
-    process.exitCode = await runTests(ciArguments(JSON.parse(bytes), process.env.GITHUB_EVENT_NAME, head, parents));
+    process.exitCode = await runTests(ciArguments(JSON.parse(bytes), process.env.GITHUB_EVENT_NAME, head, parents), { ci: true });
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

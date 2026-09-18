@@ -156,3 +156,27 @@ test('release pool waits for active work after a rejection and runs every succes
  const result=runCheckPool(checks,async check=>{if(check.name==='6')throw Error('drift');await gate;done=true;return true});
  release();await assert.rejects(result,/drift/);assert.equal(done,true);
 });
+
+
+test('CI executes behavior once, leaves budgets unobserved, and local validation still runs evaluators', async t => {
+  const f = fixture(t, { evaluator: 'node -e "process.exit(9)"' });
+  mkdirSync(join(f.root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(f.root, '.github/workflows/ci.yml'), readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url)));
+  f.git('add', '.'); f.git('commit', '-qm', 'required CI contract');
+  const revision = f.git('rev-parse', 'HEAD');
+  const env = { GITHUB_ACTIONS: 'true', GITHUB_JOB: 'test', GITHUB_SHA: revision, GITHUB_REPOSITORY: 'example/owner',
+    GITHUB_WORKFLOW_REF: 'example/owner/.github/workflows/ci.yml@refs/heads/main', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1' };
+  const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
+  Object.assign(process.env, env);
+  t.after(() => { for (const [key, value] of Object.entries(previous))
+    value === undefined ? delete process.env[key] : process.env[key] = value; });
+  assert.equal(await runTests(['affected', '--base=HEAD', '--committed', '--fresh'],
+    { root: f.root, ci: true, out: () => {} }), 0);
+  const receipt = f.receipt();
+  assert.equal(receipt.results.length, 1); assert.equal(receipt.results[0].name, '__tests__/small.test.mjs');
+  assert.equal(receipt.results[0].reused, false);
+  assert.equal(receipt.externalRequiredChecks[0].status, 'not-observed');
+  await assert.rejects(runTests(['affected', '--base=HEAD'], { root: f.root, ci: true }), /ci-options/);
+  assert.equal(await f.invoke(['--fresh']), 1, 'local entrypoint must execute the failing evaluator');
+  assert.equal(f.receipt().results[0].exitCode, 9);
+});

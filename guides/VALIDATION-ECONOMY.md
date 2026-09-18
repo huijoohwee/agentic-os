@@ -552,3 +552,23 @@ release-routing prose changes only in its existing workflow document.
 GTM: use the current release loop as the free pilot. Report prevented executions and measured timing
 separately from provider waits; no CPU, token, cash or savings claim without compatible observations.
 Rollback is a checked source revert; preserve failed runs and private receipts.
+
+
+## CI gate allocation (ADLC-OBS-005@0.1.0)
+
+PRD: execute Agentic OS readiness/doc/module evaluators once per CI run. The required `budgets`
+job owns them; `test` owns affected behavior and packaging. Both statuses remain required. Avoid
+serializing the jobs, another runner, artifact transfer, cache, or an unchanged second evaluator.
+
+TAD/ADR: `check:ci` binds the event checkout and verifies the exact existing budgets workflow contract,
+current test job, workflow ref, run and attempt before allocating evaluator coverage. Contract drift
+blocks the test job. The native receipt/export records that separate gate as `not-observed`; this is
+allocation, never proof of a passed gate or permission to merge. Local `check` retains evaluators first.
+
+MVP: reject missing/changed ownership and wrong revisions; prove one behavior execution without the
+second evaluator, local evaluator failure propagation, and honest exported coverage. Run the affected
+checks and protected `test` plus `budgets` gates. Roll back through a source revert preserving receipts.
+
+GTM: compare compatible CI observations before claiming elapsed or cash savings. This removes one
+known evaluator invocation, not a measured number of seconds. Bound this slice to seven files, 30 KB
+and 20 active minutes; external CI wait is separate. No always-loaded prompt or required gate changes.

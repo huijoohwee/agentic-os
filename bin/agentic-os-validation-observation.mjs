@@ -10,6 +10,16 @@ export const VALIDATION_OBSERVATION_SCHEMA = 'agentic-os/validation-observation/
 const fail = () => { throw Error('blocked-validation-observation'); };
 const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 const identifier = value => typeof value === 'string' && /^[a-z][a-z0-9.-]{0,95}$/u.test(value) ? value : fail();
+function externalChecks(receipt, revision) {
+  const external = receipt.externalRequiredChecks ?? [];
+  if (!Array.isArray(external) || external.length > 1 || external.some(check => check.name !== 'budgets'
+    || check.workflow !== '.github/workflows/ci.yml' || !/^[a-f0-9]{64}$/u.test(check.workflowDigest)
+    || check.revision !== revision || !/^[1-9][0-9]*$/u.test(check.runId)
+    || !/^[1-9][0-9]*$/u.test(check.runAttempt) || check.status !== 'not-observed'
+    || Object.keys(check).length !== 7)) fail();
+  return external;
+}
+
 function feedbackProjection(value) {
   if (value === undefined) return undefined;
   if (value?.status !== 'advisory' || value.authority !== false || !Array.isArray(value.ranking) || value.ranking.length > 5) fail();
@@ -58,6 +68,7 @@ export function validationObservation(receipt, exportedAt = Date.now(), offset =
     || source.dirty !== null && typeof source.dirty !== 'boolean' || number(receipt.startedAt) === null
     || !['running', 'passed', 'failed', 'blocked'].includes(receipt.outcome)) fail();
   if (!Number.isInteger(offset) || offset < 0 || offset % 128 || offset > Math.max(0, receipt.results.length - 1)) fail();
+  const external = externalChecks(receipt, source.revision);
   const ids = new Set();
   const stages = receipt.results.map(value => {
     const id = identifier(value.id); if (ids.has(id)) fail(); ids.add(id);
@@ -93,7 +104,8 @@ export function validationObservation(receipt, exportedAt = Date.now(), offset =
     resources: { observedOutputBytes: number(receipt.observedOutputBytes), emittedDiagnosticBytes: number(receipt.emittedDiagnosticBytes),
       ...resourceTotals(stages, active) },
     coverage: { capturedStages: visible.length, totalStages: all.length, offset,
-      expectedStages: receipt.expectedStages ?? all.length, partial: offset > 0 || all.length > visible.length || receipt.outcome !== 'passed', scope: 'selected-owner-checks', providerAuthority: false },
+      expectedStages: receipt.expectedStages ?? all.length, partial: offset > 0 || all.length > visible.length || receipt.outcome !== 'passed', scope: 'selected-owner-checks', providerAuthority: false,
+      ...(external.length ? { externalRequiredChecks: external } : {}) },
   };
   if (Buffer.byteLength(JSON.stringify(output)) > 128000) fail();
   return output;
@@ -109,10 +121,12 @@ function nativeTestReceipt(receipt, root) {
   const defaults = receipt.resourceDefaults;
   if (defaults !== undefined && (defaults.method !== 'wait4' || defaults.scope !== 'waited-process-tree'
     || defaults.memoryScope !== 'maximum-single-process-rss' || Object.keys(defaults).length !== 3)) fail();
+  const external = externalChecks(receipt, identity.headRevision);
+  if (external.length && receipt.results.some(result => result.name === 'evaluators')) fail();
   return { ...receipt, schema: STAGES_SCHEMA, executionOrder: 'concurrent',
     outcome: receipt.outcome === 'interrupted' ? 'failed' : receipt.outcome,
     source: { repository, revision: identity.headRevision, tree: identity.headTree, dirty: null },
-    expectedStages: (receipt.plan?.suites?.length ?? receipt.results.length - 1) + 1,
+    expectedStages: (receipt.plan?.suites?.length ?? receipt.results.length - (external.length ? 0 : 1)) + (external.length ? 0 : 1),
     results: receipt.results.map(result => {
       if (typeof result.name !== 'string' || !/^(?:evaluators|__tests__\/[a-z0-9.-]+\.test\.mjs)$/u.test(result.name)) fail();
       const label = result.name.replace(/^__tests__\//u, '').replace(/\.test\.mjs$/u, '');

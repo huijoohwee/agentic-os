@@ -1,10 +1,12 @@
 /** Repository-owned affected validation; explicit all and compatibility fast/git entrypoints. */
-import { readdirSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve, join } from 'node:path';
 import { checkInputResolver, IMPACT_VERSION, selectTests } from './agentic-os-test-impact.mjs';
 import { hash, LIMITS, manifestDigest, snapshotReader } from './agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
+
+import { ciBudgetsJobIsExact } from './agentic-os-doc-budget.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FAST = ['lane-state.test.mjs', 'governance-contract.test.mjs', 'completion.test.mjs', 'authority-evidence.test.mjs'];
@@ -60,7 +62,19 @@ export async function runCheckPool(checks, run, concurrency = 4) {
   if (failure) throw failure;
 }
 
-export async function runTests(argv, { root = ROOT, out = console.log } = {}) {
+/** Allocate evaluator coverage to the unchanged required CI job; this is not passed evidence. */
+export function ciEvaluatorAllocation(workflow, environment, revision) {
+  const e = environment;
+  if (e.GITHUB_ACTIONS !== 'true' || e.GITHUB_JOB !== 'test' || e.GITHUB_SHA !== revision
+    || !/^[a-f0-9]{40}$/u.test(revision) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(e.GITHUB_REPOSITORY ?? '')
+    || !e.GITHUB_WORKFLOW_REF?.startsWith(`${e.GITHUB_REPOSITORY}/.github/workflows/ci.yml@`)
+    || !/^[1-9][0-9]*$/u.test(e.GITHUB_RUN_ID ?? '') || !/^[1-9][0-9]*$/u.test(e.GITHUB_RUN_ATTEMPT ?? '')
+    || !ciBudgetsJobIsExact(workflow)) throw Error('blocked-test-ci-evaluator-owner');
+  return { name: 'budgets', workflow: '.github/workflows/ci.yml', workflowDigest: hash(workflow),
+    revision, runId: e.GITHUB_RUN_ID, runAttempt: e.GITHUB_RUN_ATTEMPT, status: 'not-observed' };
+}
+
+export async function runTests(argv, { root = ROOT, out = console.log, ci = false } = {}) {
   const options = parseArguments(argv);
   if (['fast', 'git'].includes(options.mode)) {
     const files = readdirSync(join(root, '__tests__')).filter(name => name.endsWith('.test.mjs'))
@@ -71,7 +85,11 @@ export async function runTests(argv, { root = ROOT, out = console.log } = {}) {
   }
   const observe = snapshotReader({ root, base: options.base, head: options.head, committed: options.committed });
   const observed = observe(), plan = selectTests({ ...observed, forceAll: options.mode === 'all' });
-  const directory = receiptDirectory(root), checks = validationChecks(observed, plan);
+  if (ci && (!options.committed || !options.fresh || options.mode !== 'affected')) throw Error('blocked-test-ci-options');
+  const externalRequiredChecks = ci ? [ciEvaluatorAllocation(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'),
+    process.env, observed.identity.headRevision)] : [];
+  const directory = receiptDirectory(root), checks = validationChecks(observed, plan)
+    .filter(check => !ci || check.stage !== 'evaluators');
   const canReuse = !options.fresh && options.mode !== 'all' && !options.committed && !process.env.CI && !process.env.GITHUB_ACTIONS;
   const decorate = check => {
     const prior = previousCheck(directory, check);
@@ -90,7 +108,7 @@ export async function runTests(argv, { root = ROOT, out = console.log } = {}) {
   }
   const release = lockReceipts(directory), started = performance.now();
   const receipt = { schema: 'agentic-os/test-receipt/v2', authority: false,
-    identity: observed.identity, plan, cost: summary, outcome: 'running', exitCode: null,
+    identity: observed.identity, plan, cost: summary, externalRequiredChecks, outcome: 'running', exitCode: null,
     startedAt: Date.now(), results: [] };
   const stable = () => {
     if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity))
@@ -98,6 +116,7 @@ export async function runTests(argv, { root = ROOT, out = console.log } = {}) {
   };
   try {
     stable();
+    if (ci) out('evaluators: allocated to required budgets job; result not observed by test job');
     writeReceipt(directory, 'last.json', receipt);
     out(`${plan.mode}: ${plan.suites.length}/${plan.available} suites; ${plan.changed.length} changed paths; ${summary.skipped} skipped`);
     out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency 4; budget ${LIMITS.testMs / 1000}s`);
