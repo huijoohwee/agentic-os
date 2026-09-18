@@ -40,9 +40,72 @@ MVP / AO-06: verify queue/execution separation, running/failed states, impossibl
 
 GTM / AO-06: run the actual local validation and inspect its exported report. Compare only compatible measured baselines; require observed before/after evidence before claiming savings. Rollback source through the owning checked PR while retaining local reports. This extends the AO-05 module/byte/time budget with workspace documentation only; no additional service or dependency.
 
-Use the source owner's existing runner and validators. Profile a completed run before rerunning it.
-Batch related repairs, then run the dependency-closed affected checks on final bytes.
-Repeat a passing check only when changed inputs, a failure, or an unresolved concern requires it.
+### Interactive preview
+
+At start/resume, when the user asks to open or show an interface, inspect the existing preview and
+browser tab before starting another process. Use the application's documented route and native
+controls to show its actual interactive surface. Reuse the matching healthy listener; if none exists,
+start one bounded, task-owned preview with an explicit port and record its checkout and process owner.
+Do not stop unrelated listeners or start validation suites merely to display the application.
+
+For Mission Control or another evidence viewer, open the existing local observation through its
+supported import/inspection UI. Preserve the source revision, scope, outcome and completeness of the
+observation; distinguish imported historical evidence from live runtime state and current CI. Do not
+insert test fixtures, fabricate successful activity, or mutate hidden application state to make the
+view look populated. If evidence is unavailable, show the interface with that limitation. A screenshot
+can supplement verification but does not fulfill a request for the actual interface.
+
+Use the available browser skill and page-native tools where supported, otherwise visible controls.
+Keep authored documents intact and retain the user-facing preview through the handoff. Before removing
+its checkout, stop only the owned preview, reopen from the integrated checkout and verify the same
+route. Report the working URL, evidence identity and any runtime connection limitation. This guidance
+uses the existing observation owner and adds no always-running service or new validation requirement.
+Before landing, follow the release workflow's existing planning handover and checks below.
+
+### Release validation scheduling
+
+AO-06 applies to the release decision as well as the timing display: the operator selects the smallest
+new evidence needed for the exact candidate. Reuse the existing runner, impact plan, receipts and CI
+observation; do not add another scheduler, result registry or background poller.
+
+1. Before execution, inspect the affected plan, retained failure logs and any existing CI run for the
+   candidate. Record the source/tree, working bytes, command, selected scope and execution context.
+   Matching names or a commit alone do not prove equivalent inputs. Unknown impact follows the owner's
+   broader fallback; a narrow local pass never replaces a required provider check.
+2. Choose one executor for each equivalent expensive validation. Once the required CI run is active,
+   wait on that exact run instead of starting the same full local suite. Local work during that wait is
+   limited to a concrete failing-case reproduction or a focused check needed for a new repair. Before
+   duplicating a check, name the changed input or unresolved concern and why the existing run cannot
+   answer it. Independent read-only review may continue.
+3. Batch related repairs before publishing a successor. A validation-only repair first checks command
+   coverage, dependency order, failure propagation, deadlines and aggregate reporting with small
+   fixtures. Application checks whose inputs stayed equal retain their original evidence identity;
+   they are not relabeled as a pass on new bytes. Run the required CI on the final candidate once.
+   A changed input, failed assertion, incomplete run or concrete unresolved concern justifies a new
+   applicable run; an unchanged completed result does not.
+4. Inspect nested command expansion before selecting wrappers. Each behavior check should execute once
+   for equivalent inputs; a second workflow step must identify distinct acceptance or use the owner's
+   verified reuse mechanism. Preserve every required job/context and its coverage. A local receipt
+   cannot satisfy provider authority, and an already-started required run is not cancelled merely to
+   optimize future workflow structure.
+5. Budget against declared command limits and wrapper overhead, not one fast observed run. Commands
+   whose combined limits cannot fit a shared wrapper need independent bounded execution in the
+   existing owner policy. Preserve per-command and overall caps, prerequisite order, exact-once
+   selection, and an aggregate result that cannot hide an earlier failure. Unselected commands do no
+   work. Do not raise limits, omit checks, or rerun a whole application suite to test this arithmetic.
+6. Observe the existing CI run with bounded condition-based rechecks. Queue delay and provider waiting
+   are separate from active execution; neither is an ETA or a reason to create another run. On a new
+   failure, inspect its retained receipt/log before choosing the smallest next check. Stop unchanged
+   mechanical retries; preserve the blocker and continue only independent useful work.
+7. If an unnecessary local duplicate is already running, stop only its verified owned process tree,
+   let the receipt owner release its lock, and retain the interrupted result explicitly as cancelled
+   work. It is neither a passing check nor evidence of an application defect. Never stop unrelated
+   listeners, discard failure history, or remove worktrees before exact integration and cleanup proof.
+
+This is release-agent policy using existing execution mechanisms; it is not a new cross-host exclusion
+lock or automatic CI de-duplication service. Evaluate it with the existing affected checks and actual
+release observations. Report local checks, required CI, rerun reasons and cancelled duplicates
+separately; measured savings require a compatible before/after cohort.
 
 Generated logs, receipts, portable observations and screenshots belong to device-local `.workspace/.artifacts`, outside the published source tree. Set clone-local `git config --local agentic-os.validationArtifactsRoot <absolute-real-artifact-directory>` after creating that private directory. The existing receipt owner isolates each worktree by Git-directory digest; missing enrollment retains the Git-private default for portable clones and CI. Existing records are preserved, not migrated or deleted. Workspace publication remains essential-only; do not force-add artifact bodies.
 

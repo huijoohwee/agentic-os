@@ -7,4 +7,4 @@ Run doctor/status; `agentic-os start <scope> --write=<paths>`. Disjoint lanes ru
 After checks, `agentic-os land --message=<message>` stages, commits, pushes scope.
 Never copy lane files into canonical.
 Cross-repo writes/publication: enforce `../FLEET.md`.
-See [handover](../guides/PRD-TAD-ADR-MVP-GTM.md#planning-release-handover).
+On UI requests: [preview](../guides/VALIDATION-ECONOMY.md#interactive-preview).
