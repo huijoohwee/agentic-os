@@ -42,20 +42,37 @@ GTM / AO-06: run the actual local validation and inspect its exported report. Co
 
 ### Interactive preview
 
-At start/resume, when the user asks to open or show an interface, inspect the existing preview and
-browser tab before starting another process. Use the application's documented route and native
-controls to show its actual interactive surface. Reuse the matching healthy listener; if none exists,
-start one bounded, task-owned preview with an explicit port and record its checkout and process owner.
-Do not stop unrelated listeners or start validation suites merely to display the application.
+Default interactive start/resume opens Agent Mission Dashboard once through Graph's existing
+`/agentic-graph/?openMainPanel=dashboard` route. This is agent workflow policy, not a browser side effect
+of the headless lane CLI. Honor an explicit opt-out; without an interactive browser, report the route
+and connection limitation. OS owns startup policy; Graph owns the dashboard, tools and rendering.
+At each unique START-WORKFLOW, capture its planning-bound group with `boundary: "start"`; reuse its
+exact root on resume. Native `start --plan` supplies this boundary. Register participating worktrees
+as explicit members of that same group, retaining `previous`; never start one workflow per member.
+If the dashboard runs in another clone, bind that host's existing `agentic-os.workflowManifest` Git
+setting to the returned exact root at both boundaries; preserve the shared `.workspaceRoot` binding.
+Inspect existing tabs and listeners first. Reuse the healthy preview matching the intended checkout
+and runtime identity; otherwise start one task-owned preview using the source's documented dev command
+and an explicit port. Record its URL, checkout and process owner. Repeated starts/resumes reuse that
+preview and tab; keep unrelated listeners intact. A failed launch stops after one bounded attempt:
+retain its input/failure identity and retry only when source, environment or evidence changes.
 
-For Mission Control or another evidence viewer, open the existing local observation through its
+Opening the dashboard inspects evidence; it does not recursively invoke START-WORKFLOW, create a lane,
+start an agent/model, re-index unchanged sources, evaluate runs, poll CI or rerun validation. Reuse OS
+context map/search/read and Graph's native ingest/query/explain owners for authorized indexing,
+traversal and contextualization. Bind observations to the source revision and snapshot identity;
+reuse unchanged parser/query evidence. Use existing workflow observations and run traces for time,
+CPU, memory, model, token and cost fields; unavailable measurements stay unknown. No second index,
+collector, renderer, ledger or always-running service is introduced.
+
+For Agent Mission Dashboard or another evidence viewer, open the existing local observation through its
 supported import/inspection UI. Preserve the source revision, scope, outcome and completeness of the
 observation; distinguish imported historical evidence from live runtime state and current CI. Do not
 insert test fixtures, fabricate successful activity, or mutate hidden application state to make the
 view look populated. If evidence is unavailable, show the interface with that limitation. A screenshot
 can supplement verification but does not fulfill a request for the actual interface.
 
-Use the available browser skill and page-native tools where supported, otherwise visible controls.
+Use the available browser skill and scoped page-native tools where supported, otherwise visible controls.
 Keep authored documents intact and retain the user-facing preview through the handoff. Before removing
 its checkout, stop only the owned preview, reopen from the integrated checkout and verify the same
 route. Report the working URL, evidence identity and any runtime connection limitation. This guidance
@@ -347,12 +364,18 @@ The group input has the usual owner `source`, plus:
 - `releaseEvidence`: optional `{memberId, kind, environment, repository, revision, file, digest}`
   references, `kind` deployment/runtime and `environment` production. Original JSON bytes are retained;
   schema and caller-supplied source labels are observations, not authenticated provider verification.
-- `previous`: optional `{file, digest}` exact earlier group root. New collection increments `sequence`,
-  retains prior roots and members, and never overwrites a latest pointer.
+- `previous`: optional `{file, digest}` exact earlier group root. New collection increments `sequence`
+  and retains prior roots and members. `boundary` is `start` or `end`; successors inherit it.
 
 Run the same `workflow collect --input=<group-input>` from the owner repository. The returned root
 references each child's phase receipts, span pages and advice transitively; it does not duplicate
 those pages. A registered child may reside in another repository under the shared `.workspace`.
+RELEASE-WORKFLOW is the release/handover boundary: collect `boundary: "end"` with the exact
+`previous` root and every member retained, including incomplete ones. Ending grants no readiness.
+Boundary collection selects its exact archive in clone-local `agentic-os.workflowManifest` for the
+dashboard. This navigation setting is not authority or a latest-file scan. Identical inputs reuse
+the archive; stale, competing successors and reopening an ended workflow are rejected. A different
+workflow starts with a unique group ID; an old end cannot displace that selection.
 Cross-worktree span IDs and links are namespaced. Separate clocks are not merged into a misleading
 timeline and overlapping CPU/tokens/cost are not summed. Missing deployment/runtime links remain
 visible even when all local lifecycle receipts pass; `authorityVerified` remains false. Coverage is
