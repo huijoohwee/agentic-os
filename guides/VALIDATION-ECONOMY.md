@@ -42,20 +42,32 @@ GTM / AO-06: run the actual local validation and inspect its exported report. Co
 
 ### Interactive preview
 
-At start/resume, when the user asks to open or show an interface, inspect the existing preview and
-browser tab before starting another process. Use the application's documented route and native
-controls to show its actual interactive surface. Reuse the matching healthy listener; if none exists,
-start one bounded, task-owned preview with an explicit port and record its checkout and process owner.
-Do not stop unrelated listeners or start validation suites merely to display the application.
+Default interactive start/resume opens Agent Mission Dashboard once through Graph's existing
+`/agentic-graph/?openMainPanel=dashboard` route. This is agent workflow policy, not a browser side effect
+of the headless lane CLI. Honor an explicit opt-out; without an interactive browser, report the route
+and connection limitation. OS owns startup policy; Graph owns the dashboard, tools and rendering.
+Inspect existing tabs and listeners first. Reuse the healthy preview matching the intended checkout
+and runtime identity; otherwise start one task-owned preview using the source's documented dev command
+and an explicit port. Record its URL, checkout and process owner. Repeated starts/resumes reuse that
+preview and tab; keep unrelated listeners intact. A failed launch stops after one bounded attempt:
+retain its input/failure identity and retry only when source, environment or evidence changes.
 
-For Mission Control or another evidence viewer, open the existing local observation through its
+Opening the dashboard inspects evidence; it does not recursively invoke START-WORKFLOW, create a lane,
+start an agent/model, re-index unchanged sources, evaluate runs, poll CI or rerun validation. Reuse OS
+context map/search/read and Graph's native ingest/query/explain owners for authorized indexing,
+traversal and contextualization. Bind observations to the source revision and snapshot identity;
+reuse unchanged parser/query evidence. Use existing workflow observations and run traces for time,
+CPU, memory, model, token and cost fields; unavailable measurements stay unknown. No second index,
+collector, renderer, ledger or always-running service is introduced.
+
+For Agent Mission Dashboard or another evidence viewer, open the existing local observation through its
 supported import/inspection UI. Preserve the source revision, scope, outcome and completeness of the
 observation; distinguish imported historical evidence from live runtime state and current CI. Do not
 insert test fixtures, fabricate successful activity, or mutate hidden application state to make the
 view look populated. If evidence is unavailable, show the interface with that limitation. A screenshot
 can supplement verification but does not fulfill a request for the actual interface.
 
-Use the available browser skill and page-native tools where supported, otherwise visible controls.
+Use the available browser skill and scoped page-native tools where supported, otherwise visible controls.
 Keep authored documents intact and retain the user-facing preview through the handoff. Before removing
 its checkout, stop only the owned preview, reopen from the integrated checkout and verify the same
 route. Report the working URL, evidence identity and any runtime connection limitation. This guidance
