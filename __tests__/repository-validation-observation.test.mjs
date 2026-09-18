@@ -125,3 +125,23 @@ test('expanded aggregate receipts retain every result and resource within the ex
   saved.resourceDefaults.scope = 'inferred'; writeFileSync(join(directory, 'last.json'), JSON.stringify(saved));
   assert.throws(() => readValidationObservation(root, join(directory, 'last.json')), /observation/);
 });
+
+
+test('CI allocation exports separate unknown gate coverage without fabricating an evaluator result', t => {
+  const { root, git } = fixture(t), file = join(root, '.git', 'ci.json'), revision = git('rev-parse', 'HEAD');
+  const external = { name: 'budgets', workflow: '.github/workflows/ci.yml', workflowDigest: 'a'.repeat(64),
+    revision, runId: '123', runAttempt: '1', status: 'not-observed' };
+  const receipt = { schema: 'agentic-os/test-receipt/v2', authority: false, outcome: 'passed', startedAt: 1000,
+    finishedAt: 2000, elapsedMs: 1000, identity: { root, headRevision: revision, headTree: git('rev-parse', 'HEAD^{tree}') },
+    plan: { suites: [{}] }, externalRequiredChecks: [external], results: [{ name: '__tests__/small.test.mjs',
+      exitCode: 0, reason: null, elapsedMs: 10, startedAt: 1000, finishedAt: 1010, reused: false }] };
+  writeFileSync(file, JSON.stringify(receipt));
+  const result = readValidationObservation(root, file);
+  assert.equal(result.coverage.expectedStages, 1); assert.equal(result.stages.length, 1);
+  assert.deepEqual(result.coverage.externalRequiredChecks, [external]);
+  for (const bad of [{ ...external, status: 'passed' }, { ...external, revision: 'b'.repeat(40) },
+    { ...external, private: 'secret' }]) {
+    receipt.externalRequiredChecks = [bad]; writeFileSync(file, JSON.stringify(receipt));
+    assert.throws(() => readValidationObservation(root, file), /observation/);
+  }
+});

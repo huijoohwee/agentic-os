@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { readFileSync, chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executionEnvironment, readRegular, safePath, snapshot, snapshotReader } from '../bin/agentic-os-test-inputs.mjs';
+import { ciEvaluatorAllocation } from '../bin/agentic-os-tests.mjs';
 import { ciArguments } from '../bin/agentic-os-test-ci.mjs';
 
 function fixture(t) {
@@ -94,4 +95,24 @@ test('run-local snapshots reuse unchanged file objects but detect restored times
   assert.notEqual(third.after.get('a.mjs').digest, first.after.get('a.mjs').digest);
   writeFileSync(join(f.root, 'new.mjs'), 'new'); rmSync(join(f.root, 'a.mjs'));
   assert.deepEqual(observe().changed, ['a.mjs', 'new.mjs']);
+});
+
+
+test('CI evaluator allocation requires the exact budgets owner and current provider context', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const revision = 'a'.repeat(40), env = { GITHUB_ACTIONS: 'true', GITHUB_JOB: 'test', GITHUB_SHA: revision,
+    GITHUB_REPOSITORY: 'example/owner', GITHUB_WORKFLOW_REF: 'example/owner/.github/workflows/ci.yml@refs/heads/main',
+    GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1' };
+  const result = ciEvaluatorAllocation(workflow, env, revision);
+  assert.equal(result.name, 'budgets'); assert.equal(result.status, 'not-observed');
+  assert.equal(result.workflowDigest.length, 64);
+  for (const key of Object.keys(env)) {
+    const bad = { ...env }; delete bad[key];
+    assert.throws(() => ciEvaluatorAllocation(workflow, bad, revision), /evaluator-owner/);
+  }
+  for (const changed of [workflow.replace('run: npm run evals', 'run: true'),
+    workflow.replace('    name: budgets', '    name: optional'),
+    workflow.replace('    name: budgets', '    name: budgets\n    continue-on-error: true')])
+    assert.throws(() => ciEvaluatorAllocation(changed, env, revision), /evaluator-owner/);
+  assert.throws(() => ciEvaluatorAllocation(workflow, env, 'b'.repeat(40)), /evaluator-owner/);
 });
