@@ -370,7 +370,7 @@ The group input has the usual owner `source`, plus:
 Run the same `workflow collect --input=<group-input>` from the owner repository. The returned root
 references each child's phase receipts, span pages and advice transitively; it does not duplicate
 those pages. A registered child may reside in another repository under the shared `.workspace`.
-END-WORKFLOW is the existing release/handover boundary: collect `boundary: "end"` with the exact
+RELEASE-WORKFLOW is the release/handover boundary: collect `boundary: "end"` with the exact
 `previous` root and every member retained, including incomplete ones. Ending grants no readiness.
 Boundary collection selects its exact archive in clone-local `agentic-os.workflowManifest` for the
 dashboard. This navigation setting is not authority or a latest-file scan. Identical inputs reuse
