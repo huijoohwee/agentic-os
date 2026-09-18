@@ -46,6 +46,24 @@ Default interactive start/resume opens Agent Mission Dashboard once through Grap
 `/agentic-graph/?openMainPanel=dashboard` route. This is agent workflow policy, not a browser side effect
 of the headless lane CLI. Honor an explicit opt-out; without an interactive browser, report the route
 and connection limitation. OS owns startup policy; Graph owns the dashboard, tools and rendering.
+The core ADLC loop binds `agent-mission.manifest.json` to `codebase-index.ref.json` before handoff:
+
+1. Reuse the selected workflow, registered worktrees, native index and matching source evidence.
+2. If source content changed or no complete index exists, invoke Graph's existing local deterministic
+   `agentic-graph.agent_graph.ingest` once with `useCache: true`. Keep one in-flight operation per source;
+   unchanged resumes reuse its snapshot, parser results and captured measurements. Never index from
+   the dashboard refresh loop. Bounds fail explicitly; do not silently sample or retry unchanged input.
+3. Retain the native result once under `.workspace/.artifacts/codebase-index/<snapshot-digest>/manifest.json`;
+   never overwrite this snapshot. Pass its absolute
+   `file` and SHA-256 `digest` as the group input's `codebaseIndex.snapshot`. The collector validates
+   and retains a reference; it does not copy or rebuild the graph. Preserve it through RELEASE-WORKFLOW.
+4. Open/reuse Mission through the existing MCP/Canvas view owner. The selected native reference loads
+   into Source Files automatically; D3 reopens the retained bounded projection. Native query/explain
+   calls bind the same graph ID and snapshot digest for traversal and contextualization.
+5. Inspect source-linked observations/evaluations and time, CPU, memory, model, token and cost fields.
+   Reused measurements remain historical; unavailable metrics/evaluations remain unobserved. Collect
+   changed evidence into the same workflow lineage. No recursive start, duplicate lane or validation run.
+
 At each unique START-WORKFLOW, capture its planning-bound group with `boundary: "start"`; reuse its
 exact root on resume. Native `start --plan` supplies this boundary. Register participating worktrees
 as explicit members of that same group, retaining `previous`; never start one workflow per member.
@@ -407,7 +425,7 @@ Each workflow root also exposes `codebaseIndex`, a navigation reference to
 `/.workspace/<workflow-id>/codebase-index.ref.json` in the browser workspace. Graph's existing
 Codebase graph importer materializes this reference to its shared index manifest, including the
 graph ID, exact snapshot digest, bounded D3 projection and captured import measurements. The
-native graph snapshot remains the query owner. A missing reference means no retained index has
+native graph snapshot remains the query owner. An unobserved reference means no retained index has
 been associated in that browser; the link alone proves neither indexing nor evaluation. Graph
 owns these local artifacts, while OS retains the workflow boundary without copying graph data.
 

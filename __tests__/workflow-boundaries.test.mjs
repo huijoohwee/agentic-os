@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSy
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { collectWorkflow, startWorkflow, readWorkflowManifestPage, WORKFLOW_PHASES } from '../bin/agentic-os-workflow.mjs';
 
 test('one selected workflow retains multiple worktrees through idempotent start/end boundaries', t => {
@@ -25,11 +26,21 @@ test('one selected workflow retains multiple worktrees through idempotent start/
   const second=collect({schema:'agentic-os/workflow-observation-input/v1',id:'second',source:manifest.source,
     context:{workflowId:manifest.id,worktreeId:'second'},expected:WORKFLOW_PHASES,phases:[]});
   const workspace=join(base,'.workspace');
+  const indexFile=join(workspace,'.artifacts/codebase-index/native/ingest.json');mkdirSync(dirname(indexFile),{recursive:true});
+  const indexText=JSON.stringify({schema:'agentic-graph-agent-graph-ingest/v1',ok:true,complete:true,
+    graphId:`kg:graph:${'a'.repeat(32)}`,snapshotDigest:'b'.repeat(64)});
+  writeFileSync(indexFile,indexText,{mode:0o600});
+  const indexDigest=createHash('sha256').update(indexText).digest('hex');
   const endInput={...manifest,boundary:'end',previous:{file:first.manifest,digest:first.digest},
+    codebaseIndex:{snapshot:{file:indexFile,digest:indexDigest}},
     members:[...manifest.members.map(ref=>({...ref,file:resolve(workspace,ref.file)})),{id:'second',file:second.manifest,digest:second.digest}]};
   const end=collect(endInput),endBytes=readFileSync(end.manifest,'utf8'),ended=JSON.parse(endBytes);
   assert.equal(end.sequence,2);assert.equal(end.members,2);assert.equal(end.boundary,'end');
-  assert.deepEqual(ended.codebaseIndex,manifest.codebaseIndex);
+  assert.equal(ended.codebaseIndex.path,manifest.codebaseIndex.path);
+  assert.deepEqual(ended.codebaseIndex.snapshot,{file:'.artifacts/codebase-index/native/ingest.json',digest:indexDigest,
+    graphId:`kg:graph:${'a'.repeat(32)}`,snapshotDigest:'b'.repeat(64)});
+  assert.throws(()=>collect({...endInput,codebaseIndex:{snapshot:{file:indexFile,digest:'0'.repeat(64)}}}),/codebase-binding/);
+  assert.throws(()=>collect({...endInput,codebaseIndex:{snapshot:{file:input,digest:indexDigest}}}),/codebase-location/);
   assert.equal(ended.previous.digest,first.digest);assert.equal(readFileSync(first.manifest,'utf8'),bytes);
   assert.equal(git('config','--get','agentic-os.workflowManifest'),end.manifest);
   assert.equal(collect(endInput).manifest,end.manifest);assert.equal(collect(endInput).reused,true);
@@ -43,6 +54,8 @@ test('one selected workflow retains multiple worktrees through idempotent start/
   // Removing a participating worktree cannot silently shrink end-of-workflow coverage.
   assert.throws(()=>collect({...endInput,previous:{file:end.manifest,digest:end.digest},members:endInput.members.slice(0,1)}),/previous-binding/);
   assert.equal(git('config','--get','agentic-os.workflowManifest'),end.manifest);
+  const retained=collect({...endInput,previous:{file:end.manifest,digest:end.digest},codebaseIndex:undefined});
+  assert.deepEqual(JSON.parse(readFileSync(retained.manifest,'utf8')).codebaseIndex,ended.codebaseIndex);
   const next=startWorkflow(root,repository,{...startArgs,worktreeId:'unique-next'});
   assert.notEqual(JSON.parse(readFileSync(next.manifest,'utf8')).id,manifest.id);
   assert.throws(()=>collect(endInput),/selection-workflow/);

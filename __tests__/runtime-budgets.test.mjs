@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40945, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40957, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -63,6 +63,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
   const requirements = new Map([
     ['docs/adlc-guidelines.md', [
+      'START/resume opens Mission: link current codebase/workflow manifests; reuse unchanged evidence.',
       'Minimize time-to-production: smallest valuable vertical diff',
       'Lean bounded sprints state TTP ETA and time/byte/module caps',
       'refresh on drift. External waits state dependency/condition/recheck, never ETA.',

@@ -250,9 +250,21 @@ function collectGroup(root, repository, manifest, inputPath) {
   const boundary=manifest.boundary??older?.boundary;
   if(boundary!==undefined && !['start','end'].includes(boundary)
     || boundary==='end' && !older?.boundary || older?.boundary==='end' && boundary!=='end')fail('boundary-transition');
+  const indexRef=manifest.codebaseIndex?.snapshot??older?.codebaseIndex?.snapshot;
+  let snapshot;
+  if(indexRef){
+    const file=isAbsolute(indexRef.file)?indexRef.file:resolve(paths.workspace,indexRef.file);
+    const locator=relative(paths.workspace,file).split(sep).join('/');
+    if(!locator.startsWith('.artifacts/codebase-index/') || !inside(paths.workspace,file))fail('codebase-location');
+    const content=read(file,512000),value=JSON.parse(content);
+    if(hash(content)!==indexRef.digest || value.schema!=='agentic-graph-agent-graph-ingest/v1'
+      || value.ok!==true || value.complete!==true || !/^kg:graph:[a-f0-9]{32}$/u.test(value.graphId??'')
+      || !/^[a-f0-9]{64}$/u.test(value.snapshotDigest??''))fail('codebase-binding');
+    snapshot={file:locator,digest:indexRef.digest,graphId:value.graphId,snapshotDigest:value.snapshotDigest};
+  }
   const stored={schema:WORKFLOW_GROUP,id:manifest.id,source:manifest.source,lifecycle:lifecycleMetadata(),planning,members,
     codebaseIndex:{owner:'agentic-graph',storage:'browser-workspace',authority:false,
-      path:`/.workspace/${encodeURIComponent(manifest.id)}/codebase-index.ref.json`},
+      path:`/.workspace/${encodeURIComponent(manifest.id)}/codebase-index.ref.json`,...(snapshot?{snapshot}:{})},
     releaseTargets:manifest.releaseTargets,releaseEvidence,sequence,...(previous?{previous}:{}),...(boundary?{boundary}:{})};
   // Validate every referenced archive and all pages at collection; exports load requested pages only.
   workflowGroup(stored,load,{adviceOnly:true});
