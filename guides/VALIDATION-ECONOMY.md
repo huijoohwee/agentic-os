@@ -46,6 +46,11 @@ Default interactive start/resume opens Agent Mission Dashboard once through Grap
 `/agentic-graph/?openMainPanel=dashboard` route. This is agent workflow policy, not a browser side effect
 of the headless lane CLI. Honor an explicit opt-out; without an interactive browser, report the route
 and connection limitation. OS owns startup policy; Graph owns the dashboard, tools and rendering.
+At each unique START-WORKFLOW, capture its planning-bound group with `boundary: "start"`; reuse its
+exact root on resume. Native `start --plan` supplies this boundary. Register participating worktrees
+as explicit members of that same group, retaining `previous`; never start one workflow per member.
+If the dashboard runs in another clone, bind that host's existing `agentic-os.workflowManifest` Git
+setting to the returned exact root at both boundaries; preserve the shared `.workspaceRoot` binding.
 Inspect existing tabs and listeners first. Reuse the healthy preview matching the intended checkout
 and runtime identity; otherwise start one task-owned preview using the source's documented dev command
 and an explicit port. Record its URL, checkout and process owner. Repeated starts/resumes reuse that
@@ -359,12 +364,18 @@ The group input has the usual owner `source`, plus:
 - `releaseEvidence`: optional `{memberId, kind, environment, repository, revision, file, digest}`
   references, `kind` deployment/runtime and `environment` production. Original JSON bytes are retained;
   schema and caller-supplied source labels are observations, not authenticated provider verification.
-- `previous`: optional `{file, digest}` exact earlier group root. New collection increments `sequence`,
-  retains prior roots and members, and never overwrites a latest pointer.
+- `previous`: optional `{file, digest}` exact earlier group root. New collection increments `sequence`
+  and retains prior roots and members. `boundary` is `start` or `end`; successors inherit it.
 
 Run the same `workflow collect --input=<group-input>` from the owner repository. The returned root
 references each child's phase receipts, span pages and advice transitively; it does not duplicate
 those pages. A registered child may reside in another repository under the shared `.workspace`.
+END-WORKFLOW is the existing release/handover boundary: collect `boundary: "end"` with the exact
+`previous` root and every member retained, including incomplete ones. Ending grants no readiness.
+Boundary collection selects its exact archive in clone-local `agentic-os.workflowManifest` for the
+dashboard. This navigation setting is not authority or a latest-file scan. Identical inputs reuse
+the archive; stale, competing successors and reopening an ended workflow are rejected. A different
+workflow starts with a unique group ID; an old end cannot displace that selection.
 Cross-worktree span IDs and links are namespaced. Separate clocks are not merged into a misleading
 timeline and overlapping CPU/tokens/cost are not summed. Missing deployment/runtime links remain
 visible even when all local lifecycle receipts pass; `authorityVerified` remains false. Coverage is

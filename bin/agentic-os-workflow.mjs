@@ -2,7 +2,7 @@ import { traceWorkflow } from './agentic-os-workflow-trace.mjs';
 /** Native lifecycle evidence collection. Local artifacts are not execution or release authority. */
 import { lstatSync, mkdirSync, mkdtempSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { commonDir, observeGit, worktreeInventory, acquireOperationLock, finishOperationLock, assertDirectoryAncestors } from '../src/git.mjs';
+import { commonDir, observeGit, git, worktreeInventory, acquireOperationLock, finishOperationLock, assertDirectoryAncestors } from '../src/git.mjs';
 import { hash, readRegular } from './agentic-os-test-inputs.mjs';
 import { readWorkflowObservation, workflowObservation } from './agentic-os-workflow-observation.mjs';
 
@@ -129,7 +129,7 @@ export function startWorkflow(root, repository, { revision, planningPath, worktr
   const child = collectManifest(root, repository, { schema: 'agentic-os/workflow-observation-input/v1',
     id, source, context: { workflowId: id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, inputPath);
   return collectManifest(root, repository, { schema: WORKFLOW_GROUP, id, source, planning,
-    members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
+    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
 }
 
 export function runWorkflow(root, argv, profile, out = console.log) {
@@ -233,10 +233,10 @@ function collectGroup(root, repository, manifest, inputPath) {
       : ['failed','blocked'].includes(value.status)?'failed':'queued';
     return {...ref,file,schema:value.schema,observedStatus,authorityVerified:false};
   });
-  let previous, sequence=1;
+  let previous, older, sequence=1;
   if(manifest.previous){
     previous={...manifest.previous,file:relative(paths.workspace,resolve(dirname(inputPath),manifest.previous.file))};
-    const older=load(previous).manifest;
+    older=load(previous).manifest;
     if(older.schema!==WORKFLOW_GROUP || older.id!==manifest.id || older.source.repository!==repository
       || JSON.stringify(older.planning)!==JSON.stringify(planning) || !Number.isSafeInteger(older.sequence)
       || older.members.some(ref=>!members.some(next=>next.id===ref.id))
@@ -247,8 +247,11 @@ function collectGroup(root, repository, manifest, inputPath) {
     }
     sequence=older.sequence+1;
   }
+  const boundary=manifest.boundary??older?.boundary;
+  if(boundary!==undefined && !['start','end'].includes(boundary)
+    || boundary==='end' && !older?.boundary || older?.boundary==='end' && boundary!=='end')fail('boundary-transition');
   const stored={schema:WORKFLOW_GROUP,id:manifest.id,source:manifest.source,lifecycle:lifecycleMetadata(),planning,members,
-    releaseTargets:manifest.releaseTargets,releaseEvidence,sequence,...(previous?{previous}:{})};
+    releaseTargets:manifest.releaseTargets,releaseEvidence,sequence,...(previous?{previous}:{}),...(boundary?{boundary}:{})};
   // Validate every referenced archive and all pages at collection; exports load requested pages only.
   workflowGroup(stored,load,{adviceOnly:true});
   for(const ref of members){const child=load(ref);for(let offset=0;offset<child.manifest.archive.total;offset+=32)
@@ -258,6 +261,16 @@ function collectGroup(root, repository, manifest, inputPath) {
   const lock=acquireOperationLock('agentic-os-workflow',root);if(!lock)fail('busy');
   let error,result;
   try{
+    // This existing clone-local locator is navigation only. An older same-workflow request
+    // must not replace a newer root or race another successor of the selected root.
+    if(boundary){
+      const selected=observeGit(['config','--local','--get','agentic-os.workflowManifest'],{cwd:root,allowFail:true});
+      if(selected && selected!==manifestPath){
+        const selectedBytes=read(selected,32000), current=JSON.parse(selectedBytes);
+        if(current.id!==stored.id && (boundary!=='start' || sequence!==1))fail('selection-workflow');
+        if(current.id===stored.id && (current.sequence>=sequence || previous?.digest!==hash(selectedBytes)))fail('selection-stale');
+      }
+    }
     assertDirectoryAncestors(join(directory,'entry'),sep,{allowMissing:true});
     mkdirSync(paths.storage,{recursive:true,mode:0o700});
     const reused=Boolean(lstatSync(directory,{throwIfNoEntry:false}));
@@ -268,7 +281,9 @@ function collectGroup(root, repository, manifest, inputPath) {
       writeFileSync(join(staging,'manifest.json'),bytes,{flag:'wx',mode:0o600});
       if(lstatSync(directory,{throwIfNoEntry:false}))fail('storage-race');renameSync(staging,directory);
     }
+    if(boundary)git(['config','--local','agentic-os.workflowManifest',manifestPath],{cwd:root});
     result={schema:'agentic-os/workflow-collection/v1',authority:false,reused,source:manifest.source,digest,manifest:manifestPath,
+      ...(boundary?{boundary,selected:true}:{}),
       sequence,members:members.length,storage:paths.storage,targetRoot:paths.targets,bytes:Buffer.byteLength(bytes)};
   }catch(caught){error=caught;}
   return finishOperationLock(lock,{label:'workflow collection',result,error});

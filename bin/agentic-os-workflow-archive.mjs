@@ -289,6 +289,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
     profile:{workflow:{source:manifest.source,expected:['planning','worktrees','production-deployment','production-runtime'],
       missing:[...summaries.flatMap(row=>row.missing.map(phase=>`${row.id}:phase:${phase}`)),...missingRelease.map(ref=>`${ref.memberId}:${ref.kind}`)],phases:[],planning:manifest.planning,members:summaries,
       release:common.release,optimization:common,receiptAuthorityVerified:false,
+      boundary:manifest.boundary??null,sequence:manifest.sequence??null,previous:manifest.previous??null,
       measurementScope:'Per worktree and phase; concurrent clocks, nested tokens and costs must not be summed'}},
     evaluation:root.evaluation,observedAt:now,expiresAt:now+60000,spans,
     page:{total,offset,nextCursor:offset+32<total?String(offset+32):null},
