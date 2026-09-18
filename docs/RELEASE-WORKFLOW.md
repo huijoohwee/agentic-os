@@ -1,10 +1,9 @@
 # Release workflow
 
-At release start/resume, apply the global prompt's completion-estimate and external-wait rule.
-Pre-land: [handover](../guides/PRD-TAD-ADR-MVP-GTM.md#planning-release-handover).
-[Validation scheduling](../guides/VALIDATION-ECONOMY.md#release-validation-scheduling).
-The exact committed diff lands by profile-selected protected integration.
-Default squash; [method controls](../guides/INTEGRATION-METHODS.md); preserve shared refs.
-Never copy lane files into canonical.
-After merge, run `agentic-os finish --ref=<lane>` to observe integration and retain the worktree.
-Authenticated cleanup: `LIFECYCLE-COMPLETION.md`. Sync/deploy/rollback stay separate.
+Apply the global prompt's estimate/wait rule and [handover](../guides/PRD-TAD-ADR-MVP-GTM.md#planning-release-handover).
+Preflight [validation](../guides/VALIDATION-ECONOMY.md#release-validation-scheduling): reuse bound proof;
+forbid unchanged repetition, recursion, duplicate/conflicting/overlapping execution. Report changed evidence.
+Land the exact diff by profile-selected protected integration;
+default squash ([methods](../guides/INTEGRATION-METHODS.md)).
+Preserve refs; never copy lanes into canonical. After merge, `agentic-os finish --ref=<lane>` retains it.
+[Cleanup](LIFECYCLE-COMPLETION.md), sync/deploy/rollback require separate receipts.

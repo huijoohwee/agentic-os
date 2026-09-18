@@ -7,7 +7,7 @@ import { observeGit } from '../src/git-tracked.mjs';
 import { executionEnvironment, hash, LIMITS, readGit, readRegular } from './agentic-os-test-inputs.mjs';
 
 export function receiptDirectory(root, scope = 'validation') {
-  if (!['validation', 'feedback-stages', 'feedback-ci'].includes(scope)) throw Error('blocked-test-receipt-scope');
+  if (!['validation', 'feedback-stages', 'feedback-ci', 'execution'].includes(scope)) throw Error('blocked-test-receipt-scope');
   const git = realpathSync(resolve(root, readGit(root, ['rev-parse', scope === 'validation' ? '--absolute-git-dir' : '--git-common-dir']).trim()));
   const configured = observeGit(['config', '--local', '--get', 'agentic-os.validationArtifactsRoot'], { cwd: root, allowFail: true });
   if (configured && (!isAbsolute(configured) || realpathSync(configured) !== configured))
@@ -20,8 +20,9 @@ export function receiptDirectory(root, scope = 'validation') {
     throw new Error('blocked-test-receipt-directory');
   return directory;
 }
-export function lockReceipts(directory) {
-  const lock = join(directory, 'running');
+export function lockReceipts(directory, name = 'running') {
+  if (!/^(?:running|command-[a-f0-9]{64})$/u.test(name)) throw Error('blocked-test-lock-name');
+  const lock = join(directory, name);
   try { mkdirSync(lock, { mode: 0o700 }); } catch { throw new Error('blocked-tests-already-running'); }
   const identity = lstatSync(lock);
   return () => {
@@ -40,6 +41,11 @@ export function writeReceipt(directory, name, value) {
     // The per-check receipt keeps its output digest; the aggregate keeps the log link.
     // Stage membership is already present in plan.suites and each result.
     const { stages, ...plan } = value.plan;
+    // Broad selections repeat these fields in every obligation; retain explicit defaults.
+    const suiteDefaults = { stage: 'behavior', reasons: ['broad-impact'] };
+    plan.suiteDefaults = suiteDefaults;
+    plan.suites = plan.suites.map(suite => Object.fromEntries(Object.entries(suite)
+      .filter(([key, field]) => JSON.stringify(field) !== JSON.stringify(suiteDefaults[key]))));
     const resourceDefaults = { method: 'wait4', scope: 'waited-process-tree', memoryScope: 'maximum-single-process-rss' };
     const results = value.results.map(({ outputDigest, ...result }) => {
       if (result.resources?.status !== 'measured' || Object.entries(resourceDefaults).some(([key, v]) => result.resources[key] !== v)) return result;
@@ -86,6 +92,28 @@ export function writeCheck(directory, check, result, finishedAt = Date.now()) {
   return receipt;
 }
 const require = createRequire(import.meta.url);
+const EXECUTION_ANCESTRY = 'AGENTIC_OS_COMMAND_ANCESTRY';
+export const commandExecutionKey = (command, args) => hash(JSON.stringify([
+  command === 'node' ? process.execPath : command, ...args,
+]));
+function claimCommand(root, command, args, environment) {
+  const directory = receiptDirectory(root, 'execution');
+  const commandKey = commandExecutionKey(command, args);
+  const key = hash(JSON.stringify([directory, commandKey]));
+  let ancestry;
+  const inherited = environment[EXECUTION_ANCESTRY] || '[]';
+  if (inherited.length > 1200) throw Error('blocked-command-ancestry');
+  try { ancestry = JSON.parse(inherited); }
+  catch { throw Error('blocked-command-ancestry'); }
+  if (!Array.isArray(ancestry) || ancestry.length > 16
+    || ancestry.some(entry => typeof entry !== 'string' || !/^[a-f0-9]{64}$/u.test(entry)))
+    throw Error('blocked-command-ancestry');
+  if (ancestry.includes(key)) throw Error('blocked-command-recursion');
+  if (ancestry.length === 16) throw Error('blocked-command-depth');
+  const release = lockReceipts(directory, `command-${commandKey}`);
+  environment[EXECUTION_ANCESTRY] = JSON.stringify([...ancestry, key]);
+  return release;
+}
 export const COMMAND_PROGRESS_INTERVAL_MS = 30_000;
 export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes,
   outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024, onProgress } = {}) {
@@ -93,9 +121,10 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
   if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
   const started = performance.now(), startedAt = Date.now();
   const { resourceCommand, commandResourceReader } = require('./agentic-os-test-command-resources.cjs');
-  const environment = executionEnvironment(), plan = resourceCommand(command, args, environment);
-  const accounting = commandResourceReader(plan);
+  const environment = executionEnvironment();
+  const release = claimCommand(root, command, args, environment);
   return new Promise(resolveResult => {
+    const plan = resourceCommand(command, args, environment), accounting = commandResourceReader(plan);
     const child = spawn(plan.command, plan.args, { cwd: root, env: environment,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(plan.measured ? ['pipe'] : [])] });
     if (plan.measured) child.stdio[3].on('data', accounting.accept);
@@ -155,5 +184,5 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]
           .map(match => [match[1], Number(match[2])])) });
     });
-  });
+  }).finally(release);
 }

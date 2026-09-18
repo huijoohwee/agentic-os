@@ -39,7 +39,7 @@ test('stage executor records ordered timings and reduces emitted output; export 
 
 test('resource exports retain known zero, estimates, partial coverage and historical reuse', async t => {
   const { root } = fixture(t);
-  const receipt = await runValidationStages(root, [stage('one', '0'), stage('two', '0')], { out: () => {} });
+  const receipt = await runValidationStages(root, [stage('one', '0'), stage('two', '1')], { out: () => {} });
   for (const [i, result] of receipt.results.entries()) {
     result.resources = { status: 'measured', method: 'wait4', scope: 'waited-process-tree',
       memoryScope: 'maximum-single-process-rss', cpuMs: 10 + i, peakMemoryBytes: 100 + i };
@@ -102,7 +102,7 @@ test('expanded aggregate receipts retain every result and resource within the ex
   const { root, git } = fixture(t), directory = receiptDirectory(root), now = Date.now();
   const resources = { status: 'measured', method: 'wait4', scope: 'waited-process-tree',
     memoryScope: 'maximum-single-process-rss', cpuMs: 3, cpuUserMs: 2, cpuSystemMs: 1, peakMemoryBytes: 65000000 };
-  const results = Array.from({ length: 215 }, (_, i) => ({ name: `__tests__/resource-accounting-regression-${i}.test.mjs`,
+  const results = Array.from({ length: 232 }, (_, i) => ({ name: `__tests__/resource-accounting-regression-${i}.test.mjs`,
     stage: 'behavior', exitCode: 0, reason: null, startedAt: now - 100, finishedAt: now, elapsedMs: 100,
     outputDigest: 'a'.repeat(64), log: `check-${String(i).padStart(24, '0')}.log`, resources,
     counts: { tests: 3, pass: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0 }, reused: i === 0, validatedAt: now }));
@@ -113,13 +113,14 @@ test('expanded aggregate receipts retain every result and resource within the ex
       stages: { behavior: results.map(r => r.name) } }, results };
   writeReceipt(directory, 'last.json', receipt);
   const bytes = readFileSync(join(directory, 'last.json')), saved = JSON.parse(bytes);
-  assert.ok(bytes.length <= 128000); assert.equal(saved.results.length, 215);
+  assert.ok(bytes.length <= 128000); assert.equal(saved.results.length, 232);
+  assert.deepEqual(saved.plan.suites.map(suite => ({ ...saved.plan.suiteDefaults, ...suite })), receipt.plan.suites);
   assert.equal(saved.diagnostics, 'per-check-receipts'); assert.equal(saved.results[0].resources.cpuUserMs, 2);
   assert.equal(saved.results[0].log, results[0].log); assert.equal(receipt.results[0].outputDigest, 'a'.repeat(64));
   const first = readValidationObservation(root, join(directory, 'last.json'));
   const second = readValidationObservation(root, join(directory, 'last.json'), 128);
-  assert.equal(first.stages.length + second.stages.length, 215);
-  assert.equal(first.resources.cpuMs, 214 * 3); assert.equal(first.resources.peakMemoryBytes, 65000000);
+  assert.equal(first.stages.length + second.stages.length, 232);
+  assert.equal(first.resources.cpuMs, 231 * 3); assert.equal(first.resources.peakMemoryBytes, 65000000);
   assert.equal(first.stages[0].status, 'reused'); assert.equal(second.stages[0].resources.measurement, 'wait4');
   saved.resourceDefaults.scope = 'inferred'; writeFileSync(join(directory, 'last.json'), JSON.stringify(saved));
   assert.throws(() => readValidationObservation(root, join(directory, 'last.json')), /observation/);
