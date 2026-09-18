@@ -4,7 +4,7 @@ import { mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { hash, readGit } from './agentic-os-test-inputs.mjs';
-import { executeCommand, lockReceipts, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
+import { commandExecutionKey, executeCommand, lockReceipts, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
 import { economyContext, readEconomy, recordEconomy, economyFeedback } from './agentic-os-validation-economy.mjs';
 
 export const STAGES_FILE = 'validation-stages.json';
@@ -19,7 +19,7 @@ export function validationStageDirectory(root, kind = 'stages') {
 
 export async function runValidationStages(root, stages, { out = console.log } = {}) {
   if (!Array.isArray(stages) || !stages.length || stages.length > 128) throw Error('blocked-validation-stage-count');
-  const ids = new Set();
+  const ids = new Set(), commands = new Set();
   for (const stage of stages) {
     if (!stage || Object.keys(stage).sort().join() !== 'command,id,timeoutMs'
       || !/^[a-z][a-z0-9.-]{0,95}$/u.test(stage.id) || ids.has(stage.id)
@@ -28,6 +28,9 @@ export async function runValidationStages(root, stages, { out = console.log } = 
       || stage.command.some(arg => typeof arg !== 'string' || !arg || arg.length > 2048 || /[\x00-\x1f]/u.test(arg))
       || !Number.isInteger(stage.timeoutMs) || stage.timeoutMs < 100 || stage.timeoutMs > 900000)
       throw Error('blocked-validation-stage-definition');
+    const commandKey = commandExecutionKey(stage.command[0], stage.command.slice(1));
+    if (commands.has(commandKey)) throw Error('blocked-validation-stage-duplicate-command');
+    commands.add(commandKey);
     ids.add(stage.id);
   }
   const directory = validationStageDirectory(root);

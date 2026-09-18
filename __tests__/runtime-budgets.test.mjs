@@ -86,11 +86,13 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Never copy lane files into canonical.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      "At release start/resume, apply the global prompt's completion-estimate and external-wait rule.",
-      'exact committed diff lands by profile-selected protected integration.',
-      'Never copy lane files into canonical.',
-      'run `agentic-os finish --ref=<lane>` to observe integration and retain the worktree',
-      'Authenticated cleanup: `LIFECYCLE-COMPLETION.md`.',
+      "Apply the global prompt's estimate/wait rule and",
+      'Land the exact diff by profile-selected protected integration;',
+      'never copy lanes into canonical.',
+      'After merge, `agentic-os finish --ref=<lane>` retains it.',
+      '[Cleanup](LIFECYCLE-COMPLETION.md), sync/deploy/rollback require separate receipts.',
+      'reuse bound proof;',
+      'forbid unchanged repetition, recursion, duplicate/conflicting/overlapping execution.',
     ]],
     ['templates/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md.',
