@@ -16,12 +16,13 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority policy, no controllers.
+ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 
-- PRD-TAD-ADR (continuity ID + exact revision) is the SSOT for scope, acceptance, design, and decision of
-  every 0→1 transition; other docs only reference it; a stale join blocks that transition only.
-- Free tiers only; zero spend, no paid plans/addons/overages. Software must be FOSS; free hosting is not
-  FOSS; unknown cost/license blocks adoption.
+- PRD-TAD-ADR ID + exact revision owns scope/acceptance/design/decision per transition.
+  Reference it; stale joins block only that transition.
+- Zero spend; require FOSS. No paid tiers/overages; free hosting is not FOSS. Unknown cost/license blocks.
+- START/resume opens Mission: link current codebase/workflow manifests; reuse unchanged evidence.
+  Use [the loop](../guides/VALIDATION-ECONOMY.md#interactive-preview) through RELEASE.
 - Minimize time-to-production: smallest valuable vertical diff; fix owner, remove replacements.
 - Continue covered authority across turns; preflight before asking; never infer new authority.
 - Lean bounded sprints state TTP ETA and time/byte/module caps; refresh on drift. External waits state
@@ -34,5 +35,4 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority po
 - Canonical is read-only. Edit owner files in disjoint path-scoped lanes; overlaps wait. Land stages,
   commits, and publishes reserved paths. Land the exact committed diff by protected merge.
 - Exact candidates; proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt.
-- Clean exact eligible targets only after value closure; no wildcards. Effects need exact byte/path/ref/race
-  proofs; structure is advisory.
+- Cleanup: exact eligible targets after value closure; no wildcards. Prove bytes/paths/refs/races.

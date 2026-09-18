@@ -260,7 +260,7 @@ test('published files contain public JSON and adapters without deleted deep impo
     'docs/GOVERNANCE.md',
     'docs/adlc-guidelines.md',
     'guides/AUTONOMOUS-GOAL-PURSUIT.md',
-    'templates/SYSTEM-PROMPT-RUNTIME.md',
+    'guides/SYSTEM-PROMPT-RUNTIME.md',
   ]) assert.equal(files.has(path), true, `${path} must be packed`);
   assert.equal(files.has('src/bounded-read.mjs'), false);
   assert.equal(files.has('src/readiness-test-reporter.mjs'), false);
