@@ -17,6 +17,8 @@ test('one selected workflow retains multiple worktrees through idempotent start/
   const startArgs={revision,planningPath,worktreeId:'first'};
   const first=startWorkflow(root,repository,startArgs),bytes=readFileSync(first.manifest,'utf8'),manifest=JSON.parse(bytes);
   assert.equal(first.boundary,'start');assert.equal(first.selected,true);
+  assert.deepEqual(manifest.codebaseIndex,{owner:'agentic-graph',storage:'browser-workspace',authority:false,
+    path:`/.workspace/${manifest.id}/codebase-index.ref.json`});
   assert.equal(git('config','--local','--get','agentic-os.workflowManifest'),first.manifest);
   assert.equal(startWorkflow(root,repository,startArgs).manifest,first.manifest);
   const input=join(base,'input.json'),collect=value=>{writeFileSync(input,JSON.stringify(value));return collectWorkflow(root,repository,input);};
@@ -27,6 +29,7 @@ test('one selected workflow retains multiple worktrees through idempotent start/
     members:[...manifest.members.map(ref=>({...ref,file:resolve(workspace,ref.file)})),{id:'second',file:second.manifest,digest:second.digest}]};
   const end=collect(endInput),endBytes=readFileSync(end.manifest,'utf8'),ended=JSON.parse(endBytes);
   assert.equal(end.sequence,2);assert.equal(end.members,2);assert.equal(end.boundary,'end');
+  assert.deepEqual(ended.codebaseIndex,manifest.codebaseIndex);
   assert.equal(ended.previous.digest,first.digest);assert.equal(readFileSync(first.manifest,'utf8'),bytes);
   assert.equal(git('config','--get','agentic-os.workflowManifest'),end.manifest);
   assert.equal(collect(endInput).manifest,end.manifest);assert.equal(collect(endInput).reused,true);

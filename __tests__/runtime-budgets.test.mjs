@@ -36,7 +36,7 @@ test('this repository is inside its own documentation budget', (t) => {
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
   t.after(() => rmSync(fixture, { recursive: true, force: true }));
   cpSync(join(root, 'AGENTS.md'), join(fixture, 'AGENTS.md'));
-  for (const directory of ['docs', 'templates']) cpSync(join(root, directory), join(fixture, directory),
+  for (const directory of ['docs', 'guides']) cpSync(join(root, directory), join(fixture, directory),
     { recursive: true });
   cpSync(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md'),
     join(fixture, 'docs/AUTONOMOUS-GOAL-PURSUIT.md'));
@@ -45,17 +45,17 @@ test('this repository is inside its own documentation budget', (t) => {
 
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const bytes = readFileSync(join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 993, 'update this exact cost to expose every prompt byte delta');
+  const bytes = readFileSync(join(root, 'guides/SYSTEM-PROMPT-RUNTIME.md'));
+  assert.equal(bytes.byteLength, 990, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 987);
+  assert.equal([...prompt].length, 984);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '481747af5f00aa5f03d21731e78a45bfabcca2b33e149d9e1584c56b9697e4ac');
+    '9221fd84a929d2f7d90322044caf6d9515093b9f265486995bed0596da54ef52');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -78,8 +78,8 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ['docs/START-WORKFLOW.md', [
       'Cross-repo writes/publication: enforce `../FLEET.md`.',
       'At start/resume, estimate completion; distinguish external waits.',
-      'Continuously obey `templates/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
-      '`node_modules/agentic-os/templates/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
+      'Continuously obey `guides/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
+      '`node_modules/agentic-os/guides/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
       '`agentic-os start <scope> --write=<paths>`',
       'Disjoint lanes run; overlaps wait.',
       '`agentic-os land --message=<message>` stages, commits, pushes',
@@ -94,8 +94,8 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'reuse bound proof;',
       'forbid unchanged repetition, recursion, duplicate/conflicting/overlapping execution.',
     ]],
-    ['templates/SYSTEM-PROMPT-RUNTIME.md', [
-      'Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md.',
+    ['guides/SYSTEM-PROMPT-RUNTIME.md', [
+      'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
       'Free-tier/FOSS; no paid plans/addons/overages;',
       'FORBID guessed inputs, optional detours, duplicate checks.',
       'Fix owner/reuse/remove replacements; contract-only shims.',
@@ -105,7 +105,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'authority+green proof per effect/receipt; never infer.',
     ]],
     ['AGENTS.md', [
-      'Continuously obey the global `templates/SYSTEM-PROMPT-RUNTIME.md`',
+      'Continuously obey the global `guides/SYSTEM-PROMPT-RUNTIME.md`',
     ]],
     ['docs/BUDGETS.md', [
       'Universal runtime prompt | 1,000 UTF-8 bytes',
@@ -188,15 +188,15 @@ test('root-owned runtime evaluation fails closed on installed prompt or binding 
   const source = fileURLToPath(new URL('..', import.meta.url));
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-eval-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const directory of ['docs', 'templates']) cpSync(join(source, directory), join(root, directory),
+  for (const directory of ['docs', 'guides']) cpSync(join(source, directory), join(root, directory),
     { recursive: true });
   assert.deepEqual(runtimeContractViolations(root), []);
-  const promptPath = join(root, 'templates/SYSTEM-PROMPT-RUNTIME.md');
+  const promptPath = join(root, 'guides/SYSTEM-PROMPT-RUNTIME.md');
   const driftedPrompt = Buffer.from(readFileSync(promptPath));
   driftedPrompt[0] = driftedPrompt[0] === 0x47 ? 0x67 : 0x47;
   writeFileSync(promptPath, driftedPrompt);
   assert.ok(runtimeContractViolations(root).some((item) => item.kind === 'runtime-prompt-digest'));
-  writeFileSync(promptPath, readFileSync(join(source, 'templates/SYSTEM-PROMPT-RUNTIME.md')));
+  writeFileSync(promptPath, readFileSync(join(source, 'guides/SYSTEM-PROMPT-RUNTIME.md')));
   const guidelinePath = join(root, 'docs/adlc-guidelines.md');
   writeFileSync(guidelinePath, readFileSync(guidelinePath, 'utf8')
     .replace('runtime_evaluator: npm run evals', 'runtime_evaluator: local-copy'));
@@ -206,11 +206,11 @@ test('root-owned runtime evaluation fails closed on installed prompt or binding 
   assert.deepEqual(runtimeContractViolations(root).map((item) => item.kind),
     ['runtime-prompt-unreadable', 'runtime-evaluator-binding']);
   writeFileSync(guidelinePath, readFileSync(join(source, 'docs/adlc-guidelines.md')));
-  symlinkSync(join(source, 'templates/SYSTEM-PROMPT-RUNTIME.md'), promptPath);
+  symlinkSync(join(source, 'guides/SYSTEM-PROMPT-RUNTIME.md'), promptPath);
   assert.ok(runtimeContractViolations(root)
     .some((item) => item.kind === 'runtime-prompt-unreadable'));
   rmSync(promptPath);
-  writeFileSync(promptPath, readFileSync(join(source, 'templates/SYSTEM-PROMPT-RUNTIME.md')));
+  writeFileSync(promptPath, readFileSync(join(source, 'guides/SYSTEM-PROMPT-RUNTIME.md')));
   writeFileSync(guidelinePath, readFileSync(guidelinePath, 'utf8') +
     '\n<!-- runtime_evaluator: npm run evals -->\n');
   assert.deepEqual(runtimeContractViolations(root), []);

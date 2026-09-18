@@ -1,4 +1,4 @@
-Global SSOT=templates/SYSTEM-PROMPT-RUNTIME.md.
+Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.
 Free-tier/FOSS; no paid plans/addons/overages;
 mobile browser+edge/device/local/offline MVP.
 D=<agentic-os>/docs; RUN D/START-WORKFLOW.md+D/adlc-guidelines.md+repo product/deploy/rollback.

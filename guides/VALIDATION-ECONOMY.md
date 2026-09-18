@@ -403,6 +403,14 @@ Compare the same selected check set, environment and quality before claiming sav
 
 ## SSOT manifest location and Apex demo (WORKFLOW-OBS-005)
 
+Each workflow root also exposes `codebaseIndex`, a navigation reference to
+`/.workspace/<workflow-id>/codebase-index.ref.json` in the browser workspace. Graph's existing
+Codebase graph importer materializes this reference to its shared index manifest, including the
+graph ID, exact snapshot digest, bounded D3 projection and captured import measurements. The
+native graph snapshot remains the query owner. A missing reference means no retained index has
+been associated in that browser; the link alone proves neither indexing nor evaluation. Graph
+owns these local artifacts, while OS retains the workflow boundary without copying graph data.
+
 The immutable entry point is the exact path in the `manifest` field returned by `workflow collect`:
 `.workspace/.artifacts/workflows/<repository-digest>/<manifest-digest>/manifest.json`.
 `repository-digest` is the first 24 SHA-256 hex characters of the repository identity;

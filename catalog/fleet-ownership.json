@@ -250,7 +250,7 @@
     {
       "id": "adlc-prompt",
       "owner": "github.com/huijoohwee/agentic-os",
-      "source": "templates/SYSTEM-PROMPT-RUNTIME.md",
+      "source": "guides/SYSTEM-PROMPT-RUNTIME.md",
       "consumers": [],
       "discovery": {
         "kinds": [

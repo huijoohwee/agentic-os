@@ -251,6 +251,8 @@ function collectGroup(root, repository, manifest, inputPath) {
   if(boundary!==undefined && !['start','end'].includes(boundary)
     || boundary==='end' && !older?.boundary || older?.boundary==='end' && boundary!=='end')fail('boundary-transition');
   const stored={schema:WORKFLOW_GROUP,id:manifest.id,source:manifest.source,lifecycle:lifecycleMetadata(),planning,members,
+    codebaseIndex:{owner:'agentic-graph',storage:'browser-workspace',authority:false,
+      path:`/.workspace/${encodeURIComponent(manifest.id)}/codebase-index.ref.json`},
     releaseTargets:manifest.releaseTargets,releaseEvidence,sequence,...(previous?{previous}:{}),...(boundary?{boundary}:{})};
   // Validate every referenced archive and all pages at collection; exports load requested pages only.
   workflowGroup(stored,load,{adviceOnly:true});
