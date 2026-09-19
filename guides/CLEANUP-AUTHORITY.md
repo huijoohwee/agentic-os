@@ -46,6 +46,9 @@ and `policy` as required by `createGitHubTransitionAuthorityVerifier`. Keep the 
 outside source worktrees. Supply `GITHUB_TOKEN` only in the process environment, never in JSON.
 Plan bytes are JSON arrays of integers from 0 through 255; the CLI rehydrates them into bounded byte
 arrays before verification and computes the same bundle digest before and after rehydration.
+Use `npm run completion:scaffold -- --ref=<lane>` to print a read-only scaffold with exact lane
+facts, the committed transition policy, source-owned cleanup limits, and explicit placeholders
+only for the still-governed winners before assembling the final bundle.
 After stopping writers, run `npm run completion:apply -- --ref=<lane> --bundle=<absolute-json>
 --plan=<absolute-json> --authorize=<exact-eligibility-digest> --stopped`. Apply rechecks the
 canonical checkout, registered lane, evidence bundle and live provider winners; the cleanup

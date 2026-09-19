@@ -85,15 +85,16 @@ export function validateCommandArguments(command, argv) {
     }
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'successor'].includes(action))
-        return 'release-common requires start, publish, finish, or successor';
+      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'successor'].includes(action))
+        return 'release-common requires start, publish, finish, close, or successor';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
       if (action === 'start') return exact(argv, { min: 2, max: 2, options: ['device', 'write', 'plan'] });
       if (action === 'publish') return exact(argv, { min: 1, max: 1, options: ['message', 'body-file', 'title'] });
-      if (action === 'finish') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
+      if (action === 'finish' || action === 'close')
+        return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
       return exact(argv, { min: 2, max: 2, options: ['expected-head', 'write'] });
     }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
@@ -163,7 +164,8 @@ export function cmdHelp() {
       '    npm run release:common --help  show the canonical doctor -> status -> lane -> land -> finish flow',
       '    npm run release:common -- start <scope> --write=<path[,path...]>   run doctor, status, then lane',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
-      '    npm run release:common -- finish --ref=<lane>  finish then classify integration',
+      '    npm run release:common -- finish --ref=<lane>  observe exact integration from canonical, then classify it',
+      '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
       '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>]  continue only after publish',
       '',
       '  Underlying primitives and diagnostics:',
@@ -171,7 +173,7 @@ export function cmdHelp() {
       '    npm run status            read-only lane projection and provider state',
       '    npm run lane -- <scope> --write=<path[,path...]>   open one path-scoped lane',
       '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
-      '    npm run finish -- --ref=<lane>  record exact integration; retain refs for governed cleanup',
+      '    npm run finish -- --ref=<lane>  record exact integration from the retained lane ref; retain cleanup separately',
       '    npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '',
       '  Other commands:',
@@ -194,7 +196,7 @@ export function cmdHelp() {
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
       '  Follow-up and diagnostics:',
       '  agentic-os completion status --ref=<lane>  read-only completion blockers and owner actions',
-      '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
+      '  npm run completion:scaffold -- --ref=<lane>  print a cleanup bundle scaffold with exact lane facts, committed policy, default limits, and remaining placeholders',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',

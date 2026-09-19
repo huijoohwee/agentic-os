@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import {
   git, gitLines, repoRoot, currentBranch, configuredRemote, remoteTransport,
   acquireOperationLock, finishOperationLock, headSha, publishExactNewRef,
-  remoteRefSha, fetch as gitFetch, worktrees,
+  remoteRefSha, fetch as gitFetch, worktrees, refExists,
 } from '../src/git.mjs';
 import { assertDevice, deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { legalEvents, providerAdapterRequired, successorLineage,
@@ -156,13 +156,14 @@ function cmdReleaseCommonHelp() {
     [
       'agentic-os release-common',
       '',
-      'Fast path:',
+      'Default path:',
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
-      '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]  publish exact lane head and hand off integration',
-      '  agentic-os release-common finish --ref=<lane>  record exact post-merge proof',
+      '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
+      '  agentic-os release-common finish --ref=<lane>',
+      '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '',
       'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]  only for post-publish fixes',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]',
     ].join('\n'),
   );
   return 0;
@@ -423,6 +424,14 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
       if (finishStatus !== 0) return finishStatus;
       return cmdReap(root, rest, policy, profile);
     }
+    case 'close': {
+      const finishStatus = cmdFinish(root, rest, policy, profile);
+      if (finishStatus !== 0) return finishStatus;
+      const reapStatus = cmdReap(root, rest, policy, profile);
+      if (reapStatus !== 0) return reapStatus;
+      return (await import('./agentic-os-completion-status.mjs'))
+        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out);
+    }
     case 'successor':
       return cmdSuccessor(root, rest, policy);
     default:
@@ -506,24 +515,25 @@ function cmdFinish(root, argv, policy, profile) {
     err('blocked-invalid-lane-ref: finish requires --ref=<lane>');
     return 1;
   }
-  const lane = worktreeFor(ref, root);
-  if (!lane || !existsSync(lane.path)) {
-    err(`blocked-unbound-lane: no registered worktree exists for ${ref}`);
+  const laneHead = headSha(`refs/heads/${ref}`, root);
+  if (!laneHead || !refExists(`refs/heads/${ref}`, root)) {
+    err(`blocked-lane-ref-missing: no local lane ref exists for ${ref}`);
     return 1;
   }
-  if (git(['status', '--porcelain'], { cwd: lane.path }).trim()) {
+  const lane = worktreeFor(ref, root);
+  const lanePath = lane && existsSync(lane.path) ? lane.path : null;
+  if (lanePath && git(['status', '--porcelain'], { cwd: lanePath }).trim()) {
     err(`blocked-dirty-lane: preserve and commit or remove authored bytes in ${lane.path}`);
     return 1;
   }
   effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
   const baseSha = assertProfileCurrent(root, policy, profile);
-  const laneHead = headSha(`refs/heads/${ref}`, root);
   if (!baseSha || !integrationProof(baseSha, laneHead, { cwd: root })) {
     err(`blocked-not-integrated: ${ref} is not exactly projected into ${policy.protectedRef}`);
     return 1;
   }
   out(JSON.stringify({ schema: 'agentic-os/sprint-finish/v1', ref, laneHead,
-    integratedRevision: baseSha, worktree: lane.path, worktreeRemoved: false,
+    integratedRevision: baseSha, worktree: lanePath, worktreeRemoved: false,
     branchRetained: true, grantsAuthority: false, profileDigest: profile.profileDigest,
     cleanupDisposition: profile.cleanup.worktreeProjection === 'retain'
       ? 'retained' : 'authenticated-cleanup-required',
