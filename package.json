@@ -190,6 +190,7 @@
   },
   "bin": {
     "agentic-os": "bin/agentic-os.mjs",
+    "agentic-os-release-common": "bin/agentic-os-release-common-wrapper.mjs",
     "agentic-os-authority": "bin/agentic-os-authority.mjs",
     "agentic-os-transition": "bin/agentic-os-transition.mjs",
     "agentic-os-mcp": "bin/agentic-os-mcp.mjs"
@@ -215,6 +216,7 @@
     "setup": "node bin/agentic-os.mjs setup",
     "doctor": "node bin/agentic-os.mjs doctor",
     "lane": "node bin/agentic-os.mjs start",
+    "release:common": "node bin/agentic-os.mjs release-common",
     "land": "node bin/agentic-os-tests.mjs affected && node bin/agentic-os.mjs land",
     "successor": "node bin/agentic-os.mjs successor",
     "status": "node bin/agentic-os.mjs status",

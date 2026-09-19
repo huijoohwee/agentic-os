@@ -151,6 +151,22 @@ async function cmdStart(root, argv, policy, profile) {
     label: 'start', result: operationResult, error: operationError, artifacts,
   });
 }
+function cmdReleaseCommonHelp() {
+  out(
+    [
+      'agentic-os release-common',
+      '',
+      'Default path:',
+      '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
+      '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
+      '  agentic-os release-common finish --ref=<lane>',
+      '',
+      'Exception path:',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head>',
+    ].join('\n'),
+  );
+  return 0;
+}
 function cmdLand(cwd, argv, profile, policy) {
   const root = repoRoot(cwd);
   const ref = currentBranch(root);
@@ -374,6 +390,44 @@ function cmdLand(cwd, argv, profile, policy) {
   out('exact protected integration proof is still required');
   return 0;
 }
+function cmdSuccessor(root, argv, policy) {
+  const predecessorRef = currentBranch(root);
+  if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) {
+    err('blocked-unbound-lane: successor requires a bound published lane worktree');
+    return 1;
+  }
+  return runPublishedLaneSuccessor({ cwd: root, predecessorRef,
+    scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
+    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out });
+}
+async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
+  const [action = 'help', ...rest] = argv;
+  switch (action) {
+    case 'help':
+    case '--help':
+    case '-h':
+      return cmdReleaseCommonHelp();
+    case 'start': {
+      const doctorStatus = cmdDoctor(root, profile, policy);
+      if (doctorStatus !== 0) return doctorStatus;
+      const statusStatus = cmdStatus(root, [], profile, policy);
+      if (statusStatus !== 0) return statusStatus;
+      return cmdStart(root, rest, policy, profile);
+    }
+    case 'publish':
+      return cmdLand(cwd, rest, profile, policy);
+    case 'finish': {
+      const finishStatus = cmdFinish(root, rest, policy, profile);
+      if (finishStatus !== 0) return finishStatus;
+      return cmdReap(root, rest, policy, profile);
+    }
+    case 'successor':
+      return cmdSuccessor(root, rest, policy);
+    default:
+      err(`unknown release-common action "${action}"`);
+      return cmdReleaseCommonHelp();
+  }
+}
 function cmdStatus(root, argv, profile, policy) {
   const device = assertDevice(option(argv, 'device') ?? deviceSegment());
   const cachedRecords = store.load(root).lanes;
@@ -522,6 +576,8 @@ async function main() {
     return 1;
   }
   if (command === 'help' || command === '--help') return cmdHelp();
+  if (command === 'release-common' && argv.length === 0) return cmdReleaseCommonHelp();
+  if (command === 'release-common' && ['help', '--help', '-h'].includes(argv[0])) return cmdReleaseCommonHelp();
   if (command === 'run') return (await import('./agentic-os-run.mjs')).runAgentCommand(argv, out);
   if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);
   if (command === 'request') return runRequest(argv);
@@ -560,19 +616,11 @@ async function main() {
       return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
     case 'doctor': return cmdDoctor(root, profile, policy);
     case 'start': return cmdStart(root, argv, policy, profile);
+    case 'release-common': return cmdReleaseCommon(cwd, root, argv, policy, profile);
     case 'memory': case 'workspace': return (await import('./agentic-os-workspace-sync.mjs'))
       .runWorkspaceCommand(root, policy, command, argv, out);
     case 'land': return cmdLand(cwd, argv, profile, policy);
-    case 'successor': {
-      const predecessorRef = currentBranch(root);
-      if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) {
-        err('blocked-unbound-lane: successor requires a bound published lane worktree');
-        return 1;
-      }
-      return runPublishedLaneSuccessor({ cwd: root, predecessorRef,
-        scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
-        remote: remoteName(policy, root), protectedRef: policy.protectedRef, out });
-    }
+    case 'successor': return cmdSuccessor(root, argv, policy);
     case 'status': return cmdStatus(root, argv, profile, policy);
     case 'reap': return cmdReap(root, argv, policy, profile);
     case 'finish': return cmdFinish(root, argv, policy, profile);
