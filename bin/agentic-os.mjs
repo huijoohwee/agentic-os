@@ -156,13 +156,13 @@ function cmdReleaseCommonHelp() {
     [
       'agentic-os release-common',
       '',
-      'Default path:',
+      'Fast path:',
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
-      '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
-      '  agentic-os release-common finish --ref=<lane>',
+      '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]  publish exact lane head and hand off integration',
+      '  agentic-os release-common finish --ref=<lane>  record exact post-merge proof',
       '',
       'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]  only for post-publish fixes',
     ].join('\n'),
   );
   return 0;

@@ -52,10 +52,8 @@ export function reapLaneBranches(ref = null, cwd = process.cwd()) {
 }
 export const registeredLaneBranches = (cwd = process.cwd()) =>
   worktrees(cwd).map((entry) => entry.branch).filter(isLaneRef);
-export const worktreeFor = (ref, cwd = process.cwd()) =>
-  worktrees(cwd).find((entry) => entry.branch === ref) ?? null;
-export const staleWorktrees = (cwd = process.cwd()) =>
-  worktrees(cwd).filter((entry) => !existsSync(entry.path));
+export const worktreeFor = (ref, cwd = process.cwd()) => worktrees(cwd).find((entry) => entry.branch === ref) ?? null;
+export const staleWorktrees = (cwd = process.cwd()) => worktrees(cwd).filter((entry) => !existsSync(entry.path));
 /** Refuse an already-occupied lane identity before any provider evidence is fetched. */
 export function assertProvisionable({ ref, scope, device, cwd = process.cwd() }) {
   const path = lanePath(scope, device, cwd);
@@ -320,7 +318,10 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
       records: currentStore.lanes, predecessorRef: boundRef });
     if (!plannedRecord.worktree) throw successorError('blocked-successor-postcondition',
       'bound worktree registration is unavailable');
-    if (!resuming) { laneRecords.putExact(plannedRecord, null, cwd); artifacts.cacheState = 'planned'; }
+    if (!resuming) {
+      laneRecords.putExact(plannedRecord, null, cwd);
+      artifacts.cacheState = 'planned';
+    }
     if (boundRef !== successorRef) {
       const beforeBinding = remoteHeads();
       if (beforeBinding[predecessorRef] !== expectedHead || beforeBinding[successorRef] !== null
