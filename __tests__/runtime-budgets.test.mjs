@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40957, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40898, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -78,22 +78,21 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/START-WORKFLOW.md', [
       'Cross-repo writes/publication: enforce `../FLEET.md`.',
-      'At start/resume, estimate completion; distinguish external waits.',
-      'Continuously obey `guides/SYSTEM-PROMPT-RUNTIME.md` as the global SSOT.',
-      '`node_modules/agentic-os/guides/SYSTEM-PROMPT-RUNTIME.md`); do not copy it.',
-      '`agentic-os start <scope> --write=<paths>`',
+      'At start/resume, estimate active work; distinguish external waits.',
+      'Obey `guides/SYSTEM-PROMPT-RUNTIME.md`.',
+      '`agentic-os start <scope> --write=<paths> --plan=<committed-plan>`',
       'Disjoint lanes run; overlaps wait.',
-      '`agentic-os land --message=<message>` stages, commits, pushes',
-      'Never copy lane files into canonical.',
+      '`agentic-os land --message=<message>` publishes scope; never copy into canonical.',
+      "Retain the user's outcome/grant and workflow root through RELEASE; for Dev → Prod, merge/cleanup is not done.",
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      "Apply the global prompt's estimate/wait rule and",
-      'Land the exact diff by profile-selected protected integration;',
-      'never copy lanes into canonical.',
-      'After merge, `agentic-os finish --ref=<lane>` retains it.',
-      '[Cleanup](LIFECYCLE-COMPLETION.md), sync/deploy/rollback require separate receipts.',
-      'reuse bound proof;',
-      'forbid unchanged repetition, recursion, duplicate/conflicting/overlapping execution.',
+      'Apply the global prompt and',
+      'Land the exact checked diff by protected integration; default squash.',
+      '`finish --ref=<lane>` retains refs.',
+      '[Cleanup](LIFECYCLE-COMPLETION.md), sync/deploy/rollback need separate receipts.',
+      'Reuse bound proof; run affected checks once.',
+      'Forbid unchanged repetition, recursion, duplicate/conflicting/overlapping execution.',
+      'continue covered owner actions to authenticated live verification and the terminal release receipt; report gaps.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',

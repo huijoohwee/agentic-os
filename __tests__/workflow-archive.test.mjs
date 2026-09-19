@@ -164,3 +164,42 @@ test('group advice exposes member phase gaps and model evidence without loading 
  delete group.left.manifest.archive.measurements;
  assert.equal(workflowGroup(group.manifest,group.load,{adviceOnly:true}).members[0].measurements,null);
 });
+
+test('release closure continues after green checks and requires matching Production receipts plus end',()=>{
+ const {manifest,load}=groupFixture();
+ let closure=workflowGroup(manifest,load,{adviceOnly:true}).closure;
+ assert.equal(closure.status,'incomplete');
+ assert.equal(closure.next.phase,'production-deployment');
+ assert.equal(closure.next.owner,'consumer-release-owner');
+ manifest.boundary='end';
+ assert.equal(workflowGroup(manifest,load).status,'running');
+ manifest.releaseEvidence=['deployment','runtime'].map((kind,i)=>({memberId:'right',kind,
+  environment:'production',repository:source.repository,revision:source.revision,
+  digest:String(i+1).repeat(64),schema:'consumer-release/v1',observedStatus:'completed'}));
+ closure=workflowGroup(manifest,load,{adviceOnly:true}).closure;
+ assert.equal(closure.status,'observed-complete');assert.equal(closure.next,null);
+ assert.equal(closure.authorizesEffects,false);assert.equal(closure.authorityVerified,false);
+ assert.equal(workflowGroup(manifest,load).status,'completed');
+ delete manifest.boundary;
+ assert.equal(workflowGroup(manifest,load).status,'running');
+ assert.equal(workflowGroup(manifest,load,{adviceOnly:true}).closure.next.phase,'workflow-end');
+ manifest.boundary='end';manifest.releaseEvidence[1].revision='f'.repeat(40);
+ assert.equal(workflowGroup(manifest,load).status,'failed');
+ assert.equal(workflowGroup(manifest,load,{adviceOnly:true}).closure.status,'blocked');
+ manifest.releaseEvidence[1].revision=source.revision;manifest.releaseEvidence[1].observedStatus='failed';
+ assert.equal(workflowGroup(manifest,load,{adviceOnly:true}).closure.next.phase,'production-runtime');
+ assert.equal(workflowGroup(manifest,load).status,'failed');
+});
+
+test('closure exposes missing phases before release and keeps legacy progress unknown without page scans',()=>{
+ const group=groupFixture();group.left.manifest.expected.push('integration');
+ const reads=[];const load=ref=>{const row=group.load(ref);return {...row,read:file=>{reads.push(file);return row.read(file);}};};
+ const advice=workflowGroup(group.manifest,load,{adviceOnly:true});
+ assert.equal(advice.closure.next.phase,'integration');assert.equal(advice.closure.next.memberId,'left');
+ assert.equal(advice.closure.next.evidenceDigest,null);
+ assert(reads.every(file=>file==='recommendations.json'));
+ const prior=JSON.parse(group.left.files.get('recommendations.json'));delete prior.progress;
+ const bytes=JSON.stringify(prior);group.left.files.set('recommendations.json',bytes);
+ group.left.manifest.archive.recommendations.digest=hash(bytes);
+ assert.equal(workflowGroup(group.manifest,group.load,{adviceOnly:true}).closure.next.phase,'checks');
+});

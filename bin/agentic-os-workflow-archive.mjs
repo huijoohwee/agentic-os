@@ -125,6 +125,11 @@ export function recommendations(observation) {
   if (!advice.length) advice.push({ id: 'baseline-first', action: 'Capture a comparable measured validation cohort before recommending a performance change.',
     evidence: { source: workflow.source }, condition: 'No measured baseline means no savings claim.' });
   return { schema: 'agentic-os/workflow-recommendations/v1', authority: false, executable: false,
+    progress: workflow.expected.map(id => {
+      const row = phases.find(phase => phase.spanId === id);
+      return { id, status: row?.status ?? 'missing', digest: row?.subjectDigest ?? null,
+        revision: row?.component.revision ?? null };
+    }),
     source: workflow.source, context: workflow.context ?? null, appliesTo: ['next-workflow','next-session','next-turn','next-thread'],
     strategy: 'observe-recommend-authorized-change-reevaluate', ranking, recommendations: advice,
     models: { captured: models.length, reported: models.filter(row => row.cost?.status === 'reported').length,
@@ -209,6 +214,56 @@ export function readArchive(manifest, read, { offset=0, now=Date.now(), adviceOn
   return observation;
 }
 
+/** Navigation for the existing external-agent loop; never an effect executor or authority proof. */
+function releaseClosure(manifest, members) {
+  const owners = {
+    preparation: ['lane-owner', 'Run the enrolled preflight for the exact candidate.'],
+    checks: ['validation-owner', 'Run affected checks or reuse their valid input-bound receipts.'],
+    ci: ['provider-check-owner', 'Observe the exact protected check run; repair failures in the source lane.'],
+    integration: ['integration-owner', 'Land the checked candidate through protected integration, then run finish.'],
+    cleanup: ['cleanup-owner', 'Revalidate consent and quarantine only the exact eligible worktree; retain recovery evidence.'],
+    synchronization: ['canonical-owner', 'Use governed canonical synchronization and preserve unrelated bytes.'],
+    runtime: ['runtime-owner', 'Run the consumer canonical Dev readiness and exact-candidate review.'],
+  };
+  const steps = members.flatMap(({ ref, child, advice }) => child.expected.map(phase => {
+    const receipt = child.phases.find(row => row.id === phase);
+    const progress = advice.progress?.find(row => row.id === phase && row.digest === receipt?.digest
+      && row.revision === (receipt?.revision ?? child.source.revision));
+    const [owner, action] = owners[phase] ?? ['phase-owner', 'Collect the owning phase receipt.'];
+    return { memberId: ref.id, phase, owner, action, status: progress?.status ?? 'missing',
+      evidenceDigest: receipt?.digest ?? null };
+  }));
+  for (const memberId of manifest.releaseTargets) {
+    const refs = (manifest.releaseEvidence ?? []).filter(row => row.memberId === memberId);
+    const paired = refs.length === 2 && refs.every(row => row.repository === refs[0].repository
+      && row.revision === refs[0].revision);
+    for (const phase of ['deployment', 'runtime']) {
+      const ref = refs.find(row => row.kind === phase);
+      const bound = ref && /^[a-f0-9]{40}$/u.test(ref.revision ?? '')
+        && ref.repository === members.find(row => row.ref.id === memberId).child.source.repository;
+      steps.push({ memberId, phase: `production-${phase}`, owner: 'consumer-release-owner',
+        action: phase === 'deployment'
+          ? 'Prepare the exact reviewed candidate, revalidate existing authorization, and run the consumer protected release workflow.'
+          : 'Verify that deployed candidate through the consumer live checks and retain its terminal release receipt.',
+        status: ref ? !bound || refs.length === 2 && !paired ? 'blocked' : ref.observedStatus ?? 'queued' : 'missing',
+        evidenceDigest: ref?.digest ?? null });
+    }
+  }
+  for (const { ref, child } of members) if (child.archive.coverage.partial || child.archive.status !== 'completed')
+    steps.push({ memberId: ref.id, phase: 'receipt-coverage', owner: 'evidence-owner',
+      action: 'Collect the missing or unsuccessful native phase and trace evidence; preserve unknown measurements.',
+      status: ['failed', 'blocked'].includes(child.archive.status) ? 'blocked' : 'missing', evidenceDigest: ref.digest });
+  steps.push({ memberId: null, phase: 'workflow-end', owner: 'evidence-owner',
+    action: 'Collect the end successor of the same workflow, retaining every member, release target and original receipt.',
+    status: manifest.boundary === 'end' ? 'completed' : 'missing', evidenceDigest: null });
+  const pending = steps.filter(row => row.status !== 'completed');
+  return { target: 'production-runtime-ready', status: pending.some(row => ['failed', 'blocked'].includes(row.status))
+    ? 'blocked' : pending.length ? 'incomplete' : 'observed-complete',
+    authorizesEffects: false, authorityVerified: false, total: steps.length,
+    completed: steps.length - pending.length, pending, next: pending[0] ?? null,
+    policy: 'Continue covered actions through their existing owners; wait on exact active runs, repair failed source, and ask only for uncovered decisions. Receipt coverage is not authenticated release authority.' };
+}
+
 // An ADLC root is a reference graph, not a second copy of each worktree's spans.
 export const WORKFLOW_GROUP = 'agentic-os/workflow-group/v1';
 export function workflowGroup(manifest, load, { offset=0, now=Date.now(), adviceOnly=false }={}) {
@@ -241,7 +296,8 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
     total:child.archive.total,coverage:child.archive.coverage,manifest:ref.file,
     expected:child.expected,missing:child.expected.filter(id=>!child.phases.some(row=>row.id===id)),
     measurements:child.archive.measurements??null,recommendations:child.archive.recommendations}));
-  const common={schema:'agentic-os/workflow-group-recommendations/v1',authority:false,executable:false,
+  const closure=releaseClosure(manifest,members);
+  const common={schema:'agentic-os/workflow-group-recommendations/v1',authority:false,executable:false,closure,
     source:manifest.source,workflowId:manifest.id,planning:manifest.planning,appliesTo:['next-workflow','next-session','next-turn','next-thread'],
     members:summaries,release:{boundary:'production-runtime-ready',targets:manifest.releaseTargets,
       evidence:manifest.releaseEvidence??[],missing:missingRelease,authorityVerified:false},
@@ -259,8 +315,8 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
     timing:{startOffsetMs:null,inclusiveMs:null,exclusiveObservedMs:null},evaluation:{status:'unevaluated',score:null}}));
   const total=1+members.reduce((sum,row)=>sum+row.child.archive.total,0)+releaseRows.length;
   requireFact(total<=65601 && Number.isSafeInteger(offset) && offset>=0 && offset%32===0 && offset<total,'group-offset');
-  const partial=missingRelease.length>0 || releaseRows.some(row=>row.status!=='completed') || members.some(row=>row.child.archive.coverage.partial || row.child.archive.status!=='completed');
-  const failed=members.some(row=>['blocked','failed'].includes(row.child.archive.status)) || releaseRows.some(row=>row.status==='failed');
+  const partial=closure.status!=='observed-complete';
+  const failed=closure.status==='blocked';
   const candidate={id:manifest.id,revision:manifest.source.revision,digest:hash(JSON.stringify(manifest))};
   const root={spanId:'root',parentSpanId:null,kind:'workflow',operation:manifest.id,taskId:manifest.id,
     status:failed?'failed':partial?'running':'completed',subjectDigest:candidate.digest,component:candidate,links:[],cost:null,resources:blank(),
@@ -288,7 +344,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
     status:root.status,subjectDigest:candidate.digest,candidate,cohortId:manifest.id,context:null,
     profile:{workflow:{source:manifest.source,expected:['planning','worktrees','production-deployment','production-runtime'],
       missing:[...summaries.flatMap(row=>row.missing.map(phase=>`${row.id}:phase:${phase}`)),...missingRelease.map(ref=>`${ref.memberId}:${ref.kind}`)],phases:[],planning:manifest.planning,members:summaries,
-      release:common.release,optimization:common,receiptAuthorityVerified:false,
+      release:common.release,closure,optimization:common,receiptAuthorityVerified:false,
       boundary:manifest.boundary??null,sequence:manifest.sequence??null,previous:manifest.previous??null,
       measurementScope:'Per worktree and phase; concurrent clocks, nested tokens and costs must not be summed'}},
     evaluation:root.evaluation,observedAt:now,expiresAt:now+60000,spans,
