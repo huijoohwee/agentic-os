@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const repoLabel = process.argv.find((arg) => arg.startsWith('--repo-label='))?.slice(13) ?? 'consumer';
 const splitIndex = process.argv.indexOf('--');
 const args = splitIndex >= 0 ? process.argv.slice(splitIndex + 1) : [];
 const command = args[0] || 'help';
 const rest = args.slice(1);
+const ownerCli = join(dirname(fileURLToPath(import.meta.url)), 'agentic-os.mjs');
 
 const HELP = `${repoLabel} release:common
 
@@ -19,8 +22,8 @@ Exception path:
   npm run release:common -- successor <scope> --expected-head=<published-head> [--write=<paths>]
 `;
 
-const run = (script, extraArgs = []) => {
-  const result = spawnSync('npm', ['run', script, '--', ...extraArgs], {
+const runCli = (cliArgs = []) => {
+  const result = spawnSync(process.execPath, [ownerCli, ...cliArgs], {
     stdio: 'inherit',
     env: process.env,
   });
@@ -35,19 +38,19 @@ if (command === 'help' || command === '--help' || command === '-h') {
 
 const actions = {
   start() {
-    run('doctor');
-    run('status');
-    run('lane', rest);
+    runCli(['doctor']);
+    runCli(['status']);
+    runCli(['start', ...rest]);
   },
   publish() {
-    run('land', rest);
+    runCli(['land', ...rest]);
   },
   finish() {
-    run('finish', rest);
-    run('reap', rest);
+    runCli(['finish', ...rest]);
+    runCli(['reap', ...rest]);
   },
   successor() {
-    run('successor', rest);
+    runCli(['successor', ...rest]);
   },
 };
 
