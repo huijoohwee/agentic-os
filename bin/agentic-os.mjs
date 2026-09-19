@@ -162,7 +162,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common finish --ref=<lane>',
       '',
       'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head>',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]',
     ].join('\n'),
   );
   return 0;
@@ -396,9 +396,11 @@ function cmdSuccessor(root, argv, policy) {
     err('blocked-unbound-lane: successor requires a bound published lane worktree');
     return 1;
   }
+  const writeOption = option(argv, 'write'),
+    expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption);
   return runPublishedLaneSuccessor({ cwd: root, predecessorRef,
     scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
-    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out });
+    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths });
 }
 async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
   const [action = 'help', ...rest] = argv;

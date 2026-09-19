@@ -94,11 +94,11 @@ export function validateCommandArguments(command, argv) {
       if (action === 'start') return exact(argv, { min: 2, max: 2, options: ['device', 'write', 'plan'] });
       if (action === 'publish') return exact(argv, { min: 1, max: 1, options: ['message', 'body-file', 'title'] });
       if (action === 'finish') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
-      return exact(argv, { min: 2, max: 2, options: ['expected-head'] });
+      return exact(argv, { min: 2, max: 2, options: ['expected-head', 'write'] });
     }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
-    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
+    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
@@ -187,7 +187,7 @@ export function cmdHelp() {
       '    npm run finish -- --ref=<lane>  record exact integration; retain refs for governed cleanup',
       '',
       '  Follow-up and diagnostics:',
-      '    npm run successor -- <scope>  continue after a published lane when more work is needed',
+      '    npm run successor -- <scope> [--write=<path[,path...]>]  continue after a published lane',
       '  agentic-os completion status --ref=<lane>  read-only completion blockers and owner actions',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',

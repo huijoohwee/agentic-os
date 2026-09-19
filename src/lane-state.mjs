@@ -299,7 +299,7 @@ export function successorLineage(record) {
     || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.predecessorHead ?? '') ? false : value;
 }
 export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef,
-  tip, worktree, device, scope, createdAt }) {
+  tip, worktree, device, scope, createdAt, writePaths }) {
   const boundRecord = lanes[boundRef], targetRecord = lanes[successorRef],
     boundLineage = successorLineage(boundRecord), targetLineage = successorLineage(targetRecord);
   if (boundLineage === false || targetLineage === false) return successorRefusal('blocked-successor-cache-race', 'successor lineage payload is invalid');
@@ -318,9 +318,11 @@ export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHea
   const expectedHead = explicitHead ?? predecessorRecord.head;
   if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(expectedHead ?? '') || predecessorRecord.base !== protectedRef
     || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(predecessorRecord.baseSha ?? '')) return successorRefusal('blocked-successor-predecessor', 'published head and base identity are required');
+  const inheritedWritePaths = predecessorRecord.writePaths ?? [],
+    plannedWritePaths = writePaths ?? inheritedWritePaths;
   const plannedRecord = { ref: successorRef, device, scope, state: 'planned', base: predecessorRecord.base,
     baseSha: predecessorRecord.baseSha, worktree, pr: null, createdAt: resuming ? recoveryRecord.createdAt : createdAt,
-    writePaths: predecessorRecord.writePaths ?? [], head: tip,
+    writePaths: plannedWritePaths, head: tip,
     handoff: { schema: SUCCESSOR_HANDOFF, predecessorRef, predecessorHead: expectedHead } };
   const exact = recoveryRecord?.state === 'active' ? { ...plannedRecord, state: 'active' } : plannedRecord;
   if (resuming && JSON.stringify(recoveryRecord) !== JSON.stringify(exact)) return successorRefusal('blocked-successor-cache-race', 'successor recovery record differs from inherited authority');

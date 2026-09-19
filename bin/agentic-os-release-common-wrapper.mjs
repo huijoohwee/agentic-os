@@ -16,7 +16,7 @@ Default path:
   npm run release:common -- finish --ref=<lane>
 
 Exception path:
-  npm run release:common -- successor <scope> --expected-head=<published-head>
+  npm run release:common -- successor <scope> --expected-head=<published-head> [--write=<paths>]
 `;
 
 const run = (script, extraArgs = []) => {
