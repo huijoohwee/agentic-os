@@ -36,8 +36,9 @@ function fixture(t) {
       base: 'refs/remotes/origin/main', baseSha: base, worktree: lane.path, pr: 17,
       createdAt: new Date(0).toISOString(), head: tip, writePaths: ['change.txt'] }, lane.path);
   };
-  const invoke = tip => runPublishedLaneSuccessor({ cwd: lane.path, predecessorRef: ref,
-    scope: 'continued', explicitHead: tip, remote: 'origin', protectedRef: 'refs/remotes/origin/main', out() {} });
+  const invoke = (tip, expandedWritePaths = null) => runPublishedLaneSuccessor({ cwd: lane.path, predecessorRef: ref,
+    scope: 'continued', explicitHead: tip, remote: 'origin', protectedRef: 'refs/remotes/origin/main', out() {},
+    expandedWritePaths });
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   return { root, bare, lane, ref, run, base, source, tree, canonical, commit, publish, invoke };
 }
@@ -77,6 +78,17 @@ test('equal-tree joins cannot hide outside-scope paths from their parent history
   const tip = s.commit(s.tree, [s.run(['rev-parse', 'HEAD'], s.lane.path), s.canonical]); s.publish(tip);
   assert.throws(() => s.invoke(tip), { reason: 'blocked-write-outside-reservation' });
   assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
+});
+
+test('successor accepts an explicit reservation expansion for published follow-up fixes', t => {
+  const s = fixture(t);
+  writeFileSync(join(s.lane.path, 'outside.txt'), 'transient\n');
+  s.run(['add', 'outside.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'outside'], s.lane.path);
+  s.run(['rm', '--quiet', 'outside.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'remove'], s.lane.path);
+  const tip = s.commit(s.tree, [s.run(['rev-parse', 'HEAD'], s.lane.path), s.canonical]); s.publish(tip);
+  s.invoke(tip, ['change.txt', 'outside.txt']);
+  const record = get('agent/test-device/continued', s.lane.path);
+  assert.deepEqual(record.writePaths, ['change.txt', 'outside.txt']);
 });
 
 test('preserved joins have a hard 32-commit observation cap', t => {

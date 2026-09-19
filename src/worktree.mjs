@@ -267,7 +267,7 @@ function assertSuccessorGit(cwd) {
 }
 /** Preserve a published lane and continue its clean descendant in the same linked worktree. */
 export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope, explicitHead,
-  remote, protectedRef, out }) {
+  remote, protectedRef, out, expandedWritePaths = null }) {
   const bound = parseLaneRef(boundRef), successorRef = laneRef(scope, bound.device);
   const lock = acquireOperationLock('agentic-os-start', cwd);
   if (!lock) throw successorError('blocked-concurrent-successor', 'another admission owns the start lock');
@@ -276,9 +276,12 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
   let result, error = null, plannedRecord = null;
   try { assertSuccessorGit(cwd);
     const currentStore = laneRecords.load(cwd), tip = headSha('HEAD', cwd);
+    const inheritedWritePaths = (currentStore.lanes[boundRef]?.writePaths ?? []).flatMap((path) => parseWritePaths(path)),
+      requestedWritePaths = expandedWritePaths === null ? inheritedWritePaths
+        : [...new Set([...inheritedWritePaths, ...expandedWritePaths])].sort();
     const plan = successorRecordPlan({ boundRef, successorRef, lanes: currentStore.lanes, explicitHead,
       protectedRef, tip, worktree: worktreeFor(boundRef, cwd)?.path, device: bound.device,
-      scope, createdAt: new Date().toISOString() });
+      scope, createdAt: new Date().toISOString(), writePaths: requestedWritePaths });
     if (plan.reason) throw successorError(plan.reason, plan.message);
     const { resuming, predecessorRef, predecessorRecord: currentRecord, expectedHead } = plan;
     plannedRecord = plan.plannedRecord;
@@ -302,26 +305,22 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     if (!state.ok) throw successorError(state.reason, `successor refused under lock by ${state.guard}`);
     const provision = transition('planned', 'provision', { baseFetched: true });
     if (!provision.ok) throw successorError(provision.reason, `activation refused by ${provision.guard}`);
-    const currentPaths = (currentRecord.writePaths ?? []).flatMap((path) => parseWritePaths(path));
-    if (currentPaths.length === 0) throw successorError('blocked-write-scope-missing',
+    if (requestedWritePaths.length === 0) throw successorError('blocked-write-scope-missing',
       'successor requires inherited write paths');
     assertPreservedSuccessorJoins(currentRecord.baseSha, tip, protectedRef, cwd);
     const committed = decodeNulFields(git(['log', '--format=', '--name-only', '-z',
       `${currentRecord.baseSha}..${tip}`], { cwd, binary: true }));
     if (committed === null) throw successorError(
       'blocked-invalid-write-scope', 'committed path inventory is not strict UTF-8');
-    const outside = [...new Set(committed)].filter((path) => !pathIsReserved(path, currentPaths));
+    const outside = [...new Set(committed)].filter((path) => !pathIsReserved(path, requestedWritePaths));
     if (outside.length > 0) throw successorError('blocked-write-outside-reservation',
-      `preserve ${outside.length} committed path(s) outside the inherited reservation`, { paths: outside });
+      `preserve ${outside.length} committed path(s) outside the successor reservation`, { paths: outside });
     assertDisjointReservationExcept({ cwd, ref: successorRef,
-      writePaths: currentPaths, protectedRef: currentRecord.base ?? protectedRef,
+      writePaths: requestedWritePaths, protectedRef: currentRecord.base ?? protectedRef,
       records: currentStore.lanes, predecessorRef: boundRef });
     if (!plannedRecord.worktree) throw successorError('blocked-successor-postcondition',
       'bound worktree registration is unavailable');
-    if (!resuming) {
-      laneRecords.putExact(plannedRecord, null, cwd);
-      artifacts.cacheState = 'planned';
-    }
+    if (!resuming) { laneRecords.putExact(plannedRecord, null, cwd); artifacts.cacheState = 'planned'; }
     if (boundRef !== successorRef) {
       const beforeBinding = remoteHeads();
       if (beforeBinding[predecessorRef] !== expectedHead || beforeBinding[successorRef] !== null

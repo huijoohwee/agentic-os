@@ -320,6 +320,19 @@ test('successor refuses committed paths outside the inherited reservation', (t) 
   assert.equal(s.run(['branch', '--show-current'], { cwd: s.lane.path }), s.predecessorRef);
 });
 
+test('successor accepts an explicit write expansion for a published follow-up fix', (t) => {
+  const s = publishedSuccessorFixture(t);
+  writeFileSync(join(s.lane.path, 'outside.txt'), 'outside\n');
+  s.run(['add', 'outside.txt'], { cwd: s.lane.path });
+  s.run(['commit', '--quiet', '--message', 'outside'], { cwd: s.lane.path });
+  const result = spawnSync(process.execPath, [
+    CLI, 'successor', 'repair', `--expected-head=${s.publishedHead}`, '--write=change.txt,outside.txt',
+  ], { cwd: s.lane.path, encoding: 'utf8', env: { ...process.env } });
+  assert.equal(result.status, 0, result.stderr);
+  const successor = get('agent/test-device/repair', s.lane.path);
+  assert.deepEqual(successor.writePaths, ['change.txt', 'outside.txt']);
+});
+
 test('successor refuses merge history before merge-only paths can evade inventory', (t) => {
   const s = publishedSuccessorFixture(t);
   s.run(['branch', 'side', s.publishedHead], { cwd: s.lane.path });
