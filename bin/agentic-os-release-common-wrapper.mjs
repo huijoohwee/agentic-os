@@ -13,8 +13,8 @@ const HELP = `${repoLabel} release:common
 Primary human release path:
   npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]
   npm run release:common -- publish --message="<message>" [--title="<title>"] [--body-file=<file>]
-  npm run release:common -- finish --ref=<lane>  observe exact integration from canonical, then classify it
   npm run release:common -- close --ref=<lane>  run post-merge closeout and report remaining cleanup blockers
+  npm run release:common -- finish --ref=<lane>  run the exact integration diagnostic path only when needed
 
 Underlying execution chain:
   doctor -> status -> lane -> land -> finish
