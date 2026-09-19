@@ -1,11 +1,14 @@
 # Start workflow
 
-1. `agentic-os start <scope> --write=<paths> --plan=<committed-plan>`
-2. Disjoint lanes run; overlaps wait.
-3. `agentic-os land --message=<message>` publishes scope; never copy into canonical.
-4. Then [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).
+Use [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md) as the canonical guide.
 
-- Obey `guides/SYSTEM-PROMPT-RUNTIME.md`.
-- At start/resume, estimate active work; distinguish external waits.
-- Cross-repo writes/publication: enforce `../FLEET.md`.
-- Retain the user's outcome/grant and workflow root through RELEASE; for Dev → Prod, merge/cleanup is not done.
+Start step:
+
+1. `npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`
+2. Work only in the printed lane worktree; overlaps wait.
+3. Continue with [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).
+
+Notes:
+
+- `release:common start` runs `doctor`, `status`, then `lane`.
+- Cross-repo writes follow `../FLEET.md`.
