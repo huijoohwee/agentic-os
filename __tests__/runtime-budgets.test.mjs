@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40948, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40956, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -77,22 +77,21 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
-      'Cross-repo writes/publication: enforce `../FLEET.md`.',
-      'At start/resume, estimate active work; distinguish external waits.',
-      'Obey `guides/SYSTEM-PROMPT-RUNTIME.md`.',
-      '`agentic-os start <scope> --write=<paths> --plan=<committed-plan>`',
-      'Disjoint lanes run; overlaps wait.',
-      '`agentic-os land --message=<message>` publishes scope; never copy into canonical.',
-      "Retain the user's outcome/grant and workflow root through RELEASE; for Dev → Prod, merge/cleanup is not done.",
+      'Use [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md) as the canonical guide.',
+      '`npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`',
+      'Work only in the printed lane worktree; overlaps wait.',
+      'Continue with [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).',
+      '`release:common start` runs `doctor`, `status`, then `lane`.',
+      'Cross-repo writes follow `../FLEET.md`.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      'Apply the global prompt and',
-      'Land the exact checked diff by protected integration; default squash.',
-      '`finish --ref=<lane>` retains refs.',
-      '[Cleanup](LIFECYCLE-COMPLETION.md), sync/deploy/rollback need separate receipts.',
+      'Use `npm run release:common --help`.',
+      '`start` runs `doctor`, `status`, then `lane`; `publish` runs `land`; `finish` runs `finish`, then `reap`.',
+      'Wait for protected integration; default is squash.',
+      'Cleanup, sync, deploy, rollback, and Prod authorization need separate receipts.',
       'Reuse bound proof; run affected checks once.',
-      'Forbid unchanged repetition, recursion, duplicate/conflicting/overlapping execution.',
-      'continue covered owner actions to authenticated live verification and the terminal release receipt; report gaps.',
+      'Dev integration is not terminal release proof.',
+      'Apply the global prompt plus handover.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
