@@ -36,6 +36,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
+| Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 
 The website's [guideline and schema map][guideline-map] owns its on-demand guideline inventory.
 The [repository check catalog](test/repositories.json) owns check-owner membership and script/workflow references.
