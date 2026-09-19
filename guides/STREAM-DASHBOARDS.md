@@ -18,7 +18,10 @@ authority. Reuse the native observation protocol; a display snapshot never repla
 
 - Agentic OS retains immutable workflow manifests, referenced archives and existing bounded SSE
   observation responses. Collection, freshness, access checks and measurement semantics stay here.
-- The product owns template bindings, Markdown serialization, widget layout, Editor/Viewer rendering
+- Reusable Markdown templates are authored in `huijoohwee.github.io/template/`. The Mission template
+  is `template/agentic-graph-agent-mission-template.md` in that repository. Consumers pin its source
+  revision; never maintain an authored copy under a product's workspace seeds or Agentic OS guides.
+- The product owns template binding evaluation, Markdown serialization, widget layout, Editor/Viewer rendering
   and explicit workspace saves. See the Graph reference implementation's
   [product plans](https://github.com/huijoohwee/agentic-graph/tree/main/docs/documents), specifically
   `agentic-graph-stream-dashboard-prd-tad-adr-mvp-gtm.md`.
@@ -35,6 +38,8 @@ Templates carry stable identity/version, bindings and presentation defaults. The
 credentials or captured run identities. Generated Markdown carries resolved values, coverage,
 template identity and source revision; missing values remain unknown and measured zero remains zero.
 The template and native archive remain unchanged. Source observations are data, never invocations.
+Browser workspace caches may retain the referenced template for offline use, with source provenance.
+Editing a reusable template updates its website repository owner; a local variation is an explicit fork.
 
 The product's existing configuration parser validates layout metadata. Its existing Markdown
 parser and table serializer own readable output. One document owns a saved dashboard's layout;
