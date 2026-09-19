@@ -102,6 +102,25 @@ test('unknown commands fail argument grammar before repository and trust access'
     assert.match(result.stderr, /blocked-invalid-arguments/u);
     assert.doesNotMatch(result.stderr, /not inside a git repository|repository trust/u);
   }
+  const releaseCommonHelp = spawnSync(process.execPath, [CLI, 'release-common'], {
+    cwd: outside, encoding: 'utf8', env: { ...process.env },
+  });
+  assert.equal(releaseCommonHelp.status, 0, releaseCommonHelp.stderr);
+  assert.match(releaseCommonHelp.stdout, /agentic-os release-common/u);
+  assert.equal(releaseCommonHelp.stderr, '');
+  const releaseCommonInvalid = spawnSync(process.execPath, [CLI, 'release-common', 'typo'], {
+    cwd: outside, encoding: 'utf8', env: { ...process.env },
+  });
+  assert.equal(releaseCommonInvalid.status, 1);
+  assert.match(releaseCommonInvalid.stderr,
+    /blocked-invalid-arguments: release-common: release-common requires start, publish, finish, or successor/u);
+  assert.doesNotMatch(releaseCommonInvalid.stderr, /not inside a git repository|repository trust/u);
+  const releaseCommonMissingScope = spawnSync(process.execPath, [CLI, 'release-common', 'start'], {
+    cwd: outside, encoding: 'utf8', env: { ...process.env },
+  });
+  assert.equal(releaseCommonMissingScope.status, 1);
+  assert.match(releaseCommonMissingScope.stderr, /blocked-invalid-arguments/u);
+  assert.doesNotMatch(releaseCommonMissingScope.stderr, /not inside a git repository|repository trust/u);
 
   const { root } = fixture(t, { profile: false });
   const unanchored = spawnSync(process.execPath, [CLI, 'typo'], {

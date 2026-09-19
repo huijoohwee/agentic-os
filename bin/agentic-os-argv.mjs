@@ -83,6 +83,19 @@ export function validateCommandArguments(command, argv) {
         : operation === 'read' ? ['line', 'lines'] : [];
       return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
     }
+    case 'release-common': {
+      const action = argv[0] ?? 'help';
+      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'successor'].includes(action))
+        return 'release-common requires start, publish, finish, or successor';
+      if (argv.length === 0) return null;
+      if (action === 'help') return exact(argv, { min: 1, max: 1 });
+      if (action === '--help' || action === '-h')
+        return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
+      if (action === 'start') return exact(argv, { min: 2, max: 2, options: ['device', 'write', 'plan'] });
+      if (action === 'publish') return exact(argv, { min: 1, max: 1, options: ['message', 'body-file', 'title'] });
+      if (action === 'finish') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
+      return exact(argv, { min: 2, max: 2, options: ['expected-head'] });
+    }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head'] });
@@ -163,13 +176,19 @@ export function cmdHelp() {
       '  agentic-os memory search --revision=<sha> --query=<text> [--path=<memory-file>]  bounded local-only lookup',
       '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
-      '  npm run doctor            report harness and remote drift, change nothing',
-      '  npm run lane -- <scope> --write=<path[,path...]>   open a path-scoped lane',
-      '  npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head and request provider handoff',
-      '  npm run successor -- <scope>  preserve a published lane and continue in-place',
-      '  npm run finish -- --ref=<lane>  observe exact integration; retain worktree for governed cleanup',
+      '  Common path:',
+      '    npm run doctor            report harness and remote drift, change nothing',
+      '    npm run status            read-only lane projection and provider state',
+      '    npm run lane -- <scope> --write=<path[,path...]>   open one path-scoped lane',
+      '    agentic-os release-common start <scope> --write=<path[,path...]>   run doctor, status, then lane',
+      '    agentic-os release-common publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
+      '    agentic-os release-common finish --ref=<lane>  finish then classify integration',
+      '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
+      '    npm run finish -- --ref=<lane>  record exact integration; retain refs for governed cleanup',
+      '',
+      '  Follow-up and diagnostics:',
+      '    npm run successor -- <scope>  continue after a published lane when more work is needed',
       '  agentic-os completion status --ref=<lane>  read-only completion blockers and owner actions',
-      '  npm run status            registered lane projections and provider state',
       '  npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
