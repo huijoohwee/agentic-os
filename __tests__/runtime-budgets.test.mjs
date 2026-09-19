@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40956, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40935, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -77,21 +77,19 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
-      'Use [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md) as the canonical guide.',
+      'Use [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).',
       '`npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`',
-      'Work only in the printed lane worktree; overlaps wait.',
-      'Continue with [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).',
-      '`release:common start` runs `doctor`, `status`, then `lane`.',
-      'Cross-repo writes follow `../FLEET.md`.',
+      'Work only in the printed lane worktree.',
+      'Continue with the release path in [`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      'Use `npm run release:common --help`.',
-      '`start` runs `doctor`, `status`, then `lane`; `publish` runs `land`; `finish` runs `finish`, then `reap`.',
+      'Command surface:',
+      '`start` runs `doctor`, `status`, then `lane`',
+      '`publish` runs `land`',
+      '`finish` runs `finish`, then `reap`',
       'Wait for protected integration; default is squash.',
-      'Cleanup, sync, deploy, rollback, and Prod authorization need separate receipts.',
-      'Reuse bound proof; run affected checks once.',
-      'Dev integration is not terminal release proof.',
-      'Apply the global prompt plus handover.',
+      'Cleanup, sync, deploy, rollback, and Prod authorization still require separate receipts.',
+      '`npm run completion:scaffold -- --ref=<lane>` prints the cleanup bundle scaffold.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',

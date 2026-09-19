@@ -100,7 +100,8 @@ function context(root, ref) {
   if (!profile) fail('blocked-repository-profile-missing', 'committed trusted profile required');
   const status = inspectCompletionStatus(canonical, ref, providerPolicy(profile), profile);
   const blocker = status.findings.find((item) => ['canonical-not-current-clean',
-    'lane-unbound-or-ref-missing', 'lane-dirty', 'integration-not-classified'].includes(item.code));
+    'lane-ref-missing', 'lane-registration-detached', 'lane-dirty',
+    'integration-not-classified'].includes(item.code));
   if (blocker) fail(`blocked-${blocker.code}`, blocker.action);
   return { canonical, status };
 }

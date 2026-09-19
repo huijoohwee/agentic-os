@@ -1,22 +1,25 @@
 # Release workflow
 
-Canonical path:
+Default path:
 
 1. `npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`
-2. Work only in the printed lane worktree; overlaps wait.
-3. Reuse bound proof; run affected checks once.
-4. `npm run release:common -- publish --message="<message>"`
-5. Wait for protected integration; default is squash.
-6. `npm run release:common -- finish --ref=<lane>`
+2. Work only in the printed lane worktree.
+3. `npm run release:common -- publish --message="<message>"`
+4. Wait for protected integration; default is squash.
+5. `npm run release:common -- finish --ref=<lane>` from canonical.
 
-Use `npm run release:common --help`. `start` runs `doctor`, `status`, then
-`lane`; `publish` runs `land`; `finish` runs `finish`, then `reap`.
+Command surface:
 
-Exception path:
+- `start` runs `doctor`, `status`, then `lane`
+- `publish` runs `land`
+- `finish` runs `finish`, then `reap`
+- `close` runs `finish`, `reap`, then `completion status`
 
-- `npm run release:common -- successor <scope> --expected-head=<published-head> [--write=<paths>]`
-  only after publish.
-- Cleanup, sync, deploy, rollback, and Prod authorization need separate
-  receipts.
-- Dev integration is not terminal release proof.
-- Apply the global prompt plus handover.
+Notes:
+
+- `doctor -> status -> lane -> land -> finish` remains the exact chain.
+- `land` and `successor` require the live bound lane worktree.
+- `finish` is ref-led and may run after the authoring worktree is detached.
+- `successor` is post-publish only.
+- `npm run completion:scaffold -- --ref=<lane>` prints the cleanup bundle scaffold.
+- Cleanup, sync, deploy, rollback, and Prod authorization still require separate receipts.

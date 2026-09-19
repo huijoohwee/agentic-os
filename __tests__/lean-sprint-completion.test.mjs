@@ -585,6 +585,91 @@ for (const cleanupMode of ['retain', 'quarantine']) test(`finish preserves ignor
   assert.equal(run(['rev-parse', 'origin/main']), laneHead);
 });
 
+test('finish accepts an exact integrated lane ref after its worktree is detached', (t) => {
+  const { parent, root, run } = fixture(t, 'quarantine');
+  const bare = join(parent, 'remote.git');
+  git(['init', '--quiet', '--bare', bare], { cwd: parent });
+  run(['remote', 'add', 'origin', bare]);
+  run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
+  const ref = 'agent/test-device/detached';
+  const created = createLane(t, root, ref, 'detached');
+  writeFileSync(join(created.path, 'detached.txt'), 'completed\n');
+  git(['add', 'detached.txt'], { cwd: created.path });
+  git(['commit', '--quiet', '--message', 'complete detached lane'], { cwd: created.path });
+  const laneHead = git(['rev-parse', 'HEAD'], { cwd: created.path });
+  run(['merge', '--quiet', '--ff-only', ref]);
+  run(['push', '--quiet', 'origin', 'main']);
+  git(['worktree', 'remove', '--force', created.path], { cwd: root });
+
+  const result = spawnSync(process.execPath, [CLI, 'finish', `--ref=${ref}`], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.schema, 'agentic-os/sprint-finish/v1');
+  assert.equal(receipt.worktree, null);
+  assert.equal(receipt.worktreeRemoved, false);
+  assert.equal(receipt.branchRetained, true);
+  assert.equal(receipt.cleanupDisposition, 'authenticated-cleanup-required');
+  assert.equal(run(['rev-parse', `refs/heads/${ref}`]), laneHead);
+  assert.equal(run(['rev-parse', 'main']), laneHead);
+  assert.equal(run(['rev-parse', 'origin/main']), laneHead);
+
+  const statusResult = spawnSync(process.execPath, [CLI, 'completion', 'status', `--ref=${ref}`], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.equal(statusResult.status, 0, statusResult.stderr);
+  const status = JSON.parse(statusResult.stdout);
+  assert.equal(status.lane.mounted, false);
+  assert.ok(status.findings.some((item) => item.code === 'lane-registration-detached'));
+  assert.equal(status.findings.some((item) => item.code === 'lane-unbound-or-ref-missing'), false);
+
+  const scaffoldResult = spawnSync(process.execPath, [
+    fileURLToPath(new URL('../bin/agentic-os-completion-scaffold.mjs', import.meta.url)),
+    `--ref=${ref}`,
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.equal(scaffoldResult.status, 0, scaffoldResult.stderr);
+  const scaffold = JSON.parse(scaffoldResult.stdout);
+  assert.equal(scaffold.schema, 'agentic-os/completion-bundle-scaffold/v1');
+  assert.equal(scaffold.bundleTemplate.cleanup.plan.targetPath, 'REPLACE_WITH_REBOUND_WORKTREE_PATH');
+  assert.equal(scaffold.bundleTemplate.cleanup.plan.projectionByteCeiling, 4 * 1024 ** 3);
+  assert.equal(scaffold.bundleTemplate.integrationVerifier.policy, 'REPLACE_WITH_TRANSITION_POLICY_OBJECT');
+  assert.equal(scaffold.requiredPlaceholders.includes('integrationVerifier.policy'), true);
+  assert.ok(scaffold.stillRequiresAuthenticatedWinners.includes('retirement workflow run'));
+  assert.ok(scaffold.warnings.some((item) => item.code === 'lane-registration-detached'));
+});
+
+test('release-common close runs finish, reap, and completion status', (t) => {
+  const { parent, root, run } = fixture(t, 'quarantine');
+  const bare = join(parent, 'remote.git');
+  git(['init', '--quiet', '--bare', bare], { cwd: parent });
+  run(['remote', 'add', 'origin', bare]);
+  run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
+  const ref = 'agent/test-device/closeout';
+  const created = createLane(t, root, ref, 'closeout');
+  writeFileSync(join(created.path, 'closeout.txt'), 'completed\n');
+  git(['add', 'closeout.txt'], { cwd: created.path });
+  git(['commit', '--quiet', '--message', 'complete closeout lane'], { cwd: created.path });
+  run(['merge', '--quiet', '--ff-only', ref]);
+  run(['push', '--quiet', 'origin', 'main']);
+
+  const result = spawnSync(process.execPath, [CLI, 'release-common', 'close', `--ref=${ref}`], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"schema":"agentic-os\/sprint-finish\/v1"/u);
+  assert.match(result.stdout, /classification only; authenticated retire\(claim\) and cleanup receipts remain required\./u);
+  assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
+});
+
 
 test('declared overlap refuses before sibling byte scans; disjoint requests still inspect', (t) => {
   const { root, run } = fixture(t);

@@ -68,14 +68,18 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
   const lane = worktreeFor(ref, root);
   const laneHead = headSha(`refs/heads/${ref}`, root);
   const canonicalClean = read(root, ['status', '--porcelain', '--untracked-files=all']) === '';
-  const laneClean = lane ? read(lane.path, ['status', '--porcelain', '--untracked-files=all']) === '' : null;
+  const lanePath = lane?.path ?? null;
+  const laneMounted = lanePath !== null;
+  const laneClean = laneMounted ? read(lanePath, ['status', '--porcelain', '--untracked-files=all']) === '' : null;
   const projection = laneHead && tracking ? integrationProof(tracking, laneHead, { cwd: root }) : null;
   const findings = [];
   if (!canonical || !tracking || canonical !== tracking || !canonicalClean)
     findings.push({ code: 'canonical-not-current-clean', owner: 'repository-operator',
       action: 'Fetch and use the separately governed canonical synchronization workflow; preserve local bytes.' });
-  if (!lane || !laneHead) findings.push({ code: 'lane-unbound-or-ref-missing', owner: 'lane-owner',
-    action: 'Recover the exact lane registration or ref before completion.' });
+  if (!laneHead) findings.push({ code: 'lane-ref-missing', owner: 'lane-owner',
+    action: 'Recover the exact local lane ref before completion.' });
+  else if (!laneMounted) findings.push({ code: 'lane-registration-detached', owner: 'lane-owner',
+    action: 'Rebind the exact lane worktree path before cleanup planning.' });
   else if (!laneClean) findings.push({ code: 'lane-dirty', owner: 'lane-owner',
     action: 'Preserve and resolve authored or untracked bytes before cleanup planning.' });
   if (laneHead && !projection) findings.push({ code: 'integration-not-classified', owner: 'review-owner',
@@ -90,7 +94,7 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
     authorizesEffects: false, providerVerified: false, cleanupVerified: false,
     ref, repository: profile.repository, profileDigest: profile.profileDigest,
     canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean,
-    lane: { path: lane?.path ?? null, head: laneHead, clean: laneClean },
+    lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean },
     integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null } : null,
     enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository,
       files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null,
