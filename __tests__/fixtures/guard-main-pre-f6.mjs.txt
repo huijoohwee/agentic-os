@@ -12,10 +12,8 @@ import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { commonDir, currentBranch, gitDir, repoRoot, worktrees } from './git.mjs';
-import { loadRepositoryProfile, loadRepositoryTrust } from './git-repository.mjs';
+import { loadRepositoryTrust } from './git-repository.mjs';
 import { isLaneRef } from './lane-id.mjs';
-
-const PROTECTED_INTEGRATION = 'protected-integration:pull-request';
 
 export const OVERRIDE_ENV = 'AGENTIC_OS_ALLOW_CANONICAL_WRITE';
 
@@ -50,16 +48,13 @@ function canonicalAuthoringAdvisory(root) {
   ].join('\n');
 }
 
-export function evaluate({ branch, phase, override, protectedBranch, advisory, soloUnprotected }) {
+export function evaluate({ branch, phase, override, protectedBranch, advisory }) {
   if (override === '1') {
     return { allow: true, note: `${OVERRIDE_ENV}=1 override in effect for ${phase}` };
   }
   if (typeof protectedBranch !== 'string' || protectedBranch.length === 0)
     throw new TypeError('canonical branch identity is required');
   if (branch === protectedBranch) {
-    if (soloUnprotected === true) {
-      return { allow: true, note: 'solo-unprotected canonical authoring' };
-    }
     return {
       allow: false,
       reason: 'blocked-canonical-authoring',
@@ -91,16 +86,6 @@ export function evaluate({ branch, phase, override, protectedBranch, advisory, s
   return { allow: true, note: `lane-shaped ref ${branch}` };
 }
 
-export function soloUnprotectedPosture(root) {
-  try {
-    const profile = loadRepositoryProfile({ repository: root });
-    if (profile.capabilities.includes(PROTECTED_INTEGRATION)) return false;
-  } catch {
-    return false;
-  }
-  return !worktrees(root).some((candidate) => isLaneRef(candidate.branch));
-}
-
 export function isBoundLane(branch, root) {
   if (!isLaneRef(branch)) return false;
   const entry = worktrees(root).find((candidate) => candidate.branch === branch);
@@ -128,7 +113,6 @@ function main() {
   }
   const branch = currentBranch(root);
   const protectedBranch = protectedRef.slice('refs/heads/'.length);
-  const soloUnprotected = soloUnprotectedPosture(root);
   const advisory = branch === protectedBranch ? canonicalAuthoringAdvisory(root) : null;
   const verdict = evaluate({
     branch,
@@ -136,9 +120,8 @@ function main() {
     override,
     protectedBranch,
     advisory,
-    soloUnprotected,
   });
-  if (verdict.allow && override !== '1' && !soloUnprotected && !isBoundLane(branch, root)) {
+  if (verdict.allow && override !== '1' && !isBoundLane(branch, root)) {
     verdict.allow = false;
     verdict.message = `refusing to ${phase}: ${branch} is not bound to this registered worktree.`;
   }

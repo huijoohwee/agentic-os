@@ -26,6 +26,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(rele
       ? readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url))
       : file.path === 'src/quarantine.mjs'
       ? readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url))
+      : file.path === 'src/guard-main.mjs'
+      ? readFileSync(new URL('./fixtures/guard-main-pre-f6.mjs.txt', import.meta.url))
       : released !== 'pre-diff' && file.path === 'src/catalog-input.mjs'
       ? readFileSync(new URL('./fixtures/catalog-input-' + released + '.mjs.txt', import.meta.url))
       : released === 'copy' && file.path === 'src/lane-id.mjs'

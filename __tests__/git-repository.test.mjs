@@ -565,7 +565,9 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const governanceSha = createHash('sha256').update(governanceBytes).digest('hex');
   assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390');
   const priorFiles = selected.files.map(file => file.path === 'src/governance.mjs'
-    ? { ...file, bytes: governanceBytes, sha256: governanceSha } : file);
+    ? { ...file, bytes: governanceBytes, sha256: governanceSha } : file.path === 'src/guard-main.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/guard-main-pre-f6.mjs.txt', import.meta.url)),
+      sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file);
   const files = priorFiles.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file =>
     file.path === 'src/quarantine.mjs' ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
       sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' }

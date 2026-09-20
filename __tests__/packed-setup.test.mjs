@@ -21,6 +21,7 @@ function priorRuntimeFiles(selected, quarantineLegacy = true) {
     ['src/git.mjs', ['git-remote-single.mjs.txt', '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62']],
     ['src/git-tracked.mjs', ['git-tracked-single.mjs.txt', 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320']],
     ['bin/agentic-os-filter-compare.mjs', ['filter-compare-single.mjs.txt', 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7']],
+    ['src/guard-main.mjs', ['guard-main-pre-f6.mjs.txt', '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309']],
     ...(quarantineLegacy ? [['src/quarantine.mjs', ['quarantine-v1.mjs.txt', 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d']]]
       : [['src/quarantine.mjs', ['quarantine-pre-diff.mjs.txt', 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e']]]),
   ]);
@@ -194,7 +195,10 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
       sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' }
     : file.path === 'src/catalog-input.mjs'
       ? { ...file, bytes: readFileSync(new URL('./fixtures/catalog-input-pre-frontmatter.mjs.txt', import.meta.url)),
-        sha256: '70086b33be5c04f2bacd5d3165c94eb0000bf5fbbb776358e7bb1c75088a4f9e' } : file)
+        sha256: '70086b33be5c04f2bacd5d3165c94eb0000bf5fbbb776358e7bb1c75088a4f9e' }
+    : file.path === 'src/guard-main.mjs'
+      ? { ...file, bytes: readFileSync(new URL('./fixtures/guard-main-pre-f6.mjs.txt', import.meta.url)),
+        sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file)
     : priorRuntimeFiles(selected, !currentRelease);
   const files = source.map((file) => {
     if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;
@@ -591,9 +595,10 @@ test('managed hook runtime safely rebinds after a clone relocation', (t) => {
   }).trim();
   assert.notEqual(newHooks, oldHooks);
   assert.equal(statSync(newHooks).isDirectory(), true);
+  execFileSync('git', ['checkout', '-b', 'feature/unbound'], { cwd: after });
   const guarded = spawnSync('git', ['commit', '--allow-empty', '--message', 'blocked'], {
     cwd: after, encoding: 'utf8',
   });
   assert.equal(guarded.status, 1);
-  assert.match(guarded.stderr, /refusing to commit on "main"/u);
+  assert.match(guarded.stderr, /non-lane branch/u);
 });
