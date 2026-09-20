@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +42,7 @@ function profile(cleanup = {
       repository: { id: 'git', version: '1' },
       provider: { id: 'github', version: '1' },
     },
+    requiredChecks: ['budgets', 'test'],
     cleanup,
   });
 }
@@ -105,12 +106,65 @@ function completeFixture(t, reviewState = 'MERGED', cleanup = profile().cleanup)
     isCrossRepository: false,
     body: `Source-Head: ${head}`,
   };
+  const pull = {
+    number: 41,
+    merged: reviewState === 'MERGED',
+    state: reviewState === 'MERGED' ? 'closed' : 'open',
+    base: { ref: 'main', repo: { full_name: 'owner/repo' } },
+    head: { ref, sha: head, repo: { full_name: 'owner/repo' } },
+    merge_commit_sha: reviewState === 'MERGED' ? run(['rev-parse', 'HEAD']) : null,
+    merged_at: reviewState === 'MERGED' ? '2026-09-20T00:00:20Z' : null,
+    html_url: review.url,
+  };
+  const checkRuns = {
+    total_count: 2,
+    check_runs: [
+      {
+        name: 'budgets',
+        status: 'completed',
+        conclusion: 'success',
+        head_sha: head,
+        app: { slug: 'github-actions', id: 15368 },
+        id: 601,
+        details_url: 'https://github.com/owner/repo/actions/runs/501/job/601',
+        completed_at: '2026-09-20T00:00:10Z',
+      },
+      {
+        name: 'test',
+        status: 'completed',
+        conclusion: 'success',
+        head_sha: head,
+        app: { slug: 'github-actions', id: 15368 },
+        id: 602,
+        details_url: 'https://github.com/owner/repo/actions/runs/501/job/602',
+        completed_at: '2026-09-20T00:00:11Z',
+      },
+    ],
+  };
+  const workflowRun = {
+    id: 501,
+    head_sha: head,
+    head_branch: ref,
+    repository: { full_name: 'owner/repo' },
+    head_repository: { full_name: 'owner/repo' },
+    event: 'pull_request',
+    path: '.github/workflows/ci.yml',
+    status: 'completed',
+    conclusion: 'success',
+    run_attempt: 1,
+  };
   const gh = join(support, 'gh');
   writeFileSync(gh, [
     '#!/bin/sh',
     'if [ "$1" = "pr" ] && [ "$2" = "list" ]; then',
     `  printf '%s\\n' '${JSON.stringify([review])}'`,
     '  exit 0',
+    'fi',
+    'if [ "$1" = "api" ]; then',
+    '  for last; do :; done',
+    `  if [ "$last" = 'repos/owner/repo/pulls/41' ]; then printf '%s\\n' '${JSON.stringify(pull)}'; exit 0; fi`,
+    `  if [ "$last" = 'repos/owner/repo/commits/${head}/check-runs?filter=latest&per_page=100' ]; then printf '%s\\n' '${JSON.stringify(checkRuns)}'; exit 0; fi`,
+    `  if [ "$last" = 'repos/owner/repo/actions/runs/501' ]; then printf '%s\\n' '${JSON.stringify(workflowRun)}'; exit 0; fi`,
     'fi',
     'exit 1',
     '',
@@ -126,7 +180,7 @@ function completeFixture(t, reviewState = 'MERGED', cleanup = profile().cleanup)
     '',
   ].join('\n'));
   chmodSync(gitWrapper, 0o755);
-  return { root, ref, bare, support };
+  return { root, ref, bare, support, lane };
 }
 
 function complete(subject, timeoutMs) {
@@ -172,11 +226,12 @@ test('watch resets backoff when the exact review changes and succeeds on merge',
 test('release-common complete waits for a merged exact review, then runs closeout', (t) => {
   const subject = completeFixture(t, 'MERGED');
   const result = complete(subject, 1000);
-  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"event":"merged"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/sprint-finish\/v1"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
-  assert.match(result.stderr, /blocked-release-common-complete-cleanup-required/u);
+  assert.doesNotMatch(result.stderr, /blocked-release-common-complete-cleanup-required/u);
+  assert.equal(existsSync(subject.lane), false);
 });
 
 test('release-common complete returns success when the profile retains worktree cleanup', (t) => {

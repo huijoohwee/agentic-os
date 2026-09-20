@@ -8,7 +8,9 @@ Path:
 Command surface:
 - `start`: `doctor -> status -> lane`
 - `publish`: `land`
-- `complete`: wait for merge, then run `close`; add `--bundle` and `--stopped` for cleanup
+- `complete`: wait for merge, then run `close`
+  - auto-retire the exact local lane when clean merged evidence is sufficient
+  - add `--bundle` and `--stopped` for authenticated cleanup
 - `close`: `finish -> reap -> completion status`
 - `finish`: diagnostic `finish -> reap`
 

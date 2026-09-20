@@ -167,7 +167,7 @@ export function cmdHelp() {
       '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
       '    npm run release:common -- start <scope> --write=<path[,path...]>   run doctor, status, then lane',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
-      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and optionally apply authenticated cleanup',
+      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
       '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
       '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>]  continue only after publish',

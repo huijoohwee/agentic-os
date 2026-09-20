@@ -2,9 +2,13 @@
 import { TextDecoder } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
-import { currentBranch } from '../src/git.mjs';
+import { currentBranch, observeGit, remoteTransport, repoRoot } from '../src/git.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { observeGitHubReview } from '../src/github-provider.mjs';
+import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
+import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-review.mjs';
+import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
+import { RECOVERY_MODE, recoveryPolicy } from './agentic-os-cleanup-recovery.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
 import { get } from '../src/lane-records.mjs';
 import { option } from './agentic-os-argv.mjs';
@@ -43,6 +47,30 @@ function branchFromLocalRef(localRef) {
 
 function headSha(value) {
   return typeof value === 'string' && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value) ? value : null;
+}
+function releaseCommonLocalCleanupPolicy(root, profile) {
+  if (repoRoot(root) !== root || currentBranch(root) !== 'main')
+    fail('blocked-release-common-local-cleanup-canonical', 'local cleanup runs from canonical main');
+  const remoteUrl = remoteTransport('origin', root).fetchUrl;
+  const remote = remoteUrl.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/u)?.[1] ?? null;
+  const selected = profile.repository.match(/^github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/u)?.[1] ?? null;
+  if (!remote || remote !== selected) fail('blocked-release-common-local-cleanup-remote', 'canonical origin does not match the selected GitHub repository');
+  const canonical = observeGit(['rev-parse', '--verify', 'refs/heads/main^{commit}'], { cwd: root, maxBuffer: 65536 });
+  if (observeGit(['rev-parse', '--verify', 'HEAD'], { cwd: root, maxBuffer: 65536 }) !== canonical
+    || observeGit(['rev-parse', '--verify', 'refs/remotes/origin/main'], { cwd: root, maxBuffer: 65536 }) !== canonical
+    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root, maxBuffer: 65536 }) !== '')
+    fail('blocked-release-common-local-cleanup-canonical', 'canonical main must be current and clean before local cleanup');
+  return {
+    root,
+    repository: remote,
+    remoteUrl,
+    canonical,
+    localRef: 'refs/heads/main',
+    mode: RECOVERY_MODE,
+    enrollment: 'release-common-complete',
+    ...recoveryPolicy(root, remote),
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'],
+  };
 }
 
 export function resolveReleaseCommonCompleteBinding(root, ref, protectedBranch) {
@@ -229,6 +257,61 @@ export async function runReleaseCommonCleanup({
     planned.authorizationDigest, { stopped });
   out(JSON.stringify(applied));
   return 0;
+}
+export async function runReleaseCommonLocalCleanup({
+  root,
+  ref,
+  profile,
+  out = (line) => process.stdout.write(`${line}\n`),
+  err = (line) => process.stderr.write(`${line}\n`),
+  now = Date.now,
+  api = githubRead,
+} = {}) {
+  try {
+    const current = releaseCommonLocalCleanupPolicy(root, profile);
+    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    const record = get(ref, root);
+    if (!record || !Number.isSafeInteger(record.pr) || record.pr < 1)
+      fail('blocked-release-common-local-cleanup-review', 'local cleanup requires one exact merged review record');
+    if (!status.lane.path || status.lane.mounted !== true || status.lane.clean !== true)
+      fail('blocked-release-common-local-cleanup-lane', 'local cleanup requires one exact mounted clean lane');
+    const workflow = inferMergedReviewWorkflow({
+      repository: current.repository, pr: record.pr, requiredChecks: [...current.requiredChecks].sort(),
+    }, { cwd: root, api });
+    const resolvePolicy = (policyRoot, mode) => {
+      if (policyRoot !== root || mode !== RECOVERY_MODE)
+        fail('blocked-release-common-local-cleanup-policy', 'local cleanup policy drifted');
+      return current;
+    };
+    const plan = planUserCleanup({
+      cwd: root,
+      target: status.lane.path,
+      pr: record.pr,
+      requiredChecks: [...current.requiredChecks].sort(),
+      workflow,
+      recovery: true,
+    }, {
+      now,
+      api,
+      resolvePolicy,
+      observeRemote: () => `${current.canonical}\trefs/heads/main`,
+    });
+    out(JSON.stringify(plan));
+    const receipt = applyUserCleanup(plan, {
+      cwd: root,
+      authorization: `agentic-os:user-cleanup:${plan.planDigest}`,
+      stopped: true,
+      now,
+      api,
+      resolvePolicy,
+      observeRemote: () => `${current.canonical}\trefs/heads/main`,
+    });
+    out(JSON.stringify(receipt));
+    return 0;
+  } catch (error) {
+    err(`${error.reason ?? 'blocked-release-common-local-cleanup'}: ${error.message}`);
+    return 1;
+  }
 }
 export async function runReleaseCommonCompleteWait({
   root,

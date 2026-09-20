@@ -37,12 +37,13 @@ Forking under a different owner starts at the [fork guide](guides/FORK.md).
 npm run release:common --help                                  # the full operator flow
 npm run release:common -- start <scope> --write=<path[,path...]>
 npm run release:common -- publish --message="feat: ..."
-npm run release:common -- complete --ref=<lane>               # wait for merge, then run closeout
+npm run release:common -- complete --ref=<lane>               # wait for merge, then close and retire the lane when local evidence is sufficient
 npm run release:common -- complete --ref=<lane> --bundle=<json> --stopped
 ```
 
-`complete` without a bundle stops after the merge wait and observational closeout. Use `--bundle`
-and `--stopped` only when the exact authenticated cleanup plan is ready to quarantine the retained lane.
+`complete` without a bundle now uses the exact local merged-review and required-check evidence to
+quarantine the retained lane when the profile-governed local cleanup path is sufficient. Use
+`--bundle` and `--stopped` when the exact authenticated cleanup plan is required instead.
 
 `npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
 diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md) and [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md)

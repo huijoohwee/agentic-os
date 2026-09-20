@@ -45,8 +45,11 @@ function policy(root, mode = MODE) {
     ...(mode === RECOVERY_MODE ? recoveryPolicy(root, match[1]) : {}),
     selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
 }
-function observePolicy(mechanics, root) {
-  const current = policy(root, mechanics.mode);
+function resolvePolicy(root, mode, resolver = null) {
+  return typeof resolver === 'function' ? resolver(root, mode) : policy(root, mode);
+}
+function observePolicy(mechanics, root, resolver = null) {
+  const current = resolvePolicy(root, mechanics.mode, resolver);
   if (governanceDigest(current) !== mechanics.profileDigest || current.canonical !== mechanics.expectedCanonicalRevision
     || `github.com/${current.repository}` !== mechanics.repository) refuse('local-policy-drift');
   return { root, canonicalRevision: current.canonical,
@@ -114,12 +117,13 @@ function locked(root, operation) {
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
   noCI = false, recovery = false, detached = false }, options = {}) {
   const root = realpathSync(repoRoot(cwd));
+  const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
   const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
   reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
   return locked(root, () => {
-    const current = policy(root, mode), targetPath = realpathSync(target);
+    const current = resolvePolicy(root, mode, policyResolver), targetPath = realpathSync(target);
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
@@ -136,31 +140,40 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       ...(detached ? { detachedHead: inventory.headRevision } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
-    plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root, observePolicy });
+    plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root,
+      observePolicy: (configured, configuredRoot) => observePolicy(configured, configuredRoot, policyResolver) });
     plan.planDigest = governanceDigest(plan);
     return validatePlan(plan);
   });
 }
 export function applyUserCleanup(input, { cwd = process.cwd(), authorization, stopped, now = Date.now, ...options } = {}) {
   const plan = validatePlan(input), root = realpathSync(repoRoot(cwd));
+  const policyResolver = options.resolvePolicy ?? null;
   if (root !== plan.root || authorization !== `agentic-os:user-cleanup:${plan.planDigest}` || stopped !== true)
     refuse('explicit-authorization-required');
   return locked(root, () => {
     const m = mechanics(plan), eligible = eligibility(plan);
-    observePolicy(m, root); mergedState(plan, options);
-    if (plan.mode === RECOVERY_MODE && (!same(policy(root, plan.mode), plan.recoveryPolicy)
+    observePolicy(m, root, policyResolver); mergedState(plan, options);
+    if (plan.mode === RECOVERY_MODE && (!same(resolvePolicy(root, plan.mode, policyResolver), plan.recoveryPolicy)
       || plan.recoveryPolicy.requiredChecks.some(name => !plan.requiredChecks.includes(name)))) refuse('recovery-policy-drift');
-    let applied = classifyExistingWorktreeQuarantine(m, eligible, { cwd: root, observePolicy });
+    const configuredObservePolicy = (configured, configuredRoot) =>
+      observePolicy(configured, configuredRoot, policyResolver);
+    let applied = classifyExistingWorktreeQuarantine(m, eligible, {
+      cwd: root, observePolicy: configuredObservePolicy,
+    });
     if (!applied) {
       if (now() < plan.issuedAt || now() >= plan.expiresAt) refuse('expired');
       if (read(plan.targetPath, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
-      const before = observeWorktreeCleanupTarget(m, { cwd: root, observePolicy });
+      const before = observeWorktreeCleanupTarget(m, {
+        cwd: root, observePolicy: configuredObservePolicy,
+      });
       if (!same(before, plan.observation)) refuse('observation-drift');
       try {
-        applied = quarantineWorktreeTarget(m, before, { cwd: root, eligibility: eligible, observePolicy,
+        applied = quarantineWorktreeTarget(m, before, {
+          cwd: root, eligibility: eligible, observePolicy: configuredObservePolicy,
           authorizeEffects() {
             const time = now(); if (time < plan.issuedAt || time >= plan.expiresAt) refuse('expired');
-            observePolicy(m, root); return new Date(time).toISOString();
+            observePolicy(m, root, policyResolver); return new Date(time).toISOString();
           } });
       } catch (error) {
         Object.assign(error, { retainedOperation: true, operationResult: null,
