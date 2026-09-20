@@ -450,8 +450,17 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
       if (cleanup.bundlePath === null
         && profile.cleanup.worktreeProjection !== 'retain'
         && completion.lane.mounted) {
-        err('blocked-release-common-complete-cleanup-required: exact merge observed; closeout is complete, but authenticated cleanup still owns the retained lane. Re-run with --bundle=<json> --stopped or use release-common close for observational status only.');
-        return 1;
+        const cleanupStatus = await completeModule.runReleaseCommonLocalCleanup({
+          root, ref: option(rest, 'ref'), profile, out, err,
+        });
+        if (cleanupStatus !== 0) return cleanupStatus;
+        const settled = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
+        out(JSON.stringify(settled));
+        if (settled.lane.mounted) {
+          err('blocked-release-common-complete-local-cleanup-retained: local cleanup returned, but the exact lane is still mounted.');
+          return 1;
+        }
+        return 0;
       }
       if (cleanup.bundlePath !== null) {
         const cleanupStatus = await completeModule.runReleaseCommonCleanup({

@@ -19,7 +19,7 @@ const HELP = `${repoLabel} release:common
 Primary human release path:
   npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]
   npm run release:common -- publish --message="<message>" [--title="<title>"] [--body-file=<file>]
-  npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then run close and optional cleanup
+  npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then run close and retire locally when exact evidence is sufficient
   npm run release:common -- close --ref=<lane>  run post-merge closeout and report remaining cleanup blockers
   npm run release:common -- finish --ref=<lane>  run the exact integration diagnostic path only when needed
 

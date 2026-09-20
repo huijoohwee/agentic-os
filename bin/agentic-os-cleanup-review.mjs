@@ -25,6 +25,43 @@ export function reviewOptions(value) {
       || /[\x00-\x1f\x7f]/u.test(c))
     || JSON.stringify([...new Set(value.requiredChecks)].sort()) !== JSON.stringify(value.requiredChecks)) refuse('review-options');
 }
+export function inferMergedReviewWorkflow({ repository, pr, requiredChecks }, { cwd, api = githubRead } = {}) {
+  reviewOptions({ repository, pr, requiredChecks, workflow: '.github/workflows/placeholder.yml', mode: RECOVERY_MODE });
+  const started = Date.now(), prefix = `repos/${repository}`;
+  const read = path => {
+    const remaining = 120000 - (Date.now() - started); if (remaining <= 0) refuse('provider-deadline');
+    return api(path, { cwd, timeoutMs: Math.min(15000, remaining) });
+  };
+  const pull = read(`${prefix}/pulls/${pr}`);
+  const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
+  if (pull?.number !== pr || pull.merged !== true || pull.state !== 'closed'
+    || pull.base?.ref !== 'main' || pull.base?.repo?.full_name !== repository
+    || pull.head?.repo?.full_name !== repository || !sha(pull.head?.sha)
+    || typeof pull.head?.ref !== 'string' || !pull.head.ref) refuse('merged-review');
+  const response = read(`${prefix}/commits/${pull.head.sha}/check-runs?filter=latest&per_page=100`);
+  if (!Array.isArray(response?.check_runs) || response.total_count !== response.check_runs.length
+    || response.total_count > 100) refuse('check-page-incomplete');
+  const workflows = new Set(requiredChecks.map(name => {
+    const candidates = response.check_runs.filter(c => c.name === name);
+    if (candidates.length !== 1) refuse('check-ambiguous-or-missing');
+    const c = candidates[0];
+    if (c.status !== 'completed' || c.conclusion !== 'success' || c.head_sha !== pull.head.sha
+      || c.app?.slug !== 'github-actions' || !Number.isSafeInteger(c.id) || c.id < 1) refuse('check-not-successful');
+    const prefix = `https://github.com/${repository}/actions/runs/`;
+    const suffix = c.details_url?.startsWith(prefix) ? c.details_url.slice(prefix.length) : '';
+    const match = suffix.match(/^(\d+)\/job\/(\d+)$/u);
+    if (!match || Number(match[2]) !== c.id || !Number.isSafeInteger(Number(match[1]))) refuse('check-locator');
+    const run = read(`repos/${repository}/actions/runs/${match[1]}`);
+    if (run?.id !== Number(match[1]) || run.head_sha !== pull.head.sha || run.head_branch !== pull.head.ref
+      || run.repository?.full_name !== repository || run.head_repository?.full_name !== repository
+      || run.event !== 'pull_request' || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(run.path ?? '')
+      || run.status !== 'completed' || run.conclusion !== 'success'
+      || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) refuse('check-run-binding');
+    return run.path;
+  }));
+  if (workflows.size !== 1) refuse('workflow-ambiguous');
+  return [...workflows][0];
+}
 export function observeMergedReview(value, { cwd, api = githubRead } = {}) {
   reviewOptions(value);
   const started = Date.now(), prefix = `repos/${value.repository}`;
