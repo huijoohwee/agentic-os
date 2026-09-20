@@ -232,6 +232,14 @@ test('release-common complete waits for a merged exact review, then runs closeou
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
   assert.doesNotMatch(result.stderr, /blocked-release-common-complete-cleanup-required/u);
   assert.equal(existsSync(subject.lane), false);
+  const statuses = result.stdout.split('\n')
+    .filter((line) => line.includes('"schema":"agentic-os/completion-status/v1"'))
+    .map((line) => JSON.parse(line));
+  const settled = statuses.at(-1);
+  assert.equal(settled.closeout.missionState, 'source_complete');
+  assert.equal(settled.closeout.laneDisposition, 'quarantined');
+  assert.equal(settled.cleanupVerified, true);
+  assert.equal(settled.closeout.nextAction, null);
 });
 
 test('release-common complete returns success when the profile retains worktree cleanup', (t) => {
@@ -247,6 +255,11 @@ test('release-common complete returns success when the profile retains worktree 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"event":"merged"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
+  const status = JSON.parse(result.stdout.split('\n')
+    .filter((line) => line.includes('"schema":"agentic-os/completion-status/v1"')).at(-1));
+  assert.equal(status.closeout.missionState, 'source_complete');
+  assert.equal(status.closeout.laneDisposition, 'retained');
+  assert.equal(status.lane.mounted, true);
 });
 
 test('release-common complete returns the verified wait code while the exact review stays open', (t) => {

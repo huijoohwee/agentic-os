@@ -159,7 +159,7 @@ function cmdReleaseCommonHelp() {
       'Default path:',
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
       '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
-      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait for exact merge, then run close and optional cleanup',
+      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
