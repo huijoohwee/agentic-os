@@ -46,8 +46,7 @@ test('space-bearing runtime paths execute guards and budget/readiness entrypoint
   const preCommit = spawnSync(join(runtime, '.githooks', 'pre-commit'), [], {
     cwd: repository, encoding: 'utf8',
   });
-  assert.equal(preCommit.status, 1, preCommit.stderr);
-  assert.match(preCommit.stderr, /refusing to commit on "main"/u);
+  assert.equal(preCommit.status, 0, preCommit.stderr);
 
   const prePush = spawnSync(join(runtime, '.githooks', 'pre-push'), ['upstream', 'fixture'], {
     cwd: repository, encoding: 'utf8',
@@ -55,6 +54,13 @@ test('space-bearing runtime paths execute guards and budget/readiness entrypoint
   });
   assert.equal(prePush.status, 1, prePush.stderr);
   assert.match(prePush.stderr, /refusing to push directly to refs\/heads\/main/u);
+
+  runGit(repository, 'checkout', '-b', 'feature/unbound');
+  const unbound = spawnSync(join(runtime, '.githooks', 'pre-commit'), [], {
+    cwd: repository, encoding: 'utf8',
+  });
+  assert.equal(unbound.status, 1, unbound.stderr);
+  assert.match(unbound.stderr, /non-lane branch/u);
 
   for (const [path, output] of [
     [['bin', 'agentic-os-module-budget.mjs'], /modules 46\/46/u],
