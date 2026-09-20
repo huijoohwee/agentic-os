@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40960, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40859, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -84,13 +84,12 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'Command surface:',
-      '`start` runs `doctor`, `status`, then `lane`',
-      '`publish` runs `land`',
-      '`close` runs `finish`, `reap`, then `completion status`',
-      '`finish` runs `finish`, then `reap`',
-      'Wait for protected integration; default is squash.',
-      'Cleanup, sync, deploy, rollback, and Prod auth need separate receipts.',
-      'Merge proof, closeout, and cleanup stay separate.',
+      '`start`: `doctor -> status -> lane`',
+      '`publish`: `land`',
+      '`close`: `finish -> reap -> completion status`',
+      '`finish`: diagnostic `finish -> reap`',
+      '`publish` stops at provider handoff until protected integration completes.',
+      'Merge proof, closeout, cleanup, sync, deploy, rollback, and Prod auth keep separate receipts.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
