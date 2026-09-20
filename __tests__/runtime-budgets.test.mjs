@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40949, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40960, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -46,16 +46,16 @@ test('this repository is inside its own documentation budget', (t) => {
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const bytes = readFileSync(join(root, 'guides/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 998, 'update this exact cost to expose every prompt byte delta');
+  assert.equal(bytes.byteLength, 985, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 992);
+  assert.equal([...prompt].length, 979);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '2d96812a826d378016a6cd48fed9f460eaf838d0b0ef93852a8129c2df51ca3a');
+    '02635875b42dddeb1ea9a041d28e94a4c1dcbeec5a4ffd6cb4958a9d85defd67');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {

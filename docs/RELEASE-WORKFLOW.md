@@ -1,8 +1,8 @@
 # Release workflow
 
-Ends at protected integration and closeout. CI is in scope only until the exact published
-revision merges. Deploy, Dev/preview/Prod promotion, auth, and rollback continue with
-[`guides/DEPLOY-WORKFLOW.md`](../guides/DEPLOY-WORKFLOW.md).
+Ends at protected integration and closeout. RELEASE is global protocol; consumers bind
+checks, cleanup, deploy, rollback. CI is in scope only until the exact published
+revision merges. Continue with [`guides/DEPLOY-WORKFLOW.md`](../guides/DEPLOY-WORKFLOW.md).
 
 1. `npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`
 2. Work only in the lane worktree and run focused checks.
