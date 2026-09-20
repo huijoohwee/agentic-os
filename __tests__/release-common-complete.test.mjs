@@ -27,7 +27,14 @@ function clock() {
   };
 }
 
-function profile() {
+function profile(cleanup = {
+  localBranch: 'retain',
+  remoteBranch: 'retain',
+  remoteTrackingRef: 'retain',
+  unreachableObjects: 'retain',
+  worktreeProjection: 'quarantine',
+  worktreeRegistration: 'quarantine',
+}) {
   return createRepositoryProfile({
     repository: 'github.com/owner/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
@@ -35,10 +42,11 @@ function profile() {
       repository: { id: 'git', version: '1' },
       provider: { id: 'github', version: '1' },
     },
+    cleanup,
   });
 }
 
-function completeFixture(t, reviewState = 'MERGED') {
+function completeFixture(t, reviewState = 'MERGED', cleanup = profile().cleanup) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-release-common-complete-'));
   const root = join(parent, 'repo');
   const bare = join(parent, 'remote.git');
@@ -54,10 +62,11 @@ function completeFixture(t, reviewState = 'MERGED') {
   run(['config', 'user.name', 'Fixture']);
   run(['config', 'user.email', 'fixture@example.invalid']);
   writeFileSync(join(root, 'base.txt'), 'base\n');
-  writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(profile(), null, 2)}\n`);
+  const repositoryProfile = profile(cleanup);
+  writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(repositoryProfile, null, 2)}\n`);
   run(['add', 'base.txt', '.agentic-os.json']);
   run(['commit', '--quiet', '--message', 'base']);
-  ensureRepositoryTrust(root, profile(), { allowCreate: true });
+  ensureRepositoryTrust(root, repositoryProfile, { allowCreate: true });
   const base = run(['rev-parse', 'HEAD']);
   run(['remote', 'add', 'origin', bare]);
   run(['push', '--quiet', '--set-upstream', 'origin', 'main']);
@@ -163,9 +172,25 @@ test('watch resets backoff when the exact review changes and succeeds on merge',
 test('release-common complete waits for a merged exact review, then runs closeout', (t) => {
   const subject = completeFixture(t, 'MERGED');
   const result = complete(subject, 1000);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 1, result.stderr);
   assert.match(result.stdout, /"event":"merged"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/sprint-finish\/v1"/u);
+  assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
+  assert.match(result.stderr, /blocked-release-common-complete-cleanup-required/u);
+});
+
+test('release-common complete returns success when the profile retains worktree cleanup', (t) => {
+  const subject = completeFixture(t, 'MERGED', {
+    localBranch: 'retain',
+    remoteBranch: 'retain',
+    remoteTrackingRef: 'retain',
+    unreachableObjects: 'retain',
+    worktreeProjection: 'retain',
+    worktreeRegistration: 'retain',
+  });
+  const result = complete(subject, 1000);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"event":"merged"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
 });
 
