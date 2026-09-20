@@ -159,6 +159,7 @@ function cmdReleaseCommonHelp() {
       'Default path:',
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
       '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
+      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait for exact merge, then run close and optional cleanup',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
@@ -431,6 +432,30 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
       if (reapStatus !== 0) return reapStatus;
       return (await import('./agentic-os-completion-status.mjs'))
         .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out);
+    }
+    case 'complete': {
+      const waitStatus = await import('./agentic-os-release-common-complete.mjs')
+        .then(async (module) => {
+          module.resolveReleaseCommonCleanupRequest(rest);
+          return module.runReleaseCommonCompleteWait({
+            root, argv: rest, profile, protectedBranch: policy.protectedBranch, out, err,
+          });
+        });
+      if (waitStatus !== 0) return waitStatus;
+      const finishStatus = cmdFinish(root, rest, policy, profile);
+      if (finishStatus !== 0) return finishStatus;
+      const reapStatus = cmdReap(root, rest, policy, profile);
+      if (reapStatus !== 0) return reapStatus;
+      const statusResult = (await import('./agentic-os-completion-status.mjs'))
+        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out);
+      if (statusResult !== 0) return statusResult;
+      {
+        const module = await import('./agentic-os-release-common-complete.mjs');
+        const cleanup = module.resolveReleaseCommonCleanupRequest(rest);
+        return module.runReleaseCommonCleanup({
+          root, ref: option(rest, 'ref'), bundlePath: cleanup.bundlePath, stopped: cleanup.stopped, out,
+        });
+      }
     }
     case 'successor':
       return cmdSuccessor(root, rest, policy);
