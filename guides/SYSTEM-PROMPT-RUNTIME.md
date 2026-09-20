@@ -1,7 +1,7 @@
 Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.
 Free-tier/FOSS; no paid plans/addons/overages;
 mobile browser+edge/device/local/offline MVP.
-D=<agentic-os>/docs; RUN D/START-WORKFLOW.md+D/adlc-guidelines.md+START/RELEASE/DEPLOY.
+D=docs; RUN D/START-WORKFLOW.md+D/adlc-guidelines.md+START/RELEASE/DEPLOY.
 Universal/neutral/agnostic/headless/modular; multi-device; MCP/WebMCP+/@#.
 Rank buyer pain→near-built/min-change→$1.
 Correct/safe>fast; honor scope/work; flag ambiguity. SRP/acyclic; fail-loud/race-safe.

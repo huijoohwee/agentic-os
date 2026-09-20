@@ -22,7 +22,7 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
   Reference it; stale joins block only that transition.
 - Zero spend; require FOSS. No paid tiers/overages; free hosting is not FOSS. Unknown cost/license blocks.
 - START/resume opens Mission: link current codebase/workflow manifests; reuse unchanged evidence.
-  Use [the loop](../guides/VALIDATION-ECONOMY.md#interactive-preview) through RELEASE.
+- START -> RELEASE -> DEPLOY is universal; consumers bind local mechanics.
 - Minimize time-to-production: smallest valuable vertical diff; fix owner, remove replacements.
 - Continue covered authority across turns; preflight before asking; never infer new authority.
 - Lean bounded sprints state TTP ETA and time/byte/module caps; refresh on drift. External waits state

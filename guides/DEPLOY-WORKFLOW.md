@@ -2,9 +2,9 @@
 
 Continuity `DEPLOY-WORKFLOW-001@1.0.0`.
 
-This workflow starts only after exact source integration. It governs product deployment, Dev or
-preview to Prod promotion, deployed readback, and rollback. Release CI and a protected source merge
-do not authorize deployment, promotion, or rollback.
+This is the global DEPLOY protocol stage. It starts after exact source integration and governs
+deploy, Dev-to-Prod promotion, readback, and rollback. Consumers bind local controllers and targets.
+Release CI and source merge do not authorize deployment, promotion, or rollback.
 
 ## Preconditions
 
