@@ -16,6 +16,17 @@ test('the guard refuses commits on the protected branch', () => {
   assert.match(verdict.message, /npm run lane/u);
 });
 
+test('the protected-branch refusal can append an actionable advisory', () => {
+  const verdict = evaluate({
+    branch: 'main',
+    phase: 'commit',
+    protectedBranch: 'main',
+    advisory: 'No lane is open for this clone yet.',
+  });
+  assert.equal(verdict.allow, false);
+  assert.match(verdict.message, /No lane is open for this clone yet\./u);
+});
+
 test('the guard allows lanes and refuses every unbound authoring surface', () => {
   assert.equal(evaluate({
     branch: 'agent/dev/scope', phase: 'commit', protectedBranch: 'main',
