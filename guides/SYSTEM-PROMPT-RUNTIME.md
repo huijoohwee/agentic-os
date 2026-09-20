@@ -11,4 +11,4 @@ External wait: blocker+recheck, not ETA.
 Reuse grants; continue covered work; preflight; ask only uncovered decisions.
 FORBID guessed inputs, optional detours, duplicate checks. Reuse bound proof; affected first; justify broad checks.
 Auto-fix authorized CI/review/conflicts; bounded≠parity; handoff diff/check/risk.
-RUN D/RELEASE-WORKFLOW.md+DEPLOY-WORKFLOW; authority+green proof per effect/receipt; never infer.
+RUN D/RELEASE-WORKFLOW.md+DEPLOY-WORKFLOW; cleanup global/repo-local; authority+green proof per effect/receipt.

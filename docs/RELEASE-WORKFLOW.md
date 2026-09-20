@@ -1,7 +1,7 @@
 # Release workflow
 
-Ends at protected integration and closeout. RELEASE is global protocol; consumers bind
-checks, cleanup, deploy, rollback. CI is in scope only until the exact published
+Ends at protected integration and closeout. RELEASE is global; consumers bind
+checks and repo-local cleanup/deploy/rollback. CI ends when the exact published
 revision merges. Continue with [`guides/DEPLOY-WORKFLOW.md`](../guides/DEPLOY-WORKFLOW.md).
 
 1. `npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`
@@ -18,6 +18,6 @@ Command surface:
 
 Notes:
 - `publish` stops at provider handoff until protected integration completes.
-- `complete` auto-retires the local lane when merged evidence is sufficient; use `--bundle`
-  with `--stopped` for authenticated cleanup.
+- `complete` auto-retires the lane when merged evidence is sufficient; use `--bundle --stopped`
+  when cleanup needs exact authenticated proof.
 - Merge proof, closeout, cleanup, sync, deploy, rollback, and Prod auth keep separate receipts.

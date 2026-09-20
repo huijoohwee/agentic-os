@@ -3,7 +3,8 @@
 Continuity `DEPLOY-WORKFLOW-001@1.0.0`.
 
 This is the global DEPLOY protocol stage. It starts after exact source integration and governs
-deploy, Dev-to-Prod promotion, readback, and rollback. Consumers bind local controllers and targets.
+deploy, Dev-to-Prod promotion, readback, and rollback. Cleanup remains global but repo-local.
+Consumers bind local controllers and targets.
 Release CI and source merge do not authorize deployment, promotion, or rollback.
 
 ## Preconditions
@@ -39,7 +40,7 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
 ## Boundaries
 
 - Source release, deployment, Dev-to-Prod promotion, runtime verification, rollback, cleanup, and
-  canonical sync each keep separate receipts.
+  canonical sync each keep separate receipts; cleanup never becomes a generic global mechanic.
 - Lower-environment success is necessary input to promotion, not production proof.
 - CI proves only the selected source candidate and check surface; it does not prove deployed identity.
 - A route switch, Worker activation, container rollout, schema migration, and payment replay may have
