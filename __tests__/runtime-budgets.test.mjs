@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40960, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40954, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -46,16 +46,16 @@ test('this repository is inside its own documentation budget', (t) => {
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const bytes = readFileSync(join(root, 'guides/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 985, 'update this exact cost to expose every prompt byte delta');
+  assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 979);
+  assert.equal([...prompt].length, 993);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '02635875b42dddeb1ea9a041d28e94a4c1dcbeec5a4ffd6cb4958a9d85defd67');
+    '3531440da28391838eade31b5984d74c3ce76dbf0d8d7eec6ea04571665ecb11');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -63,7 +63,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
   const requirements = new Map([
     ['docs/adlc-guidelines.md', [
-      'START/resume opens Mission: link current codebase/workflow manifests; reuse unchanged evidence.',
+      'START/resume opens Mission: link current codebase/workflow manifests; reuse evidence.',
       'Minimize time-to-production: smallest valuable vertical diff',
       'Lean bounded sprints state TTP ETA and time/byte/module caps',
       'refresh on drift. External waits state dependency/condition/recheck, never ETA.',
@@ -99,7 +99,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Sprint: ETA+time/byte/module caps;',
       'lazy-load; refresh on drift.',
       'External wait: blocker+recheck, not ETA.',
-      'authority+green proof per effect/receipt; never infer.',
+      'cleanup global/repo-local; authority+green proof per effect/receipt.',
     ]],
     ['AGENTS.md', [
       'Continuously obey the global `guides/SYSTEM-PROMPT-RUNTIME.md`',

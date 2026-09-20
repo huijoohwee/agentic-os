@@ -16,15 +16,15 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
+ADLC supersedes Agentic SDLC. Consumers own product, deploy, rollback, authority.
 
 - PRD-TAD-ADR ID + exact revision owns scope/acceptance/design/decision per transition.
   Reference it; stale joins block only that transition.
 - Zero spend; require FOSS. No paid tiers/overages; free hosting is not FOSS. Unknown cost/license blocks.
-- START/resume opens Mission: link current codebase/workflow manifests; reuse unchanged evidence.
-- START -> RELEASE -> DEPLOY is universal; consumers bind local mechanics.
+- START/resume opens Mission: link current codebase/workflow manifests; reuse evidence.
+- START -> RELEASE -> DEPLOY is universal; cleanup is global; mechanics stay local.
 - Minimize time-to-production: smallest valuable vertical diff; fix owner, remove replacements.
-- Continue covered authority across turns; preflight before asking; never infer new authority.
+- Continue covered authority across turns; preflight before asking; never infer authority.
 - Lean bounded sprints state TTP ETA and time/byte/module caps; refresh on drift. External waits state
   dependency/condition/recheck, never ETA.
 - Global prompt: exact LF-terminated UTF-8, at most 1,000 bytes; code points secondary, tokens advisory.
@@ -35,4 +35,4 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 - Canonical is read-only. Edit owner files in disjoint path-scoped lanes; overlaps wait. Land stages,
   commits, and publishes reserved paths. Land the exact committed diff by protected merge.
 - Exact candidates; proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt.
-- Cleanup: exact eligible targets after value closure; no wildcards. Prove bytes/paths/refs/races.
+- Cleanup is global/repo-local: exact eligible targets only; no wildcards. Prove bytes/paths/refs.
