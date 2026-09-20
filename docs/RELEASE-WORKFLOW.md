@@ -1,8 +1,8 @@
 # Release workflow
 
-Ends at protected integration and lane closeout. CI is in scope only until the exact
-published revision merges. Deploy, Dev/preview/Prod promotion, auth, and rollback use separate
-consumer-owned workflows with separate receipts.
+Ends at protected integration and closeout. CI is in scope only until the exact published
+revision merges. Deploy, Dev/preview/Prod promotion, auth, and rollback continue with
+[`guides/DEPLOY-WORKFLOW.md`](../guides/DEPLOY-WORKFLOW.md).
 
 1. `npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`
 2. Work only in the lane worktree and run focused checks.
@@ -18,6 +18,6 @@ Command surface:
 
 Notes:
 - `publish` stops at provider handoff until protected integration completes.
-- `complete` auto-retires the exact local lane when clean merged evidence is sufficient; use `--bundle`
+- `complete` auto-retires the local lane when merged evidence is sufficient; use `--bundle`
   with `--stopped` for authenticated cleanup.
 - Merge proof, closeout, cleanup, sync, deploy, rollback, and Prod auth keep separate receipts.
