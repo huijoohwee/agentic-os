@@ -53,9 +53,9 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(rele
 
   if (released) {
     assert.equal(runtimeId, released === 'pre-diff'
-      ? 'v1-971e58be7867813ac7ebf7ca9aa3761990b87ca909dde0c0212044d67b7a577b' : released === 'copy'
-      ? 'v1-a505e3f34931575a51caea44c5e389f7a9ea4f5daa8bb82c78de6865b47f250c'
-      : 'v1-c154ec30b0471e98ba26f61583b1c12063b80c355d366f61d63695a12f4be5e9');
+      ? 'v1-c163b6a6e47c0e1a9622e95b8b8cbdb0bb7d4c97b35f64de638636a2b5fdd625' : released === 'copy'
+      ? 'v1-6f4c654528cb71df9f1c5ce26f6aef75aad8c6c1e988f6c86cc6b4d6268c48d9'
+      : 'v1-1302dff132ff5ecac9f6ea9362c6d7425f60529086f58814dbd3fd958d37d7eb');
     assert.equal(assertPriorManagedRuntime(join(path, '.githooks'), selected), true);
     const catalog = join(path, 'src/catalog-input.mjs');
     writeFileSync(catalog, Buffer.concat([readFileSync(catalog), Buffer.from('\n')]));

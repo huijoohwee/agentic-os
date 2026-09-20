@@ -18,6 +18,7 @@ const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-72c53bdaa971f1a0f321f1d296ab789839c52392f49b91dfbb2f36bd3504c4dc',
+  'v1-61b0ab53442406622d7c863978dc37e5612353c6ee7293588beb62a5150522a8',
   'v1-971e58be7867813ac7ebf7ca9aa3761990b87ca909dde0c0212044d67b7a577b',
   'v1-c154ec30b0471e98ba26f61583b1c12063b80c355d366f61d63695a12f4be5e9',
   'v1-5be6d0e5b7015be246c11d42cfc370d3ef765133abd51db05c41f6cfe61dba47',
@@ -33,6 +34,17 @@ const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-9e6ebefda47219dfe8742a3918f8135ad5d16b572683c96c028c355141e63eeb',
   'v1-9eebc670a00c5682e090b633d7b722b7ce691b70a30fac1e9b89f459956ff05e',
   'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9',
+  'v1-5f1e4d74fa3240abf013190ac0866aca8f83f39b9c24d4b0d8d36de646bf7c8e',
+  'v1-3aed266667bd19ead3fd4b20f0efdc23d240b58bb01701871ef3f1869e3f80f0',
+  'v1-6f4c654528cb71df9f1c5ce26f6aef75aad8c6c1e988f6c86cc6b4d6268c48d9',
+  'v1-1302dff132ff5ecac9f6ea9362c6d7425f60529086f58814dbd3fd958d37d7eb',
+  'v1-c163b6a6e47c0e1a9622e95b8b8cbdb0bb7d4c97b35f64de638636a2b5fdd625',
+  'v1-77e860a083ef2c6d33c633dc601d4b2fed3ab839ba4e16d7b0875f6abc3e5b6b',
+  'v1-2429dbcbc40e4ed76819c0e8c0358aadfc08ee7f7a49d4642b326d1d6c28b0fd',
+  'v1-186e587d30bb0daf6927cdc1e0b528c7102e4bf9538f6a25e7a0de64c3205753',
+  'v1-c9b1a5145b4253d1ad57ce901b40526d7c57cb7f4b02556953a3be2e1617f79d',
+  'v1-f02f83febf4448eb30b353acd06ec2274fb9ab7253eb537285fd6fb17af0dee5',
+  'v1-40628b45b7fd1f33546dcf6e41bb4869614db132a4a42a4ac85f1625122ba51c',
 ]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
@@ -48,7 +60,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: '.githooks/pre-push', mode: 0o755,
     sha256: '4e0d3796876b900f9d54750e2c537220bf26b15877aaede0096d0dc0838c5af7' }),
   Object.freeze({ path: 'src/guard-main.mjs', mode: 0o755,
-    sha256: '54f5181203b72c73773e4338524baad8e805b155521ccf07f4f2c07189453e8b' }),
+    sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' }),
   Object.freeze({ path: 'src/git.mjs', mode: 0o644,
     sha256: 'd51f658be657d761badc23d29b8e15267a8d542df660f9087a2538e2e2c3dd5a' }),
   Object.freeze({ path: 'src/quarantine.mjs', mode: 0o644,

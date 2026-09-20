@@ -21,7 +21,34 @@ export function protectedRefForRepository(root) {
   return loadRepositoryTrust(root).canonical.localRef;
 }
 
-export function evaluate({ branch, phase, override, protectedBranch }) {
+function appendAdvisory(message, advisory) {
+  return typeof advisory === 'string' && advisory.trim().length > 0
+    ? `${message}\n\n${advisory.trimEnd()}`
+    : message;
+}
+
+function canonicalAuthoringAdvisory(root) {
+  const lanes = worktrees(root)
+    .filter(candidate => isLaneRef(candidate.branch))
+    .map(candidate => ({ branch: candidate.branch, path: candidate.path }));
+  if (lanes.length === 0) {
+    return [
+      'No lane is open for this clone yet. Start one from canonical main:',
+      '',
+      '  npm run lane -- <scope> --write=<path[,path...]>',
+      '',
+      'Then commit from the printed worktree path, not from canonical main.',
+    ].join('\n');
+  }
+  return [
+    'Open one of the registered lane worktrees for this clone and commit there instead:',
+    '',
+    ...lanes.slice(0, 3).map(candidate => `  ${candidate.path}  (${candidate.branch})`),
+    ...(lanes.length > 3 ? [`  ... ${lanes.length - 3} more lane worktree(s)`] : []),
+  ].join('\n');
+}
+
+export function evaluate({ branch, phase, override, protectedBranch, advisory }) {
   if (override === '1') {
     return { allow: true, note: `${OVERRIDE_ENV}=1 override in effect for ${phase}` };
   }
@@ -31,7 +58,7 @@ export function evaluate({ branch, phase, override, protectedBranch }) {
     return {
       allow: false,
       reason: 'blocked-canonical-authoring',
-      message: [
+      message: appendAdvisory([
         `refusing to ${phase} on "${protectedBranch}".`,
         '',
         `"${protectedBranch}" is the read-only runtime and sync owner. Author in a lane:`,
@@ -41,7 +68,7 @@ export function evaluate({ branch, phase, override, protectedBranch }) {
         'If bytes are already here, preserve them with: npm run reconcile -- plan --scope=<scope>',
         'Do not retry pull or push until reconcile classifies the protected-main state.',
         `Override only for a repository-owned operation: ${OVERRIDE_ENV}=1`,
-      ].join('\n'),
+      ].join('\n'), advisory),
     };
   }
   if (!isLaneRef(branch)) {
@@ -86,11 +113,13 @@ function main() {
   }
   const branch = currentBranch(root);
   const protectedBranch = protectedRef.slice('refs/heads/'.length);
+  const advisory = branch === protectedBranch ? canonicalAuthoringAdvisory(root) : null;
   const verdict = evaluate({
     branch,
     phase,
     override,
     protectedBranch,
+    advisory,
   });
   if (verdict.allow && override !== '1' && !isBoundLane(branch, root)) {
     verdict.allow = false;

@@ -575,8 +575,8 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
           ? { ...file, bytes: readFileSync(new URL('./fixtures/lane-id-hostname.mjs.txt', import.meta.url)),
             sha256: 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a' } : file);
   for (const [entries, expectedId] of [[files,
-    'v1-be7454052f5609e1a80f6a55574d934b3fbf2379aff59d9b1a216da044dd3b68'], [priorFiles,
-    'v1-72c53bdaa971f1a0f321f1d296ab789839c52392f49b91dfbb2f36bd3504c4dc']]) {
+    'v1-5f1e4d74fa3240abf013190ac0866aca8f83f39b9c24d4b0d8d36de646bf7c8e'], [priorFiles,
+    'v1-3aed266667bd19ead3fd4b20f0efdc23d240b58bb01701871ef3f1869e3f80f0']]) {
     const identity = { schema: 'agentic-os/hook-runtime/v1',
       files: entries.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
     const runtimeId = `v1-${createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
