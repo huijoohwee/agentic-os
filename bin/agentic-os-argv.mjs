@@ -85,8 +85,8 @@ export function validateCommandArguments(command, argv) {
     }
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'successor'].includes(action))
-        return 'release-common requires start, publish, finish, close, or successor';
+      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'successor'].includes(action))
+        return 'release-common requires start, publish, finish, close, complete, or successor';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
@@ -95,6 +95,9 @@ export function validateCommandArguments(command, argv) {
       if (action === 'publish') return exact(argv, { min: 1, max: 1, options: ['message', 'body-file', 'title'] });
       if (action === 'finish' || action === 'close')
         return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
+      if (action === 'complete')
+        return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'],
+          requiredOptions: ['ref'] });
       return exact(argv, { min: 2, max: 2, options: ['expected-head', 'write'] });
     }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
@@ -161,9 +164,10 @@ export function cmdHelp() {
       'agentic-os — ADLC harness',
       '',
       '  Primary human release path:',
-      '    npm run release:common --help  show the canonical start -> publish -> close operator flow',
+      '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
       '    npm run release:common -- start <scope> --write=<path[,path...]>   run doctor, status, then lane',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
+      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and optionally apply authenticated cleanup',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
       '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
       '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>]  continue only after publish',

@@ -107,13 +107,14 @@ test('unknown commands fail argument grammar before repository and trust access'
   });
   assert.equal(releaseCommonHelp.status, 0, releaseCommonHelp.stderr);
   assert.match(releaseCommonHelp.stdout, /agentic-os release-common/u);
+  assert.match(releaseCommonHelp.stdout, /release-common complete --ref=<lane>[\s\S]*--bundle=<json>[\s\S]*--stopped/u);
   assert.equal(releaseCommonHelp.stderr, '');
   const releaseCommonInvalid = spawnSync(process.execPath, [CLI, 'release-common', 'typo'], {
     cwd: outside, encoding: 'utf8', env: { ...process.env },
   });
   assert.equal(releaseCommonInvalid.status, 1);
   assert.match(releaseCommonInvalid.stderr,
-    /blocked-invalid-arguments: release-common: release-common requires start, publish, finish, close, or successor/u);
+    /blocked-invalid-arguments: release-common: release-common requires start, publish, finish, close, complete, or successor/u);
   assert.doesNotMatch(releaseCommonInvalid.stderr, /not inside a git repository|repository trust/u);
   const releaseCommonMissingScope = spawnSync(process.execPath, [CLI, 'release-common', 'start'], {
     cwd: outside, encoding: 'utf8', env: { ...process.env },
