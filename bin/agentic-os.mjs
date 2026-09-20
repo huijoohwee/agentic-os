@@ -434,28 +434,38 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
         .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out);
     }
     case 'complete': {
-      const waitStatus = await import('./agentic-os-release-common-complete.mjs')
-        .then(async (module) => {
-          module.resolveReleaseCommonCleanupRequest(rest);
-          return module.runReleaseCommonCompleteWait({
-            root, argv: rest, profile, protectedBranch: policy.protectedBranch, out, err,
-          });
-        });
+      const completeModule = await import('./agentic-os-release-common-complete.mjs');
+      const cleanup = completeModule.resolveReleaseCommonCleanupRequest(rest);
+      const waitStatus = await completeModule.runReleaseCommonCompleteWait({
+        root, argv: rest, profile, protectedBranch: policy.protectedBranch, out, err,
+      });
       if (waitStatus !== 0) return waitStatus;
       const finishStatus = cmdFinish(root, rest, policy, profile);
       if (finishStatus !== 0) return finishStatus;
       const reapStatus = cmdReap(root, rest, policy, profile);
       if (reapStatus !== 0) return reapStatus;
-      const statusResult = (await import('./agentic-os-completion-status.mjs'))
-        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out);
-      if (statusResult !== 0) return statusResult;
-      {
-        const module = await import('./agentic-os-release-common-complete.mjs');
-        const cleanup = module.resolveReleaseCommonCleanupRequest(rest);
-        return module.runReleaseCommonCleanup({
+      const completionModule = await import('./agentic-os-completion-status.mjs');
+      const completion = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
+      out(JSON.stringify(completion));
+      if (cleanup.bundlePath === null
+        && profile.cleanup.worktreeProjection !== 'retain'
+        && completion.lane.mounted) {
+        err('blocked-release-common-complete-cleanup-required: exact merge observed; closeout is complete, but authenticated cleanup still owns the retained lane. Re-run with --bundle=<json> --stopped or use release-common close for observational status only.');
+        return 1;
+      }
+      if (cleanup.bundlePath !== null) {
+        const cleanupStatus = await completeModule.runReleaseCommonCleanup({
           root, ref: option(rest, 'ref'), bundlePath: cleanup.bundlePath, stopped: cleanup.stopped, out,
         });
+        if (cleanupStatus !== 0) return cleanupStatus;
+        const settled = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
+        out(JSON.stringify(settled));
+        if (settled.lane.mounted) {
+          err('blocked-release-common-complete-cleanup-retained: authenticated cleanup returned, but the exact lane is still mounted.');
+          return 1;
+        }
       }
+      return 0;
     }
     case 'successor':
       return cmdSuccessor(root, rest, policy);
