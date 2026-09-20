@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArguments, runTests, validationChecks, runCheckPool } from '../bin/agentic-os-tests.mjs';
+import { parseArguments, runTests, validationChecks, runCheckPool, boundCiCoverage } from '../bin/agentic-os-tests.mjs';
 import { snapshot } from '../bin/agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 
@@ -27,8 +27,29 @@ function fixture(t, { evaluator = 'node -e "process.exit(0)"', body = '' } = {})
 test('options are explicit and reject unknown, duplicate and empty input', () => {
   assert.equal(parseArguments([]).mode, 'affected');
   for (const args of [['unknown'], ['affected', '--skip'], ['affected', '--base='],
-    ['affected', '--base=a', '--base=b'], ['fast', '--fresh']]) assert.throws(() => parseArguments(args));
+    ['affected', '--base=a', '--base=b'], ['fast', '--fresh'], ['affected', '--ci-run=0']]) assert.throws(() => parseArguments(args));
+  assert.equal(parseArguments(['affected', '--ci-run=42'])['ci-run'], '42');
 });
+test('bound CI covering HEAD defers the local suite; identity drift and failed CI do not', async t => {
+  const env = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
+  delete process.env.CI; delete process.env.GITHUB_ACTIONS;
+  t.after(() => { for (const [key, value] of Object.entries(env)) value === undefined ? delete process.env[key] : process.env[key] = value; });
+  const f = fixture(t, { evaluator: 'node -e "process.exit(9)"' });
+  const observed = snapshot({ root: f.root, base: 'HEAD' });
+  const observation = { source: { revision: observed.identity.headRevision, tree: observed.identity.headTree },
+    status: 'running', ci: { runId: 42 }, coverage: { partial: true } };
+  assert.deepEqual(boundCiCoverage(observed.identity, observation), { runId: 42, status: 'running' });
+  assert.equal(boundCiCoverage(observed.identity, { ...observation, status: 'failed' }), null);
+  assert.throws(() => boundCiCoverage(observed.identity, { ...observation,
+    source: { revision: 'a'.repeat(40), tree: observed.identity.headTree } }), /blocked-ci-coverage-identity/u);
+  const messages = [];
+  assert.equal(await runTests(['affected', '--base=HEAD', '--ci-run=42'], {
+    root: f.root, out: text => messages.push(text), ciObservation: observation }), 0);
+  assert.ok(messages.some(message => message.startsWith('deferred local suite')));
+  assert.ok(f.receipt().results.every(result => result.reusedFrom === 'bound-ci'));
+  assert.equal(f.receipt().results.some(result => result.name === 'evaluators'), true);
+});
+
 test('public npm entrypoints forward baseline options before executing any checks', async () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   for (const script of ['check', 'test', 'check:affected']) {

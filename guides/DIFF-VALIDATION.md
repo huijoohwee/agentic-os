@@ -26,7 +26,8 @@ only after the complete input-drift check passes. Reuse never extends a check's 
 The current candidate gets a new aggregate `last.json` receipt with timings and reuse decisions.
 
 Use `npm run check -- --fresh` to bypass reuse. CI, `--committed`, and explicit `all` always execute fresh.
-Local receipts are development optimizations, not provider merge authority. CI still validates its exact
+`--ci-run=<id>` defers the local suite when that exact HEAD observation is running or passed; it is not
+merge authority. Local receipts are development optimizations, not provider merge authority. CI still validates its exact
 checkout against the event-bound baseline, and protected integration still requires successful checks.
 
 Within one run, immutable Git trees and unchanged file bytes are reused. Every command batch still

@@ -1,7 +1,8 @@
 # Agent instructions
 
 ADLC supersedes Agentic SDLC. Continuously obey the global
-`guides/SYSTEM-PROMPT-RUNTIME.md`; read `docs/adlc-guidelines.md` and the applicable workflow.
+`guides/SYSTEM-PROMPT-RUNTIME.md`; load `docs/adlc-guidelines.md` and one
+START/RELEASE/DEPLOY workflow only.
 
 - Preserve authored bytes and live evidence; never infer authority from projections or passing checks.
 - Keep canonical read-only; use disjoint scoped lanes; never rebase a published lane.

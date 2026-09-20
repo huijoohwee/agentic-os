@@ -19,6 +19,10 @@ export const BUDGET = Object.freeze({
   modules: 46,
   totalLines: 15000,
   perModuleLines: 400,
+  binModules: 108,
+  binLines: 22110,
+  runtimeModules: 96,
+  runtimeLines: 23023,
 });
 
 /** Suffix families whose presence means the state table is being bypassed. */
@@ -29,6 +33,22 @@ export const FORBIDDEN_SUFFIXES = Object.freeze([
   '-evidence.mjs',
   '-store.mjs',
 ]);
+
+function authoredModules(root, directory, suffixes) {
+  const dir = join(root, directory), found = [];
+  const walk = (current) => {
+    for (const name of readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = join(current, name.name);
+      if (name.isDirectory() && name.name !== 'node_modules') walk(path);
+      else if (name.isFile() && suffixes.some((suffix) => name.name.endsWith(suffix))) {
+        found.push({ name: name.name, path: relative(root, path),
+          lines: readFileSync(path, 'utf8').split('\n').length });
+      }
+    }
+  };
+  walk(dir);
+  return found;
+}
 
 export function modules(root = ROOT) {
   const dir = join(root, 'src');
@@ -92,18 +112,42 @@ export function violations(root = ROOT) {
     }
   }
 
+  const surfaces = harnessSurfaces(root);
+  found.push(...surfaces.bin.found, ...surfaces.runtime.found);
+  return { found, entries, total, surfaces };
+}
+
+function surfaceViolations(kind, path, entries, moduleCap, lineCap, hint) {
+  const total = entries.reduce((sum, entry) => sum + entry.lines, 0), found = [];
+  if (entries.length > moduleCap) found.push({ kind: `${kind}-count`, path, measured: entries.length, cap: moduleCap, hint });
+  if (total > lineCap) found.push({ kind: `${kind}-lines`, path, measured: total, cap: lineCap, hint });
   return { found, entries, total };
 }
 
+export function harnessSurfaces(root = ROOT) {
+  const bin = authoredModules(root, 'bin', ['.mjs', '.cjs', '.js']);
+  const runtime = authoredModules(root, 'runtime', ['.mjs', '.js']);
+  return {
+    bin: surfaceViolations('bin', 'bin/', bin, BUDGET.binModules, BUDGET.binLines,
+      'CLI growth belongs in an existing owner, not another agentic-os-*.mjs'),
+    runtime: surfaceViolations('runtime', 'runtime/', runtime, BUDGET.runtimeModules, BUDGET.runtimeLines,
+      'runtime/agents is out of ADLC; freeze modules and fix the owning file'),
+  };
+}
+
 function report() {
-  const { found, entries, total } = violations();
+  const { found, entries, total, surfaces } = violations();
   for (const entry of entries) {
     const mark = entry.lines > BUDGET.perModuleLines ? 'FAIL' : 'ok  ';
     process.stdout.write(`${mark} ${entry.path.padEnd(28)} ${String(entry.lines).padStart(4)} lines\n`);
   }
   process.stdout.write(
     `\nmodules ${entries.length}/${BUDGET.modules}   ` +
-      `lines ${total}/${BUDGET.totalLines}\n`,
+      `lines ${total}/${BUDGET.totalLines}\n` +
+      `bin ${surfaces.bin.entries.length}/${BUDGET.binModules}   ` +
+      `lines ${surfaces.bin.total}/${BUDGET.binLines}\n` +
+      `runtime ${surfaces.runtime.entries.length}/${BUDGET.runtimeModules}   ` +
+      `lines ${surfaces.runtime.total}/${BUDGET.runtimeLines}\n`,
   );
 
   if (found.length === 0) return 0;

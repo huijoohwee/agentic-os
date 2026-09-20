@@ -135,7 +135,8 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
     ['reap', {}, ['reap']],
     ['reap', { ref: 'agent/device/pricing-table' },
       ['reap', '--ref=agent/device/pricing-table']],
-    ['lane', { scope: 'pricing-table' }, ['start', 'pricing-table']],
+    ['lane', { scope: 'pricing-table', writePaths: ['src/price.mjs'] },
+      ['start', 'pricing-table', '--write=src/price.mjs']],
     ['lane', { scope: 'pricing-table', writePaths: ['src/price.mjs', 'docs/price.md', 'src/price.mjs'] },
       ['start', 'pricing-table', '--write=docs/price.md,src/price.mjs']],
   ];
@@ -170,6 +171,7 @@ test('tool argument validation rejects escalation and shell-shaped scopes', asyn
     ['status', null],
     ...[{}, { input: '' }, { input: 'x\n' }, { input: 'x'.repeat(4097) }, { input: 'x', provider: true }]
       .map((args) => ['checks', args]),
+    ['lane', { scope: 'ok' }],
     ['lane', { scope: 'ok', device: 'other' }],
     ['lane', { scope: 'x;rm-rf' }],
     ['lane', { scope: '../escape' }],
@@ -245,7 +247,8 @@ Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
 
 test('effectful tool cancellation waits for and delivers the governed outcome', async () => {
   for (const [name, args, expected] of [
-    ['lane', { scope: 'cancel-after-effect' }, ['start', 'cancel-after-effect']],
+    ['lane', { scope: 'cancel-after-effect', writePaths: ['src/cancel.mjs'] },
+      ['start', 'cancel-after-effect', '--write=src/cancel.mjs']],
     ['collaborate', { operation: 'claim', input: 'claim.json' }, ['collaborate', 'claim', '--input=claim.json']],
   ]) {
   const responses = [];

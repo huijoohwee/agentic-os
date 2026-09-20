@@ -13,17 +13,35 @@ const FAST = ['lane-state.test.mjs', 'governance-contract.test.mjs', 'completion
 export function parseArguments(argv) {
   const [mode = 'affected', ...flags] = argv;
   if (!['affected', 'all', 'plan', 'fast', 'git'].includes(mode)) throw new Error('expected affected, all, plan, fast or git');
-  const options = { mode, base: 'origin/main', head: 'HEAD', committed: false, fresh: false };
+  const options = { mode, base: 'origin/main', head: 'HEAD', committed: false, fresh: false, 'ci-run': null };
   const seen = new Set();
   for (const flag of flags) {
-    const match = flag.match(/^--(base|head)=(.+)$/u), key = match?.[1] ?? flag.slice(2);
+    const match = flag.match(/^--(base|head|ci-run)=(.+)$/u), key = match?.[1] ?? flag.slice(2);
     if (seen.has(key)) throw new Error('duplicate test option'); seen.add(key);
-    if (match) options[key] = match[2];
+    if (match && key === 'ci-run') {
+      if (!/^[1-9][0-9]{0,15}$/u.test(match[2])) throw new Error('invalid ci-run');
+      options['ci-run'] = match[2];
+    } else if (match) options[key] = match[2];
     else if (['--committed', '--fresh'].includes(flag)) options[key] = true;
     else throw new Error(`unknown test option:${flag}`);
   }
   if (['fast', 'git'].includes(mode) && flags.length) throw new Error('fast/git accepts no options');
   return options;
+}
+
+/** Skip a second local suite only when bound CI already covers this exact HEAD. */
+export function boundCiCoverage(identity, observation) {
+  if (observation == null) return null;
+  const source = observation.source ?? {};
+  if (source.revision !== identity.headRevision || source.tree !== identity.headTree)
+    throw new Error('blocked-ci-coverage-identity');
+  const runId = Number(observation.ci?.runId);
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('blocked-ci-coverage-run');
+  const status = observation.status ?? observation.outcome;
+  if (status === 'failed' || status === 'blocked') return null;
+  if (status === 'passed' || status === 'running' || observation.coverage?.partial === true)
+    return { runId, status: status === 'passed' ? 'passed' : 'running' };
+  return null;
 }
 
 /** Local reuse excludes unrelated revision changes only when the check has bounded inputs. */
@@ -74,7 +92,7 @@ export function ciEvaluatorAllocation(workflow, environment, revision) {
     revision, runId: e.GITHUB_RUN_ID, runAttempt: e.GITHUB_RUN_ATTEMPT, status: 'not-observed' };
 }
 
-export async function runTests(argv, { root = ROOT, out = console.log, ci = false } = {}) {
+export async function runTests(argv, { root = ROOT, out = console.log, ci = false, ciObservation } = {}) {
   const options = parseArguments(argv);
   if (['fast', 'git'].includes(options.mode)) {
     const files = readdirSync(join(root, '__tests__')).filter(name => name.endsWith('.test.mjs'))
@@ -90,7 +108,16 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     process.env, observed.identity.headRevision)] : [];
   const directory = receiptDirectory(root), checks = validationChecks(observed, plan)
     .filter(check => !ci || check.stage !== 'evaluators');
-  const canReuse = !options.fresh && options.mode !== 'all' && !options.committed && !process.env.CI && !process.env.GITHUB_ACTIONS;
+  const ciRun = options['ci-run'] ?? (/^[1-9][0-9]{0,15}$/u.test(process.env.AGENTIC_OS_CI_RUN ?? '')
+    ? process.env.AGENTIC_OS_CI_RUN : null);
+  let coverage = null;
+  if (ciRun && !ci && !options.fresh && options.mode !== 'all' && !options.committed) {
+    const observation = ciObservation ?? (await import('./agentic-os-ci-observation.mjs'))
+      .readCiObservation(root, ciRun);
+    coverage = boundCiCoverage(observed.identity, observation);
+  }
+  const canReuse = !options.fresh && options.mode !== 'all' && !options.committed
+    && !process.env.CI && !process.env.GITHUB_ACTIONS && coverage === null;
   const decorate = check => {
     const prior = previousCheck(directory, check);
     return { ...check, prior, reuse: Boolean(canReuse && prior?.fingerprint === check.fingerprint),
@@ -99,9 +126,10 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
   };
   const preview = checks.map(decorate), summary = {
     selected: plan.suites.length, skipped: plan.available - plan.suites.length,
-    reused: preview.filter(check => check.reuse).length,
-    estimatedCommandMs: Math.ceil(preview.reduce((total, check) => total + (check.reuse ? 0 : check.estimatedMs), 0)),
-    concurrency: 4, timeBudgetMs: LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes };
+    reused: coverage ? checks.length : preview.filter(check => check.reuse).length,
+    estimatedCommandMs: coverage ? 0 : Math.ceil(preview.reduce((total, check) => total + (check.reuse ? 0 : check.estimatedMs), 0)),
+    concurrency: 4, timeBudgetMs: LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
+    ...(coverage ? { boundCi: coverage } : {}) };
   if (options.mode === 'plan') {
     out(JSON.stringify({ identity: observed.identity, ...plan, cost: summary,
       checks: preview.map(({ prior, ...check }) => check) }, null, 2)); return 0;
@@ -122,7 +150,14 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency 4; budget ${LIMITS.testMs / 1000}s`);
     if (plan.reasons.length) out(`coverage reasons: ${plan.reasons.join(', ')}`);
     for (const suite of plan.suites) out(`selected ${suite.path}: ${suite.reasons.join(', ')}`);
-    for (const stage of ['evaluators', 'behavior', 'packaging']) {
+    if (coverage) {
+      out(`deferred local suite: bound CI ${coverage.runId} covers HEAD (${coverage.status})`);
+      for (const check of checks) {
+        receipt.results.push({ name: check.name, stage: check.stage, reused: true, reusedFrom: 'bound-ci',
+          runId: coverage.runId, exitCode: 0, elapsedMs: 0, reason: null, counts: { tests: 0, pass: 0, fail: 0, cancelled: 0 },
+          validatedAt: receipt.startedAt });
+      }
+    } else for (const stage of ['evaluators', 'behavior', 'packaging']) {
       const pending = [];
       for (const original of checks.filter(check => check.stage === stage)) {
         const check = decorate(original);

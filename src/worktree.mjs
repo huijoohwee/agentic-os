@@ -53,7 +53,7 @@ export function reapLaneBranches(ref = null, cwd = process.cwd()) {
 export const registeredLaneBranches = (cwd = process.cwd()) =>
   worktrees(cwd).map((entry) => entry.branch).filter(isLaneRef);
 export const worktreeFor = (ref, cwd = process.cwd()) => worktrees(cwd).find((entry) => entry.branch === ref) ?? null;
-export const staleWorktrees = (cwd = process.cwd()) => worktrees(cwd).filter((entry) => !existsSync(entry.path));
+export const staleWorktrees = (cwd = process.cwd(), entries = worktrees(cwd)) => entries.filter((entry) => !existsSync(entry.path));
 /** Refuse an already-occupied lane identity before any provider evidence is fetched. */
 export function assertProvisionable({ ref, scope, device, cwd = process.cwd() }) {
   const path = lanePath(scope, device, cwd);
