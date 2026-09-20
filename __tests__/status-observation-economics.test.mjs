@@ -45,20 +45,22 @@ function fixture(t) {
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, STATUS_GIT: realGit,
     STATUS_NODE: process.execPath, STATUS_HELPER: helper, STATUS_LOG: log };
   delete env.STATUS_COUNT;
-  const status = (extraEnv = {}) => {
+  const inspect = (command, extraEnv = {}) => {
     writeFileSync(log, '');
-    const result = spawnSync(process.execPath, [CLI, 'status', '--device=test'], {
+    const result = spawnSync(process.execPath, [CLI, ...command], {
       cwd: root, encoding: 'utf8', env: { ...env, ...extraEnv },
     });
     const calls = readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
     return { ...result, calls };
   };
+  const status = (extraEnv = {}) => inspect(['status', '--device=test'], extraEnv);
+  const doctor = (extraEnv = {}) => inspect(['doctor'], extraEnv);
   const lane = (name) => {
     const path = join(parent, name);
     git('worktree', 'add', '--quiet', '-b', `agent/test/${name}`, path, 'main');
     return path;
   };
-  return { root, git, realGit, lane, status };
+  return { root, git, realGit, lane, status, doctor };
 }
 
 test('status enumerates registrations once and counts history without materializing object IDs', t => {
@@ -82,6 +84,13 @@ test('status enumerates registrations once and counts history without materializ
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /agent\/test\/one\s+active\s+4\s/u);
   assert.equal(readFileSync(join(first, 'untracked.txt'), 'utf8'), 'keep\n');
+});
+
+test('doctor reuses one worktree registry observation inside a single read-only pass', t => {
+  const f = fixture(t); f.lane('one'); f.lane('two');
+  const observed = f.doctor();
+  assert.equal(observed.calls.filter(args => args.includes('worktree') && args.includes('list')).length, 3,
+    observed.stderr);
 });
 
 test('malformed, unsafe or oversized history counts fail instead of implying zero commits', t => {

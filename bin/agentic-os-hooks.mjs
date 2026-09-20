@@ -18,10 +18,10 @@ import { bindProfileToRemote } from '../src/github-provider.mjs';
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../', import.meta.url));
 
-function packageInstallation(root) {
+function packageInstallation(root, entries = worktrees(root)) {
   const packageRoot = realpathSync(PACKAGE_ROOT);
   const invocationRoot = realpathSync(root);
-  const primary = worktrees(root)[0]?.path;
+  const primary = entries[0]?.path;
   if (!primary) throw new TypeError('primary canonical worktree identity is unavailable');
   const primaryRoot = realpathSync(primary);
   if (packageRoot === invocationRoot) {
@@ -189,9 +189,9 @@ export function runHookSetup(root, policy, profile, out, {
   return 0;
 }
 
-export function hookDoctorEntries(root) {
+export function hookDoctorEntries(root, entries = worktrees(root)) {
   try {
-    const installation = packageInstallation(root);
+    const installation = packageInstallation(root, entries);
     const runtime = describeHookRuntime(root, installation);
     return [
       ...config.inspect(root, { hooksPath: runtime.hooksPath }),

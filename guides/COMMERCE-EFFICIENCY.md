@@ -10,7 +10,7 @@ Directive: keep every write scoped, every wait bounded, and every uncertain effe
 |---|---|---|
 | CE-1 | Reuse the registration list within one status call; ask Git for a count, not every commit ID. Never retain that observation across calls or effects. | `__tests__/status-observation-economics.test.mjs`: one enumeration, fresh subsequent count, malformed/oversized output refused; existing stale-registration suite. |
 | CE-2 | Bound direct provider processes with hard termination; preserve failed writes as unknown until reobserved. Do not retry a mutation on a timeout. | `__tests__/provider-timeouts.test.mjs`; provider handoff and receipt regressions. |
-| CE-3 | MCP lane requests may supply explicit write paths through the existing admission controller. Reject malformed or oversized reservations before running the CLI. | `__tests__/mcp-server.test.mjs`: reservation propagation, invalid inputs, existing dispatch cases. |
+| CE-3 | MCP lane requests must supply explicit write paths through the existing admission controller. Reject missing, malformed or oversized reservations before running the CLI. | `__tests__/mcp-server.test.mjs`: reservation required, invalid inputs, existing dispatch cases. |
 
 RAO: the harness owns observation and invocation; the provider owns remote truth; each product owns its
 cache, payment and delivery semantics. SVO: the harness reuses one observation; the adapter bounds one
@@ -21,7 +21,7 @@ controller. Status now uses one registry read for N lanes instead of N+1. Commit
 to 64 bytes per count instead of materializing N object IDs. These are process/byte reductions, not a
 measured model-token saving or a production latency guarantee. No model call is needed.
 
-The optional MCP `lane` argument is `writePaths`, an array of repository-relative paths.
+The MCP `lane` argument `writePaths` is required: an array of repository-relative paths.
 For example, `{ "scope": "catalog-cache", "writePaths": ["src/cache", "test/cache.test.mjs"] }`.
 The existing overlap, ownership and admission rules still decide whether the lane can start.
 

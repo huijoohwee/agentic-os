@@ -1,6 +1,5 @@
 /** Explicit one-shot CI timing observation. No polling, execution or release authority. */
-import { execFileSync } from 'node:child_process';
-import { remoteRepositoryIdentity } from '../src/github-provider.mjs';
+import { gh, remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { hash, readGit } from './agentic-os-test-inputs.mjs';
 import { validationObservation } from './agentic-os-validation-observation.mjs';
 import { STAGES_SCHEMA, validationStageDirectory } from './agentic-os-validation-stages.mjs';
@@ -39,10 +38,10 @@ export function readCiObservation(root, runId) {
   if (!/^[1-9][0-9]{0,15}$/u.test(String(runId)) || !Number.isSafeInteger(Number(runId))) fail();
   const repository = remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim())?.repository;
   if (!repository) fail();
-  const bytes = execFileSync('gh', ['run', 'view', String(runId), '--repo', repository.replace(/^github\.com\//u, ''),
+  const value = gh(['run', 'view', String(runId), '--repo', repository.replace(/^github\.com\//u, ''),
     '--json', 'databaseId,attempt,workflowDatabaseId,headSha,createdAt,startedAt,updatedAt,status,conclusion,url,jobs'],
-  { encoding: 'utf8', timeout: 30000, maxBuffer: 128000, stdio: ['ignore', 'pipe', 'pipe'] });
-  const value = JSON.parse(bytes);
+  { cwd: root, timeoutMs: 15_000 });
+  if (value == null) fail();
   if (!/^[a-f0-9]{40}$/u.test(value.headSha) || !Number.isSafeInteger(value.workflowDatabaseId) || value.workflowDatabaseId <= 0) fail();
   const source = { repository, revision: value.headSha,
     tree: readGit(root, ['rev-parse', `${value.headSha}^{tree}`]).trim(), dirty: null };

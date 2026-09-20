@@ -99,8 +99,7 @@ export function assertProtectedRefCurrent(root, ref, revision) {
   return revision;
 }
 
-export function observeLocalHealth(root, policy, profile) {
-  const entries = worktrees(root);
+export function observeLocalHealth(root, policy, profile, entries = worktrees(root)) {
   const canonical = entries.find((entry) => entry.branch === policy.protectedBranch)?.path ?? root;
   const observed = profile ? observeRepository({ repository: root, profile, mode: 'structural' }) : null;
   const projection = observed?.projections.find((entry) => entry.path === canonical);
@@ -136,7 +135,7 @@ export function observeLocalHealth(root, policy, profile) {
     ownedPathCount: projection?.ownedPathCount ?? exact.owned.length,
     protectedBranch: policy.protectedBranch, protectedRef: policy.protectedRef,
     localSha, remoteTrackingSha, relation, ahead, behind,
-    staleWorktrees: staleWorktrees(root).map((entry) => entry.path),
+    staleWorktrees: staleWorktrees(root, entries).map((entry) => entry.path),
     worktreeCount: entries.length, laneBranches: branches.count,
     laneBranchesTruncated: branches.truncated,
   };
@@ -528,8 +527,9 @@ export function cmdDoctor(root, profile, policy) {
     prerequisiteFailures = 1;
     err(`${error.reason ?? 'blocked-flight-input-invalid'}: ${error.message}`);
   }
-  const configEntries = hookDoctorEntries(root);
-  const local = observeLocalHealth(root, policy, profile);
+  const entries = worktrees(root);
+  const configEntries = hookDoctorEntries(root, entries);
+  const local = observeLocalHealth(root, policy, profile, entries);
   out(report.formatConfig(configEntries));
   out('');
   out(report.formatLocal(local));

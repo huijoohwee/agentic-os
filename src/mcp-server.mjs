@@ -49,7 +49,7 @@ const LANE_INPUT = {
       description: 'Repository-relative write reservations; combined UTF-8 limit 32 KiB.',
     },
   },
-  required: ['scope'],
+  required: ['scope', 'writePaths'],
   additionalProperties: false,
 };
 const REAP_INPUT = {
@@ -225,11 +225,10 @@ export function toolArguments(name, args) {
   }
   if (name !== 'lane') invalidParams(`unknown tool "${String(name)}"`);
   if (!plainObject(args) || !onlyKeys(args, ['scope', 'writePaths']) || typeof args.scope !== 'string') {
-    invalidParams('lane arguments require a string scope and optional writePaths array');
+    invalidParams('lane arguments require a string scope and writePaths array');
   }
   try {
     assertScope(args.scope);
-    if (args.writePaths === undefined) return ['start', args.scope];
     if (!Array.isArray(args.writePaths) || args.writePaths.length < 1 || args.writePaths.length > 128
       || args.writePaths.some((path) => typeof path !== 'string' || path.length > 4096
         || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
