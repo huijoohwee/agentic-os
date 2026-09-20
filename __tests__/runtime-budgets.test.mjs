@@ -46,16 +46,16 @@ test('this repository is inside its own documentation budget', (t) => {
 test('the portable runtime system prompt is exact and within its native byte contract', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const bytes = readFileSync(join(root, 'guides/SYSTEM-PROMPT-RUNTIME.md'));
-  assert.equal(bytes.byteLength, 990, 'update this exact cost to expose every prompt byte delta');
+  assert.equal(bytes.byteLength, 998, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 984);
+  assert.equal([...prompt].length, 992);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '9221fd84a929d2f7d90322044caf6d9515093b9f265486995bed0596da54ef52');
+    '2d96812a826d378016a6cd48fed9f460eaf838d0b0ef93852a8129c2df51ca3a');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
