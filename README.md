@@ -46,8 +46,9 @@ quarantine the retained lane when the profile-governed local cleanup path is suf
 `--bundle` and `--stopped` when the exact authenticated cleanup plan is required instead.
 
 `npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
-diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md) and [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md)
-own the boundaries; the [user cookbook](guides/USER-COOKBOOK.md) owns the smallest path for a direct edit.
+diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
+and the [deploy workflow](guides/DEPLOY-WORKFLOW.md) own the lifecycle boundaries; the
+[user cookbook](guides/USER-COOKBOOK.md) owns the smallest path for a direct edit.
 
 ## Owners
 
