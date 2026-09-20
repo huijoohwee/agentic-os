@@ -170,8 +170,8 @@ const UTF8`)
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
   assert.equal(runtimeId, authorityRelease
-    ? 'v1-9eebc670a00c5682e090b633d7b722b7ce691b70a30fac1e9b89f459956ff05e'
-    : 'v1-9e6ebefda47219dfe8742a3918f8135ad5d16b572683c96c028c355141e63eeb');
+    ? 'v1-40628b45b7fd1f33546dcf6e41bb4869614db132a4a42a4ac85f1625122ba51c'
+    : 'v1-f02f83febf4448eb30b353acd06ec2274fb9ab7253eb537285fd6fb17af0dee5');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
   mkdirSync(path, { mode: 0o700 });
@@ -204,14 +204,14 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
         "'If bytes are already here, preserve the checkout and use the repository-owned recovery flow.',",
       ));
     assert.equal(digest(bytes),
-      '74417d1754b6e2ed04fda07c0915b4cd37ffcb5047c9a043e8ec2be0353c57d8');
+      'df3aa55ceac794fed6099ab55819a2ff7258a85857c56864dd2c7303ff595fd9');
     return { ...file, bytes, sha256: digest(bytes) };
   });
   const identity = { schema: 'agentic-os/hook-runtime/v1',
     files: files.map(({ path, mode, sha256 }) => ({ path, mode, sha256 })) };
   const runtimeId = `v1-${digest(Buffer.from(JSON.stringify(identity)))}`;
-  assert.equal(runtimeId, latest ? 'v1-5be6d0e5b7015be246c11d42cfc370d3ef765133abd51db05c41f6cfe61dba47' : currentRelease ? 'v1-2be4a5d995408a4367167e0ee2d978726d02a64b13d009d3144e0acc4ce8c258' : guardRelease ? 'v1-fc777f603d3a2296f1ffb7a3bdf0c0b20328a029472bdcdb5ce4ab010f82ddb9'
-    : 'v1-0bae8f8aaeb216ae461c8015cec00b17c508ae3a32c9ff7d55b4f574b25acec3');
+  assert.equal(runtimeId, latest ? 'v1-c9b1a5145b4253d1ad57ce901b40526d7c57cb7f4b02556953a3be2e1617f79d' : currentRelease ? 'v1-186e587d30bb0daf6927cdc1e0b528c7102e4bf9538f6a25e7a0de64c3205753' : guardRelease ? 'v1-2429dbcbc40e4ed76819c0e8c0358aadfc08ee7f7a49d4642b326d1d6c28b0fd'
+    : 'v1-77e860a083ef2c6d33c633dc601d4b2fed3ab839ba4e16d7b0875f6abc3e5b6b');
   const manifest = { schema: identity.schema, runtimeId, files: identity.files };
   const path = join(selected.managedRoot, runtimeId);
   mkdirSync(selected.managedRoot, { recursive: true, mode: 0o700 });
