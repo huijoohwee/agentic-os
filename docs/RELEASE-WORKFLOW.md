@@ -7,14 +7,9 @@ revision merges. Continue with [`guides/DEPLOY-WORKFLOW.md`](../guides/DEPLOY-WO
 1. `npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`
 2. Work only in the lane worktree and run focused checks.
 3. `npm run release:common -- publish --message="<message>"`
-4. After merge, from canonical run `complete` or `close`.
+4. After merge: `complete --ref=<lane>` → profile cleanup → ff `origin/main` → Dev/Prod per DEPLOY-WORKFLOW.
 
-Command surface:
-- `start`: `doctor -> status -> lane`
-- `publish`: `land`
-- `complete`: wait for merge, then `close`
-- `close`: `finish -> reap -> completion status`
-- `finish`: diagnostic `finish -> reap`
+Command surface: `start`, `publish`, `complete`, `close`, `finish` — `close`/`finish`/`reap` are diagnostics only.
 
 Notes:
 - `publish` stops at provider handoff until protected integration completes.
