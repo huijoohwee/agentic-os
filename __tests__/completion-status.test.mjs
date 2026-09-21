@@ -138,6 +138,41 @@ test('quarantine profile reports cleanup as unfinished until a coordinate is obs
   assert.ok(!report.findings.some((item) => item.code === 'provider-authority-unverified'));
 });
 
+test('quarantine observation finds the exact coordinate among many retained receipts', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main',
+    subject.git(subject.root, 'rev-parse', 'HEAD'));
+  subject.git(subject.root, 'worktree', 'remove', '--force', subject.lane);
+  const base = join(subject.root, '.git', 'agentic-os-cleanup-quarantine');
+  mkdirSync(base);
+  for (let index = 0; index < 40; index += 1) {
+    const name = index.toString(16).padStart(64, '0');
+    mkdirSync(join(base, name, 'projection'), { recursive: true });
+    mkdirSync(join(base, name, 'registration'), { recursive: true });
+    writeFileSync(join(base, name, 'registration', 'HEAD'), `ref: refs/heads/agent/other/${index}\n`);
+  }
+  const match = 'ab'.repeat(32);
+  mkdirSync(join(base, match, 'projection'), { recursive: true });
+  mkdirSync(join(base, match, 'registration'), { recursive: true });
+  writeFileSync(join(base, match, 'registration', 'HEAD'), `ref: refs/heads/${REF}\n`);
+  const profile = { repository: 'github.com/example/repository', profileDigest: 'a'.repeat(64),
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    cleanup: { localBranch: 'retain', remoteBranch: 'retain', remoteTrackingRef: 'retain',
+      unreachableObjects: 'retain', worktreeProjection: 'quarantine',
+      worktreeRegistration: 'quarantine' } };
+  const report = inspectCompletionStatus(subject.root, REF, { protectedBranch: 'main' }, profile);
+  assert.equal(report.cleanupVerified, true);
+  assert.equal(report.closeout.laneDisposition, 'quarantined');
+  assert.equal(report.closeout.cleanupSatisfied, true);
+  assert.equal(report.closeout.missionState, 'source_complete');
+  assert.ok(!report.findings.some((item) => item.code === 'lane-registration-detached'));
+  assert.ok(!report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
+});
+
 test('enrolled production-activation is a deploy nextAction after source complete', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
