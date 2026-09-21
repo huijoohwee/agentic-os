@@ -13,7 +13,6 @@ const BLOCK_SCOPES = new Set(["candidate", "semantic-scope", "global"]);
 export function buildCoordinationSchedule(source) {
   const input = normalizeInput(source);
   assertAcyclic(input.tasks);
-  const taskById = new Map(input.tasks.map(task => [task.id, task]));
   const disposition = new Map();
   const nonBlockingAttention = [];
 
@@ -35,7 +34,18 @@ export function buildCoordinationSchedule(source) {
       disposition.set(task.id, waiting(task, "cloud-waiting-successor"));
     } else if (task.authorityState !== "current") {
       disposition.set(task.id, blocked(task, "write-authority-unavailable", [task.authorityState]));
+    } else if (task.externalWait) {
+      disposition.set(task.id, waiting(task, "external-dependency", [task.externalWait.dependencyId]));
     }
+  }
+
+  // A waiting writer still retains its declared reservation. Serializing an
+  // overlap into a later wave cannot release it; only refreshed owner input can.
+  const retained = input.tasks.filter(task => disposition.get(task.id)?.disposition === "waiting");
+  for (const task of input.tasks) {
+    if (disposition.has(task.id)) continue;
+    const owners = retained.filter(peer => writeSetsOverlap(task.declaredWriteSet, peer.declaredWriteSet));
+    if (owners.length) disposition.set(task.id, waiting(task, "write-set-reserved", owners.map(peer => peer.id)));
   }
 
   let changed = true;
@@ -127,7 +137,22 @@ function normalizeTask(value) {
   const authorityState = text(value.authorityState, "authority state");
   if (!AUTHORITY_STATES.has(authorityState)) invalid(`authority state for ${id}`);
   const findings = (value.findings || []).map(normalizeFinding);
-  return Object.freeze({ id, priority, dependencies, declaredWriteSet, authorityState, findings });
+  const externalWait = normalizeExternalWait(value.externalWait);
+  return Object.freeze({ id, priority, dependencies, declaredWriteSet, authorityState, findings,
+    ...(externalWait ? { externalWait } : {}) });
+}
+
+export function normalizeExternalWait(value) {
+  if (value === undefined) return undefined;
+  requireObject(value, "external wait");
+  const keys = ["dependencyId", "condition", "observationDigest", "recheckTrigger"];
+  if (Object.keys(value).some(key => !keys.includes(key))) invalid("external wait fields");
+  const result = Object.fromEntries(keys.map(key => {
+    const item = key === "observationDigest" ? digest(value[key], "external wait observationDigest") : text(value[key], `external wait ${key}`);
+    if (typeof item !== "string" || item.length > 1024) invalid(`external wait ${key}`);
+    return [key, item];
+  }));
+  return Object.freeze(result);
 }
 
 function normalizeFinding(value) {
@@ -159,7 +184,8 @@ function ready(task, wave) { return disposition(task, "ready", "scheduled", [], 
 function waiting(task, reason, related = []) { return disposition(task, "waiting", reason, related, null); }
 function blocked(task, reason, related = []) { return disposition(task, "blocked", reason, related, null); }
 function disposition(task, state, reason, related, wave) {
-  return Object.freeze({ taskId: task.id, disposition: state, reason, related: [...related].sort(), wave });
+  return Object.freeze({ taskId: task.id, disposition: state, reason, related: [...related].sort(), wave,
+    ...(task.externalWait ? { externalWait: task.externalWait } : {}) });
 }
 function waveFor(waves, id) { return waves.find(wave => wave.taskIds.includes(id))?.index ?? null; }
 function compareTasks(left, right) { return right.priority - left.priority || left.id.localeCompare(right.id); }

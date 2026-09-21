@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 import {
   BASE_WEIGHT,
@@ -219,4 +223,67 @@ test("a dependency cycle is rejected by the owning scheduler", () => {
     unit("a", { dependencies: ["b"] }),
     unit("b", { dependencies: ["a"] }),
   ])), /cycle/);
+});
+
+const externalWait = () => ({
+  dependencyId: "review:repository/revision/42",
+  condition: "Required review of the exact candidate completes.",
+  observationDigest: "e".repeat(64),
+  recheckTrigger: "Review event or the next independent implementation milestone.",
+});
+
+test("external review wait retains evidence while only the bounded first eligible wave advances", () => {
+  const source = goal([
+    unit("review", { externalWait: externalWait(), declaredWriteSet: scope("reserved") }),
+    unit("overlap", { declaredWriteSet: scope("reserved") }),
+    unit("merge", { dependencies: ["review"] }),
+    unit("implement"),
+    unit("verify", { dependencies: ["implement"] }),
+    unit("other"),
+  ], { capacity: 1 });
+  const receipt = planGoalAdvance(source);
+  assert.equal(receipt.state, "continuable");
+  assert.deepEqual(receipt.nextAction, { id: "continue_independent_work", unitIds: ["implement"] });
+  assert.deepEqual(receipt.nextUnitIds, ["implement", "other", "verify"]);
+  assert.equal(receipt.progress.waiting, 3);
+  assert.deepEqual(receipt.waitingUnits.find(item => item.unitId === "review").externalWait, externalWait());
+  assert.ok(Object.isFrozen(receipt.nextAction.unitIds));
+  const advanced = planGoalAdvance({ ...source, units: source.units.map(item => item.id === "implement" ? { ...item, state: "done" } : item) });
+  assert.deepEqual(advanced.nextAction.unitIds, ["other"]);
+  assert.equal(advanced.waitingUnits.length, 3, "finishing unrelated work does not release the waiting owner");
+});
+
+test("no independent work yields a retained wait; clearing it cannot bypass an exact gate", () => {
+  const wait = unit("review", { externalWait: externalWait() });
+  const receipt = planGoalAdvance(goal([wait]));
+  assert.equal(receipt.state, "stalled");
+  assert.deepEqual(receipt.nextAction, { id: "wait_for_dependency", unitIds: [] });
+  assert.equal(receipt.progress.completedPermille, 0);
+  const { externalWait: ignored, ...resolved } = wait;
+  const refused = planGoalAdvance(goal([{ ...resolved, gate: true }]));
+  assert.equal(refused.nextAction.id, "resolve_blocker");
+  assert.equal(refused.progress.blocked, 1);
+  const allowed = planGoalAdvance(goal([{ ...resolved, gate: true }], { authorizations: ["review"] }));
+  assert.deepEqual(allowed.nextAction.unitIds, ["review"]);
+  assert.throws(() => planGoalAdvance(goal([{ ...wait, state: "done" }])), /external wait for terminal unit/);
+});
+
+test("the native CLI reports continuing work and retained recheck evidence without dispatch", () => {
+  const directory = mkdtempSync(join(tmpdir(), "os-goal-wait-"));
+  try {
+    const input = join(directory, "goal.json");
+    writeFileSync(input, JSON.stringify(goal([unit("review", { externalWait: externalWait() }), unit("implement")])));
+    const result = spawnSync(process.execPath, ["runtime/planning/goal-completion-runtime.mjs", "plan", `--input=${input}`],
+      { encoding: "utf8", timeout: 5000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /action: continue_independent_work/);
+    assert.match(result.stdout, /advance now: implement/);
+    assert.match(result.stdout, /recheck review:repository\/revision\/42:/);
+    writeFileSync(input, JSON.stringify(goal([unit("review", { externalWait: externalWait() })])));
+    const waiting = spawnSync(process.execPath, ["runtime/planning/goal-completion-runtime.mjs", "plan", `--input=${input}`, "--json"],
+      { encoding: "utf8", timeout: 5000 });
+    assert.equal(waiting.status, 1);
+    const receipt = JSON.parse(waiting.stdout);
+    assert.equal(receipt.nextAction.id, "wait_for_dependency"); assert.equal(receipt.mutation, false);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
