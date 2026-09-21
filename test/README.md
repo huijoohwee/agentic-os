@@ -6,7 +6,7 @@ second runner, a dependency mirror or a production-readiness authority.
 
 | Concern | Single source |
 | --- | --- |
-| Owner scripts and workflow references | `repositories.json` |
+| Owner scripts, workflows, `releaseCommon`, and `worktreeCleanup` | `repositories.json` |
 | Ecosystem test results and unresolved failures | `log.md` |
 | Admission acceptance vector and checksum | `contracts/admission-v2.fixture.json`, `contracts/admission-v2.fixture.sha256` |
 | Validation policy and repair batching | `../guides/VALIDATION-ECONOMY.md` |
@@ -14,7 +14,9 @@ second runner, a dependency mirror or a production-readiness authority.
 
 The index covers agentic-os, agentic-canvas-os, agentic-graph, agentic-commerce-os,
 huijoohwee.github.io, huijoohwee and GameXR. Add future repositories as bounded index rows with their
-own package scripts and workflow paths; do not copy command bodies or executable tests here.
+own package scripts, workflow paths, `releaseCommon`, and `worktreeCleanup`; do not copy command
+bodies, executable tests, or lane checkouts here. `worktreeCleanup` is declared membership, not an
+instruction to run `git worktree prune`. The on-disk registry stays sibling `.worktrees/<repo>/`.
 Discovery accepts up to 32 owners and 32 selected roots, within the existing input/output and deadline
 bounds. A missing profile, root or source stays unavailable. Listing GameXR does not enroll an ADLC
 profile or establish validation or release readiness.

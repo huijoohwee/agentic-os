@@ -16,7 +16,9 @@
       ],
       "workflows": [
         ".github/workflows/ci.yml"
-      ]
+      ],
+      "releaseCommon": true,
+      "worktreeCleanup": "quarantine"
     },
     {
       "id": "agentic-canvas-os",
@@ -32,7 +34,9 @@
       ],
       "workflows": [
         ".github/workflows/ci.yml"
-      ]
+      ],
+      "releaseCommon": true,
+      "worktreeCleanup": "quarantine"
     },
     {
       "id": "agentic-graph",
@@ -57,7 +61,9 @@
       "workflows": [
         ".github/workflows/integration.yml",
         ".github/workflows/runtime-gate.yml"
-      ]
+      ],
+      "releaseCommon": true,
+      "worktreeCleanup": "quarantine"
     },
     {
       "id": "agentic-commerce-os",
@@ -75,7 +81,9 @@
       ],
       "workflows": [
         ".github/workflows/ci.yml"
-      ]
+      ],
+      "releaseCommon": true,
+      "worktreeCleanup": "quarantine"
     },
     {
       "id": "huijoohwee.github.io",
@@ -91,7 +99,9 @@
       ],
       "workflows": [
         ".github/workflows/guideline-contract.yml"
-      ]
+      ],
+      "releaseCommon": false,
+      "worktreeCleanup": "quarantine"
     },
     {
       "id": "huijoohwee",
@@ -108,7 +118,9 @@
       ],
       "workflows": [
         ".github/workflows/runtime-readiness.yml"
-      ]
+      ],
+      "releaseCommon": false,
+      "worktreeCleanup": "quarantine"
     },
     {
       "id": "GameXR",
@@ -125,7 +137,9 @@
       ],
       "workflows": [
         ".github/workflows/integration.yml"
-      ]
+      ],
+      "releaseCommon": false,
+      "worktreeCleanup": "retain"
     }
   ]
 }

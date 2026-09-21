@@ -39,7 +39,8 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 
 The website's [guideline and schema map][guideline-map] owns its on-demand guideline inventory.
-The [repository check catalog](test/repositories.json) owns check-owner membership and script/workflow references.
+The [repository check catalog](test/repositories.json) owns check-owner membership, script/workflow
+references, `releaseCommon`, and declared `worktreeCleanup`. It does not store lane checkouts.
 The [composition source lock](catalog/composition-source-lock.json) owns accepted composition revisions.
 Follow those existing registries; this page does not repeat their inventories, commands, pins or verdicts.
 

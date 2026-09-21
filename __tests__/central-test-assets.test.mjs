@@ -32,7 +32,8 @@ test('central discovery admits future owner rows within bounds without executing
   const catalog = JSON.parse(readFileSync(new URL(import.meta.resolve('agentic-os/test/repositories.json'))));
   assert.ok(catalog.repositories.some(row => row.id === 'GameXR'));
   const row = index => ({ id: `future-${index}`, repository: `github.com/example/future-${index}`,
-    packages: [{ path: 'package.json', scripts: ['test'] }], workflows: [] });
+    packages: [{ path: 'package.json', scripts: ['test'] }], workflows: [],
+    releaseCommon: false, worktreeCleanup: 'retain' });
   const inputPath = join(directory, 'input.json'), catalogPath = join(directory, 'catalog.json');
   const inspect = (count, selected = count) => {
     writeFileSync(catalogPath, JSON.stringify({ ...catalog, repositories: Array.from({ length: count }, (_, i) => row(i)) }));

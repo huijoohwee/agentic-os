@@ -23,8 +23,10 @@ Managed lanes use one parent registry and two isolation levels:
 ```
 
 The default registry is `.worktrees` beside the repository. Set `AGENTIC_OS_WORKTREE_ROOT` only to move
-that parent; the repository directory is always retained. Every lane directory is a Git-registered worktree,
-not a loose file copy. Edit the owning file in that lane and let protected integration update canonical.
+that parent; the repository directory is always retained. Do not store that parent inside the `agentic-os`
+clone. Every lane directory is a Git-registered worktree, not a loose file copy. Edit the owning file in
+that lane and let protected integration update canonical. Fleet `releaseCommon` and `worktreeCleanup` are
+declared in [`test/repositories.json`](../test/repositories.json); each clone still owns `.agentic-os.json`.
 
 Keep review identifiers and timestamps in lane records; do not rename a live worktree when either changes.
 Only an immutable evidence export placed in a flat archive needs a collision-resistant artifact name:
