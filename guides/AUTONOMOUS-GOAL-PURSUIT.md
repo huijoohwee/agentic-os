@@ -51,6 +51,25 @@ each command, including after compaction; resuming a task does not invalidate it
   poll unchanged state or repeat narrative updates. Preserve one receipt and link it; refresh volatile
   inputs immediately before their dependent effect, and state gaps without claiming full parity.
 
+## Productive external waits
+
+A blocked dependency blocks only its dependent effects. Before waiting, inventory the remaining
+covered work and its write reservations. Continue useful disjoint implementation, review, tests or
+release preparation concurrently when resources allow. Do not invent busywork, duplicate completed
+checks, widen scope, take another writer's files or exceed the existing concurrency/resource caps.
+
+Observe a dependency once, then do independent work. Prefer provider events or a completed work
+milestone for the next observation; after unchanged state, recheck no sooner than 60 seconds and
+increase spacing if it remains unchanged. A timer becoming due is not a reason to interrupt useful
+work. Use one observer per exact dependency; never stack watchers or restart bounded windows as a loop.
+The native CI/review watchers return on unchanged state, after 12 observations, or within 60 seconds.
+
+When no useful covered work remains, retain the exact dependency, condition, observation and next
+recheck trigger; report once and yield control. Do not spin, sleep/poll repeatedly, repeat unchanged
+status messages, promise an external ETA or claim completion. Resume on a meaningful event or the
+recorded recheck; elapsed time grants neither permission nor evidence. The same rules survive turns
+and handoffs. Guidance governs agent behavior; the watcher cannot intercept arbitrary external tools.
+
 ## Authorization continuity
 
 Carry the operator's actual decisions and owner-issued receipts across turns, compaction, retries and
@@ -85,7 +104,7 @@ change a protected environment or enroll delegated authority. Consumers adopt th
 pin; never patch an installed package or reinterpret a candidate receipt as a standing grant.
 
 The resource-economy policy adds no module, dependency, provider operation or controller. Its global prompt
-is 993 UTF-8 bytes, six fewer than the prior 999, within the unchanged 1,000-byte cap. The existing evaluator
+remains 999 UTF-8 bytes (zero byte delta), within the unchanged 1,000-byte cap. The existing evaluator
 pins the reviewed bytes and digest; these detailed rules stay on demand.
 
 ## Deadlock avoidance

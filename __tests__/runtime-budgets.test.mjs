@@ -55,7 +55,7 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '3531440da28391838eade31b5984d74c3ce76dbf0d8d7eec6ea04571665ecb11');
+    '4d49257245adbed8f56733c152be502fc39d6a650751e99333265bf56c140996');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -96,7 +96,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Fix owner/reuse/remove replacements; contract-only shims.',
       'Sprint: ETA+time/byte/module caps;',
       'lazy-load; refresh on drift.',
-      'External wait: blocker+recheck, not ETA.',
+      'FORBID idle/poll loops; do disjoint work; else blocker+recheck, not ETA.',
       'cleanup global/repo-local; authority+green proof per effect/receipt.',
     ]],
     ['AGENTS.md', [

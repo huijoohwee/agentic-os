@@ -29,7 +29,7 @@ export const RUNTIME_PROMPT_CONTRACT = Object.freeze({
   path: 'guides/SYSTEM-PROMPT-RUNTIME.md',
   exactBytes: 999,
   maxBytes: 1_000,
-  sha256: '3531440da28391838eade31b5984d74c3ce76dbf0d8d7eec6ea04571665ecb11',
+  sha256: '4d49257245adbed8f56733c152be502fc39d6a650751e99333265bf56c140996',
 });
 
 const EXPECTED_CI_BUDGETS_JOB = Object.freeze([

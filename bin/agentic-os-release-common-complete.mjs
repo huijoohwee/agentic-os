@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import { currentBranch, observeGit, remoteTransport, repoRoot } from '../src/git.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
-import { observeGitHubReview } from '../src/github-provider.mjs';
+import { gh, observeGitHubReview } from '../src/github-provider.mjs';
 import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
 import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-review.mjs';
 import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
@@ -106,9 +106,8 @@ export function resolveReleaseCommonCleanupRequest(argv) {
 }
 
 export async function watchReleaseCommonReview(binding, {
-  timeoutMs = 300_000,
+  timeoutMs = 60_000,
   initialMs = 5_000,
-  maxMs = 60_000,
   now = () => performance.now(),
   sleep = delay,
   observeReview,
@@ -120,19 +119,20 @@ export async function watchReleaseCommonReview(binding, {
   if (typeof observeReview !== 'function')
     fail('blocked-release-common-complete-observer',
       'release-common complete requires a review observer');
-  integer(timeoutMs, 1, 10_800_000, 'timeout-ms');
+  integer(timeoutMs, 1, 60_000, 'timeout-ms');
   integer(initialMs, 1, 60_000, 'initial-ms');
-  integer(maxMs, initialMs, 60_000, 'max-ms');
 
   const started = now();
   const deadline = started + timeoutMs;
   let polls = 0;
-  let interval = initialMs;
+  let reason = 'observation-window-elapsed';
   let previous = null;
 
-  while (deadline - now() > 0) {
-    const observation = await observeReview(binding);
+  const remainingMs = () => Math.max(0, Math.ceil(deadline - now()));
+  while (remainingMs() > 0 && polls < 12) {
+    const observation = await observeReview(binding, { remainingMs });
     polls += 1;
+    if (remainingMs() === 0) break; // Late evidence cannot trigger closeout.
     const review = observation?.review ?? null;
     const merged = observation?.sourceHeadBound === true && review?.state === 'MERGED';
     const state = typeof review?.state === 'string' ? review.state : null;
@@ -142,9 +142,9 @@ export async function watchReleaseCommonReview(binding, {
       state,
       review?.mergeStateStatus ?? null,
     ]);
-    if (signature !== previous) {
+    const changed = signature !== previous;
+    if (changed) {
       previous = signature;
-      interval = initialMs;
       emit({
         schema: RELEASE_COMMON_COMPLETE_SCHEMA,
         event: 'review_changed',
@@ -197,40 +197,25 @@ export async function watchReleaseCommonReview(binding, {
         elapsedMs: Math.round(now() - started),
       };
     }
-    const remaining = Math.max(0, Math.ceil(deadline - now()));
-    if (remaining === 0) break;
-    const waitMs = Math.min(interval, remaining);
-    emit({
-      schema: RELEASE_COMMON_COMPLETE_SCHEMA,
-      event: 'waiting',
-      authority: false,
-      ref: binding.ref,
-      head: binding.head,
-      pr: review?.number ?? binding.pr ?? null,
-      state,
-      url: review?.url ?? null,
-      polls,
-      elapsedMs: Math.round(now() - started),
-      nextPollMs: waitMs,
-      nextAction: 'reobserve_exact_review',
-    });
-    await sleep(waitMs);
-    interval = Math.min(maxMs, interval * 2);
+    if (!changed) { reason = 'unchanged-state'; break; }
+    if (polls === 12) { reason = 'observation-budget-elapsed'; break; }
+    await sleep(Math.min(initialMs, remainingMs()));
   }
 
   emit({
     schema: RELEASE_COMMON_COMPLETE_SCHEMA,
-    event: 'timeout',
+    event: 'verified_wait',
+    reason,
     authority: false,
     ref: binding.ref,
     head: binding.head,
     pr: binding.pr ?? null,
     polls,
     elapsedMs: Math.round(now() - started),
-    recheckAfterMs: maxMs,
-    nextAction: 'rerun_release_common_complete',
+    recheckAfterMs: 60_000,
+    nextAction: 'continue_independent_work',
   });
-  return { code: 2, status: 'timeout', reason: 'observation-window-elapsed',
+  return { code: 2, status: 'waiting', reason,
     polls, elapsedMs: Math.round(now() - started) };
 }
 
@@ -320,11 +305,14 @@ export async function runReleaseCommonCompleteWait({
   protectedBranch = branchFromLocalRef(profile?.canonical?.localRef),
   out = (line) => process.stdout.write(`${line}\n`),
   err = (line) => process.stderr.write(`${line}\n`),
-  observeReview = ({ ref, head }) => observeGitHubReview({ ref, expectedHead: head, profile, cwd: root }),
+  observeReview = ({ ref, head }, { remainingMs }) => observeGitHubReview({
+    ref, expectedHead: head, profile, cwd: root,
+    provider: (args, options) => gh(args, { ...options, timeoutMs: Math.max(1, Math.min(15_000, remainingMs())) }),
+  }),
 } = {}) {
   try {
     const ref = option(argv, 'ref');
-    const timeoutMs = Number(option(argv, 'timeout-ms', '300000'));
+    const timeoutMs = Number(option(argv, 'timeout-ms', '60000'));
     const binding = resolveReleaseCommonCompleteBinding(root, ref, protectedBranch);
     const result = await watchReleaseCommonReview(binding, {
       timeoutMs,
@@ -334,7 +322,7 @@ export async function runReleaseCommonCompleteWait({
     if (result.code === 1) {
       err(`blocked-release-common-complete-review: ${result.reason}`);
     } else if (result.code === 2) {
-      err('verified-wait-release-common-complete: exact review is still pending; re-run the same command later.');
+      err('verified-wait-release-common-complete: exact review is still pending; continue independent work, or report the dependency and yield.');
     }
     return result.code;
   } catch (error) {

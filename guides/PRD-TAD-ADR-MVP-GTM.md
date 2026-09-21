@@ -525,9 +525,11 @@ must agree on repository/revision. An `end` marker, green CI or empty worktree i
 for missing/failed evidence. Coverage remains an observation; consumers authenticate terminal receipts.
 MVP: same-root start → scoped implementation → protected integration → governed cleanup/sync → canonical
 review → authorized consumer release → live verification → end successor. `workflow recommend` exposes
-`closure`; continue covered owner actions without asking again, wait on exact active runs, repair failures
+`closure`; continue covered owner actions without asking again, observe exact runs, repair failures
 in a scoped successor and refresh invalidated evidence. Prepare the candidate before asking for uncovered
 approval. Retain every member/target and original receipt; old progress stays unknown until recollected.
+Apply [productive waits](AUTONOMOUS-GOAL-PURSUIT.md#productive-external-waits): unchanged state yields
+to disjoint work; no idle loops. Verify `__tests__/pipeline-watch.test.mjs`.
 MCP and `/workflow.*` keep existing routes. Tests: workflow archive/boundary/collection suites,
 then affected `npm run check`; reject incomplete, failed and mismatched release closure and prove complete
 coverage remains non-authoritative. Budget: seven files, 20 KB, 30 active minutes; provider waits separate.

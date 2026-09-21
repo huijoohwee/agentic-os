@@ -87,18 +87,18 @@ export async function githubSnapshot(target, { request, remainingMs }) {
 }
 
 export async function watchPipeline(target, {
-  timeoutMs = 60_000, initialMs = 5_000, maxMs = 60_000,
+  timeoutMs = 60_000, initialMs = 5_000,
   now = () => performance.now(), wallNow = Date.now, sleep = delay, snapshot, emit = () => {},
 } = {}) {
   validateTarget(target);
-  integer(timeoutMs, 1, 10_800_000); integer(initialMs, 1, 60_000); integer(maxMs, initialMs, 60_000);
+  integer(timeoutMs, 1, 60_000); integer(initialMs, 1, 60_000);
   const started = now(); const deadline = started + timeoutMs;
   const remainingMs = () => Math.max(0, Math.ceil(deadline - now()));
-  let polls = 0; let interval = initialMs; let previous = null; let latestJobs = [];
+  let polls = 0, previous = null, latestJobs = [], reason = 'observation_window_elapsed';
   const jobs = new Map();
   const send = (event, detail = {}) => emit({ schema: 'agentic-os/pipeline-observation/v1',
     event, ...target, elapsedMs: Math.round(now() - started), polls, authority: false, ...detail });
-  while (remainingMs() > 0) {
+  while (remainingMs() > 0 && polls < 12) {
     const current = await snapshot(target, { remainingMs }); polls++;
     if (remainingMs() === 0) break; // A late response cannot extend the observation window.
     latestJobs = current.jobs;
@@ -119,11 +119,12 @@ export async function watchPipeline(target, {
         nextAction: current.conclusion === 'success' ? 'verify_next_owner_boundary' : 'inspect_failure_before_retry' });
       return current.conclusion === 'success' ? 0 : 1;
     }
-    interval = changed ? initialMs : Math.min(maxMs, interval * 2);
-    await sleep(Math.min(interval, remainingMs()));
+    if (!changed) { reason = 'unchanged_state'; break; }
+    if (polls === 12) { reason = 'observation_budget_elapsed'; break; }
+    await sleep(Math.min(initialMs, remainingMs()));
   }
-  send('verified_wait', { reason: 'observation_window_elapsed', recheckAfterMs: maxMs,
-    activeSteps: activeSteps(latestJobs, wallNow), nextAction: 'observe_same_run_and_attempt',
+  send('verified_wait', { reason, recheckAfterMs: 60_000,
+    activeSteps: activeSteps(latestJobs, wallNow), nextAction: 'continue_independent_work',
     completionEstimate: null, estimateReason: 'comparable_duration_evidence_not_supplied' });
   return 2;
 }

@@ -197,7 +197,7 @@ function complete(subject, timeoutMs) {
   });
 }
 
-test('watch resets backoff when the exact review changes and succeeds on merge', async () => {
+test('watch reports changed review progress and succeeds on merge', async () => {
   const timer = clock();
   const states = ['OPEN', 'OPEN', 'MERGED'];
   const events = [];
@@ -213,14 +213,53 @@ test('watch resets backoff when the exact review changes and succeeds on merge',
         number: 41,
         state: states.shift(),
         url: 'https://github.com/owner/repo/pull/41',
-        mergeStateStatus: 'CLEAN',
+        mergeStateStatus: states.length === 2 ? 'BLOCKED' : 'CLEAN',
       },
     }),
   });
   assert.equal(result.code, 0);
-  assert.deepEqual(timer.waits, [5000, 10000]);
+  assert.deepEqual(timer.waits, [5000, 5000]);
   assert.deepEqual(events.filter((event) => event.event === 'review_changed').map((event) => event.state),
-    ['OPEN', 'MERGED']);
+    ['OPEN', 'OPEN', 'MERGED']);
+});
+
+test('unchanged review yields after two reads without authorizing closeout', async () => {
+  const timer = clock(), events = [];
+  const result = await watchReleaseCommonReview({ ref: 'agent/test/complete', head: 'a'.repeat(40) }, {
+    ...timer, emit: event => events.push(event),
+    observeReview: async () => ({ sourceHeadBound: true, review: { state: 'OPEN' } }),
+  });
+  assert.equal(result.code, 2);
+  assert.equal(result.reason, 'unchanged-state');
+  assert.equal(result.polls, 2);
+  assert.deepEqual(timer.waits, [5000]);
+  assert.equal(events.at(-1).event, 'verified_wait');
+  assert.equal(events.at(-1).recheckAfterMs, 60000);
+  assert.equal(events.at(-1).nextAction, 'continue_independent_work');
+  assert.ok(events.every(event => event.authority === false && event.event !== 'merged'));
+});
+
+test('review count/deadline limits reject long waits and late merge evidence', async () => {
+  const binding = { ref: 'agent/test/complete', head: 'a'.repeat(40) };
+  await assert.rejects(watchReleaseCommonReview(binding, { timeoutMs: 60001,
+    observeReview: () => assert.fail('provider called') }), /timeout-ms/);
+  const timer = clock(); let calls = 0;
+  const result = await watchReleaseCommonReview(binding, { ...timer, initialMs: 1,
+    observeReview: async () => ({ sourceHeadBound: true,
+      review: { state: 'OPEN', mergeStateStatus: `progress-${++calls}` } }),
+  });
+  assert.equal(result.code, 2);
+  assert.equal(result.polls, 12);
+  assert.equal(result.reason, 'observation-budget-elapsed');
+  const late = clock();
+  const expired = await watchReleaseCommonReview(binding, { ...late, timeoutMs: 1,
+    observeReview: async (_, { remainingMs }) => {
+      assert.equal(remainingMs(), 1); await late.sleep(2);
+      return { sourceHeadBound: true, review: { state: 'MERGED' } };
+    },
+  });
+  assert.equal(expired.code, 2);
+  assert.equal(expired.reason, 'observation-window-elapsed');
 });
 
 test('release-common complete waits for a merged exact review, then runs closeout', (t) => {
