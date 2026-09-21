@@ -58,6 +58,7 @@ test('an exact advertised ref recovers through a stale queued cache projection',
   assert.match(result.stdout, /published exact lane ref/u);
   assert.equal(get(ref, lane).state, 'published');
   assert.equal(run(['rev-parse', `refs/remotes/origin/${ref}`], lane), head);
+  assert.equal(run(['rev-parse', '@{upstream}'], lane), head);
 });
 
 test('cache saturation after publication cannot turn the authoritative effect into failure', (t) => {
@@ -78,6 +79,7 @@ test('cache saturation after publication cannot turn the authoritative effect in
   assert.equal(subject.run([
     '--git-dir', subject.bare, 'rev-parse', `refs/heads/${subject.ref}`,
   ], subject.lane), subject.head);
+  assert.equal(subject.run(['rev-parse', '@{upstream}'], subject.lane), subject.head);
   assert.equal(load(subject.lane).lanes[subject.ref], undefined);
   const line = result.stderr.split('\n').find((entry) =>
     entry.startsWith('{"schema":"agentic-os/lane-projection-retained/v1"'));

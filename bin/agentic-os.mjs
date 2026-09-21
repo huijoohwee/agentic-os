@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-/** ADLC harness entrypoint: local lanes plus exact provider handoff. */
 import { existsSync } from 'node:fs';
 import {
   git, gitLines, repoRoot, currentBranch, configuredRemote, remoteTransport,
-  acquireOperationLock, finishOperationLock, headSha, publishExactNewRef,
+  acquireOperationLock, finishOperationLock, headSha, publishExactNewRef, bindPublishedUpstream,
   remoteRefSha, fetch as gitFetch, worktrees, refExists,
 } from '../src/git.mjs';
 import { assertDevice, deviceSegment, laneRef, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
@@ -248,7 +247,6 @@ function cmdLand(cwd, argv, profile, policy) {
     err('blocked-published-head-drift: the exact remote lane revision is immutable');
     return 1;
   }
-  // Only the exact advertised ref determines publication; stale cache states cannot block recovery.
   const state = publishedHead ? 'published' : 'active';
   const publishFacts = {
     onCanonicalBranch: false, dirtyTracked: false, laneCommits: commits, pushed: false,
@@ -285,6 +283,7 @@ function cmdLand(cwd, argv, profile, policy) {
       return 1;
     }
   }
+  effectReceipt('publication-tracking', bindPublishedUpstream(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl));
   projectCache({ ref, state: 'published', head: laneHeadSha }, root);
   if (kind !== 'github' || !policy.pullRequestRequired) {
     out('published exact lane ref; no pull-request integration capability selected');

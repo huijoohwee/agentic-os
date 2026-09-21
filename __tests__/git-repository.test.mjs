@@ -564,7 +564,9 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const governanceBytes = readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url));
   const governanceSha = createHash('sha256').update(governanceBytes).digest('hex');
   assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390');
-  const priorFiles = selected.files.map(file => file.path === 'src/governance.mjs'
+  const priorFiles = selected.files.map(file => file.path === 'src/git.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url)),
+      sha256: 'd51f658be657d761badc23d29b8e15267a8d542df660f9087a2538e2e2c3dd5a' } : file.path === 'src/governance.mjs'
     ? { ...file, bytes: governanceBytes, sha256: governanceSha } : file.path === 'src/guard-main.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/guard-main-pre-f6.mjs.txt', import.meta.url)),
       sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file);

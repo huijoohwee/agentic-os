@@ -72,8 +72,12 @@ export function validationCheckDefinitions(policy, plan, observed, ownerDigest) 
     const files = new Map([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
       || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path)));
     const { root, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
+    // Nested affected planners consume the whole candidate and baseline, not only file contents.
+    // Partition selection is deliberately excluded so a narrow run can satisfy the same full plan.
+    const planInput = check.reuse === 'local-plan' ? { identity: observed.identity,
+      mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
     const fingerprint = hash(JSON.stringify({ version: VALIDATION_VERSION, ownerDigest, check: policy.checks.find(item => item.id === check.id),
-      sourceDigest: sourceDigest(files), root, configurationDigest, environmentDigest, node, executable, platform, arch }));
+      sourceDigest: sourceDigest(files), root, configurationDigest, environmentDigest, node, executable, platform, arch, planInput }));
     return { ...check, id: `consumer-${hash(check.id).slice(0, 24)}`, name: check.id, stage: 'owner-check', report: 'exit',
       command: check.command[0] === 'node' ? process.execPath : check.command[0], args: check.command.slice(1), fingerprint };
   });
@@ -125,7 +129,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     const readCosts = () => readEconomy(directory, context, Date.now(), policy.checks.map(check => check.id));
     const economy = readCosts();
     const checks = costOrderedChecks(validationCheckDefinitions(policy, plan, observed, ownerDigest), economy);
-    const priorFor = check => !options.fresh && !ci && check.reuse === 'local'
+    const priorFor = check => !options.fresh && !ci && ['local', 'local-plan'].includes(check.reuse)
       ? previousCheck(directory, check, Date.now(), { allowFailure: true }) : null;
     const previews = checks.map(check => {
       const prior = priorFor(check), matches = prior?.fingerprint === check.fingerprint;

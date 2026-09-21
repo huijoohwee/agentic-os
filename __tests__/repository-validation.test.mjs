@@ -68,6 +68,7 @@ test('invalid policies cannot claim a narrow green plan', () => {
     p => { p.checks[2].timeoutMs = 900_001; },
     p => { p.fallback = []; },
     p => { p.checks[4].reuse = 'local'; },
+    p => { p.checks[2].reuse = 'local-plan'; },
     p => { p.checks[3].command = p.checks[2].command; },
     p => { p.bypass = true; },
   ];
@@ -75,6 +76,18 @@ test('invalid policies cannot claim a narrow green plan', () => {
     const value = policy(); mutate(value);
     assert.throws(() => validateValidationPolicy(value), /blocked-validation-policy/);
   }
+});
+
+test('whole-plan reuse binds revision, base and selection while allowing partition joins', t => {
+  const { root } = fixture(t), first = consumerSnapshotReader({ root })();
+  const value = policy(); value.checks[2].reuse = 'local-plan'; value.checks[2].inputs = ['*']; value.fallback = ['a'];
+  const plan = selectValidationChecks(value, ['a/source.txt']);
+  const fingerprint = (observed, selected = plan) => validationCheckDefinitions(value, selected, observed, 'owner').find(c => c.name === 'a').fingerprint;
+  const original = fingerprint(first);
+  assert.equal(fingerprint(first, selectValidationChecks(value, ['a/source.txt'], { only: ['a'] })), original);
+  for (const field of ['headRevision', 'requestedBase', 'baseRevision', 'sourceDigest', 'indexDigest', 'environmentDigest'])
+    assert.notEqual(fingerprint({ ...first, identity: { ...first.identity, [field]: 'changed' } }), original, field);
+  assert.notEqual(fingerprint(first, selectValidationChecks(value, ['a/source.txt'], { all: true })), original);
 });
 
 test('working snapshots include committed, staged, unstaged, added and deleted bytes', t => {
