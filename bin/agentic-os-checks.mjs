@@ -65,9 +65,7 @@ function catalogEntries(value) {
   for (const row of rows) {
     exact(row, ['id', 'repository', 'packages', 'workflows', 'releaseCommon', 'worktreeCleanup']);
     text(row.id, 128); text(row.repository, 256);
-    if (typeof row.releaseCommon !== 'boolean' || !['quarantine', 'retain'].includes(row.worktreeCleanup))
-      fail('invalid_record_fields');
-    if (ids.has(row.id) || identities.has(row.repository)) fail('duplicate_catalog_repository');
+    if (typeof row.releaseCommon !== 'boolean' || !['quarantine', 'retain'].includes(row.worktreeCleanup) || ids.has(row.id) || identities.has(row.repository)) fail(ids.has(row.id) || identities.has(row.repository) ? 'duplicate_catalog_repository' : 'invalid_record_fields');
     ids.add(row.id); identities.add(row.repository);
     const refs = new Set();
     for (const pkg of array(row.packages, 4)) {
