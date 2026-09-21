@@ -42,7 +42,18 @@
         "disposition": { "enum": ["ready", "waiting", "blocked"] },
         "reason": { "type": "string", "minLength": 1 },
         "related": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
-        "wave": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] }
+        "wave": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+        "externalWait": { "$ref": "#/$defs/externalWait" }
+      }
+    },
+    "externalWait": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dependencyId", "condition", "observationDigest", "recheckTrigger"],
+      "properties": {
+        "dependencyId": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "condition": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "observationDigest": { "$ref": "#/$defs/digest" },
+        "recheckTrigger": { "type": "string", "minLength": 1, "maxLength": 1024 }
       }
     },
     "attention": {
