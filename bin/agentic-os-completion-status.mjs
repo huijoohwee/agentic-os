@@ -16,7 +16,7 @@ function observeQuarantinedLane(root, ref) {
   try {
     const base = join(commonDir(root), 'agentic-os-cleanup-quarantine'), names = readdirSync(base), stat = lstatSync(base);
     const expected = `ref: refs/heads/${ref}\n`;
-    if (!stat.isDirectory() || stat.isSymbolicLink() || names.length > 32) return false;
+    if (!stat.isDirectory() || stat.isSymbolicLink() || names.length > 256) return false;
     return names.some((name) => {
       if (!/^[0-9a-f]{64}$/u.test(name)) return false;
       try {
