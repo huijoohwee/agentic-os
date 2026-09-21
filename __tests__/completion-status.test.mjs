@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
+import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 
 const REF = 'agent/device/completion-status';
@@ -34,7 +34,7 @@ test('completion grammar accepts only one exact status target', () => {
   assert.match(validateCommandArguments('completion', ['apply', `--ref=${REF}`]), /requires status/u);
 });
 
-test('merged tree remains observation-only and reports missing enrollment and authority', (t) => {
+test('merged retained lane is source_complete without invented cleanup authority', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
   subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
@@ -52,8 +52,11 @@ test('merged tree remains observation-only and reports missing enrollment and au
   assert.equal(after.enrollment.localPolicyCandidate, false);
   assert.ok(after.findings.some((item) => item.code === 'authority-repository-unresolved'));
   assert.ok(!after.findings.some((item) => item.code === 'enrollment-file-missing'));
-  assert.ok(after.findings.some((item) => item.code === 'provider-authority-unverified'));
-  assert.ok(after.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
+  assert.ok(!after.findings.some((item) => item.code === 'provider-authority-unverified'));
+  assert.ok(!after.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
+  assert.equal(after.closeout.missionState, 'source_complete');
+  assert.equal(after.closeout.laneDisposition, 'retained');
+  assert.equal(after.closeout.nextAction, null);
   assert.equal(subject.git(subject.root, 'rev-parse', 'HEAD'), after.canonicalRevision);
 });
 
@@ -67,6 +70,8 @@ test('dirty lane and stale canonical tracking are separate blockers', (t) => {
   assert.equal(report.lane.clean, false);
   assert.ok(report.findings.some((item) => item.code === 'lane-dirty'));
   assert.ok(report.findings.some((item) => item.code === 'canonical-not-current-clean'));
+  assert.equal(report.closeout.missionState, 'blocked');
+  assert.equal(report.closeout.nextAction.id, 'preserve-lane-bytes');
 });
 
 test('an external authority policy does not require workflow files in the target', (t) => {
@@ -85,4 +90,68 @@ test('an external authority policy does not require workflow files in the target
   assert.equal(report.enrollment.authorityRepository, 'github.com/example/authority');
   assert.ok(report.findings.some((item) => item.code === 'external-authority-unverified'));
   assert.ok(!report.findings.some((item) => item.code === 'enrollment-file-missing'));
+});
+
+test('closeout ranks canonical-sync and deploy without granting those effects', () => {
+  const base = {
+    sourceIntegrated: true, canonicalCurrent: true, laneMounted: true, laneClean: true,
+    laneHead: true, quarantineProfile: false, quarantineObserved: false, deployBound: false,
+    localPolicyCandidate: false, findingCodes: [],
+  };
+  const complete = deriveCloseoutVerdict(base);
+  assert.equal(complete.missionState, 'source_complete');
+  assert.equal(complete.nextAction, null);
+  const sync = deriveCloseoutVerdict({
+    ...base, canonicalCurrent: false, findingCodes: ['canonical-not-current-clean'],
+  });
+  assert.equal(sync.missionState, 'continuable');
+  assert.equal(sync.nextAction.id, 'canonical-sync-plan');
+  const deploy = deriveCloseoutVerdict({ ...base, deployBound: true });
+  assert.equal(deploy.missionState, 'source_complete');
+  assert.equal(deploy.nextAction.id, 'deploy-workflow');
+  assert.equal(deploy.authorizesEffects, false);
+  const cleanup = deriveCloseoutVerdict({
+    ...base, quarantineProfile: true, findingCodes: ['cleanup-receipt-unverified'],
+  });
+  assert.equal(cleanup.laneDisposition, 'awaiting-cleanup');
+  assert.equal(cleanup.nextAction.id, 'release-common-complete');
+});
+
+test('quarantine profile reports cleanup as unfinished until a coordinate is observed', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main',
+    subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const profile = { repository: 'github.com/example/repository', profileDigest: 'a'.repeat(64),
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    cleanup: { localBranch: 'retain', remoteBranch: 'retain', remoteTrackingRef: 'retain',
+      unreachableObjects: 'retain', worktreeProjection: 'quarantine',
+      worktreeRegistration: 'quarantine' } };
+  const report = inspectCompletionStatus(subject.root, REF, { protectedBranch: 'main' }, profile);
+  assert.equal(report.closeout.laneDisposition, 'awaiting-cleanup');
+  assert.equal(report.closeout.missionState, 'continuable');
+  assert.equal(report.closeout.nextAction.id, 'release-common-complete');
+  assert.ok(report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
+  assert.ok(!report.findings.some((item) => item.code === 'provider-authority-unverified'));
+});
+
+test('enrolled production-activation is a deploy nextAction after source complete', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({
+    operations: ['publication', 'production-activation'],
+  }));
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'flight');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main',
+    subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const after = subject.status();
+  assert.equal(after.closeout.missionState, 'source_complete');
+  assert.equal(after.closeout.nextAction.id, 'deploy-workflow');
+  assert.equal(after.closeout.deployBinding.present, true);
 });

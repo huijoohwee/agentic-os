@@ -47,6 +47,10 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
   different rollback rules; follow the product owner that controls that effect.
 - If backward compatibility is unproven, block rollback until the owner supplies a verified recovery path.
 
+After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `deploy-workflow`
+only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
+OS stop is `source_complete`; do not invent a generic deploy command.
+
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
 [PRD/TAD/ADR](./PRD-TAD-ADR-MVP-GTM.md) for transition and handover requirements.
