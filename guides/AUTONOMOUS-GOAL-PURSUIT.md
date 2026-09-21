@@ -51,6 +51,16 @@ each command, including after compaction; resuming a task does not invalidate it
   poll unchanged state or repeat narrative updates. Preserve one receipt and link it; refresh volatile
   inputs immediately before their dependent effect, and state gaps without claiming full parity.
 
+Apply the shared [incremental work contract](https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/token-performance-economics-guidelines.md#incremental-work-contract)
+when changing hot execution paths. Forbid costly unchanged-input recomputation,
+repeated full-tree observation and render/projection churn. Reuse existing owner
+indexes, receipts and bounded caches; define dependency identity and invalidate on
+actual source, configuration or environment changes. Refresh volatile authority at
+the effect boundary; cached computation never grants execution or merge permission.
+Validate equivalent outputs and failure semantics, then report measured wall/CPU
+time, bytes and memory separately from provider waits and cash cost. Do not add a
+profiler, polling service or competing renderer to enforce this documentation rule.
+
 ## Productive external waits
 
 A blocked dependency blocks only its dependent effects. Before waiting, inventory the remaining
