@@ -290,6 +290,10 @@ test('discovery returns bounded references from one ownership policy without ass
   const bounded = discoverCapabilities(actual, { limit: 1 });
   assert.equal(bounded.truncated, true); assert.equal(bounded.entries.length, 1);
   assert.equal(discoverCapabilities(actual, { kind: 'prompt' }).entries.some(e => e.id === 'chat-prompt-presets'), true);
+  const memory = discoverCapabilities(actual, { query: 'memory', limit: 5 });
+  assert.equal(memory.total, 1); assert.equal(memory.entries[0].id, 'shared-task-memory');
+  assert.equal(memory.entries[0].path, 'guides/MEMORY.md');
+  assert.equal('content' in memory.entries[0], false);
   assert.equal(discoverCapabilities(actual, { query: '81rv10' }).entries.some(e => e.owner.endsWith('/agentic-graph')), true);
 });
 

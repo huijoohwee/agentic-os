@@ -36,14 +36,6 @@ export function validateCommandArguments(command, argv) {
     case 'capabilities': return exact(argv, {
       options: ['query', 'kind', 'limit', 'id', 'root', 'revision'], flags: ['include-content'],
     });
-    case 'context': {
-      const operation = argv[0];
-      const required = operation === 'search' ? ['path', 'query']
-        : operation === 'read' ? ['path', 'sha256'] : operation === 'map' ? ['path'] : null;
-      if (!required) return 'context requires map, search, or read';
-      const optional = operation === 'read' ? ['line', 'lines'] : ['limit', 'after'];
-      return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
-    }
     case 'cleanup-user': return argv[0] === 'plan'
       ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow'], flags: ['recovery', 'detached'],
         requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
@@ -74,13 +66,14 @@ export function validateCommandArguments(command, argv) {
       return error ?? (source === null || ['memory', 'todo', 'artifacts'].includes(source)
         ? null : 'workspace source must be memory, todo, or artifacts');
     }
-    case 'memory': {
-      const operation = argv[0];
-      const required = operation === 'search' ? ['revision', 'query']
-        : operation === 'read' ? ['revision', 'path'] : operation === 'capture' ? ['revision', 'handoff'] : null;
-      if (!required) return exact(argv, { flags: ['offline'] });
-      const optional = operation === 'search' ? ['path', 'limit', 'after-line']
-        : operation === 'read' ? ['line', 'lines'] : [];
+    case 'context': case 'memory': {
+      const operation = argv[0], specs = command === 'context'
+        ? { search: ['path', 'query'], read: ['path', 'sha256'], map: ['path'] }
+        : { search: ['revision', 'query'], read: ['revision', 'path'], capture: ['revision', 'handoff'] };
+      const required = Object.hasOwn(specs, operation) ? specs[operation] : null;
+      if (!required) return command === 'context' ? 'context requires map, search, or read' : exact(argv, { flags: ['offline'] });
+      const optional = command === 'context' ? (operation === 'read' ? ['line', 'lines'] : ['limit', 'after'])
+        : operation === 'search' ? ['path', 'limit', 'after-line'] : operation === 'read' ? ['line', 'lines'] : [];
       return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
     }
     case 'release-common': {
@@ -91,14 +84,11 @@ export function validateCommandArguments(command, argv) {
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
-      if (action === 'start') return exact(argv, { min: 2, max: 2, options: ['device', 'write', 'plan'] });
-      if (action === 'publish') return exact(argv, { min: 1, max: 1, options: ['message', 'body-file', 'title'] });
-      if (action === 'finish' || action === 'close')
-        return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
+      const owner = { start: 'start', publish: 'land', finish: 'finish', close: 'finish', successor: 'successor' }[action];
+      if (owner) return validateCommandArguments(owner, argv.slice(1));
       if (action === 'complete')
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'],
           requiredOptions: ['ref'] });
-      return exact(argv, { min: 2, max: 2, options: ['expected-head', 'write'] });
     }
     case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
@@ -131,18 +121,10 @@ export function validateCommandArguments(command, argv) {
       return ['claim', 'continue', 'integrate', 'retire'].includes(argv[0])
         ? null : `unknown request operation ${JSON.stringify(argv[0])}`;
     }
-    case 'canonical-sync': {
+    case 'canonical-sync': case 'reconcile': {
       const action = argv.find((token) => !token.startsWith('--')) ?? 'plan';
       return action === 'plan' ? exact(argv, { min: argv.length === 0 ? 0 : 1, max: 1,
-        options: ['integration-receipt'] })
-        : action === 'apply' ? exact(argv, { min: 1, max: 1,
-          options: ['plan', 'authorize', 'exclusive'],
-          requiredOptions: ['plan', 'authorize', 'exclusive'] }) : `unknown action ${action}`;
-    }
-    case 'reconcile': {
-      const action = argv.find((token) => !token.startsWith('--')) ?? 'plan';
-      return action === 'plan' ? exact(argv, { min: argv.length === 0 ? 0 : 1, max: 1,
-        options: ['scope', 'integration-receipt'] })
+        options: [...(command === 'reconcile' ? ['scope'] : []), 'integration-receipt'] })
         : action === 'apply' ? exact(argv, { min: 1, max: 1,
           options: ['plan', 'authorize', 'exclusive'],
           requiredOptions: ['plan', 'authorize', 'exclusive'] }) : `unknown action ${action}`;
@@ -261,3 +243,22 @@ export function capabilityArguments(args, invalidParams) {
     return ['capabilities', ...['query', 'kind', 'limit', 'id', 'root', 'revision']
       .filter(k => k in value).map(k => `--${k}=${value[k]}`), ...(value.includeContent ? ['--include-content'] : [])];
   }
+
+/** Validate the catalog-owned transport schema; the lazy memory owner enforces source policy. */
+export function memoryArguments(value, schema, invalidParams = message => { throw new TypeError(message); }) {
+  const spec = schema.oneOf.find(item => item.properties.operation.const === value?.operation);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !spec
+    || Object.keys(value).some(key => !Object.hasOwn(spec.properties, key))
+    || spec.required.some(key => !Object.hasOwn(value, key)))
+    return invalidParams('memory fields must match search, read or capture');
+  for (const [key, item] of Object.entries(value)) {
+    const field = spec.properties[key];
+    if (field.type === 'integer' ? !Number.isSafeInteger(item) || item < field.minimum || item > field.maximum
+      : typeof item !== 'string' || !item.trim() || /[\x00-\x1f\x7f]/u.test(item)
+        || field.maxLength && Buffer.byteLength(item) > field.maxLength
+        || field.pattern && !new RegExp(field.pattern, 'u').test(item))
+      return invalidParams(`invalid memory ${key}`);
+  }
+  return ['memory', value.operation, ...Object.keys(spec.properties).filter(key => key !== 'operation' && Object.hasOwn(value, key))
+    .map(key => `--${key === 'afterLine' ? 'after-line' : key}=${value[key]}`)];
+}
