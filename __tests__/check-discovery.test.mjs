@@ -71,6 +71,31 @@ function receipt(f, overrides = {}) {
       counts: { total: 3, passed: 3, failed: 0, skipped: 0 } }, outcome: 'passed', ...overrides };
 }
 
+test('fleet catalog declares release:common and worktree cleanup without relocating lanes', () => {
+  assert.equal(CATALOG.schema, 'agentic-os/repository-check-catalog/v1');
+  const expected = {
+    'agentic-os': { releaseCommon: true, worktreeCleanup: 'quarantine' },
+    'agentic-canvas-os': { releaseCommon: true, worktreeCleanup: 'quarantine' },
+    'agentic-graph': { releaseCommon: true, worktreeCleanup: 'quarantine' },
+    'agentic-commerce-os': { releaseCommon: true, worktreeCleanup: 'quarantine' },
+    'huijoohwee.github.io': { releaseCommon: false, worktreeCleanup: 'quarantine' },
+    huijoohwee: { releaseCommon: false, worktreeCleanup: 'quarantine' },
+    GameXR: { releaseCommon: false, worktreeCleanup: 'retain' },
+  };
+  assert.deepEqual(Object.fromEntries(CATALOG.repositories.map(row => [row.id,
+    { releaseCommon: row.releaseCommon, worktreeCleanup: row.worktreeCleanup }])), expected);
+});
+
+test('catalog rows without lifecycle declarations fail closed', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'agentic-os-catalog-fields-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const catalogPath = join(directory, 'catalog.json'), inputPath = join(directory, 'input.json');
+  writeJson(catalogPath, { schema: CATALOG.schema,
+    repositories: CATALOG.repositories.slice(0, 1).map(({ releaseCommon, worktreeCleanup, ...rest }) => rest) });
+  writeJson(inputPath, { schema: CHECK_INPUT_SCHEMA, repositories: [] });
+  assert.throws(() => discoverRepositoryChecks(inputPath, { catalogPath }), (error) => error.code === 'invalid_record_fields');
+});
+
 test('catalog owner references resolve from committed files without running scripts or changing Git', t => {
   const f = fixture(t, CATALOG.repositories.map(row => row.id));
   const before = f.payload.repositories.map(row => git(f.root(row.id), 'rev-parse', 'HEAD'));
