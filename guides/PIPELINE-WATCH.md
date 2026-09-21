@@ -17,21 +17,26 @@ Every poll reads the run, the exact attempt's jobs, then the run again. A change
 repository, run, attempt or SHA stops observation. More than 100 jobs or an
 incomplete inventory fails explicitly; no partial inventory is called complete.
 
-The interval starts at 5 seconds, doubles on unchanged state up to 60 seconds,
-and resets on changes. Each API call has a 15-second limit and an output cap below
-500 kB. Calls are sequential and waits cannot pass the observation deadline.
-`--timeout-ms` defaults to 60 seconds and is capped at three hours. Run one watcher
-per exact run; do not start duplicate watchers or restart builds because a watch
-window elapsed. The command itself does not rerun, cancel, download, merge or deploy.
+The first observation is immediate. A changed nonterminal state may be rechecked after 5 seconds;
+the first unchanged observation returns control. One call makes at most 12 observations and lasts
+at most 60 seconds, including provider reads. Each API call has a 15-second limit and an output cap
+below 500 kB. Calls are sequential and waits cannot pass the observation deadline. `--timeout-ms`
+defaults to 60 seconds; larger values fail before provider access. Use one observer per exact run.
+The command itself does not rerun, cancel, download, merge or deploy.
 
 Exit 0 means the bound run completed successfully; 1 means a failed run or an
 observation error (inspect the event/error); 2 is `verified_wait`, meaning the
-window elapsed and another fresh observation is needed. Output includes elapsed
+run is not proven terminal. It returns `continue_independent_work`, the exact run binding and a
+minimum 60-second recheck delay. Follow a provider event or independent-work milestone after that
+delay. If no covered work remains, report the dependency and yield; never loop fresh watch windows.
+Use the [productive-wait policy](AUTONOMOUS-GOAL-PURSUIT.md#productive-external-waits). Output includes elapsed
 monotonic time, poll count and `authority: false`. Even a green run does not replace
 readiness, source integration, cleanup or deployment checks.
 
-The deterministic one-hour unchanged-run test uses 63 polls instead of 720 at a
-fixed five-second interval (91.25% fewer polls and API requests for the same
-three-request observation). Detection delay after an unchanged interval is at
-most 60 seconds plus bounded provider latency. This measures watcher economics,
-not compiler speed, cloud billing savings, or end-to-end runtime readiness.
+A deterministic unchanged-run test returns after two observations and one five-second wait.
+Progress can be reported until a terminal result or the count/deadline bound; unchanged elapsed time
+alone is not progress. These are executable limits, not claims of measured end-to-end savings.
+
+`release-common complete` applies the same 60-second / 12-observation ceiling and unchanged-state
+handoff to exact reviews. Its default is 60 seconds. Late merge observations cannot start closeout;
+merged receipts still pass the existing independent cleanup and retirement checks.

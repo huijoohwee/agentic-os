@@ -218,9 +218,9 @@ reviewed manifest; installing the package alone does not configure an external e
 its existing repository/run/head/attempt binding. Completed durations and elapsed active-step times
 are observations. Missing timestamps remain unavailable. Duplicate steps, malformed timestamps and
 reversed durations fail closed; a provider rerun cannot relabel observations from an earlier attempt.
-Step changes reset the existing polling backoff. Elapsed time alone does not trigger another event or
+Step changes permit another bounded observation; unchanged state returns control. Elapsed time alone does not trigger another event or
 workflow. An expired observation window returns the active step, the next observation delay and
-`observe_same_run_and_attempt`; it supplies no speculative completion estimate. A terminal failure
+`continue_independent_work`; follow the [productive-wait policy](AUTONOMOUS-GOAL-PURSUIT.md#productive-external-waits). A terminal failure
 returns `inspect_failure_before_retry`. The watcher never restarts a workflow or submits authorization.
 
 Inspect the owner failure, reconcile uncertain effects, and retain the attempt history before any

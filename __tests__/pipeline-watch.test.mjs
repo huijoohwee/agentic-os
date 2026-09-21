@@ -47,26 +47,29 @@ test('step timing preserves identity, elapsed duration and unavailable timestamp
   }
 });
 
-test('step progress changes reset backoff while elapsed time alone does not restart polling or jobs', async () => {
+test('unchanged active steps yield to independent work without polling for elapsed time', async () => {
   const timer = clock(); let calls = 0;
   const step = { number: 1, name: 'integration', status: 'in_progress', conclusion: null,
     startedAt: '2026-09-10T11:00:00Z', completedAt: null, durationMs: null };
-  const code = await watchPipeline(target, { ...timer, timeoutMs: 60000,
+  const code = await watchPipeline(target, { ...timer,
     wallNow: () => Date.parse(step.startedAt) + timer.now(),
     snapshot: async () => {
       calls++;
       return { status: 'in_progress', conclusion: null, coherent: true,
-        jobs: [{ id: 10, name: 'linux', status: 'in_progress', conclusion: null,
-          steps: [{ ...step, ...(calls >= 3 ? { number: 2, name: 'XR browser' } : {}) }] }] };
+        jobs: [{ id: 10, name: 'linux', status: 'in_progress', conclusion: null, steps: [step] }] };
     } });
   assert.equal(code, 2);
-  assert.deepEqual(timer.waits, [5000, 10000, 5000, 10000, 20000, 10000]);
-  assert.equal(timer.events.filter(event => event.event === 'job_changed').length, 2);
+  assert.equal(calls, 2);
+  assert.deepEqual(timer.waits, [5000]);
+  assert.equal(timer.events.filter(event => event.event === 'job_changed').length, 1);
   const wait = timer.events.at(-1);
-  assert.equal(wait.activeSteps[0].name, 'XR browser');
-  assert.equal(wait.activeSteps[0].elapsedMs, 60000);
+  assert.equal(wait.activeSteps[0].name, 'integration');
+  assert.equal(wait.activeSteps[0].elapsedMs, 5000);
   assert.equal(wait.completionEstimate, null);
-  assert.equal(wait.nextAction, 'observe_same_run_and_attempt');
+  assert.equal(wait.nextAction, 'continue_independent_work');
+  assert.equal(wait.reason, 'unchanged_state');
+  assert.equal(wait.recheckAfterMs, 60000);
+  assert.ok(timer.events.every(event => event.authority === false));
 });
 
 test('rerun, head, repository and URL drift fail closed before success', async () => {
@@ -97,22 +100,21 @@ test('completion racing the job read requires another fresh observation', async 
   assert.equal((await observe([failed, pending, failed])).result.coherent, true);
 });
 
-test('one simulated hour reduces unchanged polls while bounding detection delay to 60 seconds', async () => {
-  const timer = clock();
-  const status = { status: 'in_progress', conclusion: null, coherent: true, jobs: [] };
-  const code = await watchPipeline(target, { ...timer, timeoutMs: 3_600_000, snapshot: async () => status });
-  assert.equal(code, 2);
-  const receipt = timer.events.at(-1);
-  assert.equal(receipt.event, 'verified_wait');
-  assert.equal(receipt.polls, 63);
-  assert.ok(receipt.polls < (3_600_000 / 5000) / 10);
-  assert.equal(timer.waits.reduce((sum, n) => sum + n, 0), 3_600_000);
-  assert.ok(timer.waits.every(n => n > 0 && n <= 60_000));
-  assert.equal(timer.events.filter(e => e.event === 'run_changed').length, 1);
-  assert.ok(timer.events.every(e => e.authority === false));
+test('continuous progress still yields within the count and wall-time budgets', async () => {
+  for (const initialMs of [1, 60000]) {
+    const timer = clock(); let calls = 0;
+    const code = await watchPipeline(target, { ...timer, initialMs,
+      snapshot: async () => ({ status: 'in_progress', conclusion: null, coherent: true,
+        jobs: [{ id: 10, name: `step ${++calls}`, status: 'in_progress', conclusion: null }] }) });
+    assert.equal(code, 2);
+    assert.ok(calls <= 12);
+    assert.ok(timer.now() <= 60000);
+    assert.equal(timer.events.at(-1).reason,
+      initialMs === 1 ? 'observation_budget_elapsed' : 'observation_window_elapsed');
+  }
 });
 
-test('Linux completion is emitted while macOS continues and resets the backoff', async () => {
+test('Linux completion is emitted while macOS progresses until terminal success', async () => {
   const timer = clock(); let count = 0;
   const linux = { id: 1, name: 'linux', status: 'in_progress', conclusion: null };
   const mac = { ...linux, id: 2, name: 'mac' };
@@ -120,13 +122,13 @@ test('Linux completion is emitted while macOS continues and resets the backoff',
     count++;
     return { status: count < 5 ? 'in_progress' : 'completed', conclusion: count < 5 ? null : 'success', coherent: true,
       jobs: [{ ...linux, ...(count >= 3 ? { status: 'completed', conclusion: 'success' } : {}) },
-        { ...mac, ...(count >= 5 ? { status: 'completed', conclusion: 'success' } : {}) }] };
+        { ...mac, name: `mac step ${count}`, ...(count >= 5 ? { status: 'completed', conclusion: 'success' } : {}) }] };
   };
   assert.equal(await watchPipeline(target, { ...timer, snapshot }), 0);
   const linuxEvent = timer.events.find(e => e.event === 'job_completed' && e.job.name === 'linux');
   assert.ok(linuxEvent.elapsedMs < timer.events.at(-1).elapsedMs);
   assert.equal(timer.events.filter(e => e.event === 'job_completed').length, 2);
-  assert.deepEqual(timer.waits, [5000, 10000, 5000, 10000]);
+  assert.deepEqual(timer.waits, [5000, 5000, 5000, 5000]);
 });
 
 test('failure is terminal, provider errors are not success, and late reads do not extend a deadline', async () => {
@@ -146,7 +148,7 @@ test('invalid inputs are rejected before provider access', async () => {
   for (const delta of [{ repo: '../bad' }, { head: 'short' }, { run: 0 }, { attempt: NaN }]) {
     assert.throws(() => validateTarget({ ...target, ...delta }), /pipeline_/);
   }
-  for (const timeoutMs of [0, -1, NaN, 10_800_001]) {
+  for (const timeoutMs of [0, -1, NaN, 60001, 3_600_000]) {
     await assert.rejects(watchPipeline(target, { timeoutMs, snapshot: () => assert.fail('provider called') }), /invalid_bound/);
   }
   assert.match(validateCommandArguments('pipeline', ['--repo=owner/repo']), /missing/);
