@@ -197,16 +197,24 @@ function verifyGroupRelease(manifest, path) {
     if(hash(bytes)!==ref.digest)fail('release-digest');
   }
 }
+function planningDocument(path, text) {
+  if (/prd-tad-adr-mvp-gtm\.md$/iu.test(path)) return true;
+  if (!path.endsWith('.md') || !text.startsWith('---\n')) return false;
+  const end = text.indexOf('\n---\n', 4);
+  if (end < 4) return false;
+  const frontmatter = text.slice(4, end);
+  return /^doc_type:[\t ]*(?:"PRD-TAD-ADR-MVP-GTM"|'PRD-TAD-ADR-MVP-GTM'|PRD-TAD-ADR-MVP-GTM)[\t ]*$/mu.test(frontmatter);
+}
 function validatePlanning(root, repository, planning, checkDigest = true) {
   if (!planning || planning.repository !== repository || !/^[a-f0-9]{40}$/u.test(planning.revision ?? '')
     || typeof planning.path !== 'string' || /[\\\x00-\x1f]/u.test(planning.path) || planning.path.startsWith('/')
     || planning.path.split('/').some(part => !part || part === '..' || part === '.')
-    || !/prd-tad-adr-mvp-gtm\.md$/iu.test(planning.path)
     || checkDigest && !/^[a-f0-9]{64}$/u.test(planning.digest ?? '')) fail('planning-binding');
   const entry = observeGit(['ls-tree', planning.revision, '--', planning.path], { cwd: root });
   if (!/^100644 blob [a-f0-9]{40}\t/u.test(entry ?? '')) fail('planning-file');
   const planned = observeGit(['show', `${planning.revision}:${planning.path}`], { cwd: root });
   if (Buffer.byteLength(planned) > 128000) fail('planning-budget');
+  if (!planningDocument(planning.path, planned)) fail('planning-binding');
   // The native Git reader trims terminal newlines; historical group digests use that text.
   if (checkDigest && hash(planned) !== planning.digest) fail('planning-digest');
 }
