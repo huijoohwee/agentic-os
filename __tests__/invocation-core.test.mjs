@@ -42,10 +42,12 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
   const { entries, failures } = collectCatalogEntries(documents);
   assert.deepEqual(failures, []);
-  assert.equal(entries.length, 409);
-  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [134, 142, 133]);
+  assert.equal(entries.length, 411);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [135, 143, 133]);
   assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
   assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
+  assert.ok(entries.some(e => e.token === '/python.learning'));
+  assert.ok(entries.some(e => e.token === '#learning'));
   assert.match(entries.find(e => e.token === '/launch-copilot').summary, /81rv10 Launch Copilot/);
   assert.ok(entries.some(e => e.token === '#vcc'));
   assert.ok(entries.some(e => e.token === '@local-harness'));
@@ -81,6 +83,20 @@ test('procedural asset discovery reuses text binding without broadening image co
   }
   const executableCatalog = readFileSync(new URL('../catalog/invocation.json', import.meta.url), 'utf8');
   assert.doesNotMatch(executableCatalog, /\/asset\.create/);
+});
+
+test('Python learning discovery is the exact native tuple without an executable CLI route', () => {
+  const documents = dictionaryDocuments();
+  const command = documents.get('DICTIONARY-COMMAND.md');
+  const row = command.split('\n').find(line => line.startsWith('| `/python.learning`')).split('|');
+  assert.equal(row[3].trim(), 'exactly `@canvas`');
+  assert.equal(row[4].trim(), 'exactly `#learning`');
+  assert.match(row[5], /missing registration returns unsupported/);
+  for (const token of ['/python.learning', '@canvas', '#learning']) {
+    assert.equal(parseInvocationToken(token).error, undefined);
+  }
+  const executableCatalog = readFileSync(new URL('../catalog/invocation.json', import.meta.url), 'utf8');
+  assert.doesNotMatch(executableCatalog, /\/python\.learning/);
 });
 
 test('dictionary drift, malformed declarations and missing assets fail before hashing', () => {
@@ -124,7 +140,7 @@ test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale res
   const before = collectCatalogEntries(original);
   original.delete(name);
   assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
-  assert.equal(before.entries.length, 409);
+  assert.equal(before.entries.length, 411);
   assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
 });
 
