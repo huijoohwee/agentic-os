@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.3.2"
-date: "2026-09-19"
+version: "1.4.0"
+date: "2026-09-21"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.3.2"
-tad_revision: "1.3.2"
-adr_revision: "1.3.2"
+prd_revision: "1.4.0"
+tad_revision: "1.4.0"
+adr_revision: "1.4.0"
 guideline_revision: "2.7.0"
-worktree_id: "device-cba000d3779d--adlc-release-loop"
-agent_id: "codex-adlc-release"
+worktree_id: "device-0232231d4a19--shared-memory-continuity-plan"
+agent_id: "codex-shared-memory-continuity"
 load_policy: "on-demand"
 verification_scope: "ADLC closure observations, existing invocation reuse and bounded checks; consumer-authenticated runtime proof remains separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "a5e67e60287e2baed83986a85a50f06b30941147"
-mvp_revision: "1.3.2"
-gtm_revision: "1.3.2"
+reviewed_source_revision: "3559f18aeef6b0f2eb13bb95820f426a8e4e2301"
+mvp_revision: "1.4.0"
+gtm_revision: "1.4.0"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
@@ -32,11 +32,11 @@ Current pins live in [`catalog/composition-source-lock.json`](../catalog/composi
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
 ## Identity and opening directive
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.2`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.0`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.3.2`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.0`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
@@ -69,17 +69,17 @@ PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directiv
 
 ### Priority, economics and open questions
 
-**Must:** reuse T01–T07 and the completion primitive T06; close the product-owned T08 gaps before the T09 runtime demonstration. **Should:** improve measured iteration cost and optional generated publication F21. **Could:** live agent-state memory tiers (the separately accepted [shared-memory startup](MEMORY.md) covers curated context only), merchant/shopping roles and spatial extensions F22–F24 after demand or a measured bottleneck. **Won't in this revision:** new orchestration controllers, copied schemas, paid infrastructure, new dependencies, invented provider receipts or customer selection. ROI score for every tier is **unmeasured**; ordering reflects dependency closure and existing-code reuse, not a commercial winner.
+**Must:** reuse T01–T07 and the completion primitive T06; close the product-owned T08 gaps before the T09 runtime demonstration. **Should:** improve measured iteration cost, the proposed P04-M shared-memory invocation handoff and optional generated publication F21. **Could:** live agent-state memory tiers (the separately accepted [shared-memory startup](MEMORY.md) covers curated context only), merchant/shopping roles and spatial extensions F22–F24 after demand or a measured bottleneck. **Won't in this revision:** new orchestration controllers, copied schemas, paid infrastructure, new dependencies, invented provider receipts or customer selection. ROI score for every tier is **unmeasured**; ordering reflects dependency closure and existing-code reuse, not a commercial winner.
 
 Historical timing, clonability and cost observations remain in the
 [predecessor metrics](https://github.com/huijoohwee/agentic-os/blob/934f44fd30df4b23829a29df6cbe8d6456f7616d/guides/PRD-TAD-ADR-MVP-GTM.md#priority-economics-and-open-questions).
 This successor adds no runtime dependency; the handover routing delta is recorded in MVP within the
-40,960-byte always-load cap. This guide allows 500 lines/55 kB to keep the bounded inspiration default
-with its existing pipeline owner instead of adding a module. Restart time, TCO, ROI and willingness to pay
+40,960-byte always-load cap. The shared-memory proposal adds at most 8 KiB to the 63,046-byte on-demand baseline;
+it remains below 600 lines and reuses historical evidence links instead of another planning module. Restart time, TCO, ROI and willingness to pay
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 ## TAD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.3.2` consumes PRD `1.3.2`, decisions ADR `1.3.2`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.0` consumes PRD `1.4.0`, decisions ADR `1.4.0`.
 
 ### Journey-to-system and RAO steps
 
@@ -354,7 +354,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.3.2` binds PRD/TAD `1.3.2`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.0` binds PRD/TAD `1.4.0`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -382,40 +382,45 @@ and G14 the observed absence of abandon/widen lane events; only the current life
 those behaviors. P01/P03/P05/P06 now use the bounded handover above at this exact specification revision.
 ## MVP
 
-### Native inspiration acceptance cases
+### Shared-memory invocation proposal (P04-M, pending implementation authorization)
 
-AC-P01/P04 → T01/T04/native feature default → ADR-P05 is the changed join at
-`PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.2`; P03/P05/P06 retain the handover contract. The predecessor is
-`PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.0` at OS `66ccb8fe17879b4c3ac33392961cabd001fce060`.
-Grounding: that source contains the native default, MCP `capabilities`/`checks`, invocation catalog and
-affected-check runner (**confirmed**); `/capabilities` is **absent**. The user-selected guideline at website
-`fe423728bcb52fe6d2434d8957989a057d3efd73` has the same blob
-`dc75d3f11c8f17b79c9b0927a3703a6330b6e21e` as the existing `e8d2a10…` guideline pin (**confirmed**).
-Agent compliance and deployment remain **unverified**. No external inspiration repository was supplied
-for this workflow edit; the user's instruction authorizes the policy change itself.
+All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.0`, refining AC-P04/T04; ADR-P06 is proposed.
+The unchanged native-inspiration cases and handover checks remain in the [exact predecessor](https://github.com/huijoohwee/agentic-os/blob/3559f18aeef6b0f2eb13bb95820f426a8e4e2301/guides/PRD-TAD-ADR-MVP-GTM.md#native-inspiration-acceptance-cases). Current T01 policy still governs authorization and source restrictions.
+**PRD / directive:** the operator retrieves a cited prior decision and prepares one reviewed learning proposal from the same shared source across tasks/devices. Pain: CLI-only recall is easy to miss in an MCP-driven task; switching stores can surface duplicate or stale context. This is an observed access gap, not measured customer demand. Reuse `TASK-MEMORY-001`, whose [memory guide](MEMORY.md#task-operating-model-task-memory-001100) remains the retrieval/publication contract owner; this proposal owns only its discovery/invocation handoff.
 
-| Input / acceptance case | Required observable behavior |
+| Rank / slice | Buyer pain → nearest native solution → first-dollar hypothesis |
 |---|---|
-| Reference + native enhancement, with paraphrased restrictions | Ground local owners, update the existing plan, present scope and seek authorization before feature code changes. |
-| New capability with no existing plan | Generate one native five-role plan with CID/revision and grounding; await covered implementation authority. |
-| Feature removal inspired by a reference | Plan the exact removal, affected contracts and recovery before authorization; preserve unrelated authored work. |
-| Plan-only instruction, a bare URL or comparison-only request | Honor that narrower task; do not infer implementation authority. |
-| Explicit implementation grant or valid prior scope grant | Reuse it after preflight and complete accepted criteria without redundant approval. |
-| Forbidden mention, copying or dependency; material scope drift | Keep prohibited material out of the candidate/report; resolve uncovered scope before implementing it. |
-| Implementation complete with passed applicable checks | Refresh five roles and resource measurements; prepare release evidence; report merge/deploy only from separate authorized receipts. |
-| Existing MCP/tuple routes; unchanged or invalidated inputs | Discover/read bounded inputs once; resolve registered tuples; reuse only matching receipts, refresh on drift, retain required checks and record measurements. |
+| 1 / Must | Repeated briefing and missed decisions → expose existing pinned CLI search/read/capture through the local MCP boundary and existing catalog → test an operator continuity pilot; a $1 assisted setup offer is a hypothesis, with no payer, payment or conversion evidence. |
+| 2 / Later | Browser/mobile access to the same decisions → existing Graph WebMCP/control surface after an authenticated local bridge and private-data boundary are specified → test only after the local pilot demonstrates demand. |
+| 3 / Later | Runtime learning quality → existing Graph persistent state and reviewed skill-evolution/Toolkit owners → require a comparable evaluated cohort before expansion; no new agent or memory backend. |
 
-Validation: OS `npm run check`, owner MCP/invocation tests, live bounded discovery and `/checks`, plus
-link/five-role/case review. Source checks do not certify future agent behavior or performance gains.
-Always-load delta: 0 bytes; total 40,930/40,960 bytes. No new modules; on-demand guide below 55 kB.
+**TAD / grounding:** inspection is source-level unless an executed observation is identified. These inputs are observations, not new dependency pins or integration authority.
 
-### Handover verification for this successor
-Changed joins: AC-P01/P03/P05/P06 → T01/T03/T05/T06 → ADR-P04; the other criteria and product
-runtime contracts retain their scope. Review five-role identity, dependency pins, workflow anchors,
-actual workspace publication semantics and immutable successor/board joins. Run OS `npm run check`,
-Fleet ownership against explicit roots and private owner planning/workspace checks for the exact task.
-The PR retains the candidate/tree, observed results, evaluator limitations and subsequent merge receipt;
-this pre-land specification makes no current CI, integration, cleanup or deployment success claim.
+| Evidence / disposition | Exact owner and consequence |
+|---|---|
+| Confirmed / portable shared knowledge | OS `3559f18aeef6b0f2eb13bb95820f426a8e4e2301`: `bin/agentic-os-memory.mjs`, `bin/agentic-os-memory-task.mjs`, `guides/MEMORY.md`. Startup selected shared source `de28c45787e5988c17ad545eae189143cd7ae2c9`, reused its accepted index and returned three curated records. A live pinned `memory search --query=memory` returned cited records without refreshing. |
+| Absent / discovery and MCP handoff | At that OS revision, `capabilities --query=memory --limit=5` returned zero entries; `src/mcp-server.mjs` and `catalog/invocation.json` expose no task-memory tool/route. Shared dictionaries already declare `/memory.search`, `#memory-search`, `#truth`, `#vcc`, `@agent`, `@memory-store`, `@operator`; reuse their meanings. |
+| Confirmed / durable runtime already exists | Graph `b242ab5d82c49155808a86b45565c797f8e04f61`: `mcp/persistent-memory-store.js`, `persistent-memory-runtime.js`, `persistent-memory-contract.mjs` provide a separate scope/revision/idempotency contract and executable memory tuples. This code is not a Git knowledge publisher. Existing working-tree edits in unrelated workspace seeds remain owner-bound. |
+| Confirmed / learning contracts already exist | Canvas `141e14604665ddfa1fdec8bfd5d532f6dc4f9298`, `docs/PRD-TAD-ADR-MVP-GTM.md`, owns memory/learning product requirements; OS `runtime/agents/agent-toolkit-optimizer.js` and Graph `mcp/skill-evolution-runtime.js` are retained learning owners, not duplicated by this proposal. Runtime/provider effectiveness remains unverified here. |
+| Confirmed / authoring source; bounded review | Website `1b2820d8d1da5246d8d6adedd99a2e39ba1eb4fd` exposes guideline `3.1.0` with lifecycle status `proposed`, blob `54831bcac50031d566df825c4bad705d6805babf`. Its current guidance informed discovery; this bounded successor does not certify adoption of every new guideline or alter historical pinned evidence. |
+| Contradicted / already solved end-to-end | CLI persistence and a runtime memory store do not establish shared MCP retrieval, browser parity, current facts or learning gains. The three retrieved records include historical ownership; citations must be checked against current source before effects. |
+
+**TAD / data and invocation boundary:** explicit workspace enrollment → accepted Git revision → existing local CLI owner → bounded MCP response → caller-selected cited context. Default durable knowledge is `GitHub/.workspace/.memory`; clone-local derived caches stay under `.workspace/.git`. No vendor-memory lookup, import, symlink, rewrite, fallback or union. The selected private source never becomes an unauthenticated browser endpoint. Runtime state retains its own owner and is not auto-exported into curated knowledge.
+**TAD / proposed dispatch:** add MCP `memory` with explicit `search`, `read`, `capture` operations, delegating unchanged to `agentic-os memory`. Require the full accepted `revision`; search/read retain existing query/path/page limits. Capture accepts a caller-selected bounded local handoff and returns a proposal only. Reuse the MCP argv runner, argument rejection, timeout and cancellation; no shell, implicit sync or source mutation. `/memory.search` resolves only the selected workspace store through existing `/`, `#`, `@` grammar and a checked catalog digest; Graph's existing exact-scope route remains distinct. Capture stays an explicit operation: `/experience.capture` has a richer contract and must not be falsely aliased to a memory-log proposal. Discovery advertises the existing memory guide, not its private content.
+
+| Criterion → T04 design → check | Required observable result |
+|---|---|
+| P04-M1 / single source → existing enrollment/parser → `memory-task.test.mjs` + MCP boundary tests | Same full SHA and query yield equivalent CLI/MCP records, citations and freshness/authority flags. Missing enrollment, conflicting enrollment or invalid revision fails; no host-memory fallback. |
+| P04-M2 / bounded offline recall → existing search/read → task-memory and MCP integration tests | Warm cache works offline, peer refresh cannot alter a caller's pinned snapshot, oversized/unsafe input fails, unrelated source/working-tree bytes remain unchanged, zero model/network calls occur during retrieval. |
+| P04-M3 / reviewed learning → existing capture → task-memory and MCP tests | Handoff yields the same `baseBlob`, `baseSha256`, append and `sourceWritten: false`; identical ID replay is already-present, conflicting ID or stale proposal is rejected. Publication and rehydration require the existing private owner workflow. |
+| P04-M4 / consistent invocation → existing catalogs/dispatcher → invocation, MCP and Fleet tests | Discovery resolves the pinned public guide; exact `/memory.search #memory-search #truth #vcc @agent @memory-store @operator` declarations bind typed arguments through the existing grammar. Wrong store, digest or unregistered binding fails before dispatch; CLI/MCP/tuple results match. No browser execution is claimed. |
+| P04-M5 / honest improvement → timed pilot and owner verification | One prior decision is located in a new task and one intentionally authored lesson completes capture → separately authorized publication → retrieval on a second clone. Record missed/stale decisions, active time, call/read bytes and actual token usage when available; unset measurements stay unknown. Source/test success alone does not prove net improvement. |
+
+**ADR-P06 (proposed):** expose the existing memory owner with thin native adapters. Rejected: a second memory store, automatic transcript harvesting, implicit retrieval from vendor folders, autonomous memory publication, new embedding/model services, or copying the runtime memory engine into OS. Consequences: lexical recall and explicit refresh remain; learning quality still depends on source evidence and review. Rollback removes only the optional transport/catalog additions and preserves shared records, runtime state and historical citations.
+**MVP / authorized now:** this one-file reviewable plan; runtime implementation awaits a scope decision under T01 step 3. Proposed implementation: at most three existing runtime modules (`src/mcp-server.mjs`, `bin/agentic-os-invocation.mjs`, `bin/agentic-os-argv.mjs`), existing invocation/Fleet catalog entries, affected MCP/invocation/Fleet tests, `test/impact-contracts.json` if needed, this plan and `guides/MEMORY.md`. Cap: 12 files, 24 KiB added, each file <600 lines and chunk <500 kB, zero new runtime modules/dependencies/always-load bytes; two 45-minute active sprints including local validation. Refresh scope if the cap cannot satisfy every Must criterion. Provider waits depend on exact checks/merge conditions, with recheck on change rather than an ETA.
+**MVP / validation and delivery:** run `npm run check:plan`, affected `npm run check`, Fleet ownership and `npm run evals`; bind results to actual changed bytes. Transport behavior requires new MCP/tuple tests, not merely the existing CLI suite. Use `docs/RELEASE-WORKFLOW.md` for protected integration; deployment and rollback remain consumer-owned. No shared-memory publication, vendor setting change, Graph/Canvas edit, public website change, skill promotion or runtime deployment is included in the proposed first slice. Existing records are context, never grants.
+**GTM / learn loop:** offer one operator an opt-in local continuity pilot; compare five matched task restarts against the CLI baseline. Continue only if decision accuracy does not regress and measured active effort falls; otherwise fix observed routing/recall friction or stop expansion. Test the $1 offer only with explicit outreach/payment authority; WTP, TAM/SAM/SOM, revenue and unit economics remain unvalidated. Browser/mobile, autonomous skill improvement and production claims need their own source/evaluator evidence and scope decision.
+**Handover:** planning base OS `3559f18…`, selected memory source `de28c457…`; producer `device-0232231d4a19--shared-memory-continuity-plan`. Plan checks are recorded against the actual diff outside these bytes. The next action is authorization of P04-M1–M5 and its bounded write set; no grant is inferred from this document.
 
 ### Verification, demonstration and maintenance
 
@@ -477,7 +482,7 @@ is established by the handover. Feed measured findings into the next immutable C
 [maturity-grounding]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md#experience-and-first-dollar--reference-implementation
 [document-naming]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format
 
-Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.2` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
 
 [planning-record]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-planning-record.md
 [handover-continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/adlc-artifact-continuity.md
@@ -495,7 +500,6 @@ and `npm run check`; operating limits and invocation are in `guides/VALIDATION-E
 remove the opt-in manifest use; existing validation, integration, cleanup and runtime owners are unchanged.
 
 ### APEX-OBS-001 · Import-first observation
-
 PRD: a solo operator can open workflow evidence without configuring a runtime first. TAD: the
 [preset catalog](../runtime/agents/docs/PROMPT-PRESETS.md) retains the canonical `/canvas.view.set`
 command, `#canvas-view` semantic and `@canvas-view` binding; Graph owns file selection, bounded native
@@ -509,7 +513,6 @@ proves full-width inert entry, import, shared selection and authored-byte preser
 preset description independently of runtime routes; no new provider, dependency or invocation registry.
 
 ### WORKFLOW-OBS-002 · Durable lifecycle and release closure
-
 PRD / AC-LOOP-01: a solo operator's authorized Dev → Prod request must survive a green merge,
 worktree cleanup and turn changes until the consumer verifies deployment and runtime. Paid demand and
 measured savings remain unknown. TAD / T-LOOP-01: reuse the existing START root, `workflow collect`,
@@ -533,7 +536,6 @@ GTM: pilot this loop in Graph's protected release; record source/check/release/c
 active effort and provider waits separately. Claim no savings without a comparable baseline. Rollback:
 revert the source enhancement; preserved archives, source refs, production and effect owners stay intact.
 ### WORKFLOW-OBS-003 · Complete capture and next-context advice
-
 PRD / RAO: a solo operator carries one ADLC workflow's worktree evidence and economics advice into the
 next workflow, session, turn or thread. SVO: the operator collects one immutable JSON manifest that
 references phase receipts, every captured span page and recommendations; reported model identity,
@@ -550,7 +552,6 @@ pay and measured savings remain unvalidated. Acceptance: archive, projector and 
 plus `npm run check`; reject digest drift, duplicate spans, false completeness and invalid cost logs.
 Rollback: stop optional collection/recommendation calls; preserve old manifests and original receipts.
 ### WORKFLOW-OBS-004 · One planning-to-production workflow across worktrees
-
 PRD / RAO: the same planning intent may span several repositories/worktrees; one immutable root
 must retain their relationship through START-WORKFLOW to RELEASE-WORKFLOW, deployment and runtime.
 SVO: the operator declares a workflow ID, source-bound PRD-TAD-ADR-MVP-GTM planning digest, worktree
@@ -569,7 +570,6 @@ checks, missing production evidence, existing SSE parser compatibility and requi
 Rollback: stop optional group exports; retain all immutable roots and independent child receipts.
 
 ### WORKFLOW-OBS-005 · Resolve one root and retain measurement provenance
-
 PRD / RAO / SVO: the operator imports one immutable workflow manifest to inspect every captured
 span across its worktrees, with source-reported resources/model identity and scoped timing. Explicit
 user FIX authorization covers this successor. TAD: the existing local bridge resolves a uploaded
@@ -587,7 +587,6 @@ Checks: workflow archive/observation tests, affected owner checks, browser impor
 Rollback: revert this reader/scheduler change; all original manifests and receipts remain readable.
 
 ### WORKFLOW-OBS-006 · Evidence available at start
-
 PRD / RAO / SVO: the operator binds the selected committed planning document when starting a lane
 and receives an immutable evidence root before provisioning. TAD: `start --plan=<path>` lazily calls
 the existing collector, retaining one group root and its initial child; all absent phases remain missing.
