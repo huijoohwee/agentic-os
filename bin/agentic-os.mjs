@@ -626,6 +626,7 @@ async function main() {
     command = dispatch.command;
     argv = dispatch.argv;
   }
+  if (command === 'complete-adlc') { command = 'release-common'; argv = ['complete', ...argv]; }
   const argumentError = validateCommandArguments(command, argv);
   if (argumentError) {
     err(`blocked-invalid-arguments: ${command}: ${argumentError}`);
