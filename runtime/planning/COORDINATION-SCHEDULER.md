@@ -29,8 +29,8 @@ Text fields are nonempty and bounded to 1,024 characters; unknown fields fail
 closed. A valid wait never overrides an admission finding or unavailable
 authority. Its exact evidence remains in the digest-bound disposition.
 
-Waiting successors and external dependencies retain their declared write
-reservations. Overlapping tasks receive `write-set-reserved`; their dependents
+Waiting successors and explicit external waits retain their declared write
+reservations even when another finding or gate blocks their owner. Overlaps receive `write-set-reserved`; their dependents
 wait too. Disjoint eligible tasks continue. A later scheduling wave cannot
 release another writer's reservation. Only refreshed input from the owning
 workflow can establish that the dependency or reservation has changed.

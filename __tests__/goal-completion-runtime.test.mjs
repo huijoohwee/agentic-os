@@ -268,6 +268,19 @@ test("no independent work yields a retained wait; clearing it cannot bypass an e
   assert.throws(() => planGoalAdvance(goal([{ ...wait, state: "done" }])), /external wait for terminal unit/);
 });
 
+test("an unauthorized gate cannot hide an external wait's retained reservation", () => {
+  const receipt = planGoalAdvance(goal([
+    unit("owner", { gate: true, externalWait: externalWait(), declaredWriteSet: scope("reserved") }),
+    unit("overlap", { declaredWriteSet: scope("reserved") }),
+    unit("child", { dependencies: ["overlap"] }),
+    unit("independent"),
+  ]));
+  assert.deepEqual(receipt.nextAction.unitIds, ["independent"]);
+  assert.deepEqual(receipt.blockedUnits.find(item => item.unitId === "owner").related, [GATE_FINDING]);
+  assert.equal(receipt.waitingUnits.find(item => item.unitId === "overlap").reason, "write-set-reserved");
+  assert.equal(receipt.waitingUnits.find(item => item.unitId === "child").reason, "dependency-waiting");
+});
+
 test("the native CLI reports continuing work and retained recheck evidence without dispatch", () => {
   const directory = mkdtempSync(join(tmpdir(), "os-goal-wait-"));
   try {
@@ -285,5 +298,10 @@ test("the native CLI reports continuing work and retained recheck evidence witho
     assert.equal(waiting.status, 1);
     const receipt = JSON.parse(waiting.stdout);
     assert.equal(receipt.nextAction.id, "wait_for_dependency"); assert.equal(receipt.mutation, false);
+    writeFileSync(input, JSON.stringify(goal([unit("review", { gate: true, externalWait: externalWait() })])));
+    const gated = spawnSync(process.execPath, ["runtime/planning/goal-completion-runtime.mjs", "plan", `--input=${input}`],
+      { encoding: "utf8", timeout: 5000 });
+    assert.equal(gated.status, 1); assert.match(gated.stdout, /blocked review: admission-finding/);
+    assert.match(gated.stdout, /recheck review:repository\/revision\/42:/);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

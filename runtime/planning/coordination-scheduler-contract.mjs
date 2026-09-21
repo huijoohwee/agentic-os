@@ -41,7 +41,7 @@ export function buildCoordinationSchedule(source) {
 
   // A waiting writer still retains its declared reservation. Serializing an
   // overlap into a later wave cannot release it; only refreshed owner input can.
-  const retained = input.tasks.filter(task => disposition.get(task.id)?.disposition === "waiting");
+  const retained = input.tasks.filter(task => task.externalWait || task.authorityState === "waiting-successor");
   for (const task of input.tasks) {
     if (disposition.has(task.id)) continue;
     const owners = retained.filter(peer => writeSetsOverlap(task.declaredWriteSet, peer.declaredWriteSet));

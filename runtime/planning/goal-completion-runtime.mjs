@@ -32,12 +32,11 @@ async function run() {
     if (receipt.nextUnitIds.length > 0) console.log(`next: ${receipt.nextUnitIds.join(", ")}`);
     console.log(`action: ${receipt.nextAction.id}`);
     if (receipt.nextAction.unitIds.length) console.log(`advance now: ${receipt.nextAction.unitIds.join(", ")}`);
-    for (const unit of receipt.waitingUnits) {
-      console.log(`waiting ${unit.unitId}: ${unit.reason}`);
-      if (unit.externalWait) console.log(`recheck ${unit.externalWait.dependencyId}: ${unit.externalWait.recheckTrigger}`);
-    }
-    for (const unit of receipt.blockedUnits) {
-      console.log(`blocked ${unit.unitId}: ${unit.reason}`);
+    for (const [label, units] of [["waiting", receipt.waitingUnits], ["blocked", receipt.blockedUnits]]) {
+      for (const unit of units) {
+        console.log(`${label} ${unit.unitId}: ${unit.reason}`);
+        if (unit.externalWait) console.log(`recheck ${unit.externalWait.dependencyId}: ${unit.externalWait.recheckTrigger}`);
+      }
     }
   }
   // Blocked peers never fail the run while any ready unit remains.
