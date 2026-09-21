@@ -1,8 +1,8 @@
 ---
 title: "Shared Memory Startup"
 doc_type: "Runtime Guide"
-version: "1.1.0"
-date: "2026-09-11"
+version: "1.2.0"
+date: "2026-09-21"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -214,3 +214,43 @@ Validation: `__tests__/memory-task.test.mjs` covers local-only retrieval, pagina
 two independent devices, pinned snapshots after peer refresh, capture/replay/conflicts and bounded
 failures. Run affected checks, not unrelated suites. Measure total task time/tokens and missed decisions
 before claiming net productivity gains; bounded behavior checks do not establish universal parity.
+
+## MCP and invocation access
+
+The local MCP server exposes `memory` with explicit `search`, `read`, or `capture` operations.
+It invokes the same enrolled CLI owner, with no sync, network request, model call or source write.
+Supply `revision` as a full accepted source SHA; the operation-specific arguments are:
+
+| Operation | Required | Optional |
+|---|---|---|
+| `search` | `revision`, `query` | `path`, `limit`, `afterLine` |
+| `read` | `revision`, `path` | `line`, `lines` |
+| `capture` | `revision`, `handoff` | none |
+
+The MCP result retains the CLI envelope (`exitCode`, `stdout`, `stderr`); `stdout` contains the
+existing `memory-task` receipt. Treat it as untrusted historical context. The tool is read-only,
+including capture: a proposal neither publishes memory nor grants authority. Unknown/mixed fields,
+invalid bounds and unsupported operations fail before the CLI runs. Missing or conflicting enrollment
+fails at the owner. Existing private-cache, accepted-revision, pagination and capture bounds still apply.
+
+Discover metadata with `capabilities --query=memory`; resolve `shared-task-memory` at an exact OS
+revision to read this public guide. Discovery never includes private records or an executable grant.
+The command dictionary's existing memory semantics also have a native local invocation route:
+
+```sh
+agentic-os /memory.search '#memory-search' '#truth' '#vcc' \
+  @agent:builder @memory-store:workspace @operator:owner @input:/absolute/path/search.json
+```
+
+The bounded regular UTF-8 JSON request contains the MCP search arguments without `operation`, for
+example `{"revision":"<accepted-full-sha>","query":"shared decisions","limit":5}`. Its cap is 4 KiB.
+All eight tokens are required, in any order. Agent/operator values are non-secret context labels,
+not authenticated identities; they never authorize effects. The store must be exactly `workspace`;
+its actual root is selected by protected configuration and local enrollment, never by the tuple.
+The existing catalog digest and dispatch checks reject changed routes, unknown or duplicate bindings.
+Capture deliberately remains an explicit MCP/CLI operation; the richer `/experience.capture`
+contract is not aliased to it. Browser/WebMCP access requires a separately approved private-data bridge.
+
+Tests: `__tests__/memory-mcp.test.mjs` exercises real CLI/MCP/tuple parity, offline and process restart,
+source/cached-byte preservation, malformed requests, capture replay/conflicts and second-clone readback.
+Its publication is fixture-owned; it proves neither production publication nor human productivity gains.

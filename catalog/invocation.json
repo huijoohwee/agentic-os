@@ -1,7 +1,7 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
-  "entryCount": 28,
-  "digest": "sha256:85c181159f2988966986fe6fc5bdbd2018343257d379e13e4ff42eeb63143808",
+  "entryCount": 35,
+  "digest": "sha256:ce22df5c00990ed1b3684a5e18ebe5a80da40b46b1e6fba59f7e309c780a6ca1",
   "entries": [
     {
       "token": "/setup",
@@ -267,6 +267,13 @@
     {"token": "/workflow.targets", "kind": "command", "action": "workflow", "argv": ["targets"], "semantic": "read-only", "accepts": [], "requires": [], "summary": "Discover registered workflow targets in .worktrees without loading content."},
     {"token": "/workflow.collect", "kind": "command", "action": "workflow", "argv": ["collect"], "semantic": "mutating", "accepts": ["input"], "requires": ["input"], "summary": "Preserve exact lifecycle receipts in private .workspace storage without running phases."},
     {"token": "/workflow.export", "kind": "command", "action": "workflow", "argv": ["export"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Export collected start-to-release evidence and ranked economics into native Canvas JSON."},
-    {"token": "/workflow.recommend", "kind": "command", "action": "workflow", "argv": ["recommend"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Read source-bound recommendations for the next workflow, session, turn or thread."}
+    {"token": "/workflow.recommend", "kind": "command", "action": "workflow", "argv": ["recommend"], "semantic": "read-only", "accepts": ["input"], "requires": ["input"], "summary": "Read source-bound recommendations for the next workflow, session, turn or thread."},
+    {"token": "/memory.search", "kind": "command", "action": "memory", "argv": ["search"], "semantic": "read-only", "accepts": ["agent", "memory-store", "operator", "input"], "requires": ["agent", "memory-store", "operator", "input"], "summary": "Search the enrolled workspace at the exact revision in a bounded local JSON input; no refresh or write.", "inputSchema": {"type": "object", "oneOf": [{"type": "object", "additionalProperties": false, "required": ["operation", "revision", "query"], "properties": {"operation": {"type": "string", "const": "search"}, "revision": {"type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"}, "query": {"type": "string", "minLength": 1, "maxLength": 256}, "path": {"type": "string", "minLength": 1, "maxLength": 256}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}, "afterLine": {"type": "integer", "minimum": 0, "maximum": 1000000}}}, {"type": "object", "additionalProperties": false, "required": ["operation", "revision", "path"], "properties": {"operation": {"type": "string", "const": "read"}, "revision": {"type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"}, "path": {"type": "string", "minLength": 1, "maxLength": 256}, "line": {"type": "integer", "minimum": 1, "maximum": 1000000}, "lines": {"type": "integer", "minimum": 1, "maximum": 80}}}, {"type": "object", "additionalProperties": false, "required": ["operation", "revision", "handoff"], "properties": {"operation": {"type": "string", "const": "capture"}, "revision": {"type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"}, "handoff": {"type": "string", "minLength": 1, "maxLength": 4096}}}]}},
+    {"token": "#memory-search", "kind": "semantic", "value": "read-only", "summary": "Retrieve scoped cited memory."},
+    {"token": "#truth", "kind": "semantic", "value": "read-only", "summary": "Recheck historical context against its source before effects."},
+    {"token": "#vcc", "kind": "semantic", "value": "read-only", "summary": "Retain verifiable source and scope; context grants no authority."},
+    {"token": "@agent:", "kind": "binding", "name": "agent", "mode": "option", "summary": "Caller agent label; not authentication or authority."},
+    {"token": "@memory-store:", "kind": "binding", "name": "memory-store", "mode": "option", "summary": "Select workspace enrollment; arbitrary or runtime stores are refused."},
+    {"token": "@operator:", "kind": "binding", "name": "operator", "mode": "option", "summary": "Caller operator label; not authentication or authority."}
   ]
 }

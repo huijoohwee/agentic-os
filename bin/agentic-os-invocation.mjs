@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { readBoundedFile, snapshotCatalogInput } from '../src/catalog-input.mjs';
 import { PREFIX_KINDS, parseInvocationToken } from '../src/invocation.mjs';
+import { memoryArguments } from './agentic-os-argv.mjs';
 
 export { PREFIX_KINDS } from '../src/invocation.mjs';
 
@@ -39,14 +40,11 @@ export const ENTRY_CONTRACTS = deepFreeze({
   '/reconcile': { kind: 'command', action: 'reconcile', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/queue.show': { kind: 'command', action: 'queue', argv: ['show'], semantic: 'read-only', accepts: [], requires: [] },
   '/help': { kind: 'command', action: 'help', argv: [], semantic: 'read-only', accepts: [], requires: [] },
-  '/run.start': { kind: 'command', action: 'run', argv: ['start'], semantic: 'mutating', accepts: ['input'], requires: ['input'] },
-  '/run.status': { kind: 'command', action: 'run', argv: ['status'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
-  '/run.cancel': { kind: 'command', action: 'run', argv: ['cancel'], semantic: 'mutating', accepts: ['input'], requires: ['input'] },
-  '/run.retry': { kind: 'command', action: 'run', argv: ['retry'], semantic: 'mutating', accepts: ['input'], requires: ['input'] },
-  '/run.query': { kind: 'command', action: 'run', argv: ['query'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
-  '/run.trace': { kind: 'command', action: 'run', argv: ['trace'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
-  '/run.evaluate': { kind: 'command', action: 'run', argv: ['evaluate'], semantic: 'mutating', accepts: ['input'], requires: ['input'] },
-  '/run.compare': { kind: 'command', action: 'run', argv: ['compare'], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
+  ...Object.fromEntries(['start', 'status', 'cancel', 'retry', 'query', 'trace', 'evaluate', 'compare'].map(operation =>
+    [`/run.${operation}`, { kind: 'command', action: 'run', argv: [operation], semantic: ['status', 'query', 'trace', 'compare'].includes(operation) ? 'read-only' : 'mutating', accepts: ['input'], requires: ['input'] }])),
+  '/memory.search': { kind: 'command', action: 'memory', argv: ['search'], semantic: 'read-only', accepts: ['agent', 'memory-store', 'operator', 'input'], requires: ['agent', 'memory-store', 'operator', 'input'] },
+  ...Object.fromEntries(['memory-search', 'truth', 'vcc'].map(name => [`#${name}`, { kind: 'semantic', value: 'read-only' }])),
+  ...Object.fromEntries(['agent', 'memory-store', 'operator'].map(name => [`@${name}:`, { kind: 'binding', name, mode: 'option' }])),
   '#read-only': { kind: 'semantic', value: 'read-only' },
   '#mutating': { kind: 'semantic', value: 'mutating' },
   '@scope:': { kind: 'binding', name: 'scope', mode: 'positional' },
@@ -141,18 +139,8 @@ export function validateCatalog(input) {
     const expected = ENTRY_CONTRACTS[entry.token];
     if (!expected) findings.push({ code: 'unsupported-entry', token: entry.token });
     else {
-      const actual = entry.kind === 'command'
-        ? {
-            kind: entry.kind,
-            action: entry.action,
-            argv: entry.argv ?? [],
-            semantic: entry.semantic,
-            accepts: entry.accepts ?? [],
-            requires: entry.requires ?? [],
-          }
-        : entry.kind === 'semantic'
-          ? { kind: entry.kind, value: entry.value }
-          : { kind: entry.kind, name: entry.name, mode: entry.mode };
+      const actual = Object.fromEntries(Object.keys(expected).map(key =>
+        [key, entry[key] ?? (['argv', 'accepts', 'requires'].includes(key) ? [] : undefined)]));
       if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         findings.push({ code: 'dispatch-contract-drift', token: entry.token });
       }
@@ -199,7 +187,8 @@ export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   const ambiguous = validation.findings.find((finding) => finding.code === 'ambiguous-entry');
   if (ambiguous) return rejected(tokens, 'ambiguous-entry', ambiguous);
   if (!validation.ok) return rejected(tokens, 'catalog-invalid', { findings: validation.findings });
-  if (tokens.length === 0 || tokens.length > 3) return rejected(tokens, 'token-count');
+  const memory = tokens.includes('/memory.search');
+  if (tokens.length === 0 || tokens.length > (memory ? 8 : 3)) return rejected(tokens, 'token-count');
 
   const parsed = tokens.map((token) => ({ token, ...parseToken(token) }));
   const malformed = parsed.find((token) => token.error);
@@ -207,7 +196,9 @@ export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   const duplicated = Object.keys(PREFIX_KINDS).find(
     (prefix) => parsed.filter((token) => token.prefix === prefix).length > 1,
   );
-  if (duplicated) return rejected(tokens, 'duplicate-prefix', { prefix: duplicated });
+  if (duplicated && !memory) return rejected(tokens, 'duplicate-prefix', { prefix: duplicated });
+  if (memory && new Set(parsed.map(token => token.canonical)).size !== parsed.length)
+    return rejected(tokens, 'duplicate-token');
 
   const resolved = parsed.map((token) => ({
     ...token,
@@ -221,6 +212,15 @@ export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   if (multiple) return rejected(tokens, 'ambiguous-entry', { token: multiple.token });
 
   const entries = resolved.map(({ matches, ...token }) => ({ ...token, entry: matches[0] }));
+  if (memory) {
+    const expected = ['/memory.search', '#memory-search', '#truth', '#vcc', '@agent:', '@memory-store:', '@operator:', '@input:'];
+    if (entries.length !== expected.length || entries.some(entry => !expected.includes(entry.canonical)))
+      return rejected(tokens, 'memory-tuple-required');
+    const value = name => entries.find(entry => entry.canonical === name)?.argument;
+    if (value('@memory-store:') !== 'workspace') return rejected(tokens, 'memory-store-not-enrolled');
+    if (['@agent:', '@operator:'].some(name => !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value(name))))
+      return rejected(tokens, 'memory-context-invalid');
+  }
   const command = entries.find((entry) => entry.kind === 'command')?.entry;
   if (!command) return rejected(tokens, 'command-missing');
   const semantic = entries.find((entry) => entry.kind === 'semantic')?.entry;
@@ -231,7 +231,8 @@ export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   if (binding && !(command.accepts ?? []).includes(binding.entry.name)) {
     return rejected(tokens, 'binding-not-accepted', { binding: binding.entry.name });
   }
-  const supplied = binding ? [binding.entry.name] : [];
+  const supplied = memory ? entries.filter(entry => entry.kind === 'binding').map(entry => entry.entry.name)
+    : binding ? [binding.entry.name] : [];
   const required = (command.requires ?? []).find((name) => !supplied.includes(name));
   if (required) return rejected(tokens, 'binding-required', { binding: required });
 
@@ -267,6 +268,16 @@ export function dispatchInvocation(resolution) {
   const selected = current.entries.find((entry) => entry.kind === 'command');
   const command = ENTRY_CONTRACTS[selected?.canonical];
   if (command?.kind !== 'command') return { ok: false, code: 'dispatch-contract-missing' };
+  if (selected.canonical === '/memory.search') {
+    try {
+      const path = current.entries.find(entry => entry.canonical === '@input:').argument;
+      const input = JSON.parse(UTF8.decode(readBoundedFile(path, 4096, 'memory search request')));
+      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.hasOwn(input, 'operation'))
+        return { ok: false, code: 'memory-input-invalid' };
+      const [action, ...args] = memoryArguments({ ...input, operation: 'search' }, selected.entry.inputSchema);
+      return { ok: true, command: action, argv: args, semantic: 'read-only' };
+    } catch { return { ok: false, code: 'memory-input-invalid' }; }
+  }
   const binding = current.entries.find((entry) => entry.kind === 'binding');
   const bindingContract = binding ? ENTRY_CONTRACTS[binding.canonical] : null;
   if (binding && bindingContract?.kind !== 'binding') return { ok: false, code: 'dispatch-contract-missing' };

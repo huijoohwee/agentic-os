@@ -327,6 +327,22 @@
         "summary": "ESP32 firmware with the native ESP-IDF toolchain, selected-device evidence and optional editor/debug recipes.",
         "transport": "source"
       }
+    },
+    {
+      "id": "shared-task-memory",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "guides/MEMORY.md",
+      "consumers": [
+        "github.com/huijoohwee/agentic-canvas-os",
+        "github.com/huijoohwee/agentic-graph"
+      ],
+      "discovery": {
+        "kinds": [
+          "command"
+        ],
+        "summary": "Pinned shared workspace memory search, read and reviewed capture proposals; no source write or implicit refresh.",
+        "transport": "mcp"
+      }
     }
   ],
   "historical": [

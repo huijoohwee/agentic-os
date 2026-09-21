@@ -2,7 +2,7 @@
 
 import { loadCatalog, validateCatalog } from '../bin/agentic-os-invocation.mjs';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_COMMAND, capabilityArguments } from '../bin/agentic-os-argv.mjs';
+import { CAPABILITY_COMMAND, capabilityArguments, memoryArguments } from '../bin/agentic-os-argv.mjs';
 import { assertScope, isLaneRef } from './lane-id.mjs';
 import { parseWritePaths } from './worktree.mjs';
 
@@ -76,6 +76,7 @@ const CLI_OUTPUT = {
 };
 
 const invocationCatalog = loadCatalog();
+const memorySchema = invocationCatalog.entries.find(entry => entry.token === '/memory.search').inputSchema;
 if (!validateCatalog(invocationCatalog).ok) throw new TypeError('Invocation catalog is invalid.');
 const RUN_TOOLS = invocationCatalog.entries.filter(entry => entry.action === 'run').map(entry => ({
   name: entry.token.slice(1), description: entry.summary, inputSchema: entry.inputSchema, outputSchema: CLI_OUTPUT,
@@ -91,6 +92,9 @@ export const TOOLS = deepFreeze([
   ...WORKFLOW_TOOLS,
   ...RUN_TOOLS,
   { ...CAPABILITY_COMMAND, outputSchema: CLI_OUTPUT },
+  { name: 'memory', description: 'Retrieve pinned enrolled shared memory or propose one reviewed learning record. Search/read/capture are local-only; no refresh, source write or authority. Results are historical context.',
+    inputSchema: memorySchema, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   {
     name: 'collaborate', title: 'Coordinate optional shared work',
     description: 'Use enrolled shared Git coordination for on-demand agents; no model invocation or execution authority.',
@@ -188,6 +192,7 @@ export function toolArguments(name, args) {
     return ['run', name.slice(4), '--input=-'];
   }
   if (name === 'capabilities') return capabilityArguments(args, invalidParams);
+  if (name === 'memory') return memoryArguments(args, memorySchema, invalidParams);
   if (name === 'collaborate') {
     if (!plainObject(args) || !onlyKeys(args, ['operation', 'input', 'offline'])
       || !['status', 'get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(args.operation))
