@@ -44,3 +44,42 @@ Finish focused corrections and upstream pin updates before publishing an immutab
 publication, follow the existing successor workflow for new changes; do not rebase published lanes.
 Consumer repositories must adopt the affected planner/contracts to replace their own broad runners;
 this source change alone does not alter another repository's validation commands.
+
+## Consumer plans and PR metadata
+
+CI-ECONOMICS-001: a release maintainer should finish a failed partition without paying for the
+same successful source checks again. Reuse the existing validation receipts and body validator;
+do not add a second planner, cache service, paid runner, or merge-authority path.
+
+Consumer `.agentic-os-validation.json` checks may opt into `reuse: "local-plan"` with `inputs: ["*"]`
+when their command runs a deterministic affected plan. This binds the complete working source,
+index, HEAD, requested base and merge base, broad/affected selection, command, policy, harness,
+configuration, environment and toolchain. A partial `--only` run and the same full plan can share
+passing partitions. Reuse keeps the original validation time and expires through the existing
+one-hour receipt policy. Missing/tampered receipts, changed inputs or `--fresh` execute again.
+Unchanged failures remain blockers. `local` retains its narrower declared dependency contract;
+`never` remains appropriate for mutable services and runtime/device observations. Hosted CI is
+always fresh unless its existing provider-verified CI-evidence policy explicitly permits reuse.
+
+Ordinary PR title/body edits use `node <agentic-os>/bin/agentic-os-review-body.mjs metadata` from
+the consumer checkout. It accepts a provider-bound `pull_request` edited event containing only
+title/body changes, verifies checkout and native review identity, and invokes the existing
+`reviewBodyCheck` through bounded JSON stdin. It never runs source checks or grants merge authority.
+Base/head changes, unknown changes and ambiguous events refuse this route and require source CI.
+
+Keep metadata in a separate workflow/check context and concurrency group from source CI. Never
+replace a required source check with a skipped or metadata-only success. The OS source workflow
+already excludes ordinary `edited` events; consumers that include them must adopt this routing
+in their own workflow and preserve their base-change source validation. A title/body edit must
+not cancel an in-flight source run. Source, configuration and dependency changes still invalidate
+the affected proof; exact protected checks remain required at integration.
+
+Native publication now binds a missing branch upstream after verifying the exact remote candidate,
+creating its tracking ref from the already-present object. Repeating publication repairs a missing
+binding without another push. Custom/partial upstream configuration and conflicting tracking refs
+remain preserved; tracking failures report the retained published ref instead of rolling it back.
+
+Acceptance: real command counters prove partial-to-full reuse; HEAD/base/source/selection changes
+invalidate it; CLI metadata tests exercise body rejection and base-change refusal; bare-Git tests
+prove immediate upstream resolution, idempotency and preservation. No production deployment or
+downstream workflow adoption is implied by releasing this shared owner.

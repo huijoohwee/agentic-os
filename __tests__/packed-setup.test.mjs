@@ -187,7 +187,9 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false, latest = false) {
-  const source = latest ? selected.files.map(file => file.path === 'src/governance.mjs'
+  const source = latest ? selected.files.map(file => file.path === 'src/git.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url)),
+      sha256: 'd51f658be657d761badc23d29b8e15267a8d542df660f9087a2538e2e2c3dd5a' } : file.path === 'src/governance.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url)), sha256: 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390' } : file.path === 'src/quarantine.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
       sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' } : file.path === 'src/lane-id.mjs'

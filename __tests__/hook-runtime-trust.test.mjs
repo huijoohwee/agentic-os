@@ -14,7 +14,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(released
+for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream']) test(released
   ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
@@ -22,7 +22,9 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(rele
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
   const altered = selected.files.map((file, index) => {
-    const bytes = released ? (file.path === 'src/governance.mjs'
+    const bytes = released ? (file.path === 'src/git.mjs'
+      ? readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url))
+      : released === 'pre-upstream' ? file.bytes : file.path === 'src/governance.mjs'
       ? readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url))
       : file.path === 'src/quarantine.mjs'
       ? readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url))
@@ -54,7 +56,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff']) test(rele
   chmodSync(manifestPath, 0o600);
 
   if (released) {
-    assert.equal(runtimeId, released === 'pre-diff'
+    assert.equal(runtimeId, released === 'pre-upstream'
+      ? 'v1-ad7769d4d30007c8655b057a27deb45a435add2b6f7db2a11fe58bc0f1573f67' : released === 'pre-diff'
       ? 'v1-c163b6a6e47c0e1a9622e95b8b8cbdb0bb7d4c97b35f64de638636a2b5fdd625' : released === 'copy'
       ? 'v1-6f4c654528cb71df9f1c5ce26f6aef75aad8c6c1e988f6c86cc6b4d6268c48d9'
       : 'v1-1302dff132ff5ecac9f6ea9362c6d7425f60529086f58814dbd3fd958d37d7eb');

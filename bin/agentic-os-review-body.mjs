@@ -1,15 +1,13 @@
 /** Bounded review text and optional repository-owned metadata preflight. */
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { TextDecoder } from 'node:util';
-import { readBoundedFile } from '../src/catalog-input.mjs';
 import { gitLines, headSha } from '../src/git.mjs';
 import { parseLaneRef } from '../src/lane-id.mjs';
-import { sourceHeadTrailer } from '../src/patch-identity.mjs';
 import { VALIDATION_POLICY, validateValidationPolicy } from './agentic-os-validation-policy.mjs';
 import { readRegular } from './agentic-os-test-inputs.mjs';
-const MAX_REVIEW_BODY_BYTES = 65_536;
+import { readReviewBody, reviewIdentity, validateReviewTitle, reviewMetadataInput } from '../src/protected-workflows.mjs';
 
 function validateOwnerBody(root, ref, body) {
   const policyPath = resolve(root, VALIDATION_POLICY);
@@ -25,34 +23,6 @@ function validateOwnerBody(root, ref, body) {
   if (result.error || result.status !== 0) throw Object.assign(new Error(
     `repository review-body check failed: ${result.error?.code ?? result.status}; ${String(result.stderr ?? '').slice(-2000)}`),
     { reason: 'blocked-review-body-invalid' });
-}
-
-function readReviewBody(path, suffix) {
-  try {
-    const bytes = readBoundedFile(path,
-      MAX_REVIEW_BODY_BYTES - Buffer.byteLength(suffix, 'utf8'), 'pull request body');
-    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-    if (!text.trim() || text.includes('\0'))
-      throw new TypeError('pull request body must be nonempty text without NUL');
-    if (/^[\t \uFEFF]*(?:Lane|Base-Revision|Source-Head):/imu.test(text))
-      throw new TypeError('pull request body must not contain native identity trailer lines');
-    return text + suffix;
-  } catch (error) {
-    throw Object.assign(new Error(`invalid pull request body: ${error.message}`), {
-      reason: 'blocked-review-body-invalid',
-    });
-  }
-}
-
-const reviewIdentity = (ref, head, base) => [
-  `Lane: ${ref}`, `Base-Revision: ${base}`, sourceHeadTrailer(head),
-].join('\n');
-function validateReviewTitle(title) {
-  if (title === null) return;
-  if (typeof title !== 'string' || !title.trim() || title !== title.trim()
-      || [...title].length > 256 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(title))
-    throw Object.assign(new TypeError('pull request title must be 1-256 characters without surrounding whitespace or control characters'),
-      { reason: 'blocked-review-title-invalid' });
 }
 
 /** Reserve exact trailer space before commit/fetch; actual identity is appended after commit. */
@@ -78,3 +48,15 @@ export function pullRequestText(root, ref, laneHeadSha, baseSha, bodyFile = null
   return { title, body };
 }
 
+export function validateReviewMetadata(root, environment = process.env) {
+  const { ref, body, receipt } = reviewMetadataInput(root, environment);
+  validateOwnerBody(root, ref, body);
+  return receipt;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try {
+    if (process.argv.length !== 3 || process.argv[2] !== 'metadata') throw new Error('expected review-body metadata');
+    console.log(JSON.stringify(validateReviewMetadata(process.cwd())));
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
+}

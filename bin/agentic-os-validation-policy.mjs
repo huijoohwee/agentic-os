@@ -45,9 +45,10 @@ export function validateValidationPolicy(value) {
     if (commands.has(key)) fail('duplicate-command');
     commands.add(key);
     names(check.inputs, 256).forEach(inputPath); names(check.requires);
-    if (!['local', 'never'].includes(check.reuse) || !Number.isInteger(check.timeoutMs)
+    if (!['local', 'local-plan', 'never'].includes(check.reuse) || !Number.isInteger(check.timeoutMs)
       || check.timeoutMs < 100 || check.timeoutMs > 900_000) fail('execution-bounds');
     if (check.reuse === 'local' && !check.inputs.length) fail('unbounded-local-reuse');
+    if (check.reuse === 'local-plan' && !check.inputs.includes('*')) fail('unbounded-plan-reuse');
   }
   for (const id of [...value.always, ...value.fallback, ...value.checks.flatMap(check => check.requires)])
     if (!ids.has(id)) fail('unknown-check');

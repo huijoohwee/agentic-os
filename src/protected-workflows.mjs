@@ -1,6 +1,11 @@
-/** Bounded static observation of protected-ref workflow merge-group contexts. */
+/** Bounded workflow and review metadata observation; never source-check or merge authority. */
 import { TextDecoder } from 'node:util';
-import { decodeNulFields, observeGit } from './git.mjs';
+import { decodeNulFields, observeGit, gitLines } from './git.mjs';
+import { readBoundedFile } from './catalog-input.mjs';
+import { sourceHeadTrailer } from './patch-identity.mjs';
+import { parseLaneRef } from './lane-id.mjs';
+import { remoteRepositoryIdentity } from './github-provider.mjs';
+import { resolveValidationCi } from '../bin/agentic-os-validation.mjs';
 
 export const PROTECTED_WORKFLOW_LIMITS = Object.freeze({
   count: 64,
@@ -119,4 +124,65 @@ export function protectedWorkflowSupportsMergeGroup(cwd, policy) {
     workflowMergeGroupChecks(text).forEach((context) => contexts.add(context));
   }
   return policy.requiredChecks.every((context) => contexts.has(context));
+}
+
+/** Metadata is its own observation, never a replacement for required source checks. */
+export function reviewMetadataInput(root, environment = process.env) {
+  const fail = reason => { throw new Error(`blocked-review-metadata:${reason}`); };
+  if (environment.GITHUB_ACTIONS !== 'true' || environment.GITHUB_EVENT_NAME !== 'pull_request'
+    || !environment.GITHUB_EVENT_PATH) fail('provider-context');
+  const bytes = readBoundedFile(environment.GITHUB_EVENT_PATH, 499000, 'review event');
+  const event = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  const changes = event.changes, pr = event.pull_request;
+  if (event.action !== 'edited' || !changes || Array.isArray(changes)
+    || !Object.keys(changes).length || Object.keys(changes).some(key => !['body', 'title'].includes(key)))
+    fail('source-validation-required');
+  for (const change of Object.values(changes)) {
+    if (!change || typeof change !== 'object' || Array.isArray(change)
+      || Object.keys(change).join() !== 'from' || change.from !== null && typeof change.from !== 'string')
+      fail('ambiguous-changes');
+  }
+  const context = resolveValidationCi(root, environment);
+  if (!bytes.equals(readBoundedFile(environment.GITHUB_EVENT_PATH, 499000, 'review event'))) fail('event-drift');
+  const repository = remoteRepositoryIdentity(gitLines(['remote', 'get-url', 'origin'], { cwd: root })[0]);
+  if (repository?.repository.toLowerCase() !== `github.com/${event.repository?.full_name}`.toLowerCase()
+    || !Number.isSafeInteger(pr?.number) || pr.number < 1 || !parseLaneRef(pr.head?.ref)) fail('identity');
+  validateReviewTitle(pr.title);
+  if (pr.title === null || typeof pr.body !== 'string' || !pr.body.trim() || pr.body.includes('\0')
+    || Buffer.byteLength(pr.body) > 65536) fail('text');
+  for (const [key, expected] of [['Lane', pr.head.ref], ['Source-Head', pr.head.sha]]) {
+    const values = [...pr.body.matchAll(new RegExp(`^${key}: (.+)$`, 'gm'))].map(match => match[1].trim());
+    if (values.length !== 1 || values[0] !== expected) fail('review-identity');
+  }
+  return { ref: pr.head.ref, body: pr.body, receipt: { schema: 'agentic-os/review-metadata/v1', authority: false, repository: repository.repository,
+    pullRequest: pr.number, head: pr.head.sha, base: context.base, checkout: context.checkout,
+    outcome: 'passed', sourceValidation: 'not-executed', changed: Object.keys(changes).sort() } };
+}
+
+export function readReviewBody(path, suffix) {
+  try {
+    const bytes = readBoundedFile(path,
+      65536 - Buffer.byteLength(suffix, 'utf8'), 'pull request body');
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    if (!text.trim() || text.includes('\0'))
+      throw new TypeError('pull request body must be nonempty text without NUL');
+    if (/^[\t \uFEFF]*(?:Lane|Base-Revision|Source-Head):/imu.test(text))
+      throw new TypeError('pull request body must not contain native identity trailer lines');
+    return text + suffix;
+  } catch (error) {
+    throw Object.assign(new Error(`invalid pull request body: ${error.message}`), {
+      reason: 'blocked-review-body-invalid',
+    });
+  }
+}
+
+export const reviewIdentity = (ref, head, base) => [
+  `Lane: ${ref}`, `Base-Revision: ${base}`, sourceHeadTrailer(head),
+].join('\n');
+export function validateReviewTitle(title) {
+  if (title === null) return;
+  if (typeof title !== 'string' || !title.trim() || title !== title.trim()
+      || [...title].length > 256 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(title))
+    throw Object.assign(new TypeError('pull request title must be 1-256 characters without surrounding whitespace or control characters'),
+      { reason: 'blocked-review-title-invalid' });
 }

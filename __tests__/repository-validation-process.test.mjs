@@ -68,6 +68,21 @@ test('unchanged deterministic failure stops without another command and remains 
   assert.equal(await f.run('--fresh'),1);assert.ok(f.calls().length>before.length);
 });
 
+test('whole-plan partitions join without rerunning passed commands, and explicit fresh still executes', async t => {
+  const f=fixture(t), path=join(f.root,'.agentic-os-validation.json');
+  const policy=JSON.parse(readFileSync(path,'utf8'));
+  for (const check of policy.checks) { check.reuse='local-plan'; check.inputs=['*']; }
+  writeFileSync(path,JSON.stringify(policy)); f.git('add','.'); f.git('commit','-m','declare deterministic plans');
+  assert.equal(await f.run('--only=fallback'),0); assert.deepEqual(f.calls(),['fallback']);
+  const validationTime=f.receipt().results[0].validatedAt;
+  assert.equal(await f.run(),0); assert.deepEqual(f.calls(),['fallback','contract']);
+  const reused=f.receipt().results.find(result=>result.id==='fallback');
+  assert.equal(reused.reused,true); assert.equal(reused.validatedAt,validationTime);
+  assert.equal(await f.run('--fresh'),0); assert.equal(f.calls().length,4);
+  f.git('commit','--allow-empty','-m','different candidate');
+  assert.equal(await f.run(),0); assert.equal(f.calls().length,6,'HEAD change invalidates whole-plan reuse');
+});
+
 test('source mutation during a passing command cannot publish a passing receipt', async t => {
   const f=fixture(t);writeFileSync(join(f.root,'source/a.txt'),'mutate');
   assert.equal(await f.run(),1);assert.equal(f.receipt().outcome,'blocked');
