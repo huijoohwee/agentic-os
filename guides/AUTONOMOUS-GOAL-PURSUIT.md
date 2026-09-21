@@ -63,10 +63,26 @@ profiler, polling service or competing renderer to enforce this documentation ru
 
 ## Productive external waits
 
-A blocked dependency blocks only its dependent effects. Before waiting, inventory the remaining
-covered work and its write reservations. Continue useful disjoint implementation, review, tests or
-release preparation concurrently when resources allow. Do not invent busywork, duplicate completed
-checks, widen scope, take another writer's files or exceed the existing concurrency/resource caps.
+A blocked dependency blocks only its dependent effects. Before waiting on CI, review, an operator
+decision or a provider, select from the existing covered pending work; do not stop the entire task.
+
+- An item is eligible only when its prerequisites and authority are satisfied, its inputs remain valid,
+  and its write reservation and runtime resources do not conflict with active work. Pending approval
+  for one effect does not authorize that effect or block independent preparation already covered.
+- Prefer work that advances the next delivery boundary or removes another blocker, then useful short
+  implementation, review, affected validation or release preparation. Do not invent work to fill a wait.
+- Run independent operations concurrently only within the existing worker, CPU, memory, byte and cost
+  caps. Account for running builds, browsers and watchers before admitting more; avoid overlapping heavy
+  jobs when contention would increase completion time. Share one valid result per input set instead of
+  duplicating scans, builds, tests or observers. Serialize dependent effects and shared-resource writes.
+- Retain the blocked item, exact dependency, last observation and next recheck trigger in existing task
+  evidence while other work proceeds. At an independent milestone or dependency event, reconsider only
+  affected eligibility; revalidate volatile inputs before resuming an effect. Do not rebuild the whole
+  inventory, restart active work or discard valid receipts merely because another item completed.
+
+Continue eligible work without requesting covered authority again. Do not widen scope, take another
+writer's files, bypass a prerequisite or exceed caps. This uses the existing task and scheduling owners;
+it adds no queue, polling service, parallel controller or requirement to spawn agents.
 
 Observe a dependency once, then do independent work. Prefer provider events or a completed work
 milestone for the next observation; after unchanged state, recheck no sooner than 60 seconds and
