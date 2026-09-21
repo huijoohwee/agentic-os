@@ -42,8 +42,8 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
   const { entries, failures } = collectCatalogEntries(documents);
   assert.deepEqual(failures, []);
-  assert.equal(entries.length, 407);
-  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [133, 141, 133]);
+  assert.equal(entries.length, 409);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [134, 142, 133]);
   assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
   assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
   assert.match(entries.find(e => e.token === '/launch-copilot').summary, /81rv10 Launch Copilot/);
@@ -55,6 +55,32 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   for (const { docsPath } of DICTIONARY_DESCRIPTORS) {
     assert.ok(packed[0].files.some(f => f.path === `catalog/dictionaries/${docsPath}`));
   }
+});
+
+test('procedural asset discovery reuses text binding without broadening image contracts or CLI execution', () => {
+  const documents = dictionaryDocuments();
+  const { entries, failures } = collectCatalogEntries(documents);
+  assert.deepEqual(failures, []);
+  for (const token of ['/asset.create', '@text', '#procedural-asset']) {
+    assert.ok(entries.some(entry => entry.token === token), token);
+    assert.equal(parseInvocationToken(token).error, undefined);
+  }
+  const command = documents.get('DICTIONARY-COMMAND.md');
+  const asset = command.split('\n').find(line => line.startsWith('| `/asset.create`')).split('|');
+  assert.equal(asset[3].trim(), 'exactly `@text`');
+  assert.equal(asset[4].trim(), 'exactly `#procedural-asset`');
+  for (const token of ['/image.to-threejs', '/image.to-glb']) {
+    const row = command.split('\n').find(line => line.startsWith(`| \`${token}\``));
+    assert.match(row, /image|PNG/);
+    assert.doesNotMatch(row, /@text|#procedural-asset/);
+  }
+  const binding = documents.get('DICTIONARY-BINDING.md');
+  for (const token of ['@image-to-threejs', '@image-to-glb']) {
+    const row = binding.split('\n').find(line => line.startsWith(`| \`${token}\``));
+    assert.match(row, /PNG, JPG, JPEG, or SVG source/);
+  }
+  const executableCatalog = readFileSync(new URL('../catalog/invocation.json', import.meta.url), 'utf8');
+  assert.doesNotMatch(executableCatalog, /\/asset\.create/);
 });
 
 test('dictionary drift, malformed declarations and missing assets fail before hashing', () => {
@@ -98,7 +124,7 @@ test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale res
   const before = collectCatalogEntries(original);
   original.delete(name);
   assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
-  assert.equal(before.entries.length, 407);
+  assert.equal(before.entries.length, 409);
   assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
 });
 
