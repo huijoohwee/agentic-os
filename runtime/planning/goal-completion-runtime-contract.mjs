@@ -1,32 +1,12 @@
-// Responsibility: Turn one goal plus recorded outcomes into the next non-blocking
-// advance decision, without owning readiness, dispatch, or authority.
-//
-// Ownership boundary, stated so this file cannot become a second scheduler:
-//   - readiness, dependency waves, blocker localization to dependents, and
-//     write-set disjointness stay owned by coordination-scheduler-contract.mjs;
-//     this module composes it and never reimplements it.
-//   - digests, canonical JSON, and write-set normalization stay owned by
-//     product-contract-primitives.mjs.
-//   - concurrent execution stays owned by the Agent Swarm runtime. Nothing here
-//     dispatches, sleeps, retries, or touches a lane, a lease, or a ref.
-//
-// What this module adds, which nothing else owned:
-//   1. Adaptive priority derived from recorded outcomes instead of a caller
-//      guess, fed into the existing scheduler as its `priority` input.
-//   2. A self-improving loop that is deterministic and auditable: the same
-//      outcomes always yield the same weights, and every weight ships in the
-//      receipt with its own digest so an adjustment can be replayed.
-//   3. Non-blocking goal progress: a blocked unit bounds itself and its
-//      dependents, and the goal stays continuable while any unit is ready.
-//   4. A fail-closed gate: a unit declaring `gate: true` is refused until the
-//      caller passes an explicit authorization for that exact unit.
-//
-// Determinism: integer arithmetic only, no clock, no randomness, no filesystem,
-// no network. Every returned record is frozen and carries `mutation: false`.
+// Responsibility: Derive a deterministic, read-only goal advance from outcomes.
+// The coordination scheduler owns readiness, waves and write disjointness;
+// product primitives own digests; the existing agent runtime owns dispatch.
+// Detailed contracts and boundaries: GOAL-COMPLETION-RUNTIME.md.
 
 import {
   COORDINATION_SCHEDULER_INPUT_SCHEMA,
   buildCoordinationSchedule,
+  normalizeExternalWait,
 } from "./coordination-scheduler-contract.mjs";
 import { digestValue, normalizeWriteSet } from "./product-contract-primitives.mjs";
 
@@ -38,9 +18,6 @@ export const UNIT_STATES = Object.freeze(["pending", "done", "abandoned"]);
 export const GOAL_STATES = Object.freeze(["continuable", "stalled", "complete", "blocked"]);
 export const GATE_FINDING = "goal-gate-unauthorized";
 
-// Priority is an integer band because the scheduler orders by descending
-// integer priority. BASE_WEIGHT is the neutral prior for a kind with no
-// recorded history, so an unproven kind is neither favoured nor buried.
 export const PRIORITY_CEILING = 1_000;
 export const BASE_WEIGHT = 500;
 export const RETRY_PENALTY = 50;
@@ -64,9 +41,6 @@ export function deriveHeuristics(outcomes) {
       kind,
       attempts: bucket.attempts,
       successes: bucket.successes,
-      // Integer-only so the same outcomes always produce the same weight on
-      // every platform. A kind that keeps failing or keeps needing retries
-      // sinks; it is never removed, because ranking is not admission.
       weight: clampWeight(
         Math.floor((PRIORITY_CEILING * bucket.successes) / bucket.attempts)
         - RETRY_PENALTY * Math.floor(bucket.retries / bucket.attempts),
@@ -98,7 +72,6 @@ export function planGoalAdvance(source) {
   const terminalIds = new Set([...done, ...abandoned].map((unit) => unit.id));
   const active = goal.units.filter((unit) => unit.state === "pending");
 
-  // Every unit is terminal: report completion without inventing a schedule.
   if (active.length === 0) {
     return receipt({
       goal,
@@ -119,21 +92,17 @@ export function planGoalAdvance(source) {
     capacity: goal.capacity,
     tasks: active.map((unit) => ({
       id: unit.id,
-      // The learned weight becomes the scheduler's priority. Ordering is the
-      // only thing heuristics may influence; they never admit, gate, or block.
       priority: weightForKind(heuristics, unit.kind),
-      // A dependency already terminal is no longer a constraint, and the
-      // scheduler requires every declared dependency to be present in its
-      // own input, so satisfied edges are dropped here rather than faked.
+      // The scheduler only receives active units; omit terminal dependencies.
       dependencies: unit.dependencies.filter((id) => !terminalIds.has(id)),
       declaredWriteSet: unit.declaredWriteSet,
       authorityState: unit.authorityState,
       findings: gateFindings(unit, goal.authorizations).concat(unit.findings),
+      ...(unit.externalWait ? { externalWait: unit.externalWait } : {}),
     })),
   });
 
-  const readyIds = new Set(schedule.ready.map((item) => item.taskId));
-  const state = readyIds.size > 0
+  const state = schedule.ready.length > 0
     ? "continuable"
     : schedule.waiting.length > 0 ? "stalled" : "blocked";
 
@@ -151,9 +120,7 @@ export function planGoalAdvance(source) {
   });
 }
 
-// A gate is refused by the same typed-finding path the scheduler already
-// understands, so gating adds no second block vocabulary. Absence of an
-// authorization is a refusal, never an assumed yes.
+// Refuse missing gate authorization through the scheduler's existing findings.
 function gateFindings(unit, authorizations) {
   if (!unit.gate || authorizations.includes(unit.id)) return [];
   return [{
@@ -177,8 +144,6 @@ function receipt({
     heuristicsDigest: heuristics.heuristicsDigest,
     scheduleDigest: schedule ? schedule.reportDigest : null,
     state,
-    // `continuable` is the non-blocking contract: a blocked unit bounds itself
-    // and its dependents, and the caller may still advance every ready unit.
     continuable: ready.length > 0,
     progress: Object.freeze({
       total,
@@ -188,13 +153,15 @@ function receipt({
       ready: ready.length,
       waiting: waiting.length,
       blocked: blocked.length,
-      // Permille keeps progress exact under integer arithmetic.
       completedPermille: total === 0 ? 1_000 : Math.floor((1_000 * terminal) / total),
     }),
-    // The scheduler reports dispositions in input order. Dispatch order is this
-    // module's own output, so it is sorted by wave, then by learned weight, then
-    // by id: earliest wave first, best-performing kind first, stable tiebreak.
     nextUnitIds: Object.freeze(orderForDispatch(ready, goal, heuristics)),
+    // Replan after the first wave; projected later waves grant no authority.
+    nextAction: Object.freeze({
+      id: ready.length ? "continue_independent_work" : waiting.length ? "wait_for_dependency"
+        : state === "complete" ? "complete" : "resolve_blocker",
+      unitIds: Object.freeze(orderForDispatch(ready.filter(item => item.wave === 0), goal, heuristics)),
+    }),
     waves: schedule ? schedule.waves : Object.freeze([]),
     blockedUnits: Object.freeze(blocked.map(dispositionRecord)),
     waitingUnits: Object.freeze(waiting.map(dispositionRecord)),
@@ -226,6 +193,7 @@ function dispositionRecord(item) {
     unitId: item.taskId,
     reason: item.reason,
     related: Object.freeze([...item.related]),
+    ...(item.externalWait ? { externalWait: item.externalWait } : {}),
   });
 }
 
@@ -261,6 +229,8 @@ function normalizeUnit(value) {
   const kind = text(value.kind, `kind for ${id}`);
   const state = text(value.state, `state for ${id}`);
   if (!UNIT_STATES.includes(state)) invalid(`state for ${id}`);
+  const externalWait = normalizeExternalWait(value.externalWait);
+  if (externalWait && state !== "pending") invalid(`external wait for terminal unit ${id}`);
   return Object.freeze({
     id,
     kind,
@@ -270,6 +240,7 @@ function normalizeUnit(value) {
     declaredWriteSet: normalizeWriteSet(value.declaredWriteSet),
     authorityState: text(value.authorityState, `authorityState for ${id}`),
     findings: Array.isArray(value.findings) ? value.findings : [],
+    ...(externalWait ? { externalWait } : {}),
   });
 }
 

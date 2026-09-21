@@ -2,7 +2,7 @@
 title: "Agentic Goal Completion Runtime"
 graphId: "md:agentic-os-goal-completion-runtime"
 doc_type: "Runtime Contract"
-date: "2026-08-30"
+date: "2026-09-22"
 lang: "en-US"
 schema: "agentic-os-goal-completion-runtime/v1"
 frontmatter_contract: "required"
@@ -60,6 +60,14 @@ This file adds a composition layer. It owns no capability another document alrea
 
 Each unit binds `id`, `kind`, `state` (`pending`, `done`, or `abandoned`), optional `gate`, `dependencies`, `declaredWriteSet`, `authorityState`, and optional `findings`. A dependency on a terminal unit is dropped before scheduling, because a completed dependency is no longer a constraint.
 
+A pending unit may carry the scheduler's optional `externalWait` record:
+`dependencyId`, `condition`, `observationDigest`, and `recheckTrigger`.
+This retains an exact CI, review or owner dependency while other work proceeds.
+The scheduler validates the record and preserves its reservation; this layer
+does not duplicate admission. A terminal unit with a live wait is invalid.
+Remove a wait only after its owner supplies new evidence, then revalidate the
+candidate, prerequisites and authority. Time passing never resolves it.
+
 Each outcome binds `kind`, `result` (`success` or `failure`), and optional `retries`. Outcomes are observations of past runs; the runtime never fabricates one.
 
 ## Heuristic Derivation
@@ -87,7 +95,19 @@ Self-improvement is therefore auditable rather than opaque. Every applied weight
 
 `nextUnitIds` is ordered by wave, then by descending learned weight, then by id. `progress.completedPermille` keeps progress exact under integer arithmetic.
 
-Overlapping write sets serialize into separate sequential waves rather than becoming blockers; contention is a scheduling fact, not a failure.
+`nextAction` makes continuation explicit. With eligible work, its id is
+`continue_independent_work` and `unitIds` contains only the first wave, within
+capacity and disjointness limits. `nextUnitIds` retains the complete projected
+order for compatibility. Replan after actual outcomes; later waves are not
+permission to skip prerequisites. When nothing eligible remains, the action is
+`wait_for_dependency`, `resolve_blocker`, or `complete`, with no unit ids.
+`waitingUnits` retains each root's external wait evidence and recheck trigger.
+
+Overlapping eligible write sets serialize into separate sequential waves.
+A waiting owner retains its reservation and excludes overlaps until refreshed
+owner input releases it. Independent work continues without re-requesting
+already covered task permission. Existing runtime resource, scope and cost
+caps still apply outside this read-only planner.
 
 ## Invocation
 
@@ -101,6 +121,10 @@ node ./runtime/planning/goal-completion-runtime.mjs plan --input=<goal.json> [--
 
 The command exits zero when the goal is `continuable` or `complete`, and one when it is `stalled` or `blocked`. A blocked unit elsewhere in the goal never fails the run while a ready unit remains. Exit two is a usage error.
 
+Human output includes `action`, the bounded `advance now` set, retained
+waiting reasons and recheck triggers. JSON carries the same decision and digests.
+No command, model, network request, extra worker, timer or queue is started.
+
 ## Proof
 
 `node --test __tests__/goal-completion-runtime.test.mjs` runs the transferred original cases. The native affected check also validates the OS documentation and module budgets.
@@ -108,6 +132,13 @@ The command exits zero when the goal is `continuable` or `complete`, and one whe
 Proven: neutral prior for unseen kinds, weight rise and fall with recorded results, retry penalty, zero floor, order-independent digests, learned reordering of the ready set, dependent blocking localization, terminal-dependency release, gate refusal and authorized admission, unknown-authorization rejection, wave serialization under overlap, stalled and blocked states, all-terminal completion, receipt determinism, frozen records, and fail-closed rejection of malformed goals and dependency cycles.
 
 Not proven: live concurrent dispatch of the ready set, provider execution, and any protected integration or deployment effect. Those remain owned and gated elsewhere.
+
+Productive-wait regression scope: waiting-owner path overlap and dependent
+exclusion, independent continuation, exact wait-evidence retention and digest
+invalidation, malformed input refusal, first-wave capacity, gate preservation
+after a wait clears, and the native CLI's continuing/waiting exit behavior.
+Implementation cap: eight existing files / 24 KiB; no dependency, always-load
+guidance, catalog, parallel controller or deployment change.
 
 ## VCC
 

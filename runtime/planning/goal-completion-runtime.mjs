@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-// Responsibility: Read-only CLI shim over the goal completion runtime contract.
-// It prints one advance decision and exits non-zero only when the goal cannot
-// continue. It dispatches nothing and mutates nothing.
+// Responsibility: Print one read-only goal advance; never dispatch or mutate.
 
 import { readBoundedFile } from "../../src/catalog-input.mjs";
 import path from "node:path";
@@ -32,12 +30,16 @@ async function run() {
       + `${p.waiting} waiting, ${p.blocked} blocked)`,
     );
     if (receipt.nextUnitIds.length > 0) console.log(`next: ${receipt.nextUnitIds.join(", ")}`);
-    for (const unit of receipt.blockedUnits) {
-      console.log(`blocked ${unit.unitId}: ${unit.reason}`);
+    console.log(`action: ${receipt.nextAction.id}`);
+    if (receipt.nextAction.unitIds.length) console.log(`advance now: ${receipt.nextAction.unitIds.join(", ")}`);
+    for (const [label, units] of [["waiting", receipt.waitingUnits], ["blocked", receipt.blockedUnits]]) {
+      for (const unit of units) {
+        console.log(`${label} ${unit.unitId}: ${unit.reason}`);
+        if (unit.externalWait) console.log(`recheck ${unit.externalWait.dependencyId}: ${unit.externalWait.recheckTrigger}`);
+      }
     }
   }
-  // Continuable is the success condition: blocked units elsewhere in the goal
-  // never fail the run while any ready unit remains.
+  // Blocked peers never fail the run while any ready unit remains.
   if (!receipt.continuable && receipt.state !== "complete") process.exitCode = 1;
 }
 
