@@ -300,7 +300,9 @@ test('effectful forced termination returns bounded write-result-unknown evidence
       timeoutMs: scenario === 'timeout' ? 100 : 5_000,
       env: { ...process.env, NODE_OPTIONS: `--import=${pathToFileURL(fixture).href}` },
     });
-    assert.equal(existsSync(marker), true);
+    // A deadline may kill Node before its preload runs on a busy host. Both
+    // timings must report unknown; output overflow proves the post-write case.
+    if (scenario === 'stdout') assert.equal(existsSync(marker), true);
     assert.equal(result.exitCode, 1);
     assert.equal(result.writeResultUnknown, true);
     assert.match(result.terminationReason,
