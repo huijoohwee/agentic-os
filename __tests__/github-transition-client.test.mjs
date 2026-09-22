@@ -665,6 +665,18 @@ test('successor predecessor authority records an already-merged exact squash', a
   }, verifier), receipt);
 });
 
+test('successor predecessor authority accepts an exact historical squash under still-ambiguous live methods',
+  async () => {
+    const fixture = await successorFixture((state) => {
+      historicalSquash(state, { rulesUpdatedAfterMerge: true });
+      state.targetMergeMethods = ['merge', 'rebase', 'squash'];
+    });
+    const winner = await publishGitHubTransitionAuthority(fixture.common);
+    assert.equal(winner.stored.providerProof.mergeMethod, 'squash');
+    assert.equal(winner.stored.providerProof.integrationMode,
+      GITHUB_RETROSPECTIVE_INTEGRATION_MODE);
+  });
+
 test('retrospective proof selects the latest successful required check rerun', async () => {
   const fixture = await successorFixture((state) => {
     historicalSquash(state, { rulesUpdatedAfterMerge: true });

@@ -68,6 +68,10 @@ export async function observeIntegrationMethod({ api, target, input, candidate, 
     input.predecessorIssuance?.storedBundle?.authorityBundle?.request?.dependentWork ?? []);
   const twoParents = mergedCommit.parents.length === 2 && mergedCommit.parents[1] === candidate.headRevision;
   if (choice === null) {
+    if (retrospective && input.predecessorAuthority !== undefined
+      && mergedCommit.parents.length === 1 && allowedMethods.includes('squash')) {
+      return { method: 'squash' };
+    }
     if (twoParents && allowedMethods.includes('merge')) return { method: 'merge' };
     if (mergedCommit.parents.length === 1 && allowedMethods.includes('squash')
       && !allowedMethods.includes('rebase')) return { method: 'squash' };
