@@ -207,7 +207,7 @@ function privateDirectory(path, label) {
   if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n
     || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`);
 }
-function readOperation(path, eligibility) {
+function readOperation(path, eligibility = null) {
   const metadataPath = join(path, 'operation.json');
   let bytes, value;
   try { bytes = readBoundedStableFile(metadataPath, 64_000,
@@ -215,7 +215,8 @@ function readOperation(path, eligibility) {
   catch { fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata is unsafe'); }
   try { value = JSON.parse(UTF8.decode(bytes)); }
   catch { fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata is invalid'); }
-  if (!value || Object.keys(value).sort().join(',') !== 'eligibility,executedAt,schema'
+  eligibility ??= value?.eligibility;
+  if (!eligibility || !value || Object.keys(value).sort().join(',') !== 'eligibility,executedAt,schema'
     || value.schema !== OPERATION_SCHEMA || !same(value.eligibility, eligibility)
     || !bytes.equals(Buffer.from(canonicalJson(value), 'utf8'))
     || !Number.isFinite(Date.parse(value.executedAt))
@@ -224,6 +225,42 @@ function readOperation(path, eligibility) {
     || Date.parse(value.executedAt) >= Date.parse(eligibility.expiresAt))
     fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata does not match');
   return value;
+}
+/** Verify retained cleanup bytes independently of later policy, refs, and peer activity.
+ * This is a local observation of a past effect, never current mutation authority. */
+export function observeRetainedWorktreeQuarantine(root, ref, head) {
+  try {
+    const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT);
+    privateDirectory(base, 'cleanup-quarantine-root');
+    const entries = boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root');
+    for (const entry of entries) {
+      if (!/^[a-f0-9]{64}$/u.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
+      try {
+        const operation = join(base, entry.name), registration = join(operation, 'registration');
+        privateDirectory(operation, 'cleanup-operation-directory');
+        if (UTF8.decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retained-head'))
+          !== `ref: refs/heads/${ref}\n`) continue;
+        const { eligibility: e } = readOperation(operation);
+        if (e.planDigest !== entry.name || !['projectionBytes', 'projectionEntries', 'registrationBytes', 'registrationEntries']
+          .every(key => Number.isSafeInteger(e[key]) && e[key] >= 0)
+          || e.projectionBytes > 4 * 1024 ** 3 || e.projectionEntries > 250000
+          || e.registrationBytes > 16 * 1024 ** 2 || e.registrationEntries > 20000) continue;
+        const projection = observeQuarantineManifest(join(operation, 'projection'), {
+          byteCeiling: e.projectionBytes, entryCeiling: e.projectionEntries, retainedHardlinks: true,
+        });
+        const retained = observeRegistrationManifest(registration, {
+          byteCeiling: e.registrationBytes, entryCeiling: e.registrationEntries,
+        });
+        const log = UTF8.decode(readBoundedStableFile(join(registration, 'logs', 'HEAD'),
+          16 * 1024 ** 2, 'retained-head-log')).trimEnd().split('\n').at(-1);
+        if (projection.digest === e.projectionManifestDigest && projection.bytes === e.projectionBytes
+          && projection.entries === e.projectionEntries && retained.digest === e.registrationManifestDigest
+          && retained.bytes === e.registrationBytes && retained.entries === e.registrationEntries
+          && log?.split(' ')[1] === head) return true;
+      } catch { /* A partial, changed or unbound coordinate cannot establish completion. */ }
+    }
+  } catch { /* No bounded retained proof is available. */ }
+  return false;
 }
 /** Classify an exact completed quarantine after response loss; partial coordinates remain blocked. */
 export function classifyExistingWorktreeQuarantine(plan, eligibility, {

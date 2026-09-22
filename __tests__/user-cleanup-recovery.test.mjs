@@ -8,6 +8,7 @@ import { createRepositoryProfile, governanceDigest } from '../src/governance.mjs
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -201,4 +202,34 @@ test('recovery preserves dependency hardlinks and detects writes through retaine
   const before = other.plan(); writeFileSync(join(outside, 'alias'), 'changed through alias');
   assert.throws(() => other.apply(before), /inventory|observation/);
   assert.ok(existsSync(other.target));
+});
+
+
+test('completion verifies recovery after canonical and policy changes without granting authority', t => {
+  const s = fixture(t), receipt = s.apply(s.plan());
+  const status = () => inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile);
+  assert.equal(status().cleanupVerified, true);
+  assert.equal(status().closeout.missionState, 'source_complete');
+  assert.equal(status().providerVerified, false);
+  writeFileSync(join(s.root, 'later.txt'), 'later independent work\n');
+  git(s.root, 'add', '.'); git(s.root, 'commit', '--quiet', '-m', 'advance canonical');
+  git(s.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  assert.equal(status().closeout.missionState, 'source_complete');
+  // Current policy is retain-all; verified historical recovery remains a completed effect.
+  assert.equal(s.profile.cleanup.worktreeProjection, 'retain');
+  writeFileSync(join(receipt.projectionPath, 'runtime/evidence.txt'), 'changed after quarantine');
+  assert.equal(status().cleanupVerified, false);
+  assert.equal(status().closeout.cleanupSatisfied, false);
+});
+
+test('retained cleanup does not certify an advanced branch or changed operation metadata', t => {
+  const s = fixture(t), receipt = s.apply(s.plan());
+  const status = () => inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile);
+  git(s.root, 'update-ref', `refs/heads/${s.branch}`, s.merge);
+  assert.equal(status().cleanupVerified, false);
+  git(s.root, 'update-ref', `refs/heads/${s.branch}`, s.head);
+  const path = join(receipt.operationPath, 'operation.json'), value = JSON.parse(readFileSync(path));
+  value.eligibility.planDigest = '0'.repeat(64);
+  writeFileSync(path, JSON.stringify(value));
+  assert.equal(status().cleanupVerified, false);
 });
