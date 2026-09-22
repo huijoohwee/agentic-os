@@ -126,7 +126,7 @@ test('worktrees share bounded feedback, isolate receipts, and serialize baseline
 });
 
 
-test('declared validation prerequisite blocks before source scan or child while plan remains observable', async t => {
+for (const readiness of [false, true]) test(`declared validation ${readiness ? 'handoff' : 'prerequisite'} blocks before source scan or child while plan remains observable`, async t => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-validation-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' }).toString().trim();
@@ -145,9 +145,10 @@ test('declared validation prerequisite blocks before source scan or child while 
   git('add', '.'); git('commit', '-qm', 'fixture'); git('update-ref', 'refs/remotes/origin/main', 'HEAD');
   const revision = git('rev-parse', 'HEAD'), worktreeId = basename(root);
   startWorkflow(root, repository, { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId,
-    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: readiness ? [] : [
       { before: { memberId: worktreeId, phase: 'preparation' }, after: { memberId: worktreeId, phase: 'checks' } },
-    ] } } });
+    ] }, ...(readiness ? { readiness: { version: 1, participants: ['writer', 'reviewer'].map(role =>
+      ({ memberId: worktreeId, traceId: role, role })) } } : {}) } });
   const output = [];
   await assert.rejects(runRepositoryValidation(['run', `--root=${root}`, '--base=missing-baseline'], { out: text => output.push(text) }), /blocked-workflow-dependencies/);
   assert.equal(existsSync(join(root, 'executed')), false);
