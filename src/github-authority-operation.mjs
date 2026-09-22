@@ -106,7 +106,7 @@ export async function observeGitHubRetrospectiveTarget({ query, repositoryValue,
   const event = merged[0], mergeRevision = event?.commit_id;
   if (!REVISION.test(mergeRevision) || event.commit_url
     !== `https://api.github.com/repos/${target.owner}/${target.name}/commits/${mergeRevision}`
-    || new Date(Date.parse(event.created_at)).toISOString() !== new Date(mergedTime).toISOString())
+    || Math.abs(Date.parse(event.created_at) - mergedTime) > 5_000)
     fail('retrospective authority merge event is not exact');
   const [candidateCommit, mergeCommit] = await Promise.all([readCommit(query.candidateHeadRevision),
     readCommit(mergeRevision)]), ancestry = mergeRevision === liveCanonicalRevision
