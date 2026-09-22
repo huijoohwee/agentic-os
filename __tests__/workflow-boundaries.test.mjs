@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { collectWorkflow, startWorkflow, readWorkflowManifestPage, WORKFLOW_PHASES,
   collectWorkflowValue, readSelectedWorkflow, assertWorkflowEffect, validateWorkflowPlanning,
-  rebindWorkflowCandidate } from '../bin/agentic-os-workflow.mjs';
+  rebindWorkflowCandidate, createWorkflowEffectGuard } from '../bin/agentic-os-workflow.mjs';
 
 test('one selected workflow retains multiple worktrees through idempotent start/end boundaries', t => {
   const base=realpathSync(mkdtempSync(join(tmpdir(),'workflow-boundaries-'))),root=join(base,'repo');mkdirSync(root);
@@ -85,6 +85,35 @@ function executionFixture(t) {
   const guard = patch => assertWorkflowEffect({ root, repository, worktreeId, revision, phase: 'checks', ...patch });
   return { base, root, git, repository, revision, worktreeId, execution, selected, collect, guard };
 }
+
+test('effect rechecks latch declared identity across valid selected-root switches and successor refreshes', t => {
+  const s = executionFixture(t);
+  let context = null;
+  const guard = createWorkflowEffectGuard(() => context);
+  assert.equal(guard().status, 'standalone');
+  context = { root: s.root, repository: s.repository, worktreeId: s.worktreeId, revision: s.revision, phase: 'preparation' };
+  const initial = guard('dependencies'); assert.equal(initial.mode, 'dependencies');
+  s.collect({});
+  const successor = guard(); assert.equal(successor.workflowId, initial.workflowId);
+  assert.notEqual(successor.manifestDigest, initial.manifestDigest);
+  context = null; assert.throws(() => guard(), /effect-identity-drift/);
+  context = { root: s.root, repository: s.repository, worktreeId: s.worktreeId, revision: s.revision, phase: 'preparation' };
+  startWorkflow(s.root, s.repository, { revision: s.revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md',
+    worktreeId: 'other-valid-member', execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } });
+  assert.throws(() => guard(), /effect-identity-drift/, 'a valid unrelated root must not silently become standalone');
+  context.worktreeId = 'other-valid-member';
+  assert.throws(() => guard(), /effect-identity-drift/, 'another eligible declared root cannot replace the latched identity');
+});
+
+test('a blocked declared prerequisite also binds subsequent effect rechecks', t => {
+  const s = executionFixture(t);
+  const guard = createWorkflowEffectGuard(() => ({ root: s.root, repository: s.repository,
+    worktreeId: s.worktreeId, revision: s.revision, phase: 'checks' }));
+  assert.throws(() => guard('dependencies'), /blocked-workflow-dependencies/);
+  startWorkflow(s.root, s.repository, { revision: s.revision,
+    planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId: 'legacy-other' });
+  assert.throws(() => guard(), /effect-identity-drift/);
+});
 
 test('native effect guard blocks unchanged prerequisites, preserves independent work and rejects stale proof', t => {
   const s = executionFixture(t), initial = s.selected();

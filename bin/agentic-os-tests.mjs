@@ -1,7 +1,10 @@
 /** Repository-owned affected validation; explicit all and compatibility fast/git entrypoints. */
 import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { resolve, join } from 'node:path';
+import { basename, resolve, join } from 'node:path';
+import { observeGit, worktrees } from '../src/git.mjs';
+import { loadRepositoryProfile } from '../src/git-repository.mjs';
+import { createWorkflowEffectGuard } from './agentic-os-workflow.mjs';
 import { checkInputResolver, IMPACT_VERSION, selectTests } from './agentic-os-test-impact.mjs';
 import { hash, LIMITS, manifestDigest, snapshotReader } from './agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
@@ -10,6 +13,22 @@ import { ciBudgetsJobIsExact } from './agentic-os-doc-budget.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FAST = ['lane-state.test.mjs', 'governance-contract.test.mjs', 'completion.test.mjs', 'authority-evidence.test.mjs'];
+const WORKFLOW_INPUTS = new Set(['.agentic-os.json', 'bin/agentic-os-workflow.mjs',
+  'bin/agentic-os-workflow-archive.mjs', 'bin/agentic-os-workflow-observation.mjs']);
+
+function workflowGuard(root, mode) {
+  return createWorkflowEffectGuard(() => {
+    if (mode === 'plan') return null; // Dependency blockers must not hide read-only inspection.
+    const selected = observeGit(['config', '--local', '--get', 'agentic-os.workflowManifest'], { cwd: root, allowFail: true });
+    if (!selected) return null; // Legacy repositories need no fabricated profile or workflow enrollment.
+    const registration = worktrees(root).find(row => resolve(row.path) === root);
+    if (!registration) throw Error('blocked-test-worktree-binding');
+    return { root, repository: loadRepositoryProfile({ repository: root }).repository,
+      phase: 'checks', ref: registration.branch, worktreeId: basename(registration.path),
+      revision: observeGit(['rev-parse', 'HEAD'], { cwd: root }),
+      dirty: Boolean(observeGit(['status', '--porcelain=v1', '--untracked-files=normal'], { cwd: root })) };
+  });
+}
 export function parseArguments(argv) {
   const [mode = 'affected', ...flags] = argv;
   if (!['affected', 'all', 'plan', 'fast', 'git'].includes(mode)) throw new Error('expected affected, all, plan, fast or git');
@@ -48,7 +67,8 @@ export function boundCiCoverage(identity, observation) {
 export function validationChecks(observed, plan) {
   const { after, identity } = observed, inputsFor = checkInputResolver(after);
   const shared = [...after].filter(([path]) => path === 'package.json' || path === 'package-lock.json'
-    || path === '.npmrc' || path === 'test/impact-contracts.json' || path.startsWith('bin/agentic-os-test'));
+    || path === '.npmrc' || path === 'test/impact-contracts.json' || path.startsWith('bin/agentic-os-test')
+    || WORKFLOW_INPUTS.has(path));
   const definitions = [{ name: 'evaluators', stage: 'evaluators', command: 'npm', args: ['run', 'evals'],
     inputs: { scope: 'repository', paths: [], reasons: ['repository-evaluators'] } },
   ...plan.suites.map(suite => ({ name: suite.path, stage: suite.stage, command: process.execPath,
@@ -94,16 +114,25 @@ export function ciEvaluatorAllocation(workflow, environment, revision) {
 
 export async function runTests(argv, { root = ROOT, out = console.log, ci = false, ciObservation } = {}) {
   const options = parseArguments(argv);
+  if (ci && (!options.committed || !options.fresh || options.mode !== 'affected')) throw Error('blocked-test-ci-options');
+  root = realpathSync(root);
+  const assertWorkflowCurrent = workflowGuard(root, options.mode);
+  assertWorkflowCurrent();
   if (['fast', 'git'].includes(options.mode)) {
-    const files = readdirSync(join(root, '__tests__')).filter(name => name.endsWith('.test.mjs'))
-      .filter(name => options.mode === 'fast' ? FAST.includes(name) : !FAST.includes(name)).sort();
-    const result = await executeCommand(root, process.execPath,
-      ['--test', '--test-reporter=tap', '--test-concurrency=4', ...files.map(name => `__tests__/${name}`)]);
-    out(result.output); return result.reason ? 1 : result.exitCode ?? 1;
+    const release = lockReceipts(receiptDirectory(root));
+    try {
+      assertWorkflowCurrent();
+      const files = readdirSync(join(root, '__tests__')).filter(name => name.endsWith('.test.mjs'))
+        .filter(name => options.mode === 'fast' ? FAST.includes(name) : !FAST.includes(name)).sort();
+      assertWorkflowCurrent();
+      const result = await executeCommand(root, process.execPath,
+        ['--test', '--test-reporter=tap', '--test-concurrency=4', ...files.map(name => `__tests__/${name}`)]);
+      assertWorkflowCurrent();
+      out(result.output); return result.reason ? 1 : result.exitCode ?? 1;
+    } finally { release(); }
   }
   const observe = snapshotReader({ root, base: options.base, head: options.head, committed: options.committed });
   const observed = observe(), plan = selectTests({ ...observed, forceAll: options.mode === 'all' });
-  if (ci && (!options.committed || !options.fresh || options.mode !== 'affected')) throw Error('blocked-test-ci-options');
   const externalRequiredChecks = ci ? [ciEvaluatorAllocation(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'),
     process.env, observed.identity.headRevision)] : [];
   const directory = receiptDirectory(root), checks = validationChecks(observed, plan)
@@ -139,6 +168,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     identity: observed.identity, plan, cost: summary, externalRequiredChecks, outcome: 'running', exitCode: null,
     startedAt: Date.now(), results: [] };
   const stable = () => {
+    assertWorkflowCurrent();
     if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity))
       throw new Error('blocked-test-input-drift');
   };
@@ -151,7 +181,9 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     if (plan.reasons.length) out(`coverage reasons: ${plan.reasons.join(', ')}`);
     for (const suite of plan.suites) out(`selected ${suite.path}: ${suite.reasons.join(', ')}`);
     if (coverage) {
+      stable();
       out(`deferred local suite: bound CI ${coverage.runId} covers HEAD (${coverage.status})`);
+      assertWorkflowCurrent();
       for (const check of checks) {
         receipt.results.push({ name: check.name, stage: check.stage, reused: true, reusedFrom: 'bound-ci',
           runId: coverage.runId, exitCode: 0, elapsedMs: 0, reason: null, counts: { tests: 0, pass: 0, fail: 0, cancelled: 0 },
@@ -162,6 +194,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
       for (const original of checks.filter(check => check.stage === stage)) {
         const check = decorate(original);
         if (check.reuse) {
+          assertWorkflowCurrent();
           receipt.results.push({ name: check.name, stage, ...check.prior.result,
             reused: true, validatedAt: check.prior.finishedAt });
           out(`reused local check: ${check.name}`);
@@ -172,6 +205,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
         const remaining = LIMITS.testMs - (performance.now() - started);
         if (remaining <= 0) throw new Error('blocked-test-time-budget');
         out(`running ${check.name}`);
+        assertWorkflowCurrent();
         const result = await executeCommand(root, check.command, check.args,
           { timeoutMs: Math.min(remaining, stage === 'evaluators' ? 60_000 : LIMITS.testMs) });
         if (stage !== 'evaluators' && result.exitCode === 0 && (!result.counts.tests

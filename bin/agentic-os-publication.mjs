@@ -13,7 +13,7 @@ import * as report from './agentic-os-report.mjs';
 import { assertPublicationPreflight, classifyPromotion, publicationByteRisks, assertFlightRequirements,
   pullRequestText, validateReviewBody, providerKind, assertProfileCurrent, assertProtectedRefCurrent } from './agentic-os-auxiliary.mjs';
 import { option } from './agentic-os-argv.mjs';
-import { assertWorkflowEffect, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
+import { createWorkflowEffectGuard, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
 
 export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, effectReceipt, remoteName }) {
   const root = repoRoot(cwd);
@@ -42,7 +42,7 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
       worktreeId: basename(registration.path), revision: headSha('HEAD', root),
       dirty: Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) };
   };
-  const assertWorkflowCurrent = (mode = 'effect') => assertWorkflowEffect({ ...workflowContext(), mode });
+  const assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
   assertWorkflowCurrent('dependencies');
   const configuredFlight = assertFlightRequirements(root, 'pre');
   const bodyFile = option(argv, 'body-file'), title = option(argv, 'title');

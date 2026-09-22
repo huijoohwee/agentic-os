@@ -552,7 +552,14 @@ First checkpoint: 45 active implementation minutes after admission; external wai
 ETAs. Extract affected CLI responsibilities; zero dependencies/always-load additions/paid services.
 Run meaningful focused cases, then owner-selected required checks once on the joined candidate. Reuse
 valid receipts; serialize heavy validation. Record exact source/check/integration/cleanup outcomes.
-Delivery boundary: this first admitted slice guards consumer validation; the OS repository test runner
-remains pending its own admitted successor, so all-entrypoint E08–E11 acceptance is not yet claimed.
+Budget decision, 2026-09-22: the user explicitly authorizes CLI modules 108→110 and lines 22,110→22,750.
+This bounds the two lazy START/publication owners and native test-runner guard; it adds no checkout,
+package, paid service or runtime worker. Existing total source, per-source-module, runtime and always-load
+caps remain unchanged. Review found at most 40–70 genuine duplicate lines removable from the admitted
+release owners against a 504-line gap; unrelated deletion or line compression would not improve the design.
+The trusted canonical native successor admitted the remaining owners in the same checkout. The initial
+source ref is retained without a preliminary PR or CI run. No candidate code grants itself a reservation.
+Delivery requires both validation entrypoints, declared-mission regression proof and protected source
+release. Legacy standalone coverage remains undeclared; unknown costs and production authority remain separate.
 GTM: validate this operator journey against the retained Graph observations; demand and savings remain
 unmeasured. Rollback the scoped source commit; preserve immutable archives, refs and unfinished bytes.

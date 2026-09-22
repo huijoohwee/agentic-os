@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40936, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40928, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -77,17 +77,21 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
-      'Open work with:',
-      '`npm run release:common -- start <scope> --write=<paths> [--plan=<committed-plan>]`',
-      'Then work only in the printed lane worktree and continue with',
-      '[`RELEASE-WORKFLOW.md`](./RELEASE-WORKFLOW.md).',
+      '`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> --checkout-limit=<0..32>`',
+      '--mission=<manifest>',
+      'Zero allows reuse; declared caps cannot increase.',
+      'Legacy START remains undeclared.',
+      '--readmit --expected-head=<sha>',
+      'Work in the printed checkout.',
+      '[`ADLC-EXEC-001`](../guides/PRD-TAD-ADR-MVP-GTM.md)',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'complete --ref=<lane>',
-      'profile cleanup',
+      'Cleanup preserves recovery bytes and requires exact eligible-target evidence',
       'diagnostics only',
-      '`publish` stops at provider handoff until protected integration completes.',
-      'Merge proof, closeout, cleanup, sync, deploy, rollback, and Prod auth keep separate receipts.',
+      'Publication stops at provider handoff. After exact protected merge',
+      'Integration, retirement, cleanup, sync and production grants remain separate.',
+      '[DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
@@ -242,7 +246,7 @@ test('this repository is inside its own module budget', () => {
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
     modules: 46, totalLines: 15_000, perModuleLines: 400,
-    binModules: 108, binLines: 22_110, runtimeModules: 96, runtimeLines: 23_023,
+    binModules: 110, binLines: 22_750, runtimeModules: 96, runtimeLines: 23_023,
   });
   assert.equal(entries.length, 46);
   assert.ok(entries.length <= MODULE_BUDGET.modules);

@@ -214,6 +214,23 @@ export function assertWorkflowEffect({ root, repository, phase, worktreeId, revi
   return { ...binding, status: 'eligible', fingerprint };
 }
 
+/** Keep one declared identity across rechecks, including blocked prerequisite decisions. */
+export function createWorkflowEffectGuard(context) {
+  let bound = null;
+  return (mode = 'effect') => {
+    const input = context();
+    let result, error;
+    try { result = input === null ? { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' }
+      : assertWorkflowEffect({ ...input, mode }); }
+    catch (caught) { result = caught; error = caught; }
+    const identity = result.workflowId && result.memberId ? JSON.stringify([result.workflowId, result.memberId]) : null;
+    if (bound && (result.status === 'standalone' || identity && identity !== bound)) fail('effect-identity-drift');
+    if (identity) bound ??= identity;
+    if (error) throw error;
+    return result;
+  };
+}
+
 /** Record only the candidate committed by a native owner; historical receipts remain historical. */
 export function rebindWorkflowCandidate({ root, repository, ref, worktreeId, previousRevision, revision }) {
   const selected = readSelectedWorkflow(root, repository);

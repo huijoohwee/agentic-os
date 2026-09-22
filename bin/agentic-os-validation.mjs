@@ -2,7 +2,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { worktrees } from '../src/git.mjs';
-import { assertWorkflowEffect } from './agentic-os-workflow.mjs';
+import { createWorkflowEffectGuard } from './agentic-os-workflow.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { readGit, hash, readRegular } from './agentic-os-test-inputs.mjs';
@@ -125,14 +125,14 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     const policy = validateValidationPolicy(JSON.parse(policyFile.text));
     const origin = remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim());
     if (origin?.repository.toLowerCase() !== policy.repository.toLowerCase()) throw new Error('blocked-validation-repository-identity');
-    const assertWorkflowCurrent = () => {
-      if (options.mode === 'plan') return; // Read-only selection remains available while blocked.
+    const assertWorkflowCurrent = createWorkflowEffectGuard(() => {
+      if (options.mode === 'plan') return null; // Read-only selection remains available while blocked.
       const registration = worktrees(root).find(row => resolve(row.path) === root);
       if (!registration) throw new Error('blocked-validation-worktree-binding');
-      assertWorkflowEffect({ root, repository: policy.repository, phase: 'checks', ref: registration.branch,
+      return { root, repository: policy.repository, phase: 'checks', ref: registration.branch,
         worktreeId: basename(registration.path), revision: readGit(root, ['rev-parse', 'HEAD']).trim(),
-        dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()) });
-    };
+        dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()) };
+    });
     assertWorkflowCurrent();
     const observe = consumerSnapshotReader({ root, base: options.base, head: options.head || 'HEAD', committed: options.committed });
     const observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest();
