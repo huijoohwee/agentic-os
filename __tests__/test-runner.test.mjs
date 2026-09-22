@@ -246,6 +246,24 @@ test('declared prerequisites block every execution mode before discovery or chil
   assert.equal(JSON.parse(f.messages[0]).cost.selected, 1);
 });
 
+test('unfinished writer and reviewer handoffs block every runner mode without spawning or replacing receipts', async t => {
+  localEnvironment(t);
+  const f = declaredFixture(t), repository = 'github.com/example/test-runner';
+  const selected = readSelectedWorkflow(f.root, repository), workspace = workflowPaths(f.root, repository).workspace;
+  const participants = ['writer', 'reviewer'].map(role => ({ memberId: basename(f.root), traceId: role, role }));
+  collectWorkflowValue(f.root, repository, { ...selected.manifest,
+    execution: { ...selected.manifest.execution, readiness: { version: 1, participants } },
+    members: selected.manifest.members.map(row => ({ ...row, file: resolve(workspace, row.file) })),
+    previous: { file: selected.path, digest: selected.digest } });
+  for (const mode of ['fast', 'git', 'affected', 'all']) {
+    const args = ['fast', 'git'].includes(mode) ? [mode] : [mode, '--base=missing-baseline'];
+    await assert.rejects(runTests(args, { root: f.root, out: text => f.messages.push(text) }), error =>
+      error.blockers?.filter(row => row.reason === 'participant-handoff-not-current-complete').length === 2);
+  }
+  assert.deepEqual(f.messages, []);
+  assert.equal(existsSync(join(receiptDirectory(f.root), 'last.json')), false);
+});
+
 test('eligible declarations run and preserve native local reuse until a prerequisite changes', async t => {
   localEnvironment(t);
   const f = declaredFixture(t);

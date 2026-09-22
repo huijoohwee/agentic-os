@@ -57,8 +57,8 @@ function traceSpans(manifest, read) {
       && Array.isArray(run.spans) && run.spans.length <= 32, 'trace-binding');
     requireFact(Number.isSafeInteger(run.page?.total) && run.page.total >= run.spans.length
       && Number.isSafeInteger(run.page?.offset) && run.page.offset >= 0 && run.page.offset + run.spans.length <= run.page.total, 'trace-page');
-    coverage.push({ id: ref.id, runId: run.runId, offset: run.page.offset, retained: run.spans.length, total: run.page.total,
-      partial: run.coverage?.partial !== false || run.page.total > run.spans.length, upstreamIncomplete: run.traceTruncated === true || (run.coverage?.droppedEvents ?? 0) > 0 || (run.coverage?.expectedSpans ?? run.page.total) > run.page.total, digest: ref.digest });
+    coverage.push({ id: ref.id, phase: ref.phase, status: run.status, runId: run.runId, offset: run.page.offset, retained: run.spans.length, total: run.page.total,
+      partial: run.coverage?.partial !== false || run.page.total > run.spans.length, upstreamIncomplete: run.coverage?.partial !== false || run.coverage?.sourcePartial === true || run.traceTruncated === true || (run.coverage?.droppedEvents ?? 0) > 0 || (run.coverage?.expectedSpans ?? run.page.total) > run.page.total, digest: ref.digest });
     const prefix = `trace/${hash(run.runId).slice(0,16)}/`;
     const starts = run.spans.map(row=>timestamp(row.startedAt)).filter(value=>value!==null);
     const origin = timestamp(run.startedAt) ?? (starts.length ? Math.min(...starts) : null);
@@ -153,6 +153,16 @@ function measurementCoverage(spans) {
     totals: null, actualCostUsd: null, authorityVerified: false };
 }
 
+function traceIncomplete(group) {
+  if (!group.length) return true;
+  let next = 0; const total = group[0].total;
+  for (const row of [...group].sort((a,b)=>a.offset-b.offset)) {
+    if (row.offset !== next || row.total !== total || row.upstreamIncomplete) return true;
+    next += row.retained;
+  }
+  return next !== total || group.length === 1 && group[0].partial;
+}
+
 export function buildArchive(manifest, read, observedAt) {
   const observation = workflowObservation(manifest, read, observedAt, { all: true });
   const traces = traceSpans(manifest, read);
@@ -161,14 +171,7 @@ export function buildArchive(manifest, read, observedAt) {
   observation.profile.workflow.traces = traces.coverage;
   const runs = new Map();
   for (const row of traces.coverage) { const group = runs.get(row.runId) ?? []; group.push(row); runs.set(row.runId,group); }
-  const partial = [...runs.values()].some(group => {
-    let next = 0; const total = group[0].total;
-    for (const row of group.sort((a,b)=>a.offset-b.offset)) {
-      if (row.offset !== next || row.total !== total || row.upstreamIncomplete) return true;
-      next += row.retained;
-    }
-    return next !== total || group.length === 1 && group[0].partial;
-  }) || traces.unresolvedParents.length > 0;
+  const partial = [...runs.values()].some(traceIncomplete) || traces.unresolvedParents.length > 0;
   observation.coverage = { ...observation.coverage, partial: observation.coverage.partial || partial,
     expectedSpans: observation.spans.length, projectedSpansOmitted: 0, unresolvedParents: traces.unresolvedParents };
   observation.page.total = observation.spans.length;
@@ -219,11 +222,30 @@ const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const endpointKey = row => `${row.memberId}/${row.phase}`;
 const edgeKey = row => `${endpointKey(row.before)}>${endpointKey(row.after)}`;
+const participantKey = row => `${row.memberId}/${row.traceId}/${row.role}`;
+
+// Cooperative source handoffs restrict effects; they do not authenticate agents or release authority.
+function readinessBlockers({ ref, child, read }, participants) {
+  if (!participants.length) return [];
+  const traces = traceSpans(child, read);
+  return participants.flatMap(participant => {
+    const page = traces.coverage.find(row => row.id === participant.traceId);
+    const group = traces.coverage.filter(row => page && row.runId === page.runId), ids = new Set(group.map(row => row.id));
+    const spans = traces.spans.filter(row => ids.has(row.component.id));
+    const ready = !traceIncomplete(group) && group.every(row => row.phase === 'preparation' && row.status === 'completed')
+      && participants.filter(row => ids.has(row.traceId)).length === 1 && spans.length > 0
+      && spans.every(row => row.status === 'completed' && !traces.unresolvedParents.includes(row.spanId)
+        && !['failed', 'pending'].includes(row.evaluation.status));
+    return ready ? [] : [{ memberId: ref.id, phase: 'preparation', participant: participant.traceId,
+      role: participant.role, requiredRevision: child.source.revision, evidenceDigest: page?.digest ?? null,
+      status: page?.status ?? 'missing', reason: 'participant-handoff-not-current-complete' }];
+  });
+}
 
 /** Explicit local restrictions; index edges and receipt coverage never grant authority. */
 export function validateWorkflowExecution(execution, members, previous) {
   if (execution === undefined) { requireFact(previous === undefined, 'execution-downgrade'); return null; }
-  requireFact(exactKeys(execution, ['version', 'checkoutLimit', 'dependencies']) && execution.version === 1
+  requireFact(exactKeys(execution, ['version', 'checkoutLimit', 'dependencies', ...(execution?.readiness === undefined ? [] : ['readiness'])]) && execution.version === 1
     && Number.isInteger(execution.checkoutLimit) && execution.checkoutLimit >= 0 && execution.checkoutLimit <= 32,
   'execution-contract');
   const dependencies = execution.dependencies;
@@ -246,9 +268,24 @@ export function validateWorkflowExecution(execution, members, previous) {
     visiting.delete(node); visited.add(node);
   };
   for (const node of nodes) visit(node);
+  const readiness = execution.readiness, participants = readiness?.participants ?? [], participantKeys = new Set();
+  if (readiness !== undefined) {
+    requireFact(exactKeys(readiness, ['version', 'participants']) && readiness.version === 1
+      && Array.isArray(participants) && participants.length > 0 && participants.length <= 64, 'readiness-contract');
+    for (const row of participants) {
+      requireFact(exactKeys(row, ['memberId', 'traceId', 'role']) && members.some(member => member.ref.id === row.memberId)
+        && id(row.traceId) && ['writer', 'reviewer'].includes(row.role)
+        && !participantKeys.has(`${row.memberId}/${row.traceId}`), 'readiness-participant');
+      participantKeys.add(`${row.memberId}/${row.traceId}`);
+    }
+    requireFact(members.every(member => member.child.expected.includes('preparation') && ['writer', 'reviewer'].every(role => participants.some(row =>
+      row.memberId === member.ref.id && row.role === role))), 'readiness-coverage');
+  }
   if (previous !== undefined) {
     requireFact(previous.checkoutLimit === execution.checkoutLimit
       && previous.dependencies.edges.every(edge => edges.has(edgeKey(edge))), 'execution-relaxation');
+    requireFact((previous.readiness?.participants ?? []).every(before => participants.some(row =>
+      participantKey(row) === participantKey(before))), 'readiness-relaxation');
   }
   return execution;
 }
@@ -267,17 +304,24 @@ export function workflowEligibility(manifest, members) {
       status: !current && receipt ? 'stale' : progress?.partial ? 'partial' : progress?.status ?? 'missing' };
   }));
   const byKey = new Map(rows.map(row => [endpointKey(row), row])), prerequisites = new Map();
+  const handoffs = new Map(members.map(member => [member.ref.id, readinessBlockers(member,
+    (execution?.readiness?.participants ?? []).filter(row => row.memberId === member.ref.id))]));
   for (const edge of execution?.dependencies.edges ?? []) prerequisites.set(endpointKey(edge.after),
     [...(prerequisites.get(endpointKey(edge.after)) ?? []), endpointKey(edge.before)]);
   const ancestors = (key, result = new Set()) => {
     for (const before of prerequisites.get(key) ?? []) if (!result.has(before)) { result.add(before); ancestors(before, result); }
     return result;
   };
-  return { coverage: execution ? 'declared' : 'undeclared', authority: false,
+  return { coverage: execution ? 'declared' : 'undeclared', readinessCoverage: execution?.readiness ? 'declared-participants' : 'undeclared', authority: false,
     actions: rows.map(row => {
-      const blockers = [...ancestors(endpointKey(row))].sort().map(key => byKey.get(key))
-        .filter(before => before.status !== 'completed').map(before => ({ ...before, reason: 'prerequisite-not-current-complete' }));
-      return { ...row, blockers, eligibility: blockers.length ? 'dependency-blocked'
+      const blockers = [...ancestors(endpointKey(row))].sort().flatMap(key => {
+        const before = byKey.get(key);
+        return [...(before.status === 'completed' ? [] : [{ ...before, reason: 'prerequisite-not-current-complete' }]),
+          ...(['checks', 'ci'].includes(before.phase) ? handoffs.get(before.memberId) : [])];
+      });
+      if (['checks', 'ci'].includes(row.phase)) blockers.push(...handoffs.get(row.memberId));
+      const unblocks = rows.filter(after => after.status !== 'completed' && ancestors(endpointKey(after)).has(endpointKey(row))).length;
+      return { ...row, unblocks, blockers, eligibility: blockers.length ? 'dependency-blocked'
         : row.status === 'completed' ? 'already-satisfied' : execution ? 'eligible' : 'undeclared' };
     }) };
 }
@@ -331,11 +375,12 @@ function releaseClosure(manifest, members) {
     if (row.blockers.length) row.status = 'blocked';
   }
   const pending = steps.filter(row => row.status !== 'completed');
-  const eligible = pending.filter(row => !row.blockers?.length && row.eligibility !== 'undeclared');
+  const eligible = pending.filter(row => !row.blockers?.length && row.eligibility !== 'undeclared')
+    .sort((a, b) => (b.unblocks ?? 0) - (a.unblocks ?? 0) || steps.indexOf(a) - steps.indexOf(b));
   return { target: 'production-runtime-ready', status: pending.some(row => ['failed', 'blocked'].includes(row.status))
     ? 'blocked' : pending.length ? 'incomplete' : 'observed-complete',
     authorizesEffects: false, authorityVerified: false, total: steps.length,
-    completed: steps.length - pending.length, pending, dependencyCoverage: eligibility.coverage,
+    completed: steps.length - pending.length, pending, dependencyCoverage: eligibility.coverage, readinessCoverage: eligibility.readinessCoverage,
     eligible, blocked: pending.filter(row => row.blockers?.length),
     alreadySatisfied: steps.filter(row => row.status === 'completed'),
     next: eligibility.coverage === 'declared' ? eligible[0] ?? null : pending[0] ?? null,

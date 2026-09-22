@@ -87,6 +87,32 @@ function executionFixture(t) {
   return { base, root, git, repository, revision, worktreeId, execution, selected, collect, guard };
 }
 
+test('source-bound handoffs reject dirty admission and survive immutable workflow successors', t => {
+  const s = executionFixture(t), initial = s.selected(), old = initial.members[0].child;
+  const participants = ['writer', 'reviewer'].map(role => ({ memberId: s.worktreeId, traceId: role, role }));
+  const traces = participants.map(({ traceId }) => {
+    const bytes = JSON.stringify({ schema: 'agent-toolkit-run/v1', runId: traceId, status: 'completed',
+      candidate: { revision: s.revision }, context: { plan: { repository: s.repository, revision: s.revision } },
+      page: { total: 1, offset: 0 }, coverage: { partial: false },
+      spans: [{ spanId: traceId, kind: 'agent', operation: `${traceId} handoff`, status: 'completed' }] });
+    const file = join(s.base, `${traceId}.json`); writeFileSync(file, bytes);
+    return { id: traceId, phase: 'preparation', file, digest: createHash('sha256').update(bytes).digest('hex') };
+  });
+  const child = collectWorkflowValue(s.root, s.repository, { ...old, traces });
+  s.collect({ execution: { ...s.execution, readiness: { version: 1, participants } },
+    members: [{ id: s.worktreeId, file: child.manifest, digest: child.digest }] });
+  assert.equal(s.guard({ phase: 'ci' }).status, 'eligible');
+  for (const phase of ['checks', 'ci']) for (const mode of ['effect', 'dependencies'])
+    assert.throws(() => s.guard({ phase, mode, dirty: true }), error =>
+      error.blockers.some(row => row.reason === 'dirty-handoff-candidate'));
+  assert.equal(s.guard({ phase: 'preparation', dirty: true }).status, 'eligible');
+  s.collect({}); assert.equal(s.guard({ phase: 'ci' }).status, 'eligible');
+  assert.throws(() => s.collect({ execution: s.execution }), /readiness-relaxation/);
+  const retained = s.selected().members[0];
+  writeFileSync(join(dirname(retained.path), 'trace-0.json'), '{}');
+  assert.throws(() => s.guard({ phase: 'ci' }), /trace-digest/);
+});
+
 test('effect rechecks latch declared identity across valid selected-root switches and successor refreshes', t => {
   const s = executionFixture(t);
   let context = null;

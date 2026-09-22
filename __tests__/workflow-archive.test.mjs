@@ -90,7 +90,7 @@ test('CLI/MCP page selection rejects invalid or misplaced offsets',()=>{
  assert.deepEqual(toolArguments('workflow.recommend',{input:'x'}),['workflow','recommend','--input=x']);
 });
 
-import { workflowGroup, WORKFLOW_GROUP, validateWorkflowExecution } from '../bin/agentic-os-workflow-archive.mjs';
+import { workflowGroup, WORKFLOW_GROUP, validateWorkflowExecution, workflowEligibility } from '../bin/agentic-os-workflow-archive.mjs';
 function groupFixture(){
  const left=fixture(70),right=fixture(1,nativeTrace());
  left.manifest.context={workflowId:'shared-adlc',worktreeId:'left'};
@@ -225,4 +225,212 @@ test('explicit dependencies select available upstream work and preserve undeclar
   assert.throws(() => validate([{ ...edge, after: { memberId: 'right', phase: 'invented' } }]), /dependency-endpoint/);
   assert.throws(() => validateWorkflowExecution({ ...group.manifest.execution, checkoutLimit: 33 }, members), /execution-contract/);
   assert.throws(() => validateWorkflowExecution(undefined, members, group.manifest.execution), /execution-downgrade/);
+});
+
+function readinessFixture() {
+  const group = groupFixture(), participants = [];
+  for (const ref of group.manifest.members) {
+    const value = group.load(ref), child = value.manifest;
+    child.expected = ['preparation', 'checks', 'ci', 'integration']; child.traces = [];
+    for (const role of ['writer', 'reviewer']) {
+      const traceId = `${ref.id}-${role}`, run = { ...nativeTrace(), runId: traceId, status: 'completed' };
+      const file = `${traceId}.json`, bytes = JSON.stringify(run); value.files.set(file, bytes);
+      child.traces.push({ id: traceId, phase: 'preparation', file, digest: hash(bytes) });
+      participants.push({ memberId: ref.id, traceId, role });
+    }
+    const captured = buildArchive(child, value.read, receiptClock(value.files));
+    for (const [file, bytes] of captured.files) value.files.set(file, bytes);
+    child.archive = captured.archive; ref.digest = hash(JSON.stringify(child));
+  }
+  group.manifest.execution = { version: 1, checkoutLimit: 2, dependencies: { version: 1, edges: [] },
+    readiness: { version: 1, participants } };
+  const members = () => group.manifest.members.map(ref => {
+    const value = group.load(ref);
+    return { ref, child: value.manifest, read: value.read, advice: readArchive(value.manifest, value.read, { adviceOnly: true }) };
+  });
+  const decisions = () => workflowEligibility(group.manifest, members());
+  const change = (memberId, role, mutate) => {
+    const value = group.load({ id: memberId }), trace = value.manifest.traces.find(row => row.id === `${memberId}-${role}`);
+    const run = JSON.parse(value.files.get(trace.file)); mutate(run);
+    const bytes = JSON.stringify(run); value.files.set(trace.file, bytes); trace.digest = hash(bytes);
+  };
+  return { ...group, members, decisions, change };
+}
+
+test('readiness accepts complete source-current cooperative handoffs without granting release authority', () => {
+  const group = readinessFixture(), result = group.decisions();
+  assert.equal(result.readinessCoverage, 'declared-participants'); assert.equal(result.authority, false);
+  assert(result.actions.filter(row => ['checks', 'ci'].includes(row.phase)).every(row => row.blockers.length === 0));
+  const closure = workflowGroup(group.manifest, group.load, { adviceOnly: true }).closure;
+  assert.equal(closure.authorizesEffects, false); assert.equal(closure.authorityVerified, false);
+  delete group.manifest.execution.readiness;
+  assert.equal(group.decisions().readinessCoverage, 'undeclared');
+});
+
+test('readiness blocks incomplete or unsuccessful handoffs while independent member work stays eligible', () => {
+  const cases = [
+    ['running run', run => { run.status = 'running'; }],
+    ['failed run', run => { run.status = 'failed'; }],
+    ['missing terminal run status', run => { delete run.status; }],
+    ['running child', run => { run.spans[1].status = 'running'; }],
+    ['failed child', run => { run.spans[1].status = 'failed'; }],
+    ['cancelled child', run => { run.spans[1].status = 'cancelled'; }],
+    ['skipped child', run => { run.spans[1].status = 'skipped'; }],
+    ['reused child', run => { run.spans[1].status = 'reused'; }],
+    ['pending evaluation', run => { run.spans[1].evaluation.status = 'pending'; }],
+    ['failed evaluation', run => { run.spans[1].evaluation.status = 'failed'; }],
+    ['partial page', run => { run.coverage.partial = true; }],
+    ['partial source', run => { run.coverage.sourcePartial = true; }],
+    ['truncated run', run => { run.traceTruncated = true; }],
+    ['dropped spans', run => { run.coverage.droppedEvents = 1; }],
+    ['missing expected span', run => { run.coverage.expectedSpans = 3; }],
+    ['unretained page', run => { run.page.total = 3; }],
+    ['noninitial page', run => { run.page.offset = 2; run.page.total = 4; }],
+    ['empty run', run => { run.spans = []; run.page.total = 0; }],
+  ];
+  for (const [label, mutate] of cases) {
+    const group = readinessFixture(); group.change('left', 'reviewer', mutate);
+    const result = group.decisions();
+    for (const phase of ['checks', 'ci']) {
+      const action = result.actions.find(row => row.memberId === 'left' && row.phase === phase);
+      assert(action.blockers.some(row => row.participant === 'left-reviewer'), label);
+      assert.equal(action.eligibility, 'dependency-blocked', label);
+    }
+    assert.equal(result.actions.find(row => row.memberId === 'right' && row.phase === 'ci').eligibility, 'eligible', label);
+    assert.equal(result.actions.find(row => row.memberId === 'left' && row.phase === 'preparation').eligibility, 'eligible', label);
+  }
+});
+
+test('readiness reparses raw enrolled traces instead of trusting archived positive advice', () => {
+  const group = readinessFixture(), archived = group.left.manifest.archive;
+  assert.equal(readArchive(group.left.manifest, group.left.read, { adviceOnly: true }).progress.find(row => row.id === 'checks').status, 'completed');
+  group.left.manifest.traces = [];
+  const blockers = group.decisions().actions.find(row => row.memberId === 'left' && row.phase === 'checks').blockers;
+  assert.deepEqual(blockers.map(row => row.participant).sort(), ['left-reviewer', 'left-writer']);
+  assert.equal(group.left.manifest.archive, archived);
+  const wrongPhase = readinessFixture(); wrongPhase.left.manifest.traces[0].phase = 'checks';
+  assert(wrongPhase.decisions().actions.find(row => row.memberId === 'left' && row.phase === 'ci')
+    .blockers.some(row => row.participant === 'left-writer'));
+  const tampered = readinessFixture(); tampered.left.files.set('left-writer.json', '{}');
+  assert.throws(() => tampered.decisions(), /trace-digest/);
+  for (const mutate of [run => { run.candidate.revision = 'f'.repeat(40); },
+    run => { run.context.plan.revision = 'f'.repeat(40); },
+    run => { run.context.plan.repository = 'github.com/other/project'; }]) {
+    const stale = readinessFixture(); stale.change('left', 'writer', mutate);
+    assert.throws(() => stale.decisions(), /trace-binding/);
+  }
+});
+
+test('readiness enrollment requires distinct roles for every member and cannot shrink across successors', () => {
+  const group = readinessFixture(), original = group.manifest.execution, members = group.members();
+  const validate = participants => validateWorkflowExecution({ ...original,
+    readiness: { version: 1, participants } }, members);
+  const rows = original.readiness.participants;
+  assert.throws(() => validate(rows.filter(row => row.memberId !== 'right')), /readiness-coverage/);
+  assert.throws(() => validate(rows.map(row => row.traceId === 'left-reviewer' ? { ...row, traceId: 'left-writer' } : row)), /readiness-participant/);
+  assert.throws(() => validate([...rows, { memberId: 'absent', traceId: 'extra', role: 'writer' }]), /readiness-participant/);
+  assert.throws(() => validate(rows.map(row => row.role === 'reviewer' ? { ...row, role: 'unknown' } : row)), /readiness-participant/);
+  const { readiness, ...withoutReadiness } = original;
+  assert.throws(() => validateWorkflowExecution(withoutReadiness, members, original), /readiness-relaxation/);
+  const replacement = { ...original, readiness: { version: 1, participants: rows.map(row =>
+    row.traceId === 'left-reviewer' ? { ...row, traceId: 'replacement-reviewer' } : row) } };
+  assert.throws(() => validateWorkflowExecution(replacement, members, original), /readiness-relaxation/);
+  const added = { ...original, readiness: { version: 1, participants: [...rows,
+    { memberId: 'left', traceId: 'additional-reviewer', role: 'reviewer' }] } };
+  assert.equal(validateWorkflowExecution(added, members, original), added);
+});
+
+test('readiness blockers propagate through old green prerequisite receipts', () => {
+  const group = readinessFixture(); group.change('left', 'writer', run => { run.status = 'running'; });
+  group.manifest.execution.dependencies.edges = [{ before: { memberId: 'left', phase: 'checks' },
+    after: { memberId: 'right', phase: 'ci' } }];
+  const actions = group.decisions().actions;
+  assert.equal(actions.find(row => row.memberId === 'left' && row.phase === 'checks').status, 'completed');
+  assert.equal(actions.find(row => row.memberId === 'right' && row.phase === 'ci').eligibility, 'dependency-blocked');
+});
+
+test('readiness closure prioritizes eligible upstream work and retains original order for ties', () => {
+  const group = readinessFixture(), closure = () => workflowGroup(group.manifest, group.load, { adviceOnly: true }).closure;
+  assert.equal(closure().next.memberId, 'left'); assert.equal(closure().next.phase, 'preparation');
+  group.manifest.execution.dependencies.edges = [
+    { before: { memberId: 'right', phase: 'preparation' }, after: { memberId: 'left', phase: 'ci' } },
+    { before: { memberId: 'left', phase: 'ci' }, after: { memberId: 'right', phase: 'integration' } },
+  ];
+  const result = closure();
+  assert.equal(result.next.memberId, 'right'); assert.equal(result.next.phase, 'preparation');
+  assert.equal(result.next.unblocks, 2);
+  assert(result.eligible.some(row => row.memberId === 'left' && row.phase === 'preparation'));
+  assert(result.blocked.some(row => row.memberId === 'left' && row.phase === 'ci'));
+});
+
+function storeReadinessTrace(value, id, run) {
+  const file = `${id}.json`, bytes = JSON.stringify(run);
+  value.files.set(file, bytes);
+  const ref = value.manifest.traces.find(row => row.id === id);
+  if (ref) ref.digest = hash(bytes);
+  else value.manifest.traces.push({ id, phase: 'preparation', file, digest: hash(bytes) });
+}
+
+function paginatedReadinessFixture() {
+  const group = readinessFixture(), value = group.left;
+  const run = JSON.parse(value.files.get('left-writer.json'));
+  const spans = [...run.spans, ...Array.from({ length: 32 }, (_, index) => ({
+    spanId: `work-${index}`, parentSpanId: 'root', kind: 'tool', operation: 'edit',
+    status: 'completed', startedAt: 110, durationMs: 1,
+  }))];
+  for (const offset of [0, 32]) storeReadinessTrace(value, offset === 0 ? 'left-writer' : 'left-writer-page-32', {
+    ...run, page: { offset, total: spans.length }, spans: spans.slice(offset, offset + 32),
+    coverage: { partial: false, sourcePartial: false, expectedSpans: spans.length, droppedEvents: 0 },
+  });
+  return group;
+}
+
+test('readiness ignores unrelated unresolved parents while preserving participant coverage', () => {
+  const group = readinessFixture(), unrelated = { ...nativeTrace(), runId: 'unrelated-run', status: 'completed' };
+  unrelated.spans[1].parentSpanId = 'unretained-parent';
+  storeReadinessTrace(group.left, 'unrelated-trace', unrelated);
+  const captured = buildArchive(group.left.manifest, group.left.read, receiptClock(group.left.files));
+  assert.equal(captured.archive.coverage.partial, true);
+  assert.equal(captured.archive.coverage.unresolvedParents.length, 1);
+  assert(group.decisions().actions.filter(row => row.memberId === 'left' && ['checks', 'ci'].includes(row.phase))
+    .every(row => row.blockers.length === 0));
+});
+
+test('readiness accepts fully retained multiple pages including parents on an earlier page', () => {
+  const group = paginatedReadinessFixture();
+  const first = JSON.parse(group.left.files.get('left-writer.json'));
+  const last = JSON.parse(group.left.files.get('left-writer-page-32.json'));
+  assert.equal(first.spans.length, 32); assert.equal(last.spans.length, 2);
+  assert.equal(last.spans[0].parentSpanId, first.spans[0].spanId);
+  assert(group.decisions().actions.filter(row => row.memberId === 'left' && ['checks', 'ci'].includes(row.phase))
+    .every(row => row.blockers.length === 0));
+});
+
+test('readiness rejects missing overlapping or unsuccessful later handoff pages', () => {
+  const changes = [
+    ['missing page', group => { group.left.manifest.traces = group.left.manifest.traces.filter(row => row.id !== 'left-writer-page-32'); }],
+    ['overlapping page', (_group, page) => { page.page.offset = 31; }],
+    ['failed later page', (_group, page) => { page.status = 'failed'; }],
+    ['running later span', (_group, page) => { page.spans[0].status = 'running'; }],
+    ['partial later source', (_group, page) => { page.coverage.sourcePartial = true; }],
+    ['partial later coverage', (_group, page) => { page.coverage.partial = true; }],
+    ['missing later coverage', (_group, page) => { delete page.coverage; }],
+  ];
+  for (const [label, change] of changes) {
+    const group = paginatedReadinessFixture(), page = JSON.parse(group.left.files.get('left-writer-page-32.json'));
+    change(group, page);
+    if (group.left.manifest.traces.some(row => row.id === 'left-writer-page-32'))
+      storeReadinessTrace(group.left, 'left-writer-page-32', page);
+    const action = group.decisions().actions.find(row => row.memberId === 'left' && row.phase === 'ci');
+    assert(action.blockers.some(row => row.participant === 'left-writer'), label);
+    assert(!action.blockers.some(row => row.participant === 'left-reviewer'), label);
+  }
+});
+
+test('readiness cannot reuse two pages of one run as separate writer and reviewer handoffs', () => {
+  const group = paginatedReadinessFixture();
+  group.manifest.execution.readiness.participants.find(row => row.memberId === 'left' && row.role === 'reviewer')
+    .traceId = 'left-writer-page-32';
+  const action = group.decisions().actions.find(row => row.memberId === 'left' && row.phase === 'ci');
+  assert.deepEqual(action.blockers.map(row => row.participant).sort(), ['left-writer', 'left-writer-page-32']);
 });

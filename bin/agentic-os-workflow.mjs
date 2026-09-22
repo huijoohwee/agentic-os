@@ -200,6 +200,8 @@ export function assertWorkflowEffect({ root, repository, phase, worktreeId, revi
   const decision = workflowEligibility(manifest, selected.members).actions.find(row => row.memberId === member.ref.id && row.phase === phase);
   if (!decision) fail('effect-phase');
   const blockers = [...decision.blockers];
+  if (dirty && manifest.execution.readiness && ['checks', 'ci'].includes(phase))
+    blockers.push({ memberId: member.ref.id, phase, reason: 'dirty-handoff-candidate' });
   if (member.child.source.revision !== revision) blockers.push({ memberId: member.ref.id, phase,
     reason: 'candidate-revision-drift', requiredRevision: member.child.source.revision, revision });
   if (mode === 'effect' && dirty && !['checks', 'preparation'].includes(phase)) blockers.push({ memberId: member.ref.id, phase, reason: 'dirty-candidate' });
