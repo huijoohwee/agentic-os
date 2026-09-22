@@ -211,7 +211,7 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === 'GET /repos/example/target/issues/7/events') {
       const events = [{ id: 901, event: 'merged', commit_id: MERGE,
         commit_url: `https://api.github.com/repos/example/target/commits/${MERGE}`,
-        created_at: options.mergedAt ?? '2026-09-02T00:08:00Z' }];
+        created_at: options.mergeEventCreatedAt ?? options.mergedAt ?? '2026-09-02T00:08:00Z' }];
       if (options.duplicateMergeEvent) events.push({ ...events[0], id: 902 });
       return response(events, 200, options.eventNext
         ? { link: '<https://api.github.com/next>; rel="next"' } : {});

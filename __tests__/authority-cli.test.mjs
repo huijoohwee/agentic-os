@@ -254,6 +254,8 @@ test('retrospective issuance fails closed on mode, review, event, squash, tree, 
         compareTip: hash('0', 40) },
       { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
         emptyCompareCommits: true },
+      { source: modeSource(), retrospective: true, liveTargetBase: LIVE_TARGET,
+        mergeEventCreatedAt: '2026-09-02T00:08:30Z' },
     ]) {
       const api = fixture(t, options, root), result = await api.run();
       assert.equal(result.code, 1, JSON.stringify(options));
@@ -261,6 +263,15 @@ test('retrospective issuance fails closed on mode, review, event, squash, tree, 
       assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
     }
   });
+
+test('retrospective issuance accepts merge-event created_at drift within the bounded tolerance', async (t) => {
+  const { source: prospective } = laterVerificationInput();
+  const source = { ...prospective, issuanceMode: GITHUB_RETROSPECTIVE_RECOVERY_MODE };
+  const api = fixture(t, { source, retrospective: true, liveTargetBase: LIVE_TARGET,
+    mergeEventCreatedAt: '2026-09-02T00:08:04Z' });
+  const result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+});
 
 test('owner-local issuance accepts the exact ref-qualified workflow API path', async (t) => {
   const api = fixture(t, { workflowPath: '.github/workflows/authority.yml@refs/heads/release/2026' });
