@@ -1,8 +1,8 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.1.1"
-date: "2026-09-12"
+version: "1.1.2"
+date: "2026-09-23"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -70,6 +70,28 @@ Graph's protected release workflow owns generated mirror publication. Follow the
 back to Graph before changing generated output. A link to a repository is not deployment authorization.
 Canvas application code, Graph execution and Commerce behavior do not move into `agentic-os`
 merely because an agent uses them. Shared ownership follows responsibility, not the word "agent".
+
+## Document placement and lifecycle
+
+Keep one editable source per concern, beside its implementation owner in that repository's existing
+directory convention. Shared authoring rules stay at [their owner][documentation]; this page routes them.
+
+For PRD/TAD/ADR/MVP/GTM, update the existing plan at a stable filename. Join all five roles by continuity
+ID and exact revision, including companions. Follow the owner's naming/templates; do not relocate plans
+merely to standardize folders. Lifecycle plans belong to OS; product plans belong to their product owner.
+
+`huijoohwee.github.io/docs/documents` holds website-owned documents or explicit projections/references
+to another source. Published copies identify that source and exact revision; edits return to the source.
+A folder named `docs` or a published plan proves neither live deployment nor implemented readiness.
+
+Use Git history for prior revisions. If a retained snapshot is needed, mark it historical and record its
+source repository/path, exact revision, digest and successor. `joohwee/prd-tad-ard` becomes an archive only
+through an explicit handoff; its directory name alone does not make existing plans historical.
+
+When moving a source, preserve its bytes/history, repair inbound links and identify the successor in
+the reviewed migration. Retire competing editable copies through that handoff. Reuse the existing
+[Fleet ownership check](FLEET.md#cross-repository-source-ownership) for duplicate plans and exact historical
+exclusions; source review still resolves semantic overlap. Archive/publication status grants no effects.
 
 ## Dictionary and guideline routing
 
