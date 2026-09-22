@@ -87,6 +87,37 @@ test('explicit active re-admission extends scope without publishing or replacing
   await assert.rejects(f.start('one', `--mission=${before.path}`), /stale|drift|selected/i);
 });
 
+for (const transient of [false, true]) test(`active readmission separates protected history from authored bytes: transient=${transient}`, async t => {
+  const f = fixture(t);
+  await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const target = lanePath('one', 'test-device', f.root), ref = 'agent/test-device/one';
+  writeFileSync(join(f.root, 'protected.txt'), 'protected content\n');
+  f.run('add', 'protected.txt'); f.run('-c', 'commit.gpgsign=false', 'commit', '-m', 'protected advancement');
+  f.run('push', '--quiet', 'origin', 'main');
+  git(['merge', '--ff-only', 'refs/remotes/origin/main'], { cwd: target });
+  if (transient) for (const content of ['unreserved edit\n', 'protected content\n']) {
+    writeFileSync(join(target, 'protected.txt'), content);
+    git(['add', 'protected.txt'], { cwd: target });
+    git(['-c', 'commit.gpgsign=false', 'commit', '-m', 'transient unreserved edit'], { cwd: target });
+  }
+  writeFileSync(join(target, 'owned.txt'), 'preserved draft\n');
+  const head = headSha('HEAD', target), selected = f.selected(), before = records.get(ref, f.root);
+  const invoke = () => cmdStart(f.root, ['one', '--device=test-device', '--write=additional.txt',
+    `--mission=${selected.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services);
+  if (transient) {
+    await assert.rejects(invoke(), /authored bytes outside the current reservation/);
+    assert.deepEqual(records.get(ref, f.root), before);
+    assert.equal(f.selected().digest, selected.digest);
+  } else {
+    assert.equal(await invoke(), 0);
+    assert.deepEqual(records.get(ref, f.root).writePaths, ['additional.txt', 'owned.txt']);
+  }
+  assert.equal(headSha('HEAD', target), head);
+  assert.equal(readFileSync(join(target, 'owned.txt'), 'utf8'), 'preserved draft\n');
+  assert.equal(readFileSync(join(target, 'protected.txt'), 'utf8'), 'protected content\n');
+  assert.equal(f.run('ls-remote', '--refs', 'origin', `refs/heads/${ref}`), '');
+});
+
 test('retained pending allocation blocks replay and consumes the final slot', async t => {
   const f = fixture(t), revision = headSha('HEAD', f.root), worktreeId = 'test-device--one';
   startWorkflow(f.root, f.profile.repository, { revision, planningPath: f.plan, worktreeId,
