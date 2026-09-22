@@ -9,6 +9,7 @@ import {
   createFencedClaimBundle,
   createGitHubAuthorityChallenge,
   deriveGitHubAuthorityInputDigest,
+  parseGitHubRepositoryIdentity,
   validateFencedClaimBundle,
 } from '../src/github-authority.mjs';
 import {
@@ -30,6 +31,15 @@ import {
 const hash = (character, length = 64) => character.repeat(length);
 const CANONICAL = hash('a', 40), WORKFLOW = hash('b', 40), PUBLICATION = hash('9', 40);
 const LIVE_TIME = Date.parse('2026-09-02T00:20:00.000Z');
+
+test('repository identity accepts mixed-case repository names', () => {
+  assert.deepEqual(parseGitHubRepositoryIdentity('github.com/huijoohwee/GameXR'), {
+    repository: 'github.com/huijoohwee/GameXR',
+    owner: 'huijoohwee',
+    name: 'GameXR',
+  });
+});
+
 function candidate(overrides = {}) {
   return createRecoveryCandidate({
     targetRepository: 'github.com/example/target',

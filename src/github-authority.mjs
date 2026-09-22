@@ -10,7 +10,7 @@ export const FENCED_CLAIM_BUNDLE_SCHEMA = 'agentic-os/github-fenced-claim-bundle
 export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
 const DIGEST = /^[0-9a-f]{64}$/u, EFFECT_PLAN = /^effect-plan:sha256:([0-9a-f]{64})$/u,
   REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u, USER_ID = /^[1-9][0-9]{0,18}$/u,
-  OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u, REPOSITORY = /^[a-z0-9][a-z0-9._-]{0,99}$/u,
+  OWNER = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u, REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u,
   REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const POLICY_KEYS = [
   'evidenceRepository', 'targetRepositoryPrefix', 'canonicalRef', 'canonicalRevision',
