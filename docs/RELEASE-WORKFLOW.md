@@ -1,12 +1,12 @@
 # Release workflow
 
-After [START](./START-WORKFLOW.md), run affected checks and
+After [START](./START-WORKFLOW.md), run affected checks, then
 `npm run release:common -- publish --message="<message>"`.
-After protected merge and canonical sync, run `complete-adlc --ref=<lane>`.
-`close` is diagnostics only. Cleanup retains recovery bytes and needs exact proof;
-use `--bundle --stopped` for authenticated cleanup.
+Publication stops at provider handoff. After exact protected merge, use
+`complete --ref=<lane>` (alias `complete-adlc`); `close` is diagnostics only.
+Cleanup preserves recovery bytes and requires exact eligible-target evidence;
+`--bundle --stopped` supplies authenticated proof where required.
 
-`complete-adlc --worktrees=<absolute-directory>` closes registered lanes serially
-in a bounded pass, preserving blocked work. Resume to process remaining lanes.
-Published heads stay immutable; use `successor`. Each effect keeps its own grant.
-Continue [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with deployment authority.
+Published candidates stay immutable; native `successor` retains their checkout and
+mission cap. Integration, retirement, cleanup, sync and production grants remain separate.
+Continue [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.
