@@ -4,9 +4,11 @@ import { lstatSync, mkdirSync, mkdtempSync, renameSync, writeFileSync } from 'no
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { commonDir, observeGit, git, worktreeInventory, acquireOperationLock, finishOperationLock, assertDirectoryAncestors } from '../src/git.mjs';
 import { hash, readRegular } from './agentic-os-test-inputs.mjs';
+import { isLaneRef } from '../src/lane-id.mjs';
 import { readWorkflowObservation, workflowObservation } from './agentic-os-workflow-observation.mjs';
 
-import { buildArchive, readArchive, receiptClock, traceReferences, workflowGroup, WORKFLOW_GROUP } from './agentic-os-workflow-archive.mjs';
+import { buildArchive, readArchive, receiptClock, traceReferences, workflowGroup, WORKFLOW_GROUP,
+  validateWorkflowExecution, workflowEligibility } from './agentic-os-workflow-archive.mjs';
 
 export const WORKFLOW_PHASES = Object.freeze(['preparation', 'checks', 'ci', 'integration', 'cleanup', 'synchronization', 'runtime']);
 const fail = reason => { throw Error(`blocked-workflow-${reason}`); };
@@ -57,6 +59,10 @@ export function discoverWorkflowTargets(root, repository) {
 export function collectWorkflow(root, repository, input) {
   const inputPath = resolve(input), manifest = JSON.parse(read(inputPath, 32000));
   return collectManifest(root, repository, manifest, inputPath);
+}
+export function collectWorkflowValue(root, repository, value, inputPath = join(root, 'workflow-input.json')) {
+  if (Buffer.byteLength(json(value)) > 32000) fail('manifest-budget');
+  return collectManifest(root, repository, value, resolve(inputPath));
 }
 function collectManifest(root, repository, manifest, inputPath) {
   if (manifest.source?.repository !== repository) fail('repository-binding');
@@ -118,18 +124,159 @@ function collectManifest(root, repository, manifest, inputPath) {
   return finishOperationLock(lock, { label: 'workflow collection', result, error });
 }
 /** Capture a planning-bound initial root before lane provisioning; no phase is fabricated. */
-export function startWorkflow(root, repository, { revision, planningPath, worktreeId }) {
+export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution }) {
   if (!/^[a-f0-9]{40}$/u.test(revision) || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(worktreeId)) fail('start-binding');
-  const planning = { repository, revision, path: planningPath };
-  validatePlanning(root, repository, planning, false);
-  planning.digest = hash(observeGit(['show', `${revision}:${planningPath}`], { cwd: root }));
+  const planning = validateWorkflowPlanning(root, repository, { revision, planningPath });
   const source = { repository, revision, tree: observeGit(['rev-parse', `${revision}^{tree}`], { cwd: root }) };
   const id = `workflow-${hash(json({ source, planning, worktreeId })).slice(0, 32)}`;
   const inputPath = join(root, 'workflow-input.json'); // Resolution base only; never written.
   const child = collectManifest(root, repository, { schema: 'agentic-os/workflow-observation-input/v1',
     id, source, context: { workflowId: id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, inputPath);
   return collectManifest(root, repository, { schema: WORKFLOW_GROUP, id, source, planning,
+    ...(execution === undefined ? {} : { execution }),
     boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
+}
+
+/** Read the existing immutable owner; the local selected-path config is navigation only. */
+export function readSelectedWorkflow(root, repository, { input = null, required = false } = {}) {
+  const selected = observeGit(['config', '--local', '--get', 'agentic-os.workflowManifest'], { cwd: root, allowFail: true });
+  if (!input && !selected) { if (required) fail('selection-required'); return null; }
+  const path = resolve(input ?? selected), bytes = read(path, 32000), digest = hash(bytes), manifest = JSON.parse(bytes);
+  const paths = workflowPaths(root, repository);
+  if (!inside(join(paths.workspace, '.artifacts', 'workflows'), path)
+    || basename(path) !== 'manifest.json' || basename(dirname(path)) !== digest) fail('selection-digest');
+  if (manifest.schema !== WORKFLOW_GROUP || manifest.source?.repository !== repository) {
+    if (manifest.execution !== undefined) fail('foreign-declared-owner');
+    if (required || input) fail('selection-binding'); return null;
+  }
+  if (input && selected && resolve(selected) !== path) {
+    const current = JSON.parse(read(resolve(selected), 32000));
+    if (current.id === manifest.id) fail('selection-stale');
+  }
+  if (!/^[a-f0-9]{40}$/u.test(manifest.source.revision ?? '')
+    || observeGit(['rev-parse', `${manifest.source.revision}^{tree}`], { cwd: root }) !== manifest.source.tree) fail('source-binding');
+  validatePlanning(root, repository, manifest.planning); verifyGroupRelease(manifest, path);
+  const load = groupLoader(root, repository);
+  workflowGroup(manifest, load, { adviceOnly: true });
+  const members = manifest.members.map(ref => {
+    const loaded = load(ref), child = loaded.manifest;
+    const receipts = new Map(), receiptBytes = file => {
+      if (!receipts.has(file)) receipts.set(file, loaded.read(file)); return receipts.get(file);
+    };
+    const observation = workflowObservation(child, receiptBytes, Date.now(), { all: true });
+    const advice = readArchive(child, loaded.read, { adviceOnly: true });
+    // Use validated native receipt progress, never caller-written recommendation status.
+    advice.progress = observation.spans.filter(row => row.parentSpanId === 'root').map(row => {
+      const phase = child.phases.find(value => value.id === row.spanId), text = receiptBytes(phase.file);
+      let receipt; try { receipt = JSON.parse(text); } catch { receipt = null; }
+      return { id: row.spanId, digest: row.subjectDigest, revision: row.component.revision, status: row.status,
+        partial: receipt?.coverage?.partial === true || (receipt?.coverage?.totalStages ?? 0) > (receipt?.stages?.length ?? 0) };
+    });
+    return { ref, child, path: loaded.path, read: loaded.read, advice };
+  });
+  validateAllocations(manifest.allocations, members);
+  if (manifest.previous) {
+    const older = load(manifest.previous).manifest;
+    assertGroupSuccessor(manifest, older, manifest.members, load, true);
+  }
+  if (observeGit(['config', '--local', '--get', 'agentic-os.workflowManifest'], { cwd: root, allowFail: true }) !== selected)
+    fail('selection-drift');
+  return { manifest, path, digest, members };
+}
+
+/** Restrict one native action; exact-input reuse and effect authority stay with its owner. */
+export function assertWorkflowEffect({ root, repository, phase, worktreeId, revision, dirty = false, ref = null, mode = 'effect' }) {
+  if (!WORKFLOW_PHASES.includes(phase) || !/^[a-f0-9]{40}$/u.test(revision ?? '')
+    || !['effect', 'dependencies'].includes(mode)) fail('effect-binding');
+  const selected = readSelectedWorkflow(root, repository);
+  const standalone = { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' };
+  if (!selected || selected.manifest.execution === undefined) return standalone;
+  const allocation = ref && selected.manifest.allocations?.find(row => row.ref === ref);
+  const member = selected.members.find(row => row.child.source.repository === repository
+    && row.child.context.worktreeId === (allocation?.worktreeId ?? worktreeId));
+  if (allocation && !member) fail('allocation-member-binding');
+  if (!member) return standalone;
+  const { manifest, digest } = selected;
+  const decision = workflowEligibility(manifest, selected.members).actions.find(row => row.memberId === member.ref.id && row.phase === phase);
+  if (!decision) fail('effect-phase');
+  const blockers = [...decision.blockers];
+  if (member.child.source.revision !== revision) blockers.push({ memberId: member.ref.id, phase,
+    reason: 'candidate-revision-drift', requiredRevision: member.child.source.revision, revision });
+  if (mode === 'effect' && dirty && !['checks', 'preparation'].includes(phase)) blockers.push({ memberId: member.ref.id, phase, reason: 'dirty-candidate' });
+  const binding = { workflowId: manifest.id, manifestDigest: digest, memberId: member.ref.id, phase, revision,
+    dependencyCoverage: 'declared', authority: false, mode, blockers };
+  const fingerprint = hash(json(binding));
+  if (blockers.length) throw Object.assign(Error(`blocked-workflow-dependencies: ${json({ ...binding, fingerprint }).trim()}`), {
+    reason: 'blocked-workflow-dependencies', ...binding, fingerprint,
+    recheck: { condition: 'candidate or prerequisite receipt changes', manifestDigest: digest,
+      prerequisites: blockers.map(({ memberId, phase, requiredRevision, evidenceDigest }) => ({ memberId, phase, requiredRevision, evidenceDigest })) },
+  });
+  return { ...binding, status: 'eligible', fingerprint };
+}
+
+/** Keep one declared identity across rechecks, including blocked prerequisite decisions. */
+export function createWorkflowEffectGuard(context) {
+  let bound = null;
+  return (mode = 'effect') => {
+    const input = context();
+    let result, error;
+    try { result = input === null ? { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' }
+      : assertWorkflowEffect({ ...input, mode }); }
+    catch (caught) { result = caught; error = caught; }
+    const identity = result.workflowId && result.memberId ? JSON.stringify([result.workflowId, result.memberId]) : null;
+    if (bound && (result.status === 'standalone' || identity && identity !== bound)) fail('effect-identity-drift');
+    if (identity) bound ??= identity;
+    if (error) throw error;
+    return result;
+  };
+}
+
+/** Record only the candidate committed by a native owner; historical receipts remain historical. */
+export function rebindWorkflowCandidate({ root, repository, ref, worktreeId, previousRevision, revision, expectedDecision }) {
+  const declared = expectedDecision?.status === 'eligible';
+  if (!declared && expectedDecision?.status !== 'standalone' || declared && (expectedDecision.phase !== 'ci'
+    || expectedDecision.mode !== 'dependencies' || expectedDecision.revision !== previousRevision)) fail('candidate-rebind-decision');
+  const selected = readSelectedWorkflow(root, repository);
+  if (!selected || selected.manifest.execution === undefined) {
+    if (declared) fail('effect-identity-drift');
+    return { status: 'standalone', authority: false };
+  }
+  const allocation = selected.manifest.allocations?.find(row => row.ref === ref);
+  const member = selected.members.find(row => row.child.source.repository === repository
+    && row.child.context.worktreeId === (allocation?.worktreeId ?? worktreeId));
+  if (!member) {
+    if (allocation) fail('allocation-member-binding');
+    if (declared) fail('effect-identity-drift');
+    return { status: 'standalone', authority: false };
+  }
+  if (!declared || expectedDecision.workflowId !== selected.manifest.id || expectedDecision.memberId !== member.ref.id) fail('effect-identity-drift');
+  if (![previousRevision, revision].every(value => /^[a-f0-9]{40}$/u.test(value ?? ''))
+    || !isLaneRef(ref) || allocation && allocation.state !== 'active') fail('candidate-rebind-binding');
+  const registration = worktreeInventory(root).find(row => row.branch === ref && resolve(row.path) === resolve(root));
+  if (!registration || registration.head !== revision || registration.detached
+    || observeGit(['rev-parse', '--path-format=absolute', '--git-dir'], { cwd: root }) === commonDir(root)
+    || observeGit(['rev-parse', 'HEAD'], { cwd: root }) !== revision
+    || observeGit(['merge-base', '--is-ancestor', previousRevision, revision], { cwd: root, allowFail: true }) === null)
+    fail('candidate-rebind-source');
+  if (member.child.source.revision !== previousRevision) fail('candidate-rebind-drift');
+  if (previousRevision === revision) return { status: 'unchanged', authority: false, manifest: selected.path, digest: selected.digest };
+  const child = collectWorkflowValue(root, repository, { ...member.child,
+    source: { repository, revision, tree: observeGit(['rev-parse', `${revision}^{tree}`], { cwd: root }) },
+    phases: member.child.phases.map(phase => ({ ...phase, revision: phase.revision ?? previousRevision,
+      file: join(dirname(member.path), phase.file) })),
+    // Traces bind their own candidate; retain them in the previous immutable member, never relabel them.
+    traces: [],
+  });
+  const paths = workflowPaths(root, repository), manifest = selected.manifest;
+  const result = collectWorkflowValue(root, repository, { ...manifest,
+    previous: { file: selected.path, digest: selected.digest },
+    members: manifest.members.map(row => row.id === member.ref.id ? { ...row, file: child.manifest, digest: child.digest }
+      : { ...row, file: resolve(paths.workspace, row.file) }),
+    releaseEvidence: (manifest.releaseEvidence ?? []).map(row => ({ ...row, file: join(dirname(selected.path), row.file) })),
+    ...(manifest.allocations === undefined ? {} : { allocations: manifest.allocations.map(row => row.ref === ref
+      ? { ...row, headRevision: revision } : row) }),
+  }, join(paths.workspace, 'workflow-input.json'));
+  return { ...result, status: 'rebound', previousRevision, revision };
 }
 
 export function runWorkflow(root, argv, profile, out = console.log) {
@@ -217,6 +364,60 @@ function validatePlanning(root, repository, planning, checkDigest = true) {
   if (!planningDocument(planning.path, planned)) fail('planning-binding');
   // The native Git reader trims terminal newlines; historical group digests use that text.
   if (checkDigest && hash(planned) !== planning.digest) fail('planning-digest');
+  return { repository, revision: planning.revision, path: planning.path, digest: hash(planned) };
+}
+/** Validate the exact committed planning join before admission performs any upstream effect. */
+export function validateWorkflowPlanning(root, repository, { revision, planningPath, digest } = {}) {
+  return validatePlanning(root, repository, { repository, revision, path: planningPath, digest }, digest !== undefined);
+}
+function validateAllocations(allocations = [], members, previous = []) {
+  if (!Array.isArray(allocations) || allocations.length > 32) fail('allocation-budget');
+  const keys = ['worktreeId', 'ref', 'path', 'baseRevision', 'headRevision', 'writeDigest', 'state', 'operation'];
+  const identities = ['worktreeId', 'ref', 'path'], seen = identities.map(() => new Set());
+  for (const row of allocations) {
+    if (!row || !keys.every(key => Object.hasOwn(row, key))
+      || Object.keys(row).some(key => !keys.includes(key) && !['previousWriteDigest', 'predecessorRef'].includes(key))
+      || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(row.worktreeId ?? '') || !isLaneRef(row.ref)
+      || typeof row.path !== 'string' || row.path.length > 4096 || /[\x00-\x1f]/u.test(row.path)
+      || !isAbsolute(row.path) || resolve(row.path) !== row.path
+      || ![row.baseRevision, row.headRevision].every(value => /^[a-f0-9]{40}$/u.test(value ?? ''))
+      || !/^[a-f0-9]{64}$/u.test(row.writeDigest ?? '') || !['pending', 'active'].includes(row.state)
+      || !['create', 'readmit'].includes(row.operation)
+      || Object.hasOwn(row, 'previousWriteDigest') && (row.operation !== 'readmit'
+        || !/^[a-f0-9]{64}$/u.test(row.previousWriteDigest ?? ''))
+      || Object.hasOwn(row, 'predecessorRef') && (row.operation !== 'readmit'
+        || !isLaneRef(row.predecessorRef) || row.predecessorRef === row.ref)) fail('allocation-binding');
+    identities.forEach((key, index) => { if (seen[index].has(row[key])) fail('allocation-duplicate'); seen[index].add(row[key]); });
+  }
+  for (const before of previous) {
+    const after = allocations.find(row => row.worktreeId === before.worktreeId);
+    if (!after || ['worktreeId', 'path', 'baseRevision'].some(key => after[key] !== before[key])
+      || before.state === 'active' && after.state === 'pending' && after.operation !== 'readmit') fail('allocation-lineage');
+    if (before.ref !== after.ref) {
+      if (before.state !== 'active' || after.state !== 'pending' || after.operation !== 'readmit'
+        || after.predecessorRef !== before.ref) fail('allocation-predecessor');
+    } else if (after.predecessorRef !== before.predecessorRef) fail('allocation-predecessor');
+    if (before.state === 'active' && after.state === 'pending') {
+      if (after.previousWriteDigest !== before.writeDigest) fail('allocation-scope-proof');
+    } else if (before.writeDigest !== after.writeDigest || before.operation !== after.operation
+      || before.state === 'pending' && before.headRevision !== after.headRevision
+      || before.state === 'pending' && before.operation === 'readmit' && (
+        before.previousWriteDigest === undefined || after.state === 'pending' && after.previousWriteDigest !== before.previousWriteDigest
+        || after.previousWriteDigest !== undefined && after.previousWriteDigest !== before.previousWriteDigest)) fail('allocation-scope-proof');
+  }
+}
+function assertGroupSuccessor(manifest, older, members, load, checkSequence = false) {
+  if (older.schema !== WORKFLOW_GROUP || older.id !== manifest.id || older.source.repository !== manifest.source.repository
+    || JSON.stringify(older.planning) !== JSON.stringify(manifest.planning) || !Number.isSafeInteger(older.sequence)
+    || checkSequence && manifest.sequence !== older.sequence + 1
+    || older.members.some(ref => !members.some(next => next.id === ref.id))
+    || older.releaseTargets.some(id => !manifest.releaseTargets?.includes(id))) fail('previous-binding');
+  for (const ref of older.members) {
+    const before = load(ref).manifest, after = load(members.find(next => next.id === ref.id)).manifest;
+    if (before.source.repository !== after.source.repository || before.context.worktreeId !== after.context.worktreeId) fail('previous-member-binding');
+  }
+  validateWorkflowExecution(manifest.execution, members.map(ref => ({ ref, child: load(ref).manifest })), older.execution);
+  validateAllocations(manifest.allocations, members, older.allocations);
 }
 function collectGroup(root, repository, manifest, inputPath) {
   const paths=workflowPaths(root,repository), load=groupLoader(root,repository), files=new Map();
@@ -245,16 +446,13 @@ function collectGroup(root, repository, manifest, inputPath) {
   if(manifest.previous){
     previous={...manifest.previous,file:relative(paths.workspace,resolve(dirname(inputPath),manifest.previous.file))};
     older=load(previous).manifest;
-    if(older.schema!==WORKFLOW_GROUP || older.id!==manifest.id || older.source.repository!==repository
-      || JSON.stringify(older.planning)!==JSON.stringify(planning) || !Number.isSafeInteger(older.sequence)
-      || older.members.some(ref=>!members.some(next=>next.id===ref.id))
-      || older.releaseTargets.some(id=>!manifest.releaseTargets?.includes(id)))fail('previous-binding');
-    for(const ref of older.members){
-      const before=load(ref).manifest,after=load(members.find(next=>next.id===ref.id)).manifest;
-      if(before.source.repository!==after.source.repository || before.context.worktreeId!==after.context.worktreeId)fail('previous-member-binding');
-    }
     sequence=older.sequence+1;
   }
+  const execution = manifest.execution === undefined ? older?.execution : manifest.execution;
+  const allocations = manifest.allocations === undefined ? older?.allocations : manifest.allocations;
+  validateWorkflowExecution(execution, members.map(ref => ({ ref, child: load(ref).manifest })));
+  validateAllocations(allocations, members);
+  if (older) assertGroupSuccessor({ ...manifest, execution, allocations }, older, members, load);
   const boundary=manifest.boundary??older?.boundary;
   if(boundary!==undefined && !['start','end'].includes(boundary)
     || boundary==='end' && !older?.boundary || older?.boundary==='end' && boundary!=='end')fail('boundary-transition');
@@ -271,6 +469,7 @@ function collectGroup(root, repository, manifest, inputPath) {
     snapshot={file:locator,digest:indexRef.digest,graphId:value.graphId,snapshotDigest:value.snapshotDigest};
   }
   const stored={schema:WORKFLOW_GROUP,id:manifest.id,source:manifest.source,lifecycle:lifecycleMetadata(),planning,members,
+    ...(execution === undefined ? {} : { execution }), ...(allocations === undefined ? {} : { allocations }),
     codebaseIndex:{owner:'agentic-graph',storage:'browser-workspace',authority:false,
       path:`/.workspace/${encodeURIComponent(manifest.id)}/codebase-index.ref.json`,...(snapshot?{snapshot}:{})},
     releaseTargets:manifest.releaseTargets,releaseEvidence,sequence,...(previous?{previous}:{}),...(boundary?{boundary}:{})};

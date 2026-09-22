@@ -24,7 +24,7 @@ Primary human release path:
   npm run release:common -- finish --ref=<lane>  run the exact integration diagnostic path only when needed
 
 Underlying execution chain:
-  doctor -> status -> lane -> land -> finish
+  guarded lane -> land -> finish
 
 Exception path:
   npm run release:common -- successor <scope> --expected-head=<published-head> [--write=<paths>]
@@ -46,8 +46,6 @@ if (command === 'help' || command === '--help' || command === '-h') {
 
 const actions = {
   start() {
-    run('doctor');
-    run('status');
     run('lane', rest);
   },
   publish() {

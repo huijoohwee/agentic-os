@@ -1,4 +1,6 @@
 /** Exact, fail-loud CLI argument grammar. */
+import { assertScope } from '../src/lane-id.mjs';
+import { parseWritePaths } from '../src/worktree.mjs';
 
 function exact(argv, {
   min = 0, max = min, options = [], flags = [], requiredOptions = [], requiredFlags = [],
@@ -90,7 +92,17 @@ export function validateCommandArguments(command, argv) {
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'],
           requiredOptions: ['ref'] });
     }
-    case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
+    case 'start': {
+      const error = exact(argv, { min: 1, max: 1,
+        options: ['device', 'write', 'plan', 'mission', 'checkout-limit', 'expected-head'], flags: ['readmit'] });
+      if (error) return error;
+      const limit = option(argv, 'checkout-limit'), head = option(argv, 'expected-head');
+      if (limit !== null && !/^(?:[0-9]|[12][0-9]|3[0-2])$/.test(limit)) return 'checkout-limit must be an integer from 0 through 32';
+      if (head !== null && !/^[0-9a-f]{40}$/.test(head)) return 'expected-head must be an exact 40-character lowercase hexadecimal revision';
+      if (argv.includes('--readmit')) return head !== null && option(argv, 'mission') !== null
+        ? null : 'readmit requires mission and expected-head';
+      return null;
+    }
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write'] });
     case 'status': return exact(argv, { options: ['device'] });
@@ -147,7 +159,8 @@ export function cmdHelp() {
       '',
       '  Primary human release path:',
       '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
-      '    npm run release:common -- start <scope> --write=<path[,path...]>   run doctor, status, then lane',
+      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> --checkout-limit=<0..32> | --mission=<manifest>]  admit or reuse a lane',
+      '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
@@ -157,7 +170,7 @@ export function cmdHelp() {
       '  Underlying primitives and diagnostics:',
       '    npm run doctor            report harness and remote drift, change nothing',
       '    npm run status            read-only lane projection and provider state',
-      '    npm run lane -- <scope> --write=<path[,path...]>   open one path-scoped lane',
+      '    npm run lane -- <scope> --write=<paths> [--mission=<manifest>]   use native START admission',
       '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
       '    npm run finish -- --ref=<lane>  record exact integration from the retained lane ref; retain cleanup separately',
       '    npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
@@ -210,6 +223,41 @@ export function option(argv, name, fallback = null) {
 }
 export function positional(argv) {
   return argv.filter((arg) => !arg.startsWith('--'));
+}
+
+/** Map typed lane input to native START; admission remains with that command. */
+export function laneArguments(args, invalidParams) {
+  const fields = ['scope', 'writePaths', 'planningPath', 'mission', 'checkoutLimit', 'expectedHead', 'readmit'];
+  if (!args || typeof args !== 'object' || Array.isArray(args)
+    || Object.keys(args).some(key => !fields.includes(key)) || typeof args.scope !== 'string')
+    return invalidParams('lane arguments require a string scope and writePaths array');
+  try {
+    assertScope(args.scope);
+    if (!Array.isArray(args.writePaths) || args.writePaths.length < 1 || args.writePaths.length > 128
+      || args.writePaths.some((path) => typeof path !== 'string' || path.length > 4096
+        || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
+      throw new TypeError('writePaths must contain 1-128 paths within the declared size limits');
+    const paths = parseWritePaths(args.writePaths.join(','));
+    for (const field of ['planningPath', 'mission']) {
+      if (Object.hasOwn(args, field) && (typeof args[field] !== 'string' || !args[field].trim()
+        || Buffer.byteLength(args[field]) > 4096 || /[\u0000-\u001f\u007f]/u.test(args[field])))
+        throw new TypeError(`${field} must be a bounded local path`);
+    }
+    if (Object.hasOwn(args, 'checkoutLimit') && (!Number.isSafeInteger(args.checkoutLimit) || args.checkoutLimit < 0 || args.checkoutLimit > 32))
+      throw new TypeError('checkoutLimit must be an integer from 0 through 32');
+    if (Object.hasOwn(args, 'expectedHead') && (typeof args.expectedHead !== 'string' || !/^[0-9a-f]{40}$/.test(args.expectedHead)))
+      throw new TypeError('expectedHead must be an exact 40-character lowercase hexadecimal revision');
+    if (Object.hasOwn(args, 'readmit') && typeof args.readmit !== 'boolean') throw new TypeError('readmit must be a boolean');
+    const argv = [args.scope, `--write=${paths.join(',')}`];
+    for (const [field, option] of [['planningPath', 'plan'], ['mission', 'mission'], ['checkoutLimit', 'checkout-limit'], ['expectedHead', 'expected-head']])
+      if (Object.hasOwn(args, field)) argv.push(`--${option}=${args[field]}`);
+    if (args.readmit) argv.push('--readmit');
+    const error = validateCommandArguments('start', argv);
+    if (error) throw new TypeError(error);
+    return ['start', ...argv];
+  } catch (error) {
+    return invalidParams(error.message);
+  }
 }
 
 /** Shared read-only discovery argument contract; owner resolution remains lazy-loaded. */

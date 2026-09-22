@@ -2,9 +2,8 @@
 
 import { loadCatalog, validateCatalog } from '../bin/agentic-os-invocation.mjs';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_COMMAND, capabilityArguments, memoryArguments } from '../bin/agentic-os-argv.mjs';
-import { assertScope, isLaneRef } from './lane-id.mjs';
-import { parseWritePaths } from './worktree.mjs';
+import { CAPABILITY_COMMAND, capabilityArguments, laneArguments, memoryArguments } from '../bin/agentic-os-argv.mjs';
+import { isLaneRef } from './lane-id.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSION = '2025-11-25';
@@ -48,6 +47,16 @@ const LANE_INPUT = {
       items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '^[^,]+$' },
       description: 'Repository-relative write reservations; combined UTF-8 limit 32 KiB.',
     },
+    planningPath: { type: 'string', minLength: 1, maxLength: 4096,
+      description: 'Committed joined plan path for native START --plan.' },
+    mission: { type: 'string', minLength: 1, maxLength: 4096,
+      description: 'Immutable workflow group manifest path; reuse its declared checkout allowance.' },
+    checkoutLimit: { type: 'integer', minimum: 0, maximum: 32,
+      description: 'First explicit mission checkout cap; zero allows reuse only. Never raises an existing cap.' },
+    expectedHead: { type: 'string', pattern: '^[0-9a-f]{40}$',
+      description: 'Exact current revision for mission reuse; required with readmit.' },
+    readmit: { type: 'boolean',
+      description: 'Extend only an active unpublished bound lane; requires mission and expectedHead.' },
   },
   required: ['scope', 'writePaths'],
   additionalProperties: false,
@@ -121,7 +130,7 @@ export const TOOLS = deepFreeze([
     inputSchema: REAP_INPUT, outputSchema: CLI_OUTPUT,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
   { name: 'lane', title: 'Open a guarded ADLC lane',
-    description: 'Create one lane worktree and branch at the fetched profile canonical ref.',
+    description: 'Admit or reuse a lane through native START, including mission budgets and active unpublished re-admission.',
     inputSchema: LANE_INPUT, outputSchema: CLI_OUTPUT,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
 ]);
@@ -229,20 +238,7 @@ export function toolArguments(name, args) {
     return value.ref === undefined ? ['reap'] : ['reap', `--ref=${value.ref}`];
   }
   if (name !== 'lane') invalidParams(`unknown tool "${String(name)}"`);
-  if (!plainObject(args) || !onlyKeys(args, ['scope', 'writePaths']) || typeof args.scope !== 'string') {
-    invalidParams('lane arguments require a string scope and writePaths array');
-  }
-  try {
-    assertScope(args.scope);
-    if (!Array.isArray(args.writePaths) || args.writePaths.length < 1 || args.writePaths.length > 128
-      || args.writePaths.some((path) => typeof path !== 'string' || path.length > 4096
-        || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
-      throw new TypeError('writePaths must contain 1-128 paths within the declared size limits');
-    const paths = parseWritePaths(args.writePaths.join(','));
-    return ['start', args.scope, `--write=${paths.join(',')}`];
-  } catch (error) {
-    invalidParams(error.message);
-  }
+  return laneArguments(args, invalidParams);
 }
 
 function success(id, result) {
@@ -268,7 +264,7 @@ function discoverResult() {
     supportedVersions: [...SUPPORTED_VERSIONS],
     capabilities: { tools: {} },
     _meta: SERVER_META,
-    instructions: 'Inspect with doctor, status, checks, or reap; use lane only when a new worktree is intended.',
+    instructions: 'Inspect with doctor, status, checks, or reap; use lane for native admission, reuse, or active unpublished re-admission.',
     ttlMs: 300_000,
     cacheScope: 'public',
   };
@@ -361,7 +357,7 @@ async function dispatchLegacy(message, options) {
       protocolVersion: LEGACY_VERSION,
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO,
-      instructions: 'Inspect with doctor, status, or reap; use lane only when a new worktree is intended.',
+      instructions: 'Inspect with doctor, status, or reap; use lane for native admission, reuse, or active unpublished re-admission.',
     };
   }
   if (message.method === 'ping') return {};

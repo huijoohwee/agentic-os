@@ -90,7 +90,7 @@ test('CLI/MCP page selection rejects invalid or misplaced offsets',()=>{
  assert.deepEqual(toolArguments('workflow.recommend',{input:'x'}),['workflow','recommend','--input=x']);
 });
 
-import { workflowGroup, WORKFLOW_GROUP } from '../bin/agentic-os-workflow-archive.mjs';
+import { workflowGroup, WORKFLOW_GROUP, validateWorkflowExecution } from '../bin/agentic-os-workflow-archive.mjs';
 function groupFixture(){
  const left=fixture(70),right=fixture(1,nativeTrace());
  left.manifest.context={workflowId:'shared-adlc',worktreeId:'left'};
@@ -202,4 +202,27 @@ test('closure exposes missing phases before release and keeps legacy progress un
  const bytes=JSON.stringify(prior);group.left.files.set('recommendations.json',bytes);
  group.left.manifest.archive.recommendations.digest=hash(bytes);
  assert.equal(workflowGroup(group.manifest,group.load,{adviceOnly:true}).closure.next.phase,'checks');
+});
+
+test('explicit dependencies select available upstream work and preserve undeclared legacy coverage', () => {
+  const group = groupFixture(); group.left.manifest.expected.push('integration');
+  const legacy = workflowGroup(group.manifest, group.load, { adviceOnly: true });
+  assert.equal(legacy.closure.dependencyCoverage, 'undeclared');
+  const edge = { before: { memberId: 'left', phase: 'integration' }, after: { memberId: 'right', phase: 'checks' } };
+  group.manifest.execution = { version: 1, checkoutLimit: 2, dependencies: { version: 1, edges: [edge] } };
+  const closure = workflowGroup(group.manifest, group.load, { adviceOnly: true }).closure;
+  assert.equal(closure.dependencyCoverage, 'declared');
+  assert.equal(closure.next.memberId, 'left'); assert.equal(closure.next.phase, 'integration');
+  assert(closure.blocked.some(row => row.memberId === 'right' && row.phase === 'checks'));
+  assert(closure.alreadySatisfied.some(row => row.memberId === 'left' && row.phase === 'checks'));
+  assert(!closure.eligible.some(row => row.phase === 'production-deployment'));
+  assert.equal(closure.authorizesEffects, false);
+  const members = group.manifest.members.map(ref => ({ ref, child: group.load(ref).manifest }));
+  const validate = edges => validateWorkflowExecution({ ...group.manifest.execution, dependencies: { version: 1, edges } }, members);
+  assert.throws(() => validate([edge, edge]), /dependency-duplicate/);
+  assert.throws(() => validate([edge, { before: edge.after, after: edge.before }]), /dependency-cycle/);
+  assert.throws(() => validate([{ ...edge, before: { memberId: 'absent', phase: 'checks' } }]), /dependency-endpoint/);
+  assert.throws(() => validate([{ ...edge, after: { memberId: 'right', phase: 'invented' } }]), /dependency-endpoint/);
+  assert.throws(() => validateWorkflowExecution({ ...group.manifest.execution, checkoutLimit: 33 }, members), /execution-contract/);
+  assert.throws(() => validateWorkflowExecution(undefined, members, group.manifest.execution), /execution-downgrade/);
 });

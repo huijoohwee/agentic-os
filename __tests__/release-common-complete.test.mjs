@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { startWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { fileURLToPath } from 'node:url';
 import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
@@ -12,6 +13,7 @@ import { createRepositoryProfile } from '../src/governance.mjs';
 import {
   resolveReleaseCommonCleanupRequest,
   runReleaseCommonCleanup,
+  runReleaseCommonCompleteWait,
   watchReleaseCommonReview,
 } from '../bin/agentic-os-release-common-complete.mjs';
 
@@ -63,9 +65,10 @@ function completeFixture(t, reviewState = 'MERGED', cleanup = profile().cleanup)
   run(['config', 'user.name', 'Fixture']);
   run(['config', 'user.email', 'fixture@example.invalid']);
   writeFileSync(join(root, 'base.txt'), 'base\n');
+  writeFileSync(join(root, 'native-prd-tad-adr-mvp-gtm.md'), '# Native plan\n');
   const repositoryProfile = profile(cleanup);
   writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(repositoryProfile, null, 2)}\n`);
-  run(['add', 'base.txt', '.agentic-os.json']);
+  run(['add', 'base.txt', '.agentic-os.json', 'native-prd-tad-adr-mvp-gtm.md']);
   run(['commit', '--quiet', '--message', 'base']);
   ensureRepositoryTrust(root, repositoryProfile, { allowCreate: true });
   const base = run(['rev-parse', 'HEAD']);
@@ -316,16 +319,17 @@ test('cleanup request requires --stopped when a bundle is supplied', () => {
 });
 
 test('release-common cleanup plans and applies the exact bundle in one run', async (t) => {
+  const fixture = completeFixture(t);
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-release-common-bundle-'));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const bundlePath = join(parent, 'bundle.json');
   writeFileSync(bundlePath, JSON.stringify({ cleanup: {}, integrationVerifier: {}, retirementVerifier: {} }));
   const output = [];
   const calls = [];
-  const plan = { authorizationDigest: 'a'.repeat(64), schema: 'agentic-os/completion-close-plan/v1' };
+  const plan = { repository: 'github.com/owner/repo', authorizationDigest: 'a'.repeat(64), schema: 'agentic-os/completion-close-plan/v1' };
   const receipt = { schema: 'agentic-os/worktree-cleanup-receipt/v1', result: 'quarantined' };
   const code = await runReleaseCommonCleanup({
-    root: '/tmp/repository',
+    root: fixture.root,
     ref: 'agent/test-device/complete',
     bundlePath,
     stopped: true,
@@ -343,13 +347,13 @@ test('release-common cleanup plans and applies the exact bundle in one run', asy
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0], {
     step: 'plan',
-    root: '/tmp/repository',
+    root: fixture.root,
     ref: 'agent/test-device/complete',
     bundle: { cleanup: {}, integrationVerifier: {}, retirementVerifier: {} },
   });
   assert.deepEqual(calls[1], {
     step: 'apply',
-    root: '/tmp/repository',
+    root: fixture.root,
     ref: 'agent/test-device/complete',
     bundle: { cleanup: {}, integrationVerifier: {}, retirementVerifier: {} },
     planned: plan,
@@ -357,4 +361,48 @@ test('release-common cleanup plans and applies the exact bundle in one run', asy
     options: { stopped: true },
   });
   assert.deepEqual(output, [plan, receipt]);
+});
+
+
+test('cleanup prerequisites preserve merge observation and block only the cleanup effect', async t => {
+  const s = completeFixture(t, 'OPEN'), repository = 'github.com/owner/repo';
+  const revision = git(['rev-parse', 'HEAD'], { cwd: s.lane }), worktreeId = basename(s.lane);
+  startWorkflow(s.root, repository, { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [
+      { before: { memberId: worktreeId, phase: 'integration' }, after: { memberId: worktreeId, phase: 'cleanup' } },
+    ] } } });
+  let reads = 0; const errors = [];
+  const result = await runReleaseCommonCompleteWait({ root: s.root, argv: [`--ref=${s.ref}`], profile: profile(),
+    out: () => {}, err: text => errors.push(text), observeReview: () => { reads += 1; return { sourceHeadBound: true, review: { state: 'MERGED' } }; } });
+  assert.equal(result, 0);
+  assert.equal(reads, 1);
+  assert.deepEqual(errors, []);
+  const bundlePath = join(s.support, 'guarded-bundle.json');
+  writeFileSync(bundlePath, '{}');
+  let applies = 0;
+  await assert.rejects(runReleaseCommonCleanup({ root: s.root, ref: s.ref, bundlePath, stopped: true, out: () => {},
+    planCompletionClose: async () => ({ repository, authorizationDigest: 'a'.repeat(64) }),
+    applyCompletionClose: async () => { applies += 1; },
+  }), /blocked-workflow-dependencies/);
+  assert.equal(applies, 0);
+  assert.equal(git(['rev-parse', 'HEAD'], { cwd: s.lane }), revision);
+});
+
+test('cleanup refuses a valid unrelated workflow selected during asynchronous planning', async t => {
+  const s = completeFixture(t), repository = 'github.com/owner/repo';
+  const revision = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const common = { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md',
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } };
+  startWorkflow(s.root, repository, { ...common, worktreeId: basename(s.lane) });
+  const bundlePath = join(s.support, 'switch-bundle.json'); writeFileSync(bundlePath, '{}');
+  let applies = 0;
+  await assert.rejects(runReleaseCommonCleanup({ root: s.root, ref: s.ref, bundlePath, stopped: true, out: () => {},
+    planCompletionClose: async () => {
+      git(['config', '--local', '--unset', 'agentic-os.workflowManifest'], { cwd: s.root });
+      startWorkflow(s.root, repository, { ...common, worktreeId: 'unrelated-member' });
+      return { repository, authorizationDigest: 'a'.repeat(64) };
+    },
+    applyCompletionClose: async () => { applies += 1; },
+  }), /blocked-workflow-effect-identity-drift/);
+  assert.equal(applies, 0);
 });

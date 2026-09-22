@@ -61,6 +61,11 @@ test('the packaged fixed tool surface is deterministic and deeply frozen', () =>
   assert.equal(Object.isFrozen(TOOLS[0].inputSchema), true);
   assert.equal(TOOLS.find((tool) => tool.name === 'reap').annotations.destructiveHint, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'lane').annotations.idempotentHint, false);
+  const laneSchema = TOOLS.find((tool) => tool.name === 'lane').inputSchema;
+  assert.deepEqual(laneSchema.required, ['scope', 'writePaths']);
+  assert.deepEqual(Object.keys(laneSchema.properties), ['scope', 'writePaths', 'planningPath', 'mission', 'checkoutLimit', 'expectedHead', 'readmit']);
+  assert.equal(laneSchema.properties.checkoutLimit.maximum, 32);
+  assert.equal(laneSchema.additionalProperties, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'checks').annotations.openWorldHint, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'checks').annotations.readOnlyHint, true);
   assert.throws(() => { TOOLS[0].name = 'changed'; }, TypeError);
@@ -139,6 +144,12 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
       ['start', 'pricing-table', '--write=src/price.mjs']],
     ['lane', { scope: 'pricing-table', writePaths: ['src/price.mjs', 'docs/price.md', 'src/price.mjs'] },
       ['start', 'pricing-table', '--write=docs/price.md,src/price.mjs']],
+    ['lane', { scope: 'price', writePaths: ['src/price.mjs'], planningPath: 'docs/plan.md', checkoutLimit: 0, readmit: false },
+      ['start', 'price', '--write=src/price.mjs', '--plan=docs/plan.md', '--checkout-limit=0']],
+    ['lane', { scope: 'price', writePaths: ['src/price.mjs'], mission: '/group manifest.json', checkoutLimit: 32, expectedHead: 'a'.repeat(40) },
+      ['start', 'price', '--write=src/price.mjs', '--mission=/group manifest.json', '--checkout-limit=32', `--expected-head=${'a'.repeat(40)}`]],
+    ['lane', { scope: 'price', writePaths: ['src/price.mjs'], mission: './mission.json', expectedHead: 'b'.repeat(40), readmit: true },
+      ['start', 'price', '--write=src/price.mjs', '--mission=./mission.json', `--expected-head=${'b'.repeat(40)}`, '--readmit']],
   ];
   for (const [name, args, expected] of cases) {
     const response = await handleRequest(request('tools/call', name, { name, arguments: args }), {
@@ -175,6 +186,13 @@ test('tool argument validation rejects escalation and shell-shaped scopes', asyn
     ['lane', { scope: 'ok', device: 'other' }],
     ['lane', { scope: 'x;rm-rf' }],
     ['lane', { scope: '../escape' }],
+    ...[{ checkoutLimit: -1 }, { checkoutLimit: 33 }, { checkoutLimit: 0.5 }, { checkoutLimit: '1' },
+      { checkoutLimit: null }, { checkoutLimit: Infinity }, { readmit: 'true' }, { readmit: null },
+      { readmit: true }, { readmit: true, mission: './mission.json' }, { readmit: true, expectedHead: 'a'.repeat(40) },
+      { expectedHead: 'main' }, { expectedHead: 'A'.repeat(40) }, { expectedHead: 12 },
+      { mission: '' }, { mission: 'x\n' }, { mission: 'x'.repeat(4097) }, { planningPath: null },
+      { planningPath: '   ' }, { planningPath: 'x\u0000' }, { planningPath: 'x'.repeat(4097) }, { checkoutAllowance: 1 },
+    ].map((args) => ['lane', { scope: 'price', writePaths: ['src/price.mjs'], ...args }]),
     ...[null, [], 'src/price.mjs', [17], [''], ['../escape'], ['/absolute'], ['src/*'],
       ['src/a.mjs,src/b.mjs'], ['src/../escape'], ['src\\\\escape'], [':(glob)**'],
       ['x'.repeat(4097)], Array(129).fill('src/file.mjs'), Array(9).fill('x'.repeat(4096)),

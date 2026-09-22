@@ -19,8 +19,9 @@ export const BUDGET = Object.freeze({
   modules: 46,
   totalLines: 15000,
   perModuleLines: 400,
-  binModules: 108,
-  binLines: 22110,
+  // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
+  binModules: 110,
+  binLines: 22750,
   runtimeModules: 96,
   runtimeLines: 23023,
 });

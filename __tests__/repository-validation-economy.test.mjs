@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync, realpathSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync, realpathSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { receiptDirectory, lockReceipts } from '../bin/agentic-os-test-receipt.mjs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { startWorkflow } from '../bin/agentic-os-workflow.mjs';
+import { runRepositoryValidation } from '../bin/agentic-os-validation.mjs';
 import { ECONOMY_FILE, economyContext, readEconomy, observeCost, costOrderedChecks,
   resourcePlan, economyFeedback, recordEconomy } from '../bin/agentic-os-validation-economy.mjs';
 const check = (name, requires = [], mandatory = false) => ({ name, requires,
@@ -121,4 +123,36 @@ test('worktrees share bounded feedback, isolate receipts, and serialize baseline
   try { assert.throws(() => recordEconomy(directory, 'cohort', check('build'), sample), /already-running/); } finally { unlock(); }
   git('worktree', 'remove', lane);
   assert.equal(readEconomy(directory, 'cohort').checks.build.samples, 1);
+});
+
+
+test('declared validation prerequisite blocks before source scan or child while plan remains observable', async t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-validation-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' }).toString().trim();
+  const keys = ['CI', 'GITHUB_ACTIONS', 'AGENTIC_OS_VALIDATION_ACTIVE'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  t.after(() => { for (const key of keys) { if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; } });
+  git('init', '-q', '-b', 'main'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
+  const repository = 'github.com/example/consumer'; git('remote', 'add', 'origin', `https://${repository}.git`);
+  writeFileSync(join(root, 'native-prd-tad-adr-mvp-gtm.md'), '# Native plan\n');
+  writeFileSync(join(root, 'check.mjs'), "import {writeFileSync} from 'node:fs'; writeFileSync('executed', 'unexpected');\n");
+  writeFileSync(join(root, '.agentic-os-validation.json'), JSON.stringify({
+    schema: 'agentic-os/repository-validation-policy/v1', repository, broadInputs: [], always: ['check'], fallback: ['check'],
+    checks: [{ id: 'check', command: ['node', 'check.mjs'], inputs: ['check.mjs'], requires: [], reuse: 'local', timeoutMs: 1000 }],
+  }));
+  git('add', '.'); git('commit', '-qm', 'fixture'); git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const revision = git('rev-parse', 'HEAD'), worktreeId = basename(root);
+  startWorkflow(root, repository, { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [
+      { before: { memberId: worktreeId, phase: 'preparation' }, after: { memberId: worktreeId, phase: 'checks' } },
+    ] } } });
+  const output = [];
+  await assert.rejects(runRepositoryValidation(['run', `--root=${root}`, '--base=missing-baseline'], { out: text => output.push(text) }), /blocked-workflow-dependencies/);
+  assert.equal(existsSync(join(root, 'executed')), false);
+  assert.equal(output.length, 0);
+  assert.equal(await runRepositoryValidation(['plan', `--root=${root}`], { out: text => output.push(text) }), 0);
+  assert.equal(JSON.parse(output[0]).selectedChecks, 1);
+  assert.equal(existsSync(join(root, 'executed')), false);
 });
