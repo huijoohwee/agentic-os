@@ -2,14 +2,16 @@
 import { TextDecoder } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
-import { currentBranch, observeGit, remoteTransport, repoRoot } from '../src/git.mjs';
+import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { gh, observeGitHubReview } from '../src/github-provider.mjs';
 import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
 import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-review.mjs';
 import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE, recoveryPolicy } from './agentic-os-cleanup-recovery.mjs';
-import { isLaneRef } from '../src/lane-id.mjs';
+import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
+import { basename } from 'node:path';
+import { assertWorkflowEffect } from './agentic-os-workflow.mjs';
 import { get } from '../src/lane-records.mjs';
 import { option } from './agentic-os-argv.mjs';
 
@@ -220,6 +222,18 @@ export async function watchReleaseCommonReview(binding, {
 }
 
 
+/** Cleanup constraints apply to the destructive effect, never to merge observation or integration. */
+function assertCleanupWorkflow(root, ref, repository) {
+  const registration = worktrees(root).find(row => row.branch === ref);
+  const record = get(ref, root), parsed = parseLaneRef(ref);
+  const retainedPath = record?.ref === ref && typeof record.worktree === 'string' ? record.worktree : null;
+  const worktreeId = registration ? basename(registration.path) : retainedPath ? basename(retainedPath)
+    : parsed ? `${parsed.device}--${parsed.scope}` : null;
+  return assertWorkflowEffect({ root, repository, phase: 'cleanup', ref, worktreeId,
+    revision: registration ? observeGit(['rev-parse', 'HEAD'], { cwd: registration.path }) : record?.head,
+    dirty: registration ? Boolean(observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: registration.path })) : false });
+}
+
 export async function runReleaseCommonCleanup({
   root,
   ref,
@@ -238,6 +252,7 @@ export async function runReleaseCommonCleanup({
   const bundle = jsonFile(bundlePath, 4_194_304, 'completion-bundle');
   const planned = await planCompletionClose(root, ref, bundle);
   out(JSON.stringify(planned));
+  assertCleanupWorkflow(root, ref, planned.repository);
   const applied = await applyCompletionClose(root, ref, bundle, planned,
     planned.authorizationDigest, { stopped });
   out(JSON.stringify(applied));
@@ -260,6 +275,7 @@ export async function runReleaseCommonLocalCleanup({
       fail('blocked-release-common-local-cleanup-review', 'local cleanup requires one exact merged review record');
     if (!status.lane.path || status.lane.mounted !== true || status.lane.clean !== true)
       fail('blocked-release-common-local-cleanup-lane', 'local cleanup requires one exact mounted clean lane');
+    assertCleanupWorkflow(root, ref, profile.repository);
     const workflow = inferMergedReviewWorkflow({
       repository: current.repository, pr: record.pr, requiredChecks: [...current.requiredChecks].sort(),
     }, { cwd: root, api });
@@ -282,6 +298,7 @@ export async function runReleaseCommonLocalCleanup({
       observeRemote: () => `${current.canonical}\trefs/heads/main`,
     });
     out(JSON.stringify(plan));
+    assertCleanupWorkflow(root, ref, profile.repository);
     const receipt = applyUserCleanup(plan, {
       cwd: root,
       authorization: `agentic-os:user-cleanup:${plan.planDigest}`,

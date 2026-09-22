@@ -90,7 +90,17 @@ export function validateCommandArguments(command, argv) {
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'],
           requiredOptions: ['ref'] });
     }
-    case 'start': return exact(argv, { min: 1, max: 1, options: ['device', 'write', 'plan'] });
+    case 'start': {
+      const error = exact(argv, { min: 1, max: 1,
+        options: ['device', 'write', 'plan', 'mission', 'checkout-limit', 'expected-head'], flags: ['readmit'] });
+      if (error) return error;
+      const limit = option(argv, 'checkout-limit'), head = option(argv, 'expected-head');
+      if (limit !== null && !/^(?:[0-9]|[12][0-9]|3[0-2])$/.test(limit)) return 'checkout-limit must be an integer from 0 through 32';
+      if (head !== null && !/^[0-9a-f]{40}$/.test(head)) return 'expected-head must be an exact 40-character lowercase hexadecimal revision';
+      if (argv.includes('--readmit')) return head !== null && option(argv, 'mission') !== null
+        ? null : 'readmit requires mission and expected-head';
+      return null;
+    }
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write'] });
     case 'status': return exact(argv, { options: ['device'] });
@@ -147,7 +157,8 @@ export function cmdHelp() {
       '',
       '  Primary human release path:',
       '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
-      '    npm run release:common -- start <scope> --write=<path[,path...]>   run doctor, status, then lane',
+      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> --checkout-limit=<0..32> | --mission=<manifest>]  admit or reuse a lane',
+      '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
@@ -157,7 +168,7 @@ export function cmdHelp() {
       '  Underlying primitives and diagnostics:',
       '    npm run doctor            report harness and remote drift, change nothing',
       '    npm run status            read-only lane projection and provider state',
-      '    npm run lane -- <scope> --write=<path[,path...]>   open one path-scoped lane',
+      '    npm run lane -- <scope> --write=<paths> [--mission=<manifest>]   use native START admission',
       '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
       '    npm run finish -- --ref=<lane>  record exact integration from the retained lane ref; retain cleanup separately',
       '    npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',

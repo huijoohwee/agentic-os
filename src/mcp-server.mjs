@@ -2,7 +2,7 @@
 
 import { loadCatalog, validateCatalog } from '../bin/agentic-os-invocation.mjs';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_COMMAND, capabilityArguments, memoryArguments } from '../bin/agentic-os-argv.mjs';
+import { CAPABILITY_COMMAND, capabilityArguments, memoryArguments, validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { assertScope, isLaneRef } from './lane-id.mjs';
 import { parseWritePaths } from './worktree.mjs';
 
@@ -48,6 +48,16 @@ const LANE_INPUT = {
       items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '^[^,]+$' },
       description: 'Repository-relative write reservations; combined UTF-8 limit 32 KiB.',
     },
+    planningPath: { type: 'string', minLength: 1, maxLength: 4096,
+      description: 'Committed joined plan path for native START --plan.' },
+    mission: { type: 'string', minLength: 1, maxLength: 4096,
+      description: 'Immutable workflow group manifest path; reuse its declared checkout allowance.' },
+    checkoutLimit: { type: 'integer', minimum: 0, maximum: 32,
+      description: 'First explicit mission checkout cap; zero allows reuse only. Never raises an existing cap.' },
+    expectedHead: { type: 'string', pattern: '^[0-9a-f]{40}$',
+      description: 'Exact current revision for mission reuse; required with readmit.' },
+    readmit: { type: 'boolean',
+      description: 'Extend only an active unpublished bound lane; requires mission and expectedHead.' },
   },
   required: ['scope', 'writePaths'],
   additionalProperties: false,
@@ -121,7 +131,7 @@ export const TOOLS = deepFreeze([
     inputSchema: REAP_INPUT, outputSchema: CLI_OUTPUT,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
   { name: 'lane', title: 'Open a guarded ADLC lane',
-    description: 'Create one lane worktree and branch at the fetched profile canonical ref.',
+    description: 'Admit or reuse a lane through native START, including mission budgets and active unpublished re-admission.',
     inputSchema: LANE_INPUT, outputSchema: CLI_OUTPUT,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
 ]);
@@ -229,7 +239,7 @@ export function toolArguments(name, args) {
     return value.ref === undefined ? ['reap'] : ['reap', `--ref=${value.ref}`];
   }
   if (name !== 'lane') invalidParams(`unknown tool "${String(name)}"`);
-  if (!plainObject(args) || !onlyKeys(args, ['scope', 'writePaths']) || typeof args.scope !== 'string') {
+  if (!plainObject(args) || !onlyKeys(args, ['scope', 'writePaths', 'planningPath', 'mission', 'checkoutLimit', 'expectedHead', 'readmit']) || typeof args.scope !== 'string') {
     invalidParams('lane arguments require a string scope and writePaths array');
   }
   try {
@@ -239,7 +249,23 @@ export function toolArguments(name, args) {
         || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
       throw new TypeError('writePaths must contain 1-128 paths within the declared size limits');
     const paths = parseWritePaths(args.writePaths.join(','));
-    return ['start', args.scope, `--write=${paths.join(',')}`];
+    for (const field of ['planningPath', 'mission']) {
+      if (Object.hasOwn(args, field) && (typeof args[field] !== 'string' || !args[field].trim()
+        || Buffer.byteLength(args[field]) > 4096 || /[\u0000-\u001f\u007f]/u.test(args[field])))
+        throw new TypeError(`${field} must be a bounded local path`);
+    }
+    if (Object.hasOwn(args, 'checkoutLimit') && (!Number.isSafeInteger(args.checkoutLimit) || args.checkoutLimit < 0 || args.checkoutLimit > 32))
+      throw new TypeError('checkoutLimit must be an integer from 0 through 32');
+    if (Object.hasOwn(args, 'expectedHead') && (typeof args.expectedHead !== 'string' || !/^[0-9a-f]{40}$/.test(args.expectedHead)))
+      throw new TypeError('expectedHead must be an exact 40-character lowercase hexadecimal revision');
+    if (Object.hasOwn(args, 'readmit') && typeof args.readmit !== 'boolean') throw new TypeError('readmit must be a boolean');
+    const argv = [args.scope, `--write=${paths.join(',')}`];
+    for (const [field, option] of [['planningPath', 'plan'], ['mission', 'mission'], ['checkoutLimit', 'checkout-limit'], ['expectedHead', 'expected-head']])
+      if (Object.hasOwn(args, field)) argv.push(`--${option}=${args[field]}`);
+    if (args.readmit) argv.push('--readmit');
+    const error = validateCommandArguments('start', argv);
+    if (error) throw new TypeError(error);
+    return ['start', ...argv];
   } catch (error) {
     invalidParams(error.message);
   }
@@ -268,7 +294,7 @@ function discoverResult() {
     supportedVersions: [...SUPPORTED_VERSIONS],
     capabilities: { tools: {} },
     _meta: SERVER_META,
-    instructions: 'Inspect with doctor, status, checks, or reap; use lane only when a new worktree is intended.',
+    instructions: 'Inspect with doctor, status, checks, or reap; use lane for native admission, reuse, or active unpublished re-admission.',
     ttlMs: 300_000,
     cacheScope: 'public',
   };
@@ -361,7 +387,7 @@ async function dispatchLegacy(message, options) {
       protocolVersion: LEGACY_VERSION,
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO,
-      instructions: 'Inspect with doctor, status, or reap; use lane only when a new worktree is intended.',
+      instructions: 'Inspect with doctor, status, or reap; use lane for native admission, reuse, or active unpublished re-admission.',
     };
   }
   if (message.method === 'ping') return {};

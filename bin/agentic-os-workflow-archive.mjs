@@ -214,6 +214,74 @@ export function readArchive(manifest, read, { offset=0, now=Date.now(), adviceOn
   return observation;
 }
 
+const phaseNames = ['preparation', 'checks', 'ci', 'integration', 'cleanup', 'synchronization', 'runtime'];
+const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
+  && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+const endpointKey = row => `${row.memberId}/${row.phase}`;
+const edgeKey = row => `${endpointKey(row.before)}>${endpointKey(row.after)}`;
+
+/** Explicit local restrictions; index edges and receipt coverage never grant authority. */
+export function validateWorkflowExecution(execution, members, previous) {
+  if (execution === undefined) { requireFact(previous === undefined, 'execution-downgrade'); return null; }
+  requireFact(exactKeys(execution, ['version', 'checkoutLimit', 'dependencies']) && execution.version === 1
+    && Number.isInteger(execution.checkoutLimit) && execution.checkoutLimit >= 0 && execution.checkoutLimit <= 32,
+  'execution-contract');
+  const dependencies = execution.dependencies;
+  requireFact(exactKeys(dependencies, ['version', 'edges']) && dependencies.version === 1
+    && Array.isArray(dependencies.edges) && dependencies.edges.length <= 128, 'dependency-contract');
+  const nodes = new Set(members.flatMap(({ ref, child }) => child.expected.map(phase => `${ref.id}/${phase}`)));
+  const edges = new Set(), outgoing = new Map();
+  for (const edge of dependencies.edges) {
+    requireFact(exactKeys(edge, ['before', 'after']) && [edge.before, edge.after].every(endpoint =>
+      exactKeys(endpoint, ['memberId', 'phase']) && id(endpoint.memberId) && phaseNames.includes(endpoint.phase)
+      && nodes.has(endpointKey(endpoint))), 'dependency-endpoint');
+    const before = endpointKey(edge.before), after = endpointKey(edge.after), key = edgeKey(edge);
+    requireFact(before !== after && !edges.has(key), 'dependency-duplicate'); edges.add(key);
+    outgoing.set(before, [...(outgoing.get(before) ?? []), after]);
+  }
+  const visited = new Set(), visiting = new Set();
+  const visit = node => {
+    requireFact(!visiting.has(node), 'dependency-cycle'); if (visited.has(node)) return;
+    visiting.add(node); for (const next of outgoing.get(node) ?? []) visit(next);
+    visiting.delete(node); visited.add(node);
+  };
+  for (const node of nodes) visit(node);
+  if (previous !== undefined) {
+    requireFact(previous.checkoutLimit === execution.checkoutLimit
+      && previous.dependencies.edges.every(edge => edges.has(edgeKey(edge))), 'execution-relaxation');
+  }
+  return execution;
+}
+
+/** Deterministic prerequisite decisions, with no scheduler, waiting or effect execution. */
+export function workflowEligibility(manifest, members) {
+  const execution = validateWorkflowExecution(manifest.execution, members);
+  const rows = members.flatMap(({ ref, child, advice }) => child.expected.map(phase => {
+    const receipt = child.phases.find(row => row.id === phase);
+    const progress = advice.progress?.find(row => row.id === phase && row.digest === receipt?.digest
+      && row.revision === (receipt?.revision ?? child.source.revision));
+    const current = receipt && (receipt.revision ?? child.source.revision) === child.source.revision;
+    return { memberId: ref.id, phase, memberDigest: ref.digest, requiredRevision: child.source.revision,
+      revision: receipt ? receipt.revision ?? child.source.revision : null,
+      evidenceDigest: receipt?.digest ?? null,
+      status: !current && receipt ? 'stale' : progress?.partial ? 'partial' : progress?.status ?? 'missing' };
+  }));
+  const byKey = new Map(rows.map(row => [endpointKey(row), row])), prerequisites = new Map();
+  for (const edge of execution?.dependencies.edges ?? []) prerequisites.set(endpointKey(edge.after),
+    [...(prerequisites.get(endpointKey(edge.after)) ?? []), endpointKey(edge.before)]);
+  const ancestors = (key, result = new Set()) => {
+    for (const before of prerequisites.get(key) ?? []) if (!result.has(before)) { result.add(before); ancestors(before, result); }
+    return result;
+  };
+  return { coverage: execution ? 'declared' : 'undeclared', authority: false,
+    actions: rows.map(row => {
+      const blockers = [...ancestors(endpointKey(row))].sort().map(key => byKey.get(key))
+        .filter(before => before.status !== 'completed').map(before => ({ ...before, reason: 'prerequisite-not-current-complete' }));
+      return { ...row, blockers, eligibility: blockers.length ? 'dependency-blocked'
+        : row.status === 'completed' ? 'already-satisfied' : execution ? 'eligible' : 'undeclared' };
+    }) };
+}
+
 /** Navigation for the existing external-agent loop; never an effect executor or authority proof. */
 function releaseClosure(manifest, members) {
   const owners = {
@@ -225,14 +293,11 @@ function releaseClosure(manifest, members) {
     synchronization: ['canonical-owner', 'Use governed canonical synchronization and preserve unrelated bytes.'],
     runtime: ['runtime-owner', 'Run the consumer canonical Dev readiness and exact-candidate review.'],
   };
-  const steps = members.flatMap(({ ref, child, advice }) => child.expected.map(phase => {
-    const receipt = child.phases.find(row => row.id === phase);
-    const progress = advice.progress?.find(row => row.id === phase && row.digest === receipt?.digest
-      && row.revision === (receipt?.revision ?? child.source.revision));
-    const [owner, action] = owners[phase] ?? ['phase-owner', 'Collect the owning phase receipt.'];
-    return { memberId: ref.id, phase, owner, action, status: progress?.status ?? 'missing',
-      evidenceDigest: receipt?.digest ?? null };
-  }));
+  const eligibility = workflowEligibility(manifest, members);
+  const steps = eligibility.actions.map(row => {
+    const [owner, action] = owners[row.phase] ?? ['phase-owner', 'Collect the owning phase receipt.'];
+    return { ...row, owner, action, status: row.blockers.length ? 'blocked' : row.status };
+  });
   for (const memberId of manifest.releaseTargets) {
     const refs = (manifest.releaseEvidence ?? []).filter(row => row.memberId === memberId);
     const paired = refs.length === 2 && refs.every(row => row.repository === refs[0].repository
@@ -240,7 +305,8 @@ function releaseClosure(manifest, members) {
     for (const phase of ['deployment', 'runtime']) {
       const ref = refs.find(row => row.kind === phase);
       const bound = ref && /^[a-f0-9]{40}$/u.test(ref.revision ?? '')
-        && ref.repository === members.find(row => row.ref.id === memberId).child.source.repository;
+        && ref.repository === members.find(row => row.ref.id === memberId).child.source.repository
+        && ref.revision === members.find(row => row.ref.id === memberId).child.source.revision;
       steps.push({ memberId, phase: `production-${phase}`, owner: 'consumer-release-owner',
         action: phase === 'deployment'
           ? 'Prepare the exact reviewed candidate, revalidate existing authorization, and run the consumer protected release workflow.'
@@ -256,11 +322,23 @@ function releaseClosure(manifest, members) {
   steps.push({ memberId: null, phase: 'workflow-end', owner: 'evidence-owner',
     action: 'Collect the end successor of the same workflow, retaining every member, release target and original receipt.',
     status: manifest.boundary === 'end' ? 'completed' : 'missing', evidenceDigest: null });
+  if (eligibility.coverage === 'declared') for (const row of steps.filter(row => row.eligibility === undefined)) {
+    const prerequisites = row.phase === 'workflow-end' ? steps.filter(before => before !== row)
+      : eligibility.actions.filter(before => before.memberId === row.memberId);
+    row.blockers = prerequisites.filter(before => before.status !== 'completed' || before.blockers?.length)
+      .map(({ memberId, phase, status, evidenceDigest }) => ({ memberId, phase, status, evidenceDigest, reason: 'receipt-coverage-incomplete' }));
+    row.eligibility = row.blockers.length ? 'dependency-blocked' : row.status === 'completed' ? 'already-satisfied' : 'eligible';
+    if (row.blockers.length) row.status = 'blocked';
+  }
   const pending = steps.filter(row => row.status !== 'completed');
+  const eligible = pending.filter(row => !row.blockers?.length && row.eligibility !== 'undeclared');
   return { target: 'production-runtime-ready', status: pending.some(row => ['failed', 'blocked'].includes(row.status))
     ? 'blocked' : pending.length ? 'incomplete' : 'observed-complete',
     authorizesEffects: false, authorityVerified: false, total: steps.length,
-    completed: steps.length - pending.length, pending, next: pending[0] ?? null,
+    completed: steps.length - pending.length, pending, dependencyCoverage: eligibility.coverage,
+    eligible, blocked: pending.filter(row => row.blockers?.length),
+    alreadySatisfied: steps.filter(row => row.status === 'completed'),
+    next: eligibility.coverage === 'declared' ? eligible[0] ?? null : pending[0] ?? null,
     policy: 'Continue covered actions through their existing owners; wait on exact active runs, repair failed source, and ask only for uncovered decisions. Receipt coverage is not authenticated release authority.' };
 }
 

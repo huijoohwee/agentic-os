@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.3"
-date: "2026-09-21"
+version: "1.4.4"
+date: "2026-09-22"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.3"
-tad_revision: "1.4.3"
-adr_revision: "1.4.3"
+prd_revision: "1.4.4"
+tad_revision: "1.4.4"
+adr_revision: "1.4.4"
 guideline_revision: "2.7.0"
-worktree_id: "device-0232231d4a19--shared-memory-invocation"
-agent_id: "codex-shared-memory-invocation"
+worktree_id: "device-0232231d4a19--adlc-execution-economy"
+agent_id: "codex-adlc-execution-economy"
 load_policy: "on-demand"
 verification_scope: "ADLC closure observations, existing invocation reuse and bounded checks; consumer-authenticated runtime proof remains separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "812536315f7912a7b387ea159f2c88016e7fd7f2"
-mvp_revision: "1.4.3"
-gtm_revision: "1.4.3"
+mvp_revision: "1.4.4"
+gtm_revision: "1.4.4"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
@@ -32,11 +32,11 @@ Current pins live in [`catalog/composition-source-lock.json`](../catalog/composi
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
 ## Identity and opening directive
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.3`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.4`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.3`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.4`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
@@ -79,7 +79,7 @@ it remains below 600 lines and reuses historical evidence links instead of anoth
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 ## TAD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.3` consumes PRD `1.4.3`, decisions ADR `1.4.3`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.4` consumes PRD `1.4.4`, decisions ADR `1.4.4`.
 
 ### Journey-to-system and RAO steps
 
@@ -354,7 +354,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.3` binds PRD/TAD `1.4.3`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.4` binds PRD/TAD `1.4.4`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -384,7 +384,7 @@ those behaviors. P01/P03/P05/P06 now use the bounded handover above at this exac
 
 ### Shared-memory invocation (P04-M, authorized implementation)
 
-All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.3`, refining AC-P04/T04; ADR-P06 is accepted under the 2026-09-21 explicit P04-M1–M5 authorization.
+All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.4`, refining AC-P04/T04; ADR-P06 is accepted under the 2026-09-21 explicit P04-M1–M5 authorization.
 The unchanged native-inspiration cases and handover checks remain in the [exact predecessor](https://github.com/huijoohwee/agentic-os/blob/3559f18aeef6b0f2eb13bb95820f426a8e4e2301/guides/PRD-TAD-ADR-MVP-GTM.md#native-inspiration-acceptance-cases). Current T01 policy still governs authorization and source restrictions.
 **PRD / directive:** the operator retrieves a cited prior decision and prepares one reviewed learning proposal from the same shared source across tasks/devices. Pain: CLI-only recall is easy to miss in an MCP-driven task; switching stores can surface duplicate or stale context. This is an observed access gap, not measured customer demand. Reuse `TASK-MEMORY-001`, whose [memory guide](MEMORY.md#task-operating-model-task-memory-001100) remains the retrieval/publication contract owner; this proposal owns only its discovery/invocation handoff.
 
@@ -482,118 +482,77 @@ is established by the handover. Feed measured findings into the next immutable C
 [maturity-grounding]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md#experience-and-first-dollar--reference-implementation
 [document-naming]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format
 
-Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.3` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.4` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
 
 [planning-record]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-planning-record.md
 [handover-continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/adlc-artifact-continuity.md
 ### WORKFLOW-OBS-001 · Lifecycle observation
-
-PRD: a solo operator can identify time/resource bottlenecks from preparation through checks, CI,
-integration, cleanup, synchronization and runtime using existing receipts. TAD: the validation observation
-CLI lazily calls the receipt projector; source bindings and bounded native trace output remain separate
-from execution and authority. ADR: preserve each phase's original evidence digest/revision; never sum
-nested resource measurements or infer missing phases, timing, credentials or completion. MVP: exact
-local receipt import, full phase coverage with explicitly bounded step detail, native Canvas-compatible
-JSON and advisory ranked feedback. GTM: shorten diagnosis and time to first verified run; willingness to
-pay and measured time savings remain unvalidated. Acceptance: `__tests__/workflow-observation.test.mjs`
-and `npm run check`; operating limits and invocation are in `guides/VALIDATION-ECONOMY.md`. Rollback:
-remove the opt-in manifest use; existing validation, integration, cleanup and runtime owners are unchanged.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#workflow-obs-001--lifecycle-observation).
 
 ### APEX-OBS-001 · Import-first observation
-PRD: a solo operator can open workflow evidence without configuring a runtime first. TAD: the
-[preset catalog](../runtime/agents/docs/PROMPT-PRESETS.md) retains the canonical `/canvas.view.set`
-command, `#canvas-view` semantic and `@canvas-view` binding; Graph owns file selection, bounded native
-trace parsing, the existing dashboard, synchronized editor panes and D3 rendering. ADR: selecting the
-preset loads an empty full-width dashboard; only explicit connection reads a runtime. Local imports
-remain observations with original timestamps and unknown measurements, never execution authority.
-MVP: import → inspect spans/resources → review evaluation/comparison → export; use the same view
-through native Chat or `agentic-graph.control_local_canvas_view`. GTM: reduce setup and diagnosis time;
-savings and willingness to pay remain unvalidated. Acceptance: Graph's desktop/mobile mission smoke
-proves full-width inert entry, import, shared selection and authored-byte preservation. Rollback the
-preset description independently of runtime routes; no new provider, dependency or invocation registry.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#apex-obs-001--import-first-observation).
 
 ### WORKFLOW-OBS-002 · Durable lifecycle and release closure
-PRD / AC-LOOP-01: a solo operator's authorized Dev → Prod request must survive a green merge,
-worktree cleanup and turn changes until the consumer verifies deployment and runtime. Paid demand and
-measured savings remain unknown. TAD / T-LOOP-01: reuse the existing START root, `workflow collect`,
-archive and `workflow recommend` owners; add bounded `closure` progress, pending phases and next owner.
-Keep `.workspace/.artifacts/workflows` immutable, source-bound and available after quarantine. Required
-preparation/checks/CI/integration/cleanup/synchronization/runtime phases retain their original receipts.
-ADR / ADR-LOOP-01: external agents continue covered actions through existing owners; no new executor,
-provider, authorization issuer, dependency or polling service. Production deployment/runtime references
-must agree on repository/revision. An `end` marker, green CI or empty worktree inventory cannot substitute
-for missing/failed evidence. Coverage remains an observation; consumers authenticate terminal receipts.
-MVP: same-root start → scoped implementation → protected integration → governed cleanup/sync → canonical
-review → authorized consumer release → live verification → end successor. `workflow recommend` exposes
-`closure`; continue covered owner actions without asking again, observe exact runs, repair failures
-in a scoped successor and refresh invalidated evidence. Prepare the candidate before asking for uncovered
-approval. Retain every member/target and original receipt; old progress stays unknown until recollected.
-Apply [productive waits](AUTONOMOUS-GOAL-PURSUIT.md#productive-external-waits): unchanged state yields
-to disjoint work; no idle loops. Verify `__tests__/pipeline-watch.test.mjs`.
-MCP and `/workflow.*` keep existing routes. Tests: workflow archive/boundary/collection suites,
-then affected `npm run check`; reject incomplete, failed and mismatched release closure and prove complete
-coverage remains non-authoritative. Budget: seven files, 20 KB, 30 active minutes; provider waits separate.
-Always-load cost falls by 59 bytes to 40,898; no new module, dependency or always-load guide is introduced.
-GTM: pilot this loop in Graph's protected release; record source/check/release/canonical/cleanup evidence,
-active effort and provider waits separately. Claim no savings without a comparable baseline. Rollback:
-revert the source enhancement; preserved archives, source refs, production and effect owners stay intact.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#workflow-obs-002--durable-lifecycle-and-release-closure).
+
 ### WORKFLOW-OBS-003 · Complete capture and next-context advice
-PRD / RAO: a solo operator carries one ADLC workflow's worktree evidence and economics advice into the
-next workflow, session, turn or thread. SVO: the operator collects one immutable JSON manifest that
-references phase receipts, every captured span page and recommendations; reported model identity,
-prompt/completion tokens and estimated USD retain their source digest. TAD: extend the existing lazy
-workflow collector, trace projector and native cost-log validator; store bounded JSON pages beneath
-`.workspace/.artifacts/workflows`, discover only registered `.worktrees`, and expose the same owner
-through CLI/MCP and `/workflow.recommend #read-only @input:<manifest>`. ADR: paging never discards
-captured spans; upstream gaps stay explicit, source clocks stay separate, unreported values stay null,
-and estimates never become cash charges. Advice is read-only, source-bound and revalidated against
-the next context; it neither switches models nor edits code nor bypasses mandatory checks.
-MVP: collect → retain one manifest → export each page → recommend → authorized change → remeasure
-on the same quality cohort. GTM: reduce repeat diagnosis and unnecessary validation; willingness to
-pay and measured savings remain unvalidated. Acceptance: archive, projector and invocation/MCP tests
-plus `npm run check`; reject digest drift, duplicate spans, false completeness and invalid cost logs.
-Rollback: stop optional collection/recommendation calls; preserve old manifests and original receipts.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#workflow-obs-003--complete-capture-and-next-context-advice).
+
 ### WORKFLOW-OBS-004 · One planning-to-production workflow across worktrees
-PRD / RAO: the same planning intent may span several repositories/worktrees; one immutable root
-must retain their relationship through START-WORKFLOW to RELEASE-WORKFLOW, deployment and runtime.
-SVO: the operator declares a workflow ID, source-bound PRD-TAD-ADR-MVP-GTM planning digest, worktree
-members and production targets. TAD: extend the existing collector with a reference-only group root;
-reuse child archives, native JSON observation envelopes, bounded SSE snapshot/DONE framing and the
-existing Canvas SSE reader. No duplicated span pages, second dashboard, watcher or model call.
-ADR: membership is explicit and each child context binds the workflow/worktree ID. Root revisions
-link the previous immutable root; member identities cannot silently disappear. Deployment and runtime
-receipts are separate production evidence references. Their bytes and source labels are retained;
-provider-native verification remains authoritative, and receipt coverage never grants release authority.
-MVP: planning → collect each participating worktree → collect one root → JSON/SSE page export →
-existing Canvas/Markdown inspection → recommend per member → authorized improvement → remeasure.
-GTM: shorten cross-worktree diagnosis and handoff; savings/WTP stay unvalidated until measured.
-Acceptance: cross-member pagination, identity rejection, immutable revision linkage, planning/digest
-checks, missing production evidence, existing SSE parser compatibility and required checks pass.
-Rollback: stop optional group exports; retain all immutable roots and independent child receipts.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#workflow-obs-004--one-planning-to-production-workflow-across-worktrees).
 
 ### WORKFLOW-OBS-005 · Resolve one root and retain measurement provenance
-PRD / RAO / SVO: the operator imports one immutable workflow manifest to inspect every captured
-span across its worktrees, with source-reported resources/model identity and scoped timing. Explicit
-user FIX authorization covers this successor. TAD: the existing local bridge resolves a uploaded
-root by digest in the owner's workspace; the native exporter verifies referenced pages and streams
-bounded JSON/SSE pages to the existing Canvas projection. No arbitrary file path or new datastore.
-ADR: preserve immutable archive bytes; reproject lifecycle fields from digest-verified receipts when
-reading older archives. Reused measurements remain historical, not current consumption. Worktree
-clocks retain their scope; no global timeline is invented. Root lifecycle/invocation metadata and child
-measurement/evaluation coverage expose missing phases and source-bound model advice without summing costs.
-MVP: one root → verified pages → tree/resources/model → evidence export; a missing page or digest
-mismatch fails the complete import. Release economy: fill available execution slots within each
-existing validation stage, retain exact input checks, cache eligibility, failures and time limits.
-GTM: reduce incomplete diagnosis and idle validation capacity; WTP and savings remain unvalidated.
-Checks: workflow archive/observation tests, affected owner checks, browser import and scoped timing.
-Rollback: revert this reader/scheduler change; all original manifests and receipts remain readable.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#workflow-obs-005--resolve-one-root-and-retain-measurement-provenance).
 
 ### WORKFLOW-OBS-006 · Evidence available at start
-PRD / RAO / SVO: the operator binds the selected committed planning document when starting a lane
-and receives an immutable evidence root before provisioning. TAD: `start --plan=<path>` lazily calls
-the existing collector, retaining one group root and its initial child; all absent phases remain missing.
-ADR: explicit planning selection, deterministic input identity, no invented preparation/resource receipt,
-no duplicate store or poller. The 2026-09-17 enhancement instruction covers this implementation.
-MVP: start → returned root → existing JSON/SSE export → collect real receipts into immutable successors.
-GTM: reduce manual first-manifest assembly; payer evidence and measured savings remain unvalidated.
-Checks: workflow collection plus affected startup/CLI checks; rollback by omitting the optional plan flag.
+Existing capture, immutable lineage, receipt provenance and observation-only contracts remain in the
+[protected predecessor](https://github.com/huijoohwee/agentic-os/blob/2a86d4321edbcc34ea38f3f4718fd4e49b80d153/guides/PRD-TAD-ADR-MVP-GTM.md#workflow-obs-006--evidence-available-at-start).
+
+### ADLC-EXEC-001 · Native execution economy (authorized implementation)
+PRD / RAO: the operator completes authorized ADLC in existing owned lanes without duplicate checkouts,
+unchanged validation loops or downstream work blocked by an unfinished upstream source. The user renewed
+implementation and source-release authority on 2026-09-22; production remains separately authorized.
+The existing native index and trace identify owners; receipt-bound observations expose measured work.
+Neither index edges, lane cache, local workflow metadata nor passing checks confer effect authority.
+
+| Acceptance | Observable requirement | Existing owner / verification |
+|---|---|---|
+| E01–E03 | START checks explicit same-mission capacity and exact planning/identity before costly effects; replay reuses eligible lanes, races cannot allocate the final slot twice | START lock, workflow lineage; admission/workflow/operation-lock tests |
+| E04–E05 | Retained partial allocation consumes capacity; missing cached lanes are never reuse; dirty disjoint peers remain untouched | Native provision artifacts and live inventory; worktree/startup regressions |
+| E06–E07 | Existing exact-input checks retain coverage and budgets; active unpublished re-admission extends only disjoint paths with before/after evidence and exact head | Validation owner and native START reservation owner; economy/admission tests |
+| E08–E09 | Explicit bounded member/phase dependencies reject cycles/missing endpoints/stale joins; independent eligible work remains available | Workflow collector/archive and all native effect entrypoints; archive/boundary tests |
+| E10–E11 | Repeated unchanged blockers invoke no effect; source/runtime/evidence drift invalidates reuse; fresh private base is checked before publication | Validation receipts, publication preflight and completion owner; failure/reuse/early-preflight tests |
+| E12–E13 | Observations retain source identity and unknown costs; eligible closeout uses existing protected integration/sync/quarantine owners without false full completion | Native index/observation, release-common complete; workflow/completion tests |
+
+TAD: add versioned execution constraints to the existing immutable workflow root. Resolve stable member
+identities and explicit phase edges; persist declarations through collection and immutable successors.
+Reject constraint removal/relaxation and stale selected roots. A legacy archive remains readable with
+undeclared coverage; it cannot silently grant a new mission allowance or verified independence.
+START uses its existing clone-wide lock, exact live registration and a pending allocation retained before
+provisioning. Partial effects retain their existing native recovery identity. Reuse does not clean bytes.
+Re-admission applies only to the exact active unpublished owner and checks fresh remote publication absence,
+then records before/after scope before CAS-projecting the existing non-authoritative lane cache.
+Native START, publication, validation and completion share dependency admission; wrapper/MCP paths must
+reach those owners. Preserve validation's observation-only workflow option and exact-input reuse rules.
+Index/trace suggestions do not become execution dependencies. No new scheduler, controller or registry.
+ADR-EXEC-01: explicit local execution constraints restrict native actions; they never replace provider,
+cooperative claim, protected source, retirement or production authority. Unknown resource values remain
+null; historical timings are not total ETA. Stale unpublished source is refreshed through its native owner,
+while published candidates remain immutable. Recheck source/provider facts at the owning effect.
+MVP: complete the existing upstream Graph candidate and recoverably quarantine its exact checkout first;
+reuse that released slot for this one OS lane. Mounted capacity does not increase. Implement disjoint
+slices in that lane, each at most six runtime modules/30 kB net source and <600 lines per touched file.
+First checkpoint: 45 active implementation minutes after admission; external waits have conditions, not
+ETAs. Extract affected CLI responsibilities; zero dependencies/always-load additions/paid services.
+Run meaningful focused cases, then owner-selected required checks once on the joined candidate. Reuse
+valid receipts; serialize heavy validation. Record exact source/check/integration/cleanup outcomes.
+Delivery boundary: this first admitted slice guards consumer validation; the OS repository test runner
+remains pending its own admitted successor, so all-entrypoint E08–E11 acceptance is not yet claimed.
+GTM: validate this operator journey against the retained Graph observations; demand and savings remain
+unmeasured. Rollback the scoped source commit; preserve immutable archives, refs and unfinished bytes.

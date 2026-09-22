@@ -1,6 +1,8 @@
 /** Execute consumer-owned validation through one bounded, input-bound shared owner. */
 import { readFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
+import { worktrees } from '../src/git.mjs';
+import { assertWorkflowEffect } from './agentic-os-workflow.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { readGit, hash, readRegular } from './agentic-os-test-inputs.mjs';
@@ -15,7 +17,8 @@ const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validatio
   'bin/agentic-os-validation-inputs.mjs', 'bin/agentic-os-test-inputs.mjs', 'bin/agentic-os-test-receipt.mjs',
   'bin/agentic-os-test-ci.mjs', 'bin/agentic-os-validation-economy.mjs',
   'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs',
-  'bin/agentic-os-validation-progress.mjs', 'bin/agentic-os-test-command-resources.cjs'];
+  'bin/agentic-os-validation-progress.mjs', 'bin/agentic-os-test-command-resources.cjs',
+  'bin/agentic-os-workflow.mjs', 'bin/agentic-os-workflow-archive.mjs', 'bin/agentic-os-workflow-observation.mjs'];
 const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
 export function validationArguments(argv) {
   const [mode = 'run', ...flags] = argv;
@@ -122,6 +125,15 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     const policy = validateValidationPolicy(JSON.parse(policyFile.text));
     const origin = remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim());
     if (origin?.repository.toLowerCase() !== policy.repository.toLowerCase()) throw new Error('blocked-validation-repository-identity');
+    const assertWorkflowCurrent = () => {
+      if (options.mode === 'plan') return; // Read-only selection remains available while blocked.
+      const registration = worktrees(root).find(row => resolve(row.path) === root);
+      if (!registration) throw new Error('blocked-validation-worktree-binding');
+      assertWorkflowEffect({ root, repository: policy.repository, phase: 'checks', ref: registration.branch,
+        worktreeId: basename(registration.path), revision: readGit(root, ['rev-parse', 'HEAD']).trim(),
+        dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()) });
+    };
+    assertWorkflowCurrent();
     const observe = consumerSnapshotReader({ root, base: options.base, head: options.head || 'HEAD', committed: options.committed });
     const observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest();
     const directory = receiptDirectory(root);
@@ -147,9 +159,10 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
       return 0;
     }
     const release = lockReceipts(receiptDirectory(root)), started = performance.now();
-    if (JSON.stringify(readCosts()) !== JSON.stringify(economy)) {
-      release(); throw new Error('blocked-validation-cost-drift');
-    }
+    try {
+      assertWorkflowCurrent();
+      if (JSON.stringify(readCosts()) !== JSON.stringify(economy)) throw new Error('blocked-validation-cost-drift');
+    } catch (error) { release(); throw error; }
     const receipt = { schema: VALIDATION_VERSION, authority: false, repository: policy.repository,
       identity: observed.identity, execution: ci ? 'ci' : 'local', checkout: options.checkout ?? 'working-tree',
       policyDigest: policyFile.digest, ownerDigest, plan: validationPlanReceipt(plan),
@@ -158,6 +171,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
         dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()) },
       outcome: 'running', startedAt: Date.now(), results: [], resources, costRegressions: [] };
     const stable = () => {
+      assertWorkflowCurrent();
       if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest() !== ownerDigest)
         throw new Error('blocked-validation-input-drift');
     };
