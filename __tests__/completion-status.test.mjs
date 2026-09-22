@@ -138,7 +138,7 @@ test('quarantine profile reports cleanup as unfinished until a coordinate is obs
   assert.ok(!report.findings.some((item) => item.code === 'provider-authority-unverified'));
 });
 
-test('quarantine observation finds the exact coordinate among many retained receipts', (t) => {
+test('quarantine directory names and HEAD alone do not prove completed cleanup', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
   subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
@@ -165,12 +165,12 @@ test('quarantine observation finds the exact coordinate among many retained rece
       unreachableObjects: 'retain', worktreeProjection: 'quarantine',
       worktreeRegistration: 'quarantine' } };
   const report = inspectCompletionStatus(subject.root, REF, { protectedBranch: 'main' }, profile);
-  assert.equal(report.cleanupVerified, true);
-  assert.equal(report.closeout.laneDisposition, 'quarantined');
-  assert.equal(report.closeout.cleanupSatisfied, true);
-  assert.equal(report.closeout.missionState, 'source_complete');
-  assert.ok(!report.findings.some((item) => item.code === 'lane-registration-detached'));
-  assert.ok(!report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
+  assert.equal(report.cleanupVerified, false);
+  assert.equal(report.closeout.laneDisposition, 'unmounted');
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.missionState, 'continuable');
+  assert.ok(report.findings.some((item) => item.code === 'lane-registration-detached'));
+  assert.ok(report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
 });
 
 test('enrolled production-activation is a deploy nextAction after source complete', (t) => {

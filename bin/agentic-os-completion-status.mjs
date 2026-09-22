@@ -1,10 +1,9 @@
 /** Exact local completion preflight. No provider call, fetch, authority or effect. */
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { commonDir, currentBranch, headSha, observeGit } from '../src/git.mjs';
+import { currentBranch, headSha, observeGit } from '../src/git.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
 import { integrationProof } from '../src/patch-identity.mjs';
 import { worktreeFor } from '../src/worktree.mjs';
+import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
@@ -47,22 +46,6 @@ function withApplicability(findings, changeClass) {
     if (!entry) return { ...item, applicableToChangeClass: { applicable: true, changeClass } };
     return { ...item, applicableToChangeClass: { applicable: false, changeClass, reason: entry.reason } };
   });
-}
-function observeQuarantinedLane(root, ref) {
-  try {
-    const base = join(commonDir(root), 'agentic-os-cleanup-quarantine'), names = readdirSync(base), stat = lstatSync(base);
-    const expected = `ref: refs/heads/${ref}\n`;
-    if (!stat.isDirectory() || stat.isSymbolicLink() || names.length > 256) return false;
-    return names.some((name) => {
-      if (!/^[0-9a-f]{64}$/u.test(name)) return false;
-      try {
-        const registration = join(base, name, 'registration'), head = join(registration, 'HEAD');
-        const p = lstatSync(join(base, name, 'projection')), r = lstatSync(registration), h = lstatSync(head);
-        return p.isDirectory() && !p.isSymbolicLink() && r.isDirectory() && !r.isSymbolicLink()
-          && h.isFile() && !h.isSymbolicLink() && h.size <= 256 && readFileSync(head, 'utf8') === expected;
-      } catch { return false; }
-    });
-  } catch { return false; }
 }
 function deployBound(root, revision) {
   const bytes = revision ? committed(root, revision, '.agentic-os-flight.json') : null;
@@ -113,7 +96,7 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
   const laneClean = laneMounted ? read(lanePath, ['status', '--porcelain', '--untracked-files=all']) === '' : null;
   const projection = laneHead && tracking ? integrationProof(tracking, laneHead, { cwd: root }) : null;
   const quarantineProfile = quarantines(profile);
-  const quarantineObserved = Boolean(laneHead) && !laneMounted && quarantineProfile && observeQuarantinedLane(root, ref);
+  const quarantineObserved = Boolean(laneHead) && !laneMounted && observeRetainedWorktreeQuarantine(root, ref, laneHead);
   const changeClass = classifyChangeClass(root, ref);
   const findings = [];
   if (!canonical || !tracking || canonical !== tracking || !canonicalClean) findings.push(finding('canonical-not-current-clean', 'repository-operator', 'Fetch and use the separately governed canonical synchronization workflow; preserve local bytes.'));
