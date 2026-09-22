@@ -7,7 +7,7 @@ import { git } from '../src/git.mjs';
 import { put, get } from '../src/lane-records.mjs';
 import { provision, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 
-function fixture(t) {
+function fixture(t, { protectedHistory = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-preserved-join-'));
   const root = join(parent, 'repo'), bare = join(parent, 'remote.git');
   mkdirSync(root);
@@ -19,12 +19,17 @@ function fixture(t) {
   run(['add', 'base.txt']); run(['commit', '--quiet', '-m', 'base']);
   const base = run(['rev-parse', 'HEAD']);
   run(['init', '--quiet', '--bare', bare]); run(['remote', 'add', 'origin', bare]);
+  if (protectedHistory) {
+    writeFileSync(join(root, 'protected.txt'), 'protected work\n');
+    run(['add', 'protected.txt']); run(['commit', '--quiet', '-m', 'independent protected work']);
+  }
+  const laneBase = run(['rev-parse', 'HEAD']);
   const ref = 'agent/test-device/published';
-  const lane = provision({ ref, scope: 'published', device: 'test-device', baseSha: base, cwd: root });
+  const lane = provision({ ref, scope: 'published', device: 'test-device', baseSha: laneBase, cwd: root });
   writeFileSync(join(lane.path, 'change.txt'), 'candidate\n');
   run(['add', 'change.txt'], lane.path); run(['commit', '--quiet', '-m', 'candidate'], lane.path);
   const source = run(['rev-parse', 'HEAD'], lane.path), tree = run(['rev-parse', `${source}^{tree}`]);
-  const canonical = run(['commit-tree', tree, '-p', base, '-m', 'protected squash']);
+  const canonical = run(['commit-tree', tree, '-p', laneBase, '-m', 'protected squash']);
   run(['merge', '--quiet', '--ff-only', canonical]);
   run(['push', '--quiet', 'origin', 'main']);
   const commit = (resultTree = tree, parents = [source, canonical]) =>
@@ -53,6 +58,26 @@ test('successor retains exact published refs and bytes across a protected equal-
   assert.deepEqual(record.writePaths, ['change.txt']);
   assert.equal(record.baseSha, s.base);
   assert.equal(record.handoff.predecessorHead, tip);
+});
+
+test('successor excludes independent protected history from an older admission base', t => {
+  const s = fixture(t, { protectedHistory: true }), tip = s.commit();
+  s.publish(tip); s.invoke(tip);
+  assert.equal(s.run(['rev-parse', s.ref]), tip);
+  assert.equal(s.run(['rev-parse', 'HEAD'], s.lane.path), tip);
+  assert.equal(s.run(['status', '--porcelain'], s.lane.path), '');
+  assert.deepEqual(get('agent/test-device/continued', s.lane.path).writePaths, ['change.txt']);
+});
+
+test('protected paths still require a reservation when transiently changed in the lane', t => {
+  const s = fixture(t, { protectedHistory: true });
+  writeFileSync(join(s.lane.path, 'protected.txt'), 'unreserved lane edit\n');
+  s.run(['add', 'protected.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'outside'], s.lane.path);
+  writeFileSync(join(s.lane.path, 'protected.txt'), 'protected work\n');
+  s.run(['add', 'protected.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'restore'], s.lane.path);
+  const tip = s.commit(s.tree, [s.run(['rev-parse', 'HEAD'], s.lane.path), s.canonical]); s.publish(tip);
+  assert.throws(() => s.invoke(tip), { reason: 'blocked-write-outside-reservation' });
+  assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
 });
 
 for (const kind of ['changed-result', 'different-parent', 'unprotected-parent', 'three-parents']) {
