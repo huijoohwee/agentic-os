@@ -80,6 +80,15 @@ test('protected paths still require a reservation when transiently changed in th
   assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
 });
 
+test('successor does not rejudge a non-preserved join already frozen in the published head', t => {
+  const s = fixture(t), baseTree = s.run(['rev-parse', `${s.base}^{tree}`]);
+  const published = s.commit(baseTree, [s.source, s.canonical]);
+  s.publish(published); s.invoke(published);
+  assert.equal(s.run(['rev-parse', s.ref]), published);
+  assert.equal(s.run(['--git-dir', s.bare, 'rev-parse', `refs/heads/${s.ref}`]), published);
+  assert.equal(get('agent/test-device/continued', s.lane.path).handoff.predecessorHead, published);
+});
+
 for (const kind of ['changed-result', 'different-parent', 'unprotected-parent', 'three-parents']) {
   test(`successor preserves the lane when a join has ${kind}`, t => {
     const s = fixture(t), baseTree = s.run(['rev-parse', `${s.base}^{tree}`]);
@@ -88,8 +97,9 @@ for (const kind of ['changed-result', 'different-parent', 'unprotected-parent', 
     const parents = kind === 'three-parents' ? [s.source, s.canonical, side]
       : kind === 'different-parent' ? [side, s.canonical]
         : [s.source, kind === 'unprotected-parent' ? side : s.canonical];
-    const tip = s.commit(kind === 'changed-result' ? baseTree : s.tree, parents); s.publish(tip);
-    assert.throws(() => s.invoke(tip), { reason: 'blocked-successor-merge' });
+    const tip = s.commit(kind === 'changed-result' ? baseTree : s.tree, parents);
+    s.publish(s.source); s.run(['merge', '--quiet', '--ff-only', tip], s.lane.path);
+    assert.throws(() => s.invoke(s.source), { reason: 'blocked-successor-merge' });
     assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
     assert.equal(s.run(['rev-parse', 'HEAD'], s.lane.path), tip);
   });
@@ -119,8 +129,8 @@ test('successor accepts an explicit reservation expansion for published follow-u
 test('preserved joins have a hard 32-commit observation cap', t => {
   const s = fixture(t); let tip = s.source;
   for (let n = 0; n < 33; n++) tip = s.commit(s.tree, [tip, s.canonical]);
-  s.publish(tip);
-  assert.throws(() => s.invoke(tip), { reason: 'blocked-successor-merge' });
+  s.publish(s.source); s.run(['merge', '--quiet', '--ff-only', tip], s.lane.path);
+  assert.throws(() => s.invoke(s.source), { reason: 'blocked-successor-merge' });
   assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
 });
 
