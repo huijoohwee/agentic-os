@@ -2,9 +2,8 @@
 
 import { loadCatalog, validateCatalog } from '../bin/agentic-os-invocation.mjs';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_COMMAND, capabilityArguments, memoryArguments, validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { assertScope, isLaneRef } from './lane-id.mjs';
-import { parseWritePaths } from './worktree.mjs';
+import { CAPABILITY_COMMAND, capabilityArguments, laneArguments, memoryArguments } from '../bin/agentic-os-argv.mjs';
+import { isLaneRef } from './lane-id.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSION = '2025-11-25';
@@ -239,36 +238,7 @@ export function toolArguments(name, args) {
     return value.ref === undefined ? ['reap'] : ['reap', `--ref=${value.ref}`];
   }
   if (name !== 'lane') invalidParams(`unknown tool "${String(name)}"`);
-  if (!plainObject(args) || !onlyKeys(args, ['scope', 'writePaths', 'planningPath', 'mission', 'checkoutLimit', 'expectedHead', 'readmit']) || typeof args.scope !== 'string') {
-    invalidParams('lane arguments require a string scope and writePaths array');
-  }
-  try {
-    assertScope(args.scope);
-    if (!Array.isArray(args.writePaths) || args.writePaths.length < 1 || args.writePaths.length > 128
-      || args.writePaths.some((path) => typeof path !== 'string' || path.length > 4096
-        || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
-      throw new TypeError('writePaths must contain 1-128 paths within the declared size limits');
-    const paths = parseWritePaths(args.writePaths.join(','));
-    for (const field of ['planningPath', 'mission']) {
-      if (Object.hasOwn(args, field) && (typeof args[field] !== 'string' || !args[field].trim()
-        || Buffer.byteLength(args[field]) > 4096 || /[\u0000-\u001f\u007f]/u.test(args[field])))
-        throw new TypeError(`${field} must be a bounded local path`);
-    }
-    if (Object.hasOwn(args, 'checkoutLimit') && (!Number.isSafeInteger(args.checkoutLimit) || args.checkoutLimit < 0 || args.checkoutLimit > 32))
-      throw new TypeError('checkoutLimit must be an integer from 0 through 32');
-    if (Object.hasOwn(args, 'expectedHead') && (typeof args.expectedHead !== 'string' || !/^[0-9a-f]{40}$/.test(args.expectedHead)))
-      throw new TypeError('expectedHead must be an exact 40-character lowercase hexadecimal revision');
-    if (Object.hasOwn(args, 'readmit') && typeof args.readmit !== 'boolean') throw new TypeError('readmit must be a boolean');
-    const argv = [args.scope, `--write=${paths.join(',')}`];
-    for (const [field, option] of [['planningPath', 'plan'], ['mission', 'mission'], ['checkoutLimit', 'checkout-limit'], ['expectedHead', 'expected-head']])
-      if (Object.hasOwn(args, field)) argv.push(`--${option}=${args[field]}`);
-    if (args.readmit) argv.push('--readmit');
-    const error = validateCommandArguments('start', argv);
-    if (error) throw new TypeError(error);
-    return ['start', ...argv];
-  } catch (error) {
-    invalidParams(error.message);
-  }
+  return laneArguments(args, invalidParams);
 }
 
 function success(id, result) {

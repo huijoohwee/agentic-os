@@ -1,4 +1,6 @@
 /** Exact, fail-loud CLI argument grammar. */
+import { assertScope } from '../src/lane-id.mjs';
+import { parseWritePaths } from '../src/worktree.mjs';
 
 function exact(argv, {
   min = 0, max = min, options = [], flags = [], requiredOptions = [], requiredFlags = [],
@@ -221,6 +223,41 @@ export function option(argv, name, fallback = null) {
 }
 export function positional(argv) {
   return argv.filter((arg) => !arg.startsWith('--'));
+}
+
+/** Map typed lane input to native START; admission remains with that command. */
+export function laneArguments(args, invalidParams) {
+  const fields = ['scope', 'writePaths', 'planningPath', 'mission', 'checkoutLimit', 'expectedHead', 'readmit'];
+  if (!args || typeof args !== 'object' || Array.isArray(args)
+    || Object.keys(args).some(key => !fields.includes(key)) || typeof args.scope !== 'string')
+    return invalidParams('lane arguments require a string scope and writePaths array');
+  try {
+    assertScope(args.scope);
+    if (!Array.isArray(args.writePaths) || args.writePaths.length < 1 || args.writePaths.length > 128
+      || args.writePaths.some((path) => typeof path !== 'string' || path.length > 4096
+        || path.includes(',')) || Buffer.byteLength(args.writePaths.join(',')) > 32 * 1024)
+      throw new TypeError('writePaths must contain 1-128 paths within the declared size limits');
+    const paths = parseWritePaths(args.writePaths.join(','));
+    for (const field of ['planningPath', 'mission']) {
+      if (Object.hasOwn(args, field) && (typeof args[field] !== 'string' || !args[field].trim()
+        || Buffer.byteLength(args[field]) > 4096 || /[\u0000-\u001f\u007f]/u.test(args[field])))
+        throw new TypeError(`${field} must be a bounded local path`);
+    }
+    if (Object.hasOwn(args, 'checkoutLimit') && (!Number.isSafeInteger(args.checkoutLimit) || args.checkoutLimit < 0 || args.checkoutLimit > 32))
+      throw new TypeError('checkoutLimit must be an integer from 0 through 32');
+    if (Object.hasOwn(args, 'expectedHead') && (typeof args.expectedHead !== 'string' || !/^[0-9a-f]{40}$/.test(args.expectedHead)))
+      throw new TypeError('expectedHead must be an exact 40-character lowercase hexadecimal revision');
+    if (Object.hasOwn(args, 'readmit') && typeof args.readmit !== 'boolean') throw new TypeError('readmit must be a boolean');
+    const argv = [args.scope, `--write=${paths.join(',')}`];
+    for (const [field, option] of [['planningPath', 'plan'], ['mission', 'mission'], ['checkoutLimit', 'checkout-limit'], ['expectedHead', 'expected-head']])
+      if (Object.hasOwn(args, field)) argv.push(`--${option}=${args[field]}`);
+    if (args.readmit) argv.push('--readmit');
+    const error = validateCommandArguments('start', argv);
+    if (error) throw new TypeError(error);
+    return ['start', ...argv];
+  } catch (error) {
+    return invalidParams(error.message);
+  }
 }
 
 /** Shared read-only discovery argument contract; owner resolution remains lazy-loaded. */
