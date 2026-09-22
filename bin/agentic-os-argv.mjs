@@ -97,9 +97,11 @@ export function validateCommandArguments(command, argv) {
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
       const owner = { start: 'start', publish: 'land', finish: 'finish', close: 'finish', successor: 'successor' }[action];
       if (owner) return validateCommandArguments(owner, argv.slice(1));
-      if (action === 'complete')
-        return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'],
-          requiredOptions: ['ref'] });
+      if (action === 'complete') {
+        if (option(argv, 'worktrees') !== null)
+          return exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms'], requiredOptions: ['worktrees'] });
+        return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
+      }
     }
     case 'start': {
       const error = exact(argv, { min: 1, max: 1,
