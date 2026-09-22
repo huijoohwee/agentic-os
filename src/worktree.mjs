@@ -158,7 +158,6 @@ export function provision({ ref, scope, device, baseSha, cwd = process.cwd() }) 
     provisionCompleted: true });
   return Object.freeze({ schema: 'agentic-os/git-provision/v1', ...artifacts });
 }
-/** Observed facts for the lane state machine. */
 export function inspect(ref, cwd = process.cwd(), baseRef, { includeIgnored = true } = {}) {
   return inspectRegistered(worktreeFor(ref, cwd), cwd, baseRef, { includeIgnored });
 }
@@ -200,24 +199,25 @@ export const pathsOverlap = (left, right) => left === right
   || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 const pathIsReserved = (path, reservations) => reservations.some((reservation) =>
   path === reservation || path.startsWith(`${reservation}/`));
+export const committedLanePaths = (ref, protectedSha, cwd) =>
+  gitLines(['log', '--cc', '--format=', '--name-only', `${protectedSha}..${ref}`], { cwd })
+    .concat(gitLines(['diff', '--name-only', `${protectedSha}...${ref}`], { cwd }));
 function observedLanePaths(entry, record, protectedRef, cwd, writePaths) {
   const reserved = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   if (writePaths.some(requested => reserved.some(path => pathsOverlap(requested, path)))) return reserved;
   const observed = worktreeCleanupRisks(entry.path, { includeIgnored: false });
-  const committed = gitLines(['diff', '--name-only',
-    `${record?.baseSha ?? protectedRef}...refs/heads/${entry.branch}`], { cwd, allowFail: true });
-  return [...new Set([...reserved, ...observed.tracked, ...observed.owned, ...observed.hidden, ...committed])].sort();
+  return [...new Set([...reserved, ...observed.tracked, ...observed.owned, ...observed.hidden, ...committedLanePaths(`refs/heads/${entry.branch}`, protectedRef, cwd)])].sort();
 }
 function assertDisjointReservationExcept({
   cwd, ref, writePaths, protectedRef, records, predecessorRef = null,
 }) {
-  const excluded = new Set([ref, predecessorRef].filter(Boolean));
+  const protectedSha = headSha(protectedRef, cwd), excluded = new Set([ref, predecessorRef].filter(Boolean));
   const active = worktrees(cwd).filter((entry) =>
     isLaneRef(entry.branch) && !excluded.has(entry.branch));
   if (active.length > 0 && writePaths.length === 0) throw writeScopeError(
     'blocked-write-scope-missing', 'concurrent admission requires --write=<path[,path...]>');
   for (const entry of active) {
-    const occupied = observedLanePaths(entry, records[entry.branch], protectedRef, cwd, writePaths);
+    const occupied = observedLanePaths(entry, records[entry.branch], protectedSha, cwd, writePaths);
     if (occupied.length === 0) throw writeScopeError('blocked-unproven-write-scope',
       `active lane has no declared or observable write scope: ${entry.branch}`, { ref: entry.branch });
     for (const requested of writePaths) for (const path of occupied) {

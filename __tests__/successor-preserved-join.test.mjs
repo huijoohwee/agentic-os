@@ -123,3 +123,52 @@ test('preserved joins have a hard 32-commit observation cap', t => {
   assert.throws(() => s.invoke(tip), { reason: 'blocked-successor-merge' });
   assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
 });
+
+for (const conflict of ['none', 'committed', 'transient', 'dirty', 'reserved', 'merge-result', 'merge-transient']) {
+  test(`successor peer inventory excludes protected history and retains ${conflict} ownership`, t => {
+    const s = fixture(t), tip = s.commit(); s.publish(tip);
+    const ref = 'agent/test-device/peer';
+    const peer = provision({ ref, scope: 'peer', device: 'test-device', baseSha: s.canonical, cwd: s.root });
+    writeFileSync(join(peer.path, 'peer.txt'), 'peer work\n');
+    s.run(['add', 'peer.txt'], peer.path); s.run(['commit', '--quiet', '-m', 'peer work'], peer.path);
+    const originalTree = s.run(['rev-parse', 'HEAD^{tree}'], peer.path);
+    put({ ref, device: 'test-device', scope: 'peer', state: 'active',
+      base: 'refs/remotes/origin/main', baseSha: s.base, worktree: peer.path,
+      createdAt: new Date(0).toISOString(), writePaths: conflict === 'reserved' ? ['change.txt'] : ['peer.txt'] }, peer.path);
+    if (['committed', 'transient', 'dirty'].includes(conflict)) {
+      writeFileSync(join(peer.path, 'change.txt'), 'unreserved peer work\n');
+      if (conflict !== 'dirty') {
+        s.run(['add', 'change.txt'], peer.path); s.run(['commit', '--quiet', '-m', 'peer edit'], peer.path);
+      }
+      if (conflict === 'transient') {
+        writeFileSync(join(peer.path, 'change.txt'), 'candidate\n');
+        s.run(['add', 'change.txt'], peer.path); s.run(['commit', '--quiet', '-m', 'peer restore'], peer.path);
+      }
+    }
+    if (conflict.startsWith('merge-')) {
+      writeFileSync(join(peer.path, 'change.txt'), 'merge-only peer work\n');
+      s.run(['add', 'change.txt'], peer.path);
+      const tree = s.run(['write-tree'], peer.path), parent = s.run(['rev-parse', 'HEAD'], peer.path);
+      const merged = s.run(['commit-tree', tree, '-p', parent, '-p', s.base, '-m', 'peer merge result']);
+      s.run(['update-ref', `refs/heads/${ref}`, merged, parent], peer.path);
+      if (conflict === 'merge-transient') {
+        const restored = s.run(['commit-tree', originalTree, '-p', merged, '-p', s.canonical, '-m', 'restore peer tree']);
+        s.run(['update-ref', `refs/heads/${ref}`, restored, merged], peer.path);
+        s.run(['read-tree', '--reset', '-u', restored], peer.path);
+      }
+    }
+    const peerHead = s.run(['rev-parse', 'HEAD'], peer.path);
+    const peerStatus = s.run(['status', '--porcelain'], peer.path);
+    if (conflict === 'none') {
+      s.invoke(tip);
+      assert.equal(s.run(['branch', '--show-current'], s.lane.path), 'agent/test-device/continued');
+    } else {
+      assert.throws(() => s.invoke(tip), { reason: 'blocked-write-scope-overlap' });
+      assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
+    }
+    assert.equal(s.run(['rev-parse', s.ref]), tip);
+    assert.equal(s.run(['rev-parse', 'HEAD'], peer.path), peerHead);
+    assert.equal(s.run(['status', '--porcelain'], peer.path), peerStatus);
+    assert.equal(get(ref, peer.path).baseSha, s.base);
+  });
+}

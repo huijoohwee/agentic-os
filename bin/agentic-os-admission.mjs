@@ -6,7 +6,7 @@ import { assertDevice, deviceSegment, laneRef } from '../src/lane-id.mjs';
 import * as store from '../src/lane-records.mjs';
 import { successorLineage } from '../src/lane-state.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
-import { provision, assertProvisionable, assertDisjointReservation, lanePath, parseWritePaths } from '../src/worktree.mjs';
+import { provision, assertProvisionable, assertDisjointReservation, committedLanePaths, lanePath, parseWritePaths } from '../src/worktree.mjs';
 import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
 import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
@@ -70,7 +70,7 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   if (!record.baseSha || observeGit(['merge-base', '--is-ancestor', record.baseSha, head], { cwd: root, allowFail: true }) === null)
     fail('base-binding', 'The existing lane must retain its admitted source ancestry');
   const reserved = parseWritePaths((record.writePaths ?? []).join(','));
-  const authored = [...gitLines(['diff', '--name-only', `${record.baseSha}...HEAD`], { cwd: path }),
+  const authored = [...committedLanePaths(head, headSha(policy.protectedRef, root), root),
     ...gitLines(['diff', '--name-only', 'HEAD'], { cwd: path }),
     ...gitLines(['ls-files', '--others', '--exclude-standard'], { cwd: path })];
   if (authored.some(file => !covered(file, reserved))) fail('unreserved-bytes', 'Preserve authored bytes outside the current reservation; do not adopt them');
