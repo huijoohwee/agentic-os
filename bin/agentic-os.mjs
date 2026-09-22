@@ -73,6 +73,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
       '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
+      '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
@@ -98,7 +99,7 @@ function cmdSuccessor(root, argv, policy) {
     scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
     remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths });
 }
-async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
+async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, beforeClose = () => {}) {
   const [action = 'help', ...rest] = argv;
   switch (action) {
     case 'help':
@@ -125,11 +126,16 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
     }
     case 'complete': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
+      if (option(rest, 'worktrees') !== null) return completeModule.runProgressiveCompletion({
+        root, directory: option(rest, 'worktrees'), timeoutMs: Number(option(rest, 'timeout-ms', '60000')), policy, profile, out,
+        complete: (ref, timeoutMs, guard) => cmdReleaseCommon(cwd, root, ['complete', `--ref=${ref}`, `--timeout-ms=${timeoutMs}`], policy, profile, true, guard),
+      });
       const cleanup = completeModule.resolveReleaseCommonCleanupRequest(rest);
       const waitStatus = await completeModule.runReleaseCommonCompleteWait({
-        root, argv: rest, profile, protectedBranch: policy.protectedBranch, out, err,
+        root, argv: rest, profile, protectedBranch: policy.protectedBranch, out, err, once,
       });
       if (waitStatus !== 0) return waitStatus;
+      beforeClose();
       const finishStatus = cmdFinish(root, rest, policy, profile);
       if (finishStatus !== 0) return finishStatus;
       const reapStatus = cmdReap(root, rest, policy, profile);
@@ -137,30 +143,17 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile) {
       const completionModule = await import('./agentic-os-completion-status.mjs');
       const completion = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
       out(JSON.stringify(completion));
-      if (cleanup.bundlePath === null
-        && profile.cleanup.worktreeProjection !== 'retain'
-        && completion.lane.mounted) {
-        const cleanupStatus = await completeModule.runReleaseCommonLocalCleanup({
-          root, ref: option(rest, 'ref'), profile, out, err,
-        });
+      const localCleanup = cleanup.bundlePath === null && profile.cleanup.worktreeProjection !== 'retain' && completion.lane.mounted;
+      if (localCleanup || cleanup.bundlePath !== null) {
+        beforeClose();
+        const cleanupStatus = localCleanup
+          ? await completeModule.runReleaseCommonLocalCleanup({ root, ref: option(rest, 'ref'), profile, out, err })
+          : await completeModule.runReleaseCommonCleanup({ root, ref: option(rest, 'ref'), ...cleanup, out });
         if (cleanupStatus !== 0) return cleanupStatus;
         const settled = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
         out(JSON.stringify(settled));
         if (settled.lane.mounted) {
-          err('blocked-release-common-complete-local-cleanup-retained: local cleanup returned, but the exact lane is still mounted.');
-          return 1;
-        }
-        return 0;
-      }
-      if (cleanup.bundlePath !== null) {
-        const cleanupStatus = await completeModule.runReleaseCommonCleanup({
-          root, ref: option(rest, 'ref'), bundlePath: cleanup.bundlePath, stopped: cleanup.stopped, out,
-        });
-        if (cleanupStatus !== 0) return cleanupStatus;
-        const settled = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
-        out(JSON.stringify(settled));
-        if (settled.lane.mounted) {
-          err('blocked-release-common-complete-cleanup-retained: authenticated cleanup returned, but the exact lane is still mounted.');
+          err(`blocked-release-common-complete-${localCleanup ? 'local-cleanup' : 'cleanup'}-retained: cleanup returned, but the exact lane is still mounted.`);
           return 1;
         }
       }

@@ -2,7 +2,7 @@
 import { TextDecoder } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
-import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
+import { currentBranch, observeGit, remoteTransport, repoRoot, worktreeInventory, worktrees } from '../src/git.mjs';
 import { loadRepositoryProfile } from '../src/git-repository.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { gh, observeGitHubReview } from '../src/github-provider.mjs';
@@ -11,7 +11,8 @@ import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-revi
 import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE, recoveryPolicy } from './agentic-os-cleanup-recovery.mjs';
 import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import { basename } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { createWorkflowEffectGuard } from './agentic-os-workflow.mjs';
 import { get } from '../src/lane-records.mjs';
 import { option } from './agentic-os-argv.mjs';
@@ -110,6 +111,7 @@ export function resolveReleaseCommonCleanupRequest(argv) {
 
 export async function watchReleaseCommonReview(binding, {
   timeoutMs = 60_000,
+  once = false,
   initialMs = 5_000,
   now = () => performance.now(),
   sleep = delay,
@@ -146,38 +148,15 @@ export async function watchReleaseCommonReview(binding, {
       review?.mergeStateStatus ?? null,
     ]);
     const changed = signature !== previous;
-    if (changed) {
-      previous = signature;
-      emit({
-        schema: RELEASE_COMMON_COMPLETE_SCHEMA,
-        event: 'review_changed',
-        authority: false,
-        ref: binding.ref,
-        head: binding.head,
-        pr: review?.number ?? binding.pr ?? null,
-        state,
-        mergeStateStatus: review?.mergeStateStatus ?? null,
-        sourceHeadBound: observation?.sourceHeadBound === true,
-        reason: observation?.reason ?? null,
-        url: review?.url ?? null,
-        polls,
-        elapsedMs: Math.round(now() - started),
-      });
-    }
+    const event = {
+      schema: RELEASE_COMMON_COMPLETE_SCHEMA, authority: false, ref: binding.ref, head: binding.head,
+      pr: review?.number ?? binding.pr ?? null, state, mergeStateStatus: review?.mergeStateStatus ?? null,
+      sourceHeadBound: observation?.sourceHeadBound === true, reason: observation?.reason ?? null,
+      url: review?.url ?? null, polls, elapsedMs: Math.round(now() - started),
+    };
+    if (changed) { previous = signature; emit({ ...event, event: 'review_changed' }); }
     if (merged) {
-      emit({
-        schema: RELEASE_COMMON_COMPLETE_SCHEMA,
-        event: 'merged',
-        authority: false,
-        ref: binding.ref,
-        head: binding.head,
-        pr: review?.number ?? binding.pr ?? null,
-        state: review.state,
-        url: review.url ?? null,
-        polls,
-        elapsedMs: Math.round(now() - started),
-        nextAction: 'run_close',
-      });
+      emit({ ...event, event: 'merged', nextAction: 'run_close' });
       return { code: 0, status: 'merged', review, polls, elapsedMs: Math.round(now() - started) };
     }
     if (observation?.sourceHeadBound !== true) {
@@ -200,6 +179,7 @@ export async function watchReleaseCommonReview(binding, {
         elapsedMs: Math.round(now() - started),
       };
     }
+    if (once) { reason = 'single-observation'; break; }
     if (!changed) { reason = 'unchanged-state'; break; }
     if (polls === 12) { reason = 'observation-budget-elapsed'; break; }
     await sleep(Math.min(initialMs, remainingMs()));
@@ -326,6 +306,7 @@ export async function runReleaseCommonCompleteWait({
   argv,
   profile,
   protectedBranch = branchFromLocalRef(profile?.canonical?.localRef),
+  once = false,
   out = (line) => process.stdout.write(`${line}\n`),
   err = (line) => process.stderr.write(`${line}\n`),
   observeReview = ({ ref, head }, { remainingMs }) => observeGitHubReview({
@@ -338,7 +319,7 @@ export async function runReleaseCommonCompleteWait({
     const timeoutMs = Number(option(argv, 'timeout-ms', '60000'));
     const binding = resolveReleaseCommonCompleteBinding(root, ref, protectedBranch);
     const result = await watchReleaseCommonReview(binding, {
-      timeoutMs,
+      timeoutMs, once,
       observeReview,
       emit: (event) => out(JSON.stringify(event)),
     });
@@ -352,4 +333,53 @@ export async function runReleaseCommonCompleteWait({
     err(`${error.reason ?? 'blocked-release-common-complete'}: ${error.message}`);
     return 1;
   }
+}
+
+/** One bounded pass over registered immediate children; existing owners govern every effect. */
+export async function runProgressiveCompletion({ root, directory, timeoutMs = 60_000, policy, profile, complete,
+  out = line => process.stdout.write(`${line}\n`), now = () => performance.now(),
+  inventory = worktreeInventory, record = get, status = inspectCompletionStatus,
+} = {}) {
+  integer(timeoutMs, 1, 60_000, 'timeout-ms');
+  if (currentBranch(root) !== policy.protectedBranch || !isAbsolute(directory)
+    || realpathSync(directory) !== resolve(directory)) fail('blocked-progressive-completion-scope',
+    'Use canonical main and one absolute directory without symbolic links');
+  directory = resolve(directory);
+  const targets = inventory(root).filter(row => row.path !== root && dirname(row.path) === directory)
+    .sort((a, b) => a.path.localeCompare(b.path));
+  if (targets.length > 32) fail('blocked-progressive-completion-budget', 'Select at most 32 registered worktrees');
+  const deadline = now() + timeoutMs, results = [];
+  for (const target of targets) {
+    let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null };
+    try {
+      const remaining = Math.ceil(deadline - now());
+      const bound = remaining > 0 && isLaneRef(target.branch) ? record(target.branch, root) : null;
+      if (remaining <= 0) result = { ...result, status: 'deferred', reason: 'pass-budget' };
+      else if (!bound || !COMPLETE_STATES.has(bound.state)) result.reason = 'requires-published-lane';
+      else if (bound.head !== target.head || bound.worktree !== target.path) result.reason = 'lane-binding-drift';
+      else {
+        const guard = () => {
+          const fresh = inventory(root).find(row => row.path === target.path), current = record(target.branch, root);
+          if (!fresh || fresh.branch !== target.branch || fresh.head !== target.head || fresh.locked || fresh.prunable
+            || current?.head !== bound.head || current?.pr !== bound.pr || current?.worktree !== target.path)
+            fail('worktree-binding-drift', 'Retain the changed worktree and reobserve its exact binding');
+        };
+        guard();
+        {
+          const code = await complete(target.branch, Math.min(60_000, remaining), guard);
+          const settled = code === 0 ? status(root, target.branch, policy, profile) : null;
+          result = { ...result, status: code === 2 ? 'waiting' : code === 0
+            && settled?.closeout?.missionState === 'source_complete' ? 'source_complete' : 'blocked',
+          reason: code === 2 ? 'review-pending' : code !== 0 ? 'completion-refused'
+            : settled?.closeout?.missionState === 'source_complete' ? null : 'closeout-incomplete' };
+        }
+      }
+    } catch (error) { result.reason = error.reason ?? error.message; }
+    results.push(result);
+    out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v1', authority: false, event: 'worktree', ...result }));
+  }
+  const completed = results.filter(row => row.status === 'source_complete').length;
+  out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v1', authority: false, event: 'summary',
+    selected: targets.length, completed, remaining: targets.length - completed, results }));
+  return results.some(row => row.status === 'blocked') ? 1 : completed === targets.length ? 0 : 2;
 }

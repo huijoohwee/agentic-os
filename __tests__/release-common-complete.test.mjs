@@ -1,17 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { startWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { fileURLToPath } from 'node:url';
+import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import {
   resolveReleaseCommonCleanupRequest,
+  runProgressiveCompletion,
   runReleaseCommonCleanup,
   runReleaseCommonCompleteWait,
   watchReleaseCommonReview,
@@ -405,4 +407,70 @@ test('cleanup refuses a valid unrelated workflow selected during asynchronous pl
     applyCompletionClose: async () => { applies += 1; },
   }), /blocked-workflow-effect-identity-drift/);
   assert.equal(applies, 0);
+});
+
+test('progressive completion closes serially, retains pending and detached work, and resumes without repeated cleanup', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..')), head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  let rows = ['a', 'b', 'c'].map(name => ({ path: join(directory, name), branch: `agent/test-device/${name}`, head }));
+  rows.push({ path: join(directory, 'recovery'), branch: null, head, detached: true });
+  const calls = [], events = []; let active = false;
+  const options = { root: s.root, directory, policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [...rows], record: ref => ({ state: 'published', head, worktree: rows.find(row => row.branch === ref).path }),
+    status: () => ({ closeout: { missionState: 'source_complete' } }), out: line => events.push(JSON.parse(line)),
+    complete: async ref => {
+      assert.equal(active, false); active = true; calls.push(ref); await Promise.resolve(); active = false;
+      if (ref.endsWith('/b')) return 2;
+      rows = rows.filter(row => row.branch !== ref); return 0;
+    } };
+  assert.equal(await runProgressiveCompletion(options), 1);
+  assert.deepEqual(events.filter(e => e.event === 'worktree').map(e => e.status), ['source_complete', 'waiting', 'source_complete', 'blocked']);
+  assert.equal(events.at(-1).completed, 2);
+  assert.equal(await runProgressiveCompletion(options), 1);
+  assert.deepEqual(calls, ['agent/test-device/a', 'agent/test-device/b', 'agent/test-device/c', 'agent/test-device/b']);
+  assert.equal(rows.length, 2);
+});
+
+test('progressive completion refuses changed identity and false completion; budget prevents later effects', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..')), head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const rows = ['a', 'b'].map(name => ({ path: join(directory, name), branch: `agent/test-device/${name}`, head }));
+  let reads = 0, calls = 0, time = 0; const events = [];
+  const options = { root: s.root, directory, policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => { reads += 1; return reads === 1 ? rows : rows.map(row => ({ ...row, head: '0'.repeat(40) })); },
+    record: ref => ({ state: 'published', head, worktree: rows.find(row => row.branch === ref).path }),
+    status: () => ({ closeout: { missionState: 'continuable' } }), out: line => events.push(JSON.parse(line)),
+    complete: async () => { calls += 1; return 0; } };
+  assert.equal(await runProgressiveCompletion(options), 1);
+  assert.equal(calls, 0);
+  assert.equal(events[0].reason, 'worktree-binding-drift');
+  options.inventory = () => rows;
+  assert.equal(await runProgressiveCompletion(options), 1);
+  assert.equal(calls, 2);
+  assert.equal(events.at(-1).completed, 0);
+  let effects = 0;
+  options.complete = async (_ref, _remaining, guard) => {
+    rows.splice(0, rows.length, ...rows.map(row => ({ ...row, head: '0'.repeat(40) })));
+    guard(); effects += 1; return 0;
+  };
+  assert.equal(await runProgressiveCompletion(options), 1);
+  assert.equal(effects, 0);
+  rows.splice(0, rows.length, ...rows.map(row => ({ ...row, head })));
+  options.inventory = () => rows;
+  options.now = () => time; options.timeoutMs = 10;
+  options.complete = async () => { time = 11; return 2; };
+  await runProgressiveCompletion(options);
+  assert.equal(events.at(-2).reason, 'pass-budget');
+  options.inventory = () => Array(33).fill(rows[0]);
+  await assert.rejects(runProgressiveCompletion(options), /Select at most 32/);
+});
+
+test('progressive argument selection is exclusive and a pending review needs only one observation', async () => {
+  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes']), null);
+  for (const extra of ['--ref=agent/test/x', '--bundle=/tmp/bundle', '--stopped'])
+    assert.notEqual(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', extra]), null);
+  const c = clock(); let reads = 0;
+  const result = await watchReleaseCommonReview({ ref: 'agent/test/lane', head: 'a'.repeat(40) }, {
+    once: true, now: c.now, sleep: c.sleep,
+    observeReview: () => { reads += 1; return { sourceHeadBound: true, review: { state: 'OPEN' } }; },
+  });
+  assert.equal(result.code, 2); assert.equal(reads, 1); assert.deepEqual(c.waits, []);
 });
