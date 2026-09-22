@@ -64,11 +64,11 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
       return 1;
     }
     const beforeCommit = workflowContext();
-    assertWorkflowCurrent('dependencies');
+    const expectedDecision = assertWorkflowCurrent('dependencies');
     const committed = commitReservedChanges({ cwd: root, writePaths, message });
     if (committed) {
       out(`committed ${committed.head.slice(0, 9)} (${committed.paths.length} path(s))`);
-      rebindWorkflowCandidate({ root, repository: profile.repository, ref, worktreeId: beforeCommit.worktreeId,
+      rebindWorkflowCandidate({ root, repository: profile.repository, ref, worktreeId: beforeCommit.worktreeId, expectedDecision,
         previousRevision: beforeCommit.revision, revision: committed.head });
     }
   }

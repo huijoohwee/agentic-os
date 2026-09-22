@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -70,6 +70,7 @@ function executionFixture(t) {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
   git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
   const planningPath = 'native-prd-tad-adr-mvp-gtm.md'; writeFileSync(join(root, planningPath), '# Native plan\n');
+  writeFileSync(join(root, 'other-prd-tad-adr-mvp-gtm.md'), '# Other native plan\n');
   git('add', '.'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'source');
   const repository = 'github.com/example/native', revision = git('rev-parse', 'HEAD'), worktreeId = 'device--change';
   const execution = { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [
@@ -202,18 +203,21 @@ test('native candidate rebinding preserves historical receipts and never grants 
     { id: 'preparation', file, digest: createHash('sha256').update(receipt).digest('hex') },
   ] });
   s.collect({ members: [{ id: s.worktreeId, file: child.manifest, digest: child.digest }] });
-  const before = s.selected(), retained = readFileSync(before.path, 'utf8');
   const lane = join(s.base, s.worktreeId), ref = 'agent/device/change';
   s.git('worktree', 'add', '-b', ref, lane, s.revision);
   const git = (...args) => execFileSync('git', args, { cwd: lane, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
   writeFileSync(join(lane, 'candidate.txt'), 'authorized source\n');
-  assert.equal(s.guard({ root: lane, ref, dirty: true, mode: 'dependencies', phase: 'ci' }).status, 'eligible');
+  const expectedDecision = s.guard({ root: lane, ref, dirty: true, mode: 'dependencies', phase: 'ci' });
+  assert.equal(expectedDecision.status, 'eligible');
   assert.throws(() => s.guard({ root: lane, ref, dirty: true, phase: 'ci' }), /dirty-candidate/);
+  s.collect({});
+  const before = s.selected(), retained = readFileSync(before.path, 'utf8');
+  assert.notEqual(before.digest, expectedDecision.manifestDigest, 'same-identity successors remain eligible');
   git('add', 'candidate.txt'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'candidate');
   const revision = git('rev-parse', 'HEAD'), request = { root: lane, repository: s.repository, ref,
-    worktreeId: s.worktreeId, previousRevision: s.revision, revision };
+    worktreeId: s.worktreeId, previousRevision: s.revision, revision, expectedDecision };
   assert.throws(() => rebindWorkflowCandidate({ ...request, root: s.root }), /candidate-rebind-source/);
-  assert.throws(() => rebindWorkflowCandidate({ ...request, previousRevision: 'f'.repeat(40) }), /candidate-rebind-source/);
+  assert.throws(() => rebindWorkflowCandidate({ ...request, previousRevision: 'f'.repeat(40) }), /candidate-rebind-decision/);
   const result = rebindWorkflowCandidate(request), current = s.selected();
   assert.equal(result.status, 'rebound'); assert.equal(current.manifest.previous.digest, before.digest);
   assert.equal(current.members[0].child.source.revision, revision);
@@ -222,7 +226,38 @@ test('native candidate rebinding preserves historical receipts and never grants 
   assert.throws(() => s.guard({ root: lane, ref, revision }), error => error.blockers.some(row => row.status === 'stale'));
   assert.equal(s.guard({ root: lane, ref, revision, phase: 'ci' }).status, 'eligible');
   assert.throws(() => rebindWorkflowCandidate(request), /candidate-rebind-drift/);
-  assert.equal(rebindWorkflowCandidate({ ...request, previousRevision: revision }).status, 'unchanged');
+  const currentDecision = s.guard({ root: lane, ref, revision, phase: 'ci', mode: 'dependencies' });
+  assert.equal(rebindWorkflowCandidate({ ...request, previousRevision: revision, expectedDecision: currentDecision }).status, 'unchanged');
+});
+
+test('candidate rebinding rejects precommit identity and source drift before writing any evidence', t => {
+  const s = executionFixture(t), lane = join(s.base, s.worktreeId), ref = 'agent/device/change';
+  s.git('worktree', 'add', '-b', ref, lane, s.revision);
+  const expectedDecision = s.guard({ root: lane, ref, phase: 'ci', mode: 'dependencies' });
+  const standalone = s.guard({ worktreeId: 'unrelated', phase: 'ci', mode: 'dependencies' });
+  execFileSync('git', ['-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'candidate'], { cwd: lane, stdio: 'pipe' });
+  const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: lane, encoding: 'utf8' }).trim();
+  const request = { root: lane, repository: s.repository, ref, worktreeId: s.worktreeId,
+    previousRevision: s.revision, revision, expectedDecision };
+  const original = s.selected(), storage = dirname(dirname(original.path));
+  const files = () => readdirSync(storage, { recursive: true }).sort();
+  const before = files();
+  for (const decision of [undefined, { ...expectedDecision, revision }, { ...expectedDecision, phase: 'checks' },
+    { ...expectedDecision, mode: 'effect' }]) {
+    assert.throws(() => rebindWorkflowCandidate({ ...request, expectedDecision: decision }), /candidate-rebind-decision/);
+  }
+  assert.deepEqual(files(), before); assert.equal(s.selected().digest, original.digest);
+  startWorkflow(s.root, s.repository, { revision: s.revision, planningPath: 'other-prd-tad-adr-mvp-gtm.md',
+    worktreeId: s.worktreeId, execution: s.execution });
+  const switched = s.selected(), afterSwitch = files();
+  assert.notEqual(switched.manifest.id, expectedDecision.workflowId);
+  assert.equal(switched.members[0].ref.id, expectedDecision.memberId);
+  for (const decision of [expectedDecision, standalone]) {
+    assert.throws(() => rebindWorkflowCandidate({ ...request, expectedDecision: decision }), /effect-identity-drift/);
+  }
+  assert.deepEqual(files(), afterSwitch, 'neither child nor root evidence may be written for the newly selected mission');
+  assert.equal(s.selected().digest, switched.digest);
+  assert.equal(switched.members[0].child.source.revision, s.revision);
 });
 
 test('foreign declared roots fail closed while unrelated legacy roots remain standalone', t => {

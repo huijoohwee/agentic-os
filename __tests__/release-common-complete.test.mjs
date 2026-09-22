@@ -387,3 +387,22 @@ test('cleanup prerequisites preserve merge observation and block only the cleanu
   assert.equal(applies, 0);
   assert.equal(git(['rev-parse', 'HEAD'], { cwd: s.lane }), revision);
 });
+
+test('cleanup refuses a valid unrelated workflow selected during asynchronous planning', async t => {
+  const s = completeFixture(t), repository = 'github.com/owner/repo';
+  const revision = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const common = { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md',
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } };
+  startWorkflow(s.root, repository, { ...common, worktreeId: basename(s.lane) });
+  const bundlePath = join(s.support, 'switch-bundle.json'); writeFileSync(bundlePath, '{}');
+  let applies = 0;
+  await assert.rejects(runReleaseCommonCleanup({ root: s.root, ref: s.ref, bundlePath, stopped: true, out: () => {},
+    planCompletionClose: async () => {
+      git(['config', '--local', '--unset', 'agentic-os.workflowManifest'], { cwd: s.root });
+      startWorkflow(s.root, repository, { ...common, worktreeId: 'unrelated-member' });
+      return { repository, authorizationDigest: 'a'.repeat(64) };
+    },
+    applyCompletionClose: async () => { applies += 1; },
+  }), /blocked-workflow-effect-identity-drift/);
+  assert.equal(applies, 0);
+});

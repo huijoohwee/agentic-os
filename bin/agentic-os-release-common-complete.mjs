@@ -3,6 +3,7 @@ import { TextDecoder } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
+import { loadRepositoryProfile } from '../src/git-repository.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { gh, observeGitHubReview } from '../src/github-provider.mjs';
 import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
@@ -250,9 +251,13 @@ export async function runReleaseCommonCleanup({
     applyCompletionClose = module.applyCompletionClose;
   }
   const bundle = jsonFile(bundlePath, 4_194_304, 'completion-bundle');
+  const repository = loadRepositoryProfile({ repository: root }).repository;
+  const assertWorkflowCurrent = createWorkflowEffectGuard(() => cleanupWorkflowContext(root, ref, repository));
+  assertWorkflowCurrent();
   const planned = await planCompletionClose(root, ref, bundle);
   out(JSON.stringify(planned));
-  createWorkflowEffectGuard(() => cleanupWorkflowContext(root, ref, planned.repository))();
+  if (planned.repository !== repository) fail('blocked-release-common-cleanup-repository', 'cleanup planning changed repository identity');
+  assertWorkflowCurrent();
   const applied = await applyCompletionClose(root, ref, bundle, planned,
     planned.authorizationDigest, { stopped });
   out(JSON.stringify(applied));

@@ -232,13 +232,24 @@ export function createWorkflowEffectGuard(context) {
 }
 
 /** Record only the candidate committed by a native owner; historical receipts remain historical. */
-export function rebindWorkflowCandidate({ root, repository, ref, worktreeId, previousRevision, revision }) {
+export function rebindWorkflowCandidate({ root, repository, ref, worktreeId, previousRevision, revision, expectedDecision }) {
+  const declared = expectedDecision?.status === 'eligible';
+  if (!declared && expectedDecision?.status !== 'standalone' || declared && (expectedDecision.phase !== 'ci'
+    || expectedDecision.mode !== 'dependencies' || expectedDecision.revision !== previousRevision)) fail('candidate-rebind-decision');
   const selected = readSelectedWorkflow(root, repository);
-  if (!selected || selected.manifest.execution === undefined) return { status: 'standalone', authority: false };
+  if (!selected || selected.manifest.execution === undefined) {
+    if (declared) fail('effect-identity-drift');
+    return { status: 'standalone', authority: false };
+  }
   const allocation = selected.manifest.allocations?.find(row => row.ref === ref);
   const member = selected.members.find(row => row.child.source.repository === repository
     && row.child.context.worktreeId === (allocation?.worktreeId ?? worktreeId));
-  if (!member) { if (allocation) fail('allocation-member-binding'); return { status: 'standalone', authority: false }; }
+  if (!member) {
+    if (allocation) fail('allocation-member-binding');
+    if (declared) fail('effect-identity-drift');
+    return { status: 'standalone', authority: false };
+  }
+  if (!declared || expectedDecision.workflowId !== selected.manifest.id || expectedDecision.memberId !== member.ref.id) fail('effect-identity-drift');
   if (![previousRevision, revision].every(value => /^[a-f0-9]{40}$/u.test(value ?? ''))
     || !isLaneRef(ref) || allocation && allocation.state !== 'active') fail('candidate-rebind-binding');
   const registration = worktreeInventory(root).find(row => row.branch === ref && resolve(row.path) === resolve(root));
