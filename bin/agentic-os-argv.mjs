@@ -39,10 +39,19 @@ export function validateCommandArguments(command, argv) {
       options: ['query', 'kind', 'limit', 'id', 'root', 'revision'], flags: ['include-content'],
     });
     case 'cleanup-user': return argv[0] === 'plan'
-      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow'], flags: ['recovery', 'detached'],
+      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow', 'change-class'], flags: ['recovery', 'detached'],
         requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
       : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
-        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] }) : 'cleanup-user requires plan or apply';
+        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
+      : argv[0] === 'sweep' ? exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] })
+        : 'cleanup-user requires plan, apply, or sweep';
+    case 'cleanup': return argv[0] === 'plan'
+      ? exact(argv, { min: 1, options: ['mode', 'target', 'pr', 'checks', 'workflow', 'change-class'], flags: ['recovery', 'detached'],
+        requiredOptions: ['target', 'pr'] })
+      : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
+        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
+      : argv[0] === 'sweep' ? exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] })
+        : 'cleanup requires plan, apply, or sweep';
     case 'collaborate': return argv[0] === 'status' ? exact(argv, { min: 1, flags: ['offline'] })
       : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
         ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';

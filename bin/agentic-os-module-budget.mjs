@@ -20,8 +20,13 @@ export const BUDGET = Object.freeze({
   totalLines: 15000,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
+  // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
+  // change-class fast path, stale-ref sweep, and unified cleanup CLI; the new
+  // logic lives in existing bin owners (agentic-os-cleanup-user.mjs,
+  // agentic-os-completion-scaffold.mjs, agentic-os-completion-status.mjs) and
+  // does not add a new agentic-os-*.mjs entry point.
   binModules: 110,
-  binLines: 22750,
+  binLines: 23100,
   runtimeModules: 96,
   runtimeLines: 23023,
 });

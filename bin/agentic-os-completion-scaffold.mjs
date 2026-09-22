@@ -2,7 +2,7 @@
 /** Read-only cleanup bundle scaffold for one finished lane. */
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { canonicalJson } from '../src/governance.mjs';
+import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { observeGit, repoRoot } from '../src/git.mjs';
 import { CLEANUP_EFFECTS, RETAINED_EFFECTS } from '../src/cleanup-records.mjs';
 import { GITHUB_TRANSITION_POLICY_PATH } from '../src/github-transition-policy.mjs';
@@ -11,6 +11,8 @@ import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
 import { providerPolicy } from '../src/queue.mjs';
 import { RECOVERY_LIMITS } from './agentic-os-cleanup-recovery.mjs';
 import { gh } from '../src/github-provider.mjs';
+import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
+import { worktreeFor } from '../src/worktree.mjs';
 
 const SCAFFOLD_SCHEMA = 'agentic-os/completion-bundle-scaffold/v1';
 const REQUIRED_PLACEHOLDERS = Object.freeze([
@@ -84,11 +86,16 @@ function observeIntegratedReview(root, status) {
 }
 
 export function validateCompletionScaffoldArguments(argv) {
-  if (!Array.isArray(argv) || argv.length !== 1) fail('blocked-completion-arguments',
-    'usage: completion-scaffold --ref=<lane>');
-  const match = argv[0]?.match(/^--ref=(.+)$/u);
-  if (!match) fail('blocked-completion-arguments', `invalid argument ${argv[0] ?? ''}`);
-  return Object.freeze({ ref: match[1] });
+  if (!Array.isArray(argv) || argv.length < 1) fail('blocked-completion-arguments',
+    'usage: completion-scaffold --ref=<lane> [--derive]');
+  const refArg = argv.find((arg) => arg?.startsWith?.('--ref='));
+  if (!refArg) fail('blocked-completion-arguments', 'missing --ref=<lane>');
+  const match = refArg.match(/^--ref=(.+)$/u);
+  if (!match) fail('blocked-completion-arguments', `invalid argument ${refArg}`);
+  const derive = argv.includes('--derive');
+  const unknown = argv.filter((arg) => arg !== '--derive' && arg !== refArg);
+  if (unknown.length > 0) fail('blocked-completion-arguments', `unknown argument ${unknown[0] ?? ''}`);
+  return Object.freeze({ ref: match[1], derive });
 }
 
 export function buildCompletionBundleScaffold(status, profile, committedState = {}) {
@@ -202,7 +209,93 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
     nextActions,
   };
 }
-export function runCompletionScaffold(root, ref, out = console.log) {
+/**
+ * Pre-fill the locally-derivable scaffold placeholders so the operator only
+ * needs to replace the ~6 true authority fields (workflow runs + operation
+ * inputs) that require authenticated GitHub Actions dispatch.
+ *
+ * Derivable fields (computed from local git/provider observation):
+ *   - recoveryInventoryDigest, recoveryInventoryContentEntries (from lane worktree)
+ *   - expiresAt (issuedAt + 900000ms, same 15-minute window as cleanup-user plans)
+ *   - integratedResource, integratedImmutableRevision (already derived upstream)
+ *
+ * The remaining placeholders (candidateDigest, snapshotDigest, ownerStateDigest,
+ * integrationProofDigest, all receipt objects, all verifier fields) genuinely
+ * require authenticated transition receipt replay and are NOT derived here.
+ *
+ * This is observation-only: it does not authorize effects or grant cleanup
+ * authority. The operator still runs completion:plan and completion:apply
+ * with the full protected chain.
+ */
+const DERIVE_TTL_MS = 900000;
+const AUTHORITATIVE_PLACEHOLDERS = Object.freeze(new Set([
+  'cleanup.plan.candidateDigest',
+  'cleanup.plan.snapshotDigest',
+  'cleanup.plan.integrationProofDigest',
+  'cleanup.plan.ownerStateDigest',
+  'cleanup.plan.integrationReceiptDigest',
+  'cleanup.plan.integrationPlanByteDigest',
+  'cleanup.plan.integrationPredecessorDigest',
+  'cleanup.plan.preservationReceiptDigest',
+  'cleanup.plan.noRemainingValueReceiptDigest',
+  'cleanup.integrationReceipt',
+  'cleanup.integrationPlanBytes',
+  'cleanup.retirementReceipt',
+  'cleanup.retirementPlanBytes',
+  'cleanup.integrationRequest',
+  'cleanup.retirementRequest',
+  'cleanup.preservationReceipt',
+  'cleanup.noRemainingValueReceipt',
+  'integrationVerifier.operationInput',
+  'integrationVerifier.workflowRun',
+  'retirementVerifier.operationInput',
+  'retirementVerifier.workflowRun',
+]));
+export function deriveLocallyAvailableFields(scaffold, status, canonicalRoot) {
+  const issuedAt = Date.now();
+  const derived = {
+    'cleanup.plan.expiresAt': new Date(issuedAt + DERIVE_TTL_MS).toISOString(),
+  };
+  const lanePath = status.lane?.path;
+  if (lanePath) {
+    try {
+      const inventory = collectRecoveryInventory({ cwd: lanePath, canonicalRef: 'refs/heads/main' });
+      if (inventory && typeof inventory === 'object') {
+        derived['cleanup.plan.recoveryInventoryDigest'] = governanceDigest(inventory);
+        derived['cleanup.plan.recoveryInventoryContentEntries'] = inventory.inventoryEntries?.content ?? null;
+      }
+    } catch { /* lane worktree not available for inventory observation */ }
+  }
+  const remaining = scaffold.requiredPlaceholders.filter((key) => !Object.hasOwn(derived, key));
+  const isPlaceholder = (value) => typeof value === 'string' && value.startsWith('REPLACE_WITH_');
+  const fill = (node, path) => {
+    if (node === null || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map((item) => fill(item, path));
+    const result = {};
+    for (const [key, value] of Object.entries(node)) {
+      const fieldPath = path ? `${path}.${key}` : key;
+      if (isPlaceholder(value) && Object.hasOwn(derived, fieldPath)) {
+        result[key] = derived[fieldPath];
+      } else if (isPlaceholder(value) && AUTHORITATIVE_PLACEHOLDERS.has(fieldPath)) {
+        result[key] = value; // preserve — requires authenticated workflow run
+      } else if (value !== null && typeof value === 'object') {
+        result[key] = fill(value, fieldPath);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  };
+  const filled = { ...scaffold, bundleTemplate: fill(scaffold.bundleTemplate, '') };
+  return {
+    ...filled,
+    derivedFields: Object.keys(derived),
+    remainingPlaceholders: remaining.filter((key) => AUTHORITATIVE_PLACEHOLDERS.has(key)),
+    derivedAt: new Date(issuedAt).toISOString(),
+    deriveNote: 'Locally-derivable fields pre-filled; remaining REPLACE_WITH_* fields require authenticated GitHub Actions workflow runs.',
+  };
+}
+export function runCompletionScaffold(root, ref, out = console.log, { derive = false } = {}) {
   const canonical = realpathSync(repoRoot(root));
   if (realpathSync(root) !== canonical) fail('blocked-canonical-required', 'run from the canonical checkout');
   const trusted = trustedRepositoryProfile(canonical), profile = trusted.profile;
@@ -215,16 +308,18 @@ export function runCompletionScaffold(root, ref, out = console.log) {
     transitionPolicy: committedJson(canonical, status.canonicalRevision, GITHUB_TRANSITION_POLICY_PATH),
     integratedReview: observeIntegratedReview(canonical, status),
   };
-  out(canonicalJson(buildCompletionBundleScaffold(status, profile, committedState)));
+  const scaffold = buildCompletionBundleScaffold(status, profile, committedState);
+  const result = derive ? deriveLocallyAvailableFields(scaffold, status, canonical) : scaffold;
+  out(canonicalJson(result));
   return 0;
 }
 
 function main() {
-  const { ref } = validateCompletionScaffoldArguments(process.argv.slice(2));
-  runCompletionScaffold(process.cwd(), ref, (value) => process.stdout.write(`${value}\n`));
+  const { ref, derive } = validateCompletionScaffoldArguments(process.argv.slice(2));
+  runCompletionScaffold(process.cwd(), ref, (value) => process.stdout.write(`${value}\n`), { derive });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try { main(); } catch (error) {
     process.stderr.write(`completion-scaffold: ${error.reason ?? 'error'}: ${error.message}\n`);
     process.exitCode = 1;

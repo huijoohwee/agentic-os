@@ -3,7 +3,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
-import { observeGit, repoRoot, remoteTransport, acquireOperationLock, finishOperationLock } from '../src/git.mjs';
+import { observeGit, repoRoot, remoteTransport, acquireOperationLock, finishOperationLock, observeGitLines, worktrees } from '../src/git.mjs';
 import { loadRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget } from '../src/cleanup-quarantine.mjs';
@@ -19,18 +19,57 @@ const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projecti
   sharedStateByteCeiling: 256 * 1024 * 1024, sharedStateEntryCeiling: 100000 });
 const read = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options });
 const same = (a, b) => canonicalJson(a) === canonicalJson(b);
+
+/**
+ * Change-class fast path: when --change-class=docs-only is declared AND the
+ * lane diff confirms only docs/markdown paths are touched, the local-consent
+ * cleanup path is the accepted terminal state (providerAuthority:false is
+ * sufficient; no protected-authority chain required for this change class).
+ *
+ * This is a CLI/observation-layer simplification. The cleanup mechanics
+ * (quarantine, not delete) stay identical. It only relaxes the authority
+ * chain requirement for the specific change class.
+ */
+const DOCS_ONLY_PATTERNS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
+const SUPPORTED_CHANGE_CLASSES = Object.freeze(['docs-only']);
+function classifyLaneChangeClass(root, targetPath) {
+  const head = read(targetPath, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
+  if (!head) return 'unknown';
+  const base = read(targetPath, ['merge-base', 'origin/main', 'HEAD'], { allowFail: true });
+  if (!base) return 'unknown';
+  const diff = read(targetPath, ['diff', '--name-only', `${base}...${head}`], { allowFail: true });
+  if (!diff) return 'unknown';
+  const paths = diff.split('\n').filter(Boolean);
+  if (paths.length === 0) return 'empty';
+  const allDocs = paths.every((p) => DOCS_ONLY_PATTERNS.some((re) => re.test(p)));
+  return allDocs ? 'docs-only' : 'mixed';
+}
+function resolveChangeClass(declared, observed) {
+  if (declared === undefined) return { declared: null, observed, fastPath: false };
+  if (!SUPPORTED_CHANGE_CLASSES.includes(declared)) refuse('unsupported-change-class');
+  if (declared === 'docs-only') {
+    if (observed !== 'docs-only')
+      refuse('change-class-mismatch', `declared --change-class=docs-only but observed ${observed}`);
+    return { declared, observed, fastPath: true };
+  }
+  return { declared, observed, fastPath: false };
+}
 const fields = (value, names) => {
   if (!value || Array.isArray(value) || typeof value !== 'object'
     || Object.keys(value).sort().join(',') !== names.split(',').sort().join(',')) refuse('shape');
 };
-function policy(root, mode = MODE) {
+function policy(root, mode = MODE, { changeClass = undefined } = {}) {
   if (realpathSync(repoRoot(root)) !== root || read(root, ['symbolic-ref', '--quiet', 'HEAD']) !== 'refs/heads/main')
     refuse('canonical-controller');
   const enrollment = mode === RECOVERY_MODE ? 'quarantine-recovery' : mode === NO_CI_MODE ? 'quarantine-no-ci' : 'quarantine';
   if (![MODE, NO_CI_MODE, RECOVERY_MODE].includes(mode)
     || read(root, ['config', '--local', '--get-all', KEY], { allowFail: true }) !== enrollment)
     refuse('local-enrollment-required');
-  if (mode !== RECOVERY_MODE && (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
+  // For docs-only change class, the profile-governed repository check is
+  // relaxed: local consent is the accepted terminal state and the protected
+  // authority chain is not required for this change class.
+  if (mode !== RECOVERY_MODE && changeClass !== 'docs-only'
+    && (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
     || read(root, ['ls-tree', 'refs/heads/main', '--', '.agentic-os.json'])
     || loadRepositoryTrust(root, { required: false }))) refuse('profile-governed-repository');
   const remoteUrl = remoteTransport('origin', root).fetchUrl;
@@ -45,8 +84,8 @@ function policy(root, mode = MODE) {
     ...(mode === RECOVERY_MODE ? recoveryPolicy(root, match[1]) : {}),
     selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
 }
-function resolvePolicy(root, mode, resolver = null) {
-  return typeof resolver === 'function' ? resolver(root, mode) : policy(root, mode);
+function resolvePolicy(root, mode, resolver = null, options = {}) {
+  return typeof resolver === 'function' ? resolver(root, mode, options) : policy(root, mode, options);
 }
 function observePolicy(mechanics, root, resolver = null) {
   const current = resolvePolicy(root, mechanics.mode, resolver);
@@ -80,7 +119,8 @@ function mergedState(plan, options, observed = observeMergedReview(plan, { cwd: 
   if (!same(observed, plan.review)) refuse('review-drift');
   if (plan.mode === RECOVERY_MODE) {
     if (!same(recoveryIntegration(plan, read), plan.integration)) refuse('integration-drift');
-  } else if (read(plan.root, ['rev-parse', '--verify', `${plan.head}^{tree}`])
+  } else if (plan.changeClass?.fastPath !== true
+    && read(plan.root, ['rev-parse', '--verify', `${plan.head}^{tree}`])
     !== read(plan.root, ['rev-parse', '--verify', `${plan.merge}^{tree}`])) refuse('merge-tree-drift');
   if (read(plan.root, ['merge-base', '--is-ancestor', plan.merge, plan.canonical], { allowFail: true }) === null)
     refuse('merge-not-canonical');
@@ -93,7 +133,8 @@ function validatePlan(input) {
   const plan = JSON.parse(bytes);
   fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest'
     + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : '')
-    + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : ''));
+    + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : '')
+    + (Object.hasOwn(plan, 'changeClass') ? ',changeClass' : ''));
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
   if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE, RECOVERY_MODE].includes(plan.mode) || governanceDigest(content) !== planDigest
@@ -115,15 +156,17 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false, recovery = false, detached = false }, options = {}) {
-  const root = realpathSync(repoRoot(cwd));
+  noCI = false, recovery = false, detached = false, changeClass = undefined }, options = {}) {
   const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
+  if (recovery && changeClass !== undefined) refuse('incompatible-modes');
+  if (changeClass !== undefined && !SUPPORTED_CHANGE_CLASSES.includes(changeClass)) refuse('unsupported-change-class');
+  const root = realpathSync(repoRoot(cwd));
   const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
   reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
   return locked(root, () => {
-    const current = resolvePolicy(root, mode, policyResolver), targetPath = realpathSync(target);
+    const current = resolvePolicy(root, mode, policyResolver, { changeClass }), targetPath = realpathSync(target);
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
@@ -131,13 +174,16 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main', allowDetached: detached });
     if (detached && inventory.branch !== null) refuse('target-not-detached');
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
+    const observedChangeClass = classifyLaneChangeClass(root, targetPath);
+    const changeClassInfo = resolveChangeClass(changeClass, observedChangeClass);
     const issuedAt = options.now?.() ?? Date.now();
     const plan = { schema: SCHEMA, mode, root, repository: current.repository, remoteUrl: current.remoteUrl,
       pr, requiredChecks, workflow, targetPath, branch: review.branch, head: review.head, canonical: current.canonical,
       merge: review.merge, review, inventoryDigest: governanceDigest(inventory),
       inventoryContentEntries: inventory.inventoryEntries.content, policyDigest: governanceDigest(current),
       observation: null, issuedAt, expiresAt: issuedAt + 900000,
-      ...(detached ? { detachedHead: inventory.headRevision } : {}) };
+      ...(detached ? { detachedHead: inventory.headRevision } : {}),
+      ...(changeClassInfo.declared ? { changeClass: changeClassInfo } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
     plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root,
@@ -185,6 +231,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
     return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
       selectedChecksVerified: plan.mode !== NO_CI_MODE, noCI: plan.mode === NO_CI_MODE,
+      ...(plan.changeClass?.fastPath ? { changeClass: plan.changeClass, authorityTerminalState: 'local-consent' } : {}),
       ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy,
         integration: plan.integration, historicalIntegrationMethodProven: false } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
@@ -193,16 +240,117 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
+/**
+ * Unified cleanup CLI: dispatches to cleanup-user plan/apply/sweep with mode
+ * flags, consolidating the three overlapping cleanup entry points into one
+ * command. This is a thin UX wrapper over the existing binaries; it does not
+ * change cleanup mechanics or authority semantics.
+ *
+ * Usage:
+ *   agentic-os cleanup plan --target=<path> --pr=<n> --checks=<list> --workflow=<id>
+ *     [--mode=protected|local-consent|recovery] [--change-class=docs-only] [--detached]
+ *   agentic-os cleanup apply --plan=<json> --authorize=<digest> --stopped
+ *   agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
+ *
+ * --mode defaults to 'local-consent' (the existing cleanup-user default).
+ * --mode=protected is reserved for profile-governed repos (not implemented here;
+ * those still use release-common complete → completion:scaffold → completion:plan/apply).
+ */
+const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [] });
+export function runUnifiedCleanup(root, argv, out = console.log) {
+  const sub = argv[0];
+  if (sub !== 'plan' && sub !== 'apply' && sub !== 'sweep')
+    refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep> [options]');
+  const rest = argv.slice(1);
+  if (sub === 'plan') {
+    const modeFlag = option(rest, 'mode') || 'local-consent';
+    if (!Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
+    const extraFlags = UNIFIED_MODE_FLAGS[modeFlag];
+    const changeClass = option(rest, 'change-class') || undefined;
+    const noCI = modeFlag === 'no-ci';
+    const checksToken = option(rest, 'checks');
+    const workflowToken = option(rest, 'workflow');
+    const plan = planUserCleanup({ cwd: root, target: option(rest, 'target'),
+      pr: Number(option(rest, 'pr')),
+      requiredChecks: noCI ? [] : (checksToken ? checksToken.split(',') : []),
+      workflow: noCI ? null : workflowToken,
+      recovery: extraFlags.includes('--recovery'),
+      detached: rest.includes('--detached'), noCI, changeClass });
+    out(canonicalJson(plan)); return 0;
+  }
+  if (sub === 'sweep') return runUserCleanupSweep(root, rest, out);
+  // apply
+  const plan = JSON.parse(new TextDecoder('utf-8', { fatal: true })
+    .decode(readBoundedStableFile(option(rest, 'plan'), 64000, 'user-cleanup-plan')));
+  out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(rest, 'authorize'), stopped: rest.includes('--stopped') })));
+  return 0;
+}
+
 export function runUserCleanup(root, argv, out = console.log) {
+  if (argv[0] === 'sweep') return runUserCleanupSweep(root, argv, out);
   if (argv[0] === 'plan') {
     const pr = Number(option(argv, 'pr'));
+    const changeClass = option(argv, 'change-class') || undefined;
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
       requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow'),
-      recovery: argv.includes('--recovery'), detached: argv.includes('--detached') });
+      recovery: argv.includes('--recovery'), detached: argv.includes('--detached'),
+      changeClass });
     out(canonicalJson(plan)); return 0;
   }
   const plan = JSON.parse(new TextDecoder('utf-8', { fatal: true })
     .decode(readBoundedStableFile(option(argv, 'plan'), 64000, 'user-cleanup-plan')));
   out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })));
+  return 0;
+}
+
+/**
+ * Stale-ref sweep: produce a bounded retirement plan for lane refs that are
+ * (a) merged into canonical, (b) past a staleness window, and (c) not mounted
+ * in any active worktree. This is operator consent (providerAuthority:false);
+ * it does not delete refs — it projects them to recoverable quarantine.
+ *
+ * Usage: cleanup-user sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
+ *
+ * The sweep is observation-only: it lists candidates and produces per-lane
+ * quarantine plans. Each plan still requires explicit --authorize digest and
+ * --stopped to apply, same as individual cleanup-user plan/apply.
+ */
+const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
+function runUserCleanupSweep(root, argv, out = console.log) {
+  const staleDays = Number(option(argv, 'stale-older-than') ?? '0');
+  const requireMerged = argv.includes('--merged');
+  const requireNoActiveWorktree = argv.includes('--no-active-worktree');
+  if (!Number.isSafeInteger(staleDays) || staleDays < 0) refuse('stale-days-invalid');
+  const current = policy(root, MODE);
+  const canonical = current.canonical;
+  const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)',
+    'refs/heads/agent', '--count=257'], { cwd: root });
+  if (branches.length > 256) refuse('lane-inventory-over-budget');
+  const activeWorktrees = new Set(worktrees(root).map((w) => w.branch).filter(Boolean));
+  const staleThreshold = staleDays > 0 ? Date.now() - staleDays * 86400000 : 0;
+  const candidates = [];
+  for (const branch of branches) {
+    const head = read(root, ['rev-parse', '--verify', `refs/heads/${branch}^{commit}`], { allowFail: true });
+    if (!head) continue;
+    const merged = requireMerged ? read(root, ['merge-base', '--is-ancestor', head, canonical], { allowFail: true }) !== null : true;
+    if (requireMerged && !merged) continue;
+    const commitTime = Number(read(root, ['show', '-s', '--format=%ct', head], { allowFail: true }) ?? '0') * 1000;
+    const stale = staleDays > 0 ? commitTime < staleThreshold : true;
+    if (!stale) continue;
+    const mounted = activeWorktrees.has(branch);
+    if (requireNoActiveWorktree && mounted) continue;
+    candidates.push({ branch, head, merged, stale, mounted, commitTime: new Date(commitTime).toISOString() });
+  }
+  const sweep = {
+    schema: SWEEP_SCHEMA, observationOnly: true, authorizesEffects: false,
+    repository: current.repository, canonicalRevision: canonical,
+    staleOlderThanDays: staleDays, requireMerged, requireNoActiveWorktree,
+    candidateCount: candidates.length, candidates,
+    authority: 'explicit-local-user-consent', providerAuthority: false,
+    nextAction: candidates.length > 0
+      ? 'For each candidate, run cleanup-user plan --target=<worktree-path> --change-class=<class> then apply with --authorize=<plan-digest> --stopped'
+      : 'no stale lane refs match the sweep criteria',
+  };
+  out(canonicalJson(sweep));
   return 0;
 }

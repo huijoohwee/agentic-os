@@ -188,3 +188,68 @@ Verify that acceptance with `node --test __tests__/user-cleanup.test.mjs` and th
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
 Experience assessment for `USER-CLEANUP-001@1.2.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+
+## Simplification: change-class fast path, stale-ref sweep, and unified CLI
+
+The cleanup harness applies the same machinery to a docs typo as to a multi-repo production release. The following simplifications reduce operator burden for low-risk change classes without weakening any guarantee for the cases that need the full chain.
+
+### Change-class fast path (`--change-class=docs-only`)
+
+When `--change-class=docs-only` is declared AND the lane diff confirms only docs/markdown paths are touched, the local-consent cleanup path is the accepted terminal state (`providerAuthority:false` is sufficient; no protected-authority chain required for this change class).
+
+```sh
+agentic-os cleanup-user plan --target=<worktree> --pr=<n> --checks=<list> --workflow=<id> --change-class=docs-only
+agentic-os cleanup-user plan --target=<worktree> --pr=<n> --checks=<list> --workflow=<id> --no-ci --change-class=docs-only
+```
+
+The receipt includes `changeClass: { declared: 'docs-only', observed: 'docs-only', fastPath: true }` and `authorityTerminalState: 'local-consent'`. If the declared class does not match the observed diff, `change-class-mismatch` is refused.
+
+### Stale-ref sweep (`cleanup-user sweep`)
+
+Produces a bounded retirement plan for lane refs that are (a) merged into canonical, (b) past a staleness window, and (c) not mounted in any active worktree. This is operator consent (`providerAuthority:false`); it does not delete refs — it projects them to recoverable quarantine.
+
+```sh
+agentic-os cleanup-user sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
+```
+
+Each candidate still requires explicit `--authorize=<plan-digest>` and `--stopped` to apply, same as individual `cleanup-user plan/apply`.
+
+### Unified cleanup CLI (`agentic-os cleanup`)
+
+A thin wrapper that consolidates the three cleanup entry points into one command with mode flags:
+
+```sh
+agentic-os cleanup plan --target=<path> --pr=<n> --checks=<list> --workflow=<id> [--mode=local-consent|recovery|no-ci] [--change-class=docs-only] [--detached]
+agentic-os cleanup apply --plan=<json> --authorize=<digest> --stopped
+agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
+```
+
+`--mode` defaults to `local-consent`. `--mode=protected` is reserved for profile-governed repos (those still use `release-common complete` → `completion:scaffold` → `completion:plan/apply`).
+
+### Auto-derive placeholders (`completion:scaffold --derive`)
+
+Pre-fills the locally-derivable scaffold fields (`recoveryInventoryDigest`, `recoveryInventoryContentEntries`, `expiresAt`, `integratedResource`, `integratedImmutableRevision`) so the operator only needs to replace the ~6 true authority fields (workflow runs + operation inputs) that require authenticated GitHub Actions dispatch.
+
+```sh
+npm run completion:scaffold -- --ref=<lane> --derive
+```
+
+The derived scaffold includes `derivedFields`, `remainingPlaceholders` (only the authoritative ones), `derivedAt`, and a `deriveNote` explaining what was pre-filled.
+
+### Applicable-to-change-class findings (`completion status`)
+
+The `completion status` output now includes a `changeClass` field (`docs-only`, `mixed`, `empty`, or `unknown`) and an `applicableToChangeClass` field per finding. Findings marked `applicable: false` are not blockers for low-risk change classes — they indicate that local consent is sufficient and the protected authority chain is not required for this change class.
+
+```sh
+npm run completion:status -- --ref=<lane>
+```
+
+### What is NOT changed
+
+These remain load-bearing and must stay complicated:
+- Separate receipts per effect (source/integration/deployment/rollback/cleanup/sync)
+- Recoverable quarantine over deletion (the recoverability invariant)
+- Fail-closed on incomplete evidence (prefer retained refs over wrong prunes)
+- Interactive-provider confirmation for production deploy/rollback
+
+Run `node --test __tests__/simplification.test.mjs` to verify these simplifications.
