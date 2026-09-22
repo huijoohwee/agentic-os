@@ -12,6 +12,42 @@ const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 
 const committed = (root, revision, path) => read(root, ['show', `${revision}:${path}`]);
 const finding = (code, owner, action) => ({ code, owner, action });
 const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?.cleanup?.worktreeRegistration === 'quarantine';
+
+/**
+ * Classify whether a finding is applicable given the lane's change class.
+ * Findings marked `applicable: false` are not blockers for low-risk change classes
+ * (e.g., docs-only), where local consent is sufficient and the protected authority
+ * chain is not required. This is observation-only classification; it does not
+ * authorize effects or grant cleanup authority.
+ */
+const DOCS_ONLY_GLOBS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
+function classifyChangeClass(root, ref) {
+  const head = headSha(`refs/heads/${ref}`, root);
+  if (!head) return 'unknown';
+  const diff = observeGit(['diff', '--name-only', `refs/heads/main...${head}`], { cwd: root, allowFail: true, maxBuffer: 65536 });
+  if (!diff) return 'unknown';
+  const paths = diff.split('\n').filter(Boolean);
+  if (paths.length === 0) return 'empty';
+  const allDocs = paths.every((p) => DOCS_ONLY_GLOBS.some((re) => re.test(p)));
+  return allDocs ? 'docs-only' : 'mixed';
+}
+const APPLICABILITY = Object.freeze({
+  'docs-only': {
+    'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' },
+    'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' },
+  },
+  'mixed': {},
+  'empty': {},
+  'unknown': {},
+});
+function withApplicability(findings, changeClass) {
+  const table = APPLICABILITY[changeClass] ?? {};
+  return findings.map((item) => {
+    const entry = table[item.code];
+    if (!entry) return { ...item, applicableToChangeClass: { applicable: true, changeClass } };
+    return { ...item, applicableToChangeClass: { applicable: false, changeClass, reason: entry.reason } };
+  });
+}
 function observeQuarantinedLane(root, ref) {
   try {
     const base = join(commonDir(root), 'agentic-os-cleanup-quarantine'), names = readdirSync(base), stat = lstatSync(base);
@@ -78,6 +114,7 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
   const projection = laneHead && tracking ? integrationProof(tracking, laneHead, { cwd: root }) : null;
   const quarantineProfile = quarantines(profile);
   const quarantineObserved = Boolean(laneHead) && !laneMounted && quarantineProfile && observeQuarantinedLane(root, ref);
+  const changeClass = classifyChangeClass(root, ref);
   const findings = [];
   if (!canonical || !tracking || canonical !== tracking || !canonicalClean) findings.push(finding('canonical-not-current-clean', 'repository-operator', 'Fetch and use the separately governed canonical synchronization workflow; preserve local bytes.'));
   if (!laneHead) findings.push(finding('lane-ref-missing', 'lane-owner', 'Recover the exact local lane ref before completion.'));
@@ -88,8 +125,9 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
   if (enrolled) findings.push(...enrolled.findings);
   if (quarantineProfile && !quarantineObserved && enrolled?.localPolicyCandidate) findings.push(finding('provider-authority-unverified', 'authority-operator', 'Follow CLEANUP-AUTHORITY.md: bind the exact PR, checks, protection, issuance, integration and retirement winners.'));
   if (quarantineProfile && !quarantineObserved) findings.push(finding('cleanup-receipt-unverified', 'cleanup-operator', 'After live winner replay, assess and execute only the authorized exact quarantine plan.'));
-  const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, deployBound: deployBound(root, canonical), localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: findings.map((item) => item.code) });
-  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, ref, repository: profile.repository, profileDigest: profile.profileDigest, canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean, lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean }, integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null } : null, enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository, files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null, closeout, findings };
+  const classifiedFindings = withApplicability(findings, changeClass);
+  const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, deployBound: deployBound(root, canonical), localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: classifiedFindings.map((item) => item.code) });
+  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, ref, repository: profile.repository, profileDigest: profile.profileDigest, changeClass, canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean, lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean }, integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null } : null, enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository, files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null, closeout, findings: classifiedFindings };
 }
 export function runCompletionStatus(root, ref, policy, profile, out = console.log) {
   out(JSON.stringify(inspectCompletionStatus(root, ref, policy, profile)));

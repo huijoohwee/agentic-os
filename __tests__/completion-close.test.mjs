@@ -54,7 +54,7 @@ test('JSON completion bundles rehydrate exact plan bytes with a stable digest', 
 });
 
 test('completion scaffold validates arguments and preserves known lane facts', () => {
-  assert.deepEqual(validateCompletionScaffoldArguments([`--ref=${REF}`]), { ref: REF });
+  assert.deepEqual(validateCompletionScaffoldArguments([`--ref=${REF}`]), { ref: REF, derive: false });
   assert.throws(() => validateCompletionScaffoldArguments([]),
     { reason: 'blocked-completion-arguments' });
   const scaffold = buildCompletionBundleScaffold({

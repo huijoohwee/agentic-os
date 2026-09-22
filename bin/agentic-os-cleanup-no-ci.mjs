@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Explicit, profileless no-CI local consent. Never protected-path authority. */
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { canonicalJson } from '../src/governance.mjs';
@@ -40,7 +41,7 @@ export function runNoCiCleanup(argv, { cwd = process.cwd(), out = console.log } 
     stopped: input.stopped })));
   return 0;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href)
   try { runNoCiCleanup(process.argv.slice(2)); }
   catch (error) { process.stderr.write(`cleanup-no-ci: ${error.reason ?? 'error'}: ${error.message}\n`);
     process.exitCode = 1; }
