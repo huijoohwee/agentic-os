@@ -15,7 +15,9 @@ test('committed transition workflow is bound to the canonical authority policy',
   assert.equal(policy.authorityRef, 'refs/heads/main');
   assert.equal(policy.workflowPath, '.github/workflows/adlc-transition.yml');
   assert.deepEqual(policy.targetRepositories, [
-    'github.com/huijoohwee/agentic-graph', 'github.com/huijoohwee/agentic-os',
+    'github.com/huijoohwee/GameXR',
+    'github.com/huijoohwee/agentic-graph',
+    'github.com/huijoohwee/agentic-os',
   ]);
 
   const workflow = readFileSync(workflowPath, 'utf8');
