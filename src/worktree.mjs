@@ -305,9 +305,9 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     if (!provision.ok) throw successorError(provision.reason, `activation refused by ${provision.guard}`);
     if (requestedWritePaths.length === 0) throw successorError('blocked-write-scope-missing',
       'successor requires inherited write paths');
-    assertPreservedSuccessorJoins(currentRecord.baseSha, tip, protectedRef, cwd);
+    const protectedSha = headSha(protectedRef, cwd); assertPreservedSuccessorJoins(currentRecord.baseSha, tip, protectedSha, cwd);
     const committed = decodeNulFields(git(['log', '--format=', '--name-only', '-z',
-      `${currentRecord.baseSha}..${tip}`], { cwd, binary: true }));
+      `${currentRecord.baseSha}..${tip}`, '--not', protectedSha], { cwd, binary: true }));
     if (committed === null) throw successorError(
       'blocked-invalid-write-scope', 'committed path inventory is not strict UTF-8');
     const outside = [...new Set(committed)].filter((path) => !pathIsReserved(path, requestedWritePaths));
