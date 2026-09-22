@@ -253,10 +253,13 @@ export function observeRetainedWorktreeQuarantine(root, ref, head) {
         });
         const log = UTF8.decode(readBoundedStableFile(join(registration, 'logs', 'HEAD'),
           16 * 1024 ** 2, 'retained-head-log')).trimEnd().split('\n').at(-1);
+        // Git ref verification can append an old-head -> zero entry without moving HEAD.
+        const [prior, next] = log?.split(' ') ?? [];
+        const retainedHead = /^0{40}(?:0{24})?$/u.test(next ?? '') ? prior : next;
         if (projection.digest === e.projectionManifestDigest && projection.bytes === e.projectionBytes
           && projection.entries === e.projectionEntries && retained.digest === e.registrationManifestDigest
           && retained.bytes === e.registrationBytes && retained.entries === e.registrationEntries
-          && log?.split(' ')[1] === head) return true;
+          && retainedHead === head) return true;
       } catch { /* A partial, changed or unbound coordinate cannot establish completion. */ }
     }
   } catch { /* No bounded retained proof is available. */ }

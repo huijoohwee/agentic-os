@@ -233,3 +233,17 @@ test('retained cleanup does not certify an advanced branch or changed operation 
   writeFileSync(path, JSON.stringify(value));
   assert.equal(status().cleanupVerified, false);
 });
+
+test('completion binds a trailing zero-object verification entry to its exact prior head', t => {
+  for (const exact of [true, false]) {
+    const s = fixture(t), log = git(s.target, 'rev-parse', '--git-path', 'logs/HEAD');
+    const prior = exact ? s.head : s.merge;
+    writeFileSync(log, readFileSync(log, 'utf8')
+      + `${prior} ${'0'.repeat(40)} Fixture <fixture@example.invalid> 1789344000 +0000\n`);
+    s.apply(s.plan());
+    const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile);
+    assert.equal(status.cleanupVerified, exact);
+    assert.equal(status.closeout.missionState === 'source_complete', exact);
+    assert.equal(status.providerVerified, false);
+  }
+});
