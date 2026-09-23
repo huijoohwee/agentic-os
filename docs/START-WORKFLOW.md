@@ -2,7 +2,7 @@
 
 `npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> --checkout-limit=<0..32>`
 
-Resume the lane's immutable root with `--mission=<manifest>`; `--expected-head=<sha>`
+Resume the current immutable root with `--mission=<manifest>`; `--expected-head=<sha>`
 binds committed edits. Zero allows reuse; declared caps cannot increase. Legacy START remains undeclared.
 Exact active unpublished owners can
 extend disjoint scope with `--readmit --expected-head=<sha>`; published owners use `successor`.
