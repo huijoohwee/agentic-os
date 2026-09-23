@@ -178,7 +178,8 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
     || (detachedRecovery ? !entry.detached : retainedHead !== plan.expectedHeadRevision))
     fail('blocked-target-identity', 'target branch or head changed');
   const recoveryInventory = collectRecoveryInventory({ cwd: plan.targetPath,
-    canonicalRef: plan.expectedCanonicalRef, allowDetached: detachedRecovery });
+    canonicalRef: plan.expectedCanonicalRef, allowDetached: detachedRecovery,
+    maxContentEntries: plan.projectionEntryCeiling });
   const recoveryInventoryDigest = governanceDigest(recoveryInventory);
   if (recoveryInventoryDigest !== plan.recoveryInventoryDigest
     || recoveryInventory.inventoryEntries.content !== plan.recoveryInventoryContentEntries

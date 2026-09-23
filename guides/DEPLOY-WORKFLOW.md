@@ -56,6 +56,13 @@ After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `de
 only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
 OS stop is `source_complete`; do not invent a generic deploy command.
 
+For that enrolled repo, `closeout.missionState=source_complete` means only source and lane
+closeout passed. `closeout.adlcState=delivery_pending` and progressive completion's
+`deliveryPending` count keep END ADLC open until the product owner has separately verified
+Dev deployment/readback, promotion of the same candidate to Prod, and Prod readback.
+The OS observation grants no deploy authority and cannot turn a source receipt into a
+runtime receipt. Follow the owner controller and retain its exact Dev and Prod receipts.
+
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
 [PRD/TAD/ADR](./PRD-TAD-ADR-MVP-GTM.md) for transition and handover requirements.

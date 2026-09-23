@@ -181,7 +181,8 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
-    const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main', allowDetached: detached });
+    const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main',
+      allowDetached: detached, maxContentEntries: options.maxContentEntries ?? (recovery ? RECOVERY_LIMITS : LIMITS).projectionEntryCeiling });
     if (successor && (inventory.branch !== successor.predecessorRef
       || inventory.headRevision !== successor.predecessorHead)) refuse('successor-target-drift');
     if (detached && inventory.branch !== null) refuse('target-not-detached');

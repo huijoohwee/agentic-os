@@ -55,6 +55,7 @@ test('merged retained lane is source_complete without invented cleanup authority
   assert.ok(!after.findings.some((item) => item.code === 'provider-authority-unverified'));
   assert.ok(!after.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
   assert.equal(after.closeout.missionState, 'source_complete');
+  assert.equal(after.closeout.adlcState, 'complete');
   assert.equal(after.closeout.laneDisposition, 'retained');
   assert.equal(after.closeout.nextAction, null);
   assert.equal(subject.git(subject.root, 'rev-parse', 'HEAD'), after.canonicalRevision);
@@ -108,6 +109,7 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   assert.equal(sync.nextAction.id, 'canonical-sync-plan');
   const deploy = deriveCloseoutVerdict({ ...base, deployBound: true });
   assert.equal(deploy.missionState, 'source_complete');
+  assert.equal(deploy.adlcState, 'delivery_pending');
   assert.equal(deploy.nextAction.id, 'deploy-workflow');
   assert.equal(deploy.authorizesEffects, false);
   const cleanup = deriveCloseoutVerdict({
@@ -187,6 +189,7 @@ test('enrolled production-activation is a deploy nextAction after source complet
     subject.git(subject.root, 'rev-parse', 'HEAD'));
   const after = subject.status();
   assert.equal(after.closeout.missionState, 'source_complete');
+  assert.equal(after.closeout.adlcState, 'delivery_pending');
   assert.equal(after.closeout.nextAction.id, 'deploy-workflow');
   assert.equal(after.closeout.deployBinding.present, true);
 });
