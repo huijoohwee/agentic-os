@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const TRACKED_FILE_LIMITS = Object.freeze({ rawComparisonBytes: 32 * 1024 * 1024 });
-export const RAW_BATCH_LIMITS = Object.freeze({ files: 32, bytes: 32 * 1024 * 1024, timeoutMs: 7_000 });
+export const RAW_BATCH_LIMITS = Object.freeze({ files: 128, bytes: 32 * 1024 * 1024, timeoutMs: 7_000 });
 const HELPER = fileURLToPath(import.meta.url);
 const validOid = oid => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid ?? '');
 
@@ -118,7 +118,7 @@ function main() {
     return descriptorMatches(3, oid, limit, Buffer.allocUnsafe(64 * 1024)) ? 0 : 1;
   }
   try {
-    const input = Buffer.alloc(4_097);
+    const input = Buffer.alloc(16_385);
     let size = 0;
     for (;;) {
       const count = readSync(0, input, size, input.length - size, null);

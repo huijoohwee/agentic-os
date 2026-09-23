@@ -302,7 +302,8 @@ function isolatedBatchScenario(root, scenario) {
     const absolute = join(root, 'batch-source');
     const original = Buffer.from([0, 1, 254, 255]);
     fs.writeFileSync(absolute, original);
-    const oid = bytes => createHash('sha1').update('blob ' + bytes.length + '\\0').update(bytes).digest('hex');
+    const oid = bytes => createHash(scenario === 'limits' ? 'sha256' : 'sha1')
+      .update('blob ' + bytes.length + '\\0').update(bytes).digest('hex');
     const request = path => ({ absolute: path, path, oid: oid(fs.readFileSync(path)),
       mode: '100644', before: fs.lstatSync(path, { bigint: true }), cwd: root });
     const one = request(absolute);
@@ -310,15 +311,15 @@ function isolatedBatchScenario(root, scenario) {
     if (scenario === 'close') requests.push(one);
     if (scenario === 'limits') {
       const large = join(root, 'batch-large'); fs.writeFileSync(large, Buffer.alloc(17 * 1024 * 1024, 7));
-      requests = [...Array.from({ length: 65 }, () => one), request(large), request(large)];
+      requests = [...Array.from({ length: 257 }, () => one), request(large), request(large)];
     }
     const spawn = child.spawnSync;
     child.spawnSync = (executable, args, options) => {
       const entries = JSON.parse(options.input), fds = options.stdio.slice(3);
-      assert.ok(entries.length <= 32); assert.equal(entries.length, fds.length);
+      assert.ok(entries.length <= 128); assert.equal(entries.length, fds.length);
       assert.ok(entries.reduce((sum, entry) => sum + entry.size, 0) <= 32 * 1024 * 1024);
       assert.equal(options.timeout, 7000); assert.equal(options.killSignal, 'SIGKILL');
-      assert.equal(options.maxBuffer, 32);
+      assert.equal(options.maxBuffer, 128);
       assert.equal(options.env.NODE_OPTIONS, undefined); assert.equal(options.env.GIT_DIR, undefined);
       calls.push(entries.map(entry => entry.size)); descriptors.push(...fds);
       if (scenario === 'timeout') return { status: null, signal: 'SIGKILL',
@@ -356,9 +357,9 @@ function isolatedBatchScenario(root, scenario) {
 test('raw comparison bounds inherited descriptors and aggregate bytes and closes every batch', (t) => {
   const { root } = fixture(t);
   const observed = isolatedBatchScenario(root, 'limits');
-  assert.equal(observed.result.length, 67);
-  assert.equal(observed.calls[0].length, 32);
-  assert.equal(observed.calls[1].length, 32);
+  assert.equal(observed.result.length, 259);
+  assert.equal(observed.calls[0].length, 128);
+  assert.equal(observed.calls[1].length, 128);
 });
 
 for (const scenario of ['partial', 'invalid', 'extra', 'timeout', 'replace', 'grow', 'mode']) {
