@@ -27,9 +27,24 @@ test('traverses scripts to owning imports, identifies repeated invocations, neve
   assert.equal(result.authority,false); assert.equal(result.executable,false);
   assert.equal(result.nodes.length,4);assert.equal(result.duplicates[0].target,'smoke.mjs');
   assert.equal(result.duplicates[0].evidence.length,2);assert.equal(result.measured,null);
+  assert.ok(result.observation.sourceReadBytes >= result.coverage.bytes * 2);
+  assert.ok(result.observation.parsedFiles > 0);assert.equal(result.observation.tokens,null);
   assert.ok(result.edges.some(edge=>edge.to==='owner.mjs'&&edge.kind==='literal-import'));
   assert.doesNotMatch(JSON.stringify(result), /private body/);
   assert.equal(f.run({path:'package.json',script:'cycle'}).nodes.length,1);
+});
+
+test('exports bounded source observations for Graph Canvas without inventing per-file costs', t => {
+  const f=fixture(t), result=f.run({path:'package.json',script:'gate',view:'mission'});
+  assert.equal(result.schema,'agent-toolkit-run/v1');assert.equal(result.authority,false);
+  assert.equal(result.spans.length,5);assert.equal(result.page.total,5);
+  assert.equal(result.coverage.partial,false);assert.equal(result.profile.workflow.observation.costUsd,null);
+  assert.ok(result.spans[0].resources.cpuMs >= 0);
+  assert.equal(result.spans[1].resources.cpuMs,null);
+  assert.ok(result.spans.some(span => span.links?.some(link => link.kind === 'literal-import')));
+  assert.doesNotMatch(JSON.stringify(result),/private body/);
+  assert.equal(f.run({path:'missing.mjs',view:'mission'}).coverage.partial,true);
+  assert.throws(()=>f.run({path:'package.json',view:'other'}),/blocked-workflow-trace:input/);
 });
 
 test('rejects secret, traversal and symlink sources; reports opaque commands and missing references', t => {

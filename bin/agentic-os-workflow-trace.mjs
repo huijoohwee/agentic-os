@@ -13,21 +13,23 @@ const safe = value => { try { return contextPath(value); } catch { return null; 
 export function traceWorkflow(root, input) {
   const file = resolve(input), request = JSON.parse(readRegular(dirname(file), basename(file), 16000).text);
   if (!request || typeof request !== 'object' || Array.isArray(request)
-    || Object.keys(request).some(k => !['path','script','observation'].includes(k))) fail('input');
+    || Object.keys(request).some(k => !['path','script','observation','view'].includes(k))
+    || (request.view !== undefined && request.view !== 'mission')) fail('input');
   const entry = { path: contextPath(request.path), ...(request.script === undefined ? {} : { script: request.script }) };
   if (entry.script !== undefined && (!scriptName(entry.script) || posix.basename(entry.path) !== 'package.json')) fail('script');
-  const context = createCodebaseContext({ root }), started = Date.now(), files = new Map();
+  const context = createCodebaseContext({ root }), started = Date.now(), clock = performance.now(), cpu = process.cpuUsage(), files = new Map();
   const nodes = [], edges = [], unresolved = [], queue = [{ ...entry, depth: 0 }], seen = new Set();
-  let revision = null, bytes = 0;
+  let revision = null, bytes = 0, sourceReadBytes = 0, parsedFiles = 0, reusedFiles = 0;
   const load = path => {
     if (files.has(path)) return files.get(path);
     if (files.size >= 20 || Date.now() - started > 10000) fail('budget');
     const mapped = context.map({ path, limit: 1 }), metadata = mapped.results.find(item => item.path === path);
+    sourceReadBytes += mapped.observation.sourceReadBytes; parsedFiles += mapped.parsedFiles; reusedFiles += mapped.reusedFiles;
     if (revision !== null && revision !== mapped.revision) fail('revision-drift');
     revision = mapped.revision;
     if (!metadata) return null;
     const file = readRegular(root, path, 128000);
-    if (file.digest !== metadata.sha256) fail('source-drift');
+    if (file.digest !== metadata.sha256) fail('source-drift'); sourceReadBytes += metadata.bytes;
     bytes += metadata.bytes; if (bytes > 512000) fail('source-byte-budget');
     const result = { ...metadata, text: file.text }; files.set(path, result); return result;
   };
@@ -87,7 +89,9 @@ export function traceWorkflow(root, input) {
     }
   }
   // Bind the entire bounded traversal to unchanged bytes and revision, not just each individual read.
-  for (const [path, file] of files) if (readRegular(root, path, 128000).digest !== file.sha256) fail('source-drift');
+  for (const [path, file] of files) {
+    if (readRegular(root, path, 128000).digest !== file.sha256) fail('source-drift'); sourceReadBytes += file.bytes;
+  }
   if (readGit(root, ['rev-parse','HEAD']).trim() !== revision) fail('revision-drift');
   const calls = new Map();
   for (const edge of edges.filter(edge => edge.kind !== 'literal-import')) {
@@ -106,9 +110,30 @@ export function traceWorkflow(root, input) {
       ranking: [...observation.stages].filter(stage => stage.status !== 'reused').sort((a,b) => (b.elapsedMs ?? 0)-(a.elapsedMs ?? 0))
         .slice(0,5).map(({id,elapsedMs,resources,model,modelIdentityBasis}) => ({id,elapsedMs,resources,model,modelIdentityBasis})) };
   }
+  const snapshotDigest = hash(JSON.stringify([...files].map(([path,file]) => [path,file.sha256]))), usage = process.cpuUsage(cpu);
+  const observation = { elapsedMs: performance.now() - clock,
+    cpuMs: (usage.user + usage.system) / 1000, cpuScope: 'current-process-excluding-git-children', sourceReadBytes,
+    parsedFiles, reusedFiles, tokens: null, costUsd: null, grantsAuthority: false };
+  const source = { revision, snapshotDigest, sourceMode: 'working-tree' }; if (request.view === 'mission') {
+    const component = { id: 'agentic-os/context', revision, digest: snapshotDigest }, unknown = { cpuMs: null, peakMemoryBytes: null, tokens: null, costUsd: null };
+    const spans = [{ spanId: 'source-discovery', parentSpanId: null, kind: 'source-discovery',
+      operation: 'Codebase source discovery', status: 'completed', subjectDigest: snapshotDigest, component,
+      timing: { startOffsetMs: 0, inclusiveMs: observation.elapsedMs, exclusiveObservedMs: null, scope: 'source-traversal-wall' }, resources: { ...unknown, cpuMs: observation.cpuMs },
+      evaluation: { status: 'unevaluated' } },
+    ...nodes.map(node => ({ spanId: node.id, parentSpanId: 'source-discovery', kind: 'source',
+      operation: node.id, status: 'completed', subjectDigest: node.sha256, component: { id: node.path, revision, digest: node.sha256 },
+      links: edges.filter(edge => edge.from === node.id && nodes.some(target => target.id === edge.to))
+        .map(edge => ({ spanId: edge.to, kind: edge.kind })),
+      timing: { startOffsetMs: null, inclusiveMs: null, exclusiveObservedMs: null }, resources: unknown, evaluation: { status: 'unevaluated' } }))];
+    return boundedContext({ schema: 'agent-toolkit-run/v1', authority: false, runId: `source-${hash(JSON.stringify([key(entry),snapshotDigest])).slice(0,16)}`,
+      status: 'completed', observedAt: Date.now(), subjectDigest: snapshotDigest, candidate: component, profile: { workflow: { source, observation, measured } },
+      evaluation: { status: 'unevaluated' }, spans, page: { offset: 0, total: spans.length, nextCursor: null },
+      coverage: { partial: unresolved.length > 0, expectedSpans: spans.length, droppedEvents: 0, kind: 'bounded-literal-navigation-not-runtime-call-graph', unresolved } });
+  }
   return boundedContext({ schema: 'agentic-os/workflow-source-trace/v1', authority: false, executable: false,
-    source: { revision, snapshotDigest: hash(JSON.stringify([...files].map(([path,file]) => [path,file.sha256]))), sourceMode: 'working-tree' },
+    source,
     entry: key(entry), nodes, edges, unresolved, duplicates, measured,
+    observation,
     coverage: { complete: unresolved.length === 0, kind: 'bounded-literal-navigation-not-runtime-call-graph', files: files.size, bytes },
     recommendations: [ ...(duplicates.length ? [{ id: 'duplicate-command-paths', action: 'Review repeated invocation paths at the source owner; confirm runtime overlap before removing a check.', savings: null }] : []),
       { id: measured ? 'profile-measured-stages' : 'capture-measured-baseline', action: measured
