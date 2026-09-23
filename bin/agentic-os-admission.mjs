@@ -21,7 +21,7 @@ const limitValue = text => {
   return Number(text);
 };
 const selectedAgain = (root, repository, prior) => {
-  const fresh = readSelectedWorkflow(root, repository, { required: true });
+  const fresh = readSelectedWorkflow(root, repository, { input: prior.path, required: true });
   if (fresh.digest !== prior.digest) fail('workflow-drift', 'Selected immutable workflow changed; retain the allocation and re-read its successor');
   return fresh;
 };
@@ -110,7 +110,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
-    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null });
+    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref });
     const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
     // A mission pointer is evidence, not a selector override. Refuse before any effect.
     if (input && selected) selectedAgain(root, profile.repository, selected);

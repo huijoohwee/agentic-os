@@ -4,6 +4,9 @@
 
 Resume the current immutable root with `--mission=<manifest>`; `--expected-head=<sha>`
 binds committed edits. Zero allows reuse; declared caps cannot increase. Legacy START remains undeclared.
+Workflow locators retain each member and ref in clone-local Git configuration, so another mission's
+START does not invalidate running checks. Exact mission resumes still reject stale roots; successors
+retain their original caps and prerequisites. The shared selected root remains navigation only.
 Exact active unpublished owners can
 extend disjoint scope with `--readmit --expected-head=<sha>`; published owners use `successor`.
 

@@ -25,6 +25,18 @@ export function readGit(root, args, { input, binary = false } = {}) {
       maxBuffer: LIMITS.bytes, encoding: binary ? undefined : 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   } catch { throw new Error(`blocked-test-git:${args[0]}`); }
 }
+/** Workflow navigation is guarded separately; unrelated START must not change test inputs. */
+export function validationGitConfiguration(root) {
+  const fields = readGit(root, ['config', '--null', '--list', '--show-origin']).split('\0');
+  if (fields.pop() !== '' || fields.length % 2) throw Error('blocked-test-configuration');
+  const retained = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const key = fields[index + 1].split('\n', 1)[0];
+    if (!/^agentic-os\.(?:workflowmanifest|workflow-(?:owner|member|ref)-[a-f0-9]{64})$/u.test(key))
+      retained.push(fields[index], fields[index + 1]);
+  }
+  return retained.join('\0');
+}
 const oid = (root, ref) => {
   if (typeof ref !== 'string' || !ref || ref.startsWith('-') || /[\x00-\x20]/u.test(ref))
     throw new Error('blocked-test-ref');
@@ -151,7 +163,7 @@ export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed 
     headTree: readGit(root, ['rev-parse', `${headRevision}^{tree}`]).trim(),
     sourceDigest: manifestDigest(after),
     indexDigest: hash(readGit(root, ['ls-files', '--stage', '-z'])),
-    configurationDigest: hash(readGit(root, ['config', '--null', '--list', '--show-origin'])),
+    configurationDigest: hash(validationGitConfiguration(root)),
     refsDigest,
     environmentDigest: hash(JSON.stringify(executionEnvironment())),
     node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch,

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { executionEnvironment, readRegular, safePath, snapshot, snapshotReader } from '../bin/agentic-os-test-inputs.mjs';
 import { ciEvaluatorAllocation } from '../bin/agentic-os-tests.mjs';
 import { ciArguments } from '../bin/agentic-os-test-ci.mjs';
+import { consumerSnapshotReader } from '../bin/agentic-os-validation-inputs.mjs';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'impact inputs '));
@@ -59,6 +60,18 @@ test('test identity ignores unrelated shared refs but binds requested refs', t =
   const relevant = f.observe({ base: 'main' }).identity;
   assert.notEqual(relevant.requestedBase, before.requestedBase);
   assert.notEqual(relevant.refsDigest, before.refsDigest);
+});
+for (const consumer of [false, true]) test(`workflow navigation is separate from executable Git inputs: consumer=${consumer}`, t => {
+  const f = fixture(t), observe = consumer ? consumerSnapshotReader({ root: f.root, base: f.base }) : f.observe;
+  const before = observe().identity;
+  for (const key of ['workflowManifest', ...['owner', 'member', 'ref'].map(kind => `workflow-${kind}-${'a'.repeat(64)}`)])
+    f.git('config', `agentic-os.${key}`, '/retained/independent/manifest.json');
+  assert.deepEqual(observe().identity, before);
+  for (const key of ['core.autocrlf', 'agentic-os.workspaceRoot', 'agentic-os.workflow-policy', 'agentic-os.workflow-owner-other']) {
+    const prior = observe().identity.configurationDigest;
+    f.git('config', key, 'false');
+    assert.notEqual(observe().identity.configurationDigest, prior, key);
+  }
 });
 test('ignored npm inputs bind receipts, while symlinks and escaping paths fail', t => {
   const f = fixture(t); writeFileSync(join(f.root, 'package-lock.json'), '{}');

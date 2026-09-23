@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { executionEnvironment, hash, readGit, safePath } from './agentic-os-test-inputs.mjs';
+import { executionEnvironment, hash, readGit, safePath, validationGitConfiguration } from './agentic-os-test-inputs.mjs';
 export const CONSUMER_LIMITS = Object.freeze({ files: 50_000, fileBytes: 64 * 1024 * 1024,
   totalBytes: 512 * 1024 * 1024, commandMs: 900_000, runMs: 3_600_000 });
 const fields = text => {
@@ -97,7 +97,7 @@ export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEA
     }).sort();
     const identity = { root, requestedBase, baseRevision: bases[0], headRevision,
       sourceDigest: sourceDigest(after), indexDigest: hash(index),
-      configurationDigest: hash(readGit(root, ['config', '--null', '--list', '--show-origin'])),
+      configurationDigest: hash(validationGitConfiguration(root)),
       environmentDigest: hash(JSON.stringify(executionEnvironment())),
       node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch };
     if (revision(root, 'HEAD') !== actualHead || hash(readGit(root, ['ls-files', '--stage', '-z'])) !== identity.indexDigest)
