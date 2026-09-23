@@ -1,10 +1,7 @@
 #!/usr/bin/env node
 /**
- * Always-loaded documentation budget in bytes.
- *
- * A line cap gets gamed: 600 lines of 3,000-character paragraphs reports
- * compliance while costing 97 KB of context. Tokens track bytes, so the budget
- * tracks bytes, plus a line length cap to keep diffs reviewable.
+ * Always-loaded documentation budget in bytes, which track context cost.
+ * A line-only cap hides oversized paragraphs; also bound line length for review.
  */
 
 import { createHash } from 'node:crypto';
@@ -29,7 +26,7 @@ export const RUNTIME_PROMPT_CONTRACT = Object.freeze({
   path: 'guides/SYSTEM-PROMPT-RUNTIME.md',
   exactBytes: 999,
   maxBytes: 1_000,
-  sha256: '4d49257245adbed8f56733c152be502fc39d6a650751e99333265bf56c140996',
+  sha256: 'fda9e94b59ccda1dacb4a86bc543bdfcf22eceb64b1317108ecc94053211771d',
 });
 
 const EXPECTED_CI_BUDGETS_JOB = Object.freeze([
