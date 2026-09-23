@@ -17,14 +17,13 @@ export function traceWorkflow(root, input) {
     || (request.view !== undefined && request.view !== 'mission')) fail('input');
   const entry = { path: contextPath(request.path), ...(request.script === undefined ? {} : { script: request.script }) };
   if (entry.script !== undefined && (!scriptName(entry.script) || posix.basename(entry.path) !== 'package.json')) fail('script');
-  const context = createCodebaseContext({ root }), started = Date.now(), clock = performance.now(), cpu = process.cpuUsage(), files = new Map();
-  const nodes = [], edges = [], unresolved = [], queue = [{ ...entry, depth: 0 }], seen = new Set(), verifications = [];
+  const context = createCodebaseContext({ root }).traceSession(), started = Date.now(), clock = performance.now(), cpu = process.cpuUsage(), files = new Map();
+  const nodes = [], edges = [], unresolved = [], queue = [{ ...entry, depth: 0 }], seen = new Set();
   let revision = null, bytes = 0, sourceReadBytes = 0, parsedFiles = 0, reusedFiles = 0;
   const load = path => {
     if (files.has(path)) return files.get(path);
     if (files.size >= 20 || Date.now() - started > 10000) fail('budget');
     const inspected = context.traceSource(path);
-    verifications.push(inspected.verify);
     sourceReadBytes += inspected.sourceReadBytes; parsedFiles += inspected.parsedFiles; reusedFiles += inspected.reusedFiles;
     if (revision !== null && revision !== inspected.revision) fail('revision-drift');
     revision = inspected.revision;
@@ -88,7 +87,7 @@ export function traceWorkflow(root, input) {
     }
   }
   // Deferred exact-byte and inventory checks bind the complete traversal before any result escapes.
-  for (const verify of verifications) verify();
+  const verificationInventoryReads = context.verify();
   if (readGit(root, ['rev-parse','HEAD']).trim() !== revision) fail('revision-drift');
   const calls = new Map();
   for (const edge of edges.filter(edge => edge.kind !== 'literal-import')) {
@@ -110,7 +109,7 @@ export function traceWorkflow(root, input) {
   const snapshotDigest = hash(JSON.stringify([...files].map(([path,file]) => [path,file.sha256]))), usage = process.cpuUsage(cpu);
   const observation = { elapsedMs: performance.now() - clock,
     cpuMs: (usage.user + usage.system) / 1000, cpuScope: 'current-process-excluding-git-children', sourceReadBytes,
-    parsedFiles, reusedFiles, tokens: null, costUsd: null, grantsAuthority: false };
+    parsedFiles, reusedFiles, verificationInventoryReads, tokens: null, costUsd: null, grantsAuthority: false };
   const source = { revision, snapshotDigest, sourceMode: 'working-tree' }; if (request.view === 'mission') {
     const component = { id: 'agentic-os/context', revision, digest: snapshotDigest }, unknown = { cpuMs: null, peakMemoryBytes: null, tokens: null, costUsd: null };
     const spans = [{ spanId: 'source-discovery', parentSpanId: null, kind: 'source-discovery',

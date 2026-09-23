@@ -29,10 +29,41 @@ test('traverses scripts to owning imports, identifies repeated invocations, neve
   assert.equal(result.nodes.length,4);assert.equal(result.duplicates[0].target,'smoke.mjs');
   assert.equal(result.duplicates[0].evidence.length,2);assert.equal(result.measured,null);
   assert.equal(result.observation.sourceReadBytes, result.coverage.bytes * 2);
+  assert.equal(result.observation.verificationInventoryReads, 1);
   assert.ok(result.observation.parsedFiles > 0);assert.equal(result.observation.tokens,null);
   assert.ok(result.edges.some(edge=>edge.to==='owner.mjs'&&edge.kind==='literal-import'));
   assert.doesNotMatch(JSON.stringify(result), /private body/);
   assert.equal(f.run({path:'package.json',script:'cycle'}).nodes.length,1);
+});
+
+test('twenty-source traversal batches final visibility check and preserves byte accounting', t => {
+  const f = fixture(t);
+  writeFileSync(join(f.root, 'part0.mjs'),
+    Array.from({ length: 19 }, (_, index) => `import './part${index + 1}.mjs';`).join('\n'));
+  for (let index = 1; index < 20; index++)
+    writeFileSync(join(f.root, `part${index}.mjs`), `export const part${index} = true;\n`);
+  const result = f.run({ path: 'part0.mjs' });
+  assert.equal(result.nodes.length, 20);
+  assert.equal(result.observation.verificationInventoryReads, 1);
+  assert.equal(result.observation.sourceReadBytes, result.coverage.bytes * 2);
+  assert.equal(result.observation.parsedFiles, 20);
+  assert.equal(result.coverage.complete, true);
+});
+
+test('batch verification refuses deletion and symlink substitution before result', t => {
+  const f = fixture(t), context = createCodebaseContext({ root: f.root });
+  const deleted = context.traceSession();
+  deleted.traceSource('owner.mjs');
+  deleted.traceSource('smoke.mjs');
+  rmSync(join(f.root, 'owner.mjs'));
+  assert.throws(() => deleted.verify(), /source-changed-retry/);
+  writeFileSync(join(f.root, 'owner.mjs'), "export const value = 'private body';\n");
+  const swapped = context.traceSession();
+  swapped.traceSource('owner.mjs');
+  swapped.traceSource('smoke.mjs');
+  rmSync(join(f.root, 'owner.mjs'));
+  symlinkSync(join(f.root, 'smoke.mjs'), join(f.root, 'owner.mjs'));
+  assert.throws(() => swapped.verify(), /regular-source-required/);
 });
 
 test('deferred traversal verification rejects same-size edits with restored timestamps', t => {
