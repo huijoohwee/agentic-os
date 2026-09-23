@@ -32,12 +32,14 @@ export function boundedContext(value) {
   if (Buffer.byteLength(JSON.stringify(value)) > CONTEXT_LIMITS.outputBytes) fail('output-budget-narrow-selection');
   return freezeJson(value);
 }
-function inventory(root, scope) {
-  const raw = git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', `:(literal)${scope}`]);
+function inventoryMany(root, scopes) {
+  const raw = git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--',
+    ...scopes.map(scope => `:(literal)${scope}`)]);
   const paths = [...new Set(decode(raw).split('\0').filter(Boolean))].sort(compare);
   if (paths.length > CONTEXT_LIMITS.files) fail('file-count-narrow-path');
   return paths;
 }
+const inventory = (root, scope) => inventoryMany(root, [scope]);
 function source(root, path, verifyOnly = false) {
   contextPath(path);
   assertDirectoryAncestors(path, root);
@@ -120,7 +122,7 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
         cpuMs: (usage.user + usage.system) / 1000, cpuScope: 'current-process-excluding-git-children',
         sourceReadBytes: bytes * 2, tokens: null, costUsd: null, grantsAuthority: false } });
     };
-    return { files, finish, verify, receipt: { schema: 'agentic-os/codebase-context/v1', repositoryRoot: root, scope, revision,
+    return { files, finish, verify, verification: { scope, revision, paths, files, started, next }, receipt: { schema: 'agentic-os/codebase-context/v1', repositoryRoot: root, scope, revision,
       snapshotSha256: digest, sourceMode: 'working-tree', freshness: 'bytes-verified-during-read',
       atomicSnapshot: false, remoteFreshness: 'not-checked', grantsAuthority: false,
       untrustedSourceContent: true, fileCount: files.length, excludedCount: excluded.length,
@@ -130,6 +132,39 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
   function traceSource(path) {
     const { files, verify, receipt } = snapshot(path, true, true);
     return { file: files.find(item => item.path === path), verify, revision: receipt.revision, sourceReadBytes: receipt.sourceBytes * 2, parsedFiles: receipt.parsedFiles, reusedFiles: receipt.reusedFiles };
+  }
+  /** One traversal keeps file bodies only until its final exact-byte and visibility check. */
+  function traceSession() {
+    const pending = [];
+    return Object.freeze({
+      traceSource(path) {
+        const item = snapshot(path, true, true);
+        pending.push(item);
+        return { file: item.files.find(file => file.path === path), revision: item.receipt.revision,
+          sourceReadBytes: item.receipt.sourceBytes * 2, parsedFiles: item.receipt.parsedFiles,
+          reusedFiles: item.receipt.reusedFiles };
+      },
+      verify() {
+        if (pending.some(({ verification: row }) => row.paths.length !== 1 || row.paths[0] !== row.scope)) {
+          for (const item of pending) item.verify();
+          return pending.length;
+        }
+        const rows = pending.map(item => item.verification);
+        if (rows.length === 0) return 0;
+        const revision = rows[0].revision;
+        if (rows.some(row => row.revision !== revision)) fail('inventory-changed-retry');
+        const paths = rows.map(row => row.scope).sort(compare);
+        if (JSON.stringify(inventoryMany(root, paths)) !== JSON.stringify(paths)
+          || decode(git(root, ['rev-parse', '--verify', 'HEAD'])).trim() !== revision) fail('inventory-changed-retry');
+        for (const row of rows) {
+          if (Date.now() - row.started > CONTEXT_LIMITS.durationMs) fail('deadline-narrow-path');
+          const file = row.files[0];
+          if (source(root, file.path, true)?.sha256 !== file.sha256) fail('source-changed-retry');
+        }
+        previous = rows.at(-1).next;
+        return 1;
+      },
+    });
   }
   const reference = file => ({ path: file.path, sha256: file.sha256, bytes: file.bytes });
   function page(items, limit, after, key) {
@@ -180,5 +215,5 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
       content: selected.join('\n'), nextLine: line + selected.length <= file.lines.length
         ? line + selected.length : null });
   }
-  return Object.freeze({ map, search, read, traceSource });
+  return Object.freeze({ map, search, read, traceSource, traceSession });
 }

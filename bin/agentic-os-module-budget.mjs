@@ -25,8 +25,10 @@ export const BUDGET = Object.freeze({
   // logic lives in existing bin owners (agentic-os-cleanup-user.mjs,
   // agentic-os-completion-scaffold.mjs, agentic-os-completion-status.mjs) and
   // does not add a new agentic-os-*.mjs entry point.
+  // 2026-09-23: 33 existing-owner lines batch final trace verification; a
+  // matched 20-file run cut median wall 49% and current-process CPU 45%.
   binModules: 110,
-  binLines: 23100,
+  binLines: 23135,
   runtimeModules: 96,
   runtimeLines: 23023,
 });

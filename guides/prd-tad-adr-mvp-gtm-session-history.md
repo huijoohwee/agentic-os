@@ -1,18 +1,18 @@
 ---
 title: "Reference implementation — Native Session History, Indexing & Observability Economics"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "0.2.1"
-revision: "0.2.1"
+version: "0.2.2"
+revision: "0.2.2"
 date: "2026-09-23"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Session continuity and efficiency architecture"
 continuity_id: "NATIVE-SESSION-HISTORY-001"
-prd_revision: "0.2.1"
-tad_revision: "0.2.1"
-adr_revision: "0.2.1"
-mvp_revision: "0.2.1"
-gtm_revision: "0.2.1"
+prd_revision: "0.2.2"
+tad_revision: "0.2.2"
+adr_revision: "0.2.2"
+mvp_revision: "0.2.2"
+gtm_revision: "0.2.2"
 local_rung: "spec-complete"
 delivered_rung: "undocumented"
 lane: "authoring"
@@ -22,20 +22,20 @@ load_policy: "on-demand"
 worktree_id: "device-0232231d4a19--session-history-plan"
 agent_id: "codex-session-history-author"
 guideline_revision: "3.3.0"
-guideline_source_revision: "8231098f7305c5d31814216c959c71906c95d1a3"
-implementation_authority: "2026-09-23 user request; local source candidates only"
+guideline_source_revision: "987dd1d1e6d25761f2279d49a53c40a210466679"
+implementation_authority: "2026-09-23 user request; source integration and exact local cleanup approved"
 ---
 
 # Reference implementation — Native Session History, Indexing & Observability Economics
 
 Make existing agent work cheaper to inspect and resume: reuse verified codebase indexes, mission manifests,
 resource receipts and shared views; then add lossless checkpoint recovery where current history is insufficient.
-Revision 0.2.1 records a local first-slice source candidate before the retained 0.1.0 recovery proposal.
-It does not claim accepted criteria, complete transcripts, hidden model state, effect replay or live runtime authority.
+Revision 0.2.2 records merged first-slice source and a bounded trace follow-on; recovery and acceptance remain open.
+It does not claim complete transcripts, hidden model state, effect replay or live runtime authority.
 
 ## Context, intent and directive — reference implementation
 
-**Join:** `NATIVE-SESSION-HISTORY-001@0.2.1` binds all five roles and their projections. TAD consumes PRD;
+**Join:** `NATIVE-SESSION-HISTORY-001@0.2.2` binds all five roles and their projections. TAD consumes PRD;
 ADR binds TAD; MVP and GTM consume their criteria. This capability extends the [lifecycle owner](PRD-TAD-ADR-MVP-GTM.md).
 **Context:** the update requests lower time/resource cost across existing codebase indexes and observability;
 E12–E22 ground current owners, B01 measures a narrow baseline, and customer pain/WTP remain unvalidated.
@@ -167,7 +167,7 @@ measurable gain. Buyer frequency, session boundary/size, browser durability, obl
 
 ## TAD — reference implementation
 
-**Scope:** PRD F7–F12 first, retained F1–F6 follow-on, all at `0.2.1`. Extend existing owners before extraction. Do not turn lifecycle receipts,
+**Scope:** PRD F7–F12 first, retained F1–F6 follow-on, all at `0.2.2`. Extend existing owners before extraction. Do not turn lifecycle receipts,
 curated memory or expiring continuation stores into a second transcript database.
 
 | Component / accountable owner | Existing source → proposed change | Responsibility / local / delivered rung |
@@ -356,7 +356,7 @@ Inventory: l1 scoped source, l2 approved preview/package, l3 delivered product. 
 
 ## ADR — reference implementation
 
-All decisions are **Proposed**, dated 2026-09-23, joined at `0.2.1`. Local source work does not confer release authority.
+All decisions are **Proposed**, dated 2026-09-23, joined at `0.2.2`. Local source work does not confer release authority.
 Constraints: C-zero-spend, C-offline-browser, C-preserve-source, C-existing-owner, C-bounded-data.
 
 | Decision | Options and constraints → argument → non-compensatory ordering | Consequences / revisit |
@@ -381,7 +381,7 @@ Remove replacements only after equivalence/migration checks; rollback preserves 
 
 ## MVP — reference implementation
 
-**First slice:** F7–F12/V07–V12, C5–C8, ADR03/ADR04 at `NATIVE-SESSION-HISTORY-001@0.2.1`.
+**First slice:** F7–F12/V07–V12, C5–C8, ADR03/ADR04 at `NATIVE-SESSION-HISTORY-001@0.2.2`.
 Local `spec-complete`; delivered `undocumented`; six economy VCCs unproven. B01 is baseline evidence only.
 F1–F6/C1–C4/ADR01–03 are explicitly retained as a follow-on recovery slice, not silently claimed complete.
 
@@ -477,7 +477,7 @@ unknown outcome → fulfillment → refunds, through operator's verified existin
 
 ## Coverage, projections and open findings — reference implementation
 
-All source-section joins below are `@0.2.1`; domain decisions mean coverage, not product readiness.
+All source-section joins below are `@0.2.2`; domain decisions mean coverage, not product readiness.
 
 | Domain | Decision / source | Evidence or gap / accountable owner / next check |
 |---|---|---|
@@ -536,30 +536,27 @@ verified export/cold-read fallback. Discovery gaps block dependent promises, not
 
 ## Evidence and release handover — reference implementation
 
-**Current authority:** the 2026-09-23 implementation request covers local source candidates and tests. Native START
-readmitted this OS file plus its trace/index owners. Graph uses an isolated branch. Source publication, integration,
-deployment, cleanup, messaging and payments require their own authority and green effect receipts.
+**Authority:** exact source integration completed with green checks. The user approved only Graph #1216 checkout cleanup:
+recoverable quarantine, digest `3cfd666f29d948934c70fabf7d6d491066539365d6441280199cc674723e9e53`.
+Graph's four-checkout cap still blocks recovery admission; retain other owners. OS reused its checkout by successor/readmission.
 
 | Evidence / check | Result / evaluator / surface / limitation |
 |---|---|
-| E01 | [Turn registry][turns], `createReasoningContinuityRegistry`; confirmed | In-memory 32 threads/64 turns, one pending; semantics only. Host: `__tests__/reasoning-continuity.test.mjs`. |
-| OS candidate | Existing trace/index owners reuse request-scoped source reads with exact-byte end verification. Direct tests 14/14; bin budget 23,100/23,100. Final release requires an exact-byte check receipt |
-| Paired B02 | 20 ABBA pairs, 9,807-byte trace: reads 39,228→19,614 B; median wall 73.75→73.61 ms, CPU 6.44→6.07 ms. Same digest/graph; wall benefit unproven. Private `paired-trace.json` |
-| Graph candidate | Existing index, mission tree/editor and observer owners share verified identity and bounded derivations. Full check green; observer 64/64, focused Canvas 3/3; clean-candidate mission browser smoke passed (360/1280 px, offline/expiry) |
-| Document integrity | Five joined revisions, 16 domain rows, 12 criteria, six diagrams, source links and <600-line/60 kB bounds; final native checks remain required |
-| Fleet audit | Existing Graph choreography document has a five-role revision conflict; not fixed here |
-| Diagrams | Text/graph counts reviewed; visual rendering and canvas parity unverified |
-| V01–V12 | Local F7–F12 candidate is partial and unaccepted; recovery F1–F6 remains a follow-on. Browser/mobile, tamper matrix, multi-file and 30% warm-CPU target remain unproven |
-| Release/deployment/customer cash | Not performed; no effect receipt or readiness upgrade |
+| OS #292 | Main `b1707da259a24802c2c133d978926bb06880ea13`; protected checks green. Reads reached 2× bytes. Follow-on batches final visibility/HEAD while rechecking bytes; local trace tests 7/7, publication pending |
+| B02 | 20 ABBA pairs, 9,807-byte trace: reads 39,228→19,614 B; median wall 73.75→73.61 ms, CPU 6.44→6.07 ms. Same digest/graph; no proven wall/30% CPU benefit. Private `paired-trace.json` |
+| B03 | 20 paired runs after 5 warmups/arm, 20-file fixture, Node 22.22.3 arm64: median wall 1392.55→727.06 ms, current-process CPU 113.62→63.71 ms; p95 wall 1578.81→822.35 ms. Equal digest/1806 read bytes. Sampled RSS 60.46→60.51 MB; peak and fleet effects unknown. Private `paired-trace-20-files.json`, SHA-256 `eb00133f5c71f622a1e6dfcb7a835fb97de65cad24a806ffaecab829ca28b03e` |
+| Graph #1216 | Main `23ead08a3f3c7a4743f2bb3752b96c643bc41512`; Integration Gate green. Shared index/tree/editor/panel/observer owners; browser smoke passed; V08–V12 acceptance incomplete |
+| Guideline #261 | Main `987dd1d1e6d25761f2279d49a53c40a210466679`; policy checks green; post-implementation handover rule current |
+| Plan integrity | Five joined revisions, 16 domains, 12 criteria, six diagrams; `npm run evals` green. Diagram rendering and Graph choreography revision conflict remain open |
+| V01–V12 | F7–F12 code merged, unaccepted. F1–F6 unimplemented. Multi-file, browser/mobile, tamper, 30% CPU, two-device and pilot proof open |
+| Delivery | Source integration only; no production, customer proof or readiness upgrade |
 
-**Cost ledger:** B01/B02 source reads/wall time are observed; current-process CPU excludes Git children; total CPU, heap,
-authoring tokens/tool fees and device energy remain unmeasured. Required-check elapsed/resources need an exact native receipt;
-reused checks are not charged as current execution. No new dependency or paid service was added.
-Financial attribution: serving once to COGS, authoring/checks once to operating expense; no double-counting or zero-labor claim.
-Keep baseline raw evidence privately and retain the updated lane for review. Later publication uses native RELEASE with the
-exact reserved candidate, green checks and separate integration proof; production requires the product owner's effect receipt.
+**Cost ledger:** B01/B02 read/wall observations are narrow; current-process CPU excludes Git children. Total CPU, heap,
+tokens, fees and energy are unknown. Charge checks only to their executing revision; no zero-labor claim or paid dependency.
+Next: OS RELEASE; then Graph F1–F6 atomic content recovery when a slot opens. Finish V01–V12
+before acceptance. Production needs an exact effect receipt; two devices and a consenting pilot remain evidence gaps.
 
-[rules]: https://github.com/huijoohwee/huijoohwee.github.io/blob/8231098f7305c5d31814216c959c71906c95d1a3/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
+[rules]: https://github.com/huijoohwee/huijoohwee.github.io/blob/987dd1d1e6d25761f2279d49a53c40a210466679/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
 [turns]: https://github.com/huijoohwee/agentic-os/blob/f6897811e1e92931e0f03b2737541aba1c4311a2/runtime/reasoning-continuity.mjs
 [collector]: https://github.com/huijoohwee/agentic-os/blob/f6897811e1e92931e0f03b2737541aba1c4311a2/bin/agentic-os-workflow.mjs
 [archive]: https://github.com/huijoohwee/agentic-os/blob/f6897811e1e92931e0f03b2737541aba1c4311a2/bin/agentic-os-workflow-archive.mjs

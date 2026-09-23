@@ -247,7 +247,7 @@ test('this repository is inside its own module budget', () => {
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
     modules: 46, totalLines: 15_000, perModuleLines: 400,
-    binModules: 110, binLines: 23_100, runtimeModules: 96, runtimeLines: 23_023,
+    binModules: 110, binLines: 23_135, runtimeModules: 96, runtimeLines: 23_023,
   });
   assert.equal(entries.length, 46);
   assert.ok(entries.length <= MODULE_BUDGET.modules);
