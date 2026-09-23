@@ -12,12 +12,12 @@
   "rules": [
     {
       "id": "runtime-and-document-contracts",
-      "inputs": ["AGENTS.md", "README.md", "DOCUMENTS.md", "FLEET.md", "docs/", "guides/", "templates/", "skills/"],
+      "inputs": ["AGENTS.md", "README.md", "DOCUMENTS.md", "FLEET.md", "docs/", "guides/", "skills/"],
       "tests": ["runtime-budgets.test.mjs", "evidence-doc.test.mjs", "portable-skills.test.mjs", "composition-architecture.test.mjs", "central-test-assets.test.mjs"]
     },
     {
       "id": "packaged-runtime",
-      "inputs": ["templates/", ".githooks/", "bin/agentic-os-hooks.mjs", "bin/agentic-os-hook-runtime.mjs", "bin/agentic-os-config.mjs", "bin/agentic-os-profile.mjs", "bin/agentic-os-pin.mjs", "__tests__/fixtures/"],
+      "inputs": [".githooks/", "bin/agentic-os-hooks.mjs", "bin/agentic-os-hook-runtime.mjs", "bin/agentic-os-config.mjs", "bin/agentic-os-profile.mjs", "bin/agentic-os-pin.mjs", "__tests__/fixtures/"],
       "tests": ["clonability.test.mjs", "packed-setup.test.mjs", "space-path-entrypoints.test.mjs", "setup-trust-ordering.test.mjs", "public-api.test.mjs", "hook-runtime-trust.test.mjs"]
     },
     {
