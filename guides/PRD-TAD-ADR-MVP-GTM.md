@@ -20,14 +20,14 @@ agent_id: "codex-plan-end-handover"
 load_policy: "on-demand"
 verification_scope: "ADLC closure observations, existing invocation reuse and bounded checks; consumer-authenticated runtime proof remains separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "d0905d28e4190e883ad34c9f7cf82a724d20ddad"
+reviewed_source_revision: "8f546555f680358016867403fadc85619d6aaaf2"
 mvp_revision: "1.4.9"
 gtm_revision: "1.4.9"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
 Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
-[TECH-STACK.md](TECH-STACK.md) owns refresh commands. Admission checkpoint (2026-09-24): five successor/source-binding regressions pass; required checks and integration pending.
+[TECH-STACK.md](TECH-STACK.md) owns refresh commands. Admission checkpoint (2026-09-24): five successor/source-binding regressions pass; full checks resumed via native receipt reuse after the time limit and refreshed main. Integration remains subject to exact-head protected checks; Graph XR recovery follows that merge.
 [TECH-STACK.md](TECH-STACK.md) owns technology selection, product composition and deployment topology. [FEATURES.md](FEATURES.md) owns the derived feature index; [catalog/features.json](../catalog/features.json) owns commercial ranking input. The website [guidelines][guideline], [templates][templates], [continuity module][continuity] and [CID contract][cid] own authoring semantics. This guide adds pipeline requirements and traceability, without copying those contracts or product requirements.
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
