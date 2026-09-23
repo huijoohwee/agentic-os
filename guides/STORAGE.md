@@ -3,11 +3,11 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.2.0"
-tad_revision: "1.2.0"
-adr_revision: "1.2.0"
+prd_revision: "1.3.0"
+tad_revision: "1.3.0"
+adr_revision: "1.3.0"
 load_policy: on-demand
-version: "1.2.0"
+version: "1.3.0"
 date: "2026-09-23"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-cba000d3779d--storage-report"
-agent_id: "codex-storage-report"
+worktree_id: "device-0232231d4a19--cache-triage"
+agent_id: "codex-cache-triage"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.2.0"
-gtm_revision: "1.2.0"
+reviewed_source_revision: "847c1f8099cc53282135c8d2ddc200b6e099afc7"
+mvp_revision: "1.3.0"
+gtm_revision: "1.3.0"
 ---
 
 # Storage compaction
@@ -146,6 +146,53 @@ always-load addition. Rollback reverts the checked source while retaining prior 
 GTM: use one local shallow workspace report to record actual elapsed time, entries and coverage.
 Any future deletion must report observed volume availability before and after its separately
 authorized effect. Do not convert directory allocation into expected freed bytes or monetary savings.
+
+## Exact cache triage — STORAGE-001@1.3.0
+
+PRD: the 2026-09-23 local recovery found large old installs and generated caches, while a retained
+Terraform state lived beside rebuildable provider binaries. Repeated whole-category scans spend time
+on unrelated siblings and blur cache hints with owner data. Give the operator one cheap exact-child
+measurement before choosing whether to keep, compress or archive an idle cache. Demand, rebuild time,
+physical bytes freed and cash savings are not yet measured.
+
+TAD: extend the existing metadata-only `storage report --directory` with `--name=<direct-child>`.
+The exact name bypasses sibling discovery and reports one child; it cannot be combined with
+`--repository` or `--category`, and rejects base-directory aliases, traversal, missing names and control characters.
+`--deep` scans only that child's tree under the existing entry/time/depth limits. The row can be
+complete, while the report remains partial for the parent directory; `selectedChildComplete` states
+the selected scope explicitly. No payload bytes, persistent cache or startup work are added.
+
+```sh
+node bin/agentic-os-storage.mjs report --directory=/absolute/checkout
+node bin/agentic-os-storage.mjs report --directory=/absolute/checkout \
+  --deep --name=.cache --max-entries=20000 --max-ms=2000
+```
+
+ADR: classify `cache`, `.cache`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`,
+`.parcel-cache`, `.vite` and `.turbo` as cache **name hints**; `.venv` and `node_modules` as
+dependencies. `.terraform` remains `other` because it can contain backend metadata beside providers.
+Nested caches can be selected by making their parent the `--directory`. A category, ignore rule, age
+or measured size never proves rebuildability or authorizes removal. Check the owning tool and lockfile,
+active readers, offline restore need and measured rebuild cost. Use the existing exact
+`artifact-compression` plan when bytes must stay online, or `artifact-archive` only when the owner
+establishes the selected untracked output is obsolete. Both retain separate authorization, stopped
+writer, manifest and recovery receipts; no automatic eviction, timer or wildcard sweep is added.
+
+MVP: **AC-S06** exact-child scans avoid sibling traversal even beyond the 256-root discovery cap,
+read zero payload bytes and mark parent coverage partial without presenting selected bytes as
+reclaimable. **AC-S07** unsafe names, mixed scopes and category/name combinations fail closed;
+`.terraform` is not treated as a cache. Verify with `node --test __tests__/storage-report.test.mjs`
+and `npm run check`. Source cap: four existing files, under 15 KiB changed, zero dependencies and
+zero always-load bytes. Time to a source candidate: one bounded local sprint; provider checks and
+protected merge are separate waits. Rollback reverts this report extension without changing
+existing storage receipts.
+
+GTM: pilot one exact cache report and compare elapsed time, visited entries and filesystem
+availability with the prior shallow view. Do not claim speedup, resource or monetary savings from
+one observation, or infer deletion savings from allocated size on APFS. A 2026-09-23 local pilot on
+Graph Canvas `.vite` scanned 1,691 entries in 67 ms with zero payload bytes read; the selected row
+completed, its parent coverage stayed partial, and it granted no cleanup authority. These are
+single-run diagnostic observations, not a benchmark or an eviction receipt.
 
 <a id="operator-workflow"></a>
 

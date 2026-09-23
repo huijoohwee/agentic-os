@@ -133,6 +133,33 @@ test('selected directory reports rebuildable names without treating them as recl
   assert.deepEqual(readdirSync(s.workspace), before);
   assert.equal(readFileSync(join(output, 'bundle'), 'utf8'), 'generated');
 });
+test('exact cache selection avoids sibling scans and reports only selected coverage', t => {
+  const s = fixture(t), cache = join(s.workspace, '.cache'), other = join(s.workspace, '.vite');
+  mkdirSync(cache); mkdirSync(other); mkdirSync(join(s.workspace, '.venv'));
+  mkdirSync(join(s.workspace, '.terraform'));
+  writeFileSync(join(cache, 'entry'), 'cached'); writeFileSync(join(other, 'entry'), 'untouched');
+  for (let i = 0; i <= REPORT_LIMITS.roots; i++)
+    writeFileSync(join(s.workspace, `sibling-${i}`), 'x');
+  const before = readdirSync(s.workspace);
+  const shallow = reportStorage({ directory: s.workspace, name: '.cache', maxMs: 10_000 });
+  assert.equal(shallow.rows[0].status, 'unmeasured');
+  assert.equal(shallow.selectedChildComplete, false);
+  const result = reportStorage({ directory: s.workspace, name: '.cache', deep: true, maxMs: 10_000 });
+  assert.equal(result.coverage, 'selected-directory-child');
+  assert.equal(result.selectedName, '.cache'); assert.equal(result.selectedChildComplete, true);
+  assert.equal(result.discoveryComplete, true); assert.equal(result.status, 'partial');
+  assert.equal(result.totals.complete, false); assert.equal(result.grantsAuthority, false);
+  assert.equal(result.reclaimableBytes, null); assert.equal(result.cost.contentBytesRead, 0);
+  assert.equal(result.rows.length, 1); assert.equal(result.rows[0].category, 'cache');
+  assert.equal(result.rows[0].logicalBytesObserved, Buffer.byteLength('cached'));
+  assert.equal(result.cost.directoryReads, 2);
+  assert.deepEqual(readdirSync(s.workspace), before);
+  assert.equal(readFileSync(join(other, 'entry'), 'utf8'), 'untouched');
+  const categories = reportStorage({ directory: s.workspace, name: '.venv', maxMs: 10_000 });
+  assert.equal(categories.rows[0].category, 'dependencies');
+  assert.equal(reportStorage({ directory: s.workspace, name: '.terraform', maxMs: 10_000 })
+    .rows[0].category, 'other');
+});
 test('directory report works without Git and refuses aliases, mixed roots and wrong categories', t => {
   const s = fixture(t), outside = join(s.workspace, 'plain'), alias = join(s.workspace, 'alias');
   mkdirSync(outside); symlinkSync(outside, alias);
@@ -143,8 +170,15 @@ test('directory report works without Git and refuses aliases, mixed roots and wr
   assert.throws(() => reportStorage({ directory: alias }), /blocked-storage-report-directory/);
   assert.throws(() => reportStorage({ directory: 'relative' }), /blocked-storage-report-directory/);
   assert.throws(() => reportStorage({ directory: outside, deep: true, category: 'git-objects' }), /selection/);
+  for (const name of ['.', '..', '../alias', 'nested/cache', 'missing', 'bad\nname'])
+    assert.throws(() => reportStorage({ directory: outside, name }), /blocked-storage-report-name/);
+  assert.throws(() => reportStorage({ cwd: s.root, name: '.cache' }), /blocked-storage-report-name/);
+  assert.throws(() => reportStorage({ directory: outside, name: 'entry', deep: true,
+    category: 'cache' }), /blocked-storage-report-name/);
   for (const flags of [[`--directory=${outside}`, `--repository=${s.root}`],
-    [`--directory=${outside}`, '--deep', '--category=git-objects'], ['--directory=relative']])
+    [`--directory=${outside}`, '--deep', '--category=git-objects'], ['--directory=relative'],
+    [`--directory=${outside}`, '--name'], [`--directory=${outside}`, '--name=../alias'],
+    [`--repository=${s.root}`, '--name=.cache']])
     assert.throws(() => runStorage(['report', ...flags]), /blocked-storage/);
 });
 test('CLI emits structured diagnostics and rejects unknown, duplicate and unbounded arguments', t => {

@@ -8,7 +8,7 @@ export const REPORT_LIMITS = Object.freeze({ entries: 20_000, milliseconds: 2_00
   maxEntries: 200_000, maxMilliseconds: 60_000, roots: 256, depth: 64 });
 export const REPORT_CATEGORIES = Object.freeze(['git-objects', 'git-metadata',
   'worktree-registrations', 'quarantine', 'recovery', 'retained-archives', 'agent-state', 'other']);
-export const DIRECTORY_CATEGORIES = Object.freeze(['dependencies', 'generated-output',
+export const DIRECTORY_CATEGORIES = Object.freeze(['dependencies', 'cache', 'generated-output',
   'git-administration', 'worktrees', 'workspace-state', 'quarantine', 'recovery', 'other']);
 const metadata = new Set(['HEAD', 'ORIG_HEAD', 'FETCH_HEAD', 'COMMIT_EDITMSG', 'AUTO_MERGE',
   'BISECT_HEAD', 'CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REBASE_HEAD', 'REVERT_HEAD', 'config',
@@ -25,8 +25,10 @@ function gitCategory(name) {
   return 'other';
 }
 function directoryCategory(name) {
-  if (name === 'node_modules') return 'dependencies';
-  if (['.next', '.nuxt', '.svelte-kit', '.vite', '.turbo', '.output', 'dist', 'build',
+  if (['node_modules', '.venv'].includes(name)) return 'dependencies';
+  if (['cache', '.cache', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache',
+    '.parcel-cache', '.vite', '.turbo'].includes(name)) return 'cache';
+  if (['.next', '.nuxt', '.svelte-kit', '.output', 'dist', 'build',
     'coverage', 'test-results', 'playwright-report'].includes(name)) return 'generated-output';
   if (name === '.git') return 'git-administration';
   if (name === '.worktrees' || name.endsWith('.worktrees')) return 'worktrees';
@@ -59,11 +61,15 @@ function locations(cwd, timeout) {
 }
 
 export function reportStorage({ cwd = process.cwd(), deep = false, category: selected = null,
-  directory = null, maxEntries = REPORT_LIMITS.entries, maxMs = REPORT_LIMITS.milliseconds } = {}) {
+  directory = null, name = null, maxEntries = REPORT_LIMITS.entries,
+  maxMs = REPORT_LIMITS.milliseconds } = {}) {
   bound(maxEntries, REPORT_LIMITS.maxEntries); bound(maxMs, REPORT_LIMITS.maxMilliseconds);
   const categories = directory === null ? REPORT_CATEGORIES : DIRECTORY_CATEGORIES;
   if (typeof deep !== 'boolean' || selected !== null && (!deep || !categories.includes(selected)))
     throw new Error('blocked-storage-report-selection');
+  if (name !== null && (directory === null || selected !== null || typeof name !== 'string'
+    || !name || name === '.' || name === '..' || /[/\\\u0000-\u001f\u007f]/u.test(name)))
+    throw new Error('blocked-storage-report-name');
   const started = performance.now(), observedAt = new Date().toISOString();
   let where, base;
   if (directory === null) {
@@ -74,6 +80,10 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
     const entry = lstatSync(base);
     if (!entry.isDirectory() || realpathSync(base) !== base) throw new Error('blocked-storage-report-directory');
     where = { directory: base };
+    if (name !== null) {
+      try { lstatSync(join(base, name)); }
+      catch { throw new Error('blocked-storage-report-name'); }
+    }
   }
   const classify = directory === null ? gitCategory : directoryCategory;
   const volume = statfsSync(base, { bigint: true });
@@ -131,22 +141,24 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
     } catch (error) { row.reasons.add(error.code ?? error.message); }
     finally { if (directory) directory.closeSync(); }
   }
-  const baseStat = stat(base), names = [];
+  const baseStat = stat(base), names = name === null ? [] : [name];
   let discovered = true, rootStream = null;
-  try {
-    rootStream = opendirSync(base);
-    for (;;) {
-      if (expired()) { reasons.add('time-budget'); discovered = false; break; }
-      directoryReads++;
-      const entry = rootStream.readSync();
-      if (!entry) break;
-      if (names.length >= Math.min(REPORT_LIMITS.roots, maxEntries)) {
-        reasons.add('root-budget'); discovered = false; break;
+  if (name === null) {
+    try {
+      rootStream = opendirSync(base);
+      for (;;) {
+        if (expired()) { reasons.add('time-budget'); discovered = false; break; }
+        directoryReads++;
+        const entry = rootStream.readSync();
+        if (!entry) break;
+        if (names.length >= Math.min(REPORT_LIMITS.roots, maxEntries)) {
+          reasons.add('root-budget'); discovered = false; break;
+        }
+        names.push(entry.name);
       }
-      names.push(entry.name);
-    }
-  } catch (error) { reasons.add(error.code ?? error.message); discovered = false; }
-  finally { if (rootStream) rootStream.closeSync(); }
+    } catch (error) { reasons.add(error.code ?? error.message); discovered = false; }
+    finally { if (rootStream) rootStream.closeSync(); }
+  }
   // Inspect the explicitly selected category first, then small Git state before retained archives.
   names.sort((a, b) => {
     const priority = name => classify(name) === selected ? -1 : categories.indexOf(classify(name));
@@ -161,13 +173,17 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
   }
   try { if (identity(stat(base)) !== identity(baseStat)) reasons.add('changed'); }
   catch (error) { reasons.add(error.code ?? error.message); }
-  const complete = discovered && !reasons.size && rows.every(row => row.status === 'complete');
+  const selectedChildComplete = name === null ? null
+    : discovered && !reasons.size && rows.length === 1 && rows[0].status === 'complete';
+  const complete = name === null && discovered && !reasons.size && rows.every(row => row.status === 'complete');
   const totals = { logicalBytesObserved: rows.reduce((n, row) => n + row.logicalBytesObserved, 0),
     allocatedBytesObserved: rows.reduce((n, row) => n + row.allocatedBytesObserved, 0) };
   const result = { schema: 'agentic-os/storage-report/v1', ...where, observedAt,
     mode: deep ? 'recursive-metadata' : 'shallow', selectedCategory: selected,
+    selectedName: name, selectedChildComplete,
     status: complete ? 'complete' : 'partial', discoveryComplete: discovered, reasons: [...reasons].sort(),
-    coverage: directory === null ? 'git-common-directory-children' : 'selected-directory-children',
+    coverage: directory === null ? 'git-common-directory-children'
+      : name === null ? 'selected-directory-children' : 'selected-directory-child',
     filesystem, snapshotConsistent: false, contentVerified: false,
     grantsAuthority: false, reclaimableBytes: null, totals: { ...totals, complete }, rows,
     cost: { elapsedMs: Math.ceil(performance.now() - started), visitedEntries, statCalls,
@@ -178,10 +194,15 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
   if (archives.length) result.recommendations.push({ code: 'review-retained-archives',
     reason: 'Archive sizes are separate from Git objects. Verify provenance, duplicates and restore coverage before planning retention changes.' });
   if (!complete) result.recommendations.push({ code: 'incomplete-measurement',
-    reason: 'Observed bytes are not full directory sizes. Select one category for a bounded deep report.' });
+    reason: name === null
+      ? 'Observed bytes are not full directory sizes. Select one category or exact child for a bounded deep report.'
+      : 'Only the exact child was selected. Its row status describes that child; siblings remain outside coverage.' });
   if (directory !== null && rows.some(row => ['dependencies', 'generated-output'].includes(row.category)))
     result.recommendations.push({ code: 'verify-generator-before-removal',
       reason: 'Directory names suggest rebuildable data only. Verify the generator, lockfile or output contract, active readers and exact target before any removal.' });
+  if (directory !== null && rows.some(row => row.category === 'cache'))
+    result.recommendations.push({ code: 'verify-cache-before-effect',
+      reason: 'A cache name does not prove rebuildability. Verify its owner, active readers, offline restore path and rebuild cost before an exact archive or compression plan.' });
   result.recommendations.push({ code: 'separate-cleanup-admission',
     reason: directory === null
       ? 'Total Git-directory size does not establish the cleanup shared-state budget. Use the cleanup owner for exact admission.'
