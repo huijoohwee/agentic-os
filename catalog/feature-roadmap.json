@@ -9,9 +9,9 @@
       "readiness": "source-observed",
       "plan": {
         "path": "guides/PRD-TAD-ADR-MVP-GTM.md",
-        "revision": "ac9ea610d8ad3771618caa4d528c703908611639",
+        "revision": "c047791e9dcfb8d6f075655d9a08d4214f57e63d",
         "continuityId": "PRD-TAD-ADR-ADLC-PIPELINE-001",
-        "version": "1.4.6"
+        "version": "1.4.7"
       },
       "guideline": {
         "repository": "github.com/huijoohwee/huijoohwee.github.io",
@@ -21,14 +21,14 @@
       },
       "implementation": {
         "path": "src/worktree.mjs",
-        "revision": "ac9ea610d8ad3771618caa4d528c703908611639"
+        "revision": "c047791e9dcfb8d6f075655d9a08d4214f57e63d"
       },
       "check": {
         "path": "__tests__/worktree-inventory.test.mjs",
-        "revision": "ac9ea610d8ad3771618caa4d528c703908611639"
+        "revision": "c047791e9dcfb8d6f075655d9a08d4214f57e63d"
       },
       "dependencies": [],
-      "nextAction": "Keep owner checks and exact release evidence current.",
+      "nextAction": "Retain separate source and delivery evidence; consumers must adopt an exact OS pin before claiming runtime activation.",
       "commercialCandidateId": "repository-livelock-audit",
       "costScopeId": "os-scoped-lanes"
     },
