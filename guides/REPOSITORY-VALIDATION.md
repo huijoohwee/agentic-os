@@ -150,6 +150,11 @@ runners can share generated outputs and ports. Duplicate selected checks and sha
 prerequisites run once. The existing process-group executor handles cancellation
 and timeout; the same private worktree receipt directory serializes execution.
 Only local deterministic checks opt into success reuse or unchanged-failure stops.
+After recording a new observation, use `run --retry-failed` to retry failed checks
+while reusing still-valid successes, including mandatory checks and prerequisites.
+Missing or invalidated results execute normally; failed evidence remains failed.
+`plan --retry-failed` previews that selection. This option is local only and cannot
+combine with `--fresh`; CI retains fresh execution of its entire selected plan.
 `--fresh` requires a new observation or deliberate diagnostic retry; it is not a
 way to hide failed evidence. CI always runs fresh.
 
