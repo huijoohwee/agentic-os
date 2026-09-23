@@ -1,18 +1,18 @@
 ---
 title: "Reference implementation — Native Session History, Indexing & Observability Economics"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "0.2.2"
-revision: "0.2.2"
+version: "0.2.3"
+revision: "0.2.3"
 date: "2026-09-23"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Session continuity and efficiency architecture"
 continuity_id: "NATIVE-SESSION-HISTORY-001"
-prd_revision: "0.2.2"
-tad_revision: "0.2.2"
-adr_revision: "0.2.2"
-mvp_revision: "0.2.2"
-gtm_revision: "0.2.2"
+prd_revision: "0.2.3"
+tad_revision: "0.2.3"
+adr_revision: "0.2.3"
+mvp_revision: "0.2.3"
+gtm_revision: "0.2.3"
 local_rung: "spec-complete"
 delivered_rung: "undocumented"
 lane: "authoring"
@@ -30,12 +30,12 @@ implementation_authority: "2026-09-23 user request; source integration and exact
 
 Make existing agent work cheaper to inspect and resume: reuse verified codebase indexes, mission manifests,
 resource receipts and shared views; then add lossless checkpoint recovery where current history is insufficient.
-Revision 0.2.2 records merged first-slice source and a bounded trace follow-on; recovery and acceptance remain open.
+Revision 0.2.3 records merged source through OS #293; recovery and acceptance remain open.
 It does not claim complete transcripts, hidden model state, effect replay or live runtime authority.
 
 ## Context, intent and directive — reference implementation
 
-**Join:** `NATIVE-SESSION-HISTORY-001@0.2.2` binds all five roles and their projections. TAD consumes PRD;
+**Join:** `NATIVE-SESSION-HISTORY-001@0.2.3` binds all five roles and their projections. TAD consumes PRD;
 ADR binds TAD; MVP and GTM consume their criteria. This capability extends the [lifecycle owner](PRD-TAD-ADR-MVP-GTM.md).
 **Context:** the update requests lower time/resource cost across existing codebase indexes and observability;
 E12–E22 ground current owners, B01 measures a narrow baseline, and customer pain/WTP remain unvalidated.
@@ -167,7 +167,7 @@ measurable gain. Buyer frequency, session boundary/size, browser durability, obl
 
 ## TAD — reference implementation
 
-**Scope:** PRD F7–F12 first, retained F1–F6 follow-on, all at `0.2.2`. Extend existing owners before extraction. Do not turn lifecycle receipts,
+**Scope:** PRD F7–F12 first, retained F1–F6 follow-on, all at `0.2.3`. Extend existing owners before extraction. Do not turn lifecycle receipts,
 curated memory or expiring continuation stores into a second transcript database.
 
 | Component / accountable owner | Existing source → proposed change | Responsibility / local / delivered rung |
@@ -356,7 +356,7 @@ Inventory: l1 scoped source, l2 approved preview/package, l3 delivered product. 
 
 ## ADR — reference implementation
 
-All decisions are **Proposed**, dated 2026-09-23, joined at `0.2.2`. Local source work does not confer release authority.
+All decisions are **Proposed**, dated 2026-09-23, joined at `0.2.3`. Local source work does not confer release authority.
 Constraints: C-zero-spend, C-offline-browser, C-preserve-source, C-existing-owner, C-bounded-data.
 
 | Decision | Options and constraints → argument → non-compensatory ordering | Consequences / revisit |
@@ -381,7 +381,7 @@ Remove replacements only after equivalence/migration checks; rollback preserves 
 
 ## MVP — reference implementation
 
-**First slice:** F7–F12/V07–V12, C5–C8, ADR03/ADR04 at `NATIVE-SESSION-HISTORY-001@0.2.2`.
+**First slice:** F7–F12/V07–V12, C5–C8, ADR03/ADR04 at `NATIVE-SESSION-HISTORY-001@0.2.3`.
 Local `spec-complete`; delivered `undocumented`; six economy VCCs unproven. B01 is baseline evidence only.
 F1–F6/C1–C4/ADR01–03 are explicitly retained as a follow-on recovery slice, not silently claimed complete.
 
@@ -477,7 +477,7 @@ unknown outcome → fulfillment → refunds, through operator's verified existin
 
 ## Coverage, projections and open findings — reference implementation
 
-All source-section joins below are `@0.2.2`; domain decisions mean coverage, not product readiness.
+All source-section joins below are `@0.2.3`; domain decisions mean coverage, not product readiness.
 
 | Domain | Decision / source | Evidence or gap / accountable owner / next check |
 |---|---|---|
@@ -536,13 +536,13 @@ verified export/cold-read fallback. Discovery gaps block dependent promises, not
 
 ## Evidence and release handover — reference implementation
 
-**Authority:** exact source integration completed with green checks. The user approved only Graph #1216 checkout cleanup:
+**Authority:** exact source integration through OS #293 completed with green checks. The user approved only Graph #1216 checkout cleanup:
 recoverable quarantine, digest `3cfd666f29d948934c70fabf7d6d491066539365d6441280199cc674723e9e53`.
 Graph's four-checkout cap still blocks recovery admission; retain other owners. OS reused its checkout by successor/readmission.
 
 | Evidence / check | Result / evaluator / surface / limitation |
 |---|---|
-| OS #292 | Main `b1707da259a24802c2c133d978926bb06880ea13`; protected checks green. Reads reached 2× bytes. Follow-on batches final visibility/HEAD while rechecking bytes; local trace tests 7/7, publication pending |
+| OS #292/#293 | Main `aea59a458b8afda647aa07ffaea015cf646f2cb2`; protected test/budget checks green. Trace reads 2× bytes; final visibility/HEAD checks batched with exact-byte recheck. Focused 16/16 and evals green; acceptance remains open |
 | B02 | 20 ABBA pairs, 9,807-byte trace: reads 39,228→19,614 B; median wall 73.75→73.61 ms, CPU 6.44→6.07 ms. Same digest/graph; no proven wall/30% CPU benefit. Private `paired-trace.json` |
 | B03 | 20 paired runs after 5 warmups/arm, 20-file fixture, Node 22.22.3 arm64: median wall 1392.55→727.06 ms, current-process CPU 113.62→63.71 ms; p95 wall 1578.81→822.35 ms. Equal digest/1806 read bytes. Sampled RSS 60.46→60.51 MB; peak and fleet effects unknown. Private `paired-trace-20-files.json`, SHA-256 `eb00133f5c71f622a1e6dfcb7a835fb97de65cad24a806ffaecab829ca28b03e` |
 | Graph #1216 | Main `23ead08a3f3c7a4743f2bb3752b96c643bc41512`; Integration Gate green. Shared index/tree/editor/panel/observer owners; browser smoke passed; V08–V12 acceptance incomplete |
