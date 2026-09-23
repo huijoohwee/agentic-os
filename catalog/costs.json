@@ -1,0 +1,66 @@
+{
+  "schema": "agentic-os/cost-index/v1",
+  "guideline": {
+    "repository": "github.com/huijoohwee/huijoohwee.github.io",
+    "path": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
+    "revision": "993eb0e28a6d2e9427364df98c39c8a5e10910b4",
+    "version": "3.1.0"
+  },
+  "financialContract": {
+    "repository": "github.com/huijoohwee/huijoohwee.github.io",
+    "path": "guidelines/prd-tad-adr-mvp-gtm-venture.md",
+    "revision": "993eb0e28a6d2e9427364df98c39c8a5e10910b4",
+    "version": "2.1.0"
+  },
+  "incrementalPaidSpendCapUsd": 0,
+  "scopes": [
+    {
+      "id": "os-scoped-lanes",
+      "featureIds": ["adlc-scoped-lanes"],
+      "owner": "github.com/huijoohwee/agentic-os",
+      "financialModel": { "status": "not-recorded" },
+      "source": {
+        "path": "bin/agentic-os-workflow-observation.mjs",
+        "revision": "ac9ea610d8ad3771618caa4d528c703908611639",
+        "kind": "observation-contract"
+      },
+      "actuals": { "status": "unreported", "receiptRefs": [] },
+      "forecast": { "status": "unknown", "scenarioRefs": [] },
+      "nextAction": "Link dated task and provider receipts before calculating development cost."
+    },
+    {
+      "id": "graph-python-learning",
+      "featureIds": ["graph-python-learning"],
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "financialModel": {
+        "status": "incomplete-discovery",
+        "path": "docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f",
+        "anchor": "discovery-financial-model"
+      },
+      "source": {
+        "path": "docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f",
+        "kind": "authoring-ledger"
+      },
+      "actuals": { "status": "unreported", "receiptRefs": [] },
+      "forecast": { "status": "incomplete", "scenarioRefs": [] },
+      "nextAction": "Measure development and serving costs; complete owner assumptions and monthly scenarios."
+    },
+    {
+      "id": "graph-storage-sync",
+      "featureIds": ["graph-source-cloud-entry", "graph-local-browser-signin"],
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "financialModel": { "status": "not-recorded" },
+      "source": {
+        "path": "docs/documents/agentic-graph-storage-sync-prd-tad-adr-mvp-gtm.part-01.md",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f",
+        "kind": "tco-assumptions"
+      },
+      "actuals": { "status": "unreported", "receiptRefs": [] },
+      "forecast": { "status": "unknown", "scenarioRefs": [] },
+      "finding": "owner-tco-includes-paid-variant",
+      "nextAction": "Owner must exclude paid variants from admitted delivery and measure free-quota headroom."
+    }
+  ]
+}

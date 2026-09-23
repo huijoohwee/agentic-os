@@ -29,7 +29,8 @@
       },
       "dependencies": [],
       "nextAction": "Keep owner checks and exact release evidence current.",
-      "commercialCandidateId": "repository-livelock-audit"
+      "commercialCandidateId": "repository-livelock-audit",
+      "costScopeId": "os-scoped-lanes"
     },
     {
       "id": "graph-python-learning",
@@ -59,7 +60,8 @@
       },
       "dependencies": [],
       "nextAction": "Close the protected integration gate and retain live Canvas proof.",
-      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1200"
+      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1200",
+      "costScopeId": "graph-python-learning"
     },
     {
       "id": "graph-source-cloud-entry",
@@ -85,7 +87,8 @@
       },
       "dependencies": [],
       "nextAction": "Resolve the protected source gate before claiming integration.",
-      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1201"
+      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1201",
+      "costScopeId": "graph-storage-sync"
     },
     {
       "id": "graph-local-browser-signin",
@@ -107,7 +110,8 @@
       },
       "dependencies": ["graph-source-cloud-entry"],
       "nextAction": "Register the loopback callback, configure the local Worker, and capture live provider proof.",
-      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1202"
+      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1202",
+      "costScopeId": "graph-storage-sync"
     }
   ]
 }

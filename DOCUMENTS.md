@@ -37,6 +37,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
 | Past, current and future product features | [Central roadmap register](catalog/feature-roadmap.json), [derived views](guides/FEATURES.md) |
+| Feature cost and budget continuity | [Cost register](catalog/costs.json), [portfolio cost view](guides/COSTS.md), [financial model contract][venture] |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
 | Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 
@@ -52,6 +53,7 @@ The planning owner validates imported record hashes and the board projection.
 
 [todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
 [kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
+[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/993eb0e28a6d2e9427364df98c39c8a5e10910b4/guidelines/prd-tad-adr-mvp-gtm-venture.md
 
 ## Repository concerns
 

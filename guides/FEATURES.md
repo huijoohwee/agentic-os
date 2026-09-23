@@ -59,6 +59,11 @@ an owner moves between views. Run `node --test
 __tests__/feature-roadmap.test.mjs` to verify register fields, owner membership,
 plan/guideline joins, source references and view membership.
 
+Each registered feature also has a `costScopeId` into the [cost register](../catalog/costs.json).
+The [portfolio cost view](COSTS.md) joins owner assumptions and observations without assigning
+unknown actuals a zero value. Cloud entry and local browser sign-in share one storage cost scope;
+count that scope once until the product owner records a feature allocation.
+
 Lifecycle supplies the view: `proposed`/`planned` are future,
 `developing`/`active` are current, and `retired`/`cancelled` are past. Empty
 past means no historical feature has been admitted yet; Git history is not
