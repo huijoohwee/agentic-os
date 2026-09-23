@@ -14,7 +14,7 @@ import { git, headSha, worktrees } from '../src/git.mjs';
 import * as records from '../src/lane-records.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { hash } from '../bin/agentic-os-test-inputs.mjs';
-import { successorLineageChain } from '../src/lane-state.mjs';
+import { readmissionPredecessors } from '../src/lane-state.mjs';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 function fixture(t) {
@@ -238,6 +238,9 @@ for (const hops of [1, 2, 3]) test(`${hops} published successors reuse the retai
   let predecessor = ref;
   for (let index = 1; index <= hops; index++) {
     f.run('push', 'origin', `refs/heads/${predecessor}:refs/heads/${predecessor}`);
+    const prior = records.get(predecessor, f.root);
+    records.putExact({ ...prior, state: 'published', head,
+      handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
     assert.equal(runPublishedLaneSuccessor({ cwd: target, predecessorRef: predecessor, scope: `next-${index}`, explicitHead: head,
       remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {}, expandedWritePaths: ['additional.txt'] }), 0);
     predecessor = `agent/test-device/next-${index}`;
@@ -258,6 +261,9 @@ test('multi-hop readmission refuses a missing older remote without changing the 
   let ref = 'agent/test-device/one';
   for (const scope of ['second', 'third']) {
     f.run('push', 'origin', `refs/heads/${ref}:refs/heads/${ref}`);
+    const prior = records.get(ref, f.root);
+    records.putExact({ ...prior, state: 'published', head,
+      handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
     runPublishedLaneSuccessor({ cwd: target, predecessorRef: ref, scope, explicitHead: head,
       remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {} });
     ref = `agent/test-device/${scope}`;
@@ -279,11 +285,18 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
       predecessorRef: `agent/device/lane-${index - 1}`, predecessorHead: common.head } } : {}) };
   }
   const record = rows['agent/device/lane-32'];
-  assert.equal(successorLineageChain(record, rows).length, 32);
-  assert.equal(successorLineageChain(rows['agent/device/lane-33'], rows), false);
+  assert.equal(readmissionPredecessors(record, rows).length, 32);
+  assert.equal(readmissionPredecessors(rows['agent/device/lane-33'], rows), false);
   for (const patch of [undefined, { ...rows['agent/device/lane-0'], head: 'b'.repeat(40) },
     { ...rows['agent/device/lane-0'], worktree: '/other' },
     { ...rows['agent/device/lane-0'], handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: record.ref, predecessorHead: common.head } }]) {
-    assert.equal(successorLineageChain(record, { ...rows, 'agent/device/lane-0': patch }), false);
+    assert.equal(readmissionPredecessors(record, { ...rows, 'agent/device/lane-0': patch }), false);
+  }
+  const published = { ...rows, 'agent/device/lane-31': { ...rows['agent/device/lane-31'], handoff: null } };
+  const allocation = { ref: 'agent/device/lane-0', path: common.worktree,
+    baseRevision: common.baseSha, headRevision: common.head };
+  assert.equal(readmissionPredecessors(record, published, allocation).length, 2);
+  for (const patch of [{ path: '/other' }, { headRevision: 'b'.repeat(40) }, { baseRevision: 'b'.repeat(40) }, { ref: 'agent/device/missing' }]) {
+    assert.equal(readmissionPredecessors(record, published, { ...allocation, ...patch }), false);
   }
 });

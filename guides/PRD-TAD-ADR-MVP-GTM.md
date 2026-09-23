@@ -27,7 +27,7 @@ gtm_revision: "1.4.9"
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
 Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
-[TECH-STACK.md](TECH-STACK.md) owns refresh commands. Admission checkpoint (2026-09-24): multi-hop repair authored; validation/integration pending.
+[TECH-STACK.md](TECH-STACK.md) owns refresh commands. Admission checkpoint (2026-09-24): five successor/source-binding regressions pass; required checks and integration pending.
 [TECH-STACK.md](TECH-STACK.md) owns technology selection, product composition and deployment topology. [FEATURES.md](FEATURES.md) owns the derived feature index; [catalog/features.json](../catalog/features.json) owns commercial ranking input. The website [guidelines][guideline], [templates][templates], [continuity module][continuity] and [CID contract][cid] own authoring semantics. This guide adds pipeline requirements and traceability, without copying those contracts or product requirements.
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
@@ -557,9 +557,9 @@ identities and explicit phase edges; persist declarations through collection and
 Reject constraint removal/relaxation and stale selected roots. A legacy archive remains readable with
 undeclared coverage; it cannot silently grant a new mission allowance or verified independence.
 START uses its clone-wide lock, exact registration, pending allocation and retained partial-effect recovery.
-Re-admission binds the active unpublished owner through at most 32 preserved successor links to its mission.
-Each predecessor must retain matching worktree/base/cache identity, exact remote head and source ancestry.
-Missing, cyclic, drifting or over-budget chains fail before scope CAS; reuse never cleans bytes or raises caps.
+Re-admission checks at most 32 predecessor pins, including the mission's explicit source checkpoint when
+publication replaced an older handoff. Require matching worktree/base/cache, exact remote head and ancestry.
+Missing, cyclic, drifting or over-budget evidence fails before scope CAS; never infer lineage or raise caps.
 Native START, publication, validation and completion share dependency admission; wrapper/MCP paths must
 reach those owners. Preserve validation's observation-only workflow option and exact-input reuse rules.
 Index/trace suggestions do not become execution dependencies. No new scheduler, controller or registry.
