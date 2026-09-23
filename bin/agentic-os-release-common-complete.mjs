@@ -256,14 +256,20 @@ export async function runReleaseCommonLocalCleanup({
     const current = releaseCommonLocalCleanupPolicy(root, profile);
     const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
     const record = get(ref, root);
-    if (!record || !Number.isSafeInteger(record.pr) || record.pr < 1)
+    let pr = record?.pr;
+    if (record && pr == null && COMPLETE_STATES.has(record.state) && headSha(record.head)) {
+      const observed = observeGitHubReview({ ref, expectedHead: record.head, profile, cwd: root });
+      if (observed.sourceHeadBound === true && observed.review?.state === 'MERGED')
+        pr = observed.review.number;
+    }
+    if (!Number.isSafeInteger(pr) || pr < 1)
       fail('blocked-release-common-local-cleanup-review', 'local cleanup requires one exact merged review record');
     if (!status.lane.path || status.lane.mounted !== true || status.lane.clean !== true)
       fail('blocked-release-common-local-cleanup-lane', 'local cleanup requires one exact mounted clean lane');
     const assertWorkflowCurrent = createWorkflowEffectGuard(() => cleanupWorkflowContext(root, ref, profile.repository));
     assertWorkflowCurrent();
     const workflow = inferMergedReviewWorkflow({
-      repository: current.repository, pr: record.pr, requiredChecks: [...current.requiredChecks].sort(),
+      repository: current.repository, pr, requiredChecks: [...current.requiredChecks].sort(),
     }, { cwd: root, api });
     const resolvePolicy = (policyRoot, mode) => {
       if (policyRoot !== root || mode !== RECOVERY_MODE)
@@ -273,7 +279,7 @@ export async function runReleaseCommonLocalCleanup({
     const plan = planUserCleanup({
       cwd: root,
       target: status.lane.path,
-      pr: record.pr,
+      pr,
       requiredChecks: [...current.requiredChecks].sort(),
       workflow,
       recovery: true,

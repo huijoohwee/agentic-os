@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import {
-  CACHE_LIMITS, CACHE_REF, SCHEMA, get, load, put, save, storePath,
+  CACHE_LIMITS, CACHE_REF, SCHEMA, get, load, project, put, save, storePath,
 } from '../src/lane-records.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -24,6 +25,29 @@ function repository(t, prefix = 'agentic-os-lane-cache-') {
 function validStore(ref = 'agent/device/cache') {
   return { schema: SCHEMA, lanes: { [ref]: { ref, state: 'active' } } };
 }
+
+test('provider projection retains review identity without accumulating review bodies', (t) => {
+  const root = repository(t), body = 'review prose '.repeat(2000);
+  const handoff = { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh',
+    sourceHeadBound: true, pr: { number: 41, state: 'OPEN', body } };
+  for (let index = 0; index < 40; index++) {
+    const ref = `agent/device/review-${index}`;
+    const result = project({ ref, state: 'published', pr: 41, handoff }, root);
+    assert.equal(result.ok, true, result.error?.message);
+    const cached = get(ref, root);
+    assert.equal(cached.pr, 41);
+    assert.equal(cached.handoff.pr.body, undefined);
+    assert.equal(cached.handoff.pr.bodySha256, createHash('sha256').update(body).digest('hex'));
+  }
+  assert.equal(handoff.pr.body, body);
+  assert.equal(handoff.pr.bodySha256, undefined);
+  assert(Number(runGit(root, 'cat-file', '-s', runGit(root, 'rev-parse', CACHE_REF))) < 20_000);
+  const ref = 'agent/device/successor';
+  const lineage = { schema: 'agentic-os-lane-successor/v1', predecessorRef: 'agent/device/review-0',
+    predecessorHead: 'a'.repeat(40) };
+  assert.equal(project({ ref, state: 'active', handoff: lineage }, root).ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(get(ref, root).handoff)), lineage);
+});
 
 test('a missing cache recovers empty and bounded records round-trip as non-authoritative hints', (t) => {
   const root = repository(t);

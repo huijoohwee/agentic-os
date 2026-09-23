@@ -267,8 +267,9 @@ test('review count/deadline limits reject long waits and late merge evidence', a
   assert.equal(expired.reason, 'observation-window-elapsed');
 });
 
-test('release-common complete waits for a merged exact review, then runs closeout', (t) => {
+for (const cachedReview of [41, null]) test(`complete closes an exact merged review with cached PR ${cachedReview}`, (t) => {
   const subject = completeFixture(t, 'MERGED');
+  put({ ref: subject.ref, pr: cachedReview }, subject.root);
   const result = complete(subject, 1000);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"event":"merged"/u);
