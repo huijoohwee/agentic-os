@@ -1,17 +1,19 @@
 /** Bounded metadata-only storage diagnostics. Sizes never grant cleanup authority. */
 import { execFileSync } from 'node:child_process';
-import { lstatSync, opendirSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { lstatSync, opendirSync, realpathSync, statfsSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 export const REPORT_LIMITS = Object.freeze({ entries: 20_000, milliseconds: 2_000,
   maxEntries: 200_000, maxMilliseconds: 60_000, roots: 256, depth: 64 });
 export const REPORT_CATEGORIES = Object.freeze(['git-objects', 'git-metadata',
   'worktree-registrations', 'quarantine', 'recovery', 'retained-archives', 'agent-state', 'other']);
+export const DIRECTORY_CATEGORIES = Object.freeze(['dependencies', 'generated-output',
+  'git-administration', 'worktrees', 'workspace-state', 'quarantine', 'recovery', 'other']);
 const metadata = new Set(['HEAD', 'ORIG_HEAD', 'FETCH_HEAD', 'COMMIT_EDITMSG', 'AUTO_MERGE',
   'BISECT_HEAD', 'CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REBASE_HEAD', 'REVERT_HEAD', 'config',
   'description', 'index', 'packed-refs', 'refs', 'logs', 'reftable', 'shallow', 'info', 'hooks']);
-function category(name) {
+function gitCategory(name) {
   if (name === 'objects') return 'git-objects';
   if (name === 'worktrees') return 'worktree-registrations';
   if (metadata.has(name)) return 'git-metadata';
@@ -20,6 +22,19 @@ function category(name) {
   if (name === 'agentic-os-storage') return 'recovery';
   if (name === 'agentic-user-authorized-archive') return 'retained-archives';
   if (name.startsWith('agentic-')) return 'agent-state';
+  return 'other';
+}
+function directoryCategory(name) {
+  if (name === 'node_modules') return 'dependencies';
+  if (['.next', '.nuxt', '.svelte-kit', '.vite', '.turbo', '.output', 'dist', 'build',
+    'coverage', 'test-results', 'playwright-report'].includes(name)) return 'generated-output';
+  if (name === '.git') return 'git-administration';
+  if (name === '.worktrees' || name.endsWith('.worktrees')) return 'worktrees';
+  if (name === '.workspace') return 'workspace-state';
+  if (name === 'agentic-os-cleanup-quarantine' || name.startsWith('agentic-os-canonical-sync-quarantine-'))
+    return 'quarantine';
+  if (name === '.recovery' || name === 'agentic-os-storage' || name.startsWith('.acos-recovery-'))
+    return 'recovery';
   return 'other';
 }
 function bound(value, maximum) {
@@ -44,12 +59,28 @@ function locations(cwd, timeout) {
 }
 
 export function reportStorage({ cwd = process.cwd(), deep = false, category: selected = null,
-  maxEntries = REPORT_LIMITS.entries, maxMs = REPORT_LIMITS.milliseconds } = {}) {
+  directory = null, maxEntries = REPORT_LIMITS.entries, maxMs = REPORT_LIMITS.milliseconds } = {}) {
   bound(maxEntries, REPORT_LIMITS.maxEntries); bound(maxMs, REPORT_LIMITS.maxMilliseconds);
-  if (typeof deep !== 'boolean' || selected !== null && (!deep || !REPORT_CATEGORIES.includes(selected)))
+  const categories = directory === null ? REPORT_CATEGORIES : DIRECTORY_CATEGORIES;
+  if (typeof deep !== 'boolean' || selected !== null && (!deep || !categories.includes(selected)))
     throw new Error('blocked-storage-report-selection');
   const started = performance.now(), observedAt = new Date().toISOString();
-  const where = locations(cwd, maxMs), deadline = started + maxMs;
+  let where, base;
+  if (directory === null) {
+    where = locations(cwd, maxMs); base = where.common;
+  } else {
+    if (typeof directory !== 'string' || !isAbsolute(directory)) throw new Error('blocked-storage-report-directory');
+    base = resolve(directory);
+    const entry = lstatSync(base);
+    if (!entry.isDirectory() || realpathSync(base) !== base) throw new Error('blocked-storage-report-directory');
+    where = { directory: base };
+  }
+  const classify = directory === null ? gitCategory : directoryCategory;
+  const volume = statfsSync(base, { bigint: true });
+  const safeBytes = value => value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : null;
+  const filesystem = { totalBytes: safeBytes(volume.blocks * volume.bsize),
+    availableBytes: safeBytes(volume.bavail * volume.bsize), source: 'statfs', snapshotConsistent: false };
+  const deadline = started + maxMs;
   let visitedEntries = 0, statCalls = 0, directoryReads = 0;
   const reasons = new Set(), seen = new Set(), rows = [];
   const expired = () => performance.now() >= deadline;
@@ -84,7 +115,7 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
         row.reasons.add('not-scanned'); return;
       }
       if (depth >= REPORT_LIMITS.depth) { row.reasons.add('depth-budget'); return; }
-      if (before.dev !== commonStat.dev) { row.reasons.add('mount-boundary'); return; }
+      if (before.dev !== baseStat.dev) { row.reasons.add('mount-boundary'); return; }
       if (realpathSync(path) !== path) { row.reasons.add('directory-alias'); return; }
       directory = opendirSync(path);
       if (identity(stat(path)) !== identity(before)) { row.reasons.add('changed'); return; }
@@ -100,14 +131,14 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
     } catch (error) { row.reasons.add(error.code ?? error.message); }
     finally { if (directory) directory.closeSync(); }
   }
-  const commonStat = stat(where.common), names = [];
-  let discovered = true, directory = null;
+  const baseStat = stat(base), names = [];
+  let discovered = true, rootStream = null;
   try {
-    directory = opendirSync(where.common);
+    rootStream = opendirSync(base);
     for (;;) {
       if (expired()) { reasons.add('time-budget'); discovered = false; break; }
       directoryReads++;
-      const entry = directory.readSync();
+      const entry = rootStream.readSync();
       if (!entry) break;
       if (names.length >= Math.min(REPORT_LIMITS.roots, maxEntries)) {
         reasons.add('root-budget'); discovered = false; break;
@@ -115,20 +146,20 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
       names.push(entry.name);
     }
   } catch (error) { reasons.add(error.code ?? error.message); discovered = false; }
-  finally { if (directory) directory.closeSync(); }
+  finally { if (rootStream) rootStream.closeSync(); }
   // Inspect the explicitly selected category first, then small Git state before retained archives.
   names.sort((a, b) => {
-    const priority = name => category(name) === selected ? -1 : REPORT_CATEGORIES.indexOf(category(name));
+    const priority = name => classify(name) === selected ? -1 : categories.indexOf(classify(name));
     return priority(a) - priority(b) || a.localeCompare(b);
   });
   for (const name of names) {
-    const row = { name, path: join(where.common, name), category: category(name), entries: 0,
+    const row = { name, path: join(base, name), category: classify(name), entries: 0,
       logicalBytesObserved: 0, allocatedBytesObserved: 0, sharedInodes: 0, symlinks: 0, reasons: new Set() };
     walk(row.path, row, 0);
     row.status = row.reasons.size ? (row.reasons.size === 1 && row.reasons.has('not-scanned') ? 'unmeasured' : 'partial') : 'complete';
     row.reasons = [...row.reasons].sort(); rows.push(row);
   }
-  try { if (identity(stat(where.common)) !== identity(commonStat)) reasons.add('changed'); }
+  try { if (identity(stat(base)) !== identity(baseStat)) reasons.add('changed'); }
   catch (error) { reasons.add(error.code ?? error.message); }
   const complete = discovered && !reasons.size && rows.every(row => row.status === 'complete');
   const totals = { logicalBytesObserved: rows.reduce((n, row) => n + row.logicalBytesObserved, 0),
@@ -136,10 +167,11 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
   const result = { schema: 'agentic-os/storage-report/v1', ...where, observedAt,
     mode: deep ? 'recursive-metadata' : 'shallow', selectedCategory: selected,
     status: complete ? 'complete' : 'partial', discoveryComplete: discovered, reasons: [...reasons].sort(),
-    coverage: 'git-common-directory-children', snapshotConsistent: false, contentVerified: false,
+    coverage: directory === null ? 'git-common-directory-children' : 'selected-directory-children',
+    filesystem, snapshotConsistent: false, contentVerified: false,
     grantsAuthority: false, reclaimableBytes: null, totals: { ...totals, complete }, rows,
     cost: { elapsedMs: Math.ceil(performance.now() - started), visitedEntries, statCalls,
-      directoryReads, contentBytesRead: 0, maxEntries, maxMs, maxRoots: REPORT_LIMITS.roots,
+      directoryReads, statfsCalls: 1, contentBytesRead: 0, maxEntries, maxMs, maxRoots: REPORT_LIMITS.roots,
       maxDepth: REPORT_LIMITS.depth, deadlineKind: 'cooperative-between-filesystem-calls' },
     recommendations: [] };
   const archives = rows.filter(row => row.category === 'retained-archives');
@@ -147,7 +179,12 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
     reason: 'Archive sizes are separate from Git objects. Verify provenance, duplicates and restore coverage before planning retention changes.' });
   if (!complete) result.recommendations.push({ code: 'incomplete-measurement',
     reason: 'Observed bytes are not full directory sizes. Select one category for a bounded deep report.' });
+  if (directory !== null && rows.some(row => ['dependencies', 'generated-output'].includes(row.category)))
+    result.recommendations.push({ code: 'verify-generator-before-removal',
+      reason: 'Directory names suggest rebuildable data only. Verify the generator, lockfile or output contract, active readers and exact target before any removal.' });
   result.recommendations.push({ code: 'separate-cleanup-admission',
-    reason: 'Total Git-directory size does not establish the cleanup shared-state budget. Use the cleanup owner for exact admission.' });
+    reason: directory === null
+      ? 'Total Git-directory size does not establish the cleanup shared-state budget. Use the cleanup owner for exact admission.'
+      : 'Observed directory size and ignore status grant no removal authority. Use the exact source owner and effect receipt.' });
   return result;
 }

@@ -112,6 +112,41 @@ test('linked worktrees resolve the shared common directory, not their registrati
   assert.ok(report.rows.some(row => row.category === 'retained-archives'));
   assert.ok(report.rows.some(row => row.category === 'worktree-registrations'));
 });
+test('selected directory reports rebuildable names without treating them as reclaimable bytes', t => {
+  const s = fixture(t), output = join(s.workspace, '.next'), dependencies = join(s.workspace, 'node_modules');
+  mkdirSync(output); mkdirSync(dependencies);
+  writeFileSync(join(output, 'bundle'), 'generated');
+  writeFileSync(join(dependencies, 'package'), 'installed');
+  const before = readdirSync(s.workspace), shallow = reportStorage({ directory: s.workspace, maxMs: 10_000 });
+  assert.equal(shallow.coverage, 'selected-directory-children');
+  assert.equal(shallow.directory, s.workspace);
+  assert.equal(shallow.rows.find(row => row.name === '.next').category, 'generated-output');
+  assert.equal(shallow.rows.find(row => row.name === 'node_modules').status, 'unmeasured');
+  assert.equal(shallow.reclaimableBytes, null); assert.equal(shallow.grantsAuthority, false);
+  assert.ok(shallow.filesystem.availableBytes > 0);
+  const selected = reportStorage({ directory: s.workspace, deep: true,
+    category: 'generated-output', maxMs: 10_000 });
+  assert.equal(selected.rows[0].name, '.next');
+  assert.equal(selected.rows[0].logicalBytesObserved, Buffer.byteLength('generated'));
+  assert.equal(selected.rows.find(row => row.name === 'node_modules').status, 'unmeasured');
+  assert.equal(selected.cost.contentBytesRead, 0);
+  assert.deepEqual(readdirSync(s.workspace), before);
+  assert.equal(readFileSync(join(output, 'bundle'), 'utf8'), 'generated');
+});
+test('directory report works without Git and refuses aliases, mixed roots and wrong categories', t => {
+  const s = fixture(t), outside = join(s.workspace, 'plain'), alias = join(s.workspace, 'alias');
+  mkdirSync(outside); symlinkSync(outside, alias);
+  const report = JSON.parse(execFileSync(process.execPath, [CLI, 'report', `--directory=${outside}`],
+    { encoding: 'utf8' }));
+  assert.equal(report.coverage, 'selected-directory-children');
+  assert.deepEqual(report.rows, []);
+  assert.throws(() => reportStorage({ directory: alias }), /blocked-storage-report-directory/);
+  assert.throws(() => reportStorage({ directory: 'relative' }), /blocked-storage-report-directory/);
+  assert.throws(() => reportStorage({ directory: outside, deep: true, category: 'git-objects' }), /selection/);
+  for (const flags of [[`--directory=${outside}`, `--repository=${s.root}`],
+    [`--directory=${outside}`, '--deep', '--category=git-objects'], ['--directory=relative']])
+    assert.throws(() => runStorage(['report', ...flags]), /blocked-storage/);
+});
 test('CLI emits structured diagnostics and rejects unknown, duplicate and unbounded arguments', t => {
   const s = fixture(t);
   const output = execFileSync(process.execPath, [CLI, 'report', `--repository=${s.root}`, '--deep',

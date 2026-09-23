@@ -3,12 +3,12 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.1.0"
-tad_revision: "1.1.0"
-adr_revision: "1.1.0"
+prd_revision: "1.2.0"
+tad_revision: "1.2.0"
+adr_revision: "1.2.0"
 load_policy: on-demand
-version: "1.1.0"
-date: "2026-09-14"
+version: "1.2.0"
+date: "2026-09-23"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
@@ -20,8 +20,8 @@ agent_id: "codex-storage-report"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.1.0"
-gtm_revision: "1.1.0"
+mvp_revision: "1.2.0"
+gtm_revision: "1.2.0"
 ---
 
 # Storage compaction
@@ -98,6 +98,54 @@ Pilot evidence (2026-09-14, macOS arm64/Node 24, authoring surface): Graph shall
 returned partial coverage. All three read zero payload bytes. These single-run observations are not
 cross-device benchmarks or full archive measurements. Local repository check receipts live in the
 lane's Git administration directory; PR checks provide revision-bound release evidence.
+
+## Directory triage — STORAGE-001@1.2.0
+
+PRD: the 2026-09-23 local disk recovery found old checkout build output and dependency installs that
+the Git-common report cannot show. A whole-workspace recursive scan took minutes among retained
+quarantines. The operator needs a cheap first view of an exact directory, followed by one selected
+bounded scan, before deciding whether the owning generator can rebuild a target. This is an observed
+operator pain; time saved, cash saved, demand and willingness to pay remain unmeasured.
+
+TAD: reuse `storage report` with exactly one of `--repository` (existing Git-common view) or
+`--directory` (direct children of an absolute, real, non-aliased directory). The directory view needs
+no Git repository and makes no filesystem changes. It classifies direct child names as `dependencies`,
+`generated-output`, `git-administration`, `worktrees`, `workspace-state`, `quarantine`, `recovery` or
+`other`. A name is a discovery hint, never proof of provenance or disposability. Inspect the workspace
+root shallowly, then select a specific checkout or retained directory for the next report:
+
+```sh
+node bin/agentic-os-storage.mjs report --directory=/absolute/GitHub
+node bin/agentic-os-storage.mjs report --directory=/absolute/GitHub/selected-checkout \
+  --deep --category=generated-output --max-entries=20000 --max-ms=2000
+```
+
+The existing 2-second/20,000-entry defaults and 60-second/200,000-entry maxima apply across the
+whole report; at most 256 direct children and depth 64 are visited. Selected deep scans prioritize
+that category and leave other directories unmeasured. Directory aliases, symlink targets and mount
+crossings are not traversed. `statfs` reports volume total and available bytes at observation time;
+it does not attribute free space to any path. Logical and allocated bytes retain the existing
+hardlink accounting and APFS clone caveat. Partial observations never become full size estimates.
+The report reads zero payload bytes, writes no cache, and keeps `reclaimableBytes: null` and
+`grantsAuthority: false`.
+
+ADR: extend the existing on-demand report and preservation owner, rather than adding a crawler,
+timer or eviction policy. No ignored name, age, category or size authorizes removal. The operator
+must verify the exact generator or package lock, active readers, source/receipt ownership and
+recovery obligations before an effect. Lifecycle quarantines and shared evidence retain their
+separate authority. The new view does not compress, archive, prune or delete anything.
+
+MVP acceptance: **AC-S04** — a shallow selected-directory report distinguishes generated output,
+dependencies and protected state without reading payloads or mutating entries, and reports volume
+availability separately from path sizes. **AC-S05** — an explicit category scan respects the common
+entry/time/depth bounds; aliases, mixed root flags and wrong categories fail closed. Verify with
+`node --test __tests__/storage-report.test.mjs`, a live shallow workspace pilot, then the affected
+repository checks. Source budget: four existing files, at most 15 KiB changed and no dependency or
+always-load addition. Rollback reverts the checked source while retaining prior storage receipts.
+
+GTM: use one local shallow workspace report to record actual elapsed time, entries and coverage.
+Any future deletion must report observed volume availability before and after its separately
+authorized effect. Do not convert directory allocation into expected freed bytes or monetary savings.
 
 <a id="operator-workflow"></a>
 
