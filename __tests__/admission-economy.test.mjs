@@ -14,6 +14,7 @@ import { git, headSha, worktrees } from '../src/git.mjs';
 import * as records from '../src/lane-records.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { hash } from '../bin/agentic-os-test-inputs.mjs';
+import { readmissionPredecessors } from '../src/lane-state.mjs';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 function fixture(t) {
@@ -231,18 +232,71 @@ for (const publishedCache of [false, true]) test(`interrupted readmission recove
   assert.equal(f.selected().manifest.allocations[0].state, 'active');
   assert.equal(f.effects.length, effects); assert.equal(worktrees(f.root).length, 2);
 });
-test('native published successor reuses the retained checkout and the same mission slot', async t => {
+for (const hops of [1, 2, 3]) test(`${hops} published successors reuse the retained checkout and mission slot`, async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const target = lanePath('one', 'test-device', f.root), ref = 'agent/test-device/one', head = headSha('HEAD', target);
-  f.run('push', 'origin', `refs/heads/${ref}:refs/heads/${ref}`);
-  assert.equal(runPublishedLaneSuccessor({ cwd: target, predecessorRef: ref, scope: 'next', explicitHead: head,
-    remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {}, expandedWritePaths: ['additional.txt'] }), 0);
+  let predecessor = ref;
+  for (let index = 1; index <= hops; index++) {
+    f.run('push', 'origin', `refs/heads/${predecessor}:refs/heads/${predecessor}`);
+    const prior = records.get(predecessor, f.root);
+    records.putExact({ ...prior, state: 'published', head,
+      handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
+    assert.equal(runPublishedLaneSuccessor({ cwd: target, predecessorRef: predecessor, scope: `next-${index}`, explicitHead: head,
+      remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {}, expandedWritePaths: ['additional.txt'] }), 0);
+    predecessor = `agent/test-device/next-${index}`;
+  }
   const before = f.selected();
-  assert.equal(await cmdStart(f.root, ['next', '--device=test-device', '--write=additional.txt', `--mission=${before.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), 0);
+  assert.equal(await cmdStart(f.root, [`next-${hops}`, '--device=test-device', '--write=additional.txt', `--mission=${before.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), 0);
   const after = f.selected();
   assert.equal(worktrees(f.root).length, 2); assert.equal(after.manifest.allocations.length, 1);
   assert.equal(after.manifest.allocations[0].path, target);
-  assert.equal(after.manifest.allocations[0].ref, 'agent/test-device/next');
+  assert.equal(after.manifest.allocations[0].ref, predecessor);
   assert.equal(after.manifest.allocations[0].predecessorRef, ref);
   await assert.rejects(f.start('two', `--mission=${after.path}`), /allowance is exhausted/);
+});
+
+test('multi-hop readmission refuses a missing older remote without changing the mission or reservation', async t => {
+  const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const target = lanePath('one', 'test-device', f.root), head = headSha('HEAD', target);
+  let ref = 'agent/test-device/one';
+  for (const scope of ['second', 'third']) {
+    f.run('push', 'origin', `refs/heads/${ref}:refs/heads/${ref}`);
+    const prior = records.get(ref, f.root);
+    records.putExact({ ...prior, state: 'published', head,
+      handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
+    runPublishedLaneSuccessor({ cwd: target, predecessorRef: ref, scope, explicitHead: head,
+      remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {} });
+    ref = `agent/test-device/${scope}`;
+  }
+  f.run('push', 'origin', ':refs/heads/agent/test-device/one');
+  const before = f.selected(), record = records.get(ref, f.root);
+  await assert.rejects(cmdStart(f.root, ['third', '--device=test-device', '--write=additional.txt',
+    `--mission=${before.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), /exact published predecessor/);
+  assert.equal(f.selected().digest, before.digest);
+  assert.deepEqual(records.get(ref, f.root), record);
+});
+
+test('successor lineage rejects missing, mismatched, cyclic and over-budget ancestry', () => {
+  const common = { worktree: '/one', base: 'refs/remotes/origin/main', baseSha: 'a'.repeat(40), head: 'a'.repeat(40) };
+  const rows = {};
+  for (let index = 0; index <= 33; index++) {
+    const ref = `agent/device/lane-${index}`;
+    rows[ref] = { ...common, ref, ...(index ? { handoff: { schema: 'agentic-os-lane-successor/v1',
+      predecessorRef: `agent/device/lane-${index - 1}`, predecessorHead: common.head } } : {}) };
+  }
+  const record = rows['agent/device/lane-32'];
+  assert.equal(readmissionPredecessors(record, rows).length, 32);
+  assert.equal(readmissionPredecessors(rows['agent/device/lane-33'], rows), false);
+  for (const patch of [undefined, { ...rows['agent/device/lane-0'], head: 'b'.repeat(40) },
+    { ...rows['agent/device/lane-0'], worktree: '/other' },
+    { ...rows['agent/device/lane-0'], handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: record.ref, predecessorHead: common.head } }]) {
+    assert.equal(readmissionPredecessors(record, { ...rows, 'agent/device/lane-0': patch }), false);
+  }
+  const published = { ...rows, 'agent/device/lane-31': { ...rows['agent/device/lane-31'], handoff: null } };
+  const allocation = { ref: 'agent/device/lane-0', path: common.worktree,
+    baseRevision: common.baseSha, headRevision: common.head };
+  assert.equal(readmissionPredecessors(record, published, allocation).length, 2);
+  for (const patch of [{ path: '/other' }, { headRevision: 'b'.repeat(40) }, { baseRevision: 'b'.repeat(40) }, { ref: 'agent/device/missing' }]) {
+    assert.equal(readmissionPredecessors(record, published, { ...allocation, ...patch }), false);
+  }
 });
