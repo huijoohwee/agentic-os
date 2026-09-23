@@ -36,6 +36,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Portable, capability-routed skills | [Canvas skill](skills/canvas/SKILL.md) |
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
+| Past, current and future product features | [Central roadmap register](catalog/feature-roadmap.json), [derived views](guides/FEATURES.md) |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
 | Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 

@@ -25,7 +25,56 @@ Current composition identities live in [`catalog/composition-source-lock.json`](
 
 The composition-level feature list for the seven-repository system: what users can achieve, who owns each capability, what source exists, and what must still be proved. The first target is discovery → explicit confirmation → settlement → receipt/replay → marketplace readback in a mobile browser. Individual product tools and widgets remain in their owners' inventories.
 
-This is a derived navigation and acceptance index, not another feature database or a complete independent PRD. [TECH-STACK.md](./TECH-STACK.md) owns architecture and embedded decisions; [PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-guidelines.md), [templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-templates.md) and [CID/RAO/SVO](../../huijoohwee.github.io/guidelines/cid-guidelines.md#shared-field-contract) own authoring. [catalog/features.json](../catalog/features.json) remains the machine-readable commercial-candidate input. No second schema, controller or copied catalog is introduced.
+This is a derived navigation and acceptance index, not a complete independent PRD. [TECH-STACK.md](./TECH-STACK.md) owns architecture and embedded decisions; [PRD/TAD/ADR Guidelines](../../huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-guidelines.md), [templates](../../huijoohwee.github.io/guidelines/prd-tad-adr-mvp-gtm-templates.md) and [CID/RAO/SVO](../../huijoohwee.github.io/guidelines/cid-guidelines.md#shared-field-contract) own authoring. [catalog/features.json](../catalog/features.json) remains the machine-readable commercial-candidate input. The [feature roadmap register](../catalog/feature-roadmap.json) holds only source references, lifecycle disposition and the next action; product requirements and evidence stay with their named owners.
+
+## Central feature roadmap
+
+The register begins with OS scoped lanes and Graph's Python workspace, Source
+Files cloud entry and planned localhost sign-in. Each row has one stable feature
+ID, registered source owner, exact plan revision, continuity ID and version.
+Its combined plan links PRD, TAD, ADR, MVP and GTM by one
+`continuity_id@revision`, while the pinned authoring guideline supplies the
+shared field meanings. Source and check paths identify the implementation
+boundary. An optional candidate ID joins commercial ranking. The next action
+names the smallest outstanding owner work.
+
+| View | Feature ID | Joined PRD/TAD/ADR/MVP/GTM plan | Guideline | Status |
+|---|---|---|---|---|
+| Past | None admitted | — | — | Historical source remains in Git history until an owner records a retired or cancelled outcome |
+| Current | `adlc-scoped-lanes` | [OS pipeline plan][roadmap-os-plan] | [2.7.0][roadmap-guideline-27] | Source active |
+| Current | `graph-python-learning` | [Graph Python plan][roadmap-python-plan] | [3.1.0][roadmap-guideline-31] | Source under protected review |
+| Current | `graph-source-cloud-entry` | [Graph storage plan][roadmap-storage-plan] | [2.7.0][roadmap-guideline-27] | Source under protected review |
+| Future | `graph-local-browser-signin` | [Graph storage companion][roadmap-signin-plan] | [2.7.0][roadmap-guideline-27] | Provider registration, local configuration and live proof pending |
+
+[roadmap-os-plan]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/guides/PRD-TAD-ADR-MVP-GTM.md
+[roadmap-python-plan]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md
+[roadmap-storage-plan]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/agentic-graph-storage-sync-prd-tad-adr-mvp-gtm.md
+[roadmap-signin-plan]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/agentic-graph-storage-sync-document.companion.md
+[roadmap-guideline-27]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
+[roadmap-guideline-31]: https://github.com/huijoohwee/huijoohwee.github.io/blob/993eb0e28a6d2e9427364df98c39c8a5e10910b4/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
+
+Open the register for exact plan and guideline revisions, source paths, checks,
+review links, dependencies and next actions. The feature ID stays stable when
+an owner moves between views. Run `node --test
+__tests__/feature-roadmap.test.mjs` to verify register fields, owner membership,
+plan/guideline joins, source references and view membership.
+
+Lifecycle supplies the view: `proposed`/`planned` are future,
+`developing`/`active` are current, and `retired`/`cancelled` are past. Empty
+past means no historical feature has been admitted yet; Git history is not
+rewritten into an invented release record. `spec-only` and `source-observed`
+describe the cited material, not live delivery. A test file's presence is not
+a passing test result. The test checks exact OS blobs. To verify external owner
+blobs, set `AGENTIC_OS_FEATURE_ROADMAP_ROOTS` to an absolute JSON file mapping
+registered repository IDs to local checkout roots before running it. Without a
+Graph checkout, Graph links remain pinned references awaiting observation. The
+test does not fetch repositories or grant integration or deployment authority.
+
+Product plans remain editable beside each implementation. The private workspace
+TODO/Kanban remains the task owner; this register contains feature outcomes and
+the next owner action, not task assignments. Refresh the relevant row when its
+owner plan, source or release identity changes. Confirm exact Git blobs and
+five-role plan identity before calling a cross-repository view observed.
 
 ## How to read the index
 
