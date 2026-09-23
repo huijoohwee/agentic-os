@@ -13,6 +13,20 @@ import {
 } from './git.mjs';
 
 export const SOURCE_HEAD_TRAILER = 'Source-Head';
+export const SUPPORTED_CHANGE_CLASSES = Object.freeze(['docs-only']);
+const DOCS_ONLY_PATTERNS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u,
+  /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
+
+export function classifyLaneChangeClass(targetPath) {
+  const head = observeGit(['rev-parse', '--verify', 'HEAD'], { cwd: targetPath, allowFail: true });
+  if (!head) return 'unknown';
+  const base = observeGit(['merge-base', 'origin/main', 'HEAD'], { cwd: targetPath, allowFail: true });
+  if (!base) return 'unknown';
+  const paths = changedPaths(base, head, { cwd: targetPath });
+  if (!paths) return 'unknown';
+  if (paths.length === 0) return 'empty';
+  return paths.every(path => DOCS_ONLY_PATTERNS.some(pattern => pattern.test(path))) ? 'docs-only' : 'mixed';
+}
 
 /** Local byte-preservation check only; never historical integration or cleanup authority. */
 export function assertPreservedSuccessorJoins(base, tip, protectedRef, cwd) {
@@ -115,6 +129,32 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
     pathCount: paths.length,
     pending: [],
   };
+}
+
+/** Exact historical transition in a reviewed PR series; never integration authority. */
+export function reviewedEquivalentTransitionProof(merge, detached, reviewed, head, { cwd } = {}) {
+  if (!headSha(merge, cwd) || !headSha(detached, cwd) || !headSha(reviewed, cwd)
+    || detached === reviewed || !isAncestor(reviewed, head, cwd)
+    || isAncestor(reviewed, `${merge}^`, cwd)) return null;
+  const parent = revision => {
+    const values = observeGit(['show', '-s', '--format=%P', revision], { cwd }).split(' ').filter(Boolean);
+    return values.length === 1 ? values[0] : null;
+  };
+  const oldParent = parent(detached), reviewedParent = parent(reviewed);
+  if (!oldParent || !reviewedParent) return null;
+  const oldPaths = changedPaths(oldParent, detached, { cwd });
+  const reviewedPaths = changedPaths(reviewedParent, reviewed, { cwd });
+  if (!oldPaths || !reviewedPaths || !oldPaths.length || oldPaths.length > 512
+    || JSON.stringify(oldPaths) !== JSON.stringify(reviewedPaths)) return null;
+  for (const batch of projectionBatches(oldPaths)) {
+    if (!batch) return null;
+    for (const [a, b] of [[oldParent, reviewedParent], [detached, reviewed]]) {
+      const left = treeEntries(a, batch, { cwd }), right = treeEntries(b, batch, { cwd });
+      if (!left || !right || !left.equals(right)) return null;
+    }
+  }
+  return { kind: 'reviewed-equivalent-superseded-transition',
+    detachedHead: detached, reviewedCommit: reviewed, pathCount: oldPaths.length, sourceIntegrated: false };
 }
 
 /**

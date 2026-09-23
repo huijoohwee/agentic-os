@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.2.0"
+version: "1.2.1"
 date: "2026-09-15"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.2.0"
-tad_revision: "1.2.0"
-adr_revision: "1.2.0"
+prd_revision: "1.2.1"
+tad_revision: "1.2.1"
+adr_revision: "1.2.1"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.2.0"
-gtm_revision: "1.2.0"
+mvp_revision: "1.2.1"
+gtm_revision: "1.2.1"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -83,7 +83,7 @@ Do not reuse a stale batch of plans. Remove opt-in with `git config --local --un
 
 ## Explicit recovery for profile-governed repositories
 
-`USER-CLEANUP-001@1.2.0` also covers an operator-authorized, stopped, clean historical lane whose PR is
+`USER-CLEANUP-001@1.2.1` also covers an operator-authorized, stopped, clean historical lane whose PR is
 merged but whose historical authority records are unavailable. User authorization must cover the exact
 targets and recoverable cleanup; it may persist across turns. The caller selects this mode explicitly:
 
@@ -118,6 +118,17 @@ fail. Apply rechecks both proofs and preserves all refs, objects, ignored files 
 This option changes no default or protected cleanup admission and creates no historical authority.
 Recovery also preserves regular-file hardlinks in dependency trees: manifests bind link counts and bytes,
 and alias writes invalidate the plan. Symlink hardlinks and special files remain rejected.
+
+For a clean, stopped detached historical draft that is not an ancestor of the reviewed PR head,
+select `--reviewed-equivalent-commit=<sha>` together with `--recovery --detached`. The selected
+commit must be an ancestor of that exact green merged PR head. Both the draft and selected reviewed
+commit must have one parent and the same nonempty changed-path list; every path must have identical
+mode/type/blob before and after the two commits. The accepted PR head must still have exact
+source-content inclusion at its merge. This proves only an exact historical transition in the
+reviewed series. It does not prove that the detached commit was merged or that its content survived
+later revisions. Apply rechecks the transition and all preservation conditions. The receipt states
+`sourceIntegrated:false`, `historicalDraft:superseded`, `providerAuthority:false` and
+`claimRetired:false`. The original detached-ancestor mode remains strict.
 
 ## Reviewed successor closeout
 
@@ -206,7 +217,7 @@ Retain separate live merged/check, plan, consent, quarantine and final synchroni
 
 ## MVP — reference implementation
 
-`USER-CLEANUP-001@1.2.0` selects one stopped, clean merged worktree quarantined through its explicitly selected local-consent mode. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+`USER-CLEANUP-001@1.2.1` selects one stopped, clean reviewed or historically equivalent worktree quarantined through its explicitly selected local-consent mode. Historical equivalence is a local retirement decision, not source integration. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
 Verify that acceptance with `node --test __tests__/user-cleanup.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation

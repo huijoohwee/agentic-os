@@ -165,6 +165,36 @@ test('matching detached content without reviewed ancestry is insufficient', t =>
   assert.throws(s.plan, /detached-not-reviewed-ancestor/);
   assert.ok(existsSync(s.target));
 });
+test('explicit reviewed-equivalent transition quarantines a superseded sibling without claiming integration', t => {
+  const s = fixture(t, false, true);
+  const sibling = git(s.root, 'commit-tree', `${s.originalHead}^{tree}`, '-p', `${s.originalHead}^`, '-m', 'historical sibling');
+  git(s.target, 'switch', '--detach', sibling);
+  assert.throws(s.plan, /detached-not-reviewed-ancestor/);
+  const p = planUserCleanup({ ...s.input, reviewedEquivalentCommit: s.originalHead }, s.options);
+  assert.equal(p.integration.kind, 'reviewed-equivalent-superseded-transition');
+  assert.equal(p.integration.pathCount, 1);
+  const receipt = s.apply(p);
+  assert.equal(receipt.historicalDraft, 'superseded');
+  assert.equal(receipt.sourceIntegrated, false);
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.claimRetired, false);
+  assert.equal(existsSync(s.target), false);
+  assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
+});
+test('reviewed-equivalent mode refuses mismatched transitions and unreviewed commits', t => {
+  const s = fixture(t, false, true);
+  const unrelated = git(s.root, 'commit-tree', `${s.originalHead}^{tree}`, '-p', `${s.originalHead}^`, '-m', 'unreviewed');
+  git(s.target, 'switch', '--detach', unrelated);
+  assert.throws(() => planUserCleanup({ ...s.input, reviewedEquivalentCommit: unrelated }, s.options),
+    /equivalent-transition/);
+  const changed = git(s.root, 'commit-tree', `${s.head}^{tree}`, '-p', `${s.originalHead}^`, '-m', 'other transition');
+  git(s.target, 'switch', '--detach', changed);
+  assert.throws(() => planUserCleanup({ ...s.input, reviewedEquivalentCommit: s.originalHead }, s.options),
+    /equivalent-transition/);
+  assert.ok(existsSync(s.target));
+  assert.throws(() => planUserCleanup({ ...s.input, recovery: false,
+    reviewedEquivalentCommit: s.originalHead }, s.options), /detached-recovery-required/);
+});
 test('reviewed ancestry cannot hide source content overwritten before merge', t => {
   const s = fixture(t, false, true);
   git(s.target, 'switch', s.branch);
