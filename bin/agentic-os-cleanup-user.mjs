@@ -11,6 +11,7 @@ import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
+import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES } from '../src/patch-identity.mjs';
 const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent';
 const NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 const KEY = 'agentic-os.userCleanup';
@@ -30,20 +31,6 @@ const same = (a, b) => canonicalJson(a) === canonicalJson(b);
  * (quarantine, not delete) stay identical. It only relaxes the authority
  * chain requirement for the specific change class.
  */
-const DOCS_ONLY_PATTERNS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
-const SUPPORTED_CHANGE_CLASSES = Object.freeze(['docs-only']);
-function classifyLaneChangeClass(root, targetPath) {
-  const head = read(targetPath, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
-  if (!head) return 'unknown';
-  const base = read(targetPath, ['merge-base', 'origin/main', 'HEAD'], { allowFail: true });
-  if (!base) return 'unknown';
-  const diff = read(targetPath, ['diff', '--name-only', `${base}...${head}`], { allowFail: true });
-  if (!diff) return 'unknown';
-  const paths = diff.split('\n').filter(Boolean);
-  if (paths.length === 0) return 'empty';
-  const allDocs = paths.every((p) => DOCS_ONLY_PATTERNS.some((re) => re.test(p)));
-  return allDocs ? 'docs-only' : 'mixed';
-}
 function resolveChangeClass(declared, observed) {
   if (declared === undefined) return { declared: null, observed, fastPath: false };
   if (!SUPPORTED_CHANGE_CLASSES.includes(declared)) refuse('unsupported-change-class');
@@ -135,6 +122,7 @@ function validatePlan(input) {
   fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest'
     + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : '')
     + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : '')
+    + (Object.hasOwn(plan, 'reviewedEquivalentCommit') ? ',reviewedEquivalentCommit' : '')
     + (Object.hasOwn(plan, 'successor') ? ',successor' : '')
     + (Object.hasOwn(plan, 'changeClass') ? ',changeClass' : ''));
   reviewOptions(plan);
@@ -147,6 +135,8 @@ function validatePlan(input) {
     || plan.issuedAt < 0 || plan.expiresAt <= plan.issuedAt || plan.expiresAt - plan.issuedAt > 900000
     || (Object.hasOwn(plan, 'detachedHead') && (plan.mode !== RECOVERY_MODE
       || typeof plan.detachedHead !== 'string' || !/^[a-f0-9]{40}$/u.test(plan.detachedHead)))
+    || (Object.hasOwn(plan, 'reviewedEquivalentCommit') && (plan.mode !== RECOVERY_MODE || !plan.detachedHead
+      || !/^[a-f0-9]{40}$/u.test(plan.reviewedEquivalentCommit)))
     || (Object.hasOwn(plan, 'successor') && (plan.mode !== RECOVERY_MODE || plan.detachedHead
       || !plan.successor || Object.keys(plan.successor).sort().join(',') !== 'predecessorHead,predecessorRef,replacedPaths'
       || typeof plan.successor.predecessorRef !== 'string'
@@ -163,10 +153,12 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false, recovery = false, detached = false, changeClass = undefined, successor = undefined }, options = {}) {
+  noCI = false, recovery = false, detached = false, changeClass = undefined, successor = undefined,
+  reviewedEquivalentCommit = undefined }, options = {}) {
   const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
+  if (reviewedEquivalentCommit !== undefined && (!recovery || !detached || successor || !/^[a-f0-9]{40}$/u.test(reviewedEquivalentCommit))) refuse('equivalent-options');
   if (recovery && changeClass !== undefined) refuse('incompatible-modes');
   if (successor && (!recovery || detached || typeof successor.predecessorRef !== 'string'
     || !/^[a-f0-9]{40}$/u.test(successor.predecessorHead ?? '')))
@@ -187,7 +179,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       || inventory.headRevision !== successor.predecessorHead)) refuse('successor-target-drift');
     if (detached && inventory.branch !== null) refuse('target-not-detached');
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
-    const observedChangeClass = classifyLaneChangeClass(root, targetPath);
+    const observedChangeClass = classifyLaneChangeClass(targetPath);
     const changeClassInfo = resolveChangeClass(changeClass, observedChangeClass);
     const issuedAt = options.now?.() ?? Date.now();
     const plan = { schema: SCHEMA, mode, root, repository: current.repository, remoteUrl: current.remoteUrl,
@@ -196,6 +188,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       inventoryContentEntries: inventory.inventoryEntries.content, policyDigest: governanceDigest(current),
       observation: null, issuedAt, expiresAt: issuedAt + 900000,
       ...(detached ? { detachedHead: inventory.headRevision } : {}),
+      ...(reviewedEquivalentCommit ? { reviewedEquivalentCommit } : {}),
       ...(successor ? { successor: { predecessorRef: successor.predecessorRef,
         predecessorHead: successor.predecessorHead, replacedPaths: successor.replacedPaths } } : {}),
       ...(changeClassInfo.declared ? { changeClass: changeClassInfo } : {}) };
@@ -247,8 +240,8 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
       selectedChecksVerified: plan.mode !== NO_CI_MODE, noCI: plan.mode === NO_CI_MODE,
       ...(plan.changeClass?.fastPath ? { changeClass: plan.changeClass, authorityTerminalState: 'local-consent' } : {}),
-      ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy,
-        integration: plan.integration, historicalIntegrationMethodProven: false } : {}),
+      ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy, integration: plan.integration,
+        historicalIntegrationMethodProven: false, ...(plan.reviewedEquivalentCommit ? { sourceIntegrated: false, historicalDraft: 'superseded' } : {}) } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
       ...(plan.successor ? { successor: plan.successor } : {}),
@@ -291,7 +284,7 @@ export function runUnifiedCleanup(root, argv, out = console.log) {
       requiredChecks: noCI ? [] : (checksToken ? checksToken.split(',') : []),
       workflow: noCI ? null : workflowToken,
       recovery: extraFlags.includes('--recovery'),
-      detached: rest.includes('--detached'), noCI, changeClass });
+      detached: rest.includes('--detached'), noCI, changeClass, reviewedEquivalentCommit: option(rest, 'reviewed-equivalent-commit') || undefined });
     out(canonicalJson(plan)); return 0;
   }
   if (sub === 'sweep') return runUserCleanupSweep(root, rest, out);
@@ -310,6 +303,7 @@ export function runUserCleanup(root, argv, out = console.log) {
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
       requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow'),
       recovery: argv.includes('--recovery'), detached: argv.includes('--detached'),
+      reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
       changeClass });
     out(canonicalJson(plan)); return 0;
   }

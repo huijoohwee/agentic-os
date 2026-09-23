@@ -1,7 +1,7 @@
 /** Explicit operator recovery policy; never provider authority or a merge-method choice. */
 import { canonicalJson } from '../src/governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef } from '../src/git-repository.mjs';
-import { exactTreeProjectionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
+import { exactTreeProjectionProof, reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 export const refuse = reason => { throw Object.assign(new Error(`blocked-user-cleanup-${reason}`), { reason }); };
 
 export const RECOVERY_MODE = 'explicit-local-user-consent-recovery';
@@ -36,6 +36,12 @@ function contentInclusion(plan, head, read) {
 }
 
 export function recoveryIntegration(plan, read) {
+  if (plan.reviewedEquivalentCommit) {
+    if (!plan.detachedHead || plan.successor) refuse('equivalent-options');
+    const proof = reviewedEquivalentTransitionProof(plan.merge, plan.detachedHead, plan.reviewedEquivalentCommit, plan.head, { cwd: plan.root });
+    if (!proof) refuse('equivalent-transition');
+    return { ...proof, reviewedSource: contentInclusion(plan, plan.head, read) };
+  }
   if (plan.successor) {
     const proof = successorIntegrationProof(plan.merge, plan.successor.predecessorHead,
       plan.head, plan.successor.replacedPaths, { cwd: plan.root });
