@@ -339,7 +339,7 @@ export function runStorage(argv) {
     if (!match || Object.hasOwn(args, match[1])) fail('arguments');
     args[match[1]] = match[2] ?? true;
   }
-  const allowed = action === 'report' ? ['repository', 'directory', 'deep', 'category', 'max-entries', 'max-ms']
+  const allowed = action === 'report' ? ['repository', 'directory', 'name', 'deep', 'category', 'max-entries', 'max-ms']
     : action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination']
     : action === 'apply' ? ['plan', 'authorize', 'stopped', 'resume'] : ['repository', 'store'];
   if (Object.keys(args).some(k => !allowed.includes(k))) fail('arguments');
@@ -348,11 +348,13 @@ export function runStorage(argv) {
     if ((typeof args.repository === 'string') === (typeof args.directory === 'string')
       || args.repository !== undefined && typeof args.repository !== 'string'
       || args.directory !== undefined && typeof args.directory !== 'string'
+      || args.name !== undefined && typeof args.name !== 'string'
       || args.deep !== undefined && args.deep !== true
       || args.category !== undefined && typeof args.category !== 'string'
       || ['max-entries', 'max-ms'].some(key => args[key] !== undefined && !/^[1-9][0-9]*$/u.test(args[key])))
       fail('arguments');
     result = reportStorage({ cwd: args.repository, directory: args.directory ?? null,
+      name: args.name ?? null,
       deep: args.deep ?? false, category: args.category ?? null,
       ...(args['max-entries'] === undefined ? {} : { maxEntries: Number(args['max-entries']) }),
       ...(args['max-ms'] === undefined ? {} : { maxMs: Number(args['max-ms']) }) });
