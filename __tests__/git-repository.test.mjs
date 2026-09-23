@@ -32,11 +32,9 @@ import {
 } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { commonDir, git, remoteRefSha, remoteRefShas, repoRoot, worktrees } from '../src/git.mjs';
-
 function run(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 }
-
 function repository(t, name = 'repository') {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-git-adapter-'));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
@@ -52,7 +50,6 @@ function repository(t, name = 'repository') {
   run(root, 'update-ref', 'refs/remotes/upstream/trunk', 'HEAD');
   return { parent, root: realpathSync(root) };
 }
-
 function profile(overrides = {}) {
   return createRepositoryProfile({
     repository: 'configured:fixture',
@@ -564,7 +561,9 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const governanceBytes = readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url));
   const governanceSha = createHash('sha256').update(governanceBytes).digest('hex');
   assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390');
-  const priorFiles = selected.files.map(file => file.path === 'src/git.mjs'
+  const priorFiles = selected.files.map(file => file.path === 'bin/agentic-os-filter-compare.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)),
+      sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' } : file.path === 'src/git.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url)),
       sha256: 'd51f658be657d761badc23d29b8e15267a8d542df660f9087a2538e2e2c3dd5a' } : file.path === 'src/governance.mjs'
     ? { ...file, bytes: governanceBytes, sha256: governanceSha } : file.path === 'src/guard-main.mjs'
