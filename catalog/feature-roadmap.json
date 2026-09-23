@@ -1,0 +1,113 @@
+{
+  "schema": "agentic-os/feature-roadmap/v1",
+  "entries": [
+    {
+      "id": "adlc-scoped-lanes",
+      "title": "Scoped development lanes",
+      "owner": "github.com/huijoohwee/agentic-os",
+      "lifecycle": "active",
+      "readiness": "source-observed",
+      "plan": {
+        "path": "guides/PRD-TAD-ADR-MVP-GTM.md",
+        "revision": "ac9ea610d8ad3771618caa4d528c703908611639",
+        "continuityId": "PRD-TAD-ADR-ADLC-PIPELINE-001",
+        "version": "1.4.6"
+      },
+      "guideline": {
+        "repository": "github.com/huijoohwee/huijoohwee.github.io",
+        "path": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
+        "revision": "e8d2a10a8d3e5735c43edf350a22523df05fdf91",
+        "version": "2.7.0"
+      },
+      "implementation": {
+        "path": "src/worktree.mjs",
+        "revision": "ac9ea610d8ad3771618caa4d528c703908611639"
+      },
+      "check": {
+        "path": "__tests__/worktree-inventory.test.mjs",
+        "revision": "ac9ea610d8ad3771618caa4d528c703908611639"
+      },
+      "dependencies": [],
+      "nextAction": "Keep owner checks and exact release evidence current.",
+      "commercialCandidateId": "repository-livelock-audit"
+    },
+    {
+      "id": "graph-python-learning",
+      "title": "Offline Python learning in the shared Canvas",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "lifecycle": "developing",
+      "readiness": "source-observed",
+      "plan": {
+        "path": "docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f",
+        "continuityId": "OFFLINE-PYTHON-LEARNING-WORKSPACE-001",
+        "version": "1.0.0"
+      },
+      "guideline": {
+        "repository": "github.com/huijoohwee/huijoohwee.github.io",
+        "path": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
+        "revision": "993eb0e28a6d2e9427364df98c39c8a5e10910b4",
+        "version": "3.1.0"
+      },
+      "implementation": {
+        "path": "canvas/src/features/python-learning/PythonLearningPane.tsx",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f"
+      },
+      "check": {
+        "path": "canvas/src/__tests__/pythonLearning.test.ts",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f"
+      },
+      "dependencies": [],
+      "nextAction": "Close the protected integration gate and retain live Canvas proof.",
+      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1200"
+    },
+    {
+      "id": "graph-source-cloud-entry",
+      "title": "Source Files cloud sign-in entry",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "lifecycle": "developing",
+      "readiness": "source-observed",
+      "plan": {
+        "path": "docs/documents/agentic-graph-storage-sync-prd-tad-adr-mvp-gtm.md",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f",
+        "continuityId": "PLAN-AGENTIC-GRAPH-STORAGE-SYNC-PRD-TAD-ADR-MVP-GTM",
+        "version": "5.1.0"
+      },
+      "guideline": {
+        "repository": "github.com/huijoohwee/huijoohwee.github.io",
+        "path": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
+        "revision": "e8d2a10a8d3e5735c43edf350a22523df05fdf91",
+        "version": "2.7.0"
+      },
+      "implementation": {
+        "path": "canvas/src/features/markdown-workspace/SourceFileCloudSyncIndicator.tsx",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f"
+      },
+      "dependencies": [],
+      "nextAction": "Resolve the protected source gate before claiming integration.",
+      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1201"
+    },
+    {
+      "id": "graph-local-browser-signin",
+      "title": "Local browser sign-in for development",
+      "owner": "github.com/huijoohwee/agentic-graph",
+      "lifecycle": "planned",
+      "readiness": "spec-only",
+      "plan": {
+        "path": "docs/documents/agentic-graph-storage-sync-document.companion.md",
+        "revision": "86924949a292949a8aa90d56188c7f625cd0319f",
+        "continuityId": "PLAN-AGENTIC-GRAPH-STORAGE-SYNC-PRD-TAD-ADR-MVP-GTM",
+        "version": "5.1.0"
+      },
+      "guideline": {
+        "repository": "github.com/huijoohwee/huijoohwee.github.io",
+        "path": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
+        "revision": "e8d2a10a8d3e5735c43edf350a22523df05fdf91",
+        "version": "2.7.0"
+      },
+      "dependencies": ["graph-source-cloud-entry"],
+      "nextAction": "Register the loopback callback, configure the local Worker, and capture live provider proof.",
+      "reviewUrl": "https://github.com/huijoohwee/agentic-graph/pull/1202"
+    }
+  ]
+}
