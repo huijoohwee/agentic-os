@@ -390,7 +390,7 @@ test('cleanup prerequisites preserve merge observation and block only the cleanu
   assert.equal(git(['rev-parse', 'HEAD'], { cwd: s.lane }), revision);
 });
 
-test('cleanup refuses a valid unrelated workflow selected during asynchronous planning', async t => {
+for (const replaceTarget of [false, true]) test(`cleanup keeps its target workflow across asynchronous planning: replaceTarget=${replaceTarget}`, async t => {
   const s = completeFixture(t), repository = 'github.com/owner/repo';
   const revision = git(['rev-parse', 'HEAD'], { cwd: s.lane });
   const common = { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md',
@@ -398,15 +398,20 @@ test('cleanup refuses a valid unrelated workflow selected during asynchronous pl
   startWorkflow(s.root, repository, { ...common, worktreeId: basename(s.lane) });
   const bundlePath = join(s.support, 'switch-bundle.json'); writeFileSync(bundlePath, '{}');
   let applies = 0;
-  await assert.rejects(runReleaseCommonCleanup({ root: s.root, ref: s.ref, bundlePath, stopped: true, out: () => {},
+  const complete = () => runReleaseCommonCleanup({ root: s.root, ref: s.ref, bundlePath, stopped: true, out: () => {},
     planCompletionClose: async () => {
       git(['config', '--local', '--unset', 'agentic-os.workflowManifest'], { cwd: s.root });
-      startWorkflow(s.root, repository, { ...common, worktreeId: 'unrelated-member' });
+      const nextRevision = replaceTarget ? git(['commit-tree', `${revision}^{tree}`, '-p', revision,
+        '-m', 'replacement workflow source'], { cwd: s.root }) : revision;
+      startWorkflow(s.root, repository, { ...common, revision: nextRevision,
+        worktreeId: replaceTarget ? basename(s.lane) : 'unrelated-member' });
       return { repository, authorizationDigest: 'a'.repeat(64) };
     },
     applyCompletionClose: async () => { applies += 1; },
-  }), /blocked-workflow-effect-identity-drift/);
-  assert.equal(applies, 0);
+  });
+  if (replaceTarget) await assert.rejects(complete(), /blocked-workflow-effect-identity-drift/);
+  else assert.equal(await complete(), 0);
+  assert.equal(applies, replaceTarget ? 0 : 1);
 });
 
 test('progressive completion closes serially, retains pending and detached work, and resumes without repeated cleanup', async t => {
