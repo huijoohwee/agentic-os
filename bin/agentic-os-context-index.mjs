@@ -38,7 +38,7 @@ function inventory(root, scope) {
   if (paths.length > CONTEXT_LIMITS.files) fail('file-count-narrow-path');
   return paths;
 }
-function source(root, path) {
+function source(root, path, verifyOnly = false) {
   contextPath(path);
   assertDirectoryAncestors(path, root);
   const absolute = join(root, path);
@@ -50,9 +50,11 @@ function source(root, path) {
   const after = lstatSync(absolute, { bigint: true });
   if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
     || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) fail('source-changed-retry');
+  const sha256 = hash(bytes);
+  if (verifyOnly) return { sha256 };
   const text = decode(bytes);
   if (text.includes('\0')) fail('text-required');
-  return { path, sha256: hash(bytes), bytes: bytes.length, text, lines: text.split('\n') };
+  return { path, sha256, bytes: bytes.length, text, lines: text.split('\n') };
 }
 function structure(file) {
   const facts = [], imports = [];
@@ -107,7 +109,7 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
     // Re-read exact bytes, including edits whose size and mtime were deliberately preserved.
     for (const file of files) {
       if (Date.now() - started > CONTEXT_LIMITS.durationMs) fail('deadline-narrow-path');
-      if (source(root, file.path)?.sha256 !== file.sha256) fail('source-changed-retry');
+      if (source(root, file.path, true)?.sha256 !== file.sha256) fail('source-changed-retry');
     }
     previous = next;
     const digest = hash(JSON.stringify(files.map(file => [file.path, file.sha256])));
