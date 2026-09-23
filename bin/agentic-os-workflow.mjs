@@ -18,6 +18,20 @@ const PHASE_SCHEMAS = Object.freeze({ preparation: 'agentic-os/flight-observatio
   ci: 'agentic-os/pipeline-observation/v1', integration: 'agentic-os/sprint-finish/v1', cleanup: 'agentic-os/user-cleanup-receipt/v1',
   synchronization: 'agentic-os-canonical-sync-receipt/v2', runtime: 'agentic-local-runtime-readiness/v1' });
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
+const selectionKey = (repository, kind, id) => `agentic-os.workflow-${kind}-${hash(json([repository, id]))}`;
+const selection = (root, key) => {
+  const value = observeGit(['config', '--local', '--get-all', key], { cwd: root, allowFail: true });
+  if (value !== null && (!value || /[\r\n\x00]/u.test(value))) fail('selection-locator');
+  return value;
+};
+function retainSelection(root, repository, selected) {
+  const { manifest, path, members } = selected;
+  git(['config', '--local', selectionKey(repository, 'owner', manifest.id), path], { cwd: root });
+  for (const member of members.filter(row => row.child.source.repository === repository))
+    git(['config', '--local', selectionKey(repository, 'member', member.child.context.worktreeId), path], { cwd: root });
+  for (const row of manifest.allocations ?? [])
+    git(['config', '--local', selectionKey(repository, 'ref', row.ref), path], { cwd: root });
+}
 
 export function workflowPaths(root, repository) {
   const common = commonDir(root);
@@ -138,10 +152,20 @@ export function startWorkflow(root, repository, { revision, planningPath, worktr
 }
 
 /** Read the existing immutable owner; the local selected-path config is navigation only. */
-export function readSelectedWorkflow(root, repository, { input = null, required = false } = {}) {
-  const selected = observeGit(['config', '--local', '--get', 'agentic-os.workflowManifest'], { cwd: root, allowFail: true });
+export function readSelectedWorkflow(root, repository, { input = null, required = false, worktreeId = null, ref = null } = {}) {
+  const key = [ref && selectionKey(repository, 'ref', ref), worktreeId && selectionKey(repository, 'member', worktreeId)]
+    .find(key => key && selection(root, key)) ?? 'agentic-os.workflowManifest';
+  const selected = selection(root, key);
   if (!input && !selected) { if (required) fail('selection-required'); return null; }
-  const path = resolve(input ?? selected), bytes = read(path, 32000), digest = hash(bytes), manifest = JSON.parse(bytes);
+  let path = resolve(input ?? selected), bytes = read(path, 32000), manifest = JSON.parse(bytes);
+  const ownerKey = selectionKey(repository, 'owner', manifest.id), owner = selection(root, ownerKey);
+  if (owner && resolve(owner) !== path) {
+    if (input) fail('selection-stale');
+    const latest = JSON.parse(read(resolve(owner), 32000));
+    if (latest.id !== manifest.id) fail('selection-binding');
+    path = resolve(owner); bytes = read(path, 32000); manifest = latest;
+  }
+  const digest = hash(bytes);
   const paths = workflowPaths(root, repository);
   if (!inside(join(paths.workspace, '.artifacts', 'workflows'), path)
     || basename(path) !== 'manifest.json' || basename(dirname(path)) !== digest) fail('selection-digest');
@@ -149,7 +173,7 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
     if (manifest.execution !== undefined) fail('foreign-declared-owner');
     if (required || input) fail('selection-binding'); return null;
   }
-  if (input && selected && resolve(selected) !== path) {
+  if (!owner && input && selected && resolve(selected) !== path) {
     const current = JSON.parse(read(resolve(selected), 32000));
     if (current.id === manifest.id) fail('selection-stale');
   }
@@ -179,7 +203,9 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
     const older = load(manifest.previous).manifest;
     assertGroupSuccessor(manifest, older, manifest.members, load, true);
   }
-  if (observeGit(['config', '--local', '--get', 'agentic-os.workflowManifest'], { cwd: root, allowFail: true }) !== selected)
+  if (key !== 'agentic-os.workflowManifest' && !members.some(row => row.child.context.worktreeId === worktreeId)
+    && !manifest.allocations?.some(row => row.ref === ref)) fail('selection-member-binding');
+  if ((!owner || key !== 'agentic-os.workflowManifest') && selection(root, key) !== selected || selection(root, ownerKey) !== owner)
     fail('selection-drift');
   return { manifest, path, digest, members };
 }
@@ -188,7 +214,7 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
 export function assertWorkflowEffect({ root, repository, phase, worktreeId, revision, dirty = false, ref = null, mode = 'effect' }) {
   if (!WORKFLOW_PHASES.includes(phase) || !/^[a-f0-9]{40}$/u.test(revision ?? '')
     || !['effect', 'dependencies'].includes(mode)) fail('effect-binding');
-  const selected = readSelectedWorkflow(root, repository);
+  const selected = readSelectedWorkflow(root, repository, { worktreeId, ref });
   const standalone = { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' };
   if (!selected || selected.manifest.execution === undefined) return standalone;
   const allocation = ref && selected.manifest.allocations?.find(row => row.ref === ref);
@@ -238,7 +264,7 @@ export function rebindWorkflowCandidate({ root, repository, ref, worktreeId, pre
   const declared = expectedDecision?.status === 'eligible';
   if (!declared && expectedDecision?.status !== 'standalone' || declared && (expectedDecision.phase !== 'ci'
     || expectedDecision.mode !== 'dependencies' || expectedDecision.revision !== previousRevision)) fail('candidate-rebind-decision');
-  const selected = readSelectedWorkflow(root, repository);
+  const selected = readSelectedWorkflow(root, repository, { worktreeId, ref });
   if (!selected || selected.manifest.execution === undefined) {
     if (declared) fail('effect-identity-drift');
     return { status: 'standalone', authority: false };
@@ -486,8 +512,9 @@ function collectGroup(root, repository, manifest, inputPath) {
   try{
     // This existing clone-local locator is navigation only. An older same-workflow request
     // must not replace a newer root or race another successor of the selected root.
+    const navigation = boundary ? readSelectedWorkflow(root, repository) : null;
     if(boundary){
-      const selected=observeGit(['config','--local','--get','agentic-os.workflowManifest'],{cwd:root,allowFail:true});
+      const selected=selection(root,selectionKey(repository,'owner',stored.id)) ?? navigation?.path;
       if(selected && selected!==manifestPath){
         const selectedBytes=read(selected,32000), current=JSON.parse(selectedBytes);
         if(current.id!==stored.id && (boundary!=='start' || sequence!==1))fail('selection-workflow');
@@ -504,7 +531,14 @@ function collectGroup(root, repository, manifest, inputPath) {
       writeFileSync(join(staging,'manifest.json'),bytes,{flag:'wx',mode:0o600});
       if(lstatSync(directory,{throwIfNoEntry:false}))fail('storage-race');renameSync(staging,directory);
     }
-    if(boundary)git(['config','--local','agentic-os.workflowManifest',manifestPath],{cwd:root});
+    if(boundary){
+      // Bootstrap the previously selected legacy owner before another START moves navigation.
+      if(navigation && !selection(root,selectionKey(repository,'owner',navigation.manifest.id)))
+        retainSelection(root,repository,navigation);
+      retainSelection(root,repository,{manifest:stored,path:manifestPath,
+        members:members.map(ref=>({child:load(ref).manifest}))});
+      git(['config','--local','agentic-os.workflowManifest',manifestPath],{cwd:root});
+    }
     result={schema:'agentic-os/workflow-collection/v1',authority:false,reused,source:manifest.source,digest,manifest:manifestPath,
       ...(boundary?{boundary,selected:true}:{}),
       sequence,members:members.length,storage:paths.storage,targetRoot:paths.targets,bytes:Buffer.byteLength(bytes)};

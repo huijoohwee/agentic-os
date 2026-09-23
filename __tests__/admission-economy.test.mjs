@@ -87,6 +87,22 @@ test('explicit active re-admission extends scope without publishing or replacing
   await assert.rejects(f.start('one', `--mission=${before.path}`), /stale|drift|selected/i);
 });
 
+test('another mission START does not displace exact active readmission or its checkout cap', async t => {
+  const f = fixture(t);
+  await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const original = f.selected(), target = lanePath('one', 'test-device', f.root), head = headSha('HEAD', target);
+  const other = startWorkflow(f.root, f.profile.repository, { revision: head, planningPath: f.plan,
+    worktreeId: 'test-device--other', execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } });
+  assert.equal(await cmdStart(f.root, ['one', '--device=test-device', '--write=additional.txt',
+    `--mission=${original.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), 0);
+  assert.deepEqual(records.get('agent/test-device/one', f.root).writePaths, ['additional.txt', 'owned.txt']);
+  assert.equal(readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: 'test-device--other' }).path, other.manifest);
+  const own = readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: basename(target) });
+  await assert.rejects(f.start('two', `--mission=${own.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('one', `--mission=${original.path}`), /selection-stale/);
+  assert.equal(worktrees(f.root).length, 2);
+});
+
 for (const transient of [false, true]) test(`active readmission separates protected history from authored bytes: transient=${transient}`, async t => {
   const f = fixture(t);
   await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');

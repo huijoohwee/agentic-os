@@ -19,7 +19,8 @@ const WORKFLOW_INPUTS = new Set(['.agentic-os.json', 'bin/agentic-os-workflow.mj
 function workflowGuard(root, mode) {
   return createWorkflowEffectGuard(() => {
     if (mode === 'plan') return null; // Dependency blockers must not hide read-only inspection.
-    const selected = observeGit(['config', '--local', '--get', 'agentic-os.workflowManifest'], { cwd: root, allowFail: true });
+    const selected = observeGit(['config', '--local', '--name-only', '--get-regexp',
+      '^agentic-os\\.(workflowmanifest|workflow-(owner|member|ref)-[a-f0-9]{64})$'], { cwd: root, allowFail: true });
     if (!selected) return null; // Legacy repositories need no fabricated profile or workflow enrollment.
     const registration = worktrees(root).find(row => resolve(row.path) === root);
     if (!registration) throw Error('blocked-test-worktree-binding');

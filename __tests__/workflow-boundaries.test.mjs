@@ -60,8 +60,13 @@ test('one selected workflow retains multiple worktrees through idempotent start/
   assert.deepEqual(JSON.parse(readFileSync(retained.manifest,'utf8')).codebaseIndex,ended.codebaseIndex);
   const next=startWorkflow(root,repository,{...startArgs,worktreeId:'unique-next'});
   assert.notEqual(JSON.parse(readFileSync(next.manifest,'utf8')).id,manifest.id);
-  assert.throws(()=>collect(endInput),/selection-workflow/);
+  assert.throws(()=>collect(endInput),/selection-stale/);
   assert.equal(git('config','--get','agentic-os.workflowManifest'),next.manifest);
+  assert.equal(readSelectedWorkflow(root,repository,{worktreeId:'first'}).path,retained.manifest);
+  const resumed=collect({...endInput,previous:{file:retained.manifest,digest:retained.digest}});
+  assert.equal(readSelectedWorkflow(root,repository,{worktreeId:'first'}).path,resumed.manifest);
+  assert.equal(readSelectedWorkflow(root,repository,{worktreeId:'unique-next'}).path,next.manifest);
+  assert.throws(()=>readSelectedWorkflow(root,repository,{input:retained.manifest}),/selection-stale/);
 });
 
 function executionFixture(t) {
@@ -127,7 +132,7 @@ test('effect rechecks latch declared identity across valid selected-root switche
   context = { root: s.root, repository: s.repository, worktreeId: s.worktreeId, revision: s.revision, phase: 'preparation' };
   startWorkflow(s.root, s.repository, { revision: s.revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md',
     worktreeId: 'other-valid-member', execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } });
-  assert.throws(() => guard(), /effect-identity-drift/, 'a valid unrelated root must not silently become standalone');
+  assert.equal(guard().manifestDigest, successor.manifestDigest, 'an unrelated START preserves the running lane owner');
   context.worktreeId = 'other-valid-member';
   assert.throws(() => guard(), /effect-identity-drift/, 'another eligible declared root cannot replace the latched identity');
 });
@@ -139,7 +144,18 @@ test('a blocked declared prerequisite also binds subsequent effect rechecks', t 
   assert.throws(() => guard('dependencies'), /blocked-workflow-dependencies/);
   startWorkflow(s.root, s.repository, { revision: s.revision,
     planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId: 'legacy-other' });
-  assert.throws(() => guard(), /effect-identity-drift/);
+  assert.throws(() => guard(), /blocked-workflow-dependencies/);
+});
+
+test('the first indexed START retains the previous legacy navigation owner', t => {
+  const s = executionFixture(t), original = s.selected();
+  for (const key of s.git('config', '--name-only', '--get-regexp', '^agentic-os\\.workflow-').split('\n'))
+    s.git('config', '--unset-all', key);
+  startWorkflow(s.root, s.repository, { revision: s.revision,
+    planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId: 'legacy-other' });
+  assert.equal(s.guard({ phase: 'preparation' }).workflowId, original.manifest.id);
+  assert.throws(() => s.guard(), /blocked-workflow-dependencies/);
+  assert.equal(readSelectedWorkflow(s.root, s.repository, { input: original.path }).digest, original.digest);
 });
 
 test('native effect guard blocks unchanged prerequisites, preserves independent work and rejects stale proof', t => {
