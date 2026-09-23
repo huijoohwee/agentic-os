@@ -1,6 +1,6 @@
 # Deploy, Dev-to-Prod promotion, and rollback workflow
 
-Continuity `DEPLOY-WORKFLOW-001@1.0.0`.
+Continuity `DEPLOY-WORKFLOW-001@1.0.1`.
 
 This is the global DEPLOY protocol stage. It starts after exact source integration and governs
 deploy, Dev-to-Prod promotion, readback, and rollback. Cleanup remains global but repo-local.
@@ -36,6 +36,11 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
    cleanup, branch deletion, or source reset for runtime rollback.
 8. Reobserve the post-rollback runtime. If the runtime is ambiguous, preserve the state, stop
    further promotion, and use the owner's recovery workflow instead of retrying blindly.
+
+9. Complete the [planning release handover](./PRD-TAD-ADR-MVP-GTM.md#planning-release-handover):
+   update the affected feature list and append the workspace TODO successor with separate Development,
+   Production Release and Runtime evidence, remaining work and the next owner action. Record blocked
+   or rolled-back outcomes just as explicitly as verified production.
 
 ## Boundaries
 

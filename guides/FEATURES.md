@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Feature Index"
 doc_type: "Feature Index"
-version: "1.0.0"
-date: "2026-09-09"
+version: "1.0.1"
+date: "2026-09-23"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "System architect function"
@@ -79,7 +79,11 @@ Product plans remain editable beside each implementation. The private workspace
 TODO/Kanban remains the task owner; this register contains feature outcomes and
 the next owner action, not task assignments. Refresh the relevant row when its
 owner plan, source or release identity changes. Confirm exact Git blobs and
-five-role plan identity before calling a cross-repository view observed.
+five-role plan identity before calling a cross-repository view observed. After a
+delivery attempt, apply the [planning release handover](./PRD-TAD-ADR-MVP-GTM.md#planning-release-handover)
+to the affected feature rows: distinguish Development, Production Release and
+Runtime evidence and link the successor TODO with its next owner action. A source
+status does not fill a missing production or runtime indication.
 
 ## How to read the index
 
