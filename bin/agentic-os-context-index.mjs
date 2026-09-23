@@ -81,7 +81,7 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
   root = realpathSync(resolve(root));
   if (realpathSync(repoRoot(root)) !== root) fail('repository-root-required');
   let previous = new Map();
-  function snapshot(path, includeStructure = false) {
+  function snapshot(path, includeStructure = false, deferVerification = false) {
     const scope = contextPath(path), started = Date.now(), clock = performance.now(), cpu = process.cpuUsage();
     const revision = decode(git(root, ['rev-parse', '--verify', 'HEAD'])).trim();
     const paths = inventory(root, scope), files = [], excluded = [], next = new Map();
@@ -104,14 +104,15 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
       next.set(path, { sha256: file.sha256, metadata });
       files.push({ ...file, ...metadata });
     }
-    if (JSON.stringify(inventory(root, scope)) !== JSON.stringify(paths)
-      || decode(git(root, ['rev-parse', '--verify', 'HEAD'])).trim() !== revision) fail('inventory-changed-retry');
-    // Re-read exact bytes, including edits whose size and mtime were deliberately preserved.
-    for (const file of files) {
-      if (Date.now() - started > CONTEXT_LIMITS.durationMs) fail('deadline-narrow-path');
-      if (source(root, file.path, true)?.sha256 !== file.sha256) fail('source-changed-retry');
-    }
-    previous = next;
+    const verify = () => {
+      if (JSON.stringify(inventory(root, scope)) !== JSON.stringify(paths) || decode(git(root, ['rev-parse', '--verify', 'HEAD'])).trim() !== revision) fail('inventory-changed-retry');
+      // Re-read exact bytes, including edits whose size and mtime were deliberately preserved.
+      for (const file of files) {
+        if (Date.now() - started > CONTEXT_LIMITS.durationMs) fail('deadline-narrow-path'); if (source(root, file.path, true)?.sha256 !== file.sha256) fail('source-changed-retry');
+      }
+      previous = next;
+    };
+    if (!deferVerification) verify();
     const digest = hash(JSON.stringify(files.map(file => [file.path, file.sha256])));
     const finish = result => {
       const usage = process.cpuUsage(cpu);
@@ -119,12 +120,16 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
         cpuMs: (usage.user + usage.system) / 1000, cpuScope: 'current-process-excluding-git-children',
         sourceReadBytes: bytes * 2, tokens: null, costUsd: null, grantsAuthority: false } });
     };
-    return { files, finish, receipt: { schema: 'agentic-os/codebase-context/v1', repositoryRoot: root, scope, revision,
+    return { files, finish, verify, receipt: { schema: 'agentic-os/codebase-context/v1', repositoryRoot: root, scope, revision,
       snapshotSha256: digest, sourceMode: 'working-tree', freshness: 'bytes-verified-during-read',
       atomicSnapshot: false, remoteFreshness: 'not-checked', grantsAuthority: false,
       untrustedSourceContent: true, fileCount: files.length, excludedCount: excluded.length,
       sourceBytes: bytes, parsedFiles: parsed, reusedFiles: reused,
       coverage: 'explicit-scope-text; lexical-navigation-only', excluded } };
+  }
+  function traceSource(path) {
+    const { files, verify, receipt } = snapshot(path, true, true);
+    return { file: files.find(item => item.path === path), verify, revision: receipt.revision, sourceReadBytes: receipt.sourceBytes * 2, parsedFiles: receipt.parsedFiles, reusedFiles: receipt.reusedFiles };
   }
   const reference = file => ({ path: file.path, sha256: file.sha256, bytes: file.bytes });
   function page(items, limit, after, key) {
@@ -175,5 +180,5 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
       content: selected.join('\n'), nextLine: line + selected.length <= file.lines.length
         ? line + selected.length : null });
   }
-  return Object.freeze({ map, search, read });
+  return Object.freeze({ map, search, read, traceSource });
 }
