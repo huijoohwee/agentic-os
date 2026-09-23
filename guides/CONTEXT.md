@@ -26,6 +26,9 @@ gtm_revision: "1.0.1"
 
 # Native context
 
+[Shared cache policy](CACHE.md) owns cross-mechanism lifecycle declarations; this guide owns
+context identity, invalidation and reuse mechanics.
+
 OS owns reusable context mechanisms. Canvas owns application wiring, Graph owns its control plane
 and production deployment, Commerce owns transactions. [Shared memory](MEMORY.md) remains the owner
 of curated cross-task records; codebase discovery neither imports nor rewrites those records.

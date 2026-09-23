@@ -18,6 +18,9 @@ status: "implementation"
 
 # Repository validation
 
+[Shared cache policy](CACHE.md) routes cross-mechanism lifecycle decisions. This guide retains
+the consumer check-input, receipt-reuse and validation authority contract.
+
 ## PRD
 
 `REPOSITORY-VALIDATION-001@1.1.0`: a solo maintainer changes one source concern and
