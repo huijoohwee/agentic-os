@@ -2,16 +2,18 @@
 import { TextDecoder } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
-import { currentBranch, observeGit, remoteTransport, repoRoot, worktreeInventory, worktrees } from '../src/git.mjs';
+import { currentBranch, worktreeInventory } from '../src/git.mjs';
 import { loadRepositoryProfile } from '../src/git-repository.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { gh, observeGitHubReview } from '../src/github-provider.mjs';
-import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
 import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-review.mjs';
 import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
-import { RECOVERY_MODE, recoveryPolicy } from './agentic-os-cleanup-recovery.mjs';
-import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import { RECOVERY_MODE } from './agentic-os-cleanup-recovery.mjs';
+import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
+import { cleanupWorkflowContext, releaseCommonLocalCleanupPolicy, runReleaseCommonSuccessorComplete } from '../src/cleanup.mjs';
+export { runReleaseCommonSuccessorComplete };
+import { isLaneRef } from '../src/lane-id.mjs';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { realpathSync } from 'node:fs';
 import { createWorkflowEffectGuard } from './agentic-os-workflow.mjs';
 import { get } from '../src/lane-records.mjs';
@@ -52,31 +54,6 @@ function branchFromLocalRef(localRef) {
 function headSha(value) {
   return typeof value === 'string' && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value) ? value : null;
 }
-function releaseCommonLocalCleanupPolicy(root, profile) {
-  if (repoRoot(root) !== root || currentBranch(root) !== 'main')
-    fail('blocked-release-common-local-cleanup-canonical', 'local cleanup runs from canonical main');
-  const remoteUrl = remoteTransport('origin', root).fetchUrl;
-  const remote = remoteUrl.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/u)?.[1] ?? null;
-  const selected = profile.repository.match(/^github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/u)?.[1] ?? null;
-  if (!remote || remote !== selected) fail('blocked-release-common-local-cleanup-remote', 'canonical origin does not match the selected GitHub repository');
-  const canonical = observeGit(['rev-parse', '--verify', 'refs/heads/main^{commit}'], { cwd: root, maxBuffer: 65536 });
-  if (observeGit(['rev-parse', '--verify', 'HEAD'], { cwd: root, maxBuffer: 65536 }) !== canonical
-    || observeGit(['rev-parse', '--verify', 'refs/remotes/origin/main'], { cwd: root, maxBuffer: 65536 }) !== canonical
-    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root, maxBuffer: 65536 }) !== '')
-    fail('blocked-release-common-local-cleanup-canonical', 'canonical main must be current and clean before local cleanup');
-  return {
-    root,
-    repository: remote,
-    remoteUrl,
-    canonical,
-    localRef: 'refs/heads/main',
-    mode: RECOVERY_MODE,
-    enrollment: 'release-common-complete',
-    ...recoveryPolicy(root, remote),
-    selectedEffects: ['quarantine-projection', 'quarantine-registration'],
-  };
-}
-
 export function resolveReleaseCommonCompleteBinding(root, ref, protectedBranch) {
   if (!isLaneRef(ref)) fail('blocked-invalid-lane-ref',
     'release-common complete requires --ref=<lane>');
@@ -203,18 +180,6 @@ export async function watchReleaseCommonReview(binding, {
 }
 
 
-/** Cleanup constraints apply to the destructive effect, never to merge observation or integration. */
-function cleanupWorkflowContext(root, ref, repository) {
-  const registration = worktrees(root).find(row => row.branch === ref);
-  const record = get(ref, root), parsed = parseLaneRef(ref);
-  const retainedPath = record?.ref === ref && typeof record.worktree === 'string' ? record.worktree : null;
-  const worktreeId = registration ? basename(registration.path) : retainedPath ? basename(retainedPath)
-    : parsed ? `${parsed.device}--${parsed.scope}` : null;
-  return { root, repository, phase: 'cleanup', ref, worktreeId,
-    revision: registration ? observeGit(['rev-parse', 'HEAD'], { cwd: registration.path }) : record?.head,
-    dirty: registration ? Boolean(observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: registration.path })) : false };
-}
-
 export async function runReleaseCommonCleanup({
   root,
   ref,
@@ -307,6 +272,7 @@ export async function runReleaseCommonLocalCleanup({
     return 1;
   }
 }
+
 export async function runReleaseCommonCompleteWait({
   root,
   argv,

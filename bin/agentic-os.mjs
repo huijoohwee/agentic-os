@@ -126,6 +126,8 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     }
     case 'complete': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
+      if (option(rest, 'via-pr') !== null)
+        return completeModule.runReleaseCommonSuccessorComplete({ root, argv: rest, profile, out, err });
       if (option(rest, 'worktrees') !== null) return completeModule.runProgressiveCompletion({
         root, directory: option(rest, 'worktrees'), timeoutMs: Number(option(rest, 'timeout-ms', '60000')), policy, profile, out,
         complete: (ref, timeoutMs, guard) => cmdReleaseCommon(cwd, root, ['complete', `--ref=${ref}`, `--timeout-ms=${timeoutMs}`], policy, profile, true, guard),

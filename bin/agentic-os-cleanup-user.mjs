@@ -96,8 +96,9 @@ function observePolicy(mechanics, root, resolver = null) {
 }
 function mechanics(plan) {
   return { ...(plan.mode === RECOVERY_MODE ? RECOVERY_LIMITS : LIMITS), mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
-    expectedBranch: plan.detachedHead ? null : plan.branch,
-    expectedHeadRevision: plan.detachedHead ?? plan.head, detachedRecovery: Boolean(plan.detachedHead),
+    expectedBranch: plan.detachedHead ? null : plan.successor?.predecessorRef ?? plan.branch,
+    expectedHeadRevision: plan.detachedHead ?? plan.successor?.predecessorHead ?? plan.head,
+    detachedRecovery: Boolean(plan.detachedHead),
     expectedCanonicalRef: 'refs/heads/main',
     expectedCanonicalRevision: plan.canonical, profileDigest: plan.policyDigest,
     recoveryInventoryDigest: plan.inventoryDigest, recoveryInventoryContentEntries: plan.inventoryContentEntries,
@@ -134,6 +135,7 @@ function validatePlan(input) {
   fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest'
     + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : '')
     + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : '')
+    + (Object.hasOwn(plan, 'successor') ? ',successor' : '')
     + (Object.hasOwn(plan, 'changeClass') ? ',changeClass' : ''));
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
@@ -145,6 +147,11 @@ function validatePlan(input) {
     || plan.issuedAt < 0 || plan.expiresAt <= plan.issuedAt || plan.expiresAt - plan.issuedAt > 900000
     || (Object.hasOwn(plan, 'detachedHead') && (plan.mode !== RECOVERY_MODE
       || typeof plan.detachedHead !== 'string' || !/^[a-f0-9]{40}$/u.test(plan.detachedHead)))
+    || (Object.hasOwn(plan, 'successor') && (plan.mode !== RECOVERY_MODE || plan.detachedHead
+      || !plan.successor || Object.keys(plan.successor).sort().join(',') !== 'predecessorHead,predecessorRef,replacedPaths'
+      || typeof plan.successor.predecessorRef !== 'string'
+      || !/^[a-f0-9]{40}$/u.test(plan.successor.predecessorHead)
+      || !Array.isArray(plan.successor.replacedPaths)))
     || plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch)
     refuse('plan-binding');
   return plan;
@@ -156,11 +163,14 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false, recovery = false, detached = false, changeClass = undefined }, options = {}) {
+  noCI = false, recovery = false, detached = false, changeClass = undefined, successor = undefined }, options = {}) {
   const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
   if (recovery && changeClass !== undefined) refuse('incompatible-modes');
+  if (successor && (!recovery || detached || typeof successor.predecessorRef !== 'string'
+    || !/^[a-f0-9]{40}$/u.test(successor.predecessorHead ?? '')))
+    refuse('successor-options');
   if (changeClass !== undefined && !SUPPORTED_CHANGE_CLASSES.includes(changeClass)) refuse('unsupported-change-class');
   const root = realpathSync(repoRoot(cwd));
   const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
@@ -172,6 +182,8 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main', allowDetached: detached });
+    if (successor && (inventory.branch !== successor.predecessorRef
+      || inventory.headRevision !== successor.predecessorHead)) refuse('successor-target-drift');
     if (detached && inventory.branch !== null) refuse('target-not-detached');
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
     const observedChangeClass = classifyLaneChangeClass(root, targetPath);
@@ -183,6 +195,8 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       inventoryContentEntries: inventory.inventoryEntries.content, policyDigest: governanceDigest(current),
       observation: null, issuedAt, expiresAt: issuedAt + 900000,
       ...(detached ? { detachedHead: inventory.headRevision } : {}),
+      ...(successor ? { successor: { predecessorRef: successor.predecessorRef,
+        predecessorHead: successor.predecessorHead, replacedPaths: successor.replacedPaths } } : {}),
       ...(changeClassInfo.declared ? { changeClass: changeClassInfo } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
@@ -236,6 +250,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
         integration: plan.integration, historicalIntegrationMethodProven: false } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
+      ...(plan.successor ? { successor: plan.successor } : {}),
       ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });

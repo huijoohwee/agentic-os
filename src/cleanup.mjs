@@ -1,5 +1,15 @@
 /** Join authenticated lifecycle evidence to exact, quarantine-only Git worktree effects. */
 import { canonicalJson } from './governance.mjs';
+import { basename } from 'node:path';
+import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from './git.mjs';
+import { isLaneRef, parseLaneRef } from './lane-id.mjs';
+import { get } from './lane-records.mjs';
+import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
+import { inferMergedReviewWorkflow, observeMergedReview, githubRead } from '../bin/agentic-os-cleanup-review.mjs';
+import { applyUserCleanup, planUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+import { RECOVERY_MODE, recoveryPolicy } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { createWorkflowEffectGuard } from '../bin/agentic-os-workflow.mjs';
+import { option } from '../bin/agentic-os-argv.mjs';
 import {
   effectPlanByteDigest, replayAuthenticatedTransitionOperationReceipt,
   validateAuthenticatedTransitionOperationReceipt,
@@ -289,4 +299,100 @@ export async function executeWorktreeCleanup(input, options) {
       integrationPlanByteDigest: joined.integrationPlanByteDigest });
   } catch (caught) { error = caught; artifacts = caught.operationArtifacts ?? artifacts; }
   return finishOperationLock(lock, { label: 'worktree-cleanup', result, error, artifacts });
+}
+
+export function releaseCommonLocalCleanupPolicy(root, profile) {
+  if (repoRoot(root) !== root || currentBranch(root) !== 'main')
+    fail('blocked-release-common-local-cleanup-canonical', 'local cleanup runs from canonical main');
+  const remoteUrl = remoteTransport('origin', root).fetchUrl;
+  const remote = remoteUrl.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/u)?.[1] ?? null;
+  const selected = profile.repository.match(/^github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/u)?.[1] ?? null;
+  if (!remote || remote !== selected) fail('blocked-release-common-local-cleanup-remote', 'canonical origin does not match the selected GitHub repository');
+  const canonical = observeGit(['rev-parse', '--verify', 'refs/heads/main^{commit}'], { cwd: root, maxBuffer: 65536 });
+  if (observeGit(['rev-parse', '--verify', 'HEAD'], { cwd: root, maxBuffer: 65536 }) !== canonical
+    || observeGit(['rev-parse', '--verify', 'refs/remotes/origin/main'], { cwd: root, maxBuffer: 65536 }) !== canonical
+    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root, maxBuffer: 65536 }) !== '')
+    fail('blocked-release-common-local-cleanup-canonical', 'canonical main must be current and clean before local cleanup');
+  return { root, repository: remote, remoteUrl, canonical, localRef: 'refs/heads/main',
+    mode: RECOVERY_MODE, enrollment: 'release-common-complete', ...recoveryPolicy(root, remote),
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
+}
+
+/** Cleanup constraints apply to the destructive effect, never to merge observation or integration. */
+export function cleanupWorkflowContext(root, ref, repository) {
+  const registration = worktrees(root).find(row => row.branch === ref);
+  const record = get(ref, root), parsed = parseLaneRef(ref);
+  const retainedPath = record?.ref === ref && typeof record.worktree === 'string' ? record.worktree : null;
+  const worktreeId = registration ? basename(registration.path) : retainedPath ? basename(retainedPath)
+    : parsed ? `${parsed.device}--${parsed.scope}` : null;
+  return { root, repository, phase: 'cleanup', ref, worktreeId,
+    revision: registration ? observeGit(['rev-parse', 'HEAD'], { cwd: registration.path }) : record?.head,
+    dirty: registration ? Boolean(observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: registration.path })) : false };
+}
+
+/** Explicit superseded-lane closeout. The accepted PR owns review/check evidence;
+ * the predecessor's failed or closed PR is never represented as merged. */
+export async function runReleaseCommonSuccessorComplete({
+  root, argv, profile,
+  out = line => process.stdout.write(`${line}\n`),
+  err = line => process.stderr.write(`${line}\n`),
+  now = Date.now, api = githubRead,
+} = {}) {
+  try {
+    const ref = option(argv, 'ref'), pr = Number(option(argv, 'via-pr'));
+    const replacedPaths = (option(argv, 'replaced') ?? '').split(',').filter(Boolean);
+    if (!isLaneRef(ref) || !Number.isSafeInteger(pr) || pr < 1 || !argv.includes('--stopped')
+      || replacedPaths.length === 0 || replacedPaths.length > 128)
+      fail('blocked-release-common-successor-options',
+        'Use --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped');
+    const current = releaseCommonLocalCleanupPolicy(root, profile);
+    const record = get(ref, root);
+    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    if (!record || !['published', 'queued', 'integrated'].includes(record.state)
+      || record.head !== status.lane.head || status.lane.clean === false)
+      fail('blocked-release-common-successor-lane', 'one exact published, clean predecessor is required');
+    const assertWorkflowCurrent = createWorkflowEffectGuard(() => cleanupWorkflowContext(root, ref, profile.repository));
+    const workflow = inferMergedReviewWorkflow({ repository: current.repository, pr,
+      requiredChecks: [...current.requiredChecks].sort() }, { cwd: root, api });
+    if (!status.lane.mounted) {
+      const review = observeMergedReview({ ...current, pr, workflow,
+        requiredChecks: [...current.requiredChecks].sort() }, { cwd: root, api });
+      const successor = { predecessorHead: record.head, replacedPaths,
+        reviewedHead: review.head, merge: review.merge };
+      const settled = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile, { successor });
+      if (!settled.cleanupVerified || settled.closeout.missionState !== 'source_complete'
+        || observeGit(['ls-remote', '--refs', '--', current.remoteUrl, 'refs/heads/main'], { cwd: root })
+          !== `${current.canonical}\trefs/heads/main`)
+        fail('blocked-release-common-successor-replay', 'retained closeout or live canonical state drifted');
+      out(JSON.stringify(settled)); return 0;
+    }
+    assertWorkflowCurrent();
+    const resolvePolicy = (policyRoot, mode) => {
+      if (policyRoot !== root || mode !== RECOVERY_MODE)
+        fail('blocked-release-common-successor-policy', 'successor recovery policy drifted');
+      return current;
+    };
+    const request = { cwd: root, target: status.lane.path, pr,
+      requiredChecks: [...current.requiredChecks].sort(), workflow, recovery: true,
+      successor: { predecessorRef: ref, predecessorHead: record.head, replacedPaths } };
+    const options = { now, api, resolvePolicy };
+    const plan = planUserCleanup(request, options);
+    out(JSON.stringify(plan));
+    const successor = { ...plan.successor, reviewedHead: plan.head, merge: plan.merge };
+    if (plan.integration.kind !== 'reviewed-successor')
+      fail('blocked-release-common-successor-integration', 'reviewed successor must remain exact');
+    assertWorkflowCurrent();
+    const receipt = applyUserCleanup(plan, { cwd: root,
+      authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true, ...options });
+    out(JSON.stringify(receipt));
+    const settled = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile, { successor });
+    out(JSON.stringify(settled));
+    if (settled.closeout.missionState !== 'source_complete' || settled.lane.mounted
+      || settled.integration?.kind !== 'reviewed-successor')
+      fail('blocked-release-common-successor-postcondition', 'successor closeout did not reach exact terminal state');
+    return 0;
+  } catch (error) {
+    err(`${error.reason ?? 'blocked-release-common-successor-complete'}: ${error.message}`);
+    return 1;
+  }
 }

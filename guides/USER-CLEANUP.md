@@ -119,6 +119,32 @@ This option changes no default or protected cleanup admission and creates no his
 Recovery also preserves regular-file hardlinks in dependency trees: manifests bind link counts and bytes,
 and alias writes invalidate the plan. Symlink hardlinks and special files remain rejected.
 
+## Reviewed successor closeout
+
+When a historical lane's own PR was closed or failed but a later checked PR incorporated its work,
+use the existing `release-common complete` command with an explicit successor PR and every path whose
+accepted content replaced the lane's content:
+
+```sh
+npm run release:common -- complete --ref=<old-lane> --via-pr=<merged-successor-pr> \
+  --replaced=<exact-repository-relative-path[,path...]> --stopped
+```
+
+The command runs from clean canonical `main`, which must equal fetched and live `origin/main` and
+contain the accepted merge. If it does not, use the separately governed canonical sync workflow first.
+The old lane must be a mounted, clean, stopped published worktree with its cached head unchanged.
+It verifies the successor's exact reviewed head, successful selected checks and actual merge. The old
+head must be an ancestor of the reviewed head. Every path changed by the old lane must match the
+accepted merge tree exactly, except the explicitly listed replacements; each replacement must match
+the reviewed successor and differ from the old lane. Missing or extra replacement paths fail.
+
+The predecessor PR remains historical and is never reported as merged. The result is a local-consent
+recovery receipt with `reviewed-successor` content evidence, not provider-issued integration or
+retirement authority. The existing cleanup planner inventories the target, peers, refs, objects and
+ignored bytes, then moves its projection and registration into recoverable quarantine. It retains
+the old branch and Git objects. Re-run only after checking the retained effect and current GitHub
+and canonical state; later edits to `main` do not change the accepted merge-tree comparison.
+
 The exact plan binds the existing profile digest, retention policy, required checks, recovery mode and
 resource ceilings. The operator's local consent selects recoverable projection/registration quarantine
 even when the protected profile retains them; it does not edit that shared policy or create a provider

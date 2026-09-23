@@ -1,7 +1,7 @@
 /** Exact local completion preflight. No provider call, fetch, authority or effect. */
 import { currentBranch, headSha, observeGit } from '../src/git.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
-import { integrationProof } from '../src/patch-identity.mjs';
+import { integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 import { worktreeFor } from '../src/worktree.mjs';
 import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
@@ -86,7 +86,7 @@ export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, lane
   const next = has('lane-dirty') ? ['preserve-lane-bytes', 'lane-owner', 'Preserve and resolve authored or untracked bytes before cleanup planning.'] : has('lane-ref-missing') ? ['recover-lane-ref', 'lane-owner', 'Recover the exact local lane ref before completion.'] : has('integration-not-classified') ? ['reap', 'review-owner', 'npm run reap -- --ref=<lane>'] : laneDisposition === 'awaiting-cleanup' && localPolicyCandidate ? ['completion-close', 'authority-operator', 'npm run completion:scaffold -- --ref=<lane>'] : laneDisposition === 'awaiting-cleanup' ? ['release-common-complete', 'cleanup-operator', 'npm run release:common -- complete --ref=<lane>'] : has('canonical-not-current-clean') ? ['canonical-sync-plan', 'repository-operator', 'npm run sync:canonical -- plan'] : sourceComplete && deploy ? ['deploy-workflow', 'product-owner', 'Follow guides/DEPLOY-WORKFLOW.md for the enrolled production-activation checks.'] : null;
   return Object.freeze({ schema: 'agentic-os/closeout-verdict/v1', observationOnly: true, authorizesEffects: false, sourceIntegrated: sourceIntegrated === true, canonicalCurrent: canonicalCurrent === true, laneDisposition, cleanupSatisfied, deployBinding: Object.freeze({ present: deploy === true, operation: deploy ? 'production-activation' : null }), missionState: blocked ? 'blocked' : sourceComplete ? 'source_complete' : 'continuable', nextAction: next ? Object.freeze({ id: next[0], owner: next[1], command: next[2] }) : null });
 }
-export function inspectCompletionStatus(root, ref, policy, profile) {
+export function inspectCompletionStatus(root, ref, policy, profile, { successor = null } = {}) {
   if (!isLaneRef(ref)) throw Object.assign(new TypeError('completion requires an exact lane ref'), { reason: 'blocked-invalid-lane-ref' });
   if (currentBranch(root) !== policy.protectedBranch) throw Object.assign(new Error('completion status runs from the canonical checkout'), { reason: 'blocked-canonical-required' });
   const canonical = headSha(profile.canonical.localRef, root), tracking = headSha(profile.canonical.remoteRef, root);
@@ -94,7 +94,12 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
   const canonicalClean = read(root, ['status', '--porcelain', '--untracked-files=all']) === '';
   const lanePath = lane?.path ?? null, laneMounted = lanePath !== null;
   const laneClean = laneMounted ? read(lanePath, ['status', '--porcelain', '--untracked-files=all']) === '' : null;
-  const projection = laneHead && tracking ? integrationProof(tracking, laneHead, { cwd: root }) : null;
+  const direct = laneHead && tracking ? integrationProof(tracking, laneHead, { cwd: root }) : null;
+  const historical = !direct && successor && laneHead === successor.predecessorHead
+    && tracking && read(root, ['merge-base', '--is-ancestor', successor.merge, tracking]) === ''
+    ? successorIntegrationProof(successor.merge, laneHead, successor.reviewedHead,
+      successor.replacedPaths, { cwd: root }) : null;
+  const projection = direct ?? historical;
   const quarantineProfile = quarantines(profile);
   const quarantineObserved = Boolean(laneHead) && !laneMounted && observeRetainedWorktreeQuarantine(root, ref, laneHead);
   const changeClass = classifyChangeClass(root, ref);
@@ -110,7 +115,7 @@ export function inspectCompletionStatus(root, ref, policy, profile) {
   if (quarantineProfile && !quarantineObserved) findings.push(finding('cleanup-receipt-unverified', 'cleanup-operator', 'After live winner replay, assess and execute only the authorized exact quarantine plan.'));
   const classifiedFindings = withApplicability(findings, changeClass);
   const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, deployBound: deployBound(root, canonical), localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: classifiedFindings.map((item) => item.code) });
-  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, ref, repository: profile.repository, profileDigest: profile.profileDigest, changeClass, canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean, lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean }, integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null } : null, enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository, files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null, closeout, findings: classifiedFindings };
+  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, ref, repository: profile.repository, profileDigest: profile.profileDigest, changeClass, canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean, lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean }, integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null, ...(historical ? { reviewedHead: historical.reviewedHead, merge: historical.merge, replacements: historical.replacements.map(row => row.path) } : {}) } : null, enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository, files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null, closeout, findings: classifiedFindings };
 }
 export function runCompletionStatus(root, ref, policy, profile, out = console.log) {
   out(JSON.stringify(inspectCompletionStatus(root, ref, policy, profile)));
