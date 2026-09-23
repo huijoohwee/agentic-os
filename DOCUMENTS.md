@@ -1,7 +1,7 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.1.2"
+version: "1.1.3"
 date: "2026-09-23"
 lang: "en-US"
 owner: "agentic-os"
@@ -30,6 +30,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Global development lifecycle | [ADLC guidelines](docs/adlc-guidelines.md) |
 | Start, release, deploy, or cleanup work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md), [deploy](guides/DEPLOY-WORKFLOW.md) — global protocol, repo-local mechanics |
 | Shared workspace startup, source freshness and offline retrieval | [Workspace routine](guides/WORKSPACE.md), [memory format](guides/MEMORY.md) |
+| Cache lifecycle, reuse, retention and measured cost | [Shared cache policy](guides/CACHE.md) |
 | Divide work across devices and check write boundaries | [Fleet allocation](FLEET.md) |
 | Central planning records and current task state | [Workspace TODO contract][todo], [Workspace Kanban][kanban] |
 | Portable, capability-routed skills | [Canvas skill](skills/canvas/SKILL.md) |

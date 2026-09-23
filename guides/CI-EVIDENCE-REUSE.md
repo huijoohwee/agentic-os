@@ -15,6 +15,9 @@ load_policy: on-demand
 
 # Protected CI evidence reuse
 
+[Shared cache policy](CACHE.md) routes cross-mechanism lifecycle decisions. This guide retains
+the exact provider/input bindings, freshness limits and fallback contract for CI evidence.
+
 ## PRD / CI-EVIDENCE-001
 
 The release maintainer reuses one already-passed source check to reduce repeated CI compute.

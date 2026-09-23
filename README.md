@@ -1,8 +1,8 @@
 ---
 title: "Agentic OS"
 doc_type: "Index"
-version: "1.0.0"
-date: "2026-09-20"
+version: "1.0.1"
+date: "2026-09-23"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -63,6 +63,7 @@ cleanup is globally required but repo-local in mechanics inside those stages. Th
 | Provider-neutral records and the trust boundary | [GOVERNANCE](docs/GOVERNANCE.md) |
 | Evidence and completion semantics | [EVIDENCE](docs/EVIDENCE.md), [completion](docs/LIFECYCLE-COMPLETION.md) |
 | Check selection, receipts and observation economy | [validation economy](guides/VALIDATION-ECONOMY.md) |
+| Shared cache lifecycle and local owner declarations | [cache management](guides/CACHE.md) |
 | Byte and module budgets | [BUDGETS](docs/BUDGETS.md) |
 | `/`, `#`, `@` route register | [INVOCATION](docs/INVOCATION.md), [catalog](catalog/invocation.json) |
 | Backend tool and transport contract | [MCP](docs/MCP.md) |

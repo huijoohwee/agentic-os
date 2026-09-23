@@ -26,6 +26,9 @@ gtm_revision: "1.3.0"
 
 # Storage compaction
 
+[Shared cache policy](CACHE.md) owns cross-mechanism lifecycle declarations; this guide owns
+disk diagnosis, compaction and recoverable effects.
+
 Large collaboration-ledger revisions left as loose Git objects and quarantined dependency installations
 can consume GiB in a small product repository. Reduce allocated storage while preserving source, recovery
 objects, refs, reflogs, and original quarantine receipts. Existing lifecycle cleanup still owns retirement
