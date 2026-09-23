@@ -29,10 +29,12 @@ export function validationArguments(argv) {
     const match = /^--(root|base|only|input|offset|ci-run|workflow)=(.+)$/u.exec(flag), key = match?.[1] ?? flag.slice(2);
     if (seen.has(key)) throw new Error('duplicate validation option'); seen.add(key);
     if (match) options[key] = key === 'only' ? match[2].split(',') : match[2];
-    else if (['--all', '--fresh'].includes(flag)) options[key] = true;
+    else if (['--all', '--fresh', '--retry-failed'].includes(flag)) options[key] = true;
     else throw new Error('unknown validation option');
   }
   if (mode === 'ci' && (seen.has('base') || seen.has('all'))) throw new Error('CI owns its validation baseline');
+  if (options['retry-failed'] && (options.fresh || !['run', 'plan'].includes(mode)))
+    throw new Error('--retry-failed requires local run or plan without --fresh');
   if ((seen.has('input') || seen.has('ci-run') || seen.has('workflow')) && mode !== 'observe' || mode === 'observe' && [...seen].some(key => !['root', 'input', 'offset', 'ci-run', 'workflow'].includes(key)))
     throw new Error('observation accepts only root, input, offset or ci-run');
   if (seen.has('ci-run') && (seen.has('input') || seen.has('offset') || !/^[1-9][0-9]{0,15}$/u.test(options['ci-run'])))
@@ -113,6 +115,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     return 0;
   }
   const ci = options.mode === 'ci' || Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+  if (ci && options['retry-failed']) throw new Error('--retry-failed is local only; CI requires fresh execution');
   const marker = hash(root), previousMarker = process.env.AGENTIC_OS_VALIDATION_ACTIVE;
   if (previousMarker?.split(':').includes(marker)) throw new Error('blocked-validation-recursive-run');
   process.env.AGENTIC_OS_VALIDATION_ACTIVE = [previousMarker, marker].filter(Boolean).join(':');
@@ -146,7 +149,8 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     const previews = checks.map(check => {
       const prior = priorFor(check), matches = prior?.fingerprint === check.fingerprint;
       return { id: check.name, command: [check.command, ...check.args], reasons: check.reasons,
-        reuse: matches && prior.outcome === 'passed', unchangedFailure: matches && prior.outcome === 'failed',
+        reuse: matches && prior.outcome === 'passed',
+        unchangedFailure: matches && prior.outcome === 'failed' && !options['retry-failed'],
         estimatedMs: matches && prior.outcome === 'passed' ? 0 : economy.checks[check.name]?.meanMs ?? null };
     });
     const resources = resourcePlan(checks, economy, previews, { checkout: options.checkout,
@@ -180,12 +184,13 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
       stable(); writeReceipt(directory, 'validation-last.json', receipt);
       // A prior unchanged failure is already a sufficient blocker; do not spend on earlier checks first.
       if (resources.unchangedFailures.length)
-        throw new Error(`blocked-validation-unchanged-failure:${resources.unchangedFailures.join(',')}; inspect retained log or use --fresh after a new observation`);
+        throw new Error(`blocked-validation-unchanged-failure:${resources.unchangedFailures.join(',')}; inspect retained log or use --retry-failed after a new observation`);
       for (const check of checks) {
         stable();
         const prior = priorFor(check);
-        if (prior?.fingerprint === check.fingerprint) {
-          if (prior.outcome === 'failed') throw new Error(`blocked-validation-unchanged-failure:${check.name}; inspect retained log or use --fresh after a new observation`);
+        if (prior?.fingerprint === check.fingerprint && prior.outcome === 'failed' && !options['retry-failed'])
+          throw new Error(`blocked-validation-unchanged-failure:${check.name}; inspect retained log or use --retry-failed after a new observation`);
+        if (prior?.fingerprint === check.fingerprint && prior.outcome === 'passed') {
           receipt.results.push({ id: check.name, reused: true, ...prior.result, validatedAt: prior.finishedAt });
           out(`reused ${check.name}`); continue;
         }

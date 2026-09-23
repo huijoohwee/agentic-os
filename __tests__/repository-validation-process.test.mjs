@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { runRepositoryValidation, validationPlanReceipt } from '../bin/agentic-os-validation.mjs';
+import { runRepositoryValidation, validationArguments, validationPlanReceipt } from '../bin/agentic-os-validation.mjs';
 import { selectValidationChecks } from '../bin/agentic-os-validation-policy.mjs';
 import { hash, LIMITS } from '../bin/agentic-os-test-inputs.mjs';
 import { executeCommand, previousCheck, writeCheck, receiptDirectory, COMMAND_PROGRESS_INTERVAL_MS } from '../bin/agentic-os-test-receipt.mjs';
@@ -66,6 +66,46 @@ test('unchanged deterministic failure stops without another command and remains 
   const before=f.calls();assert.equal(await f.run(),1);assert.deepEqual(f.calls(),before);
   assert.equal(f.receipt().outcome,'blocked');assert.match(f.receipt().error,/unchanged-failure:a/);
   assert.equal(await f.run('--fresh'),1);assert.ok(f.calls().length>before.length);
+});
+
+test('explicit failure retry reuses valid mandatory and prerequisite results without hiding failure', async t => {
+  const f=fixture(t);writeFileSync(join(f.root,'source/a.txt'),'fail');
+  assert.equal(await f.run(),1);assert.deepEqual(f.calls(),['contract','prepare','a']);
+  const output=[];
+  assert.equal(await runRepositoryValidation(['plan',`--root=${f.root}`,'--retry-failed'],{out:value=>output.push(value)}),0);
+  const plan=JSON.parse(output[0]);
+  assert.equal(plan.checks.find(check=>check.id==='contract').reuse,true);
+  assert.equal(plan.checks.find(check=>check.id==='a').unchangedFailure,false);
+  assert.equal(await f.run('--retry-failed'),1);assert.deepEqual(f.calls(),['contract','prepare','a','a']);
+  assert.equal(f.receipt().outcome,'failed');
+  assert.deepEqual(f.receipt().results.map(result=>[result.id,result.reused]),[['contract',true],['prepare',true],['a',false]]);
+  const before=f.calls();assert.equal(await f.run(),1);assert.deepEqual(f.calls(),before);
+  writeFileSync(join(f.root,'source/a.txt'),'repaired');
+  assert.equal(await f.run('--retry-failed'),0);assert.deepEqual(f.calls().slice(before.length),['a']);
+  assert.equal(f.receipt().authority,false);
+});
+
+test('failure retry preserves whole-plan identity and reruns invalidated success', async t => {
+  const f=fixture(t), path=join(f.root,'.agentic-os-validation.json');
+  const policy=JSON.parse(readFileSync(path,'utf8'));
+  for (const check of policy.checks) { check.reuse='local-plan'; check.inputs=['*']; }
+  writeFileSync(path,JSON.stringify(policy));f.git('add','.');f.git('commit','-m','plan-bound checks');
+  f.git('update-ref','refs/remotes/origin/main','HEAD');
+  writeFileSync(join(f.root,'source/a.txt'),'fail');
+  assert.equal(await f.run(),1);const before=f.calls().length;
+  assert.equal(await f.run('--retry-failed'),1);assert.deepEqual(f.calls().slice(before),['a']);
+  f.git('add','.');f.git('commit','-m','changed exact candidate');
+  const changed=f.calls().length;assert.equal(await f.run('--retry-failed'),1);
+  assert.deepEqual(new Set(f.calls().slice(changed)),new Set(['contract','prepare','a']));
+});
+
+test('failure retry cannot request fresh execution simultaneously or override CI', async t => {
+  assert.throws(()=>validationArguments(['run','--retry-failed','--fresh']),/without --fresh/);
+  assert.throws(()=>validationArguments(['ci','--retry-failed']),/local run or plan/);
+  assert.throws(()=>validationArguments(['run','--retry-failed','--retry-failed']),/duplicate/);
+  const f=fixture(t);process.env.CI='true';
+  await assert.rejects(()=>f.run('--retry-failed'),/local only; CI requires fresh/);
+  assert.throws(f.calls,/ENOENT/);
 });
 
 test('whole-plan partitions join without rerunning passed commands, and explicit fresh still executes', async t => {
