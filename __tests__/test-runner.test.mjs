@@ -316,7 +316,9 @@ test('selected workflow cannot disappear during execution or cover a different c
   let changed = false;
   assert.equal(await runTests(['affected', '--base=HEAD'], { root: f.root, out: line => {
     if (!changed && line === 'running evaluators') {
-      changed = true; f.git('config', '--local', '--unset', 'agentic-os.workflowManifest');
+      changed = true;
+      for (const key of f.git('config', '--name-only', '--get-regexp', '^agentic-os\\.workflow').split('\n'))
+        f.git('config', '--local', '--unset-all', key);
     }
   } }), 1);
   assert.equal(f.receipt().error, 'blocked-workflow-effect-identity-drift');
@@ -336,7 +338,7 @@ test('legacy selected roots and unrelated declared members preserve standalone e
   assert.equal(await unrelated.invoke(), 0);
 });
 
-test('an enrolled run rejects a valid unrelated workflow selected before its child starts', async t => {
+test('an enrolled run survives an unrelated START and reuses its unchanged inputs', async t => {
   localEnvironment(t);
   const f = declaredFixture(t);
   let switched = false;
@@ -347,11 +349,22 @@ test('an enrolled run rejects a valid unrelated workflow selected before its chi
         planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId: 'unrelated-owner',
         execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } });
     }
-  } }), 1);
+  } }), 0);
   assert.equal(switched, true);
-  assert.equal(f.receipt().error, 'blocked-workflow-effect-identity-drift');
-  assert.deepEqual(f.receipt().results, []);
+  assert.equal(f.receipt().outcome, 'passed');
+  assert.equal(await f.invoke(), 0);
+  assert.ok(f.receipt().results.every(row => row.reused));
   const release = lockReceipts(receiptDirectory(f.root)); release();
+});
+
+test('removing shared navigation does not unenroll an indexed lane or erase its prerequisites', async t => {
+  localEnvironment(t);
+  const f = declaredFixture(t);
+  f.git('config', '--local', '--unset', 'agentic-os.workflowManifest');
+  assert.equal(await f.invoke(), 0);
+  const blocked = declaredFixture(t, { blocked: true });
+  blocked.git('config', '--local', '--unset', 'agentic-os.workflowManifest');
+  await assert.rejects(blocked.invoke(), /blocked-workflow-dependencies/);
 });
 
 test('invalid selected evidence fails closed without enrolling a legacy repository', async t => {
