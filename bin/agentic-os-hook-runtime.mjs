@@ -17,6 +17,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58',
   'v1-ad7769d4d30007c8655b057a27deb45a435add2b6f7db2a11fe58bc0f1573f67',
   'v1-600df80fd4249a209f3e910751c850d554f2533789673d1ec0060886540c8a67',
   'v1-72c53bdaa971f1a0f321f1d296ab789839c52392f49b91dfbb2f36bd3504c4dc',
@@ -80,7 +81,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
     sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,
-    sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' }),
+    sha256: 'bdaa8cf30f9a9585662fd0cd4734e275011706f1d3795b69016f691418499f09' }),
 ]);
 export const REQUIRED_HOOKS = Object.freeze(FILES
   .filter((file) => file.path.startsWith('.githooks/'))

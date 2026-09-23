@@ -187,7 +187,9 @@ const UTF8`)
   return { path, hooksPath: join(path, '.githooks'), manifestBytes };
 }
 function installImmediatePriorRuntime(selected, guardRelease = false, currentRelease = false, latest = false) {
-  const source = latest ? selected.files.map(file => file.path === 'src/git.mjs'
+  const source = latest ? selected.files.map(file => file.path === 'bin/agentic-os-filter-compare.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)),
+      sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' } : file.path === 'src/git.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url)),
       sha256: 'd51f658be657d761badc23d29b8e15267a8d542df660f9087a2538e2e2c3dd5a' } : file.path === 'src/governance.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url)), sha256: 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390' } : file.path === 'src/quarantine.mjs'
@@ -376,7 +378,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   rmSync(defaultHook);
   assert.equal(statSync(managedRoot, { throwIfNoEntry: false }), undefined,
     'no-effect setup refusals must not create a managed runtime');
-
   const transitiveSource = join(nodeModules, 'agentic-os', 'src', 'guard-main.mjs');
   const exactTransitiveSource = readFileSync(transitiveSource);
   writeFileSync(transitiveSource, Buffer.concat([exactTransitiveSource, Buffer.from('\n')]));
@@ -386,7 +387,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(statSync(managedRoot, { throwIfNoEntry: false }), undefined,
     'ignored transitive package drift must fail before runtime publication');
   writeFileSync(transitiveSource, exactTransitiveSource);
-
   const filterHelper = join(nodeModules, 'agentic-os', 'bin', 'agentic-os-filter-compare.mjs');
   const exactFilterHelper = readFileSync(filterHelper);
   writeFileSync(filterHelper, Buffer.concat([exactFilterHelper, Buffer.from('\n') ]));
@@ -396,7 +396,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(statSync(managedRoot, { throwIfNoEntry: false }), undefined,
     'ignored helper drift must fail before runtime publication');
   writeFileSync(filterHelper, exactFilterHelper);
-
   const contestedRuntime = describeHookRuntime(repository, {
     sourceRoot: join(nodeModules, 'agentic-os'),
   });
@@ -408,14 +407,12 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.match(contested.stderr, /blocked-repository-trust-recovery-required/u);
   assert.equal(readFileSync(foreignEntry, 'utf8'), 'foreign\n');
   rmSync(managedRoot, { recursive: true });
-
   execFileSync('git', ['config', '--local', 'core.hooksPath', '.githooks'], { cwd: repository });
   const migratedRootHooks = spawnSync(cli, ['setup'], { cwd: repository, encoding: 'utf8' });
   assert.equal(migratedRootHooks.status, 0, migratedRootHooks.stderr);
   assert.notEqual(execFileSync('git', ['config', '--get', 'core.hooksPath'], {
     cwd: repository, encoding: 'utf8',
   }).trim(), '.githooks');
-
   const attempts = await Promise.all([
     runChild(cli, ['setup'], { cwd: repository, stdio: ['ignore', 'pipe', 'pipe'] }),
     runChild(cli, ['setup'], { cwd: repository, stdio: ['ignore', 'pipe', 'pipe'] }),
@@ -434,7 +431,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(hooksPath.includes('node_modules'), false);
   for (const hook of ['pre-commit', 'pre-push'])
     assert.notEqual(statSync(join(hooksPath, hook)).mode & 0o111, 0, `${hook} must be executable`);
-
   const priorRuntime = installPriorReleaseRuntime(contestedRuntime);
   assert.notEqual(priorRuntime.hooksPath, hooksPath);
   execFileSync('git', ['config', '--local', '--fixed-value', '--replace-all',
@@ -461,7 +457,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: repository });
   const migratedDoctor = spawnSync(cli, ['doctor'], { cwd: repository, encoding: 'utf8' });
   assert.equal(migratedDoctor.status, 0, migratedDoctor.stderr || migratedDoctor.stdout);
-
   const installedCommit = spawnSync(join(hooksPath, 'pre-commit'), [], {
     cwd: repository, encoding: 'utf8',
   });
@@ -473,7 +468,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   });
   assert.equal(installedPush.status, 1, installedPush.stderr);
   assert.match(installedPush.stderr, /refusing to push directly to refs\/heads\/main/u);
-
   execFileSync('git', ['switch', '--quiet', 'feature/setup-wrong-branch'], { cwd: repository });
   const selfBinding = createRepositoryProfile({
     repository: profile.repository,
@@ -498,7 +492,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(protectedRef.status, 0, protectedRef.stderr);
   assert.equal(protectedRef.stdout.trim(), 'refs/heads/main');
   execFileSync('git', ['switch', '--quiet', 'main'], { cwd: repository });
-
   const unavailableModules = join(parent, 'node_modules-unavailable');
   renameSync(nodeModules, unavailableModules);
   try {
@@ -518,7 +511,6 @@ test('packed setup is canonical, durable, integrity-bound, and no-clobber', asyn
   assert.equal(execFileSync('git', ['config', '--get', 'core.hooksPath'], {
     cwd: repository, encoding: 'utf8',
   }).trim(), hooksPath);
-
   const externalHookLink = join(parent, 'external-pre-commit-link');
   linkSync(join(hooksPath, 'pre-commit'), externalHookLink);
   const hardlinked = spawnSync(cli, ['setup'], { cwd: repository, encoding: 'utf8' });
