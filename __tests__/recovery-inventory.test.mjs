@@ -44,6 +44,18 @@ function inventory(root) {
   return collectRecoveryInventory({ cwd: root, canonicalRef: CANONICAL_REF });
 }
 
+test('cleanup entry budget refuses oversized ignored runtime before hashing its contents', (t) => {
+  const root = repository(t);
+  writeFileSync(join(root, '.gitignore'), 'runtime/\n');
+  commit(root);
+  mkdirSync(join(root, 'runtime'));
+  writeFileSync(join(root, 'runtime', 'one'), 'one');
+  writeFileSync(join(root, 'runtime', 'two'), 'two');
+  assert.throws(() => collectRecoveryInventory({ cwd: root, canonicalRef: CANONICAL_REF,
+    maxContentEntries: 2 }), (error) => error.reason === 'blocked-recovery-inventory-budget');
+  assert.equal(inventory(root).inventoryEntries.ignoredRuntime, 2);
+});
+
 function projection(value) {
   return Object.fromEntries(DIGEST_KEYS.map((key) => [key, value[key]]));
 }
