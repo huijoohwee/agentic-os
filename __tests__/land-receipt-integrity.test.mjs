@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
@@ -164,8 +165,10 @@ test('repeated CLI landing preserves the reviewed body without repeating review 
   const second = land(subject);
   assert.equal(second.status, 0, second.stderr);
   assert.equal(readFileSync(subject.effectsLog, 'utf8'), effects);
-  assert.equal(get(subject.ref, subject.lane).handoff.pr.body,
-    `---\nscope: metadata\n---\nAuthored review text.\nSource-Head: ${subject.head}`);
+  const cached = get(subject.ref, subject.lane).handoff.pr;
+  assert.equal(cached.body, undefined);
+  assert.equal(cached.bodySha256, createHash('sha256').update(
+    `---\nscope: metadata\n---\nAuthored review text.\nSource-Head: ${subject.head}`).digest('hex'));
 });
 
 test('land retains a review whose written identity cannot be verified', (t) => {

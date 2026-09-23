@@ -371,7 +371,18 @@ export function putExact(record, expected, cwd = process.cwd()) {
 }
 /** Best-effort projection after authoritative Git/provider effects have completed. */
 export function project(record, cwd = process.cwd()) {
-  try { return Object.freeze({ ok: true, record: put(record, cwd) }); } catch (error) {
+  try {
+    // Provider review prose is evidence at the provider, not coordination state.
+    // Keep a content fingerprint without mutating the caller's full receipt.
+    const handoff = record?.handoff;
+    if (handoff?.schema === 'agentic-os-provider-handoff/v1' && handoff.provider === 'github-gh'
+      && typeof handoff.pr?.body === 'string') {
+      const { body, ...pr } = handoff.pr;
+      record = { ...record, handoff: { ...handoff,
+        pr: { ...pr, bodySha256: createHash('sha256').update(body).digest('hex') } } };
+    }
+    return Object.freeze({ ok: true, record: put(record, cwd) });
+  } catch (error) {
     return Object.freeze({ ok: false, error });
   }
 }
