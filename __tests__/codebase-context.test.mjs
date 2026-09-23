@@ -33,7 +33,7 @@ test('native map/search/read joins current source bytes, preserves work, and pag
   assert.equal(map.results[1].facts[0].value, 'pay');
   const first = context.search({ path: 'src', query: 'authorize', limit: 1 });
   assert.equal(first.results.length, 1); assert.equal(first.totalMatches, 2);
-  assert.equal(first.parsedFiles, 0); assert.equal(first.reusedFiles, 2);
+  assert.equal(first.parsedFiles, 0); assert.equal(first.reusedFiles, 0);
   const second = context.search({ path: 'src', query: 'authorize', after: first.nextAfter });
   assert.equal(second.results[0].path, 'src/pay.js'); assert.equal(second.nextAfter, null);
   const selected = context.read({ ...second.results[0].read, lines: 2 });
@@ -106,4 +106,37 @@ test('CLI works offline in an unenrolled Git repository and rejects unknown argu
   const invalid = spawnSync(process.execPath, [CLI, 'context', 'map', '--path=src', '--network'],
     { cwd: root, encoding: 'utf8' });
   assert.equal(invalid.status, 1); assert.match(invalid.stderr, /invalid-arguments/);
+});
+
+test('search and exact reads do not pay for unused structural extraction', t => {
+  const { root, context } = fixture(t);
+  writeFileSync(join(root, 'src/many.js'), Array.from({ length: CONTEXT_LIMITS.facts + 1 },
+    (_, i) => `export const item${i} = 'needle';`).join('\n'));
+  const found = context.search({ path: 'src/many.js', query: 'needle' });
+  assert.equal(found.parsedFiles, 0); assert.equal(found.reusedFiles, 0);
+  assert.equal(found.totalMatches, 1);
+  const read = context.read({ ...found.results[0].read, lines: 2 });
+  assert.match(read.content, /item0/); assert.equal(read.parsedFiles, 0);
+  assert.throws(() => context.map({ path: 'src/many.js' }), /structure-budget/);
+  for (const result of [found, read]) {
+    assert.equal(result.observation.sourceReadBytes, result.sourceBytes * 2);
+    assert.ok(Number.isFinite(result.observation.elapsedMs) && result.observation.elapsedMs >= 0);
+    assert.ok(Number.isFinite(result.observation.cpuMs) && result.observation.cpuMs >= 0);
+    assert.equal(result.observation.cpuScope, 'current-process-excluding-git-children');
+    assert.equal(result.observation.tokens, null); assert.equal(result.observation.costUsd, null);
+    assert.equal(result.observation.grantsAuthority, false);
+    assert.equal(Object.isFrozen(result.observation), true);
+  }
+});
+test('lazy structure remains reusable only for the same verified bytes', t => {
+  const { root, context } = fixture(t);
+  assert.equal(context.search({ path: 'src', query: 'authorize' }).parsedFiles, 0);
+  assert.equal(context.map({ path: 'src' }).parsedFiles, 2);
+  context.search({ path: 'src', query: 'authorize' });
+  assert.equal(context.map({ path: 'src' }).reusedFiles, 2);
+  writeFileSync(join(root, 'src/auth.js'), 'export const revised = true;\n');
+  context.search({ path: 'src', query: 'revised' });
+  const refreshed = context.map({ path: 'src' });
+  assert.equal(refreshed.parsedFiles, 1); assert.equal(refreshed.reusedFiles, 1);
+  assert.equal(refreshed.results[0].facts[0].value, 'revised');
 });

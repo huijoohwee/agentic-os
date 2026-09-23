@@ -38,7 +38,7 @@ function inventory(root, scope) {
   if (paths.length > CONTEXT_LIMITS.files) fail('file-count-narrow-path');
   return paths;
 }
-function source(root, path) {
+function source(root, path, verifyOnly = false) {
   contextPath(path);
   assertDirectoryAncestors(path, root);
   const absolute = join(root, path);
@@ -50,9 +50,11 @@ function source(root, path) {
   const after = lstatSync(absolute, { bigint: true });
   if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
     || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) fail('source-changed-retry');
+  const sha256 = hash(bytes);
+  if (verifyOnly) return { sha256 };
   const text = decode(bytes);
   if (text.includes('\0')) fail('text-required');
-  return { path, sha256: hash(bytes), bytes: bytes.length, text, lines: text.split('\n') };
+  return { path, sha256, bytes: bytes.length, text, lines: text.split('\n') };
 }
 function structure(file) {
   const facts = [], imports = [];
@@ -79,8 +81,8 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
   root = realpathSync(resolve(root));
   if (realpathSync(repoRoot(root)) !== root) fail('repository-root-required');
   let previous = new Map();
-  function snapshot(path) {
-    const scope = contextPath(path), started = Date.now();
+  function snapshot(path, includeStructure = false) {
+    const scope = contextPath(path), started = Date.now(), clock = performance.now(), cpu = process.cpuUsage();
     const revision = decode(git(root, ['rev-parse', '--verify', 'HEAD'])).trim();
     const paths = inventory(root, scope), files = [], excluded = [], next = new Map();
     let bytes = 0, reused = 0, parsed = 0;
@@ -94,8 +96,11 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
       bytes += file.bytes;
       if (bytes > CONTEXT_LIMITS.sourceBytes) fail('source-byte-budget-narrow-path');
       const cached = previous.get(path);
-      const metadata = cached?.sha256 === file.sha256 ? cached.metadata : structure(file);
-      if (cached?.sha256 === file.sha256) reused += 1; else parsed += 1;
+      let metadata = cached?.sha256 === file.sha256 ? cached.metadata : undefined;
+      if (includeStructure) {
+        if (metadata) reused += 1;
+        else { metadata = structure(file); parsed += 1; }
+      }
       next.set(path, { sha256: file.sha256, metadata });
       files.push({ ...file, ...metadata });
     }
@@ -104,11 +109,17 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
     // Re-read exact bytes, including edits whose size and mtime were deliberately preserved.
     for (const file of files) {
       if (Date.now() - started > CONTEXT_LIMITS.durationMs) fail('deadline-narrow-path');
-      if (source(root, file.path)?.sha256 !== file.sha256) fail('source-changed-retry');
+      if (source(root, file.path, true)?.sha256 !== file.sha256) fail('source-changed-retry');
     }
     previous = next;
     const digest = hash(JSON.stringify(files.map(file => [file.path, file.sha256])));
-    return { files, receipt: { schema: 'agentic-os/codebase-context/v1', repositoryRoot: root, scope, revision,
+    const finish = result => {
+      const usage = process.cpuUsage(cpu);
+      return boundedContext({ ...result, observation: { elapsedMs: performance.now() - clock,
+        cpuMs: (usage.user + usage.system) / 1000, cpuScope: 'current-process-excluding-git-children',
+        sourceReadBytes: bytes * 2, tokens: null, costUsd: null, grantsAuthority: false } });
+    };
+    return { files, finish, receipt: { schema: 'agentic-os/codebase-context/v1', repositoryRoot: root, scope, revision,
       snapshotSha256: digest, sourceMode: 'working-tree', freshness: 'bytes-verified-during-read',
       atomicSnapshot: false, remoteFreshness: 'not-checked', grantsAuthority: false,
       untrustedSourceContent: true, fileCount: files.length, excludedCount: excluded.length,
@@ -125,19 +136,19 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
       nextAfter: remaining.length > limit ? key(result.at(-1)) : null };
   }
   function map({ path, limit = 10, after = null }) {
-    const { files, receipt } = snapshot(path), known = new Set(files.map(file => file.path));
+    const { files, receipt, finish } = snapshot(path, true), known = new Set(files.map(file => file.path));
     const result = page(files.map(file => ({ ...reference(file), facts: file.facts,
       imports: file.imports.map(item => {
         const target = item.value.startsWith('.') ? posix.normalize(posix.join(posix.dirname(file.path), item.value)) : null;
         return { ...item, target: target && known.has(target) ? target : null,
           resolution: target && known.has(target) ? 'exact-relative-file' : 'unresolved' };
       }) })), limit, after, item => item.path);
-    return boundedContext({ ...receipt, operation: 'map', ...result });
+    return finish({ ...receipt, operation: 'map', ...result });
   }
   function search({ path, query, limit = 5, after = null }) {
     if (typeof query !== 'string' || !query.trim() || Buffer.byteLength(query) > CONTEXT_LIMITS.queryBytes
       || /[\x00-\x1f\x7f]/u.test(query)) fail('query');
-    const { files, receipt } = snapshot(path), needle = query.trim().toLowerCase();
+    const { files, receipt, finish } = snapshot(path), needle = query.trim().toLowerCase();
     const matches = [];
     for (const file of files) {
       const lines = file.lines.flatMap((text, index) => text.toLowerCase().includes(needle) ? [index + 1] : []);
@@ -148,7 +159,7 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
         excerpt: file.lines.slice(Math.max(0, line - 2), line + 2).join('\n'),
         excerptStartLine: Math.max(1, line - 1), read: { path: file.path, sha256: file.sha256, line } });
     }
-    return boundedContext({ ...receipt, operation: 'search', query,
+    return finish({ ...receipt, operation: 'search', query,
       selection: 'literal-case-insensitive; path-order; first-hit-per-file',
       ...page(matches, limit, after, item => item.path) });
   }
@@ -156,11 +167,11 @@ export function createCodebaseContext({ root = process.cwd() } = {}) {
     contextPath(path);
     if (!/^[a-f0-9]{64}$/u.test(sha256 ?? '')) fail('exact-source-sha256-required');
     line = contextInteger(line, 1, 1_000_000); lines = contextInteger(lines, 1, CONTEXT_LIMITS.lines);
-    const { files, receipt } = snapshot(path), file = files.find(item => item.path === path);
+    const { files, receipt, finish } = snapshot(path), file = files.find(item => item.path === path);
     if (!file || file.sha256 !== sha256) fail('missing-excluded-or-stale-source-search-again');
     if (line > file.lines.length) fail('line-out-of-range');
     const selected = file.lines.slice(line - 1, line - 1 + lines);
-    return boundedContext({ ...receipt, operation: 'read', ...reference(file), line,
+    return finish({ ...receipt, operation: 'read', ...reference(file), line,
       content: selected.join('\n'), nextLine: line + selected.length <= file.lines.length
         ? line + selected.length : null });
   }

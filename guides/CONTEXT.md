@@ -107,7 +107,12 @@ const result = context.search({ path: 'src', query: 'receipt' });
 ```
 
 One instance retains only its last scope's hashed navigation metadata, never file bodies. Every call
-rereads current bytes; unchanged files skip structural extraction, reported by `reusedFiles`.
+rereads current bytes. Only `map` extracts navigation structure; `search` and exact `read` skip it.
+`parsedFiles` and `reusedFiles` count structural work actually performed or reused by `map`.
+Each result carries measured wall time, current-process CPU (excluding Git children), and bytes
+read including freshness verification. Tokens and monetary cost remain unknown. These bounded
+observations accompany the source identity for agent diagnostics; they grant no authority and
+do not establish end-to-end browser or CI savings.
 Separate CLI processes retain nothing. There are no watchers, background indexing, persistent
 summaries or automatic prompt injection. This trades repeated bounded reads for less state and
 reliable handling of same-size, restored-timestamp edits.
