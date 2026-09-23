@@ -254,7 +254,7 @@ function listedContent(raw, label, root, category) {
   })), label).map(({ path }) => contentRecord(root, category, path));
 }
 
-function inventorySnapshot(root, canonicalRef, allowDetached) {
+function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries) {
   const headRevision = strictText(gitLine(
     ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'], root, 'HEAD revision'),
   'HEAD revision');
@@ -284,14 +284,19 @@ function inventorySnapshot(root, canonicalRef, allowDetached) {
   const unsupported = [...stageZero.values()].find((entry) =>
     !['100644', '100755', '120000'].includes(entry.mode));
   if (unsupported) blocked('tracked index mode is unsupported');
+  const visibleBytes = gitBytes(['ls-files', '--others', '--exclude-standard', '-z', '--'], root);
+  const ignoredBytes = gitBytes(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--'], root);
+  if (indexPaths.size + nulRecords(visibleBytes, 'visible untracked inventory').length
+    + nulRecords(ignoredBytes, 'ignored runtime inventory').length > maxContentEntries) {
+    blocked('recovery inventory exceeds the cleanup content entry ceiling',
+      'blocked-recovery-inventory-budget');
+  }
   const tracked = [...stageZero.values()].sort((left, right) => Buffer.compare(left.path, right.path))
     .map((entry) => contentRecord(root, CATEGORIES.tracked, entry.path, entry.mode));
-  const visibleUntracked = listedContent(gitBytes([
-    'ls-files', '--others', '--exclude-standard', '-z', '--',
-  ], root), 'visible untracked inventory', root, CATEGORIES.visibleUntracked);
-  const ignoredRuntime = listedContent(gitBytes([
-    'ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--',
-  ], root), 'ignored runtime inventory', root, CATEGORIES.ignoredRuntime);
+  const visibleUntracked = listedContent(visibleBytes,
+    'visible untracked inventory', root, CATEGORIES.visibleUntracked);
+  const ignoredRuntime = listedContent(ignoredBytes,
+    'ignored runtime inventory', root, CATEGORIES.ignoredRuntime);
   const allKeys = new Set(indexPaths);
   for (const record of [...visibleUntracked, ...ignoredRuntime]) {
     const key = record.path.toString('hex');
@@ -325,8 +330,11 @@ function frozen(value) {
 }
 
 /** Collect twice and return only an exact, stable, path-free observation. */
-export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, allowDetached = false } = {}) {
+export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, allowDetached = false,
+  maxContentEntries = Number.MAX_SAFE_INTEGER } = {}) {
   if (typeof allowDetached !== 'boolean') throw new TypeError('allowDetached must be a boolean');
+  if (!Number.isSafeInteger(maxContentEntries) || maxContentEntries < 1)
+    throw new TypeError('maxContentEntries must be a positive safe integer');
   if (typeof canonicalRef !== 'string' || !canonicalRef.startsWith('refs/')
     || canonicalRef.includes('\0')) throw new TypeError('canonicalRef must be a full Git ref');
   const initialRoot = strictText(gitPath(['rev-parse', '--show-toplevel'], cwd,
@@ -336,8 +344,8 @@ export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, al
   if (gitBytes(['check-ref-format', canonicalRef], root, { allowFail: true }) === null) {
     throw new TypeError('canonicalRef must be a valid full Git ref');
   }
-  const first = inventorySnapshot(root, canonicalRef, allowDetached);
-  const second = inventorySnapshot(root, canonicalRef, allowDetached);
+  const first = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries);
+  const second = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries);
   const finalRoot = realpathSync(strictText(gitPath(['rev-parse', '--show-toplevel'], root,
     'repository root'), 'repository root'));
   const finalIdentity = lstatSync(finalRoot, { bigint: true, throwIfNoEntry: false });
