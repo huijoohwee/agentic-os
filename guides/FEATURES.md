@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — Feature Index"
 doc_type: "Feature Index"
-version: "1.0.1"
+version: "1.0.2"
 date: "2026-09-23"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -46,7 +46,7 @@ names the smallest outstanding owner work.
 | Current | `graph-source-cloud-entry` | [Graph storage plan][roadmap-storage-plan] | [2.7.0][roadmap-guideline-27] | Source under protected review |
 | Future | `graph-local-browser-signin` | [Graph storage companion][roadmap-signin-plan] | [2.7.0][roadmap-guideline-27] | Provider registration, local configuration and live proof pending |
 
-[roadmap-os-plan]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/guides/PRD-TAD-ADR-MVP-GTM.md
+[roadmap-os-plan]: https://github.com/huijoohwee/agentic-os/blob/c047791e9dcfb8d6f075655d9a08d4214f57e63d/guides/PRD-TAD-ADR-MVP-GTM.md
 [roadmap-python-plan]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md
 [roadmap-storage-plan]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/agentic-graph-storage-sync-prd-tad-adr-mvp-gtm.md
 [roadmap-signin-plan]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/agentic-graph-storage-sync-document.companion.md
@@ -84,6 +84,26 @@ delivery attempt, apply the [planning release handover](./PRD-TAD-ADR-MVP-GTM.md
 to the affected feature rows: distinguish Development, Production Release and
 Runtime evidence and link the successor TODO with its next owner action. A source
 status does not fill a missing production or runtime indication.
+
+## Delivery observations — 2026-09-23
+
+These observations retain their exact subjects; they do not upgrade unrelated
+feature rungs or replace product-owned release receipts.
+
+| Affected capability | Development | Production Release | Runtime indication and next step |
+|---|---|---|---|
+| OS ADLC closeout (`adlc-scoped-lanes`, F13/F25) | [PR #288](https://github.com/huijoohwee/agentic-os/pull/288) merged at `c047791e9dcfb8d6f075655d9a08d4214f57e63d`; required source checks passed. | No standalone hosted target; consumers own deployment and exact package adoption. | Canonical CLI source synchronized; production consumer activation is unverified. Retain `delivery_pending` until each eligible product supplies its own Dev/Prod receipts. |
+| Shared lifecycle guidance (F20 dependency) | Guideline 1.0.2 integrated at website `91744c9ba4497470a1ffbdbc90c18a4faff9fb7f`; source checks passed. No separate Dev target is defined. | [Pages deployment](https://github.com/huijoohwee/huijoohwee.github.io/actions/runs/35867688961) succeeded for that exact source through the owner's Prod-only controller. | Public release identity and lifecycle guideline bytes matched source on 2026-09-23. Guideline SHA-256: `7419032563910ecf0710a2e9f0acd0fd7f684dae59504893ff574a7b527f19a1`. Next: retain the receipt; refresh affected readiness after the next delivery attempt. |
+
+Graph Dev's native controller refreshed its services at 2026-09-23T13:36:36.821Z
+for Graph `737f0a818fce76538c19be78111c40177177cd8e` with OS docs/catalog
+`c047791e9dcfb8d6f075655d9a08d4214f57e63d`; apex, storage and proxy probes
+returned HTTP 200. This is local service/identity evidence, not browser acceptance.
+That Graph candidate remains excluded from a
+production-success claim: its [production preparation](https://github.com/huijoohwee/agentic-graph/actions/runs/35858514431)
+failed the required isolated browser gate before authorization/deployment.
+XR MP4 diagnosis remains deferred (KIV) by the operator; the failure is not waived.
+The next production action requires an eligible candidate with that gate passed.
 
 ## How to read the index
 
