@@ -18,20 +18,19 @@ export function traceWorkflow(root, input) {
   const entry = { path: contextPath(request.path), ...(request.script === undefined ? {} : { script: request.script }) };
   if (entry.script !== undefined && (!scriptName(entry.script) || posix.basename(entry.path) !== 'package.json')) fail('script');
   const context = createCodebaseContext({ root }), started = Date.now(), clock = performance.now(), cpu = process.cpuUsage(), files = new Map();
-  const nodes = [], edges = [], unresolved = [], queue = [{ ...entry, depth: 0 }], seen = new Set();
+  const nodes = [], edges = [], unresolved = [], queue = [{ ...entry, depth: 0 }], seen = new Set(), verifications = [];
   let revision = null, bytes = 0, sourceReadBytes = 0, parsedFiles = 0, reusedFiles = 0;
   const load = path => {
     if (files.has(path)) return files.get(path);
     if (files.size >= 20 || Date.now() - started > 10000) fail('budget');
-    const mapped = context.map({ path, limit: 1 }), metadata = mapped.results.find(item => item.path === path);
-    sourceReadBytes += mapped.observation.sourceReadBytes; parsedFiles += mapped.parsedFiles; reusedFiles += mapped.reusedFiles;
-    if (revision !== null && revision !== mapped.revision) fail('revision-drift');
-    revision = mapped.revision;
-    if (!metadata) return null;
-    const file = readRegular(root, path, 128000);
-    if (file.digest !== metadata.sha256) fail('source-drift'); sourceReadBytes += metadata.bytes;
-    bytes += metadata.bytes; if (bytes > 512000) fail('source-byte-budget');
-    const result = { ...metadata, text: file.text }; files.set(path, result); return result;
+    const inspected = context.traceSource(path);
+    verifications.push(inspected.verify);
+    sourceReadBytes += inspected.sourceReadBytes; parsedFiles += inspected.parsedFiles; reusedFiles += inspected.reusedFiles;
+    if (revision !== null && revision !== inspected.revision) fail('revision-drift');
+    revision = inspected.revision;
+    if (!inspected.file) return null;
+    bytes += inspected.file.bytes; if (bytes > 512000) fail('source-byte-budget');
+    files.set(path, inspected.file); return inspected.file;
   };
   const link = (from, target, kind, line, depth) => {
     if (edges.length >= 64) fail('edge-budget');
@@ -88,10 +87,8 @@ export function traceWorkflow(root, input) {
       }
     }
   }
-  // Bind the entire bounded traversal to unchanged bytes and revision, not just each individual read.
-  for (const [path, file] of files) {
-    if (readRegular(root, path, 128000).digest !== file.sha256) fail('source-drift'); sourceReadBytes += file.bytes;
-  }
+  // Deferred exact-byte and inventory checks bind the complete traversal before any result escapes.
+  for (const verify of verifications) verify();
   if (readGit(root, ['rev-parse','HEAD']).trim() !== revision) fail('revision-drift');
   const calls = new Map();
   for (const edge of edges.filter(edge => edge.kind !== 'literal-import')) {

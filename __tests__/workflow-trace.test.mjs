@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, statSync, utimesSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { traceWorkflow } from '../bin/agentic-os-workflow-trace.mjs';
+import { createCodebaseContext } from '../bin/agentic-os-context-index.mjs';
 import { resolveInvocation, dispatchInvocation } from '../bin/agentic-os-invocation.mjs';
 import { toolArguments } from '../src/mcp-server.mjs';
 
@@ -27,11 +28,22 @@ test('traverses scripts to owning imports, identifies repeated invocations, neve
   assert.equal(result.authority,false); assert.equal(result.executable,false);
   assert.equal(result.nodes.length,4);assert.equal(result.duplicates[0].target,'smoke.mjs');
   assert.equal(result.duplicates[0].evidence.length,2);assert.equal(result.measured,null);
-  assert.ok(result.observation.sourceReadBytes >= result.coverage.bytes * 2);
+  assert.equal(result.observation.sourceReadBytes, result.coverage.bytes * 2);
   assert.ok(result.observation.parsedFiles > 0);assert.equal(result.observation.tokens,null);
   assert.ok(result.edges.some(edge=>edge.to==='owner.mjs'&&edge.kind==='literal-import'));
   assert.doesNotMatch(JSON.stringify(result), /private body/);
   assert.equal(f.run({path:'package.json',script:'cycle'}).nodes.length,1);
+});
+
+test('deferred traversal verification rejects same-size edits with restored timestamps', t => {
+  const f = fixture(t), context = createCodebaseContext({ root: f.root });
+  const inspected = context.traceSource('owner.mjs');
+  assert.match(inspected.file.text, /private body/);
+  const path = join(f.root, 'owner.mjs'), before = statSync(path);
+  writeFileSync(path, readFileSync(path, 'utf8').replace('private body', 'changed body'));
+  utimesSync(path, before.atime, before.mtime);
+  assert.throws(() => inspected.verify(), /source-changed-retry/);
+  assert.equal(f.run({ path: 'owner.mjs' }).observation.sourceReadBytes, inspected.file.bytes * 2);
 });
 
 test('exports bounded source observations for Graph Canvas without inventing per-file costs', t => {

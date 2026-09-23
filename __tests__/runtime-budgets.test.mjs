@@ -55,7 +55,7 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '4d49257245adbed8f56733c152be502fc39d6a650751e99333265bf56c140996');
+    'fda9e94b59ccda1dacb4a86bc543bdfcf22eceb64b1317108ecc94053211771d');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -95,13 +95,14 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
-      'Free-tier/FOSS; no paid plans/addons/overages;',
-      'FORBID guessed inputs, optional detours, duplicate checks.',
+      'Free-tier/FOSS; no paid/addons/overages;',
+      'No guesses/detours/duplicate checks;',
       'Fix owner/reuse/remove replacements; contract-only shims.',
       'Sprint: ETA+time/byte/module caps;',
       'lazy-load; refresh on drift.',
-      'FORBID idle/poll loops; do disjoint work; else blocker+recheck, not ETA.',
-      'cleanup global/repo-local; authority+green proof per effect/receipt.',
+      'No idle/poll loops; disjoint work or blocker+recheck, not ETA.',
+      'Before turn/session end: MUST update implemented PRD-TAD-ADR-MVP-GTM.',
+      'cleanup global/local; authority+green proof/effect/receipt.',
     ]],
     ['AGENTS.md', [
       'Continuously obey the global `guides/SYSTEM-PROMPT-RUNTIME.md`',
