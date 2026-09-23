@@ -4,7 +4,7 @@ import { acquireOperationLock, finishOperationLock, currentBranch, git, gitLines
   fetch as gitFetch, observeGit, remoteRefSha, remoteTransport, worktrees } from '../src/git.mjs';
 import { assertDevice, deviceSegment, laneRef } from '../src/lane-id.mjs';
 import * as store from '../src/lane-records.mjs';
-import { successorLineage } from '../src/lane-state.mjs';
+import { successorLineageChain } from '../src/lane-state.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
 import { provision, assertProvisionable, assertDisjointReservation, committedLanePaths, lanePath, parseWritePaths } from '../src/worktree.mjs';
 import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
@@ -79,10 +79,10 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   const transport = remoteTransport(remote, root);
   if (remoteRefSha(remote, ref, root, transport.fetchUrl) !== null) fail('published', 'Published candidates are immutable; use the native successor operation');
   assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
-  const lineage = successorLineage(record);
+  const lineage = successorLineageChain(record, store.load(root).lanes);
   if (lineage === false) fail('successor-lineage', 'Invalid retained successor identity');
-  if (lineage && (remoteRefSha(remote, lineage.predecessorRef, root, transport.fetchUrl) !== lineage.predecessorHead
-    || observeGit(['merge-base', '--is-ancestor', lineage.predecessorHead, head], { cwd: root, allowFail: true }) === null))
+  if (lineage.some(link => remoteRefSha(remote, link.predecessorRef, root, transport.fetchUrl) !== link.predecessorHead
+    || observeGit(['merge-base', '--is-ancestor', link.predecessorHead, head], { cwd: root, allowFail: true }) === null))
     fail('successor-lineage', 'Retained successor needs exact published predecessor and preserved ancestry');
   return { head, reserved, lineage };
 }
@@ -131,7 +131,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           fail('member-binding', 'The existing lane is not a member of the selected mission');
         const liveDigest = scopeDigest(identity.reserved);
         const recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit';
-        const successorReadmit = row && row.ref !== ref && identity.lineage?.predecessorRef === row.ref;
+        const successorReadmit = row && row.ref !== ref && identity.lineage.some(link => link.predecessorRef === row.ref);
         if (successorReadmit && !readmit) fail('successor-readmit', 'Explicit readmit must bind the retained successor to its existing mission slot');
         if (row && (row.path !== path || (row.ref !== ref && !successorReadmit) ||
           (row.writeDigest !== liveDigest && !successorReadmit && !(recoveringReadmit && row.previousWriteDigest === liveDigest))))

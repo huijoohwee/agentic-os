@@ -298,6 +298,21 @@ export function successorLineage(record) {
     || value.predecessorRef === record.ref
     || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.predecessorHead ?? '') ? false : value;
 }
+/** Bounded local lineage; callers must reobserve every published predecessor. */
+export function successorLineageChain(record, records) {
+  const chain = [], seen = new Set([record.ref]);
+  let current = record;
+  for (;;) {
+    const link = successorLineage(current);
+    if (link === null) return chain;
+    if (link === false || chain.length === 32 || seen.has(link.predecessorRef)) return false;
+    const previous = records[link.predecessorRef];
+    if (!previous || previous.ref !== link.predecessorRef || previous.head != null && previous.head !== link.predecessorHead
+      || previous.worktree !== record.worktree || previous.base !== record.base
+      || previous.baseSha !== record.baseSha) return false;
+    chain.push(link); seen.add(link.predecessorRef); current = previous;
+  }
+}
 export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef,
   tip, worktree, device, scope, createdAt, writePaths }) {
   const boundRecord = lanes[boundRef], targetRecord = lanes[successorRef],
