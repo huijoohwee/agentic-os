@@ -113,6 +113,14 @@ Each result carries measured wall time, current-process CPU (excluding Git child
 read including freshness verification. Tokens and monetary cost remain unknown. These bounded
 observations accompany the source identity for agent diagnostics; they grant no authority and
 do not establish end-to-end browser or CI savings.
+For a portable Graph Canvas view, put `{ "path": "package.json", "script": "check", "view": "mission" }`
+in a local JSON input and run `agentic-os workflow trace --input=<path> > source-observation.json` from the owner repository.
+Import the resulting JSON file in Graph Canvas Mission Control on a device that runs agentic-os.
+This reuses Graph's local run import contract: the root span shows measured traversal wall time and
+current-process CPU; child source spans retain exact paths and digests with unknown individual
+time, memory, tokens and cost. The profile carries measured source-read bytes and structural reuse.
+Unresolved references mark partial coverage. This is bounded, read-only lexical navigation, not
+a runtime call graph or an end-to-end cost measurement; no OS server or device-specific path is needed.
 Separate CLI processes retain nothing. There are no watchers, background indexing, persistent
 summaries or automatic prompt injection. This trades repeated bounded reads for less state and
 reliable handling of same-size, restored-timestamp edits.
