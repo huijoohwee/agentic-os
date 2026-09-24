@@ -23,6 +23,8 @@ agent_id: "codex-documentation-management"
 guideline_revision: "3.3.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/987dd1d1e6d25761f2279d49a53c40a210466679/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "0433c86a3528f2130d952a1b63c9e40feb41fde3"
+source_docs:
+  - "https://github.com/huijoohwee/huijoohwee.github.io/blob/a9ab28adedf0d96b74670f459315560fa854b3b5/template/document-maintenance-template.md"
 ---
 # Reference implementation — Markdown documentation management
 
@@ -37,7 +39,7 @@ maintenance; the pipeline still owns admission, evidence and publication. [Autho
 extend existing owners with exact provenance. Maintainer → update enrolled Markdown → validated
 candidate, explicit conflict or no-change result.
 
-This increment edits the plan/index only; implementation is proposed. Reuse website `schema/`,
+This increment adds a reviewed template contract and a bounded sync command. Reuse website `schema/`,
 `guidelines/`, `template/`; no new repository/parser/service/model call or external reference adoption.
 
 ## Codebase grounding — reference implementation
@@ -101,7 +103,7 @@ sibling source import, duplicate registry or field definitions; schemas are read
 |---|---|
 | T-D1 / D1 | Extend common authoring constraints, reuse actual local parser and locked `agentic-os/frontmatter`; schema owner adds only missing rules and fixtures. |
 | T-D2 / D2 | Reuse `schema`/`$schema`, `source_docs`, `guideline_source/revision`, `template_inputs` and role revisions where supported. Profile owner proves provenance representation; no new sidecar. |
-| T-D3 / D3 | One new central entrypoint, proposed `bin/agentic-os-doc-sync.mjs` (absent at G1), handles check/dry-run/apply. OS owner splits pure helpers only for responsibility/size. |
+| T-D3 / D3 | One new central entrypoint, `scripts/doc-sync.mjs` (absent at G1), handles check/dry-run/apply. OS owner splits pure helpers only for responsibility/size. The bin budget precludes adding another bin file. |
 | T-D4 / D4 | Native lanes + [multi-gitter][multi-gitter] dispatch the same pinned script from outside target clones; no per-repo copies. Lifecycle owner validates the adapter. |
 | T-D5 / D5 | Extend existing validators/CI discovery; one logical document job per repo, reusing Canvas's job. Consumer owners separately bootstrap code/YAML. |
 | T-D6 / D6 | Reuse native head binding, writer lease and immutable publication; updater stages candidates and keeps bounded interrupted-write recovery. |
@@ -185,7 +187,7 @@ remediation. Findings reuse existing Rule ID/type/severity plus path, expected/o
 | Business | Manual baseline → timed pilot → offer → collection/support measurement; D7/GTM. |
 | Process | START → prepare/check → RELEASE → separately authorized delivery/recovery; D5–D7. |
 
-Invocation register: T-D3 CLI is **proposed**; T-D4 multi-gitter is **proposed dry-run**. Existing MCP
+Invocation register: T-D3 CLI is implemented locally; T-D4 multi-gitter is **proposed dry-run**. Existing MCP
 lifecycle/check discovery is reused. Dedicated MCP/WebMCP sync and `/docs.sync`, `#docs-sync`,
 `@template` are **unsupported** until registered with the existing owner and prepare-only browser
 checks. Mobile review needs no new UI; offline checks need verified cached inputs.
@@ -234,7 +236,9 @@ review. Four experience criteria remain unassessed until observed.
 
 ### Evidence and current handover
 
-Implemented: grounded proposal and index link only. D1–D7 behavior is **not implemented or verified**.
+Implemented: grounded proposal, index link, central template contract at website PR #262, and the
+single-document sync command in this successor. Conflict, path and no-write behavior have focused tests;
+D5/D7 and end-to-end apply verification remain open.
 Local/delivered rungs stay `undocumented` pending evaluator evidence; no fleet sync, CI rollout,
 deployment, payment or savings claim. Named consumer checks are future integration requirements.
 
@@ -251,9 +255,20 @@ No package/source changes. Agent tokens/total active time are unmetered; increme
 Release preflight caught base drift; the unpublished lane was refreshed and natively re-admitted.
 Final checks precede handoff; integration/deployment remain unclaimed.
 
-Next: authoring owner selects one non-executable template and four exact documents; refresh G1–G6,
-prove baseline/inputs, then implement phase 1 in admitted scope. Exit V-D1/V-D2; recheck on source/profile
-change. This task grants no fleet or production write authority.
+Next: enroll one non-executable document and the existing CI owner in each consumer; run a four-target
+dry-run, then review exact candidate/check receipts. Template source is the new file in the existing
+central template directory, pinned above. Recheck on source/profile change. This task grants no
+fleet or production write authority.
+
+<!-- agentic-os:doc-sync:start -->
+## Shared maintenance contract
+
+- Check authored YAML with the repository's strict parser and semantic profile.
+- Compare template revisions from exact source commits and preserve local edits.
+- Review conflicts and the full proposed diff before accepting an update.
+- Require the repository's document checks for the exact source candidate.
+- Record source, check and publication receipts separately from runtime proof.
+<!-- agentic-os:doc-sync:end -->
 
 ## GTM — reference implementation
 
