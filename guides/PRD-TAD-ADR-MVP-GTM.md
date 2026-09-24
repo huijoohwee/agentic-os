@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.10"
+version: "1.4.11"
 date: "2026-09-24"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.10"
-tad_revision: "1.4.10"
-adr_revision: "1.4.10"
+prd_revision: "1.4.11"
+tad_revision: "1.4.11"
+adr_revision: "1.4.11"
 guideline_revision: "2.7.0"
-worktree_id: "device-0232231d4a19--start-mission-selection"
-agent_id: "codex-start-mission-selection"
+worktree_id: "device-0232231d4a19--checkout-policy"
+agent_id: "codex-checkout-policy"
 load_policy: "on-demand"
 verification_scope: "ADLC closure observations, existing invocation reuse and bounded checks; consumer-authenticated runtime proof remains separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "8f546555f680358016867403fadc85619d6aaaf2"
-mvp_revision: "1.4.10"
-gtm_revision: "1.4.10"
+reviewed_source_revision: "f8d00dd13242d7d83bae0276837268286b550bf0"
+mvp_revision: "1.4.11"
+gtm_revision: "1.4.11"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
@@ -32,11 +32,11 @@ Current pins live in [`catalog/composition-source-lock.json`](../catalog/composi
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
 ## Identity and opening directive
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.10`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.11`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.10`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.11`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
@@ -79,7 +79,7 @@ it remains below 600 lines and reuses historical evidence links instead of anoth
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 ## TAD
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.10` consumes PRD `1.4.10`, decisions ADR `1.4.10`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.11` consumes PRD `1.4.11`, decisions ADR `1.4.11`.
 
 ### Journey-to-system and RAO steps
 
@@ -369,7 +369,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
 
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.10` binds PRD/TAD `1.4.10`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.11` binds PRD/TAD `1.4.11`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -399,7 +399,7 @@ those behaviors. P01/P03/P05/P06 now use the bounded handover above at this exac
 
 ### Shared-memory invocation (P04-M, authorized implementation)
 
-All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.10`, refining AC-P04/T04; ADR-P06 is accepted under the 2026-09-21 explicit P04-M1–M5 authorization.
+All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.11`, refining AC-P04/T04; ADR-P06 is accepted under the 2026-09-21 explicit P04-M1–M5 authorization.
 The unchanged native-inspiration cases and handover checks remain in the [exact predecessor](https://github.com/huijoohwee/agentic-os/blob/3559f18aeef6b0f2eb13bb95820f426a8e4e2301/guides/PRD-TAD-ADR-MVP-GTM.md#native-inspiration-acceptance-cases). Current T01 policy still governs authorization and source restrictions.
 **PRD / directive:** the operator retrieves a cited prior decision and prepares one reviewed learning proposal from the same shared source across tasks/devices. Pain: CLI-only recall is easy to miss in an MCP-driven task; switching stores can surface duplicate or stale context. This is an observed access gap, not measured customer demand. Reuse `TASK-MEMORY-001`, whose [memory guide](MEMORY.md#task-operating-model-task-memory-001100) remains the retrieval/publication contract owner; this proposal owns only its discovery/invocation handoff.
 
@@ -502,7 +502,7 @@ is established by the handover. Feed measured findings into the next immutable C
 [maturity-grounding]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md#experience-and-first-dollar--reference-implementation
 [document-naming]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format
 
-Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.10` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.11` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
 
 [planning-record]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-planning-record.md
 [handover-continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/adlc-artifact-continuity.md
@@ -543,22 +543,24 @@ Neither index edges, lane cache, local workflow metadata nor passing checks conf
 
 | Acceptance | Observable requirement | Existing owner / verification |
 |---|---|---|
-| E01–E03 | START separates an explicitly declared new unbound task from unrelated navigation; exact members/resumes retain same-mission caps; planning/identity precede costly effects and races cannot allocate the final slot twice | START lock, workflow lineage; admission/workflow/operation-lock tests |
-| E04–E05 | Retained partial allocation consumes capacity; missing cached lanes are never reuse; dirty disjoint peers remain untouched | Native provision artifacts and live inventory; worktree/startup regressions |
+| E01–E03 | START defaults a new planned task to one checkout and separates it from unrelated navigation; exact members/resumes retain same-mission caps; planning/identity precede costly effects and races cannot allocate the final slot twice | START lock, workflow lineage; admission/workflow/operation-lock tests |
+| E04–E05 | At most five task checkouts per local clone across missions, excluding canonical; detached/missing registrations and retained mission allocations count; disjoint peers stay untouched | Native START lock and provisioning guard; admission/inventory regressions |
 | E06–E07 | Existing exact-input checks retain coverage and budgets; active unpublished re-admission extends only disjoint paths with before/after evidence and exact head | Validation owner and native START reservation owner; economy/admission tests |
 | E08–E09 | Explicit bounded member/phase dependencies reject cycles/missing endpoints/stale joins; independent eligible work remains available | Workflow collector/archive and all native effect entrypoints; archive/boundary tests |
 | E10–E11 | Repeated unchanged blockers invoke no effect; source/runtime/evidence drift invalidates reuse; fresh private base is checked before publication | Validation receipts, publication preflight and completion owner; failure/reuse/early-preflight tests |
 | E12–E13 | Observations retain source identity and unknown costs; eligible closeout uses existing protected integration/sync/quarantine owners without false full completion | Native index/observation, release-common complete; workflow/completion tests |
 | E14 | Declared writer/reviewer handoffs precede checks and CI; missing, unfinished, failed, partial or stale native traces and dirty source block before any child process or reuse | Existing workflow collector and both validation guards; archive/boundary/runner cases |
 | E15 | Eligible actions that unblock more declared downstream prerequisites rank first; deterministic ties, independent work and unknown costs remain explicit | Existing workflow closure; dependency ranking cases |
+| E16 | Forbid checkout containment, including other clones and symlink ancestors; linked callers resolve the same canonical flat registry | Checkout resources and provisioning; inventory regressions |
 
 TAD: add versioned execution constraints to the existing immutable workflow root. Resolve stable member
 identities and explicit phase edges; persist declarations through collection and immutable successors.
 Reject constraint removal/relaxation and stale selected roots. A legacy archive remains readable with
 undeclared coverage; it cannot silently grant a new mission allowance or verified independence.
-START keeps its lock, registration and partial-effect recovery. An explicit plan plus cap for an unbound
-scope creates a new root; known members/allocations keep their owner and `--mission` adds a scope to it.
-A missing worktree proves no completion. Existing archives, dependencies and disjoint reservations remain.
+START keeps its lock, registration and partial-effect recovery. A plan for an unbound scope creates a
+new root with a default cap of one; known members/allocations keep their owner and `--mission` adds a scope to it.
+A missing worktree proves no completion. Historical 0–32 archives remain readable; effective admission is
+capped at five. New CLI/MCP plans default to one and accept explicit 0–5; explicit lower budgets and immutable roots remain binding.
 Re-admission checks at most 32 predecessor pins, including the mission's explicit source checkpoint when
 publication replaced an older handoff. Require matching worktree/base/cache, exact remote head and ancestry.
 Missing, cyclic, drifting or over-budget evidence fails before scope CAS; never infer lineage or raise caps.
@@ -572,25 +574,23 @@ page coverage and no pending/failed evaluation. Handoffs join all bounded native
 missing or truncated coverage remains blocked. Reparse retained bytes at admission; archive advice
 is navigation only. This cooperative handoff constrains validation; it cannot discover undeclared agents
 or authenticate a reviewer's identity. Legacy readiness remains undeclared. Index owners identify the
-scope; explicit dependencies determine precedence, never inferred import edges. Review precedes the final
-joined run; drift invalidates handoffs. Checkpoint: 20 active minutes, zero modules/checkouts/dependencies,
-within the already approved CLI cap. Run scoped regression cases after review, then exact protected CI.
+scope; explicit dependencies determine precedence. Review precedes the final joined run; drift invalidates handoffs.
 ADR-EXEC-01: explicit local execution constraints restrict native actions; they never replace provider,
 cooperative claim, protected source, retirement or production authority. Unknown resource values remain
 null; historical timings are not total ETA. Stale unpublished source is refreshed through its native owner,
 while published candidates remain immutable. Recheck source/provider facts at the owning effect.
-MVP: this selection correction changes six files, two existing CLI owners and <8 KiB in a 15-minute implementation sprint; owner checks have a separate 540-second run cap.
-Reuse native admission/root collection; no new package, service or cap increase. Replace START guidance
-within its existing always-load budget. Same-scope retries and retained allocations cannot reset caps.
-Run `__tests__/admission-economy.test.mjs` for removed/active peers, missing plans, resumes, caps and races,
-then affected `npm run check`. Record source/check/release evidence; consumer pin adoption is separate.
-Budget decision, 2026-09-22: the user explicitly authorizes CLI modules 108→110 and lines 22,110→22,750.
-This bounds the two lazy START/publication owners and native test-runner guard; it adds no checkout,
-package, paid service or runtime worker. Existing total source, per-source-module, runtime and always-load
-caps remain unchanged. Review found at most 40–70 genuine duplicate lines removable from the admitted
-release owners against a 504-line gap; unrelated deletion or line compression would not improve the design.
-The trusted canonical native successor admitted the remaining owners in the same checkout. The initial
-source ref is retained without a preliminary PR or CI run. No candidate code grants itself a reservation.
+ADR-EXEC-02 (2026-09-24): five task checkouts per local repository bounds resource use across missions;
+canonical is excluded. Default to one, two for independent work, three–five only with sprint benefit.
+Five is a ceiling, not a measured optimum or parallel build target; use existing bounded test scheduling.
+Count completed work and sprint lead time, plus disk/RSS/CPU, before raising active concurrency.
+Flat paths prevent nested ownership; raw Git/other clones/devices remain outside this cooperative local gate.
+Prior budget/selection evidence: [protected predecessor](https://github.com/huijoohwee/agentic-os/blob/f8d00dd13242d7d83bae0276837268286b550bf0/guides/PRD-TAD-ADR-MVP-GTM.md#adlc-exec-001--native-execution-economy-authorized-implementation).
+MVP: user-authorized five-checkout and no-nesting policy, 2026-09-24; initial 30-minute estimate exceeded.
+Final verification checkpoint: 15 active minutes, 14 files/100 KB; no new modules/dependencies or budget increases.
+Run admission, inventory and MCP regressions, then affected `npm run check`; verify fifth/sixth boundaries,
+separate missions, retained registrations, historical caps, nested overrides and symlink ancestors.
+Consumer adoption requires an exact protected source pin and native setup. Existing narrower mission budgets
+retain their lineage. Use a new plan for unrelated work; Graph's older navigation defect is corrected upstream.
 Delivery requires both validation entrypoints, declared-mission regression proof and protected source
 release. Legacy standalone coverage remains undeclared; unknown costs and production authority remain separate.
 GTM: validate this operator journey against the retained Graph observations; demand and savings remain

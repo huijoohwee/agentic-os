@@ -3,6 +3,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { acquireOperationLock, finishOperationLock, currentBranch, git, gitLines, headSha,
   fetch as gitFetch, observeGit, remoteRefSha, remoteTransport, worktrees } from '../src/git.mjs';
 import { assertDevice, deviceSegment, laneRef } from '../src/lane-id.mjs';
+import { DEFAULT_TASK_CHECKOUTS, MAX_TASK_CHECKOUTS, assertCheckoutPlacement } from '../src/canonical-resources.mjs';
 import * as store from '../src/lane-records.mjs';
 import { readmissionPredecessors } from '../src/lane-state.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
@@ -11,13 +12,12 @@ import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
 import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
-
 const fail = (reason, message, facts = {}) => { throw Object.assign(new Error(message), { reason: `blocked-admission-${reason}`, ...facts }); };
 const scopeDigest = paths => hash(JSON.stringify([...paths].sort()));
 const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
 const limitValue = text => {
   if (text === null) return null;
-  if (!/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > 32) fail('allowance', 'checkout-limit must be an explicit integer from 0 to 32');
+  if (!/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > MAX_TASK_CHECKOUTS) fail('allowance', `checkout-limit must be an explicit integer from 0 to ${MAX_TASK_CHECKOUTS}`);
   return Number(text);
 };
 const selectedAgain = (root, repository, prior) => {
@@ -58,7 +58,7 @@ export function checkoutCapacity(selected, repository, inventory, explicitLimit 
   const own = new Set(selected.members.filter(row => row.child.source.repository === repository).map(row => row.child.context.worktreeId));
   const consumed = new Set((selected.manifest.allocations ?? []).filter(row => own.has(row.worktreeId)).map(row => row.worktreeId));
   for (const row of inventory) if (own.has(basename(row.path))) consumed.add(basename(row.path));
-  return { limit: selected.manifest.execution?.checkoutLimit ?? explicitLimit, consumed: consumed.size, worktreeIds: [...consumed].sort() };
+  return { limit: Math.min(selected.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS), consumed: consumed.size, worktreeIds: [...consumed].sort() };
 }
 function observeExisting(root, ref, path, record, expectedHead, requested, policy, allocation) {
   const registered = worktrees(root).find(row => row.branch === ref && row.path === path);
@@ -86,7 +86,6 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
     fail('successor-lineage', 'Retained successor needs exact published predecessor and preserved ancestry');
   return { head, reserved, lineage };
 }
-
 export async function cmdStart(root, argv, policy, profile, services) {
   const { out, err, projectCache, effectReceipt, remoteName, requireCanonical } = services;
   requireCanonical(root, policy);
@@ -95,7 +94,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const ref = laneRef(scope, device);
   let path = lanePath(scope, device, root), worktreeId = basename(path);
   const requested = option(argv, 'write') === null ? [] : parseWritePaths(option(argv, 'write'));
-  const planningPath = option(argv, 'plan'), input = option(argv, 'mission'), explicitLimit = limitValue(option(argv, 'checkout-limit'));
+  const planningPath = option(argv, 'plan'), input = option(argv, 'mission');
+  let explicitLimit = limitValue(option(argv, 'checkout-limit'));
   const readmit = flag(argv, 'readmit'), expectedHead = option(argv, 'expected-head');
   if (expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)) fail('head', 'expected-head must be an exact commit SHA');
   if (readmit && (!input || !expectedHead)) fail('readmit-binding', 'readmit requires an exact mission and expected-head');
@@ -110,9 +110,10 @@ export async function cmdStart(root, argv, policy, profile, services) {
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
-    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || !planningPath || explicitLimit === null || readmit) });
+    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || !planningPath || readmit) });
+    if (!selected && planningPath && explicitLimit === null) explicitLimit = DEFAULT_TASK_CHECKOUTS;
     const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
-    // A mission pointer is evidence, not a selector override. Refuse before any effect.
+    assertCheckoutPlacement(path, worktrees(root));
     if (input && selected) selectedAgain(root, profile.repository, selected);
     if (enrolled) {
       if (!selected?.manifest.execution && explicitLimit === null) fail('allowance-required', 'Declare the mission checkout limit before creation or explicit legacy adoption');
@@ -145,7 +146,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
           fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected,
           { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
-        // Capture explicitly bound private candidate changes in a new immutable member.
         if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
         allocation = { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: identity.head,
@@ -167,7 +167,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
       } else {
         if (readmit) fail('readmit-missing', 'No registered existing lane matches the readmission request');
         if (row) fail('recovery-required', 'A retained allocation still consumes capacity; reconcile it without another checkout');
-        const limit = selected?.manifest.execution?.checkoutLimit ?? explicitLimit;
+        const limit = Math.min(selected?.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS);
         const capacity = selected ? checkoutCapacity(selected, profile.repository, worktrees(root), explicitLimit) : { consumed: 0 };
         if (limit === 0 || capacity.consumed >= limit) fail('capacity', 'Mission checkout allowance is exhausted; complete an existing eligible lane', { capacity: { ...capacity, limit } });
       }

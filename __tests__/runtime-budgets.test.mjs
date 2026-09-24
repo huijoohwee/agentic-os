@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40905, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40937, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -77,13 +77,15 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
-      '`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> --checkout-limit=<0..32>`',
+      '`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> [--checkout-limit=<0..5>]`',
       '--mission=<manifest>',
-      'Zero allows reuse; declared caps cannot increase.',
-      'Legacy START remains undeclared.',
+      'Five task checkouts max per local repo; canonical excluded. Forbid nesting.',
+      'New plans default to one; use two for independent work, three–five for sprint value.',
+      'caps stay binding.',
+      'Zero allows reuse.',
       '--readmit --expected-head=<sha>',
-      'Work in the printed checkout.',
-      '[`ADLC-EXEC-001`](../guides/PRD-TAD-ADR-MVP-GTM.md)',
+      'Work in the returned checkout.',
+      '[ADLC-EXEC-001](../guides/PRD-TAD-ADR-MVP-GTM.md)',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'complete --ref=<lane>',

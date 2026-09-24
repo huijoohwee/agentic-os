@@ -1,7 +1,7 @@
 /** Exact, fail-loud CLI argument grammar. */
 import { assertScope } from '../src/lane-id.mjs';
+import { MAX_TASK_CHECKOUTS } from '../src/canonical-resources.mjs';
 import { parseWritePaths } from '../src/worktree.mjs';
-
 function exact(argv, {
   min = 0, max = min, options = [], flags = [], requiredOptions = [], requiredFlags = [],
 }) {
@@ -111,7 +111,7 @@ export function validateCommandArguments(command, argv) {
         options: ['device', 'write', 'plan', 'mission', 'checkout-limit', 'expected-head'], flags: ['readmit'] });
       if (error) return error;
       const limit = option(argv, 'checkout-limit'), head = option(argv, 'expected-head');
-      if (limit !== null && !/^(?:[0-9]|[12][0-9]|3[0-2])$/.test(limit)) return 'checkout-limit must be an integer from 0 through 32';
+      if (limit !== null && (!/^[0-9]$/.test(limit) || Number(limit) > MAX_TASK_CHECKOUTS)) return `checkout-limit must be an integer from 0 through ${MAX_TASK_CHECKOUTS}`;
       if (head !== null && !/^[0-9a-f]{40}$/.test(head)) return 'expected-head must be an exact 40-character lowercase hexadecimal revision';
       if (argv.includes('--readmit')) return head !== null && option(argv, 'mission') !== null
         ? null : 'readmit requires mission and expected-head';
@@ -173,7 +173,7 @@ export function cmdHelp() {
       '',
       '  Primary human release path:',
       '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
-      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> --checkout-limit=<0..32> | --mission=<manifest>]  admit or reuse a lane',
+      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> --checkout-limit=<0..5> | --mission=<manifest>]  admit or reuse a lane',
       '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
@@ -258,8 +258,8 @@ export function laneArguments(args, invalidParams) {
         || Buffer.byteLength(args[field]) > 4096 || /[\u0000-\u001f\u007f]/u.test(args[field])))
         throw new TypeError(`${field} must be a bounded local path`);
     }
-    if (Object.hasOwn(args, 'checkoutLimit') && (!Number.isSafeInteger(args.checkoutLimit) || args.checkoutLimit < 0 || args.checkoutLimit > 32))
-      throw new TypeError('checkoutLimit must be an integer from 0 through 32');
+    if (Object.hasOwn(args, 'checkoutLimit') && (!Number.isSafeInteger(args.checkoutLimit) || args.checkoutLimit < 0 || args.checkoutLimit > MAX_TASK_CHECKOUTS))
+      throw new TypeError(`checkoutLimit must be an integer from 0 through ${MAX_TASK_CHECKOUTS}`);
     if (Object.hasOwn(args, 'expectedHead') && (typeof args.expectedHead !== 'string' || !/^[0-9a-f]{40}$/.test(args.expectedHead)))
       throw new TypeError('expectedHead must be an exact 40-character lowercase hexadecimal revision');
     if (Object.hasOwn(args, 'readmit') && typeof args.readmit !== 'boolean') throw new TypeError('readmit must be a boolean');

@@ -6,7 +6,7 @@ import { join, basename, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { cmdStart } from '../bin/agentic-os-admission.mjs';
+import { checkoutCapacity, cmdStart } from '../bin/agentic-os-admission.mjs';
 import { collectWorkflowValue, readSelectedWorkflow, startWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
@@ -15,6 +15,7 @@ import * as records from '../src/lane-records.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { hash } from '../bin/agentic-os-test-inputs.mjs';
 import { readmissionPredecessors } from '../src/lane-state.mjs';
+import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 function fixture(t) {
@@ -43,12 +44,49 @@ function fixture(t) {
   return { root, parent, run, plan, profile, policy, events, effects, start, selected, services };
 }
 
-test('missing and zero declared allowance fail before fetch, hydration or checkout', async t => {
+test('zero declared allowance fails before fetch, hydration or checkout', async t => {
   const f = fixture(t);
-  await assert.rejects(f.start('one', `--plan=${f.plan}`), /Declare the mission checkout limit/);
   await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=0'), /allowance is exhausted/);
   assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
   assert.equal(f.run('status', '--porcelain'), '');
+});
+
+
+test('new planned missions default to one without inheriting unrelated mission navigation', async t => {
+  const f = fixture(t);
+  assert.equal(await f.start('one', `--plan=${f.plan}`), 0);
+  const first = f.selected();
+  assert.equal(first.manifest.execution.checkoutLimit, 1);
+  assert.equal(await cmdStart(f.root, ['two', '--device=test-device', '--write=second.txt',
+    `--plan=${f.plan}`], f.policy, f.profile, f.services), 0);
+  const second = f.selected();
+  assert.notEqual(first.manifest.id, second.manifest.id);
+  assert.equal(second.manifest.execution.checkoutLimit, 1);
+  await assert.rejects(f.start('three', `--mission=${second.path}`), /allowance is exhausted/);
+});
+
+test('CLI and native START reject declarations above five without effects', async t => {
+  const f = fixture(t);
+  for (const limit of ['6', '32', '-1', '1.5', '05']) {
+    assert.match(validateCommandArguments('start', ['one', `--checkout-limit=${limit}`]), /checkout-limit/);
+    await assert.rejects(f.start('one', `--plan=${f.plan}`, `--checkout-limit=${limit}`), /checkout-limit/);
+  }
+  assert.equal(validateCommandArguments('start', ['one', '--checkout-limit=5']), null);
+  assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
+});
+
+test('five separate missions share one repository ceiling; existing lanes remain reusable', async t => {
+  const f = fixture(t);
+  for (let index = 0; index < 5; index++) {
+    assert.equal(await cmdStart(f.root, [`task-${index}`, '--device=test-device', `--write=owned-${index}.txt`,
+      `--plan=${f.plan}`, '--checkout-limit=5'], f.policy, f.profile, f.services), 0);
+  }
+  const before = f.effects.length, selected = f.selected();
+  await assert.rejects(cmdStart(f.root, ['sixth', '--device=test-device', '--write=sixth.txt',
+    `--plan=${f.plan}`, '--checkout-limit=5'], f.policy, f.profile, f.services), { reason: 'blocked-repository-checkout-capacity' });
+  assert.equal(await cmdStart(f.root, ['task-4', '--device=test-device', '--write=owned-4.txt',
+    `--mission=${selected.path}`], f.policy, f.profile, f.services), 0);
+  assert.equal(f.effects.length, before); assert.equal(worktrees(f.root).length, 6);
 });
 
 test('same mission reuses dirty owned work and refuses another checkout at capacity', async t => {
@@ -96,7 +134,7 @@ test('new declaration preserves active peers, validates its own plan and retains
   writeFileSync(join(target, 'owned.txt'), 'unfinished peer work\n');
   await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=2'), /cannot reset or enlarge/);
   await assert.rejects(f.start('two', '--plan=missing-prd-tad-adr-mvp-gtm.md', '--checkout-limit=1'), /planning/);
-  await assert.rejects(f.start('two', `--plan=${f.plan}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--plan=${f.plan}`), /overlap|reserved|collision/i);
   await assert.rejects(f.start('two', `--plan=${f.plan}`, '--checkout-limit=1'), /overlap|reserved|collision/i);
   assert.equal(f.effects.filter(effect => effect === 'provision-worktree').length, 1);
   const nextArgs = ['two', '--device=test-device', '--write=second.txt', `--plan=${f.plan}`, '--checkout-limit=1'];
@@ -340,4 +378,14 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
   for (const patch of [{ path: '/other' }, { headRevision: 'b'.repeat(40) }, { baseRevision: 'b'.repeat(40) }, { ref: 'agent/device/missing' }]) {
     assert.equal(readmissionPredecessors(record, published, { ...allocation, ...patch }), false);
   }
+});
+
+test('historical larger allowances remain readable but effective admission is capped at five', t => {
+  const f = fixture(t), revision = headSha('HEAD', f.root);
+  startWorkflow(f.root, f.profile.repository, { revision, planningPath: f.plan, worktreeId: 'test-device--legacy',
+    execution: { version: 1, checkoutLimit: 32, dependencies: { version: 1, edges: [] } } });
+  const selected = f.selected(), bytes = readFileSync(selected.path, 'utf8');
+  assert.equal(selected.manifest.execution.checkoutLimit, 32);
+  assert.equal(checkoutCapacity(selected, f.profile.repository, worktrees(f.root)).limit, 5);
+  assert.equal(readFileSync(selected.path, 'utf8'), bytes);
 });

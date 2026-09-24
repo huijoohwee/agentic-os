@@ -64,7 +64,7 @@ test('the packaged fixed tool surface is deterministic and deeply frozen', () =>
   const laneSchema = TOOLS.find((tool) => tool.name === 'lane').inputSchema;
   assert.deepEqual(laneSchema.required, ['scope', 'writePaths']);
   assert.deepEqual(Object.keys(laneSchema.properties), ['scope', 'writePaths', 'planningPath', 'mission', 'checkoutLimit', 'expectedHead', 'readmit']);
-  assert.equal(laneSchema.properties.checkoutLimit.maximum, 32);
+  assert.equal(laneSchema.properties.checkoutLimit.maximum, 5);
   assert.equal(laneSchema.additionalProperties, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'checks').annotations.openWorldHint, false);
   assert.equal(TOOLS.find((tool) => tool.name === 'checks').annotations.readOnlyHint, true);
@@ -146,8 +146,8 @@ test('tool calls cross only the intended argument-array CLI boundary', async () 
       ['start', 'pricing-table', '--write=docs/price.md,src/price.mjs']],
     ['lane', { scope: 'price', writePaths: ['src/price.mjs'], planningPath: 'docs/plan.md', checkoutLimit: 0, readmit: false },
       ['start', 'price', '--write=src/price.mjs', '--plan=docs/plan.md', '--checkout-limit=0']],
-    ['lane', { scope: 'price', writePaths: ['src/price.mjs'], mission: '/group manifest.json', checkoutLimit: 32, expectedHead: 'a'.repeat(40) },
-      ['start', 'price', '--write=src/price.mjs', '--mission=/group manifest.json', '--checkout-limit=32', `--expected-head=${'a'.repeat(40)}`]],
+    ['lane', { scope: 'price', writePaths: ['src/price.mjs'], mission: '/group manifest.json', checkoutLimit: 5, expectedHead: 'a'.repeat(40) },
+      ['start', 'price', '--write=src/price.mjs', '--mission=/group manifest.json', '--checkout-limit=5', `--expected-head=${'a'.repeat(40)}`]],
     ['lane', { scope: 'price', writePaths: ['src/price.mjs'], mission: './mission.json', expectedHead: 'b'.repeat(40), readmit: true },
       ['start', 'price', '--write=src/price.mjs', '--mission=./mission.json', `--expected-head=${'b'.repeat(40)}`, '--readmit']],
   ];
@@ -186,7 +186,7 @@ test('tool argument validation rejects escalation and shell-shaped scopes', asyn
     ['lane', { scope: 'ok', device: 'other' }],
     ['lane', { scope: 'x;rm-rf' }],
     ['lane', { scope: '../escape' }],
-    ...[{ checkoutLimit: -1 }, { checkoutLimit: 33 }, { checkoutLimit: 0.5 }, { checkoutLimit: '1' },
+    ...[{ checkoutLimit: -1 }, { checkoutLimit: 6 }, { checkoutLimit: 32 }, { checkoutLimit: 33 }, { checkoutLimit: 0.5 }, { checkoutLimit: '1' },
       { checkoutLimit: null }, { checkoutLimit: Infinity }, { readmit: 'true' }, { readmit: null },
       { readmit: true }, { readmit: true, mission: './mission.json' }, { readmit: true, expectedHead: 'a'.repeat(40) },
       { expectedHead: 'main' }, { expectedHead: 'A'.repeat(40) }, { expectedHead: 12 },
