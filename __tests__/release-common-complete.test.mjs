@@ -454,6 +454,24 @@ test('progressive completion does not count deploy-bound source closeout as end-
   assert.equal(events.at(-1).deliveryPending, 1);
 });
 
+test('progressive completion retains docs delivery-scope assessment as pending', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const ref = 'agent/test-device/docs-delivery';
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: join(directory, 'docs-delivery'), branch: ref, head }],
+    record: () => ({ state: 'published', head, worktree: join(directory, 'docs-delivery') }),
+    complete: async () => 0,
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'delivery_scope_pending' } }),
+    out: line => events.push(JSON.parse(line)) });
+  assert.equal(code, 2);
+  assert.equal(events[0].status, 'delivery_scope_pending');
+  assert.equal(events.at(-1).completed, 0);
+  assert.equal(events.at(-1).deliveryPending, 1);
+});
+
 test('progressive completion refuses changed identity and false completion; budget prevents later effects', async t => {
   const s = completeFixture(t), directory = realpathSync(join(s.root, '..')), head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
   const rows = ['a', 'b'].map(name => ({ path: join(directory, name), branch: `agent/test-device/${name}`, head }));

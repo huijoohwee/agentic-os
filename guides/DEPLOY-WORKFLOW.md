@@ -62,6 +62,10 @@ closeout passed. `closeout.adlcState=delivery_pending` and progressive completio
 Dev deployment/readback, promotion of the same candidate to Prod, and Prod readback.
 The OS observation grants no deploy authority and cannot turn a source receipt into a
 runtime receipt. Follow the owner controller and retain its exact Dev and Prod receipts.
+For a documentation-only lane, `delivery_scope_pending` instead asks the product owner to
+check the exact changed paths against deployed artifact inputs. Some documentation is public
+content. Keep ADLC open until the owner supplies a bound deploy or no-deploy disposition;
+this observation alone grants neither a production effect nor a no-deploy exemption.
 
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and

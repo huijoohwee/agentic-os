@@ -112,6 +112,11 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   assert.equal(deploy.adlcState, 'delivery_pending');
   assert.equal(deploy.nextAction.id, 'deploy-workflow');
   assert.equal(deploy.authorizesEffects, false);
+  const docs = deriveCloseoutVerdict({ ...base, deployBound: true, changeClass: 'docs-only' });
+  assert.equal(docs.missionState, 'source_complete');
+  assert.equal(docs.adlcState, 'delivery_scope_pending');
+  assert.equal(docs.nextAction.id, 'assess-delivery-scope');
+  assert.equal(docs.authorizesEffects, false);
   const cleanup = deriveCloseoutVerdict({
     ...base, quarantineProfile: true, findingCodes: ['cleanup-receipt-unverified'],
   });
@@ -192,4 +197,25 @@ test('enrolled production-activation is a deploy nextAction after source complet
   assert.equal(after.closeout.adlcState, 'delivery_pending');
   assert.equal(after.closeout.nextAction.id, 'deploy-workflow');
   assert.equal(after.closeout.deployBinding.present, true);
+});
+
+test('docs-only lane in a production-bound repo requires product delivery-scope assessment', (t) => {
+  const subject = fixture(t);
+  mkdirSync(join(subject.lane, 'docs'));
+  writeFileSync(join(subject.lane, 'docs', 'handover.md'), '# Handover\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'document handover');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({
+    operations: ['publication', 'production-activation'],
+  }));
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'flight');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main',
+    subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const report = subject.status();
+  assert.equal(report.changeClass, 'docs-only');
+  assert.equal(report.closeout.missionState, 'source_complete');
+  assert.equal(report.closeout.adlcState, 'delivery_scope_pending');
+  assert.equal(report.closeout.nextAction.id, 'assess-delivery-scope');
+  assert.equal(report.closeout.authorizesEffects, false);
 });
