@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./design": "./src/design.mjs",
     ".": "./src/governance.mjs",
     "./invocation": "./src/invocation.mjs",
     "./catalog/invocation.json": "./catalog/invocation.json",

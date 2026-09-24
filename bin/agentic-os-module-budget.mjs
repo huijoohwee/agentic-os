@@ -16,8 +16,10 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
-  modules: 46,
-  totalLines: 15000,
+  // NATIVE-DESIGN-ENFORCEMENT: one portable policy verifier and one lazy CLI file.
+  // Two transport consumers; no lifecycle scenario family or runtime dependency.
+  modules: 47,
+  totalLines: 15050,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -27,8 +29,8 @@ export const BUDGET = Object.freeze({
   // does not add a new agentic-os-*.mjs entry point.
   // 2026-09-23: 33 existing-owner lines batch final trace verification; a
   // matched 20-file run cut median wall 49% and current-process CPU 45%.
-  binModules: 110,
-  binLines: 23135,
+  binModules: 111,
+  binLines: 23175,
   runtimeModules: 96,
   runtimeLines: 23023,
 });
