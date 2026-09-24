@@ -321,6 +321,7 @@ async function main() {
   if (command === 'release-common' && argv.length === 0) return cmdReleaseCommonHelp();
   if (command === 'release-common' && ['help', '--help', '-h'].includes(argv[0])) return cmdReleaseCommonHelp();
   if (command === 'run') return (await import('./agentic-os-run.mjs')).runAgentCommand(argv, out);
+  if (command === 'design-check') return (await import('./agentic-os-design.mjs')).runDesignCheck(argv, out);
   if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);
   if (command === 'request') return runRequest(argv);
   if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);

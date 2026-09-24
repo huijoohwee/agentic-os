@@ -1,7 +1,7 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
-  "entryCount": 35,
-  "digest": "sha256:ce22df5c00990ed1b3684a5e18ebe5a80da40b46b1e6fba59f7e309c780a6ca1",
+  "entryCount": 36,
+  "digest": "sha256:aa9adef3d914af399640f7b587b3ac6fc5ab001dc8171b3dd0d7607909b5abc5",
   "entries": [
     {
       "token": "/setup",
@@ -274,6 +274,7 @@
     {"token": "#vcc", "kind": "semantic", "value": "read-only", "summary": "Retain verifiable source and scope; context grants no authority."},
     {"token": "@agent:", "kind": "binding", "name": "agent", "mode": "option", "summary": "Caller agent label; not authentication or authority."},
     {"token": "@memory-store:", "kind": "binding", "name": "memory-store", "mode": "option", "summary": "Select workspace enrollment; arbitrary or runtime stores are refused."},
-    {"token": "@operator:", "kind": "binding", "name": "operator", "mode": "option", "summary": "Caller operator label; not authentication or authority."}
+    {"token": "@operator:", "kind": "binding", "name": "operator", "mode": "option", "summary": "Caller operator label; not authentication or authority."},
+    {"token":"/design.check","kind":"command","action":"design-check","semantic":"read-only","accepts":["input"],"requires":["input"],"summary":"Check a local design adoption record against pinned policy and supplied source bytes; no runtime or release authority."}
   ]
 }

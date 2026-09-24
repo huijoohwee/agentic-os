@@ -25,6 +25,7 @@ function deepFreeze(value) {
 }
 
 export const ENTRY_CONTRACTS = deepFreeze({
+  '/design.check': { kind: 'command', action: 'design-check', argv: [], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/setup': { kind: 'command', action: 'setup', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/doctor': { kind: 'command', action: 'doctor', argv: [], semantic: 'read-only', accepts: [], requires: [] },
   '/lane': { kind: 'command', action: 'start', argv: [], semantic: 'mutating', accepts: ['scope'], requires: ['scope'] },
