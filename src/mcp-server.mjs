@@ -4,6 +4,7 @@ import { loadCatalog, validateCatalog } from '../bin/agentic-os-invocation.mjs';
 import { readFileSync } from 'node:fs';
 import { CAPABILITY_COMMAND, capabilityArguments, laneArguments, memoryArguments } from '../bin/agentic-os-argv.mjs';
 import { isLaneRef } from './lane-id.mjs';
+import { MAX_TASK_CHECKOUTS } from './canonical-resources.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSION = '2025-11-25';
@@ -51,8 +52,8 @@ const LANE_INPUT = {
       description: 'Committed joined plan path for native START --plan.' },
     mission: { type: 'string', minLength: 1, maxLength: 4096,
       description: 'Immutable workflow group manifest path; reuse its declared checkout allowance.' },
-    checkoutLimit: { type: 'integer', minimum: 0, maximum: 32,
-      description: 'First explicit mission checkout cap; zero allows reuse only. Never raises an existing cap.' },
+    checkoutLimit: { type: 'integer', minimum: 0, maximum: MAX_TASK_CHECKOUTS,
+      description: 'New plans default to one; zero permits reuse only. An existing cap stays binding.' },
     expectedHead: { type: 'string', pattern: '^[0-9a-f]{40}$',
       description: 'Exact current revision for mission reuse; required with readmit.' },
     readmit: { type: 'boolean',

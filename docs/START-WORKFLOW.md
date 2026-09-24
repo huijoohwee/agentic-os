@@ -1,10 +1,10 @@
 # Start workflow
 
-`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> --checkout-limit=<0..32>`
+`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> [--checkout-limit=<0..5>]`
 
-New unbound scopes get a new mission; navigation cannot supply its cap.
-Resume/add scopes with `--mission=<manifest>`.
-Zero allows reuse; declared caps cannot increase. Legacy START remains undeclared.
-`--readmit --expected-head=<sha>` with that mission extends disjoint unpublished scope.
-Published owners use `successor`. Work in the printed checkout.
-Scope/evidence: [`ADLC-EXEC-001`](../guides/PRD-TAD-ADR-MVP-GTM.md).
+Five task checkouts max per local repo; canonical excluded. Forbid nesting.
+New plans default to one; use two for independent work, three–five for sprint value.
+New plans create a mission. Resume via `--mission=<manifest>`; caps stay binding.
+Zero allows reuse. `--readmit --expected-head=<sha>` extends disjoint private scope.
+Published lanes use `successor`. Work in the returned checkout.
+Details: [ADLC-EXEC-001](../guides/PRD-TAD-ADR-MVP-GTM.md).

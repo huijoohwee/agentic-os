@@ -1,7 +1,9 @@
-/** Bounded tree projections and recovery-manifest serialization for canonical sync. */
+/** Bounded checkouts, tree projections and recovery manifests for repository lifecycle operations. */
 
 import { snapshotBoundedJson } from './catalog-input.mjs';
 import { createHash } from 'node:crypto';
+import { existsSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   currentBranch, decodeNulFields, headSha, isAncestor, observeGit, worktreePreservationEntries,
 } from './git.mjs';
@@ -322,4 +324,45 @@ export function canonicalDeltaEntries(base, target) {
   const changed = entries => new Map([...entries].filter(([path]) =>
     attributesChanged || !same(base.get(path), target.get(path))));
   return { source: changed(base), target: changed(target) };
+}
+
+export const DEFAULT_TASK_CHECKOUTS = 1;
+export const MAX_TASK_CHECKOUTS = 5;
+/** Resolve every lane from the clone owner, including calls from linked worktrees. */
+export function canonicalCheckoutRoot(common) {
+  if (basename(common) !== '.git') throw new Error('checkout policy requires a canonical .git directory');
+  return dirname(common);
+}
+function physicalPath(path) {
+  const absolute = resolve(path);
+  return existsSync(absolute) ? realpathSync(absolute) : join(physicalPath(dirname(absolute)), basename(absolute));
+}
+const contains = (parent, child) => {
+  const path = relative(parent, child);
+  return path === '' || (!path.startsWith(`..${sep}`) && path !== '..' && !isAbsolute(path));
+};
+/** Registered, detached and retained missing task checkouts all consume local capacity. */
+export function assertCheckoutPlacement(path, inventory, { canonical, creating = false } = {}) {
+  const paths = [...new Set([...inventory.map(row => physicalPath(row.path)), physicalPath(path)])];
+  for (const [index, target] of paths.entries()) {
+    for (const other of paths.slice(index + 1)) {
+      if (contains(target, other) || contains(other, target)) throw Object.assign(
+        new Error(`nested checkouts are forbidden: ${target} and ${other}`), { reason: 'blocked-nested-checkout' });
+    }
+    // Also reject containment in a different clone, including through a symlink ancestor.
+    for (let parent = dirname(target);;) {
+      if (existsSync(join(parent, '.git')) && observeGit(['rev-parse', '--show-toplevel'],
+        { cwd: parent, allowFail: true, maxBuffer: 16_384 }) !== null) throw Object.assign(
+        new Error(`nested checkouts are forbidden: ${target} is inside ${parent}`), { reason: 'blocked-nested-checkout' });
+      const next = dirname(parent);
+      if (next === parent) break;
+      parent = next;
+    }
+  }
+  if (creating) {
+    const owner = physicalPath(canonical), tasks = inventory.filter(row => physicalPath(row.path) !== owner);
+    if (tasks.length >= MAX_TASK_CHECKOUTS) throw Object.assign(
+      new Error(`repository task checkout limit ${MAX_TASK_CHECKOUTS} reached; complete an eligible lane`),
+      { reason: 'blocked-repository-checkout-capacity', limit: MAX_TASK_CHECKOUTS, consumed: tasks.length });
+  }
 }

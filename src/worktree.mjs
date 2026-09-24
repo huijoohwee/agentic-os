@@ -4,16 +4,16 @@ import { basename, dirname, join, resolve } from 'node:path';
 import {
   acquireOperationLock, currentBranch, decodeNulFields, finishOperationLock, git, gitLines,
   headSha, isAncestor, observeGit, observeGitLines, refExists, remoteRefShas, remoteTransport,
-  repoRoot, untrackedPaths, worktrees, worktreeCleanupRisks,
+  commonDir, untrackedPaths, worktrees, worktreeCleanupRisks,
 } from './git.mjs';
 import { isLaneRef, laneDirName, laneRef, parseLaneRef } from './lane-id.mjs';
+import { canonicalCheckoutRoot, assertCheckoutPlacement } from './canonical-resources.mjs';
 import { successorRecordPlan, transition } from './lane-state.mjs';
 import { assertPreservedSuccessorJoins } from './patch-identity.mjs';
 import * as laneRecords from './lane-records.mjs';
 export const LANE_BRANCH_LIMIT = 256;
-/** One registry parent, then one repository directory; override only the parent. */
 export function worktreeRoot(cwd = process.cwd()) {
-  const override = process.env.AGENTIC_OS_WORKTREE_ROOT, root = repoRoot(cwd);
+  const override = process.env.AGENTIC_OS_WORKTREE_ROOT, root = canonicalCheckoutRoot(commonDir(cwd));
   const registry = override ? resolve(override) : join(dirname(root), '.worktrees');
   return join(registry, basename(root));
 }
@@ -57,7 +57,8 @@ export const staleWorktrees = (cwd = process.cwd(), entries = worktrees(cwd)) =>
 /** Refuse an already-occupied lane identity before any provider evidence is fetched. */
 export function assertProvisionable({ ref, scope, device, cwd = process.cwd() }) {
   const path = lanePath(scope, device, cwd);
-  const registered = worktrees(cwd).find((entry) => entry.branch === ref || entry.path === path);
+  const inventory = worktrees(cwd), registered = inventory.find((entry) => entry.branch === ref || entry.path === path);
+  assertCheckoutPlacement(path, inventory, { canonical: canonicalCheckoutRoot(commonDir(cwd)), creating: true });
   let detail = null;
   if (existsSync(path)) detail = `lane worktree already exists: ${path}`;
   else if (refExists(`refs/heads/${ref}`, cwd)) detail = `lane branch already exists: ${ref}`;
@@ -174,7 +175,6 @@ export function inspectRegistered(entry, cwd = process.cwd(), baseRef, { include
   return { registered: true, path, untracked: untrackedPaths(path, { includeIgnored }),
     commits: Number(count) };
 }
-/** Compatibility cleanup requires the public authenticated retirement contract. */
 export function retire() {
   const error = new Error('retirement requires an authenticated authority-transition receipt');
   error.reason = 'blocked-authenticated-cleanup-required';
