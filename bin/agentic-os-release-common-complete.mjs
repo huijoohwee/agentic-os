@@ -342,7 +342,8 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
           const code = await complete(target.branch, Math.min(60_000, remaining), guard);
           const settled = code === 0 ? status(root, target.branch, policy, profile) : null;
           result = { ...result, status: code === 2 ? 'waiting' : settled?.closeout?.missionState === 'source_complete'
-            ? settled.closeout.adlcState === 'delivery_pending' ? 'delivery_pending' : 'source_complete' : 'blocked',
+            ? ['delivery_pending', 'delivery_scope_pending'].includes(settled.closeout.adlcState)
+              ? settled.closeout.adlcState : 'source_complete' : 'blocked',
           reason: code === 2 ? 'review-pending' : code !== 0 ? 'completion-refused'
             : settled?.closeout?.missionState === 'source_complete' ? null : 'closeout-incomplete' };
         }
@@ -353,6 +354,6 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
   }
   const completed = results.filter(row => row.status === 'source_complete').length;
   out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v1', authority: false, event: 'summary',
-    selected: targets.length, completed, deliveryPending: results.filter(row => row.status === 'delivery_pending').length, remaining: targets.length - completed, results }));
+    selected: targets.length, completed, deliveryPending: results.filter(row => ['delivery_pending', 'delivery_scope_pending'].includes(row.status)).length, remaining: targets.length - completed, results }));
   return results.some(row => row.status === 'blocked') ? 1 : completed === targets.length ? 0 : 2;
 }
