@@ -110,7 +110,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
-    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref });
+    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || !planningPath || explicitLimit === null || readmit) });
     const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
     // A mission pointer is evidence, not a selector override. Refuse before any effect.
     if (input && selected) selectedAgain(root, profile.repository, selected);

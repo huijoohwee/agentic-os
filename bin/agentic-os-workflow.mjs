@@ -151,11 +151,11 @@ export function startWorkflow(root, repository, { revision, planningPath, worktr
     boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
 }
 
-/** Read the existing immutable owner; the local selected-path config is navigation only. */
-export function readSelectedWorkflow(root, repository, { input = null, required = false, worktreeId = null, ref = null } = {}) {
+/** Resolve exact owners first; new-task declarations may omit unrelated navigation. */
+export function readSelectedWorkflow(root, repository, { input = null, required = false, worktreeId = null, ref = null, navigation = true } = {}) {
   const key = [ref && selectionKey(repository, 'ref', ref), worktreeId && selectionKey(repository, 'member', worktreeId)]
-    .find(key => key && selection(root, key)) ?? 'agentic-os.workflowManifest';
-  const selected = selection(root, key);
+    .find(key => key && selection(root, key)) ?? (navigation ? 'agentic-os.workflowManifest' : null);
+  const selected = key && selection(root, key);
   if (!input && !selected) { if (required) fail('selection-required'); return null; }
   let path = resolve(input ?? selected), bytes = read(path, 32000), manifest = JSON.parse(bytes);
   const ownerKey = selectionKey(repository, 'owner', manifest.id), owner = selection(root, ownerKey);

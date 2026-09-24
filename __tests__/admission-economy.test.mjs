@@ -68,6 +68,46 @@ test('same mission reuses dirty owned work and refuses another checkout at capac
   assert.equal(readFileSync(first.path, 'utf8'), firstBytes);
 });
 
+test('a new declared task does not inherit the removed prior task navigation cap', async t => {
+  const f = fixture(t);
+  await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const prior = f.selected(), priorBytes = readFileSync(prior.path, 'utf8');
+  const target = lanePath('one', 'test-device', f.root);
+  f.run('worktree', 'remove', target); records.remove('agent/test-device/one', f.root);
+  assert.equal(await f.start('two', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
+  const next = f.selected();
+  assert.notEqual(next.manifest.id, prior.manifest.id);
+  assert.equal(next.manifest.execution.checkoutLimit, 1);
+  assert.equal(next.manifest.allocations.length, 1);
+  assert.equal(next.manifest.allocations[0].worktreeId, 'test-device--two');
+  assert.equal(readFileSync(prior.path, 'utf8'), priorBytes);
+  const retained = readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: 'test-device--one' });
+  assert.equal(retained.digest, prior.digest);
+  const effects = f.effects.length;
+  await assert.rejects(f.start('three', `--mission=${prior.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), /retained allocation/);
+  assert.equal(f.effects.length, effects);
+});
+
+test('new declaration preserves active peers, validates its own plan and retains exact resume caps', async t => {
+  const f = fixture(t);
+  await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const prior = f.selected(), target = lanePath('one', 'test-device', f.root), effects = f.effects.length;
+  writeFileSync(join(target, 'owned.txt'), 'unfinished peer work\n');
+  await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=2'), /cannot reset or enlarge/);
+  await assert.rejects(f.start('two', '--plan=missing-prd-tad-adr-mvp-gtm.md', '--checkout-limit=1'), /planning/);
+  await assert.rejects(f.start('two', `--plan=${f.plan}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--plan=${f.plan}`, '--checkout-limit=1'), /overlap|reserved|collision/i);
+  assert.equal(f.effects.filter(effect => effect === 'provision-worktree').length, 1);
+  const nextArgs = ['two', '--device=test-device', '--write=second.txt', `--plan=${f.plan}`, '--checkout-limit=1'];
+  assert.equal(await cmdStart(f.root, nextArgs, f.policy, f.profile, f.services), 0);
+  assert.notEqual(f.selected().manifest.id, prior.manifest.id);
+  assert.equal(readFileSync(join(target, 'owned.txt'), 'utf8'), 'unfinished peer work\n');
+  assert.equal(readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: basename(target) }).digest, prior.digest);
+  assert.equal(worktrees(f.root).length, 3);
+  assert.ok(f.effects.length > effects);
+});
+
 test('explicit active re-admission extends scope without publishing or replacing dirty bytes', async t => {
   const f = fixture(t);
   await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
@@ -147,6 +187,7 @@ test('retained pending allocation blocks replay and consumes the final slot', as
       baseRevision: revision, headRevision: revision, writeDigest: hash(JSON.stringify(['owned.txt'])), state: 'pending', operation: 'create' }] }, resolve(f.root, 'workflow-input.json'));
   const pending = f.selected();
   await assert.rejects(f.start('one', `--mission=${pending.path}`), /retained allocation/);
+  await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), /retained allocation/);
   await assert.rejects(f.start('two', `--mission=${pending.path}`), /allowance is exhausted/);
   assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
   assert.equal(f.selected().digest, pending.digest);
