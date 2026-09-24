@@ -99,6 +99,9 @@ const WORKFLOW_TOOLS = invocationCatalog.entries.filter(entry => entry.action ==
   annotations: { readOnlyHint: entry.semantic === 'read-only', destructiveHint: false, idempotentHint: true, openWorldHint: false },
 }));
 export const TOOLS = deepFreeze([
+  { name: 'design.check', description: 'Check a bounded local design adoption record against its pinned policy and source bytes. Structural evidence only; no runtime or release authority.',
+    inputSchema: CHECKS_INPUT, outputSchema: CLI_OUTPUT,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   ...WORKFLOW_TOOLS,
   ...RUN_TOOLS,
   { ...CAPABILITY_COMMAND, outputSchema: CLI_OUTPUT },
@@ -222,13 +225,13 @@ export function toolArguments(name, args) {
     return [name];
   }
   if (name === 'workflow.targets') { validateEmptyArguments(args); return ['workflow', 'targets']; }
-  if (name === 'checks' || name === 'workflow.collect' || name === 'workflow.export' || name === 'workflow.recommend' || name === 'workflow.trace') {
+  if (name === 'design.check' || name === 'checks' || name === 'workflow.collect' || name === 'workflow.export' || name === 'workflow.recommend' || name === 'workflow.trace') {
     if (!plainObject(args) || !onlyKeys(args, name === 'workflow.export' ? ['input', 'offset', 'format'] : ['input']) || typeof args.input !== 'string'
       || !args.input.trim() || Buffer.byteLength(args.input) > 4096 || /[\u0000-\u001f\u007f]/u.test(args.input))
       invalidParams('checks requires one bounded local input path');
     if (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0 || args.offset % 32)) invalidParams('invalid workflow offset');
     if (args.format !== undefined && !['json','sse'].includes(args.format)) invalidParams('invalid workflow format');
-    return name === 'checks' ? ['observe', '--checks', `--input=${args.input}`]
+    return name === 'design.check' ? ['design-check', `--input=${args.input}`] : name === 'checks' ? ['observe', '--checks', `--input=${args.input}`]
       : ['workflow', name.slice(9), `--input=${args.input}`, ...(args.offset === undefined ? [] : [`--offset=${args.offset}`]), ...(args.format === undefined ? [] : [`--format=${args.format}`])];
   }
   if (name === 'reap') {
