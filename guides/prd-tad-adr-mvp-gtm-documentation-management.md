@@ -248,7 +248,8 @@ Validation, 2026-09-24: `git diff --check`, strict owner frontmatter parsing, fi
 (212 suites outside scope), source digest `51de978a086eae4afc39987c4601699df9b5fee15bae34e90ccc741d87b6ab6a`
 before this evidence checkpoint. Initial missing locked test dependency was resolved by `npm ci`.
 No package/source changes. Agent tokens/total active time are unmetered; incremental service spend $0.
-Final candidate checks/publication use RELEASE; provider handoff is not integration or deployment.
+Release preflight caught base drift; the unpublished lane was refreshed and natively re-admitted.
+Final checks precede handoff; integration/deployment remain unclaimed.
 
 Next: authoring owner selects one non-executable template and four exact documents; refresh G1–G6,
 prove baseline/inputs, then implement phase 1 in admitted scope. Exit V-D1/V-D2; recheck on source/profile
