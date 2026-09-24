@@ -12,6 +12,7 @@ export const GITHUB_TRANSITION_READ_ADAPTER = Object.freeze({
 });
 /** Opt in only to recording an exact merge that provider evidence predates current authority. */
 export const GITHUB_RETROSPECTIVE_INTEGRATION_MODE = GITHUB_RETROSPECTIVE_RECOVERY_MODE;
+export const GITHUB_RETROSPECTIVE_CONTENT_MODE = 'retrospective-content-inclusion';
 export const GITHUB_TRANSITION_INPUT_SCHEMA = 'agentic-os/transition-operation-input/v1';
 export const GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA = 'agentic-os/github-successor-predecessor/v1';
 export const GITHUB_TRANSITION_COORDINATE_SCHEMA = 'agentic-os/github-transition-coordinate/v1';
@@ -182,15 +183,14 @@ function predecessor(source, request, plan) {
 }
 function integrationMode(source, request, predecessorSource) {
   if (!Object.hasOwn(source, 'integrationMode')) return null;
-  if (source.integrationMode !== GITHUB_RETROSPECTIVE_INTEGRATION_MODE || request.requestedTransition !== 'integrate')
+  const issuance = predecessorSource.predecessorIssuance;
+  if (![GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_RETROSPECTIVE_CONTENT_MODE].includes(source.integrationMode)
+    || request.requestedTransition !== 'integrate' || source.integrationMode === GITHUB_RETROSPECTIVE_CONTENT_MODE
+      && issuance === null || issuance !== null && (issuance.storedBundle.authorityBundle.challenge.issuanceMode
+      !== GITHUB_RETROSPECTIVE_RECOVERY_MODE || issuance.storedBundle.targetRepository.review?.state !== 'merged'))
     fail('retrospective recovery requires an integrate request whose initial review was already merged');
-  if (predecessorSource.predecessorIssuance !== null && (predecessorSource.predecessorIssuance.storedBundle.authorityBundle.challenge.issuanceMode
-      !== GITHUB_RETROSPECTIVE_RECOVERY_MODE
-    || predecessorSource.predecessorIssuance.storedBundle.targetRepository.review?.state !== 'merged')) {
-    fail('retrospective recovery requires an integrate request whose initial review was already merged');
-  }
-  return GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
-  }
+  return source.integrationMode;
+}
 export function validateGitHubTransitionWorkflowRun(value, authorityRepository) {
   const repo = repository(authorityRepository);
   const source = snap(value);

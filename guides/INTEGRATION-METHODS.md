@@ -33,6 +33,16 @@ receipt. Unknown, duplicate, retrospective, foreign or stale choices fail loudly
 can still be proved by its exact candidate parent under legacy profiles; missing or incompatible
 protection fails safely. Existing strict squash-only profiles keep their meaning.
 
+For a review already merged before its initial authority was issued, the explicit
+`retrospective-content-inclusion` transition mode can authenticate *content inclusion* when
+both squash and rebase were allowed and the method cannot be distinguished. It requires the
+initial retrospective issuance, the exact reviewed head and protected base, one linear merge
+commit with the same tree as the reviewed head, a unique merge event, successful required
+checks and rule suite, and ancestry in the current protected ref. The receipt records
+`mergeMethod: unproven` and `methodProven: false`. It does not backdate a method choice,
+claim squash, or authorize a new provider merge. Changed trees, bases, events, or issuer
+evidence fail. This mode is unavailable to successor-adoption authority.
+
 Provider rebase proof is deliberately bounded: 1–32 linear source commits must already start at
 the chosen protected base. The result must end at that same base and preserve every ordered tree,
 author and message while rewriting commit IDs. Observation allows at most 64 commit reads and
