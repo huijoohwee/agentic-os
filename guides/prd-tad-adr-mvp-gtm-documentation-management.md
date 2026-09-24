@@ -30,7 +30,7 @@ source_docs:
 
 ## Identity and scope — reference implementation
 
-Five roles join `DOC-MGMT-001@0.1.0`. This extension consumes P01/T01 authoring and P05/T05 release
+Five roles join `DOC-MGMT-001@0.1.1`. This extension consumes P01/T01 authoring and P05/T05 release
 from `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.9` at [the inspected revision][pipeline]. It specifies document
 maintenance; the pipeline still owns admission, evidence and publication. [Authoring][guideline],
 [frontmatter][frontmatter] and [templates][templates] retain their existing definitions.
@@ -200,7 +200,7 @@ schema rollback waits for the schema owner's verified recovery path.
 
 ## ADR — reference implementation
 
-`ADR-DOC-01` binds PRD/TAD `0.1.0`. Constraints: Markdown-only, free-tier/FOSS, zero model calls,
+`ADR-DOC-01` binds PRD/TAD `0.1.1`. Constraints: Markdown-only, free-tier/FOSS, zero model calls,
 local-content preservation and native authority. Alternatives: manual copy/review lacks repeatable
 drift checks; replacing files loses edits; new repositories duplicate owners; hosted automation adds
 cost. Outranking selects existing owners + one script for the closest technical fit. Buyer pain/WTP
@@ -300,7 +300,7 @@ upside: one paid repeat; downside: unrecovered labor. No scalable economics or a
 
 ### From-0-to-1 coverage and deferred audience work
 
-Coverage dispositions do not earn readiness. Every row consumes `DOC-MGMT-001@0.1.0` above.
+Coverage dispositions do not earn readiness. Every row consumes `DOC-MGMT-001@0.1.1` above.
 
 | Domain / owner | Source, disposition and next check at this revision |
 |---|---|
