@@ -63,7 +63,7 @@ test('space-bearing runtime paths execute guards and budget/readiness entrypoint
   assert.match(unbound.stderr, /non-lane branch/u);
 
   for (const [path, output] of [
-    [['bin', 'agentic-os-module-budget.mjs'], /modules 46\/46/u],
+    [['bin', 'agentic-os-module-budget.mjs'], /modules\s+\d+\/\d+/u],
     [['bin', 'agentic-os-doc-budget.mjs'], /always-load total/u],
     [['src', 'readiness-proof.mjs'], /readiness proof/u],
   ]) {

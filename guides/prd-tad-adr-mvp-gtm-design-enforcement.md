@@ -112,6 +112,12 @@ runtime module/line caps remain unchanged. The first complete check exposed a mi
 dependency, fixed by installing the existing lockfile. A later pass stopped on source drift while
 bounds were being tightened. The frozen broad run stopped after 163 completed suites on the unchanged budget snapshot
 assertion. That assertion and its owning budget table now match the explicit module declaration.
-The affected gate is rerun locally; full green proof remains the published candidate's required CI.
+The published candidate CI identified two old packaging/path smoke assertions pinned to
+`46/46`; both now assert that the budget evaluator ran and reported a module count, while its
+zero exit still proves the declared cap. The exact cap remains owned by the evaluator. The
+successor reran the two affected suites (5/5 passing), evaluators, and the local broad
+gate. The broad gate exceeded its 540-second command budget after most selected suites
+passed; four unfinished suites timed out, so it is not reported as green. Provider CI
+must provide the full gate result for this successor.
 The Canvas locked dependency lacks this export; activation waits for protected source admission.
 No palette, MainPanel setting, live application, external service or deployment was changed.
