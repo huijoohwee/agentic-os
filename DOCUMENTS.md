@@ -1,8 +1,8 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.1.3"
-date: "2026-09-23"
+version: "1.1.4"
+date: "2026-09-24"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -24,6 +24,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Agent experience maturity and evidence gaps | [Four-criterion rubric][maturity] |
 | Common YAML frontmatter | [Runtime frontmatter guidelines][frontmatter] |
 | Bounded parsed metadata API | [Shared frontmatter boundary](guides/FRONTMATTER.md) |
+| Markdown validation and template maintenance proposal | [Documentation-management PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-documentation-management.md) |
 | CID, RAO, SVO and specification fields | [PRD/TAD/ADR guidelines][prd], [shared semantic schema][semantics] |
 | `/`, `#`, `@` dictionary definitions and consumption | [Invocation dictionary owner](guides/INVOCATION-DICTIONARIES.md) |
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
