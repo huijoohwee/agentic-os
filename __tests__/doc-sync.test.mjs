@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -62,6 +62,8 @@ test('disjoint managed edits merge while local notes stay out of the region', ()
   const result = invoke(f, 'dry-run');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"changed":true/u);
+  assert.match(result.stdout, /diff --git a\/docs\/pilot\.md b\/docs\/pilot\.md/u);
+  assert.match(result.stdout, /\+beta new/u);
   assert.equal(readFileSync(join(f.repo, f.path), 'utf8'), f.original);
   const check = invoke(f, 'check');
   assert.equal(check.status, 1);
@@ -89,4 +91,54 @@ test('same pinned source is current; apply requires a native lane', () => {
   assert.equal(unbound.status, 1);
   assert.match(unbound.stderr, /bound native lane/u);
   assert.equal(readFileSync(join(f.repo, f.path), 'utf8'), f.original);
+});
+
+test('provenance outside source_docs cannot authorize a template', () => {
+  const f = fixture('alpha\n', 'beta\n');
+  const url = `${sourcePrefix}${f.from}/${templatePath}`;
+  writeFileSync(join(f.repo, f.path), f.original.replace(
+    `source_docs:\n  - "${url}"`, `source_docs:\n  - "local.md"\nother_sources:\n  - "${url}"`));
+  const result = invoke(f, 'dry-run');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /one exact template source_docs entry/u);
+});
+
+test('only the source_docs locator advances when another field has the same URL', () => {
+  const f = fixture('alpha\n', 'beta\n');
+  const url = `${sourcePrefix}${f.from}/${templatePath}`;
+  writeFileSync(join(f.repo, f.path), f.original.replace('source_docs:',
+    `other_source: "${url}"\nsource_docs:\n  # ${url}`));
+  const result = invoke(f, 'dry-run');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"changed":true/u);
+  assert.doesNotMatch(result.stdout, /-other_source:/u);
+  assert.doesNotMatch(result.stdout, /-  # https:/u);
+});
+
+test('enrolled OS plan matches its exact reviewed template source', (t) => {
+  const repo = fileURLToPath(new URL('../', import.meta.url));
+  const path = 'guides/prd-tad-adr-mvp-gtm-documentation-management.md';
+  const revision = 'a9ab28adedf0d96b74670f459315560fa854b3b5';
+  const authored = readFileSync(join(repo, path), 'utf8');
+  assert.ok(authored.includes(`  - "${sourcePrefix}${revision}/${templatePath}"`));
+  assert.equal(authored.split(markerStart).length, 2);
+  assert.equal(authored.split(markerEnd).length, 2);
+  const common = git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir');
+  let source = process.env.DOC_SYNC_SOURCE_REPO || join(dirname(dirname(common)), 'huijoohwee.github.io');
+  const cached = existsSync(source) && spawnSync('git', ['cat-file', '-e', `${revision}^{commit}`],
+    { cwd: source }).status === 0;
+  if (!cached) {
+    if (process.env.GITHUB_ACTIONS !== 'true') {
+      t.diagnostic('exact central source is not cached locally; structural contract checked');
+      return;
+    }
+    source = repository();
+    git(source, 'fetch', '--no-tags', '--depth=1',
+      'https://github.com/huijoohwee/huijoohwee.github.io.git', revision);
+  }
+  const result = spawnSync(process.execPath, [cli, '--mode=check', `--repo=${repo}`,
+    `--source-repo=${source}`, `--document=${path}`, `--to=${revision}`],
+  { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /: current/u);
 });
