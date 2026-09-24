@@ -1,24 +1,24 @@
 ---
 title: "Reference implementation — Markdown documentation management"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "0.1.0"
+version: "0.1.1"
 date: "2026-09-24"
 lang: "en-US"
 owner: "Documentation maintenance"
 frontmatter_contract: "required"
 continuity_id: "DOC-MGMT-001"
-prd_revision: "0.1.0"
-tad_revision: "0.1.0"
-adr_revision: "0.1.0"
-mvp_revision: "0.1.0"
-gtm_revision: "0.1.0"
-local_rung: "undocumented"
+prd_revision: "0.1.1"
+tad_revision: "0.1.1"
+adr_revision: "0.1.1"
+mvp_revision: "0.1.1"
+gtm_revision: "0.1.1"
+local_rung: "dev-proven"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-lifecycle_status: "proposed"
+lifecycle_status: "active"
 load_policy: "on-demand"
-worktree_id: "device-0232231d4a19--markdown-doc-management"
+worktree_id: "device-0232231d4a19--documentation-management-closeout"
 agent_id: "codex-documentation-management"
 guideline_revision: "3.3.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/987dd1d1e6d25761f2279d49a53c40a210466679/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
@@ -30,7 +30,7 @@ source_docs:
 
 ## Identity and scope — reference implementation
 
-Five roles join `DOC-MGMT-001@0.1.0`. This extension consumes P01/T01 authoring and P05/T05 release
+Five roles join `DOC-MGMT-001@0.1.1`. This extension consumes P01/T01 authoring and P05/T05 release
 from `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.9` at [the inspected revision][pipeline]. It specifies document
 maintenance; the pipeline still owns admission, evidence and publication. [Authoring][guideline],
 [frontmatter][frontmatter] and [templates][templates] retain their existing definitions.
@@ -200,7 +200,7 @@ schema rollback waits for the schema owner's verified recovery path.
 
 ## ADR — reference implementation
 
-`ADR-DOC-01` binds PRD/TAD `0.1.0`. Constraints: Markdown-only, free-tier/FOSS, zero model calls,
+`ADR-DOC-01` binds PRD/TAD `0.1.1`. Constraints: Markdown-only, free-tier/FOSS, zero model calls,
 local-content preservation and native authority. Alternatives: manual copy/review lacks repeatable
 drift checks; replacing files loses edits; new repositories duplicate owners; hosted automation adds
 cost. Outranking selects existing owners + one script for the closest technical fit. Buyer pain/WTP
@@ -236,29 +236,40 @@ review. Four experience criteria remain unassessed until observed.
 
 ### Evidence and current handover
 
-Implemented: grounded proposal, index link, central template contract at website PR #262, and the
-single-document sync command in this successor. Conflict, path and no-write behavior have focused tests;
-D5/D7 and end-to-end apply verification remain open.
-Local/delivered rungs stay `undocumented` pending evaluator evidence; no fleet sync, CI rollout,
-deployment, payment or savings claim. Named consumer checks are future integration requirements.
+The first reviewed implementation is integrated in [OS PR #300](https://github.com/huijoohwee/agentic-os/pull/300)
+(`e96dd20f7ae5e12cfd2bda037c6cb1518237d378`),
+[Canvas PR #947](https://github.com/huijoohwee/agentic-canvas-os/pull/947)
+(`c0d1cdf7d7b67a05c57015b141e04557e7ac1d5c`),
+[Graph PR #1234](https://github.com/huijoohwee/agentic-graph/pull/1234), and
+[website PR #264](https://github.com/huijoohwee/huijoohwee.github.io/pull/264).
+The website documentation-map correction is integrated in
+[PR #265](https://github.com/huijoohwee/huijoohwee.github.io/pull/265)
+(`96a382f1b810d19c09ed60439270da098f66af4a`). These source changes retain the existing
+frontmatter and template owners, one central Markdown sync command, explicit enrollment, and a
+document validation job in each enrolled repository. The four-target batch remains dry-run only;
+reviewed native lanes own accepted writes.
 
-Preflight: canonical is read-only; another published lane reserves the pipeline document. Existing
-workflow collector created this separate one-checkout mission; native START admitted these two files
-at G1. No other mission caps changed. `DOCUMENTS.md` exposes the extension; a parent link can follow
-once its owner releases scope.
+The exact Graph protected [release run 35966472392](https://github.com/huijoohwee/agentic-graph/actions/runs/35966472392)
+reported `production-complete` for source `272862cc4d130616497a392605bcb4caf25c3a5a`, with Pages,
+D1, mirror and browser/cache parity receipts. The exact website protected
+[Pages run 35969483071](https://github.com/huijoohwee/huijoohwee.github.io/actions/runs/35969483071)
+reported `terminal-success` for source `96a382f1b810d19c09ed60439270da098f66af4a` and the
+public release carrier matched its sealed manifest. These are separate production effects; they do
+not prove a fleet-wide template rollout. Local source/check evidence supports `dev-proven` for this
+increment, while a single overall delivered rung remains undocumented until V-D1–V-D7 are assessed
+across the pilot.
 
-Validation, 2026-09-24: `git diff --check`, strict owner frontmatter parsing, five-role revisions and
-16 exact source links passed. `npm run check`: evaluator + 20 selected suites passed in 49.1 seconds
-(212 suites outside scope), source digest `51de978a086eae4afc39987c4601699df9b5fee15bae34e90ccc741d87b6ab6a`
-before this evidence checkpoint. Initial missing locked test dependency was resolved by `npm ci`.
-No package/source changes. Agent tokens/total active time are unmetered; incremental service spend $0.
-Release preflight caught base drift; the unpublished lane was refreshed and natively re-admitted.
-Final checks precede handoff; integration/deployment remain unclaimed.
+Post-integration Canvas CI exposed an unbounded full-history checkout in its collaboration job.
+[PR #949](https://github.com/huijoohwee/agentic-canvas-os/pull/949) bounded that checkout to two
+commits, retaining the push baseline check. Its protected main commit
+`509f2585880b40c2f6477b316365d9c0c8e67e36` passed the full
+[CI run 35973340798](https://github.com/huijoohwee/agentic-canvas-os/actions/runs/35973340798),
+including collaboration, docs, build, budgets and tests. Native completion observed exact source
+integration, clean current canonical main and recoverable checkout quarantine with no findings.
 
-Next: enroll one non-executable document and the existing CI owner in each consumer; run a four-target
-dry-run, then review exact candidate/check receipts. Template source is the new file in the existing
-central template directory, pinned above. Recheck on source/profile change. This task grants no
-fleet or production write authority.
+Next: measure one week of Markdown drift, conflict count, rerun behavior and review minutes before
+broader enrollment or any `$1` pilot offer. Preserve separate source, check, cleanup and production
+receipts. The Graph XR recovery worktree is outside this documentation increment.
 
 <!-- agentic-os:doc-sync:start -->
 ## Shared maintenance contract
@@ -289,7 +300,7 @@ upside: one paid repeat; downside: unrecovered labor. No scalable economics or a
 
 ### From-0-to-1 coverage and deferred audience work
 
-Coverage dispositions do not earn readiness. Every row consumes `DOC-MGMT-001@0.1.0` above.
+Coverage dispositions do not earn readiness. Every row consumes `DOC-MGMT-001@0.1.1` above.
 
 | Domain / owner | Source, disposition and next check at this revision |
 |---|---|
