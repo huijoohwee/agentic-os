@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Technology Stack and Composition Architecture"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.6.2"
-date: "2026-09-13"
+version: "1.6.3"
+date: "2026-09-25"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Solo Founder / AI Orchestrator"
@@ -11,9 +11,9 @@ delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
 continuity_id: "TAD-COMPOSE-ARCH-001"
-prd_revision: "1.6.2"
-tad_revision: "1.6.2"
-adr_revision: "1.6.2"
+prd_revision: "1.6.3"
+tad_revision: "1.6.3"
+adr_revision: "1.6.3"
 source_input_digest: "sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418"
 amendment_input_digest: "sha256:4abee8d5d6aafcc71919d95e222b2d3dea6ebd4fe3cd6d115a361d32009b7a7e"
 execution_gate: "static-source-observation-authorized"
@@ -28,8 +28,8 @@ agent_id: "codex-01a0940a"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.6.2"
-gtm_revision: "1.6.2"
+mvp_revision: "1.6.3"
+gtm_revision: "1.6.3"
 ---
 
 # Reference implementation — Technology Stack and Composition Architecture
@@ -200,13 +200,13 @@ This section supersedes the website stack narrative at `techstack_input_revision
 | Agent facade — Canvas `954de91689abc1ab99a783e54f5ca7ac61387449` | Worker/SQLite DO bindings in `wrangler.jsonc`; browser in `web`; `scripts/invocation-resolve.mjs` imports `agentic-os/invocation` | Consume the pinned shared package. Root manifest declares no license; verify applicable licenses before adoption, rather than inferring FOSS from public source |
 | Commerce — `4774a4fc1543c4bcb1b912fe79c78c61384efc7c` | TypeScript Workers and SQLite DOs in `src/core`, MCP SDK/Zod in `package.json`; direct Podman executor in `scripts/isolated-process.ts`, `scripts/sandbox-podman-executor.ts` | MIT owner code. Sandbox SDK remains an existing dependency; its configured Containers deployment is forbidden. The real isolated-process suite proves local execution only |
 | Domain graph and marketplace — Graph `eb19100b4604e4d296bf6094f183f255ef0b20a6` | `canvas/package.json`, `cloudflare/workers`, `mcp/package.json`: browser UI, Hono/Workers, D1/Drizzle, Yjs, x402 adapters; `mcp/agentic-canvas-os-docs-contract.mjs` consumes OS invocation | Preserve each domain/state owner and implemented protocol. Existing packages are not blanket approval for new dependencies; verify component licenses and selected host quotas |
-| Spatial client — GameXR `7609bebd4b72efa2038b9f222e22ca56d13370ed` | Vite/Three.js and packaged Graph spatial/shared artifacts in `package.json`, `vite.config.ts`; native host in source-owned release guide | MIT; offline/browser work remains separate from shared Pages route/deployment ownership |
+| Spatial client — GameXR | Phone browser/PWA, Vite/Three.js, browser camera via `getUserMedia`, and packaged Graph spatial/shared artifacts; the earlier `7609bebd4b72efa2038b9f222e22ca56d13370ed` native-host observation remains historical | Prefer free/FOSS browser/device execution. Camera frames stay local unless a separately authorized feature sends them. Native Swift/iOS/visionOS delivery is KIV; camera, telemetry and control still need owner-specific validation |
 | Authoring and navigation — website `8a0702ddca1fb2c9c88f85657d9dc6d91d05df27` | Markdown, JSON/JSON-LD, `guidelines`, `schema/AgenticRAG`; existing Node/Python validation in `package.json` | ISC manifest; common CID/RAO/SVO and schema authority stay here, with direct links to this stack owner |
 | Generated delivery — mirror `b7b6c39ce0b5844a43042026a910f7552477c8ff` | Graph-generated browser assets, headers and redirects | A projection, not an independent technology-selection or product-code owner; preserve source-owned release ordering |
 
-### Hosting and resource selection
+### Hosting, phone browser/camera and resource selection
 
-Constraints → argumentation → outranking selects reuse of an existing qualified owner before a new service. Free hosted services are permitted but are not called FOSS. Unknown license, quota, recurring cost or automatic overage blocks adoption, not unrelated implementation work. Paid plans, Containers hosting, paid add-ons and metered overages are excluded; this document grants no upgrade authority. The Graph spatial path keeps deterministic CPU generation and the existing WebGL Canvas as its required default. It can turn an image plus authored regions and dimensions into editable procedural geometry entirely on the device; independently admitted open-source CPU perception may propose masks or depth, but cannot silently claim hidden surfaces or metric scale. Neither Codex nor an external or paid generation service is required at runtime. [WebGPU](https://www.w3.org/TR/webgpu/) is a possible opt-in device renderer, not a paid API or server dependency: it has no usage fee by itself but adds engineering, migration and mobile-test time, plus device GPU, memory, battery and download cost. [Three.js WebGPURenderer](https://threejs.org/manual/pages/webgpurenderer) requires porting current custom shaders to node/TSL materials; preserve WebGL and 2D/export fallback until measured phone and Safari compatibility and a source-owned decision justify that work.
+Constraints → argumentation → outranking selects reuse of an existing qualified owner before a new service. Free hosted services are permitted but are not called FOSS. Unknown license, quota, recurring cost or automatic overage blocks adoption, not unrelated implementation work. Paid plans, Containers hosting, paid add-ons and metered overages are excluded; this document grants no upgrade authority. **Phone browser/camera is the default client (2026-09-25):** use standards-based touch controls and [camera capture](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) in a trusted HTTPS context with user permission, bounded video resolution/frame rate, and track cleanup on stop or page exit. Prefer on-device/local processing, no compulsory app-store installation and no runtime cloud/model dependency. Browser camera permission does not authorize physical actuation; drone control requires a validated device protocol, loss-of-control inhibition and measured hardware acceptance. Phone-to-host reachability must use an explicitly paired transport; localhost on a phone is not the attached computer. **KIV roadmap:** native Swift apps, iOS/visionOS SDK workflows, proprietary services and paid plans/add-ons remain outside the current MVP and default CI; retain existing source without implying migration or deployment. [Swift itself is open source](https://www.swift.org/about/) under Apache 2.0 with a runtime exception, so its deferral is a platform/scope choice, not a claim that the language is closed source or a paid service. Future proprietary/paid adoption needs an explicit policy change; FOSS/free eligibility still governs the current increment. The Graph spatial path keeps deterministic CPU generation and the existing WebGL Canvas as its required default. It can turn an image plus authored regions and dimensions into editable procedural geometry entirely on the device; independently admitted open-source CPU perception may propose masks or depth, but cannot silently claim hidden surfaces or metric scale. Neither Codex nor an external or paid generation service is required at runtime. [WebGPU](https://www.w3.org/TR/webgpu/) is a possible opt-in device renderer, not a paid API or server dependency: it has no usage fee by itself but adds engineering, migration and mobile-test time, plus device GPU, memory, battery and download cost. [Three.js WebGPURenderer](https://threejs.org/manual/pages/webgpurenderer) requires porting current custom shaders to node/TSL materials; preserve WebGL and 2D/export fallback until measured phone and Safari compatibility and a source-owned decision justify that work.
 
 | Option | Constraint and tradeoff | Decision |
 |---|---|---|
@@ -260,7 +260,7 @@ The removed website document is preserved in [its immutable source revision](htt
 | `agentic-commerce-os` | Edge coordination, admission-receipt validation, local projection, provider routing, derived markup, and evidence gates | ACOS admission plus discovery, checkout, and marketplace provider bindings | No ownership of upstream admission, discovery execution, money movement, settlement ledger, or payout execution |
 | `huijoohwee.github.io` | Shared guideline/schema vocabulary and documentation navigation | This guide for composition; `guidelines/prd-tad-adr-mvp-gtm-guidelines.md` for authoring | No product runtime or deployment controller |
 | `huijoohwee` | Generated production projections, validation, headers and redirects | Graph-generated assets and source-owned release policy (`AGENTS.md`, `_redirects`, `package.json`) | No authored Graph app code |
-| `GameXR` | Browser-local spatial flight and native visionOS host | Packaged Graph spatial/shared code (`package.json`, `vite.config.ts`, `docs/RELEASE.md`) | No shared-root publication without a routing decision |
+| `GameXR` | Phone-browser camera, telemetry and spatial/control UI; native host is KIV | Packaged Graph spatial/shared code (`package.json`, `vite.config.ts`, `docs/RELEASE.md`) | No shared-root publication without a routing decision |
 | x402 | External protocol packages; the current adapter and paid-resource routes are owned by `agentic-graph` | `agentic-graph` PRD/TAD, configuration, and readiness gates | No Commerce-owned payment rail and no delivered paid-runtime proof |
 
 <a id="architecture-component-composition"></a>
@@ -590,10 +590,10 @@ The generic historical authoring→mirror→delivery drawing is replaced by the 
 
 ## MVP — reference implementation
 
-`TAD-COMPOSE-ARCH-001@1.6.2` selects one source-locked composition whose ownership and interfaces agree. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice. Verify that acceptance with `npm run composition:runtime:check` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+`TAD-COMPOSE-ARCH-001@1.6.3` selects one source-locked composition whose ownership and interfaces agree. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice. Verify that acceptance with `npm run composition:runtime:check` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
-Experience assessment for `TAD-COMPOSE-ARCH-001@1.6.2` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `TAD-COMPOSE-ARCH-001@1.6.3` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
