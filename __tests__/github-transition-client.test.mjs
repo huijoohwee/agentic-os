@@ -10,7 +10,7 @@ import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from 
 import { createFencedClaimBundle, createGitHubAuthorityChallenge, deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
 import { GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA, createGitHubAuthorityIssuance, createGitHubProtectionProjection, createGitHubProtectionSnapshot, createGitHubPublicationReceipt, createGitHubStoredAuthorityBundle, createGitHubTargetRepositoryProjection } from '../src/github-authority-issuer.mjs';
 import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
-import { GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
+import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, prepareGitHubIntegrationProviderProof, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_TRANSITION_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from '../src/cleanup-records.mjs';
@@ -471,7 +471,8 @@ async function integrationFixture(configure = () => {}, {
   initialReviewState = 'open', integrationMode = null, recoveryOverrides = {},
 } = {}) {
   const issuance = predecessorIssuance(initialReviewState,
-    integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE ? integrationMode : null,
+    [GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_RETROSPECTIVE_CONTENT_MODE].includes(integrationMode)
+      ? GITHUB_RETROSPECTIVE_INTEGRATION_MODE : null,
     recoveryOverrides);
   const api = apiFixture(issuance);
   configure(api.state);
@@ -641,6 +642,37 @@ test('explicit retrospective recovery records an already-merged exact squash wit
       request: fixture.final.request, planBytes: fixture.final.planBytes,
     }, verifier), receipt);
   });
+
+test('historical content inclusion authenticates an ambiguous linear merge without naming its method', async () => {
+  const configure = (state) => {
+    historicalSquash(state, { rulesUpdatedAfterMerge: true });
+    state.targetMergeMethods = ['merge', 'rebase', 'squash'];
+  };
+  const options = { initialReviewState: 'merged', integrationMode: GITHUB_RETROSPECTIVE_CONTENT_MODE };
+  const fixture = await integrationFixture(configure, options);
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.equal(winner.stored.providerProof.integrationMode, GITHUB_RETROSPECTIVE_CONTENT_MODE);
+  assert.equal(winner.stored.providerProof.mergeMethod, 'unproven');
+  assert.equal(winner.stored.providerProof.integrationMethodEvidence.methodProven, false);
+  assert.equal(winner.stored.providerProof.candidateTreeRevision,
+    winner.stored.providerProof.mergeTreeRevision);
+  const verifier = createGitHubTransitionAuthorityVerifier(fixture.common);
+  await createAuthenticatedTransitionOperationReceipt({
+    request: fixture.final.request, planBytes: fixture.final.planBytes,
+  }, verifier, { now: () => NOW });
+  await assert.rejects(integrationFixture((state) => {
+    configure(state); state.mergeTree = hex('f', 40);
+  }, options), /historical content differs|retrospective integration/u);
+  await assert.rejects(integrationFixture((state) => {
+    configure(state); state.pullBaseRevision = hex('f', 40);
+  }, options), /exact protected integration/u);
+  await assert.rejects(integrationFixture((state) => {
+    configure(state); state.mergeEventRevisions = [hex('7', 40)];
+  }, options), /exact protected integration/u);
+  await assert.rejects(integrationFixture(configure, {
+    initialReviewState: 'open', integrationMode: GITHUB_RETROSPECTIVE_CONTENT_MODE,
+  }), /retrospective target proof|retrospective recovery/u);
+});
 
 test('successor predecessor authority records an already-merged exact squash', async () => {
   const fixture = await successorFixture((state) => historicalSquash(state, {

@@ -2,7 +2,7 @@
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { GITHUB_ACTIONS_INTEGRATION_ID } from './github-authority.mjs';
 import { createGitHubProtectionProjection } from './github-authority-issuer.mjs';
-import { GITHUB_RETROSPECTIVE_INTEGRATION_MODE } from './github-transition-client.mjs';
+import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE } from './github-transition-client.mjs';
 import { latestSuccessfulRequiredCheck, parseClassicBranchProtection } from './github-transition-policy.mjs';
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REDACTED_BYPASS = 'unobserved:provider-redacted:read-only';
@@ -261,7 +261,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     : bundle.candidate;
   const initialReview = issuance?.storedBundle?.targetRepository?.review ?? null;
   const initialRecovery = issuance?.storedBundle?.targetRepository?.retrospectiveProof ?? null;
-  const retrospective = input.integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
+  const contentOnly = input.integrationMode === GITHUB_RETROSPECTIVE_CONTENT_MODE;
+  const retrospective = contentOnly || input.integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
   const [pullResponse, targetResponse] = await Promise.all([api.call('GET',
     `${target.path}/pulls/${number}`), api.call('GET', target.path)]);
   const pull = object(api.exact(pullResponse, [200], 'GitHub integration review'),
@@ -300,7 +301,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     protectedTarget.requiredContexts, mergedAt, expectedProof?.requiredChecks ?? null);
   const { observeIntegrationMethod } = await import('../bin/agentic-os-integration-proof.mjs');
   const methodProof = await observeIntegrationMethod({ api, target, input, candidate, mergedCommit,
-    allowedMethods: protectedTarget.allowedMethods, activeRuleTypes: protectedTarget.activeRuleTypes, canonicalRef, retrospective });
+    allowedMethods: protectedTarget.allowedMethods, activeRuleTypes: protectedTarget.activeRuleTypes,
+    canonicalRef, retrospective, contentOnly });
   const method = methodProof.method;
   const suite = await ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
     protectedTarget.activeRuleTypes, protectedTarget.versions, retrospective, expectedProof,
@@ -325,7 +327,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     if (retrospectiveMismatch
       || Date.parse(mergedAt) >= Date.parse(predecessorStartedAt)
       || Date.parse(suite.pushedAt) >= Date.parse(predecessorStartedAt)
-      || method !== 'squash' || candidateCommit?.tree !== mergedCommit.tree) {
+      || method !== (contentOnly ? 'unproven' : 'squash')
+      || candidateCommit?.tree !== mergedCommit.tree) {
       fail('retrospective integration was not provider-observed before recovery authority');
     }
   } else if (Date.parse(mergedAt) < Date.parse(predecessorStartedAt)
@@ -359,7 +362,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     ruleSuiteDigest: suite.ruleSuiteDigest,
     ruleSuiteId: suite.suiteId, ruleSuiteResult: suite.result,
     ruleSuitePushedAt: suite.pushedAt,
-    ...(retrospective ? { integrationMode: GITHUB_RETROSPECTIVE_INTEGRATION_MODE,
+    ...(retrospective ? { integrationMode: input.integrationMode,
       candidateTreeRevision: candidateCommit.tree, mergeTreeRevision: mergedCommit.tree,
       baseRevision: reviewBaseRevision } : {}),
     headRepository: `github.com/${text(pull.head?.repo?.full_name, 'review head repository')}`,

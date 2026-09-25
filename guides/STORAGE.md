@@ -3,25 +3,25 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.3.0"
-tad_revision: "1.3.0"
-adr_revision: "1.3.0"
+prd_revision: "1.4.0"
+tad_revision: "1.4.0"
+adr_revision: "1.4.0"
 load_policy: on-demand
-version: "1.3.0"
-date: "2026-09-23"
+version: "1.4.0"
+date: "2026-09-25"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--cache-triage"
-agent_id: "codex-cache-triage"
+worktree_id: "device-0232231d4a19--storage-retention-economy"
+agent_id: "codex-storage-retention-economy"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "847c1f8099cc53282135c8d2ddc200b6e099afc7"
-mvp_revision: "1.3.0"
-gtm_revision: "1.3.0"
+mvp_revision: "1.4.0"
+gtm_revision: "1.4.0"
 ---
 
 # Storage compaction
@@ -196,6 +196,125 @@ one observation, or infer deletion savings from allocated size on APFS. A 2026-0
 Graph Canvas `.vite` scanned 1,691 entries in 67 ms with zero payload bytes read; the selected row
 completed, its parent coverage stayed partial, and it granted no cleanup authority. These are
 single-run diagnostic observations, not a benchmark or an eviction receipt.
+
+## Retiring development data — STORAGE-001@1.4.0
+
+PRD: the 2026-09-25 home-directory cleanup encountered generated caches, virtual-machine disks,
+simulator data and task history with different recovery obligations. Large size and old directory
+dates were insufficient selection rules. The operator needs exact eligibility, an affordable recovery
+choice and measured net benefit before removing state. This successor documents the observed workflow;
+it adds no deletion command or automatic retention policy. Shared cache lifecycle remains in [CACHE.md](CACHE.md).
+
+### TAD: classify and select through the owner
+
+| Data class | Evidence needed before choosing an effect |
+|---|---|
+| Generated cache or installed dependency | Owning generator, locked inputs, active consumers, offline need and rebuild cost; preserve authored files mixed into the directory. |
+| VM, container or simulator store | Exact instance and disk/volume inventory; distinguish downloadable tooling from unique local images, databases, app/test data and settings. |
+| Task history and session records | Latest activity, whole-task completion, live/queued work, pins, attachments, required evidence and all records affected by cascading deletion. |
+| Recovery, quarantine or lifecycle evidence | Existing retention owner and receipt; recovery retention stays on hold until separately authorized. |
+
+Start with shallow metadata and one exact bounded scan using the report limits above. Record partial
+coverage and unknown ownership explicitly. Select exact paths or native IDs; never turn a directory
+name, ignored status, age, stopped process or matching bytes into disposal authority. Recreating a
+toolchain or an empty virtual device does not restore its unique data. Bind explicit discard authority
+to that loss when no recoverable copy will remain; a small metadata inventory is not a data backup.
+
+Use the owning application's supported deletion/retirement interface and verify the installed tool
+version and cascade semantics. Keep native metadata and files consistent; do not unlink registered
+history files, edit live databases or vacuum them as an incidental cleanup step. When the native owner
+is unavailable, a filesystem fallback needs its own exact scope, understood effects, recovery/discard
+decision and authorized plan. Lack of a native command alone does not establish those conditions.
+
+For history retention, an operator-selected cutoff such as seven days is only a candidate filter.
+Use the latest relevant record/file activity plus live application state; creation dates and date-folder
+names are insufficient. A completed turn does not prove the task's objective is complete. Reconcile
+the app's pin/active state with backend records; one database may omit pins or loaded tasks. Preserve
+recent, active, pinned, queued, unfinished, blocked and uncertain work, their dependent descendants,
+and history needed by retained work. Review final outcomes for unresolved decisions and evidence needs.
+Before a cascading parent deletion, prove that every affected descendant is independently eligible;
+retain the parent when any member is protected. Unregistered or unclassified files remain unselected.
+
+Bind the plan to exact paths/IDs, source identities, activity cutoff, retention exclusions, owner/tool
+version, cascade closure and recovery choice. Recheck these before each effect, including path aliases,
+symlinks, mount boundaries, visible readers/writers and newly active work. Stop on drift or uncertain
+outcomes; journal completed effects and reconcile native state before retrying. Process/open-file
+observations are snapshots, so keep the selected consumers stopped or use owner-enforced exclusion
+through completion. They cannot prove operating-system-wide exclusion of future writers.
+
+### Recovery and economical execution
+
+Choose retention, supported in-place compression, verified export followed by retirement, or explicit
+discard according to the data owner and actual need. When recovery is selected, retain its bytes and
+metadata before destructive effects, in private storage with an exact manifest and restore instructions.
+Read every retained payload back and verify its source hash; verify modes, links and native format
+where required for restoration. Reobserve the source after copying. A valid archive, image-blob closure
+or transcript hash proves only that verification surface. Record application import, VM boot and task
+resume as separate tested/untested outcomes. Extract to a new private location for verification;
+never overwrite newer live state as a restore shortcut. A same-disk copy is not independent backup.
+
+Budget discovery, backup, verification, native deletion and likely rebuild/restore before execution.
+Include peak temporary space and retained evidence; a full-size backup can erase the intended benefit.
+Use a small, already-authorized batch to measure native request throughput before committing to a
+long pass. Estimate remaining duration from that observation and state uncertainty. Set operation,
+entry, read/output-byte and concurrency limits; a longer owner operation needs its own bounded plan
+and checkpoints. The compaction command deadlines below still apply to those commands unchanged.
+
+Reuse one compatible native process when supported, stream bounded chunks, and start compression with
+one worker. Increase concurrency only for independent targets when the owner permits it and a bounded
+measurement shows a benefit. Avoid repeated whole-home scans, process startup per record and model
+calls for mechanical deletion. Reuse verified inventories while their bindings remain valid; refresh
+on drift. At a budget boundary, preserve the journal and completed receipts, then replan remaining
+work without bypassing preservation checks. No timer, global TTL or automatic recovery expiry follows.
+
+Report source logical bytes, target allocation removed, retained recovery/evidence allocation and
+net allocation reduction separately. Net reduction subtracts newly retained recovery, metadata and
+staging from removed allocation. Record observed volume availability before backup and after completion,
+with timestamps and elapsed time per phase. APFS sharing and concurrent work prevent attributing every
+free-space change to the selected paths. Report missing CPU, I/O, rebuild and monetary costs as unknown.
+Verify selected native records and paths are absent and protected records and paths remain present;
+command success alone is insufficient. Keep exact manifests, authority and receipts private with the owner.
+
+ADR: retain the existing storage, cache and application owners. This guide supplies operator decisions;
+it introduces no generic session cleaner, database writer, additional manifest schema or scheduler.
+Rollback of this documentation change reverts its source only; completed deletion and retained recovery
+continue under their original receipts. [Native session history](prd-tad-adr-mvp-gtm-session-history.md)
+owns product history/indexing design; this local retirement observation does not establish its acceptance.
+
+### MVP and GTM: evidence and handover
+
+The local session pilot selected 16 completed root tasks and 1,829 completed subtasks. Native deletion
+used 1,750 requests; all 1,417 retained task records and original paths, including three pins, were
+verified afterward. Fifteen files under old date directories had recent activity, demonstrating why
+folder age was unsuitable. Full backup readback passed; app-level task restoration remains untested.
+
+| Session pilot observation (2026-09-25, one macOS host) | Result |
+|---|---:|
+| Removed file allocation / retained archive and evidence | 7.16 GiB / 2.99 GiB |
+| Net allocation reduction / observed available-space change | 4.17 GiB / 3.85 GiB |
+| Backup and full readback | 25.83 seconds |
+| Final serial native pass, 1,709 requests | 1,656.70 seconds |
+
+Private evidence is retained in the workspace artifact `codex-session-retirement-20260925`:
+`REPORT.md`, `final-verification.json`, `backup-verification.json` and per-effect receipts. The final
+pass excludes earlier batches and discovery; it is not total operator time. A four-request concurrency
+trial showed no observed improvement and was discontinued. These are historical observations, not
+cross-device benchmarks, application recovery proof or cash savings.
+
+MVP acceptance for this documentation successor: **AC-S08** review the selection rules against the
+cases of recent activity in old folders, separately stored pins and protected descendants; **AC-S09** distinguish explicit
+discard, byte recovery and application restoration; **AC-S10** reconcile gross, retained, net and volume
+figures with the private receipts and include execution cost. These prose/evidence checks are covered
+by the observations above; run `npm run check` for affected repository contracts before publication.
+This is one existing on-demand document, under 15 KiB changed, zero new modules/dependencies or
+always-load bytes. Source handoff targets a 15-minute local sprint; provider checks/merge are separate.
+Publish through [RELEASE](../docs/RELEASE-WORKFLOW.md); exact merge and closeout retain their own receipts.
+Development evidence here is the documentation and historical pilot; source checks do not certify
+new deletion automation, consumer compliance or production/runtime delivery. No browser preview applies.
+
+GTM: reuse the free local workflow for the next authorized cleanup, measuring net space gained and total
+active/machine time, including recovery and rebuild. Prefer the smallest eligible target whose benefit
+justifies that cost. Demand, willingness to pay, support cost and monetary savings remain unmeasured.
 
 <a id="operator-workflow"></a>
 

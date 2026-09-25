@@ -63,10 +63,24 @@ async function rebaseChain(api, target, choice, mergedCommit) {
     commitPairs: pairs.reverse() };
 }
 export async function observeIntegrationMethod({ api, target, input, candidate, mergedCommit,
-  allowedMethods, activeRuleTypes = [], canonicalRef, retrospective = false }) {
+  allowedMethods, activeRuleTypes = [], canonicalRef, retrospective = false,
+  contentOnly = false }) {
   const choice = readIntegrationMethodChoice(
     input.predecessorIssuance?.storedBundle?.authorityBundle?.request?.dependentWork ?? []);
   const twoParents = mergedCommit.parents.length === 2 && mergedCommit.parents[1] === candidate.headRevision;
+  if (contentOnly) {
+    if (!retrospective || choice !== null || input.predecessorIssuance === null
+      || mergedCommit.parents.length !== 1
+      || mergedCommit.parents[0] !== candidate.canonicalRevision
+      || !['squash', 'rebase'].some((method) => allowedMethods.includes(method)))
+      fail('historical content inclusion lacks an exact linear base and initial authority');
+    const source = await api.commit(target, candidate.headRevision);
+    if (source.tree !== mergedCommit.tree)
+      fail('historical content differs from the reviewed source');
+    return { method: 'unproven', integrationMethodEvidence: {
+      basis: 'provider-merged-exact-content-inclusion', methodProven: false,
+      candidateTreeRevision: source.tree, mergeTreeRevision: mergedCommit.tree } };
+  }
   if (choice === null) {
     if (retrospective && input.predecessorAuthority !== undefined
       && mergedCommit.parents.length === 1 && allowedMethods.includes('squash')) {
