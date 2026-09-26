@@ -10,6 +10,7 @@ import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-use
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
+import { inferMergedReviewWorkflow } from '../bin/agentic-os-cleanup-review.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 function fixture(t, concurrentBase = false, detached = false) {
@@ -116,6 +117,23 @@ test('a merged label cannot cover missing source content, altered checks or late
   writeFileSync(join(s.target, 'source.txt'), 'not integrated\n'); git(s.target, 'add', '.'); git(s.target, 'commit', '--quiet', '-m', 'undelivered');
   s.pull.head.sha = git(s.target, 'rev-parse', 'HEAD'); s.check.head_sha = s.pull.head.sha; s.run.head_sha = s.pull.head.sha;
   assert.throws(s.plan, /source-not-integrated/); assert.ok(existsSync(s.target));
+});
+test('workflow inference shares the pre-merge recovery boundary and ignores post-merge runs', t => {
+  const s = fixture(t), infer = () => inferMergedReviewWorkflow({ repository: 'example/GameXR',
+    pr: 7, requiredChecks: ['test'] }, s.options);
+  s.checks.check_runs.push({ ...s.check, id: 999, conclusion: 'failure',
+    completed_at: '2026-09-13T00:00:01Z', details_url: s.check.details_url.replace('/456/job/123', '/999/job/999') });
+  s.checks.total_count = 2;
+  assert.equal(infer(), s.input.workflow);
+  assert.equal(s.plan().review.checks[0].checkId, 123);
+  assert.ok(!s.calls.some(path => path.endsWith('/runs/999')), 'post-merge runs cannot alter the historical proof');
+  s.checks.check_runs[1] = { ...s.check, id: 124, conclusion: 'failure',
+    completed_at: '2026-09-12T23:59:30Z', details_url: s.check.details_url.replace('/123', '/124') };
+  assert.throws(infer, /check-not-successful/, 'a later pre-merge failure must still block');
+  s.checks.check_runs = [s.check]; s.checks.total_count = 1;
+  s.pull.merged_at = 'invalid'; assert.throws(infer, /merged-review/);
+  s.pull.merged_at = '2026-09-13T00:00:00Z'; s.check.app.id = 999;
+  assert.throws(infer, /check-ambiguous-or-missing/);
 });
 test('plan tampering, stale consent, changed ignored data and hidden edits never produce cleanup', t => {
   const s = fixture(t), p = s.plan();

@@ -5,7 +5,6 @@ import { lstatSync, mkdirSync, realpathSync, renameSync, rmdirSync, writeFileSyn
 import { isAbsolute, join, resolve } from 'node:path';
 import { observeGit } from '../src/git-tracked.mjs';
 import { executionEnvironment, hash, LIMITS, readGit, readRegular } from './agentic-os-test-inputs.mjs';
-
 export function receiptDirectory(root, scope = 'validation') {
   if (!['validation', 'feedback-stages', 'feedback-ci', 'execution'].includes(scope)) throw Error('blocked-test-receipt-scope');
   const git = realpathSync(resolve(root, readGit(root, ['rev-parse', scope === 'validation' ? '--absolute-git-dir' : '--git-common-dir']).trim()));
@@ -33,15 +32,13 @@ export function lockReceipts(directory, name = 'running') {
   };
 }
 export function writeReceipt(directory, name, value) {
-  const limit = name.endsWith('.json') ? LIMITS.receiptBytes : LIMITS.outputBytes;
-  let bytes = typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n';
+  const limit = name.endsWith('.full.log') ? FAILURE_OUTPUT_BYTES : name.endsWith('.json') ? LIMITS.receiptBytes : LIMITS.outputBytes;
+  let bytes = typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value, null, 2) + '\n';
   // Preserve every result while avoiding indentation overhead for expanded suites.
-  if (typeof value !== 'string' && Buffer.byteLength(bytes) > limit) bytes = JSON.stringify(value) + '\n';
+  if (typeof value !== 'string' && !Buffer.isBuffer(value) && Buffer.byteLength(bytes) > limit) bytes = JSON.stringify(value) + '\n';
   if (Buffer.byteLength(bytes) > limit && value?.schema === 'agentic-os/test-receipt/v2' && Array.isArray(value.results)) {
-    // The per-check receipt keeps its output digest; the aggregate keeps the log link.
-    // Stage membership is already present in plan.suites and each result.
+    // Compact aggregates retain links to complete per-check receipts.
     const { stages, ...plan } = value.plan;
-    // Broad selections repeat these fields in every obligation; retain explicit defaults.
     const suiteDefaults = { stage: 'behavior', reasons: ['broad-impact'] };
     plan.suiteDefaults = suiteDefaults;
     plan.suites = plan.suites.map(suite => Object.fromEntries(Object.entries(suite)
@@ -82,7 +79,13 @@ export function previousCheck(directory, check, now = Date.now(), { allowFailure
   } catch { return null; }
 }
 export function writeCheck(directory, check, result, finishedAt = Date.now()) {
-  const { output, ...summary } = result, log = `${check.id}.log`;
+  const { output, fullOutput, fullOutputTruncated, ...summary } = result, log = `${check.id}.log`;
+  if (fullOutput !== undefined) {
+    if (!Buffer.isBuffer(fullOutput) || fullOutput.length > FAILURE_OUTPUT_BYTES
+      || !/^[a-z0-9][a-z0-9.-]*$/u.test(check.id)) throw Error('blocked-test-full-output');
+    const name = `${check.id}.full.log`; writeReceipt(directory, name, fullOutput);
+    summary.failureOutput = { log: name, digest: hash(fullOutput), bytes: fullOutput.length, truncated: fullOutputTruncated === true };
+  }
   writeReceipt(directory, log, output);
   const receipt = { schema: 'agentic-os/test-check/v1', authority: false, id: check.id,
     name: check.name, command: [check.command, ...check.args], fingerprint: check.fingerprint,
@@ -115,8 +118,9 @@ function claimCommand(root, command, args, environment) {
   return release;
 }
 export const COMMAND_PROGRESS_INTERVAL_MS = 30_000;
+export const FAILURE_OUTPUT_BYTES = 16 * 1024 * 1024;
 export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs, outputBytes = LIMITS.outputBytes,
-  outputMode = 'fail', totalOutputBytes = 16 * 1024 * 1024, onProgress } = {}) {
+  outputMode = 'fail', totalOutputBytes = FAILURE_OUTPUT_BYTES, retainFailureOutput = false, onProgress } = {}) {
   if (!['fail', 'tail'].includes(outputMode)) throw new Error('blocked-test-output-mode');
   if (onProgress !== undefined && typeof onProgress !== 'function') throw new Error('blocked-test-progress-handler');
   const started = performance.now(), startedAt = Date.now();
@@ -128,7 +132,8 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     const child = spawn(plan.command, plan.args, { cwd: root, env: environment,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(plan.measured ? ['pipe'] : [])] });
     if (plan.measured) child.stdio[3].on('data', accounting.accept);
-    const chunks = []; let length = 0, observedBytes = 0, reason = null, lastOutputAt = started, forceTimer;
+    const chunks = [], fullChunks = [];
+    let length = 0, fullLength = 0, observedBytes = 0, reason = null, lastOutputAt = started, forceTimer;
     const signalGroup = signal => {
       try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
       catch { child.kill(signal); }
@@ -154,6 +159,10 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
     for (const channel of ['stdout', 'stderr']) child[channel].on('data', bytes => {
       lastOutputAt = performance.now();
       observedBytes += bytes.length;
+      if (retainFailureOutput && fullLength < FAILURE_OUTPUT_BYTES) {
+        const accepted = bytes.subarray(0, FAILURE_OUTPUT_BYTES - fullLength);
+        fullChunks.push(accepted); fullLength += accepted.length;
+      }
       if (outputMode === 'tail') {
         chunks.push(bytes); length += bytes.length;
         while (length > outputBytes) {
@@ -180,6 +189,8 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
       if (resources.spawnFailed) reason ||= 'spawn-failed';
       resolveResult({ exitCode, reason: reason ?? (signal ? 'signal' : null), startedAt, finishedAt: Date.now(), elapsedMs: performance.now() - started,
         output, outputDigest: hash(Buffer.from(output)), resources,
+        ...(retainFailureOutput && (exitCode !== 0 || reason || signal)
+          ? { fullOutput: Buffer.concat(fullChunks), fullOutputTruncated: observedBytes > fullLength } : {}),
         ...(outputMode === 'tail' ? { observedOutputBytes: observedBytes, outputTruncated: observedBytes > outputBytes } : {}),
         counts: Object.fromEntries([...output.matchAll(/^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)]
           .map(match => [match[1], Number(match[2])])) });

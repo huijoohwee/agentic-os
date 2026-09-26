@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { startWorkflow } from '../bin/agentic-os-workflow.mjs';
@@ -305,6 +305,22 @@ test('release-common complete returns success when the profile retains worktree 
   assert.equal(status.closeout.missionState, 'source_complete');
   assert.equal(status.closeout.laneDisposition, 'retained');
   assert.equal(status.lane.mounted, true);
+});
+
+test('native completion preserves ignored inventories above the obsolete ten-thousand entry override', t => {
+  const subject = completeFixture(t);
+  const ignored = join(subject.lane, 'runtime'); mkdirSync(ignored);
+  // Local excludes are independent of the already-integrated authored tree.
+  const exclude = git(['rev-parse', '--git-path', 'info/exclude'], { cwd: subject.root });
+  writeFileSync(join(subject.root, exclude), 'runtime/\n');
+  for (let i = 0; i < 10001; i++) writeFileSync(join(ignored, `evidence-${i}`), `retained ${i}`);
+  const result = complete(subject, 1000);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = result.stdout.split('\n').filter(line => line.startsWith('{'))
+    .map(line => JSON.parse(line)).find(value => value.result === 'quarantined');
+  assert.ok(receipt, result.stdout);
+  assert.equal(readFileSync(join(receipt.projectionQuarantinePath, 'runtime/evidence-10000'), 'utf8'), 'retained 10000');
+  assert.equal(existsSync(subject.lane), false);
 });
 
 test('release-common complete returns the verified wait code while the exact review stays open', (t) => {

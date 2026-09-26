@@ -1,6 +1,6 @@
 /** Bounded read-only GitHub merge/check evidence, never protected-integration authority. */
 import { spawnSync } from 'node:child_process';
-import { RECOVERY_MODE, recoveryChecks, refuse } from './agentic-os-cleanup-recovery.mjs';
+import { RECOVERY_MODE, recoveryChecks, reviewedCheckRun, refuse } from './agentic-os-cleanup-recovery.mjs';
 export { refuse } from './agentic-os-cleanup-recovery.mjs';
 export function githubRead(path, { cwd, timeoutMs = 15000 } = {}) {
   const result = spawnSync('gh', ['api', '--hostname', 'github.com', '-H', 'Accept: application/vnd.github+json',
@@ -25,45 +25,7 @@ export function reviewOptions(value) {
       || /[\x00-\x1f\x7f]/u.test(c))
     || JSON.stringify([...new Set(value.requiredChecks)].sort()) !== JSON.stringify(value.requiredChecks)) refuse('review-options');
 }
-export function inferMergedReviewWorkflow({ repository, pr, requiredChecks }, { cwd, api = githubRead } = {}) {
-  reviewOptions({ repository, pr, requiredChecks, workflow: '.github/workflows/placeholder.yml', mode: RECOVERY_MODE });
-  const started = Date.now(), prefix = `repos/${repository}`;
-  const read = path => {
-    const remaining = 120000 - (Date.now() - started); if (remaining <= 0) refuse('provider-deadline');
-    return api(path, { cwd, timeoutMs: Math.min(15000, remaining) });
-  };
-  const pull = read(`${prefix}/pulls/${pr}`);
-  const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
-  if (pull?.number !== pr || pull.merged !== true || pull.state !== 'closed'
-    || pull.base?.ref !== 'main' || pull.base?.repo?.full_name !== repository
-    || pull.head?.repo?.full_name !== repository || !sha(pull.head?.sha)
-    || typeof pull.head?.ref !== 'string' || !pull.head.ref) refuse('merged-review');
-  const response = read(`${prefix}/commits/${pull.head.sha}/check-runs?filter=latest&per_page=100`);
-  if (!Array.isArray(response?.check_runs) || response.total_count !== response.check_runs.length
-    || response.total_count > 100) refuse('check-page-incomplete');
-  const workflows = new Set(requiredChecks.map(name => {
-    const candidates = response.check_runs.filter(c => c.name === name);
-    if (candidates.length !== 1) refuse('check-ambiguous-or-missing');
-    const c = candidates[0];
-    if (c.status !== 'completed' || c.conclusion !== 'success' || c.head_sha !== pull.head.sha
-      || c.app?.slug !== 'github-actions' || !Number.isSafeInteger(c.id) || c.id < 1) refuse('check-not-successful');
-    const prefix = `https://github.com/${repository}/actions/runs/`;
-    const suffix = c.details_url?.startsWith(prefix) ? c.details_url.slice(prefix.length) : '';
-    const match = suffix.match(/^(\d+)\/job\/(\d+)$/u);
-    if (!match || Number(match[2]) !== c.id || !Number.isSafeInteger(Number(match[1]))) refuse('check-locator');
-    const run = read(`repos/${repository}/actions/runs/${match[1]}`);
-    if (run?.id !== Number(match[1]) || run.head_sha !== pull.head.sha || run.head_branch !== pull.head.ref
-      || run.repository?.full_name !== repository || run.head_repository?.full_name !== repository
-      || run.event !== 'pull_request' || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(run.path ?? '')
-      || run.status !== 'completed' || run.conclusion !== 'success'
-      || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) refuse('check-run-binding');
-    return run.path;
-  }));
-  if (workflows.size !== 1) refuse('workflow-ambiguous');
-  return [...workflows][0];
-}
-export function observeMergedReview(value, { cwd, api = githubRead } = {}) {
-  reviewOptions(value);
+function mergedReview(value, { cwd, api = githubRead }) {
   const started = Date.now(), prefix = `repos/${value.repository}`;
   const read = path => {
     const remaining = 120000 - (Date.now() - started); if (remaining <= 0) refuse('provider-deadline');
@@ -79,36 +41,36 @@ export function observeMergedReview(value, { cwd, api = githubRead } = {}) {
   const response = read(`${prefix}/commits/${pull.head.sha}/check-runs?filter=latest&per_page=100`);
   if (!Array.isArray(response?.check_runs) || response.total_count !== response.check_runs.length
     || response.total_count > 100) refuse('check-page-incomplete');
+  return { read, pull, response, prefix };
+}
+export function inferMergedReviewWorkflow({ repository, pr, requiredChecks }, options = {}) {
+  reviewOptions({ repository, pr, requiredChecks, workflow: '.github/workflows/placeholder.yml', mode: RECOVERY_MODE });
+  const { read, pull, response } = mergedReview({ repository, pr }, options);
+  return recoveryChecks({ repository, requiredChecks }, pull, response.check_runs, read, { inferWorkflow: true })[0].workflow;
+}
+export function observeMergedReview(value, options = {}) {
+  reviewOptions(value);
+  const { read, pull, response, prefix } = mergedReview(value, options);
   if (value.mode === 'explicit-local-user-consent-no-ci') {
     const status = read(`${prefix}/commits/${pull.head.sha}/status`);
     if (response.total_count !== 0 || !Array.isArray(status?.statuses)
       || status.statuses.length !== 0 || status.state !== 'pending'
       || status.sha !== pull.head.sha) refuse('no-ci-evidence-drift');
-    return { repository: value.repository, pr: value.pr, url: pull.html_url,
-      branch: pull.head.ref, head: pull.head.sha, merge: pull.merge_commit_sha,
-      mergedAt: pull.merged_at, checks: [], noCI: true,
-      checkRunsObserved: 0, legacyStatusesObserved: 0,
-      protectionProven: false, authority: 'observation-only' };
   }
-  const checks = value.mode === RECOVERY_MODE ? recoveryChecks(value, pull, response.check_runs, read) : value.requiredChecks.map(name => {
+  const noCI = value.mode === 'explicit-local-user-consent-no-ci';
+  const checks = noCI ? [] : value.mode === RECOVERY_MODE ? recoveryChecks(value, pull, response.check_runs, read) : value.requiredChecks.map(name => {
     const candidates = response.check_runs.filter(c => c.name === name);
     if (candidates.length !== 1) refuse('check-ambiguous-or-missing');
     const c = candidates[0];
     if (c.status !== 'completed' || c.conclusion !== 'success' || c.head_sha !== pull.head.sha
       || c.app?.slug !== 'github-actions' || !Number.isSafeInteger(c.id) || c.id < 1) refuse('check-not-successful');
-    const prefix = `https://github.com/${value.repository}/actions/runs/`;
-    const suffix = c.details_url?.startsWith(prefix) ? c.details_url.slice(prefix.length) : '';
-    const match = suffix.match(/^(\d+)\/job\/(\d+)$/u);
-    if (!match || Number(match[2]) !== c.id || !Number.isSafeInteger(Number(match[1]))) refuse('check-locator');
-    const run = read(`repos/${value.repository}/actions/runs/${match[1]}`);
-    if (run?.id !== Number(match[1]) || run.head_sha !== pull.head.sha || run.head_branch !== pull.head.ref
-      || run.repository?.full_name !== value.repository || run.head_repository?.full_name !== value.repository
-      || run.event !== 'pull_request' || run.path !== value.workflow || run.status !== 'completed'
-      || run.conclusion !== 'success' || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) refuse('check-run-binding');
+    const run = reviewedCheckRun(value, pull, c, read);
+    if (run.path !== value.workflow || run.status !== 'completed' || run.conclusion !== 'success') refuse('check-run-binding');
     return { name, checkId: c.id, runId: run.id, attempt: run.run_attempt, workflow: run.path,
       conclusion: 'success', url: c.details_url };
   });
   return { repository: value.repository, pr: value.pr, url: pull.html_url, branch: pull.head.ref,
     head: pull.head.sha, merge: pull.merge_commit_sha, mergedAt: pull.merged_at, checks,
+    ...(noCI ? { noCI: true, checkRunsObserved: 0, legacyStatusesObserved: 0 } : {}),
     protectionProven: false, authority: 'observation-only' };
 }
