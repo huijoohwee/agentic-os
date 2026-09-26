@@ -597,3 +597,25 @@ GTM: validate this operator journey against the retained Graph observations; dem
 unmeasured. Rollback the scoped source commit; preserve immutable archives, refs and unfinished bytes.
 
 [release-readiness]: https://github.com/huijoohwee/huijoohwee.github.io/blob/a925ec5ac6de189930d253b8b052970bad711923/guidelines/adlc-production-release-lifecycle.md#readiness-and-next-steps
+
+### Programmatic Drone Flight catalog owner — DRONE-CATALOG-001
+
+PRD: Home Catalog and Chat Prompt Presets must expose the local drone learning
+workspace through the existing `/python.learning @canvas #learning` inspection
+route. Demo opens an editable nine-second takeoff, hover, flight and landing
+example. Selection and Demo make no provider call and never run code.
+
+TAD/ADR: `runtime/agents/docs/PROMPT-PRESETS.md` is the current packaged catalog
+owner. ACOS PR951 predates this ownership transition; publishing only that older
+repository cannot update the active OS package. Retain its review history and
+move the reviewed entry into this owner, with no second registry or dependency.
+Graph's consumer must integrate first, then its exact OS pin must admit this
+catalog before public release. MCP/WebMCP inspection, explicit Run, simulated
+GameXR receiver control and recorded Canvas sharing keep their existing owners.
+
+MVP/GTM: two files, <4 KiB source delta, no always-load instruction delta, zero
+paid services or new dependencies. Use native docs/check gates and Graph's
+source-backed catalog/browser proof; source integration, deployed catalog
+readback, phone/cloud sessions and buyer demand remain separate claims. Remove
+this row before reverting the Graph consumer. Release uses protected PRs and
+DEPLOY; END ADLC requires its exact source and runtime receipts.

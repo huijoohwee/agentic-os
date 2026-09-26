@@ -32,6 +32,18 @@ prompt_presets:
     mcp_token: "/canvas.view.set"
     prompt: |-
       /canvas.view.set #canvas-view @canvas-view option=agent-run:tree
+  - id: "programmatic-drone-flight"
+    label: "Programmatic Drone Flight"
+    slash_command: "/programmatic-drone-flight-prompt-preset"
+    runtime_command: "/python.learning"
+    description: "Program takeoff, hover, a flight path and landing in the local Python workspace. Demo opens an editable example; Run, Canvas replay sharing and GameXR simulated bench review stay explicit."
+    activation: "source-backed-canvas"
+    invocation_modes: ["native-chat-response", "mcp-invocation"]
+    chat_route: "active native shared runtime"
+    mcp_tool: "agentic-graph.agentic_canvas_os.docs.invoke"
+    mcp_token: "/python.learning"
+    prompt: |-
+      /python.learning @canvas #learning operation=inspect lesson=drone
   - id: "xr-physics"
     label: "Physics Playground"
     slash_command: "/xr-physics-prompt-preset"
@@ -252,6 +264,7 @@ Every `slash_command` is a catalog-owned selection alias matching `/*-prompt-pre
 
 | Preset | Preset invocation | Runtime route | Load behavior | Send behavior |
 | --- | --- | --- | --- | --- |
+| Programmatic Drone Flight | `/programmatic-drone-flight-prompt-preset` | `/python.learning` | Demo opens a fresh local Python drone example without executing; selection loads the native inspection prompt. | Run and simulated GameXR execution remain explicit; shared Canvas replays observations only. |
 | Physics Playground | `/xr-physics-prompt-preset` | `/xr.physics` | Load the native controller invocation; Home previews the existing source-authored XR world. Demo opens the corresponding demo document and example Chat thread. | Native physics execution remains owned by the existing XR controller runtime. |
 | Video Agent | `/video-prompt-preset` | `/video-agent` | Load the centralized prompt after validating the authored video Canvas and script source. | Activate the committed Canvas and hand it to the shared Run all owner. |
 | Image to Three.js | `/image.to-threejs` | `/image.to-threejs @image-to-threejs #image-to-threejs` | Load the native prompt in Chat or insert its three invocation tokens into the selected Widget Card. | Resolve only an attached or selected supported image through the native zero-cost conversion owner. |
