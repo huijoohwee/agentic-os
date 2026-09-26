@@ -3,14 +3,12 @@ import { canonicalJson } from '../src/governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef } from '../src/git-repository.mjs';
 import { exactTreeProjectionProof, reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 export const refuse = reason => { throw Object.assign(new Error(`blocked-user-cleanup-${reason}`), { reason }); };
-
 export const RECOVERY_MODE = 'explicit-local-user-consent-recovery';
 export const RECOVERY_LIMITS = Object.freeze({
   projectionByteCeiling: 4 * 1024 ** 3, projectionEntryCeiling: 250000,
   registrationByteCeiling: 16 * 1024 ** 2, registrationEntryCeiling: 20000,
   sharedStateByteCeiling: 20 * 1024 ** 3, sharedStateEntryCeiling: 500000,
 });
-
 export function recoveryPolicy(root, repository) {
   const trust = loadRepositoryTrust(root);
   const { profile } = observeRepositoryProfileAtRef({ repository: root, ref: 'refs/heads/main' });
@@ -34,7 +32,6 @@ function contentInclusion(plan, head, read) {
   if (!projection) refuse('source-not-integrated');
   return { kind: projection.kind, pathCount: projection.pathCount, headTree, mergeTree };
 }
-
 export function recoveryIntegration(plan, read) {
   if (plan.reviewedEquivalentCommit) {
     if (!plan.detachedHead || plan.successor) refuse('equivalent-options');
@@ -55,31 +52,38 @@ export function recoveryIntegration(plan, read) {
   return { ...integration, detached: { head: plan.detachedHead, reviewedHead: plan.head,
     inclusion: contentInclusion(plan, plan.detachedHead, read) } };
 }
-
+/** Resolve one authenticated check locator and bind its provider run to the reviewed source. */
+export function reviewedCheckRun(value, pull, c, read, skipOtherWorkflow = false) {
+  const prefix = `https://github.com/${value.repository}/actions/runs/`;
+  const match = (c.details_url?.startsWith(prefix) ? c.details_url.slice(prefix.length) : '').match(/^(\d+)\/job\/(\d+)$/u);
+  if (!Number.isSafeInteger(c.id) || c.id < 1 || !match || Number(match[2]) !== c.id
+    || !Number.isSafeInteger(Number(match[1]))) refuse('check-locator');
+  const run = read(`repos/${value.repository}/actions/runs/${match[1]}`);
+  if (skipOtherWorkflow && run?.path !== value.workflow) return null;
+  if (run?.id !== Number(match[1]) || run.head_sha !== pull.head.sha || run.head_branch !== pull.head.ref
+    || run.repository?.full_name !== value.repository || run.head_repository?.full_name !== value.repository
+    || run.event !== 'pull_request' || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(run.path ?? '')
+    || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) refuse('check-run-binding');
+  return run;
+}
 /** Select complete successful runs of the named workflow, before the observed merge. */
-export function recoveryChecks(value, pull, runs, read) {
-  const cache = new Map(), merged = Date.parse(pull.merged_at);
-  return value.requiredChecks.map(name => {
+export function recoveryChecks(value, pull, runs, read, { inferWorkflow = false } = {}) {
+  const cache = new Map(), workflows = new Set(), merged = Date.parse(pull.merged_at);
+  if (!Number.isFinite(merged)) refuse('merged-review');
+  const checks = value.requiredChecks.map(name => {
     const candidates = runs.filter(c => c.name === name && c.head_sha === pull.head.sha
-      && c.app?.slug === 'github-actions' && c.app?.id === 15368)
+      && c.app?.slug === 'github-actions' && c.app?.id === 15368
+      && Number.isFinite(Date.parse(c.completed_at)) && Date.parse(c.completed_at) <= merged)
       .sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at) || b.id - a.id);
+    if (inferWorkflow && !candidates.length) refuse('check-ambiguous-or-missing');
     const matching = [];
     for (const c of candidates) {
-      if (!Number.isSafeInteger(c.id) || c.id < 1) refuse('check-locator');
-      const prefix = `https://github.com/${value.repository}/actions/runs/`;
-      const match = (c.details_url?.startsWith(prefix) ? c.details_url.slice(prefix.length) : '')
-        .match(/^(\d+)\/job\/(\d+)$/u);
-      if (!match || Number(match[2]) !== c.id || !Number.isSafeInteger(Number(match[1]))) refuse('check-locator');
-      const runId = Number(match[1]);
-      if (!cache.has(runId)) cache.set(runId, read(`repos/${value.repository}/actions/runs/${runId}`));
-      const run = cache.get(runId);
-      if (run?.path !== value.workflow) continue;
-      if (run.id !== runId || run.head_sha !== pull.head.sha || run.head_branch !== pull.head.ref
-        || run.repository?.full_name !== value.repository || run.head_repository?.full_name !== value.repository
-        || run.event !== 'pull_request' || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1)
-        refuse('check-run-binding');
-      const completed = Date.parse(c.completed_at);
-      if (!Number.isFinite(completed) || completed > merged) continue;
+      const run = reviewedCheckRun(value, pull, c, path => {
+        if (!cache.has(path)) cache.set(path, read(path));
+        return cache.get(path);
+      }, !inferWorkflow);
+      if (!run) continue;
+      workflows.add(run.path);
       matching.push({ c, run });
     }
     const first = matching[0];
@@ -90,4 +94,6 @@ export function recoveryChecks(value, pull, runs, read) {
       workflow: first.run.path, conclusion: 'success', completedAt: first.c.completed_at,
       url: first.c.details_url };
   });
+  if (inferWorkflow && workflows.size !== 1) refuse('workflow-ambiguous');
+  return checks;
 }

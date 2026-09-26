@@ -34,17 +34,29 @@ test('independent enrolled processes verify race, disjoint work, stopped handoff
   const launch = role => {
     const output = join(root, `${role}.json`), destination = join(root, role);
     const program = `import {enrollPeer,writeProof} from ${JSON.stringify(fixtureModule)};
+      import {once} from 'node:events';
       import {exercisePeer} from ${JSON.stringify(proofModule)};
       try { const peer=enrollPeer(${JSON.stringify(input)},${JSON.stringify(destination)});
+      process.send('enrolled');
+      const [startAt]=await once(process,'message'); peer.envelope.startAt=startAt;
       const proof=await exercisePeer(peer,${JSON.stringify(role)},{pollMs:10,phaseMs:15000});
-      writeProof(${JSON.stringify(output)},proof);
-      } catch(error) { console.error(error.stack);process.exitCode=1; }`;
-    const child = spawn(process.execPath, ['--input-type=module', '-e', program]); let stderr = '';
+      writeProof(${JSON.stringify(output)},proof); process.disconnect();
+      } catch(error) { console.error(error.stack);process.disconnect();process.exitCode=1; }`;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', program], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }); let stderr = '';
     child.stdout.resume(); child.stderr.on('data', data => { stderr += data; });
     children.push(child);
-    return once(child, 'close').then(([code]) => { assert.equal(code, 0, stderr); return JSON.parse(readFileSync(output)); });
+    const message = once(child, 'message').then(([value]) => assert.equal(value, 'enrolled'));
+    const done = once(child, 'close').then(([code]) => { assert.equal(code, 0, stderr); return JSON.parse(readFileSync(output)); });
+    const ready = Promise.race([message, done.then(() => { throw Error('Peer exited before race admission'); })]);
+    void ready.catch(() => {}); void done.catch(() => {});
+    return { ready, done };
   };
-  const peers = await Promise.all(['a', 'b'].map(launch));
+  const workers = ['a', 'b'].map(launch);
+  // Enrollment can take longer on a loaded host. The race clock starts only once both peers are ready.
+  await Promise.all(workers.map(worker => worker.ready));
+  envelope.startAt = Date.now() + 3000; writeFileSync(join(input, 'enrollment.json'), JSON.stringify(envelope));
+  for (const child of children) child.send(envelope.startAt);
+  const peers = await Promise.all(workers.map(worker => worker.done));
   const verifier = enrollPeer(input, join(root, 'verify'));
   const result = verifyRemoteProof(verifier, peers);
   assert.equal(result.remainingTasks, 0); assert.equal(result.remoteHistoryVerified, true);

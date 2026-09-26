@@ -3,12 +3,11 @@ import { remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname } from 'node:os';
-import { hash, readGit } from './agentic-os-test-inputs.mjs';
-import { commandExecutionKey, executeCommand, lockReceipts, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
+import { hash, readGit, readRegular, LIMITS } from './agentic-os-test-inputs.mjs';
+import { FAILURE_OUTPUT_BYTES, commandExecutionKey, executeCommand, lockReceipts, receiptDirectory, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
+import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { economyContext, readEconomy, recordEconomy, economyFeedback } from './agentic-os-validation-economy.mjs';
-
-export const STAGES_FILE = 'validation-stages.json';
-export const STAGES_SCHEMA = 'agentic-os/validation-stages/v1';
+export const STAGES_FILE = 'validation-stages.json', STAGES_SCHEMA = 'agentic-os/validation-stages/v1';
 export function validationStageDirectory(root, kind = 'stages') {
   if (!['stages', 'ci'].includes(kind)) throw Error('blocked-validation-stage-directory');
   const directory = join(receiptDirectory(root), kind);
@@ -16,7 +15,11 @@ export function validationStageDirectory(root, kind = 'stages') {
   if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory) throw Error('blocked-validation-stage-directory');
   return directory;
 }
-
+function validationSource(root) { return {
+    repository: remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim())?.repository,
+    revision: readGit(root, ['rev-parse', 'HEAD']).trim(), tree: readGit(root, ['rev-parse', 'HEAD^{tree}']).trim(),
+    dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()),
+}; }
 export async function runValidationStages(root, stages, { out = console.log } = {}) {
   if (!Array.isArray(stages) || !stages.length || stages.length > 128) throw Error('blocked-validation-stage-count');
   const ids = new Set(), commands = new Set();
@@ -34,12 +37,7 @@ export async function runValidationStages(root, stages, { out = console.log } = 
     ids.add(stage.id);
   }
   const directory = validationStageDirectory(root);
-  const source = () => ({
-    repository: remoteRepositoryIdentity(readGit(root, ['config', '--get', 'remote.origin.url']).trim())?.repository,
-    revision: readGit(root, ['rev-parse', 'HEAD']).trim(), tree: readGit(root, ['rev-parse', 'HEAD^{tree}']).trim(),
-    dirty: Boolean(readGit(root, ['status', '--porcelain=v1', '--untracked-files=normal']).trim()),
-  });
-  const initial = source(), startedAt = Date.now(), started = performance.now();
+  const initial = validationSource(root), startedAt = Date.now(), started = performance.now();
   const feedbackDirectory = receiptDirectory(root, 'feedback-stages');
   const context = economyContext(hash(JSON.stringify(stages)), 'validation-stages/v1', { root: initial.repository,
     environmentDigest: hash(JSON.stringify([hostname(), process.env.NODE_OPTIONS, process.env.CI])), node: process.version, executable: process.execPath,
@@ -54,13 +52,14 @@ export async function runValidationStages(root, stages, { out = console.log } = 
   try {
     save();
     for (const [index, stage] of stages.entries()) {
-      if (JSON.stringify(source()) !== JSON.stringify(initial)) throw Error('blocked-validation-stage-source-drift');
+      if (JSON.stringify(validationSource(root)) !== JSON.stringify(initial)) throw Error('blocked-validation-stage-source-drift');
       const remaining = 900000 - (performance.now() - started);
       if (remaining <= 0) throw Error('blocked-validation-stage-time-budget');
       receipt.active = { id: stage.id, startedAt: Date.now(), elapsedMs: 0, observedOutputBytes: 0 };
       emit(`stage ${index + 1}/${stages.length} ${stage.id}: running`); save();
       const result = await executeCommand(root, stage.command[0], stage.command.slice(1), {
         timeoutMs: Math.min(stage.timeoutMs, remaining), outputMode: 'tail', outputBytes: 48000,
+        retainFailureOutput: true,
         onProgress: progress => {
           receipt.active = { id: stage.id, startedAt: receipt.active.startedAt, ...progress };
           emit(`stage ${index + 1}/${stages.length} ${stage.id}: ${Math.floor(progress.elapsedMs / 1000)}s, ${progress.observedOutputBytes} output bytes`);
@@ -83,11 +82,12 @@ export async function runValidationStages(root, stages, { out = console.log } = 
       save();
       if (result.exitCode !== 0 || result.reason) {
         emit(result.output.slice(-12000));
+        if (saved.result.failureOutput) emit(`failure diagnostics: ${saved.result.failureOutput.log}; sha256=${saved.result.failureOutput.digest}; truncated=${saved.result.failureOutput.truncated}`);
         receipt.outcome = 'failed';
         throw Error(`validation stage ${stage.id} failed; retained log ${saved.result.log}`);
       }
     }
-    if (JSON.stringify(source()) !== JSON.stringify(initial)) throw Error('blocked-validation-stage-source-drift');
+    if (JSON.stringify(validationSource(root)) !== JSON.stringify(initial)) throw Error('blocked-validation-stage-source-drift');
     receipt.outcome = 'passed';
     return receipt;
   } catch (error) {
@@ -98,7 +98,6 @@ export async function runValidationStages(root, stages, { out = console.log } = 
     try { save(); } finally { release(); }
   }
 }
-
 /** Project a provider-verified plan reuse; never count historical execution as current consumption. */
 export function recordCiStageReuse(root, stages, verified) {
   const revision = readGit(root, ['rev-parse', 'HEAD']).trim(), tree = readGit(root, ['rev-parse', 'HEAD^{tree}']).trim();
@@ -119,4 +118,26 @@ export function recordCiStageReuse(root, stages, verified) {
       elapsedMs: 0, observedOutputBytes: 0, outputTruncated: false })) };
   try { writeReceipt(directory, STAGES_FILE, receipt); } finally { release(); }
   return receipt;
+}
+/** Export content-bound failed-stage logs for the current source; no release authority. */
+export function exportFailureDiagnostics(root, destination) {
+  root = realpathSync(root);
+  const directory = validationStageDirectory(root), receipt = JSON.parse(readRegular(directory, STAGES_FILE, LIMITS.receiptBytes).text);
+  if (receipt.schema !== STAGES_SCHEMA || receipt.authority !== false || receipt.outcome !== 'failed'
+    || JSON.stringify(receipt.source) !== JSON.stringify(validationSource(root)) || receipt.source?.dirty !== false
+    || !Array.isArray(receipt.results) || receipt.results.length > 128) throw Error('blocked-failure-diagnostics-source');
+  const failed = receipt.results.filter(result => result.exitCode !== 0 || result.reason);
+  if (failed.length !== 1) throw Error('blocked-failure-diagnostics-count');
+  const result = failed[0], evidence = result.failureOutput;
+  if (!evidence || !/^stage-[a-f0-9]{24}\.full\.log$/u.test(evidence.log)
+    || typeof evidence.truncated !== 'boolean') throw Error('blocked-failure-diagnostics-binding');
+  const log = readBoundedStableFile(join(directory, evidence.log), FAILURE_OUTPUT_BYTES, 'failure-output');
+  if (hash(log) !== evidence.digest || log.length !== evidence.bytes) throw Error('blocked-failure-diagnostics-digest');
+  mkdirSync(destination, { recursive: false, mode: 0o700 });
+  writeReceipt(destination, evidence.log, log);
+  const manifest = { schema: 'agentic-os/validation-failure-diagnostics/v1', authority: false,
+    source: receipt.source, stage: result.id, exitCode: result.exitCode, reason: result.reason,
+    failureOutput: evidence };
+  writeReceipt(destination, 'manifest.json', manifest);
+  return manifest;
 }

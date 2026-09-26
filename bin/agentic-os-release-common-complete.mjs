@@ -252,7 +252,7 @@ export async function runReleaseCommonLocalCleanup({
       now,
       api,
       resolvePolicy,
-      maxContentEntries: 10_000,
+      maxContentEntries: current.limits.projectionEntryCeiling,
       observeRemote: () => `${current.canonical}\trefs/heads/main`,
     });
     out(JSON.stringify(plan));
