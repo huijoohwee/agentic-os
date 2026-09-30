@@ -47,7 +47,7 @@ quarantine the retained lane when the profile-governed local cleanup path is suf
 
 `npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
 diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
-and the [deploy workflow](guides/DEPLOY-WORKFLOW.md) are the SSOT for the universal lifecycle grammar;
+and the [deploy workflow](guides/DEPLOY-WORKFLOW.md) route the universal lifecycle grammar that the [ADLC guidelines](docs/adlc-guidelines.md) own;
 cleanup is globally required but repo-local in mechanics inside those stages. The
 [user cookbook](guides/USER-COOKBOOK.md) owns the smallest path for a direct edit.
 
@@ -98,7 +98,7 @@ The package root exposes the four provider-neutral request operations — `claim
 
 ## Governing artifact
 
-`PRD-TAD-ADR-ADLC-PIPELINE-001@1.3.2` in [PRD-TAD-ADR-MVP-GTM](guides/PRD-TAD-ADR-MVP-GTM.md) is the
+`PRD-TAD-ADR-ADLC-PIPELINE-001`, at the revision its [PRD-TAD-ADR-MVP-GTM](guides/PRD-TAD-ADR-MVP-GTM.md) frontmatter declares, is the
 single governing artifact for scope, candidate, integration, release, and runtime evidence.
 Precedence runs from that artifact, to its named composition owner, to derived indexes, to navigation
 and command documents including this one. Raise a conflict at the owner, not here.

@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Portfolio Cost Index"
 doc_type: "Cost Index"
-version: "1.0.0"
-date: "2026-09-23"
+version: "1.1.0"
+date: "2026-10-01"
 lang: "en-US"
 owner: "agentic-os"
 load_policy: "on-demand"
@@ -73,12 +73,12 @@ paid plan, add-on or overage.
 |---|---|---|---|---|
 | `os-scoped-lanes` | Not recorded | Unknown | Not recorded | No |
 | `graph-python-learning` | B1–B8 incomplete at owner | All outputs unknown | Owner sketch only | No |
-| `graph-storage-sync` | TCO variants only; paid option unresolved | Unknown | Not recorded | No |
+| `graph-storage-sync` | TCO variants only; paid variant excluded by the spend cap, free path unselected | Unknown | Not recorded | No |
 
 This table is a readiness projection, not a financial statement. For an audience model, the owner
 must resolve currency, dated assumptions, actuals cut-off, opening balances and accounting basis;
-then calculate 12 monthly periods, unit economics, cash flow, balance sheet, runway and three
-scenarios using the [Venture Record][venture]. Cash, quota consumption, estimated economic cost
+then build the model the [Venture Record][venture] requires, structured and checked per the
+[financial model guideline][model] and exported through its Headline Register. Cash, quota consumption, estimated economic cost
 and imputed labor remain distinct. Serving cost enters COGS once; development and recovery cost
 enter operating cost once. A shared scope requires an allocation whose weights total one before
 per-feature contribution is calculated. Undefined ratios and missing inputs stay unknown.
@@ -103,6 +103,7 @@ or additional production dependency.
 [guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
 [venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-venture.md
 [lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/lean-startup-guidelines.md
+[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/financial-model-guidelines.md
 [adlc]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/docs/adlc-guidelines.md
 [os-cost]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/bin/agentic-os-workflow-observation.mjs
 [python-cost]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md#discovery-financial-model

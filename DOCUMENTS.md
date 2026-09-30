@@ -1,8 +1,8 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.1.4"
-date: "2026-09-24"
+version: "1.2.0"
+date: "2026-10-01"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -24,7 +24,9 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Agent experience maturity and evidence gaps | [Four-criterion rubric][maturity] |
 | Common YAML frontmatter | [Runtime frontmatter guidelines][frontmatter] |
 | Bounded parsed metadata API | [Shared frontmatter boundary](guides/FRONTMATTER.md) |
-| Markdown validation and template maintenance proposal | [Documentation-management PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-documentation-management.md) |
+| Markdown validation and template maintenance plan | [Documentation-management PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-documentation-management.md) |
+| Native design enforcement plan behind the design export | [Design-enforcement PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-design-enforcement.md) |
+| Completed spatial stabilization slice | [Spatial-stabilization PRD/TAD/ADR/MVP/GTM](guides/spatial-stabilization-prd-tad-adr-mvp-gtm.md) |
 | CID, RAO, SVO and specification fields | [PRD/TAD/ADR guidelines][prd], [shared semantic schema][semantics] |
 | `/`, `#`, `@` dictionary definitions and consumption | [Invocation dictionary owner](guides/INVOCATION-DICTIONARIES.md) |
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
@@ -127,7 +129,8 @@ Local indexes may link here and list their own product documents. Navigation bac
 create an authority dependency: follow each concern to its defining source and stop there.
 
 Cross-repository links below select an explicit repository and path for human navigation.
-Their `main` URLs are mutable discovery links, not version pins or validation evidence.
+Their `main` URLs are mutable discovery links, not version pins or validation evidence; the lifecycle and venture
+owner links carry the exact revision the cost register pins, which remains the only validation join.
 For offline work, resolve that repository/path from an explicitly selected clone or installed
 asset at the required revision. Do not scan sibling directories, auto-fetch missing owners,
 or assume this page's presence upgrades an installed consumer dependency.
