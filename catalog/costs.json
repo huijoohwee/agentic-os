@@ -3,14 +3,14 @@
   "guideline": {
     "repository": "github.com/huijoohwee/huijoohwee.github.io",
     "path": "guidelines/prd-tad-adr-mvp-gtm-guidelines.md",
-    "revision": "993eb0e28a6d2e9427364df98c39c8a5e10910b4",
-    "version": "3.1.0"
+    "revision": "3ee1a079ee154088ddfbb58257d60c2e0a42518d",
+    "version": "3.3.0"
   },
   "financialContract": {
     "repository": "github.com/huijoohwee/huijoohwee.github.io",
     "path": "guidelines/prd-tad-adr-mvp-gtm-venture.md",
-    "revision": "993eb0e28a6d2e9427364df98c39c8a5e10910b4",
-    "version": "2.1.0"
+    "revision": "3ee1a079ee154088ddfbb58257d60c2e0a42518d",
+    "version": "2.1.2"
   },
   "incrementalPaidSpendCapUsd": 0,
   "scopes": [

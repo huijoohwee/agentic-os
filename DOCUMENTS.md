@@ -28,7 +28,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | CID, RAO, SVO and specification fields | [PRD/TAD/ADR guidelines][prd], [shared semantic schema][semantics] |
 | `/`, `#`, `@` dictionary definitions and consumption | [Invocation dictionary owner](guides/INVOCATION-DICTIONARIES.md) |
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
-| Global development lifecycle | [ADLC guidelines](docs/adlc-guidelines.md) |
+| Global development lifecycle | [ADLC runtime profile](docs/adlc-guidelines.md), [universal ADLC contract][adlc-universal] |
 | Start, release, deploy, or cleanup work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md), [deploy](guides/DEPLOY-WORKFLOW.md) — global protocol, repo-local mechanics |
 | Shared workspace startup, source freshness and offline retrieval | [Workspace routine](guides/WORKSPACE.md), [memory format](guides/MEMORY.md) |
 | Cache lifecycle, reuse, retention and measured cost | [Shared cache policy](guides/CACHE.md) |
@@ -39,6 +39,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
 | Past, current and future product features | [Central roadmap register](catalog/feature-roadmap.json), [derived views](guides/FEATURES.md) |
 | Feature cost and budget continuity | [Cost register](catalog/costs.json), [portfolio cost view](guides/COSTS.md), [financial model contract][venture] |
+| Validated learning and audience projections | [Lean startup][lean], [pitch deck][pitch], [business plan][plan] and [financial model][model] guidelines — one revision, no copied claims |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
 | Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 
@@ -54,7 +55,12 @@ The planning owner validates imported record hashes and the board projection.
 
 [todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
 [kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
-[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/993eb0e28a6d2e9427364df98c39c8a5e10910b4/guidelines/prd-tad-adr-mvp-gtm-venture.md
+[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-venture.md
+[adlc-universal]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/adlc-guidelines.md
+[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/lean-startup-guidelines.md
+[pitch]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/pitch-deck-guidelines.md
+[plan]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/business-plan-guidelines.md
+[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/financial-model-guidelines.md
 
 ## Repository concerns
 

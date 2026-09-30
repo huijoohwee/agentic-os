@@ -58,6 +58,7 @@ records to this public catalog.
 | Provider CI execution and wait | Provider observation at an exact run | Keep execution and waiting separate |
 | Serving tokens and infrastructure | Product harness and deployment-model TCO | Unknown COGS; no assumed free capacity |
 | Cash paid and collected | Product billing and payment evidence | Unknown; no first-dollar claim |
+| Experiment time and spend | Owner learning record (E-id) under the [validated-learning loop][lean] | Unknown until the experiment is registered with bounds |
 | Operator opportunity cost | Dated time and stated rate | Unknown imputed cost, separate from cash |
 
 The paid-spend ceiling is **USD 0 incremental** under the [ADLC policy][adlc]. It is a constraint,
@@ -88,6 +89,8 @@ per-feature contribution is calculated. Undefined ratios and missing inputs stay
 2. Add receipt references only after owner identity, period, unit, status and digest can be checked.
    Include failed checks, retries and abandoned work when incurred; a merge is not needed to
    recognize development cost.
+   Lane and completion records do not yet emit ledger fields; the [pipeline plan](PRD-TAD-ADR-MVP-GTM.md)
+   records that emitter as planned work, so OS rows stay unknown until it exists.
 3. Compare observed usage with the matching period and budget. Keep actual, forecast and reserved
    capacity separate. Reconcile allocations and currencies before a portfolio total.
 4. Refresh this view and the model only after the owner updates its assumptions or observations.
@@ -97,8 +100,9 @@ Run `node --test __tests__/cost-index.test.mjs` for the register joins and pinne
 `npm run check` remains the repository gate. The register has no hosted service, runtime model call
 or additional production dependency.
 
-[guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/993eb0e28a6d2e9427364df98c39c8a5e10910b4/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
-[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/993eb0e28a6d2e9427364df98c39c8a5e10910b4/guidelines/prd-tad-adr-mvp-gtm-venture.md
+[guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
+[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-venture.md
+[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/lean-startup-guidelines.md
 [adlc]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/docs/adlc-guidelines.md
 [os-cost]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/bin/agentic-os-workflow-observation.mjs
 [python-cost]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md#discovery-financial-model
