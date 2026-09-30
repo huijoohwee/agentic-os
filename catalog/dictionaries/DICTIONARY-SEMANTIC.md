@@ -128,6 +128,8 @@ dictionary_entries:
   - "#no-legacy"
   - "#computing-flow"
   - "#learning-loop"
+  - "#validated-learning"
+  - "#lean-sprint"
   - "#persistent-memory"
   - "#user-profile"
   - "#frozen-snapshot"
@@ -303,6 +305,8 @@ Dictionary references resolve within this directory. Runtime and approval claims
 | `#no-legacy` | Remove stale aliases, remaps, duplicate owners, and compatibility paths. | A source contains old names, shims, or downstream patches. | Stale path is removed at source; no new alias is added. |
 | `#computing-flow` | Agentic OS/frontmatter DAG execution contract. | A document or chat request generates, validates, or runs a computing-flow. | `agentic-os-computing-flow/v1` frontmatter owns topology, typed inputs, explicit handles, bounded execution, and validation proof. |
 | `#learning-loop` | Closed learning cycle from experience capture to reviewed persistence. | A workflow turns run evidence, failures, or operator corrections into reusable memory or skill proposals. | Source evidence, applicability, expiry risk, bounds, approval state, and no-copy statement are present. |
+| `#validated-learning` | Customer and market learning loop: falsifiable hypothesis, pre-registered experiment, measured result and pivot-or-persevere decision. | Work tests a pain, payer, price, channel or growth hypothesis, or records a pivot, persevere or stop decision. | Hypothesis and experiment IDs, threshold set before observation, raw evidence location and decision record resolve in the owning plan; agent memory (`#learning-loop`) and Python lessons (`#learning`) are distinct. |
+| `#lean-sprint` | Time-bound, budget-driven delivery of one smallest valuable vertical diff under the ADLC execution policy. | A task states a sprint ETA, time/byte/module caps or a compressed release lifecycle. | Declared bounds, exact candidate and receipts are present; a sprint proves delivery only, never customer learning, demand or revenue. |
 | `#persistent-memory` | Bounded curated memory that persists across sessions. | An entry records environment facts, conventions, lessons, profile preferences, or reusable project context. | Target is explicit, entry is scanned, capacity is checked, duplicate/stale handling is defined, and write result is typed. |
 | `#user-profile` | Explicit operator preferences, communication style, and expectations. | A claim belongs to the operator profile rather than agent notes or project rules. | Operator evidence or approval is present; unsupported personal inference, secrets, and sensitive profiling are rejected. |
 | `#frozen-snapshot` | Session-start memory/profile prompt snapshot. | A runtime injects memory or profile into prompt context. | Snapshot is captured once at session start; mid-session writes persist but do not mutate the active prompt. |
