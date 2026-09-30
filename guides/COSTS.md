@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — Portfolio Cost Index"
 doc_type: "Cost Index"
-version: "1.1.0"
+version: "1.1.1"
 date: "2026-10-01"
 lang: "en-US"
 owner: "agentic-os"
@@ -100,10 +100,10 @@ Run `node --test __tests__/cost-index.test.mjs` for the register joins and pinne
 `npm run check` remains the repository gate. The register has no hosted service, runtime model call
 or additional production dependency.
 
-[guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
-[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-venture.md
-[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/lean-startup-guidelines.md
-[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/financial-model-guidelines.md
+[guideline]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
+[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-venture.md
+[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/lean-startup-guidelines.md
+[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/financial-model-guidelines.md
 [adlc]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/docs/adlc-guidelines.md
 [os-cost]: https://github.com/huijoohwee/agentic-os/blob/ac9ea610d8ad3771618caa4d528c703908611639/bin/agentic-os-workflow-observation.mjs
 [python-cost]: https://github.com/huijoohwee/agentic-graph/blob/86924949a292949a8aa90d56188c7f625cd0319f/docs/documents/prd-tad-adr-mvp-gtm-offline-python-learning-workspace.md#discovery-financial-model

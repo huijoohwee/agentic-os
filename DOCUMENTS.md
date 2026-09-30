@@ -1,7 +1,7 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.2.0"
+version: "1.2.1"
 date: "2026-10-01"
 lang: "en-US"
 owner: "agentic-os"
@@ -57,12 +57,12 @@ The planning owner validates imported record hashes and the board projection.
 
 [todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
 [kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
-[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/prd-tad-adr-mvp-gtm-venture.md
-[adlc-universal]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/adlc-guidelines.md
-[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/lean-startup-guidelines.md
-[pitch]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/pitch-deck-guidelines.md
-[plan]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/business-plan-guidelines.md
-[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/3ee1a079ee154088ddfbb58257d60c2e0a42518d/guidelines/financial-model-guidelines.md
+[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-venture.md
+[adlc-universal]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/adlc-guidelines.md
+[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/lean-startup-guidelines.md
+[pitch]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/pitch-deck-guidelines.md
+[plan]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/business-plan-guidelines.md
+[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/financial-model-guidelines.md
 
 ## Repository concerns
 
