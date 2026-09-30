@@ -42,12 +42,14 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
   const { entries, failures } = collectCatalogEntries(documents);
   assert.deepEqual(failures, []);
-  assert.equal(entries.length, 411);
-  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [135, 143, 133]);
+  assert.equal(entries.length, 413);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [135, 145, 133]);
   assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
   assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
   assert.ok(entries.some(e => e.token === '/python.learning'));
   assert.ok(entries.some(e => e.token === '#learning'));
+  // Customer validated learning, agent memory learning and lean delivery sprints stay distinct routes.
+  for (const token of ['#validated-learning', '#lean-sprint', '#learning-loop']) assert.ok(entries.some(e => e.token === token), token);
   assert.match(entries.find(e => e.token === '/launch-copilot').summary, /81rv10 Launch Copilot/);
   assert.ok(entries.some(e => e.token === '#vcc'));
   assert.ok(entries.some(e => e.token === '@local-harness'));
@@ -140,7 +142,7 @@ test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale res
   const before = collectCatalogEntries(original);
   original.delete(name);
   assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
-  assert.equal(before.entries.length, 411);
+  assert.equal(before.entries.length, 413);
   assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
 });
 
