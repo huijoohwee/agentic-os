@@ -5,7 +5,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalJson } from '../src/governance.mjs';
 import { gh, remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { hash, readGit, readRegular, safePath } from './agentic-os-test-inputs.mjs';
-
 export const CI_EVIDENCE = 'agentic-os/protected-ci-evidence/v1';
 const POLICY = 'agentic-os/ci-evidence-policy/v1', TREE_POLICY = 'agentic-os/ci-evidence-policy/v2', INPUT = 'agentic-os/ci-evidence-input/v1';
 const HEX = /^[a-f0-9]{40}$/u, DIGEST = /^[a-f0-9]{64}$/u, MAX_BYTES = 65_536;
@@ -155,19 +154,21 @@ export function lookupCiEvidence(current, api, now = Date.now()) {
     artifactName: name, artifactDigest: artifact.digest, observedAt: new Date(now).toISOString() };
 }
 export function verifyCiEvidence(evidence, current, previousLookup, api, now = Date.now()) {
-  const observed = lookupCiEvidence(current, api, now);
-  const binding = value => ({ ...value, observedAt: null });
-  if (!same(binding(observed), binding(previousLookup))) fail('provider-drift');
   if (!exact(evidence, ['schema', 'authority', 'input', 'inputDigest', 'runId', 'runAttempt', 'workflow', 'job', 'step', 'command', 'sealedAt'])
-    || evidence.schema !== CI_EVIDENCE || evidence.authority !== false
-    || !same(comparisonInput(evidence.input, current.policy), comparisonInput(current.input, current.policy))
+    || evidence.schema !== CI_EVIDENCE || evidence.authority !== false) fail('evidence-binding:shape');
+  const actual = comparisonInput(evidence.input, current.policy), expected = comparisonInput(current.input, current.policy);
+  const mismatches = Object.keys(expected).filter(key => !same(actual?.[key] ?? null, expected[key])).map(key => `input.${key}`);
+  if (!same(actual, expected)) fail(`evidence-binding:${mismatches.join(',') || 'input.shape'}`);
+  if (digest(evidence.input) !== evidence.inputDigest || !DIGEST.test(evidence.inputDigest)
     || !treePolicy(current.policy) && evidence.inputDigest !== current.inputDigest
-    || digest(evidence.input) !== evidence.inputDigest || !DIGEST.test(evidence.inputDigest)
-    || evidence.runId !== observed.runId || evidence.runAttempt !== observed.runAttempt
+    || evidence.runId !== previousLookup?.runId || evidence.runAttempt !== previousLookup?.runAttempt
     || evidence.workflow !== current.policy.workflow || evidence.job !== current.policy.job
     || evidence.step !== current.policy.step || !same(evidence.command, current.policy.command)
     || !Number.isFinite(Date.parse(evidence.sealedAt)) || Date.parse(evidence.sealedAt) > now
     || now - Date.parse(evidence.sealedAt) > current.policy.maxAgeSeconds * 1000) fail('evidence-binding');
+  const observed = lookupCiEvidence(current, api, now);
+  const binding = value => ({ ...value, observedAt: null });
+  if (!same(binding(observed), binding(previousLookup))) fail('provider-drift');
   if (treePolicy(current.policy)) {
     const source = evidence.input.sources[0], commit = api(`repos/${current.policy.repository.slice(11)}/git/commits/${source.revision}`);
     if (commit?.sha !== source.revision || commit.tree?.sha !== source.tree
@@ -191,8 +192,7 @@ function provider(root) {
   };
 }
 export function ciEvidenceArguments(argv) {
-  const [mode, ...flags] = argv, options = {};
-  const required = { capture: ['policy', 'output'], seal: ['policy', 'before', 'output'],
+  const [mode, ...flags] = argv, options = {}, required = { capture: ['policy', 'output'], seal: ['policy', 'before', 'output'],
     lookup: ['policy', 'output'], verify: ['policy', 'lookup', 'evidence', 'output'] }[mode];
   if (!required) fail('arguments');
   for (const flag of flags) {

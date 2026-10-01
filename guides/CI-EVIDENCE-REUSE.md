@@ -2,12 +2,14 @@
 title: Protected CI evidence reuse
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CI-EVIDENCE-001
-version: 1.1.0
-prd_revision: 1.1.0
-tad_revision: 1.1.0
-adr_revision: 1.1.0
-mvp_revision: 1.1.0
-gtm_revision: 1.1.0
+version: 1.2.0
+prd_revision: 1.2.0
+tad_revision: 1.2.0
+adr_revision: 1.2.0
+mvp_revision: 1.2.0
+gtm_revision: 1.2.0
+date: 2026-10-01
+lang: en-US
 owner: agentic-os
 status: protected-consumer-reuse-observed
 load_policy: on-demand
@@ -155,3 +157,55 @@ changed tools/dependencies/environment, preserved exact-revision semantics and n
 observations. Adoption requires the protected OS revision and source-owner workflow checks.
 GTM: measure avoided command executions and lookup overhead on a real PR-to-main transition.
 There is no paid infrastructure, production authority, guaranteed latency or cash-saving claim.
+
+## Rejected evidence economics / CI-EVIDENCE-003
+
+PRD: a maintainer needs to explain a reuse miss without rerunning a long gate to learn
+which input changed. The shared verifier previously read the provider before rejecting
+locally incompatible evidence and collapsed all input differences into `evidence-binding`.
+Acceptance: reject input, shape, digest, command and freshness misses without provider calls;
+name each changed input family without values; retain fresh provider verification
+for every potentially reusable record. A rejected record must still execute the consumer's
+fresh check. No paid resources or relaxed match policy are introduced.
+
+TAD: the existing verifier checks local evidence first, then reobserves the protected
+provider before accepting reuse. Mismatch names come from the nine fields in the locally captured input schema, never
+downloaded property names; source and runner differences identify their bounded input family.
+Diagnostics expose neither environment values nor digests of individual environment values.
+Unknown extra fields report `input.shape`. The CLI retains `reused:false`, `authority:false`
+and the `blocked-ci-evidence:evidence-binding` reason prefix. Successful receipt schemas,
+provider budgets and exclusive evidence writes are unchanged. Always-load delta: zero;
+one existing lazy owner changes, with no dependency or extra module.
+
+ADR: short-circuit only an impossible reuse decision. Do not cache successful local decisions,
+weaken exact tool versions, overwrite immutable receipts or skip provider reobservation.
+Local rejection takes precedence when local and remote facts are both incompatible; this
+changes failure diagnosis, never eligibility or production authority.
+
+### Reference implementation audit, 2026-10-01
+
+The retained provider observations are linked, not copied into repository fixtures:
+
+| Observation | Measured result | Implication |
+|---|---|---|
+| [PR source run](https://github.com/huijoohwee/agentic-graph/actions/runs/36813484274) | Selected stages 823.05 s; standard 231.64 s, browser 462.92 s, core 119.41 s; Node 22.23.3 | Source checks are worth reusing when all inputs match |
+| [Main attempt 1](https://github.com/huijoohwee/agentic-graph/actions/runs/36815216741/attempts/1) | Node 22.23.2; reuse rejected; standard 198.73 s then browser failed at 75.39 s | A real tool mismatch explains at least one failed binding; the browser navigation failure has no proven root cause |
+| [Main attempt 2](https://github.com/huijoohwee/agentic-graph/actions/runs/36815216741/attempts/2) | Node 22.23.3; provider verified same-tree reuse; standard 4.02 s, browser 473.58 s, core 122.87 s; selected stages 629.61 s | Reuse worked, but later consumer partitions still ran fresh |
+
+The consumer invokes verification separately in each partition with the same exclusive
+output path. After the first receipt, later writes fail and its catch selects fresh checks.
+Fix that partition/receipt lifecycle at the consumer owner after the immutable release
+candidate completes; do not change shared exclusive-write semantics to conceal it.
+The browser and core stages remain the largest observed costs. The three runs are not a
+controlled speed benchmark; cash, queue, token and general latency savings are unmeasured.
+
+MVP: `__tests__/ci-evidence.test.mjs` checks zero provider reads on local misses, bounded
+field-only diagnosis for both policies, successful fresh-provider reads, and continued
+rejection of changed protection, attempts, artifacts, inputs and merge parents. Run the
+native affected check before publication. This shared change requires protected integration
+and pinned consumer adoption before any downstream effect is claimed.
+
+GTM: first value is shorter diagnosis and fewer unnecessary provider requests for the solo
+maintainer. Measure rejected-verification API calls and real avoided consumer commands;
+do not translate them into invented dollar savings. Willingness to pay and the first $1
+remain unvalidated. Sprint cap: 30 active minutes, 20 KB across these three existing files.

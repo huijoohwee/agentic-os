@@ -127,6 +127,42 @@ test('policy and CLI accept only bounded explicit inputs', () => {
   for (const args of [['lookup'], ['lookup', '--policy=p', '--output=o', '--output=x'], ['verify', '--execute=true']])
     assert.throws(() => ciEvidenceArguments(args), /arguments/);
 });
+test('input misses identify bounded fields without values or provider reads', t => {
+  for (const make of [fixture, treeFixture]) {
+    const f = make(t), lookup = lookupCiEvidence(f.current, f.api, now);
+    const evidence = structuredClone(f.evidence);
+    evidence.input.node = 'private-tool-value';
+    evidence.input.runner.ImageVersion = 'private-runner-value';
+    evidence.input.environmentDigest = 'private-environment-value';
+    evidence.input.sources[1].revision = 'e'.repeat(40);
+    evidence.inputDigest = governanceDigest(evidence.input);
+    let calls = 0;
+    assert.throws(() => verifyCiEvidence(evidence, f.current, lookup, () => { calls++; assert.fail('unexpected provider read'); }, now), error => {
+      assert.equal(error.message, 'blocked-ci-evidence:evidence-binding:input.sources,input.node,input.runner,input.environmentDigest');
+      assert.equal(error.message.includes('private-'), false);
+      return true;
+    });
+    assert.equal(calls, 0);
+    const malformed = structuredClone(f.evidence);
+    malformed.input['private-key'] = 'private-value';
+    assert.throws(() => verifyCiEvidence(malformed, f.current, lookup, f.api, now), /^Error: blocked-ci-evidence:evidence-binding:input.shape$/);
+  }
+});
+test('local receipt failures spend no provider calls; eligible receipts still reobserve', t => {
+  const f = fixture(t), lookup = lookupCiEvidence(f.current, f.api, now);
+  for (const update of [{ authority: true }, { input: null }, { inputDigest: 'e'.repeat(64) },
+    { command: ['private-command'] }, { sealedAt: new Date(now + 1).toISOString() }]) {
+    let calls = 0;
+    assert.throws(() => verifyCiEvidence({ ...f.evidence, ...update }, f.current, lookup,
+      () => { calls++; assert.fail('unexpected provider read'); }, now), /evidence-binding/);
+    assert.equal(calls, 0);
+  }
+  let calls = 0;
+  assert.equal(verifyCiEvidence(f.evidence, f.current, lookup, endpoint => { calls++; return f.api(endpoint); }, now).reused, true);
+  assert.equal(calls, 4);
+  f.data.branch.protected = false;
+  assert.throws(() => verifyCiEvidence(f.evidence, f.current, lookup, f.api, now), /blocked-ci-evidence/);
+});
 test('the real CLI falls back without leaking input or contacting a provider outside CI', t => {
   const f = fixture(t), output = join(f.root, 'fallback.json');
   const stdout = execFileSync(process.execPath, [fileURLToPath(new URL('../bin/agentic-os-ci-evidence.mjs', import.meta.url)),
