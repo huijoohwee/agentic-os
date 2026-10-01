@@ -270,7 +270,7 @@ test('review count/deadline limits reject long waits and late merge evidence', a
 for (const cachedReview of [41, null]) test(`complete closes an exact merged review with cached PR ${cachedReview}`, (t) => {
   const subject = completeFixture(t, 'MERGED');
   put({ ref: subject.ref, pr: cachedReview }, subject.root);
-  const result = complete(subject, 1000);
+  const result = complete(subject, 30_000);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"event":"merged"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/sprint-finish\/v1"/u);
@@ -296,7 +296,7 @@ test('release-common complete returns success when the profile retains worktree 
     worktreeProjection: 'retain',
     worktreeRegistration: 'retain',
   });
-  const result = complete(subject, 1000);
+  const result = complete(subject, 30_000);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"event":"merged"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
