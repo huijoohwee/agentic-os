@@ -545,79 +545,48 @@ GTM: use the native publication of this change as the free pilot; record CI atte
 execution and report only observed savings. Rollback reverts the checked source while retaining receipts.
 
 
-## Planning-bound startup evidence (WORKFLOW-OBS-006)
+## Execution boundary companions
 
-Pass `--plan=<repository-relative-prd-tad-adr-mvp-gtm.md>` to the existing `agentic-os start`
-command to capture the initial immutable group root after preflight/context hydration and before
-worktree provisioning. The path must name a regular committed planning document at the fetched
-base revision; mixed-case native filenames are accepted. No path or plan is guessed. Calls without
-this option retain their existing behavior. A local non-host-qualified profile cannot opt into
-this GitHub-bound collector. Use the returned `workflow` JSON's `manifest` locator directly.
+The existing [startup evidence](VALIDATION-ECONOMY-EXECUTION.md#planning-bound-startup-evidence-workflow-obs-006),
+[execution exclusion](VALIDATION-ECONOMY-EXECUTION.md#native-execution-exclusion-adlc-obs-004) and
+[CI gate allocation](VALIDATION-ECONOMY-EXECUTION.md#ci-gate-allocation-adlc-obs-005010) contracts now live in
+one on-demand companion. Their semantics and required checks are unchanged.
 
-The initial child contains every expected lifecycle phase as missing and unreported resources as
-unknown. It is a planning snapshot, not a successful preparation/admission receipt. If provisioning
-fails, its printed root survives with that same incomplete meaning. Identical inputs reuse exact
-bytes. There is no mutable latest file. Continue via existing `workflow collect`: retain the root's
-workflow/worktree identity, collect actual phase receipts at their original revisions, and bind
-`previous` when collecting its successor group. Existing JSON/SSE export and recommendations read
-these roots immediately. Production targets remain incomplete until separate deployment/runtime
-receipts are captured and independently verified by their owners. No stream polling is installed.
+## Source scan allocation (ADLC-OBS-006@0.1.0)
 
-Acceptance: initial root exists before provisioning; planning digest and tree match committed source;
-all absent phases and release evidence remain incomplete; repeated start capture reuses its root;
-invalid, absent or symbolic-link planning input fails before capture. Test: workflow collection suite.
-Rollback: omit `--plan` or revert startup integration; preserve all already collected evidence.
+PRD: a local operator validating a large consumer must avoid repeated scratch allocations while
+retaining complete source identity and exact proof. Acceptance: one lazy 256 KiB streaming buffer
+per snapshot reader, zero regular-file buffer allocation for empty/symlink-only sources, unchanged
+binary hashes and byte caps, and same-length edits still invalidate cached file identities.
 
+TAD: `bin/agentic-os-validation-inputs.mjs` owns the private reader buffer and streams each regular
+file through it. Hash updates consume each chunk synchronously; receipts retain only identities.
+Warm unchanged observations use the existing metadata cache. Source/parent/type/race, hidden-index,
+configuration/environment and committed-CI checks remain in place; no result or authority cache is added.
 
-## Native execution exclusion (ADLC-OBS-004)
+ADR: choose bounded scratch reuse over skipping source reads or ignoring Git configuration changes.
+The latter could alter arbitrary consumer commands and needs a separate input contract. This increment
+adds no dependency, service, always-loaded prompt bytes or default benchmark/CI job. Rollback is a
+checked source revert; retain earlier observations and receipts.
 
-PRD: the release operator needs one bounded execution of each selected command, without recursive
-wrappers, aliases repeating a stage, or simultaneous processes competing for the same clone resources.
-Preserve source-bound reuse, failure evidence, required provider checks and independent disjoint work.
+MVP: `repository-validation-source-economy.test.mjs` verifies complete multi-chunk binary identities,
+bounded allocations across many files, independent readers, warm reuse, edits and lazy allocation.
+Run affected `npm run check`. Opt-in measurement: `node test/benchmarks/validation-source-economy.mjs`
+uses a disposable 2,056-file fixture; `--root=<checkout> --base=<revision>` inspects an existing source
+read-only. Its fixed owner import preserves affected-check isolation; `--samples=1..7` bounds measurement.
+Compare exact retained source revisions. Record module/source digests, file bytes, median wall/Node CPU
+time and allocation bytes; RSS snapshots are not a process-tree peak. Budget: 35 active minutes, five paths,
+60 KB changed bytes; external wait separate. The full check caught and removed an opaque benchmark import.
+Disposable benchmark Git maintenance is disabled; cleanup retries are bounded to three at 50 ms backoff.
 
-TAD: extend the existing command executor and receipt lock owner. Before launching a child (including
-its optional accounting probe), claim a command-digest lock in the clone-common private artifact scope.
-The same command/arguments in sibling worktrees conflict even if their sources differ; command identity
-is deliberately conservative, not proof of semantic equivalence. An inherited, bounded ancestry of
-opaque digests rejects recursive cycles and depth beyond 16. Stage preflight rejects the same command
-under different IDs before executing any stage. `node` and the running Node executable share identity.
-Release the exact lock after process teardown, including timeout, cancellation and spawn failure.
-A crashed owner leaves a blocking lock; never infer that deleting it or killing another process is safe.
+GTM: use this validation loop as the free local pilot. Before/after measurements and applicable check
+results are recorded at handoff. The initial Graph scan observed 8,559 files / 77,977,052 source bytes,
+1.94 s cold and 0.36–0.47 s warm. This diagnoses scan cost, not CI, cash savings, demand or buyer proof.
+The consumer retains its pinned OS until a separately checked dependency refresh; source release alone
+does not accelerate the currently running Graph CI or prove Production behavior.
 
-ADR: reuse existing locks, input-bound check receipts and CI observation. No daemon, new result ledger,
-paid capacity, weakened gate or automatic retry. This guards cooperating native executors in one clone;
-it cannot prove arbitrary shell-command equivalence or exclude direct shell/provider execution. Release
-preflight still owns cross-host/CI conflicts. Consumer stages without declared input contracts do not
-gain unsafe result caching; the affected-check owner remains responsible for valid proof reuse.
-Expanded aggregate receipts store repeated suite metadata as explicit defaults, preserving every
-obligation and measurement within the existing byte cap; regression coverage reconstructs 232 results.
-
-MVP: verify duplicate-stage preflight, cross-process/worktree exclusion, allowed distinct commands,
-recursive rejection, timeout and spawn-error cleanup with real tiny process fixtures. Run affected OS
-checks and required CI once after batching repairs. Budget: seven files (including the release-contract assertion), 30 KB and 20 active minutes;
-external provider waiting is separate. No changed always-load module or dependency is introduced;
-release-routing prose changes only in its existing workflow document.
-
-GTM: use the current release loop as the free pilot. Report prevented executions and measured timing
-separately from provider waits; no CPU, token, cash or savings claim without compatible observations.
-Rollback is a checked source revert; preserve failed runs and private receipts.
-
-
-## CI gate allocation (ADLC-OBS-005@0.1.0)
-
-PRD: execute Agentic OS readiness/doc/module evaluators once per CI run. The required `budgets`
-job owns them; `test` owns affected behavior and packaging. Both statuses remain required. Avoid
-serializing the jobs, another runner, artifact transfer, cache, or an unchanged second evaluator.
-
-TAD/ADR: `check:ci` binds the event checkout and verifies the exact existing budgets workflow contract,
-current test job, workflow ref, run and attempt before allocating evaluator coverage. Contract drift
-blocks the test job. The native receipt/export records that separate gate as `not-observed`; this is
-allocation, never proof of a passed gate or permission to merge. Local `check` retains evaluators first.
-
-MVP: reject missing/changed ownership and wrong revisions; prove one behavior execution without the
-second evaluator, local evaluator failure propagation, and honest exported coverage. Run the affected
-checks and protected `test` plus `budgets` gates. Roll back through a source revert preserving receipts.
-
-GTM: compare compatible CI observations before claiming elapsed or cash savings. This removes one
-known evaluator invocation, not a measured number of seconds. Bound this slice to seven files, 30 KB
-and 20 active minutes; external CI wait is separate. No always-loaded prompt or required gate changes.
+Measured checkpoint (2026-10-02): matching Graph source digest across three cold/warm samples;
+median cold scan 1034.09 → 773.98 ms, Node CPU 974.44 → 559.52 ms,
+and scratch allocations 8,559 → 1 (2,243,690,496 → 262,144 bytes).
+The five-sample 2,056-file fixture also preserves its source digest and allocates one buffer.
+These are local reader measurements; full offline/runtime suites and hosted CI retain their own costs.
