@@ -1,6 +1,19 @@
+---
+title: Cleanup authority enrollment and retained recovery
+doc_type: PRD-TAD-ADR-MVP-GTM
+continuity_id: CLEANUP-AUTHORITY-001
+version: 1.0.1
+prd_revision: 1.0.1
+tad_revision: 1.0.1
+adr_revision: 1.0.1
+mvp_revision: 1.0.1
+gtm_revision: 1.0.1
+load_policy: on-demand
+lifecycle_status: implementation-candidate
+---
 # Cleanup authority enrollment
 
-Continuity `CLEANUP-AUTHORITY-001@1.0.0`.
+Continuity `CLEANUP-AUTHORITY-001@1.0.1`.
 
 PRD: finish authorized, integrated lanes without treating a green PR or human task instruction as a
 provider-authenticated cleanup receipt. TAD: enroll the existing initial GitHub issuer alongside the
@@ -60,6 +73,26 @@ See [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md) for the existing sch
 Each source coordinate has one create-only winner. Lost responses require exact-coordinate readback;
 do not rediscover dispatches by listing workflow runs or retry a deterministic failure unchanged.
 Provider drift, dirty inventory, expired authority, mismatched plans and missing evidence stop effects.
+
+## Retained recovery observation — implementation candidate
+
+PRD: a lane already quarantined must remain recoverable without recreating its original checkout.
+TAD: `collectRecoveryInventory` accepts an explicit `repositoryContext` binding the exact real
+`gitDirectory`, `commonDirectory` and `worktree` directories and an optional retained `indexFile`.
+Retained observation reads the adjacent bounded HEAD and resolves that branch through canonical refs. The existing Git observation owner
+removes ambient redirection, then admits only those explicit paths; optional writes,
+lazy fetches, replacement objects and executable diff/config hooks remain disabled.
+ADR: reuse the inventory and Git owners, with zero new modules or runtime dependencies.
+Update the package-bound hook digest and retain the prior shipped runtime identity for managed migration. No
+recovery pointer, registration, branch, object or policy is rewritten. This is observation only.
+MVP: a moved-worktree regression compares all inventory fields and proves index/pointer bytes
+unchanged; malformed contexts stop before observation. Historical hook fixtures use exact shipped
+Git-reader bytes and preserve fixed runtime IDs and tamper rejection, including the last shipped runtime.
+Protected integration and real provider
+retirement acceptance remain pending. This reader does not resolve successor predecessor binding.
+GTM: zero spend and no deployment or consumer-pin change; avoid copying retained runtime bytes.
+Unknown economic savings remain unknown. Initial issuance and each transition still require the
+live owner sequence above; fresh inventory is never an authenticated retirement receipt.
 
 Validation uses the production validator with this enrolled policy, malformed/foreign inputs and
 workflow permission boundaries. Source files remain below 600 lines; payloads and outputs retain the

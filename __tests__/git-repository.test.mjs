@@ -61,7 +61,6 @@ function profile(overrides = {}) {
     ...overrides,
   });
 }
-
 function writeProfile(root, value = profile()) {
   writeFileSync(join(root, REPOSITORY_PROFILE_FILENAME), `${JSON.stringify(value, null, 2)}\n`);
   return value;
@@ -545,7 +544,6 @@ test('batched remote observations reduce transport work without reusing stale id
   assert.throws(() => remoteRefShas('origin', ['trunk', 'absent'], root),
     error => error.reason === 'blocked-remote-transport-race');
 });
-
 test('the prior single-ref runtime remains pinned for managed hook migration', (t) => {
   const { root } = repository(t);
   const selected = describeHookRuntime(root, { sourceRoot: fileURLToPath(new URL('..', import.meta.url)) });
@@ -568,7 +566,9 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
       sha256: 'd51f658be657d761badc23d29b8e15267a8d542df660f9087a2538e2e2c3dd5a' } : file.path === 'src/governance.mjs'
     ? { ...file, bytes: governanceBytes, sha256: governanceSha } : file.path === 'src/guard-main.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/guard-main-pre-f6.mjs.txt', import.meta.url)),
-      sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file);
+      sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file.path === 'src/git-tracked.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)),
+      sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' } : file);
   const files = priorFiles.filter(file => file.path !== 'bin/agentic-os-git-read.mjs').map(file =>
     file.path === 'src/quarantine.mjs' ? { ...file, bytes: readFileSync(new URL('./fixtures/quarantine-pre-diff.mjs.txt', import.meta.url)),
       sha256: 'a8961d56c654fa59bd5f27242e3743f627afc04dcff905d10f9b67d56e7c0b3e' }

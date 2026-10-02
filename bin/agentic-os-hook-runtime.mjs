@@ -9,7 +9,6 @@ import {
   assertPathIdentity, assertPrivateDirectoryIdentity, pathIdentity, privateDirectoryIdentity,
   writePrivateFileExclusive,
 } from '../src/file-integrity.mjs';
-
 const RUNTIME_SCHEMA = 'agentic-os/hook-runtime/v1';
 const MANIFEST_NAME = 'runtime-manifest.json';
 const MAX_RUNTIME_BYTES = 500_000;
@@ -17,6 +16,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Future releases must explicitly pin each previously shipped runtime identity before migrating it.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171',
   'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58',
   'v1-ad7769d4d30007c8655b057a27deb45a435add2b6f7db2a11fe58bc0f1573f67',
   'v1-600df80fd4249a209f3e910751c850d554f2533789673d1ec0060886540c8a67',
@@ -79,7 +79,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: '766765984aeb4645f84fa1d2790ed2134ff3f2cb33c2888b80655c86eab6e5d7' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
-    sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' }),
+    sha256: '2239cdba88dc92ba66442bf23d4d5adcf83192c1df82f5102acaa55841e7456d' }),
   Object.freeze({ path: 'bin/agentic-os-filter-compare.mjs', mode: 0o644,
     sha256: 'bdaa8cf30f9a9585662fd0cd4734e275011706f1d3795b69016f691418499f09' }),
 ]);
