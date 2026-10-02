@@ -14,17 +14,19 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32']) test(released
+for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context']) test(released
   ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
-  const predecessor = selected.files.map(file => file.path === 'bin/agentic-os-filter-compare.mjs'
-    ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)) } : file);
+  const predecessor = selected.files.map(file => released !== 'retained-context' && file.path === 'bin/agentic-os-filter-compare.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)) }
+    : file.path === 'src/git-tracked.mjs'
+      ? { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)) } : file);
   const altered = predecessor.map((file, index) => {
-    const bytes = released === 'batch32' ? file.bytes : released ? (file.path === 'src/git.mjs'
+    const bytes = ['batch32', 'retained-context'].includes(released) ? file.bytes : released ? (file.path === 'src/git.mjs'
       ? readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url))
       : released === 'pre-upstream' ? file.bytes : file.path === 'src/governance.mjs'
       ? readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url))
@@ -58,7 +60,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   chmodSync(manifestPath, 0o600);
 
   if (released) {
-    assert.equal(runtimeId, released === 'batch32'
+    assert.equal(runtimeId, released === 'retained-context'
+      ? 'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171' : released === 'batch32'
       ? 'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58' : released === 'pre-upstream'
       ? 'v1-ad7769d4d30007c8655b057a27deb45a435add2b6f7db2a11fe58bc0f1573f67' : released === 'pre-diff'
       ? 'v1-c163b6a6e47c0e1a9622e95b8b8cbdb0bb7d4c97b35f64de638636a2b5fdd625' : released === 'copy'

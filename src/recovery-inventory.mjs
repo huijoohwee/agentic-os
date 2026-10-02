@@ -1,17 +1,16 @@
 /** Read-only, byte-exact Git recovery inventory. */
-
 import { createHash } from 'node:crypto';
 import {
   closeSync, constants, fstatSync, lstatSync, openSync, readlinkSync, readSync,
   realpathSync,
 } from 'node:fs';
 import { TextDecoder } from 'node:util';
+import { dirname, join } from 'node:path';
 import { observeGit } from './git-tracked.mjs';
-
+import { readBoundedStableFile, sameCleanupNode as sameNode } from './cleanup-manifest.mjs';
 export const RECOVERY_INVENTORY_ALGORITHM =
   'agentic-os/git-recovery-inventory/netstring-sha256-v1';
 export const RECOVERY_INVENTORY_SCHEMA = 'agentic-os/recovery-inventory/v1';
-
 /*
  * N(bytes) is ASCII(byte-length) + ":" + bytes + ",".  A manifest is
  * N(algorithm), N(kind), N(decimal record count), then N(record) for each
@@ -25,7 +24,6 @@ export const RECOVERY_INVENTORY_SCHEMA = 'agentic-os/recovery-inventory/v1';
  *          is allowed only for a tracked stage-zero entry and hashes no bytes.
  * hidden: path, assume-unchanged bit, skip-worktree bit; path order.
  */
-
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const SHA256_EMPTY = createHash('sha256').digest('hex');
 const BUFFER_SIZE = 64 * 1024;
@@ -34,18 +32,15 @@ const CATEGORIES = Object.freeze({
   visibleUntracked: 'visible-untracked',
   ignoredRuntime: 'ignored-runtime',
 });
-
 function blocked(message, reason = 'blocked-recovery-inventory') {
   throw Object.assign(new Error(message), { reason });
 }
-
 function ascii(value) { return Buffer.from(String(value), 'ascii'); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function netstring(value) {
   const bytes = Buffer.from(value);
   return Buffer.concat([ascii(bytes.length), Buffer.from(':'), bytes, Buffer.from(',')]);
 }
-
 function manifestDigest(kind, records) {
   const hash = createHash('sha256');
   for (const field of [RECOVERY_INVENTORY_ALGORITHM, kind, records.length]) {
@@ -56,7 +51,6 @@ function manifestDigest(kind, records) {
   }
   return hash.digest('hex');
 }
-
 function nulRecords(value, label) {
   if (!Buffer.isBuffer(value)) blocked(`${label} output is not bytes`);
   if (value.length === 0) return [];
@@ -71,7 +65,6 @@ function nulRecords(value, label) {
   }
   return result;
 }
-
 function rawPath(value, label) {
   if (!Buffer.isBuffer(value) || value.length === 0 || value.includes(0)
     || value[0] === 47 || value.includes(92)
@@ -81,7 +74,6 @@ function rawPath(value, label) {
   }
   return value;
 }
-
 function uniquePaths(records, label) {
   const seen = new Set();
   for (const record of records) {
@@ -91,29 +83,24 @@ function uniquePaths(records, label) {
   }
   return records.sort((left, right) => Buffer.compare(left.path, right.path));
 }
-
-function gitBytes(args, cwd, { allowFail = false } = {}) {
-  return observeGit(args, { cwd, binary: true, allowFail, maxBuffer: 64 * 1024 * 1024 });
+function gitBytes(args, cwd, { allowFail = false, repositoryContext = null } = {}) {
+  return observeGit(args, { cwd, binary: true, allowFail, repositoryContext, maxBuffer: 64 * 1024 * 1024 });
 }
-
-function gitLine(args, cwd, label) {
-  const output = gitBytes(args, cwd);
+function gitLine(args, cwd, label, repositoryContext) {
+  const output = gitBytes(args, cwd, { repositoryContext });
   if (output.length < 2 || output.at(-1) !== 10 || output.subarray(0, -1).includes(10)) {
     blocked(`${label} is not one newline-terminated value`);
   }
   return output.subarray(0, -1);
 }
-
-function gitPath(args, cwd, label) {
-  const output = gitBytes(args, cwd);
+function gitPath(args, cwd, label, repositoryContext) {
+  const output = gitBytes(args, cwd, { repositoryContext });
   if (output.length < 2 || output.at(-1) !== 10) blocked(`${label} is not newline-terminated`);
   return output.subarray(0, -1);
 }
-
 function strictText(value, label) {
   try { return UTF8.decode(value); } catch { return blocked(`${label} is not UTF-8`); }
 }
-
 function indexRecords(raw, objectFormat) {
   const oidLength = objectFormat === 'sha1' ? 40 : objectFormat === 'sha256' ? 64 : 0;
   if (oidLength === 0) blocked('Git object format is unsupported');
@@ -134,7 +121,6 @@ function indexRecords(raw, objectFormat) {
     ] };
   }).sort((left, right) => Buffer.compare(left.path, right.path) || left.stage - right.stage);
 }
-
 function hiddenRecords(raw, indexPaths) {
   const records = nulRecords(raw, 'hidden inventory').flatMap((entry) => {
     if (entry.length < 3 || entry[1] !== 32 || !/[A-Za-z]/u.test(String.fromCharCode(entry[0]))) {
@@ -150,13 +136,6 @@ function hiddenRecords(raw, indexPaths) {
   });
   return uniquePaths(records, 'hidden inventory');
 }
-
-function sameNode(left, right) {
-  return Boolean(left && right) && left.dev === right.dev && left.ino === right.ino
-    && left.mode === right.mode && left.nlink === right.nlink && left.size === right.size
-    && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
-}
-
 function fullPath(root, relative) { return Buffer.concat([Buffer.from(`${root}/`), relative]); }
 function parentChain(root, relative) {
   const separators = [];
@@ -174,7 +153,6 @@ function parentChain(root, relative) {
   }
   return { direct: true, entries };
 }
-
 function assertParentChain(expected) {
   for (const { path, metadata } of expected.entries) {
     const current = lstatSync(path, { bigint: true, throwIfNoEntry: false });
@@ -183,13 +161,11 @@ function assertParentChain(expected) {
     }
   }
 }
-
 function gitMode(metadata) {
   if (metadata.isSymbolicLink()) return '120000';
   if (metadata.isFile()) return metadata.mode & 0o111n ? '100755' : '100644';
   blocked('recovery inventory encountered an unsupported filesystem entry type');
 }
-
 function hashFile(path, before) {
   let descriptor = null;
   try {
@@ -254,19 +230,19 @@ function listedContent(raw, label, root, category) {
   })), label).map(({ path }) => contentRecord(root, category, path));
 }
 
-function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries) {
+function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef) {
   const headRevision = strictText(gitLine(
-    ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'], root, 'HEAD revision'),
+    ['rev-parse', '--verify', '--end-of-options', `${retainedRef ?? 'HEAD'}^{commit}`], root, 'HEAD revision', repositoryContext),
   'HEAD revision');
   const canonicalRevision = strictText(gitLine([
     'rev-parse', '--verify', '--end-of-options', `${canonicalRef}^{commit}`,
-  ], root, 'canonical revision'), 'canonical revision');
+  ], root, 'canonical revision', repositoryContext), 'canonical revision');
   const detached = allowDetached && strictText(gitLine(
-    ['rev-parse', '--abbrev-ref', 'HEAD'], root, 'HEAD kind'), 'HEAD kind') === 'HEAD';
-  const branch = detached ? null : strictText(gitLine(
-    ['symbolic-ref', '--quiet', '--short', 'HEAD'], root, 'branch'), 'branch');
+    ['rev-parse', '--abbrev-ref', 'HEAD'], root, 'HEAD kind', repositoryContext), 'HEAD kind') === 'HEAD';
+  const branch = retainedRef?.slice('refs/heads/'.length) ?? (detached ? null : strictText(gitLine(
+    ['symbolic-ref', '--quiet', '--short', 'HEAD'], root, 'branch', repositoryContext), 'branch'));
   const objectFormat = strictText(gitLine(
-    ['rev-parse', '--show-object-format'], root, 'object format'), 'object format');
+    ['rev-parse', '--show-object-format'], root, 'object format', repositoryContext), 'object format');
   const oidLength = objectFormat === 'sha1' ? 40 : objectFormat === 'sha256' ? 64 : 0;
   const oidPattern = /^[0-9a-f]+$/u;
   if (oidLength === 0 || headRevision.length !== oidLength || canonicalRevision.length !== oidLength
@@ -275,8 +251,8 @@ function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries)
   }
   const porcelainV2Digest = sha256(gitBytes([
     'status', '--porcelain=v2', '-z', '--untracked-files=all', '--ignored=no', '--no-renames', '--',
-  ], root));
-  const index = indexRecords(gitBytes(['ls-files', '--stage', '-z', '--'], root), objectFormat);
+  ], root, { repositoryContext }));
+  const index = indexRecords(gitBytes(['ls-files', '--stage', '-z', '--'], root, { repositoryContext }), objectFormat);
   const indexPaths = new Set(index.map((entry) => entry.path.toString('hex')));
   const stageZero = new Map(index.filter((entry) => entry.stage === 0)
     .map((entry) => [entry.path.toString('hex'), entry]));
@@ -284,8 +260,8 @@ function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries)
   const unsupported = [...stageZero.values()].find((entry) =>
     !['100644', '100755', '120000'].includes(entry.mode));
   if (unsupported) blocked('tracked index mode is unsupported');
-  const visibleBytes = gitBytes(['ls-files', '--others', '--exclude-standard', '-z', '--'], root);
-  const ignoredBytes = gitBytes(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--'], root);
+  const visibleBytes = gitBytes(['ls-files', '--others', '--exclude-standard', '-z', '--'], root, { repositoryContext });
+  const ignoredBytes = gitBytes(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--'], root, { repositoryContext });
   if (indexPaths.size + nulRecords(visibleBytes, 'visible untracked inventory').length
     + nulRecords(ignoredBytes, 'ignored runtime inventory').length > maxContentEntries) {
     blocked('recovery inventory exceeds the cleanup content entry ceiling',
@@ -303,7 +279,7 @@ function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries)
     if (allKeys.has(key)) blocked('content inventory categories overlap');
     allKeys.add(key);
   }
-  const hidden = hiddenRecords(gitBytes(['ls-files', '-v', '-z', '--'], root), indexPaths);
+  const hidden = hiddenRecords(gitBytes(['ls-files', '-v', '-z', '--'], root, { repositoryContext }), indexPaths);
   const content = [...tracked, ...visibleUntracked, ...ignoredRuntime]
     .sort((left, right) => Buffer.compare(left.path, right.path)
       || Buffer.compare(ascii(left.category), ascii(right.category)));
@@ -331,25 +307,35 @@ function frozen(value) {
 
 /** Collect twice and return only an exact, stable, path-free observation. */
 export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, allowDetached = false,
-  maxContentEntries = Number.MAX_SAFE_INTEGER } = {}) {
+  maxContentEntries = Number.MAX_SAFE_INTEGER, repositoryContext = null } = {}) {
   if (typeof allowDetached !== 'boolean') throw new TypeError('allowDetached must be a boolean');
   if (!Number.isSafeInteger(maxContentEntries) || maxContentEntries < 1)
     throw new TypeError('maxContentEntries must be a positive safe integer');
   if (typeof canonicalRef !== 'string' || !canonicalRef.startsWith('refs/')
     || canonicalRef.includes('\0')) throw new TypeError('canonicalRef must be a full Git ref');
   const initialRoot = strictText(gitPath(['rev-parse', '--show-toplevel'], cwd,
-    'repository root'), 'repository root');
+    'repository root', repositoryContext), 'repository root');
   const root = realpathSync(initialRoot);
   const rootIdentity = lstatSync(root, { bigint: true });
-  if (gitBytes(['check-ref-format', canonicalRef], root, { allowFail: true }) === null) {
+  if (gitBytes(['check-ref-format', canonicalRef], root, { allowFail: true, repositoryContext }) === null) {
     throw new TypeError('canonicalRef must be a valid full Git ref');
   }
-  const first = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries);
-  const second = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries);
+  const retainedHead = () => {
+    if (!repositoryContext?.indexFile) return null;
+    const text = UTF8.decode(readBoundedStableFile(join(dirname(repositoryContext.indexFile), 'HEAD'), 256,
+      'retained-inventory-head'));
+    const match = /^ref: (refs\/heads\/[^\x00-\x20]+)\n$/u.exec(text);
+    if (!match || gitBytes(['check-ref-format', match[1]], root,
+      { allowFail: true, repositoryContext }) === null) blocked('retained inventory HEAD is invalid');
+    return match[1];
+  };
+  const retainedRef = retainedHead();
+  const first = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef);
+  const second = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef);
   const finalRoot = realpathSync(strictText(gitPath(['rev-parse', '--show-toplevel'], root,
-    'repository root'), 'repository root'));
+    'repository root', repositoryContext), 'repository root'));
   const finalIdentity = lstatSync(finalRoot, { bigint: true, throwIfNoEntry: false });
-  if (JSON.stringify(first) !== JSON.stringify(second)
+  if (retainedHead() !== retainedRef || JSON.stringify(first) !== JSON.stringify(second)
     || finalRoot !== root || !finalIdentity
     || finalIdentity.dev !== rootIdentity.dev || finalIdentity.ino !== rootIdentity.ino) {
     blocked('repository state changed during recovery inventory collection',

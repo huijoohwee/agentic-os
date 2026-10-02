@@ -205,6 +205,7 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
         sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file)
     : priorRuntimeFiles(selected, !currentRelease);
   const files = source.map((file) => {
+    if (latest && file.path === 'src/git-tracked.mjs') return { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)), sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' };
     if (file.path !== 'src/guard-main.mjs' || !guardRelease) return file;
     const bytes = Buffer.from(file.bytes.toString('utf8')
       .replace(

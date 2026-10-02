@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync,
-  writeFileSync,
+  writeFileSync, realpathSync, renameSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,6 +43,32 @@ function commit(root, message = 'fixture', { empty = false } = {}) {
 function inventory(root) {
   return collectRecoveryInventory({ cwd: root, canonicalRef: CANONICAL_REF });
 }
+
+test('explicit retained Git context inventories quarantine without rebinding or writing it', (t) => {
+  const root = repository(t), lane = join(root, 'lane');
+  writeFileSync(join(root, 'source.md'), 'retained source\n');
+  commit(root);
+  git(root, ['worktree', 'add', '--quiet', '-b', 'recovery', lane]);
+  const before = inventory(lane);
+  const admin = git(lane, ['rev-parse', '--absolute-git-dir'], { encoding: 'utf8' }).trim();
+  const quarantine = join(root, 'quarantine');
+  mkdirSync(quarantine);
+  const projection = join(quarantine, 'projection'), registration = join(quarantine, 'registration');
+  renameSync(lane, projection);
+  renameSync(admin, registration);
+  const index = readFileSync(join(registration, 'index'));
+  const pointer = readFileSync(join(projection, '.git'));
+  const context = { commonDirectory: realpathSync(join(root, '.git')),
+    gitDirectory: realpathSync(join(root, '.git')), worktree: realpathSync(projection),
+    indexFile: realpathSync(join(registration, 'index')) };
+  const observed = collectRecoveryInventory({ cwd: projection, canonicalRef: CANONICAL_REF,
+    repositoryContext: context });
+  assert.deepEqual(observed, before);
+  assert.deepEqual(readFileSync(join(registration, 'index')), index);
+  assert.deepEqual(readFileSync(join(projection, '.git')), pointer);
+  assert.throws(() => collectRecoveryInventory({ cwd: projection, canonicalRef: CANONICAL_REF,
+    repositoryContext: { ...context, GIT_CONFIG_COUNT: '1' } }), /three exact directories/);
+});
 
 test('cleanup entry budget refuses oversized ignored runtime before hashing its contents', (t) => {
   const root = repository(t);

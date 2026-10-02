@@ -3,9 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { boundedGitRead, REMOTE_READ_TIMEOUT_MS } from '../bin/agentic-os-git-read.mjs';
 import { createHash } from 'node:crypto';
 import {
-  lstatSync, readdirSync, readlinkSync, realpathSync,
+  lstatSync, readdirSync, readlinkSync,
 } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import { rawTrackedFilesMatch } from '../bin/agentic-os-filter-compare.mjs';
 export { TRACKED_FILE_LIMITS, rawTrackedFileMatches } from '../bin/agentic-os-filter-compare.mjs';
 import { TextDecoder } from 'node:util';
@@ -23,6 +23,7 @@ function redactGitArgument(value) {
   return TRANSPORT_ARGUMENT.test(text) ? '[redacted-transport]' : text;
 }
 function redactGitText(value) { return String(value).replace(TRANSPORT_TEXT, '[redacted-transport]'); }
+
 const OBSERVATION_CONFIG = Object.freeze([
   ['core.fsmonitor', 'false'], ['core.untrackedCache', 'false'], ['diff.external', ''],
 ]);
@@ -31,6 +32,7 @@ const MUTATION_GIT_ENV_ALLOWLIST = new Set([
   'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE',
   'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE',
 ]);
+
 function inheritedEnvironment({ preserveGit = false, preserveGlobalConfig = false } = {}) {
   const environment = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -50,7 +52,7 @@ function mutationEnvironment(extra = null, { preserveGlobalConfig = false } = {}
   }
   return environment;
 }
-function observationEnvironment(extra = null, repositoryContext = null) {
+function observationEnvironment(extra = null) {
   const environment = { ...inheritedEnvironment(), ...(extra ?? {}) };
   for (const key of Object.keys(environment))
     if (key.toUpperCase().startsWith('GIT_')) delete environment[key];
@@ -62,27 +64,6 @@ function observationEnvironment(extra = null, repositoryContext = null) {
     environment[`GIT_CONFIG_KEY_${index}`] = key;
     environment[`GIT_CONFIG_VALUE_${index}`] = value;
   });
-  if (repositoryContext !== null) {
-    const keys = ['commonDirectory', 'gitDirectory', 'worktree'];
-    if (repositoryContext && Object.hasOwn(repositoryContext, 'indexFile')) keys.splice(2, 0, 'indexFile');
-    if (!repositoryContext || Object.keys(repositoryContext).sort().join(',') !== keys.join(','))
-      throw new TypeError('Git observation repository context must bind three exact directories');
-    for (const [key, variable] of [['commonDirectory', 'GIT_COMMON_DIR'],
-      ['gitDirectory', 'GIT_DIR'], ['worktree', 'GIT_WORK_TREE']]) {
-      const path = repositoryContext[key];
-      if (typeof path !== 'string' || !isAbsolute(path) || /[\x00-\x1f]/u.test(path)
-        || realpathSync(path) !== path || !lstatSync(path).isDirectory())
-        throw new TypeError('Git observation repository context directory is unsafe');
-      environment[variable] = path;
-    }
-    if (Object.hasOwn(repositoryContext, 'indexFile')) {
-      const path = repositoryContext.indexFile;
-      if (typeof path !== 'string' || !isAbsolute(path) || /[\x00-\x1f]/u.test(path)
-        || realpathSync(path) !== path || !lstatSync(path).isFile())
-        throw new TypeError('Git observation retained index is unsafe');
-      environment.GIT_INDEX_FILE = path;
-    }
-  }
   return environment;
 }
 /** Execute a Git mutation with inherited repository redirection removed. */
@@ -109,8 +90,7 @@ export function git(args, { cwd = process.cwd(), allowFail = false, input, env,
 export function observeGit(args, options = {}) {
   const safeArgs = args[0] === 'diff'
     ? ['diff', '--no-ext-diff', '--no-textconv', ...args.slice(1)] : args;
-  return git(safeArgs, { ...options, env: observationEnvironment(options.env,
-    options.repositoryContext ?? null), replaceEnv: true });
+  return git(safeArgs, { ...options, env: observationEnvironment(options.env), replaceEnv: true });
 }
 function outputLines(result) {
   return result === null || result === '' ? [] : result.split('\n').filter((line) => line !== '');
@@ -126,6 +106,7 @@ export function gitBlobOid(bytes, expectedOid) {
   hash.update(`blob ${bytes.length}\0`); hash.update(bytes);
   return hash.digest('hex');
 }
+
 /** Strict UTF-8 decode for NUL-delimited Git path output. */
 export function decodeNulFields(value) {
   if (!Buffer.isBuffer(value)) return null;
@@ -142,6 +123,7 @@ export function decodeNulFields(value) {
   }
   return start === value.length ? paths : null;
 }
+
 function strictGitPaths(args, cwd) {
   const paths = decodeNulFields(observeGit(args, { cwd, binary: true, allowFail: true }));
   if (paths) return paths;
@@ -149,6 +131,7 @@ function strictGitPaths(args, cwd) {
   error.reason = 'blocked-invalid-path-inventory';
   throw error;
 }
+
 /** Owned paths outside HEAD/index. Deep cleanup inventory includes ignored files by default. */
 export function untrackedPaths(cwd = process.cwd(), { includeIgnored = true } = {}) {
   const visible = strictGitPaths(['ls-files', '--others', '--exclude-standard', '-z'], cwd);
@@ -158,11 +141,13 @@ export function untrackedPaths(cwd = process.cwd(), { includeIgnored = true } = 
   );
   return [...new Set([...visible, ...ignored])].sort((left, right) => left.localeCompare(right));
 }
+
 function sameTrackedNode(left, right) {
   return Boolean(right) && left.dev === right.dev && left.ino === right.ino
     && left.mode === right.mode && left.nlink === right.nlink && left.size === right.size
     && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
+
 function worktreeMode(stat) {
   if (!stat) return '000000';
   if (stat.isSymbolicLink()) return '120000';
@@ -170,6 +155,7 @@ function worktreeMode(stat) {
   if (stat.isDirectory()) return '160000';
   return '000000';
 }
+
 function trackedEntryMatches({ mode, oid, path }, cwd, includeIgnored) {
   const absolute = join(cwd, path);
   const stat = lstatSync(absolute, { bigint: true, throwIfNoEntry: false });
@@ -193,6 +179,7 @@ function trackedEntryMatches({ mode, oid, path }, cwd, includeIgnored) {
   if (!stat.isFile()) return false;
   return rawTrackedFilesMatch([{ absolute, path, oid, mode, before: stat, cwd }])[0];
 }
+
 /** Batch only regular files; symlink and submodule ownership keep their existing checks. */
 function trackedEntriesMatch(entries, cwd, includeIgnored) {
   const matched = new Map(), regular = [];
@@ -206,6 +193,7 @@ function trackedEntriesMatch(entries, cwd, includeIgnored) {
   rawTrackedFilesMatch(regular).forEach((value, index) => matched.set(regular[index].entry, value));
   return matched;
 }
+
 function parseIndexEntries(cwd) {
   const entries = [];
   for (const record of strictGitPaths(['ls-files', '--stage', '-z'], cwd)) {
@@ -222,6 +210,7 @@ function parseIndexEntries(cwd) {
   }
   return entries;
 }
+
 function parseRawDiff(cwd, args, label) {
   const fields = decodeNulFields(observeGit(args, {
     cwd, binary: true, allowFail: true,
@@ -246,12 +235,14 @@ function parseRawDiff(cwd, args, label) {
   }
   return entries;
 }
+
 function headToIndexChanges(cwd) {
   return parseRawDiff(cwd, [
     'diff', '--cached', '--raw', '-z', '--no-renames', '--abbrev=64',
     '--ita-visible-in-index', 'HEAD', '--',
   ], 'HEAD-to-index');
 }
+
 function shallowIndexToWorkingTree(entries, cwd) {
   const changes = [];
   const unmerged = new Set(entries.filter(({ stage }) => stage !== 0).map(({ path }) => path));
@@ -272,12 +263,14 @@ function shallowIndexToWorkingTree(entries, cwd) {
   }
   return changes;
 }
+
 /** Fast no-code structural projection. Content identity is explicitly deferred. */
 export function shallowTrackedChanges(cwd = process.cwd()) {
   const entries = parseIndexEntries(cwd);
   return { headToIndex: headToIndexChanges(cwd),
     indexToWorkingTree: shallowIndexToWorkingTree(entries, cwd) };
 }
+
 /** Raw local tracked projections that never execute checkout filters or refresh the index. */
 export function trackedChanges(cwd = process.cwd()) {
   const indexToWorkingTree = [];
