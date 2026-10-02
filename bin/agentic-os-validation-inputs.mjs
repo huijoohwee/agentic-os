@@ -1,4 +1,4 @@
-/** Streaming source identities for large consumers; cached bytes live only within this invocation. */
+/** Streaming source identities; cached identities and lazy scratch live only within this invocation. */
 import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -19,7 +19,7 @@ const revision = (root, ref) => {
   return oid;
 };
 const stamp = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
-function readWorkingFile(root, path, algorithm, cache, budget) {
+function readWorkingFile(root, path, algorithm, cache, budget, scratch) {
   safePath(path);
   const absolute = join(root, path);
   for (let parent = dirname(absolute); parent !== root; parent = dirname(parent)) {
@@ -43,7 +43,7 @@ function readWorkingFile(root, path, algorithm, cache, budget) {
     const descriptor = openSync(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       if (stamp(fstatSync(descriptor, { bigint: true })) !== identity) throw new Error('blocked-validation-source-race');
-      const buffer = Buffer.alloc(256 * 1024); let total = 0;
+      const buffer = scratch.buffer ??= Buffer.alloc(256 * 1024); let total = 0;
       for (let size; (size = readSync(descriptor, buffer, 0, buffer.length, null));) {
         total += size;
         if (total > Number(before.size)) throw new Error('blocked-validation-source-growth');
@@ -67,7 +67,7 @@ export const sourceDigest = files => hash(JSON.stringify([...files].sort(([a], [
   .map(([path, file]) => [path, file.mode, file.oid])));
 export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEAD', committed = false }) {
   root = realpathSync(root);
-  const cache = new Map(), trees = new Map();
+  const cache = new Map(), trees = new Map(), scratch = { buffer: null };
   const committedTree = ref => {
     if (!trees.has(ref)) trees.set(ref, tree(root, ref));
     return trees.get(ref);
@@ -87,7 +87,7 @@ export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEA
     if (!['sha1', 'sha256'].includes(algorithm)) throw new Error('blocked-validation-object-format');
     const after = new Map(), budget = { bytes: 0 };
     for (const path of names) {
-      const file = readWorkingFile(root, path, algorithm, cache, budget);
+      const file = readWorkingFile(root, path, algorithm, cache, budget, scratch);
       if (file) after.set(path, file);
     }
     const before = committedTree(bases[0]);
