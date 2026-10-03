@@ -200,7 +200,7 @@ export function retireCleanProjectionUnderExclusiveContract(receipt, {
 } = {}) {
   const state = states.get(receipt);
   if (!state || inventoryCount !== 0
-    || !/^agentic-os:canonical-sync:exclusive:[0-9a-f]{64}$/u.test(exclusiveContract ?? ''))
+    || !/^agentic-os:(?:canonical-sync|lane-alignment):exclusive:[0-9a-f]{64}$/u.test(exclusiveContract ?? ''))
     throw new TypeError('clean projection retirement requires its copy receipt, empty inventory, and exact external exclusive contract');
   if (state.retired) throw failure('blocked-clean-projection-already-retired',
     'clean projection sources were already retired', { quarantinePath: state.path });

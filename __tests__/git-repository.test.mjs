@@ -558,8 +558,8 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   assert.equal(catalogSha, '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667');
   const governanceBytes = readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url));
   const governanceSha = createHash('sha256').update(governanceBytes).digest('hex');
-  assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390');
-  const priorFiles = selected.files.map(file => file.path === 'bin/agentic-os-filter-compare.mjs'
+  assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390'); const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes.toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync')); const quarantineSha = createHash('sha256').update(quarantineBytes).digest('hex'); assert.equal(quarantineSha, '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
+  const priorFiles = selected.files.map(file => file.path === 'src/quarantine.mjs' ? { ...file, bytes: quarantineBytes, sha256: quarantineSha } : file.path === 'bin/agentic-os-filter-compare.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)),
       sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' } : file.path === 'src/git.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url)),

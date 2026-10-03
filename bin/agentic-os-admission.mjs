@@ -87,7 +87,7 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   return { head, reserved, lineage };
 }
 export async function cmdStart(root, argv, policy, profile, services) {
-  const { out, err, projectCache, effectReceipt, remoteName, requireCanonical } = services;
+  const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null } = services;
   requireCanonical(root, policy);
   const [scope] = positional(argv), device = assertDevice(option(argv, 'device') ?? deviceSegment());
   if (!scope) { err('usage: start <scope> --write=<paths>'); return 1; }
@@ -99,13 +99,16 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const readmit = flag(argv, 'readmit'), expectedHead = option(argv, 'expected-head');
   if (expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)) fail('head', 'expected-head must be an exact commit SHA');
   if (readmit && (!input || !expectedHead)) fail('readmit-binding', 'readmit requires an exact mission and expected-head');
+  if (refresh && (!readmit || refresh.stopped !== true || !/^[a-f0-9]{40}$/u.test(refresh.expectedTarget ?? '')
+    || ['planLaneAlignment', 'prepareLaneAlignment', 'applyLaneAlignment'].some(key => typeof refresh.owner?.[key] !== 'function')))
+    fail('refresh-binding', 'Refresh requires stopped-writer readmission and one exact protected target');
   const lock = acquireOperationLock('agentic-os-start', root);
   if (!lock) { err('blocked-concurrent-start: another lane admission owns the clone-wide start lock'); return 1; }
   let result, error, selected, allocation;
   const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null,
     protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
     provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false,
-    fetchReceipt: null, provisionReceipt: null, allocation: null, workflow: null };
+    fetchReceipt: null, provisionReceipt: null, alignmentReceipt: null, allocation: null, workflow: null };
   try {
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
@@ -126,7 +129,15 @@ export async function cmdStart(root, argv, policy, profile, services) {
       const row = selected?.manifest.allocations?.find(item => item.worktreeId === worktreeId);
       const registered = worktrees(root).find(item => item.branch === ref || item.path === path);
       if (registered) {
-        const record = records[ref], identity = observeExisting(root, ref, path, record, expectedHead, requested, policy, row);
+        const record = records[ref];
+        const alignmentOwner = refresh?.owner ?? null;
+        let alignment = refresh ? alignmentOwner.planLaneAlignment({ cwd: path, ref, expectedHead,
+          targetRef: policy.protectedRef, expectedTarget: refresh.expectedTarget, stopped: refresh.stopped }) : null;
+        if (alignment?.candidateHead) Object.assign(artifacts, { effectsRetained: true, worktree: path,
+          alignmentReceipt: { phase: 'observed-preparation', journalPath: alignment.journalPath,
+            oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
+        const reusePaths = refresh ? parseWritePaths((record?.writePaths ?? []).join(',')) : requested;
+        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead, reusePaths, policy, row);
         if (!selected) fail('mission-required', 'Existing lanes need their exact workflow identity; no new root is created for reuse');
         if (!selected.members.some(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository))
           fail('member-binding', 'The existing lane is not a member of the selected mission');
@@ -138,7 +149,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
           (row.writeDigest !== liveDigest && !successorReadmit && !(recoveringReadmit && row.previousWriteDigest === liveDigest))))
           fail('reservation-drift', 'Native scope evidence no longer matches the live lane projection');
         if (!readmit && requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Use explicit active readmit for additional paths');
-        if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head || (recoveringReadmit && !readmit)))
+        if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head
+          && !(alignment && row.headRevision === alignment.candidateHead) || (recoveringReadmit && !readmit)))
           fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
         const writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved;
         const nextDigest = scopeDigest(writePaths);
@@ -148,15 +160,30 @@ export async function cmdStart(root, argv, policy, profile, services) {
           { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
-        allocation = { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: identity.head,
+        if (alignment) {
+          alignment = alignmentOwner.prepareLaneAlignment(alignment);
+          Object.assign(artifacts, { effectsRetained: true, worktree: path,
+            alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
+              oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
+        }
+        allocation = { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
           writeDigest: nextDigest, state: readmit ? 'pending' : 'active', operation: readmit ? 'readmit' : row?.operation ?? 'create',
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit ? row.writeDigest : liveDigest } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
+        if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
         if (JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
+        if (alignment) artifacts.workflow = selected.path;
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
           observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row);
           if (liveDigest !== nextDigest) store.putExact({ ...record, writePaths }, record, root);
+          if (alignment) {
+            const receipt = alignmentOwner.applyLaneAlignment(alignment);
+            Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
+            identity.head = receipt.head;
+            selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+            out(JSON.stringify(receipt));
+          }
           const { previousWriteDigest, ...completed } = allocation;
           allocation = { ...completed, state: 'active' };
           selected = recordAllocation(root, profile.repository, selected, allocation);
@@ -165,6 +192,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           ref, worktree: path, head: identity.head, writeDigest: allocation.writeDigest, workflow: selected.path, digest: selected.digest, created: false }));
         result = 0;
       } else {
+        if (refresh) fail('refresh-missing', 'Refresh never provisions another checkout');
         if (readmit) fail('readmit-missing', 'No registered existing lane matches the readmission request');
         if (row) fail('recovery-required', 'A retained allocation still consumes capacity; reconcile it without another checkout');
         const limit = Math.min(selected?.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS);
@@ -220,7 +248,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
     error = caught;
     const retained = caught.operationArtifacts ?? caught.artifacts;
     if (retained) {
-      artifacts[retained.operation === 'fetch' ? 'fetchReceipt' : 'provisionReceipt'] = retained;
+      artifacts[retained.operation === 'lane-alignment' ? 'alignmentReceipt'
+        : retained.operation === 'fetch' ? 'fetchReceipt' : 'provisionReceipt'] = retained;
       artifacts.branchSha = retained.branchSha ?? null;
       artifacts.registeredWorktree = retained.registeredWorktree ?? null;
       artifacts.pathExists = retained.pathExists === true;
@@ -228,5 +257,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
       artifacts.effectsRetained ||= retained.effectsRetained === true;
     }
   }
+  if (error && refresh && artifacts.effectsRetained) Object.assign(error, { retainedOperation: true,
+    operationError: error.operationError ?? { reason: error.reason ?? null, message: error.message },
+    operationArtifacts: artifacts, operationResult: null });
   return finishOperationLock(lock, { label: 'start', result, error, artifacts });
 }
