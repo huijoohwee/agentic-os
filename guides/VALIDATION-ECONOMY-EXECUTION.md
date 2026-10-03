@@ -3,6 +3,54 @@
 On-demand companion to [Validation economy](VALIDATION-ECONOMY.md). These existing
 contracts retain their identities and scope; source scanning is documented in the parent.
 
+## Diagnostic escalation economy
+
+The [repository validation owner](REPOSITORY-VALIDATION.md) binds V09. Before another expensive
+diagnostic, inspect the retained failure receipt and bounded log once. State the question the next
+run can answer and the missing evidence that makes it necessary. A timeout without a compiler
+diagnostic proves incomplete execution; it does not identify a compiler error or expensive source type.
+Before a rerun can overwrite mutable aggregate/per-command receipts or logs, retain their bounded
+content-bound predecessor through the existing diagnostic export and private handover owners.
+For a large-object assertion, evaluate the same identity/equality condition as a Boolean and report
+a concise custom failure message with bounded useful scalar context instead of rendering an entire
+object or DOM tree. Preserve exact assertion semantics and parent-owned timeout/output/teardown limits.
+Pass Boolean operands to the assertion, for example
+`assert.equal(Object.is(actualNode, expectedNode), true, boundedMessage)` for identity equality.
+A custom message alone need not prevent an assertion formatter from inspecting the original objects.
+An oversized diagnostic is a resource risk, not evidence of a termination cause without its receipt.
+
+Use the existing executor, locks, process-group teardown and private artifacts. Bind source/tree,
+working bytes, runner/configuration/environment, command, cache behavior and predecessor receipt.
+Bind actual helper/compiler/dependency bytes where consumed; a lockfile alone is insufficient.
+Declare the deadline, output and artifact byte bounds, observation cadence and stop condition before
+launch. Separate a hard enforced limit from a sampled cutoff: sampling can overshoot between reads.
+Record the actual stop, elapsed time and retained bytes; retain measured partial CPU/RSS values with
+their coverage, and mark unavailable accounting unknown.
+Preserve the original gate deadline and every required check. Diagnostic results grant no gate parity.
+Charge sequel runs cumulatively against the sprint's time and artifact allowances; per-run limits do
+not reset them. Verify owned process teardown and lock release before retry; crashed locks stay blocked.
+
+Choose the cheapest observation that answers the question: retained log and receipt first, existing
+phase/progress metadata next, then a bounded targeted diagnostic. Escalate a partial trace only when
+its observed phase coverage explains what additional evidence the next run should collect. A larger
+trace cap, renamed command or new turn alone is no retry reason. A concrete changed input or newly
+observed limitation must justify the incremental work; stop when that question is answered or its cap
+is reached. Keep forced/cold-cache and tracing overhead explicit instead of comparing them with a
+normal warm gate. Do not clear caches, raise deadlines or rerun the aggregate to erase a failure.
+
+For partial traces, retain complete-event counts, open events, unobserved phases and truncation. Inclusive
+parent/child, file/expression and type-relation durations overlap; do not sum them into total cost or
+treat one open event at cutoff as the cause. Measured savings require compatible before/after inputs.
+Record the next decision and its retained evidence rather than generating another trace by default.
+Distinguish observer-triggered cancellation from compiler failure. Equal cache snapshots prove byte
+stability at those observations, not absence of intermediate deletion or normal-gate cache validity.
+
+This is agent execution policy, not automatic stage caching or a new artifact monitor. Raw consumer
+stages have no declared input contracts; unchanged Git source does not prove unchanged generated,
+external or provider inputs. Keep their fresh execution semantics and required CI. Deterministic
+checks use the existing declared-input failure guard; diagnostic retries retain their failed evidence.
+No new module, dependency, always-load instruction or background observer is introduced.
+
 ## Planning-bound startup evidence (WORKFLOW-OBS-006)
 
 Pass `--plan=<repository-relative-prd-tad-adr-mvp-gtm.md>` to the existing `agentic-os start`

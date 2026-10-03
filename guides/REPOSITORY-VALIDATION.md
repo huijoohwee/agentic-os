@@ -1,18 +1,18 @@
 ---
 title: "Repository Validation PRD-TAD-ADR-MVP-GTM"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.0"
+version: "1.1.1"
 owner: "agentic-os"
-date: "2026-09-14"
+date: "2026-10-03"
 lang: "en-US"
 frontmatter_contract: "required"
 load_policy: "on-demand"
 continuity_id: "REPOSITORY-VALIDATION-001"
-prd_revision: "1.1.0"
-tad_revision: "1.1.0"
-adr_revision: "1.1.0"
-mvp_revision: "1.1.0"
-gtm_revision: "1.1.0"
+prd_revision: "1.1.1"
+tad_revision: "1.1.1"
+adr_revision: "1.1.1"
+mvp_revision: "1.1.1"
+gtm_revision: "1.1.1"
 status: "implementation"
 ---
 
@@ -23,7 +23,7 @@ the consumer check-input, receipt-reuse and validation authority contract.
 
 ## PRD
 
-`REPOSITORY-VALIDATION-001@1.1.0`: a solo maintainer changes one source concern and
+`REPOSITORY-VALIDATION-001@1.1.1`: a solo maintainer changes one source concern and
 runs the checks affected by its declared inputs and dependencies through the pinned
 Agentic OS owner. Context: repeated whole-repository checks delay delivery. Intent:
 reduce avoidable execution without changing test assertions or protected authority.
@@ -45,6 +45,7 @@ remains the reusable policy and native OS test-runner guide.
 | V06 | Source drift, recursive invocation, timeout, process failure and output bounds cannot produce passing evidence. Logs retain a bounded tail without skipping command execution. |
 | V07 | Consumers invoke the pinned common executor through default validation and protected CI; owner commands remain in their source repositories. Unenrolled consumers are not claimed enforced. |
 | V08 | Every actual command updates bounded private cost observations. Learned order preserves selected coverage, prerequisites and mandatory precedence; stale or incompatible observations restore declared order. Reuse never counts as new execution. |
+| V09 | Before an expensive diagnostic retry, inspect retained evidence, identify the unanswered question and bind its incremental work to source/context and explicit limits. Partial traces, sampled cutoffs and unavailable resources remain qualified; fresh CI and mandatory coverage remain intact. |
 
 V01–V06 are exercised by `__tests__/repository-validation*.test.mjs` and the existing
 `__tests__/test-{impact,runner}.test.mjs`. V07 requires each consumer's reviewed
@@ -52,7 +53,7 @@ package pin, script/workflow diff, protected checks and exact integration receip
 
 ## TAD and ADR
 
-TAD `1.1.0` consumes PRD `1.1.0`; ADR `1.1.0` binds V01–V08. Agentic OS owns the
+TAD `1.1.1` consumes PRD `1.1.1`; ADR `1.1.1` binds V01–V09. Agentic OS owns the
 selector, process bounds, input observation and receipt reuse. Each consumer owns
 `.agentic-os-validation.json`: source input boundaries, prerequisite relationships,
 existing commands and conservative fallback. Do not copy the executor or add a
@@ -73,6 +74,21 @@ contracts in the boundaries. Use `reuse: never` for browser/provider checks,
 external files, ignored generated inputs and dependencies whose actual bytes are
 not bound. Installed dependencies are not fingerprinted by their lockfile alone.
 The native OS source runner retains its existing static-import and contract graph.
+
+### Diagnostic decision contract
+
+V09 addresses the incomplete compiler trace: it reported 6,005 roots; checker and emit were not observed.
+That evidence established a coverage gap, not a compiler hotspot. The operator must record
+the next diagnostic question, bound predecessor, cache behavior, phase coverage, deadline,
+byte cutoff semantics and actual outcome through the existing private receipt/handover owners.
+[Diagnostic escalation economy](VALIDATION-ECONOMY-EXECUTION.md#diagnostic-escalation-economy) owns
+the on-demand execution policy; this joined plan owns its acceptance and delivery limits.
+
+ADR V09 selects evidence-first bounded diagnosis over automatic unchanged-stage blocking. Consumer
+stages may read unbound generated or provider inputs, so Git identity alone cannot safely suppress them.
+Keep existing declared-input failure guards, command locks, deadlines, fresh CI and failure retention.
+No new cache, profiler, watcher, controller, dependency or runtime assertion is added. Rollback reverts
+these two guide changes while preserving every prior diagnostic and release receipt.
 
 ### Continuous resource feedback
 
@@ -183,3 +199,11 @@ candidate inputs. Compare a narrow source edit, a shared-contract change and an
 unchanged rerun. Source coverage, provider waiting and test failures remain visible.
 The intended buyer benefit is faster reliable solo delivery; actual savings, WTP,
 revenue and production readiness require measured consumer evidence.
+
+V09 implementation: two existing on-demand guides, at most 8 KiB added, zero modules/dependencies and
+zero always-load bytes. Estimate: 15 active minutes for source; cap: 30 active minutes plus native checks.
+Use affected `npm run check` for source/document contracts and independent policy review for limits,
+partial evidence, input uncertainty and gate preservation. These prove the guide change, not enforcement
+against arbitrary tools. Protected source integration and consumer adoption remain separate receipts.
+GTM V09: the retained compiler investigation is the free local pilot; compare compatible executed work
+before reporting savings. CPU, model tokens, cash cost, demand and willingness to pay stay unmeasured.
