@@ -1,100 +1,147 @@
 ---
-title: Cleanup authority enrollment and retained recovery
+title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.0.1
-prd_revision: 1.0.1
-tad_revision: 1.0.1
-adr_revision: 1.0.1
-mvp_revision: 1.0.1
-gtm_revision: 1.0.1
+version: 1.1.0
+prd_revision: 1.1.0
+tad_revision: 1.1.0
+adr_revision: 1.1.0
+mvp_revision: 1.1.0
+gtm_revision: 1.1.0
 load_policy: on-demand
-lifecycle_status: implementation-candidate
+lifecycle_status: review-candidate
 ---
-# Cleanup authority enrollment
+# Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.0.1`.
+Continuity `CLEANUP-AUTHORITY-001@1.1.0`. This proposes two explicit recovery contracts for protected
+owner review. Runtime implementation and exact policy enrollment are not accepted yet. Existing
+proof, retirement and physical cleanup contracts remain in force. Publishing this specification
+creates no receipt, activates no mode and authorizes no effect.
 
-PRD: finish authorized, integrated lanes without treating a green PR or human task instruction as a
-provider-authenticated cleanup receipt. TAD: enroll the existing initial GitHub issuer alongside the
-existing transition workflow and quarantine executor. ADR: no new issuer, runtime dependency, global
-prompt, automatic cleanup trigger, or deletion capability; retain every branch and recovery object.
+## Existing owners and retained delivery
 
-The committed `.github/adlc-authority-policy.json` binds main, squash integration, required `budgets`
-and `test` checks, a one-hour validity window, and the create-only `adlc/authority/` evidence namespace.
-The issuer's policy supports an owner namespace; this workflow additionally rejects every target except
-`github.com/huijoohwee/agentic-os`. The separate `adlc-authority-graph.yml` enrollment selects only
-`github.com/huijoohwee/agentic-graph`; its initial policy binds the evidence repository's `budgets` and
-`test` checks, while the transition proof binds Graph's `Integration Gate`. Both targets share the immutable
-transition evidence namespace, but neither initial workflow can issue authority for the other target.
-Forks must explicitly reenroll these identities; copying either policy does not authorize another repository.
+Initial GitHub issuance, transition publication and quarantine execution have separate owners.
+Committed initial policies bind exact target/workflow/ref/checks, one-hour validity and create-only
+`adlc/authority/` evidence. OS and Graph initial enrollments cannot issue for each other's target;
+forks must reenroll. A bootstrap is record-only and never supplies retirement or cleanup authority.
 
-## Owner-operated sequence
+The retained-reader repair is protected-integrated through OS PR322. `collectRecoveryInventory`
+accepts explicit real repository context and retained index. The Git owner disables ambient
+redirection, optional writes, lazy fetch, replacement objects and executable hooks. Observation
+neither restores a checkout nor rewrites pointers. Reader validation is not provider retirement.
 
-1. Reobserve exact PR head, merge, historical check suite, current protection, retained branch, actual
-   worktree bytes and recovery inventory. Existing pre-authority merges use `retrospective-recovery`;
-   do not invent initial issuance or copy another lane's claim/fence.
-2. Protect `refs/heads/adlc/authority/**` with active update, deletion and non-fast-forward rules,
-   no bypass actors and no creation prohibition. The issuer verifies live enforcement before publication.
-3. Construct the bounded recovery candidate and owner claim with the existing record constructors.
-   Bind the authority input digest to the exact committed runtime policy and workflow SHA. Dispatch
-   `adlc-authority.yml` with its two exact inputs and `return_run_details:true`; retain the returned run ID.
-4. Wait for that exact run. It is a read-only input validator, not a publisher or authority receipt.
-   From canonical source, use `agentic-os-authority issue-github` with the retained event, committed
-   policy, repository and exact run ID. Credentials stay local and never enter inputs or artifacts.
-5. Use the existing transition adapter to prepare integration proof, bind it to an effect plan, dispatch
-   and publish the exact integration winner. Bind preservation/no-remaining-value observations and the
-   exact cleanup plan into retirement, then dispatch and publish the retirement winner.
-6. Reobserve both winners live through trusted verifiers and execute the exact eligible quarantine plan.
-   Projection and registration are moved into clone-private recoverable quarantine, not deleted.
-   Synchronize a clean canonical checkout with its separate native plan/receipt.
+The [lifecycle owner](../docs/LIFECYCLE-COMPLETION.md) owns command and closed-bundle schemas;
+[integration methods](INTEGRATION-METHODS.md) own source/method proof; [user cleanup](USER-CLEANUP.md)
+owns local consent/preservation. Keep every branch, recovery ref, reflog, peer registration and object.
+The existing sequence remains exact observation, enrolled initial dispatch/issuance, integration
+winner, independently bound retirement, live replay, exact eligible cleanup and separate canonical
+sync. Credentials stay local. Missing proof, drift, expiry or another winner stops the affected effect.
 
-For step 6, `npm run completion:plan -- --ref=<lane> --bundle=<absolute-json>` reads one
-bounded evidence bundle, replays both immutable GitHub transition winners live, and prints the
-exact cleanup eligibility and authorization digest. The bundle has exactly `cleanup`,
-`integrationVerifier`, and `retirementVerifier` fields. `cleanup` contains the existing cleanup
-plan, requests, operation receipts, plan bytes, preservation receipt, and no-remaining-value
-receipt; each verifier contains `repository`, `targetRepository`, `operationInput`, `workflowRun`,
-and `policy` as required by `createGitHubTransitionAuthorityVerifier`. Keep the bundle and plan
-outside source worktrees. Supply `GITHUB_TOKEN` only in the process environment, never in JSON.
-Plan bytes are JSON arrays of integers from 0 through 255; the CLI rehydrates them into bounded byte
-arrays before verification and computes the same bundle digest before and after rehydration.
-Use `npm run completion:scaffold -- --ref=<lane>` to print a read-only scaffold with exact lane
-facts, the committed transition policy, source-owned cleanup limits, and explicit placeholders
-only for the still-governed winners before assembling the final bundle.
-After stopping writers, run `npm run completion:apply -- --ref=<lane> --bundle=<absolute-json>
---plan=<absolute-json> --authorize=<exact-eligibility-digest> --stopped`. Apply rechecks the
-canonical checkout, registered lane, evidence bundle and live provider winners; the cleanup
-adapter checks expiration, manifests and authorization again before quarantine. A plan alone
-does not authorize effects. The command cannot issue initial authority, publish transition
-winners, merge a PR, delete a branch, or synchronize canonical main.
+## PRD: current recovery without invented history
 
-See [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md) for the existing schemas and adapters.
-Each source coordinate has one create-only winner. Lost responses require exact-coordinate readback;
-do not rediscover dispatches by listing workflow runs or retry a deterministic failure unchanged.
-Provider drift, dirty inventory, expired authority, mismatched plans and missing evidence stop effects.
+The operator has retained integrated work whose historical rule suite or separate predecessor
+quarantine may not have existed. The outcome is current authorized recovery closeout while keeping
+all present authored bytes and Git history. Do not assert unproved historical protection, required
+policy, merge method, succession authority or physical effects.
 
-## Retained recovery observation — implementation candidate
+Full END ADLC retains separate source, provider integration/retirement, disposition, delivery and
+handover requirements. The policy owner must accept whether these explicit facts satisfy the current
+recovery transition. A narrower proof never silently inherits stronger historical claims.
 
-PRD: a lane already quarantined must remain recoverable without recreating its original checkout.
-TAD: `collectRecoveryInventory` accepts an explicit `repositoryContext` binding the exact real
-`gitDirectory`, `commonDirectory` and `worktree` directories and an optional retained `indexFile`.
-Retained observation reads the adjacent bounded HEAD and resolves that branch through canonical refs. The existing Git observation owner
-removes ambient redirection, then admits only those explicit paths; optional writes,
-lazy fetches, replacement objects and executable diff/config hooks remain disabled.
-ADR: reuse the inventory and Git owners, with zero new modules or runtime dependencies.
-Update the package-bound hook digest and retain the prior shipped runtime identity for managed migration. No
-recovery pointer, registration, branch, object or policy is rewritten. This is observation only.
-MVP: a moved-worktree regression compares all inventory fields and proves index/pointer bytes
-unchanged; malformed contexts stop before observation. Historical hook fixtures use exact shipped
-Git-reader bytes and preserve fixed runtime IDs and tamper rejection, including the last shipped runtime.
-Protected integration and real provider
-retirement acceptance remain pending. This reader does not resolve successor predecessor binding.
-GTM: zero spend and no deployment or consumer-pin change; avoid copying retained runtime bytes.
-Unknown economic savings remain unknown. Initial issuance and each transition still require the
-live owner sequence above; fresh inventory is never an authenticated retirement receipt.
+- H01: Given exact committed enrollment and fresh initial retrospective issuance, authenticate the
+  real merge event, reviewed head/base, equal merge tree, successful pre-merge checks and current
+  protected ancestry. Emit a distinct historical-content proof or fail.
+- H02: Reject missing/foreign enrollment, changed identities, failed/late checks, stale policy,
+  expiry, altered event/tree/ancestry and fabricated historical assertions before publication.
+- P01: Verify a distinct successor preservation disposition with exact source and retained bytes.
+  Authenticate historical succession if claimed; otherwise require a separately reviewed current
+  adoption decision and explicitly retain historical succession authority as unproven.
+- P02: Ancestor/path equality, cached handoff, source inclusion or an unrelated green PR alone is
+  insufficient. Missing, mounted, changed or foreign retention coordinates fail.
+- A01: Each integration, record-only retirement, physical cleanup and sync effect retains its own
+  plan, grant and real receipt. No adoption backdates a claim or creates historical evidence.
+- A02: Full completion requires every applicable owner receipt and handover. Passing tests, local
+  observations or this specification alone do not establish END ADLC.
 
-Validation uses the production validator with this enrolled policy, malformed/foreign inputs and
-workflow permission boundaries. Source files remain below 600 lines; payloads and outputs retain the
-existing bounded adapter limits. Operator evidence stays outside the source worktree. Enrollment alone
-does not retire a claim, remove a worktree, merge a PR or deploy a product.
+## TAD: explicit versioned bases
+
+Historical recovery adds opt-in `historical-content-facts/v1`, with a distinct operation mode and
+provider-proof schema. A versioned committed policy enrolls exact target/review/base/head/merge/tree
+and approved check selection. Preparation, dispatch, publication and replay bind the provider-read
+policy at the exact workflow revision. There is no automatic fallback or authority from a mode string.
+Only fresh, in-window initial retrospective issuance may use this basis.
+
+The provider authenticates the unique merge event, exact tree/source and successful historical
+check identities. Reviewed check selection does not establish which checks were mandatory then;
+current protection remains current evidence. The proof sets `historicalProtectionProven`,
+`historicalRequiredCheckPolicyProven`, `historicalRuleSuiteProven` and `methodProven` to false.
+Never fabricate suite ID/time or claim a bounded empty query proves global absence. Chronology uses
+actual merge time, never a missing suite timestamp or NaN comparison. Existing retrospective modes
+keep genuine-suite requirements and replay meaning.
+
+Predecessor preservation adds `disposition: successor-preserved`. A bounded current record binds
+exact predecessor/successor refs/heads, accepted successor review/merge/check identities, exact
+replaced/preserved paths, authentic successor quarantine coordinate/registration/manifests and Git
+objects. Both checkouts must be unmounted; recheck canonical and peer identities for drift.
+
+Publication can overwrite the cached succession handoff; cache/path equality is not historical
+authority. If durable historical proof is unavailable, the owner must explicitly enroll a CURRENT
+preservation-adoption decision for those facts with `historicalSuccessionAuthorityProven: false`.
+Do not reconstruct an old receipt. The distinct record uses its actual issuance time and digest,
+`physicalCleanupPerformed: false`, `providerAuthority: false`, `claimRetired: false`, and keeps
+predecessor `cleanupVerified: false`. Expose `preservationDispositionVerified` and
+`preservationSatisfied` separately. This may satisfy selected source closeout; full ADLC still needs
+independent live provider retirement and delivery/handover receipts.
+
+Preservation retirement needs a distinct reviewed record-only effect class and closed effect set.
+Do not reuse `claim-retirement-with-cleanup`: it binds an actual registered target, two quarantine
+effects and registered-before/after postconditions. With no historical claim, fresh adoption creates
+only a current record-only claim; it cannot retire nonexistent past authority. Exact immutable replay
+revalidates original semantics and retained facts without new effects. First publication always needs
+current authority and the current evidence window.
+
+## ADR: reviewed meaning and separate effects
+
+Acceptance approves explicit current recovery facts with historical unknowns retained. It neither
+certifies historic governance nor authorizes merge/deploy/delete. Preserve genuine-suite modes,
+physical receipt meanings, create-only CAS, expiry, target isolation and separate effect authority.
+Retain expired evidence without extending or relabeling it.
+
+Reuse existing owners: zero runtime modules/dependencies, global prompt or consumer-pin changes.
+No direct registration repair, unsafe reconstruction, blanket grant or second task registry. Keep
+current seed bytes and recovery copies; their owner resolves them in its own lane. Consumer identities
+belong to policy/evidence, not hardcoded runtime logic.
+
+Implementation owners: `src/github-transition-{policy,client,proof,provider,authority}.mjs`, committed
+transition policy, `src/cleanup{,-quarantine}.mjs`, `bin/agentic-os-{cleanup-user,completion-status,argv}.mjs`,
+lifecycle/integration/user-cleanup guides and bounded adversarial suites. Admit actual paths natively
+before code writes. Recover headroom by owner simplification without removing or compressing checks:
+source47 modules/15050 lines, bin111/23175 and per-file caps remain unchanged.
+This review candidate is documentation-only. Runtime scope, exact enrollment and provider effects
+are separately reviewed candidates. Protected acceptance precedes activating either new basis.
+
+## MVP: meaningful tests and full completion audit
+
+H01/H02 tests cover mode/schema substitution, missing/v1/foreign enrollment, identity drift,
+wrong/failed/late checks, stale workflow/policy, expiry, fabricated history, event/tree/ancestry drift,
+create-only conflict and exact replay. Legacy modes must still reject missing suites. Preserve unknowns
+through preparation, publication and retirement replay.
+
+P01/P02 tests cover wrong refs/heads/path/registration, missing succession/current adoption,
+ancestry/cache alone, omitted/extra replacements, unrelated/failed review, changed manifests/metadata,
+mounted lanes, ref/cache/canonical races, expiry before recording and exact replay after expiry.
+Replay makes no physical effect and never upgrades local evidence into provider authority.
+
+A01/A02 join distinct authority, integration/retirement/disposition and delivery/handover receipts to
+exact source/policy/scope. Run native affected planner/required check and protected CI at the frozen
+candidate; reuse valid receipts. Bounded checks do not prove runtime or device parity. Keep the consumer
+runtime pin and existing verified Production carrier. Resolve current seed-owner disposition and
+shared Context/ledger handover before Full END ADLC; report any remaining exact unproved requirement.
+
+## GTM and bounded delivery
+
+Observed pain is stalled closeout and risk to retained work; demand, willingness to pay and savings
+remain unmeasured. Use FOSS and existing free resources. First pass:15 minutes design/admission,
+document under12KiB, zero new runtime modules. Refresh implementation time/byte budget and measure
+source/bin headroom before publication. External review waits bind exact candidate/owner/recheck,
+never a promised completion time.
