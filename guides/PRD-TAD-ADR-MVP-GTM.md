@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.15"
-date: "2026-10-01"
+version: "1.4.17"
+date: "2026-10-03"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.15"
-tad_revision: "1.4.15"
-adr_revision: "1.4.15"
+prd_revision: "1.4.17"
+tad_revision: "1.4.17"
+adr_revision: "1.4.17"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--e2e-lean-venture-continuity"
-agent_id: "codex-e2e-lean-venture-readiness"
+worktree_id: "device-0232231d4a19--native-lane-alignment"
+agent_id: "codex-native-lane-alignment"
 load_policy: "on-demand"
 verification_scope: "ADLC closure observations, existing invocation reuse and bounded checks; consumer-authenticated runtime proof remains separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "01f70c74d84b669fb1ea01be88905786327bb9d1"
-mvp_revision: "1.4.15"
-gtm_revision: "1.4.15"
+reviewed_source_revision: "5f5633b0b0c5694e28e4b46bedb240edf1365e59"
+mvp_revision: "1.4.17"
+gtm_revision: "1.4.17"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
@@ -32,17 +32,15 @@ Current pins live in [`catalog/composition-source-lock.json`](../catalog/composi
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming]
 load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
 ## Identity and opening directive
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.15`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.17`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.15`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.17`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
-
 The minimum outcome is one source-owned change that can be authored, checked, integrated and handed to the product's release/evidence owner. A runtime outcome additionally needs that owner's deployed acceptance results. A paid loop additionally needs actual payment and replay receipts.
-
 **P01 inspiration pain:** the operator asks for native feature changes informed by an external repository
 but needs a grounded proposal before implementation. Hook: an outside capability suggests value; break:
 reference material alone does not establish local capability or permission; fix: reuse the local plan and
@@ -51,7 +49,6 @@ evidence. The 2026-09-14 user request establishes this workflow need; demand and
 Reuse the existing authoring/handover path; add only the missing default, without a new runtime component.
 ### Acceptance and verification contract
 Each `AC-Pnn` states Given/When/Then. Its `VCC-Pnn` is the stated check plus the observable outcome and constraint in the same row. Checks are starting points: no named file, structural match or passing subset satisfies outcomes it did not exercise. Scope is this pipeline; feature IDs refer to the unchanged composition index.
-
 | Criterion / condition | Given → when → then; scope constraint | Owner check and feature join | TAD / ADR |
 |---|---|---|---|
 | AC-P01 / VCC-P01 | Given exact input revisions, when the author resolves intent to design, then every criterion has one owner, a grounded component, a check and an exact five-role handover join; external inspiration follows the native feature default, including implementation authorization, existing MCP/invocation reuse, measured resource use and source-use constraints. Preserve shared CID meanings and product intent. | OS `npm run check` plus source/companion/criterion join review, the native inspiration acceptance cases and the shared frontmatter parser; F20. | T01 / ADR-P01, ADR-P04, ADR-P05 |
@@ -66,15 +63,14 @@ Each `AC-Pnn` states Given/When/Then. Its `VCC-Pnn` is the stated check plus the
 PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directive→RAO coverage is **9/9 derived outcomes** through T01–T09. These ratios measure linked specification coverage, not passed acceptance conditions.
 ### Priority, economics and open questions
 **Must:** reuse T01–T07 and the completion primitive T06; close the product-owned T08 gaps before the T09 runtime demonstration. **Should:** improve measured iteration cost, the P04-M shared-memory invocation handoff and optional generated publication F21; emit the shared [ADLC Cost Ledger fields][ledger], as listed for receipt references in [COSTS.md](COSTS.md), from lane and completion records so the cost register can join receipts instead of reporting unknown (planned; no implementation or acceptance criterion in this revision). **Could:** live agent-state memory tiers (the separately accepted [shared-memory startup](MEMORY.md) covers curated context only), merchant/shopping roles and spatial extensions F22–F24 after demand or a measured bottleneck. **Won't in this revision:** new orchestration controllers, copied schemas, paid infrastructure, new dependencies, invented provider receipts or customer selection. ROI score for every tier is **unmeasured**; ordering reflects dependency closure and existing-code reuse, not a commercial winner.
-
 Historical timing, clonability and cost observations remain in the
 [predecessor metrics](https://github.com/huijoohwee/agentic-os/blob/934f44fd30df4b23829a29df6cbe8d6456f7616d/guides/PRD-TAD-ADR-MVP-GTM.md#priority-economics-and-open-questions).
 This successor adds no runtime dependency; the handover routing delta is recorded in MVP within the
-40,960-byte always-load cap. This on-demand document measures about 83 KB and 640 lines at 1.4.15, above the
-600-line guidance; its next successor splits companions under the document placement rules and keeps one joined artifact. Restart time, TCO, ROI and willingness to pay
+40,960-byte always-load cap. This on-demand document remains below 84 KB and 600 lines at 1.4.17, within the
+600-line guidance; future companions follow placement rules and keep one joined artifact. Restart time, TCO, ROI and willingness to pay
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 ## TAD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.15` consumes PRD `1.4.15`, decisions ADR `1.4.15`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.17` consumes PRD `1.4.17`, decisions ADR `1.4.17`.
 ### Journey-to-system and RAO steps
 T01–T09 are independently closable task references within DIR-PIPELINE-01, not new lifecycle states. In each row, Role is Subject; the first verb and remaining target in Action give SVO. Outcome is the referenced acceptance condition, not the object of a different instruction. Context is the source binding and prerequisites; all inherit the opening intent. Re-run only changed joins and dependent evidence.
 
@@ -352,7 +348,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Runtime acceptance | Delivery → verified evidence | T09 exact release identity, trusted evaluator and provider/replay readback | Preserve failed evidence; owner correction and re-evaluation; closed here |
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.15` binds PRD/TAD `1.4.15`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.17` binds PRD/TAD `1.4.17`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -378,7 +374,7 @@ and G14 the observed absence of abandon/widen lane events; only the current life
 those behaviors. P01/P03/P05/P06 now use the bounded handover above at this exact specification revision.
 ## MVP
 ### Shared-memory invocation (P04-M, authorized implementation)
-All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.15`, refining AC-P04/T04; ADR-P06 is accepted under the 2026-09-21 explicit P04-M1–M5 authorization.
+All five roles below join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.17`, refining AC-P04/T04; ADR-P06 is accepted under the 2026-09-21 explicit P04-M1–M5 authorization.
 The unchanged native-inspiration cases and handover checks remain in the [exact predecessor](https://github.com/huijoohwee/agentic-os/blob/3559f18aeef6b0f2eb13bb95820f426a8e4e2301/guides/PRD-TAD-ADR-MVP-GTM.md#native-inspiration-acceptance-cases). Current T01 policy still governs authorization and source restrictions.
 **PRD / directive:** the operator retrieves a cited prior decision and prepares one reviewed learning proposal from the same shared source across tasks/devices. Pain: CLI-only recall is easy to miss in an MCP-driven task; switching stores can surface duplicate or stale context. This is an observed access gap, not measured customer demand. Reuse `TASK-MEMORY-001`, whose [memory guide](MEMORY.md#task-operating-model-task-memory-001100) remains the retrieval/publication contract owner; this proposal owns only its discovery/invocation handoff.
 
@@ -489,7 +485,7 @@ records each threshold before the first observation; an agent may then run the m
 [maturity-grounding]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md#experience-and-first-dollar--reference-implementation
 [document-naming]: https://github.com/huijoohwee/huijoohwee.github.io/blob/16f253b20d975f84d6b05bbd1eb0bcefece7ff00/guidelines/conventions-and-syntax-guidelines.md#document-locators-and-format
 
-Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.15` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. Live preview reduces the proposed handoff to one worktree server and one browser open; time saved and willingness to pay remain unmeasured. The document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.17` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. Live preview reduces the proposed handoff to one worktree server and one browser open; time saved and willingness to pay remain unmeasured. The document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
 
 [planning-record]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-planning-record.md
 [handover-continuity]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/adlc-artifact-continuity.md
@@ -564,6 +560,10 @@ canonical is excluded. Default to one, two for independent work, three–five on
 Five is a ceiling, not a measured optimum or parallel build target; use existing bounded test scheduling.
 Count completed work and sprint lead time, plus disk/RSS/CPU, before raising active concurrency.
 Flat paths prevent nested ownership; raw Git/other clones/devices remain outside this cooperative local gate.
+ADR-EXEC-03 (2026-10-03): `node bin/agentic-os-lane-alignment.mjs --input=<json>` binds stopped writer/mission/exact SHAs through START. Keep base/published refs; reject overlaps, unsafe state and drift.
+PRD E17: Keep histories, blobs/modes, dirty bytes and prior hook migrations; lane-alignment/hook-trust/repository tests plus `npm run check` own proof.
+TAD E17: Journal candidate/recovery refs before writes; staging/index lock, ref CAS, separate exclusivity. Retry reuses candidate; partial effects preserve/block. Pin exact quarantine bytes; digest-assert historical fixtures.
+MVP E17: Approved repair: ten files/five runtime owners, 56 KiB additions; 25-minute estimate exceeded; next slice 10 active minutes plus checks. The 4 KiB scope refresh binds mandatory release-pin/migration correction; +1 lazy entry/+315 bin lines, zero dependency/spend/always-load delta. Gate/integration/adoption/browser pending. GTM E17: demand/revenue unvalidated.
 Prior budget/selection evidence: [protected predecessor](https://github.com/huijoohwee/agentic-os/blob/f8d00dd13242d7d83bae0276837268286b550bf0/guides/PRD-TAD-ADR-MVP-GTM.md#adlc-exec-001--native-execution-economy-authorized-implementation).
 MVP: user-authorized five-checkout and no-nesting policy, 2026-09-24; initial 30-minute estimate exceeded.
 Final verification checkpoint: 15 active minutes, 14 files/100 KB; no new modules/dependencies or budget increases.
