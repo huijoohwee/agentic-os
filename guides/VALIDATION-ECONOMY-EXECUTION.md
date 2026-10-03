@@ -51,6 +51,36 @@ external or provider inputs. Keep their fresh execution semantics and required C
 checks use the existing declared-input failure guard; diagnostic retries retain their failed evidence.
 No new module, dependency, always-load instruction or background observer is introduced.
 
+## Coordination economy (ADLC-OBS-007@0.1.0)
+
+PRD: end status-only coordination; retain scope/evidence. Savings are unmeasured.
+
+TAD: one owner/candidate/effect binds source/budget/decision; delegate decision-changing disjoint
+work once. Reuse bound proof; no duplicate audits/checks.
+Use completion/attention events or blocking waits with independent covered work. State blocker,
+condition and recheck boundary once. Stale delivery permits one bounded status check at that boundary
+before lease/deadline expiry, then new action or waiting. Another check needs a changed condition or
+owner decision; turns/replies/renames reset no budget. No unchanged-state follow-up loop.
+Batch material scope/design/decision/evidence/state and handoff updates in the implemented five-role
+owner. Unchanged turns create no book/audit duty; keep native receipts. Never falsely complete,
+block or pause the objective. Refresh on drift; reuse covered grants; verify each protected effect's authority.
+Stat/select ranges first. Track cumulative source/captured-output bytes before emission, including
+combined/escaped text where measurable. Truncation erases no consumption. Missing accounting or
+breach stops expansion: qualify the limit and replan, without cap inflation or another reader.
+
+ADR: material/handoff updates replace per-turn records. Detail stays on demand; no new modules,
+dependencies, observers, ledgers or weaker checks.
+MVP: eight existing files, 12 KiB additions; runner repair slice six active minutes. Prompt stays 999 LF UTF-8 bytes.
+Always-load net delta: -30 bytes; zero new modules/dependencies. Run native
+checks/evaluators; retain exact handoff evidence and bounded stale rechecks. Source checks prove
+neither enforcement nor adoption; integration/delivery authority and proof remain separate.
+GTM: free/FOSS pilot; savings need comparable evidence. Checked revert preserves receipts/work.
+
+Local affected validation accepts `npm run check -- --concurrency=1` (integers 1–4, default 4)
+through the existing pool when contention warrants fewer workers; cost/receipts report the actual width.
+CI rejects reduced width and retains 4; fast/git accept no options. Existing timeouts, input/cache bindings
+and required checks stay intact. An isolated pass suggests contention but proves neither cause nor full green.
+
 ## Planning-bound startup evidence (WORKFLOW-OBS-006)
 
 Pass `--plan=<repository-relative-prd-tad-adr-mvp-gtm.md>` to the existing `agentic-os start`
