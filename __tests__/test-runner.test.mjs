@@ -61,6 +61,31 @@ test('options are explicit and reject unknown, duplicate and empty input', () =>
     ['affected', '--base=a', '--base=b'], ['fast', '--fresh'], ['affected', '--ci-run=0']]) assert.throws(() => parseArguments(args));
   assert.equal(parseArguments(['affected', '--ci-run=42'])['ci-run'], '42');
 });
+test('local concurrency is explicit, bounded and forbidden for fast/git', () => {
+  assert.equal(parseArguments([]).concurrency, 4);
+  for (const n of [1, 2, 3, 4]) assert.equal(parseArguments(['affected', `--concurrency=${n}`]).concurrency, n);
+  for (const value of ['', '0', '5', '1.5', '01', 'NaN'])
+    assert.throws(() => parseArguments(['affected', `--concurrency=${value}`]));
+  for (const args of [['affected', '--concurrency=1', '--concurrency=2'],
+    ['affected', '--concurrency'], ['affected', '--parallel=1'], ['fast', '--concurrency=4'], ['git', '--concurrency=1']])
+    assert.throws(() => parseArguments(args));
+});
+test('serial execution reports its pool size and CI rejects reduced concurrency before effects', async t => {
+  localEnvironment(t);
+  const f = fixture(t);
+  assert.equal(await f.invoke(['--concurrency=1']), 0);
+  assert.equal(f.receipt().cost.concurrency, 1);
+  assert.ok(f.messages.some(message => message.includes('concurrency 1;')));
+  await assert.rejects(runTests(['affected', '--committed', '--fresh', '--concurrency=1'], { ci: true }), /blocked-test-ci-concurrency/);
+  for (const key of ['CI', 'GITHUB_ACTIONS']) {
+    process.env[key] = 'true';
+    await assert.rejects(f.invoke(['--concurrency=2']), /blocked-test-ci-concurrency/);
+    delete process.env[key];
+  }
+  const messages = [];
+  assert.equal(await runTests(['plan', '--base=HEAD', '--concurrency=4'], { root: f.root, out: text => messages.push(text) }), 0);
+  assert.equal(JSON.parse(messages[0]).cost.concurrency, 4);
+});
 test('bound CI covering HEAD defers the local suite; identity drift and failed CI do not', async t => {
   const env = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
   delete process.env.CI; delete process.env.GITHUB_ACTIONS;
@@ -200,6 +225,18 @@ test('release check pool fills freed slots, bounds concurrency and preserves sta
   complete.get('2')(false); await new Promise(resolve=>setImmediate(resolve));
   for(const id of ['0','3','4'])complete.get(id)(true);
   await running; assert.equal(max,4);assert.equal(active,0);assert(!started.includes('5'));
+});
+test('pool honors every supported width and rejects invalid widths', async () => {
+  const checks = Array.from({ length: 7 }, (_, i) => ({ name: String(i) }));
+  for (const width of [1, 2, 3, 4]) {
+    let active = 0, maximum = 0; const visited = [];
+    await runCheckPool(checks, async check => {
+      maximum = Math.max(maximum, ++active); visited.push(check.name);
+      await new Promise(resolve => setImmediate(resolve)); active--; return true;
+    }, width);
+    assert.equal(maximum, width); assert.equal(active, 0); assert.equal(new Set(visited).size, 7);
+  }
+  for (const width of [0, 5, 1.5, NaN]) await assert.rejects(runCheckPool(checks, () => true, width), /invalid-check-concurrency/);
 });
 test('release pool waits for active work after a rejection and runs every successful check once',async()=>{
  const checks=Array.from({length:7},(_,i)=>({name:String(i),estimatedMs:i})),visited=[];

@@ -13,11 +13,7 @@ import { createAgentRunClient } from '../runtime/agents/invocation.js';
 import { withDeadline } from '../runtime/agents/running-agent-contract.js';
 import { runCli } from '../src/mcp-stdio.mjs';
 import { handleRequest, MODERN_VERSION } from '../src/mcp-server.mjs';
-import { fixture as workflowFixture, request, context, output } from './agents/workflow-fixture.mjs';
-
-// HTTP/SQLite tests use real scheduling, not the shared fixture's 10 ms fake-clock lease.
-const fixture = options => workflowFixture({ taskTimeoutMs: 500, taskLeaseMs: 1_500,
-  storeClaimTtlMs: 500, ...options });
+import { realtimeFixture as fixture, request, context, output } from './agents/workflow-fixture.mjs';
 
 function directory(t) {
   const path = mkdtempSync(join(tmpdir(), 'agent-host-'));

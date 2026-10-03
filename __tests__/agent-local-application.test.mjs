@@ -6,12 +6,15 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {startLocalAgentHost} from '../runtime/agents/local-host.js';
 import {createAgentSwarmSqliteStore} from '../runtime/agents/sqlite-store.js';
-import {fixture,request,context} from './agents/workflow-fixture.mjs';
+import {realtimeFixture as fixture,request,context} from './agents/workflow-fixture.mjs';
 
-async function setup(t, application) {
+async function setup(t, application, claimDelayMs = 0) {
   const directory=mkdtempSync(join(tmpdir(),'local-app-'));
-  const stateStore=await createAgentSwarmSqliteStore({directory});
-  const runtime=fixture({stateStore,now:Date.now,taskTimeoutMs:500,taskLeaseMs:1000});
+  const sqlite=await createAgentSwarmSqliteStore({directory});
+  const stateStore={...sqlite,async claim(...args){
+    const record=await sqlite.claim(...args);if(claimDelayMs)await pause(claimDelayMs);return record;
+  }};
+  const runtime=fixture({stateStore,now:Date.now});
   const host=await startLocalAgentHost({runtime,stateStore,authenticate:()=>null,
     resolveContext:()=>context,application:application(runtime)});
   t.after(async()=>{await host.close();stateStore.close();rmSync(directory,{recursive:true,force:true});});
@@ -27,14 +30,15 @@ test('one bounded application uses its own session admission and the existing du
     assert.equal(req.headers.get('origin'),origin);
     const body=await req.json();assert.deepEqual(body,{title:'Mug'});
     return Response.json(await runtime.start(request,context),{status:202,headers:{'set-cookie':'session=valid; HttpOnly'}});
-  }));
+  }),25);
   const send=(body,headers={})=>fetch(origin+'/commerce/run',{method:'POST',body:JSON.stringify(body),
     headers:{'content-type':'application/json',origin,...headers}});
   assert.equal((await send({title:'Mug'})).status,401);
   const accepted=await send({title:'Mug'},{cookie:'session=valid'});
   assert.equal(accepted.status,202);assert.match(accepted.headers.get('set-cookie'),/HttpOnly/);
   for(let n=0;n<100&&(await runtime.status(request.runId,context)).status!=='completed';n++)await pause(20);
-  assert.equal((await runtime.status(request.runId,context)).status,'completed');
+  const completed=await runtime.status(request.runId,context);
+  assert.equal(completed.status,'completed',JSON.stringify(completed));
   assert.equal((await send({title:'Mug'},{cookie:'session=valid'})).status,202);
   assert.equal((await fetch(host.endpoint+'status',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
   const before=calls;
