@@ -2,7 +2,7 @@
 
 Completion separates observation, authority, integration, retirement and cleanup.
 `agentic-os completion status --ref=<lane>` is read-only; grants no new receipts.
-Local consent: `../guides/USER-CLEANUP.md`.
+Guides: [authority](../guides/CLEANUP-AUTHORITY.md), [local](../guides/USER-CLEANUP.md).
 
 ## Stable package surfaces
 
@@ -13,9 +13,8 @@ Local consent: `../guides/USER-CLEANUP.md`.
 - `agentic-os/adapters/github-transition-policy` validates the committed exact-target policy.
 - `agentic-os/adapters/worktree-cleanup` assesses and executes quarantine-only cleanup.
 
-An effect plan binds the exact target, candidate, snapshot, predecessor, authority, closed effects, and
-parameters. Its request cites `effect-plan:sha256:<planByteDigest>` exactly once. Structural validators do
-not authenticate GitHub; provider-live adapters do.
+Effect plans bind target, candidate, snapshot, predecessor, authority, closed effects and parameters.
+Requests cite `effect-plan:sha256:<planByteDigest>` once. Only live adapters authenticate GitHub with bound policy.
 
 ## Read-only authority dispatch
 

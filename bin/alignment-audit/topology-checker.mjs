@@ -1,4 +1,5 @@
-import { makeFinding } from "./finding.mjs";
+import { createDocumentationFinding as createFinding,
+  compareFindingEvidenceIdentity as compareFindingIdentity } from "./finding.mjs";
 import { collectDeployMutationMatches } from "./deploy-gate.mjs";
 
 const REQUIRED_LANES = Object.freeze(["development", "production-mirror", "edge-delivery"]);
@@ -441,25 +442,4 @@ function documentContent(doc) {
 function arrayOf(value) {
   if (value === undefined || value === null) return [];
   return Array.isArray(value) ? value : [value];
-}
-
-function compareFindingIdentity(left, right) {
-  return left.findingType.localeCompare(right.findingType, "en") ||
-    left.artifactReference.localeCompare(right.artifactReference, "en") ||
-    left.evidenceExcerpt.localeCompare(right.evidenceExcerpt, "en");
-}
-
-function createFinding(findingType, fields) {
-  return makeFinding({
-    findingType,
-    guidelineAnchor: fields.guidelineAnchor ?? "-",
-    artifactReference: fields.artifactReference,
-    evidenceExcerpt: fields.evidenceExcerpt,
-    remediation: {
-      class: "documentation-change",
-      statement: fields.statement,
-      state: "proposed",
-      operatorInstructionRef: null,
-    },
-  });
 }

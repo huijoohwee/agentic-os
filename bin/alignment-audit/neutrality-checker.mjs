@@ -1,4 +1,4 @@
-import { makeFinding } from "./finding.mjs";
+import { createDocumentationFinding as createFinding } from "./finding.mjs";
 
 export const DEFAULT_VENDOR_TOKENS = Object.freeze([
   "AcmeCloud",
@@ -282,19 +282,4 @@ function compareFindingIdentity(left, right) {
   return left.findingType.localeCompare(right.findingType, "en") ||
     left.guidelineAnchor.localeCompare(right.guidelineAnchor, "en") ||
     left.artifactReference.localeCompare(right.artifactReference, "en");
-}
-
-function createFinding(findingType, fields) {
-  return makeFinding({
-    findingType,
-    guidelineAnchor: fields.guidelineAnchor ?? "-",
-    artifactReference: fields.artifactReference ?? "-",
-    evidenceExcerpt: fields.evidenceExcerpt,
-    remediation: {
-      class: "documentation-change",
-      statement: fields.statement,
-      state: "proposed",
-      operatorInstructionRef: null,
-    },
-  });
 }

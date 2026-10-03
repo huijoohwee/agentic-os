@@ -112,17 +112,13 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     case 'publish':
       return cmdLand(cwd, rest, profile, policy);
     case 'finish': {
-      const finishStatus = cmdFinish(root, rest, policy, profile);
-      if (finishStatus !== 0) return finishStatus;
-      return cmdReap(root, rest, policy, profile);
+      return cmdFinishAndReap(root, rest, policy, profile);
     }
     case 'close': {
-      const finishStatus = cmdFinish(root, rest, policy, profile);
-      if (finishStatus !== 0) return finishStatus;
-      const reapStatus = cmdReap(root, rest, policy, profile);
-      if (reapStatus !== 0) return reapStatus;
+      const status = cmdFinishAndReap(root, rest, policy, profile);
+      if (status !== 0) return status;
       return (await import('./agentic-os-completion-status.mjs'))
-        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out);
+        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out, { preservationPath: option(rest, 'preservation') });
     }
     case 'complete': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
@@ -138,10 +134,8 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       });
       if (waitStatus !== 0) return waitStatus;
       beforeClose();
-      const finishStatus = cmdFinish(root, rest, policy, profile);
-      if (finishStatus !== 0) return finishStatus;
-      const reapStatus = cmdReap(root, rest, policy, profile);
-      if (reapStatus !== 0) return reapStatus;
+      const status = cmdFinishAndReap(root, rest, policy, profile);
+      if (status !== 0) return status;
       const completionModule = await import('./agentic-os-completion-status.mjs');
       const completion = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
       out(JSON.stringify(completion));
@@ -167,6 +161,10 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       err(`unknown release-common action "${action}"`);
       return cmdReleaseCommonHelp();
   }
+}
+function cmdFinishAndReap(root, argv, policy, profile) {
+  const status = cmdFinish(root, argv, policy, profile);
+  return status !== 0 ? status : cmdReap(root, argv, policy, profile);
 }
 function cmdStatus(root, argv, profile, policy) {
   const device = assertDevice(option(argv, 'device') ?? deviceSegment());
@@ -369,7 +367,7 @@ async function main() {
     case 'reap': return cmdReap(root, argv, policy, profile);
     case 'finish': return cmdFinish(root, argv, policy, profile);
     case 'completion': return (await import('./agentic-os-completion-status.mjs'))
-      .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out);
+      .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out, { preservationPath: option(argv, 'preservation') });
     case 'canonical-sync': return runCanonicalSync(root, argv, policy);
     case 'reconcile': requireCanonical(root, policy); return runReconcile(root, argv, policy);
     case 'queue': return cmdQueue(root, argv, profile);

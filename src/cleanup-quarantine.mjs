@@ -12,14 +12,12 @@ import { collectRecoveryInventory } from './recovery-inventory.mjs';
 import { commonDir, observeGit, worktreeInventory } from './git.mjs';
 import { boundedDirectoryEntries, observeQuarantineManifest, readBoundedStableFile,
   sameCleanupNode as sameNode, strictCleanupStat as strictStat } from './cleanup-manifest.mjs';
+import { freezeCleanupRecord as frozen } from './cleanup-records.mjs';
 export { observeQuarantineManifest } from './cleanup-manifest.mjs';
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const QUARANTINE_ROOT = 'agentic-os-cleanup-quarantine',
   OPERATION_SCHEMA = 'agentic-os/worktree-quarantine-operation/v1';
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
-function frozen(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(frozen); return Object.freeze(value); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
 function absent(path, label) {
   try { lstatSync(path); return false; } catch (error) {
@@ -27,7 +25,7 @@ function absent(path, label) {
     fail(`blocked-${label}`, `${label} absence is not proven`);
   }
 }
-function selectedManifest(root, names, limits, { allowMissing = false, label, retainedHardlinks = false } = {}) {
+function selectedManifest(root, names, limits, { allowMissing = false, label, retainedHardlinks = false, observe = observeQuarantineManifest } = {}) {
   const rootBefore = strictStat(root, `${label}-root`);
   if (!rootBefore.isDirectory() || rootBefore.isSymbolicLink()
     || new Set(names).size !== names.length
@@ -40,7 +38,7 @@ function selectedManifest(root, names, limits, { allowMissing = false, label, re
       if (!allowMissing) fail('blocked-cleanup-manifest', `${label} path is absent`);
       return { name, manifest: null };
     }
-    const manifest = observeQuarantineManifest(path, { ...limits, retainedHardlinks });
+    const manifest = observe(path, { ...limits, retainedHardlinks });
     bytes += manifest.bytes; entries += manifest.entries;
     if (!Number.isSafeInteger(bytes) || bytes > limits.byteCeiling
       || !Number.isSafeInteger(entries) || entries > limits.entryCeiling)
@@ -60,27 +58,6 @@ function observeRegistrationManifest(root, limits) {
     .filter((name) => !ignored.has(name));
   return selectedManifest(root, names, limits, { label: 'worktree-registration' });
 }
-function peerRegistrationManifest(root, names, limits) {
-  const rootBefore = strictStat(root, 'peer-worktree-admin-root');
-  let bytes = 0, entries = names.length;
-  const items = [...names].sort().map((name) => {
-    const path = join(root, name), stat = lstatSync(path, { bigint: true, throwIfNoEntry: false });
-    if (!stat) fail('blocked-cleanup-manifest', 'peer worktree admin path is absent');
-    const manifest = observeRegistrationManifest(path, limits);
-    bytes += manifest.bytes;
-    entries += manifest.entries;
-    if (!Number.isSafeInteger(bytes) || bytes > limits.byteCeiling
-      || !Number.isSafeInteger(entries) || entries > limits.entryCeiling)
-      fail('blocked-cleanup-manifest', 'peer worktree admin ceiling exceeded');
-    return { name, manifest };
-  });
-  const rootAfter = lstatSync(root, { bigint: true, throwIfNoEntry: false });
-  if (!sameNode(rootBefore, rootAfter))
-    fail('blocked-cleanup-manifest', 'peer worktree admin root changed during observation');
-  return frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1',
-    label: 'peer-worktree-admin', mode: (rootBefore.mode & 0o7777n).toString(8), items }),
-  bytes, entries });
-}
 function sharedState(common, worktrees, excludedAdminId, plan) {
   if (process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES)
     fail('blocked-cleanup-object-alternate', 'alternate object environment is unsupported');
@@ -96,7 +73,8 @@ function sharedState(common, worktrees, excludedAdminId, plan) {
   const adminNames = boundedDirectoryEntries(adminRoot, limits.entryCeiling,
     'peer worktree admin').map((entry) => entry.name)
     .filter((name) => name !== excludedAdminId);
-  const peerPhysical = peerRegistrationManifest(adminRoot, adminNames, limits);
+  const peerPhysical = selectedManifest(adminRoot, adminNames, limits,
+    { label: 'peer-worktree-admin', observe: observeRegistrationManifest });
   const refs = selectedManifest(common, ['AUTO_MERGE', 'BISECT_HEAD', 'CHERRY_PICK_HEAD',
     'FETCH_HEAD', 'HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'REBASE_HEAD', 'REVERT_HEAD',
     'logs', 'packed-refs', 'refs', 'reftable'],
@@ -227,25 +205,34 @@ function readOperation(path, eligibility = null) {
     fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata does not match');
   return value;
 }
-/** Verify retained cleanup bytes independently of later policy, refs, and peer activity.
- * This is a local observation of a past effect, never current mutation authority. */
-export function observeRetainedWorktreeQuarantine(root, ref, head) {
+export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef } = {}) {
   try {
     const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT);
     privateDirectory(base, 'cleanup-quarantine-root');
     const entries = boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root');
     for (const entry of entries) {
+      if (coordinate !== null && entry.name !== coordinate) continue;
       if (!/^[a-f0-9]{64}$/u.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
       try {
         const operation = join(base, entry.name), registration = join(operation, 'registration');
         privateDirectory(operation, 'cleanup-operation-directory');
         if (UTF8.decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retained-head'))
           !== `ref: refs/heads/${ref}\n`) continue;
-        const { eligibility: e } = readOperation(operation);
+        const record = readOperation(operation), e = record.eligibility;
         if (e.planDigest !== entry.name || !['projectionBytes', 'projectionEntries', 'registrationBytes', 'registrationEntries']
           .every(key => Number.isSafeInteger(e[key]) && e[key] >= 0)
           || e.projectionBytes > 4 * 1024 ** 3 || e.projectionEntries > 250000
           || e.registrationBytes > 16 * 1024 ** 2 || e.registrationEntries > 20000) continue;
+        if (originalReceipt && (originalReceipt.schema !== 'agentic-os/user-cleanup-receipt/v1'
+          || originalReceipt.mode !== 'explicit-local-user-consent-recovery' || originalReceipt.planDigest !== entry.name
+          || originalReceipt.review?.branch !== ref || originalReceipt.review?.head !== head
+          || originalReceipt.operationPath !== operation || originalReceipt.projectionQuarantinePath !== join(operation, 'projection')
+          || originalReceipt.registrationQuarantinePath !== registration || originalReceipt.executedAt !== record.executedAt
+          || originalReceipt.result !== 'quarantined' || originalReceipt.projectionQuarantined !== true
+          || originalReceipt.registrationQuarantined !== true || originalReceipt.stoppedAcknowledged !== true
+          || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
+          || !absent(originalReceipt.targetPath, 'retained-target')
+          || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
         const projection = observeQuarantineManifest(join(operation, 'projection'), {
           byteCeiling: e.projectionBytes, entryCeiling: e.projectionEntries, retainedHardlinks: true,
         });
@@ -260,13 +247,26 @@ export function observeRetainedWorktreeQuarantine(root, ref, head) {
         if (projection.digest === e.projectionManifestDigest && projection.bytes === e.projectionBytes
           && projection.entries === e.projectionEntries && retained.digest === e.registrationManifestDigest
           && retained.bytes === e.registrationBytes && retained.entries === e.registrationEntries
-          && retainedHead === head) return true;
+          && retainedHead === head) {
+          const inventory = originalReceipt ? collectRecoveryInventory({ cwd: join(operation, 'projection'), canonicalRef,
+            maxContentEntries: e.projectionEntries, repositoryContext: { commonDirectory: realpathSync(commonDir(root)),
+              gitDirectory: realpathSync(commonDir(root)), worktree: join(operation, 'projection'), indexFile: join(registration, 'index') } }) : null;
+          if (inventory && (inventory.branch !== ref || inventory.headRevision !== head || !same(record, readOperation(operation))
+            || !absent(originalReceipt.targetPath, 'retained-target')
+            || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
+          for (const path of [base, operation]) privateDirectory(path, 'cleanup-operation-directory');
+          return frozen({ coordinate: entry.name, operationDigest: governanceDigest(record), registrationRef: ref,
+            retainedHead, projectionManifest: projection, registrationManifest: retained,
+            ...(inventory ? { originalReceiptDigest: governanceDigest(originalReceipt),
+              retainedIndexInventoryDigest: inventory.indexInventoryDigest, recoveryInventoryDigest: governanceDigest(inventory) } : {}) });
+        }
       } catch { /* A partial, changed or unbound coordinate cannot establish completion. */ }
     }
   } catch { /* No bounded retained proof is available. */ }
-  return false;
+  return null;
 }
-/** Classify an exact completed quarantine after response loss; partial coordinates remain blocked. */
+export const observeRetainedWorktreeQuarantine = (root, ref, head) =>
+  observeRetainedQuarantineEvidence(root, ref, head) !== null;
 export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   cwd = process.cwd(), observePolicy = trustedState,
 } = {}) {

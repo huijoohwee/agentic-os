@@ -136,21 +136,13 @@ export async function watchReleaseCommonReview(binding, {
       emit({ ...event, event: 'merged', nextAction: 'run_close' });
       return { code: 0, status: 'merged', review, polls, elapsedMs: Math.round(now() - started) };
     }
-    if (observation?.sourceHeadBound !== true) {
+    if (observation?.sourceHeadBound !== true || state !== 'OPEN') {
       return {
         code: 1,
         status: 'blocked',
-        reason: observation?.reason ?? 'review-unbound',
-        review,
-        polls,
-        elapsedMs: Math.round(now() - started),
-      };
-    }
-    if (state !== 'OPEN') {
-      return {
-        code: 1,
-        status: 'blocked',
-        reason: `review-state-${String(state ?? 'unknown').toLowerCase()}`,
+        reason: observation?.sourceHeadBound !== true
+          ? observation?.reason ?? 'review-unbound'
+          : `review-state-${String(state ?? 'unknown').toLowerCase()}`,
         review,
         polls,
         elapsedMs: Math.round(now() - started),
@@ -241,6 +233,12 @@ export async function runReleaseCommonLocalCleanup({
         fail('blocked-release-common-local-cleanup-policy', 'local cleanup policy drifted');
       return current;
     };
+    const cleanupOptions = {
+      now,
+      api,
+      resolvePolicy,
+      observeRemote: () => `${current.canonical}\trefs/heads/main`,
+    };
     const plan = planUserCleanup({
       cwd: root,
       target: status.lane.path,
@@ -249,11 +247,8 @@ export async function runReleaseCommonLocalCleanup({
       workflow,
       recovery: true,
     }, {
-      now,
-      api,
-      resolvePolicy,
+      ...cleanupOptions,
       maxContentEntries: current.limits.projectionEntryCeiling,
-      observeRemote: () => `${current.canonical}\trefs/heads/main`,
     });
     out(JSON.stringify(plan));
     assertWorkflowCurrent();
@@ -261,10 +256,7 @@ export async function runReleaseCommonLocalCleanup({
       cwd: root,
       authorization: `agentic-os:user-cleanup:${plan.planDigest}`,
       stopped: true,
-      now,
-      api,
-      resolvePolicy,
-      observeRemote: () => `${current.canonical}\trefs/heads/main`,
+      ...cleanupOptions,
     });
     out(JSON.stringify(receipt));
     return 0;

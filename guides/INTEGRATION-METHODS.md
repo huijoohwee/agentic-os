@@ -62,6 +62,20 @@ existing fenced handoff. After squash, ancestry alone does not prove completion:
 exact-content integration proof. After merge, preserve the same source/merge/check receipts.
 Offline work may continue within its grant; publication and integration require fresh authority.
 
+## Enrolled historical-content facts
+
+`historical-content-facts/v1` is a separate current recovery basis under versioned committed
+transition enrollment. It authenticates exact historical source, merge and selected successful checks,
+plus current protection/ancestry. It keeps historical rule-suite, historical required-check policy,
+historical protection and merge method unproven. A missing suite never silently selects this mode.
+Existing retrospective and content-inclusion modes retain genuine-suite proof and replay semantics.
+
+Only fresh initial retrospective issuance for the exact reviewed current-adoption scope can use it.
+Preparation, dispatch, publication and replay re-read the enrolled policy at the exact workflow SHA.
+The proof's distinct schema rejects substitution with older stronger proofs or fabricated historical
+claims. It authorizes no provider merge or physical cleanup; each later transition keeps separate
+effect authority. See [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md).
+
 ## Adoption and rollback
 
 This additive v1 capability preserves the meaning of existing `integration-method:squash` profiles.
