@@ -1,4 +1,4 @@
-import { makeFinding } from "./finding.mjs";
+import { createDocumentationFinding as createFinding } from "./finding.mjs";
 
 export function detectDrift(
   _model = {},
@@ -200,19 +200,4 @@ function compareFindingIdentity(left, right) {
 function arrayOf(value) {
   if (value === undefined || value === null) return [];
   return Array.isArray(value) ? value : [value];
-}
-
-function createFinding(findingType, fields) {
-  return makeFinding({
-    findingType,
-    guidelineAnchor: fields.guidelineAnchor ?? "-",
-    artifactReference: fields.artifactReference ?? "-",
-    evidenceExcerpt: fields.evidenceExcerpt,
-    remediation: {
-      class: "documentation-change",
-      statement: fields.statement,
-      state: "proposed",
-      operatorInstructionRef: null,
-    },
-  });
 }

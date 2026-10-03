@@ -1,4 +1,5 @@
 /** Concrete GitHub REST observation and create-only publication for transition authority. */
+import { freezeCleanupRecord as freeze } from './cleanup-records.mjs';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { createGitHubAuthorityReadProvider } from './github-authority-client.mjs';
@@ -8,32 +9,16 @@ import {
   deriveGitHubTransitionRunName, validateGitHubStoredTransition,
   validateGitHubTransitionInput, validateGitHubTransitionWorkflowRun,
 } from './github-transition-client.mjs';
-import { GITHUB_TRANSITION_POLICY_PATH, encodeGitHubTransitionPolicy,
-  validateGitHubTransitionPolicy } from './github-transition-policy.mjs';
+import { validateTransitionText as text, validateTransitionInstant as instant, GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_POLICY_PATH, encodeGitHubTransitionPolicy,
+  assertGitHubTransitionPolicyOperation, validateTransitionRevision as sha, validateTransitionIdentifier as id, validateGitHubTransitionPolicy } from './github-transition-policy.mjs';
 
-const API = 'https://api.github.com', MAX_RESPONSE_BYTES = 4 * 1024 * 1024,
-  SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u, ID = /^[1-9][0-9]{0,18}$/u;
+const API = 'https://api.github.com', MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u,
   REF_RULES = Object.freeze(['deletion', 'non_fast_forward', 'update']);
 export const GITHUB_BYPASS_REDACTED = 'unobserved:provider-redacted:read-only';
 function fail(message) { throw new TypeError(message); } function object(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   return value; }
-function text(value, label) {
-  if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
-    || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be bounded text`);
-  return value;
-}
-function sha(value, label) {
-  if (typeof value !== 'string' || !SHA.test(value)) fail(`${label} must be a full Git revision`);
-  return value; }
-function id(value, label) { const result = String(value);
-  if (!ID.test(result)) fail(`${label} must be an identifier`); return result; }
-function instant(value, label) {
-  const parsed = Date.parse(text(value, label));
-  if (!Number.isFinite(parsed)) fail(`${label} must be a UTC instant`);
-  return new Date(parsed).toISOString();
-}
 function actor(value, label) {
   const source = object(value, label), login = text(source.login, `${label}.login`).toLowerCase();
   if (!LOGIN.test(login)) fail(`${label}.login is invalid`);
@@ -44,10 +29,6 @@ function repository(value) {
   return { ...result, path: `/repos/${encodeURIComponent(result.owner)}/${encodeURIComponent(result.name)}` };
 }
 function encodedPath(value) { return value.split('/').map(encodeURIComponent).join('/'); }
-function freeze(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(freeze); return Object.freeze(value);
-}
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
 async function bytes(response) {
   const length = response.headers?.get?.('content-length');
@@ -296,37 +277,35 @@ export function createGitHubTransitionRestProvider({ repository: identity,
   timeoutMs = 15_000 } = {}) {
   const repo = repository(identity), target = repository(targetIdentity);
   const call = rest(token, fetchImpl, timeoutMs);
+  const integrationProof = async (input, expectedProof, policy, workflowRevision, requirePlanBinding = true) => {
+    const verifiedPolicy = input.integrationMode === GITHUB_HISTORICAL_CONTENT_MODE
+      ? await committedPolicy(call, repo, policy, workflowRevision) : policy;
+    const initial = input.predecessorIssuance === null ? null
+      : createGitHubAuthorityReadProvider({ issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
+    return observeGitHubIntegrationProof({ api: {
+      call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
+      rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
+      commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
+    }, target, input, initialProvider: initial, expectedProof, requirePlanBinding, policy: verifiedPolicy });
+  };
   return Object.freeze({
     readPolicy(policy, revision) { return committedPolicy(call, repo, policy, revision); },
     async observeWorkflow(runValue, operationInputDigest, { terminal, currentRef }, evidenceRef) {
       const run = validateGitHubTransitionWorkflowRun(runValue, repo.repository);
       return workflow(call, repo, run, operationInputDigest, terminal, currentRef, evidenceRef);
     },
-    async prepareIntegrationProof(inputValue) {
+    async prepareIntegrationProof(inputValue, policy = null, workflowRevision = null) {
       const input = validateGitHubTransitionInput(inputValue);
       if (input.request.repository !== target.repository
         || input.request.requestedTransition !== 'integrate')
         fail('integration proof preparation target or operation changed');
-          const initial = input.predecessorIssuance === null ? null : createGitHubAuthorityReadProvider({
-            issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
-      return observeGitHubIntegrationProof({ api: {
-        call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
-        rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
-        commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
-      }, target, input, initialProvider: initial, requirePlanBinding: false });
+      return integrationProof(input, null, policy, workflowRevision, false);
     },
-    async observeProof(inputValue, expectedProof = null) {
+    async observeProof(inputValue, expectedProof = null, policy = null, workflowRevision = null) {
       const input = validateGitHubTransitionInput(inputValue);
       if (input.request.repository !== target.repository) fail('transition proof target changed');
-      if (input.request.requestedTransition === 'integrate') {
-        const initial = input.predecessorIssuance === null ? null : createGitHubAuthorityReadProvider({
-          issuance: input.predecessorIssuance, token, fetchImpl, timeoutMs });
-        return { proof: await observeGitHubIntegrationProof({ api: {
-          call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
-          rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
-          commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
-        }, target, input, initialProvider: initial, expectedProof }), predecessor: null };
-      }
+      if (input.request.requestedTransition === 'integrate')
+        return { proof: await integrationProof(input, expectedProof, policy, workflowRevision), predecessor: null };
       const prior = await publication(call, repo, input.request.fenceRevision);
       const request = prior?.stored.operationInput.request;
       if (!prior || request.requestedTransition !== 'integrate'
@@ -336,21 +315,33 @@ export function createGitHubTransitionRestProvider({ repository: identity,
         fail('retire does not source one exact stored integrated successor');
       await workflow(call, repo, prior.stored.workflowRun,
         prior.stored.operationInputDigest, true, false, prior.stored.evidenceRef);
-        const initial = prior.stored.operationInput.predecessorIssuance === null ? null
-          : createGitHubAuthorityReadProvider({ issuance: prior.stored.operationInput.predecessorIssuance,
-            token, fetchImpl, timeoutMs });
-      const observedProof = await observeGitHubIntegrationProof({ api: {
-        call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
-        rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
-        commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
-      }, target, input: prior.stored.operationInput, initialProvider: initial,
-      expectedProof: prior.stored.providerProof });
+      const observedProof = await integrationProof(prior.stored.operationInput, prior.stored.providerProof,
+        prior.stored.policy, prior.stored.workflowRun.workflowRevision);
       if (!same(observedProof, prior.stored.providerProof))
         fail('stored integrated successor no longer matches live provider proof');
+      const disposition = input.preservationDisposition;
+      if (disposition) {
+        const adoptedPolicy = await committedPolicy(call, repo, policy, workflowRevision);
+        assertGitHubTransitionPolicyOperation(adoptedPolicy, input);
+        if (prior.stored.operationInput.integrationMode !== GITHUB_HISTORICAL_CONTENT_MODE
+          || disposition.policyDigest !== governanceDigest(adoptedPolicy)
+          || disposition.state.policyRepository !== repo.repository || disposition.state.policyRevision !== workflowRevision
+          || observedProof.reviewLocator !== disposition.adoption.reviewLocator
+          || observedProof.mergeRevision !== disposition.adoption.merge
+          || observedProof.candidateHeadRevision !== (disposition.adoption.successorHead ?? disposition.adoption.targetHead)
+          || !same(disposition.review.checks.map(check => [String(check.checkId), check.name]).sort(),
+            observedProof.successfulChecks.map(check => [check.checkRunId, check.context]).sort()))
+          fail('record-only retirement does not bind the adopted provider integration');
+      }
       const payload = { coordinate: prior.stored.coordinate,
         storedDigest: prior.stored.storedDigest,
         publicationDigest: prior.publicationDigest,
-        integrationProofDigest: observedProof.proofDigest };
+        integrationProofDigest: observedProof.proofDigest,
+        ...(disposition ? { effectClass: 'claim-retirement-record-only',
+          preservationReceiptDigest: disposition.receiptDigest, adoptionDigest: disposition.adoptionDigest,
+          preservationPolicyRevision: workflowRevision,
+          physicalCleanupPerformed: false,
+          [disposition.adoption.targetHead ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven']: false } : {}) };
       const proofPayload = { schema: 'agentic-os/github-retire-provider-proof/v1', ...payload };
       const proof = freeze({ ...proofPayload, proofDigest: governanceDigest(proofPayload) });
       if (expectedProof !== null && !same(proof, expectedProof))

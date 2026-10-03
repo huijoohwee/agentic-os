@@ -1,9 +1,10 @@
 /** Provider-observed integration proof joined to one live predecessor issuance. */
+import { freezeCleanupRecord as freeze } from './cleanup-records.mjs';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { GITHUB_ACTIONS_INTEGRATION_ID } from './github-authority.mjs';
 import { createGitHubProtectionProjection } from './github-authority-issuer.mjs';
 import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE } from './github-transition-client.mjs';
-import { latestSuccessfulRequiredCheck, parseClassicBranchProtection } from './github-transition-policy.mjs';
+import { validateTransitionText as text, validateTransitionInstant as instant, GITHUB_HISTORICAL_CONTENT_MODE, assertGitHubTransitionPolicyOperation, historicalContentProjection, targetRepositoryIdentity, latestSuccessfulRequiredCheck, parseClassicBranchProtection } from './github-transition-policy.mjs';
 const ID = /^[1-9][0-9]{0,18}$/u;
 const REDACTED_BYPASS = 'unobserved:provider-redacted:read-only';
 const PROVIDER_EVENT_SKEW_MS = 5_000;
@@ -12,39 +13,11 @@ function object(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   return value;
 }
-function text(value, label) {
-  if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
-    || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be bounded text`);
-  return value;
-}
 function id(value, label) {
   const result = String(value); if (!ID.test(result)) fail(`${label} must be an identifier`);
   return result;
 }
-function instant(value, label) {
-  const parsed = Date.parse(text(value, label));
-  if (!Number.isFinite(parsed)) fail(`${label} must be a UTC instant`);
-  return new Date(parsed).toISOString();
-}
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
-function freeze(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(freeze); return Object.freeze(value);
-}
-function targetRepositoryIdentity(value, target, expected) {
-  const source = object(value, 'target repository identity');
-  const sourceOwner = object(source.owner, 'target repository owner');
-  const live = { repository: `github.com/${text(source.full_name, 'target repository full name')}`, repositoryId: id(source.id, 'target repository id'),
-    owner: { id: id(sourceOwner.id, 'target repository owner id'), login: text(sourceOwner.login, 'target repository owner login').toLowerCase() } };
-  if (live.repository !== target.repository)
-    fail('target repository numeric identity or owner changed');
-  if (expected === null) return live;
-  const bound = { repository: expected.repository, repositoryId: expected.repositoryId,
-    owner: expected.owner };
-  if (!same(live, bound))
-    fail('target repository numeric identity or owner changed');
-  return live;
-}
 async function initialAuthorityProof(provider, input) {
   const issuance = input.predecessorIssuance, stored = issuance.storedBundle;
   const bundle = stored.authorityBundle, publication = issuance.publicationReceipt;
@@ -108,7 +81,8 @@ async function classicBranchProtection(api, target, branch) {
 }
 async function checks(api, target, revision, contexts, mergedAt, expected = null) {
   if (expected !== null) {
-    if (!Array.isArray(expected) || expected.length !== contexts.length)
+    if (!Array.isArray(expected) || expected.length !== contexts.length
+      || expected.some((entry, index) => entry.context !== contexts[index]))
       fail('stored required check identities are invalid');
     const required = [];
     for (const stored of expected) {
@@ -243,7 +217,7 @@ async function descendant(api, target, base, head) {
   return 'ancestor';
 }
 export async function observeGitHubIntegrationProof({ api, target, input, initialProvider,
-  expectedProof = null, requirePlanBinding = true }) {
+  expectedProof = null, requirePlanBinding = true, policy = null }) {
   const locator = input.request.reviewLocator;
   let parsed; try { parsed = new URL(locator); } catch { fail('integrate requires an exact review URL'); }
   const prefix = `/${target.owner}/${target.name}/pull/`, number = parsed.pathname.slice(prefix.length);
@@ -261,7 +235,9 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     : bundle.candidate;
   const initialReview = issuance?.storedBundle?.targetRepository?.review ?? null;
   const initialRecovery = issuance?.storedBundle?.targetRepository?.retrospectiveProof ?? null;
-  const contentOnly = input.integrationMode === GITHUB_RETROSPECTIVE_CONTENT_MODE;
+  const historical = input.integrationMode === GITHUB_HISTORICAL_CONTENT_MODE;
+  const enrollment = historical ? assertGitHubTransitionPolicyOperation(policy, input) : null;
+  const contentOnly = historical || input.integrationMode === GITHUB_RETROSPECTIVE_CONTENT_MODE;
   const retrospective = contentOnly || input.integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
   const [pullResponse, targetResponse] = await Promise.all([api.call('GET',
     `${target.path}/pulls/${number}`), api.call('GET', target.path)]);
@@ -289,22 +265,24 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const mergeEvent = object(mergedEvents[0], 'GitHub integration merge event');
   const mergeEventId = id(mergeEvent.id, 'merge event id');
   const mergedAt = instant(pull.merged_at, 'review merged time');
+  const expectedProtection = historical ? expectedProof?.currentTargetProtection : expectedProof;
   const protectedTarget = expectedProof === null
     ? targetProtection(protectionObservation, target, canonicalRef, classicProtection, retrospective, targetRepositoryValue)
-    : { projection: { projectionDigest: expectedProof.targetProtectionDigest },
-      versions: expectedProof.targetRulesetVersions,
-      requiredContexts: expectedProof.targetRequiredContexts,
-      allowedMethods: expectedProof.targetAllowedMergeMethods,
-      activeRuleTypes: expectedProof.targetActiveRuleTypes,
-      bypassActorsObserved: expectedProof.targetBypassActorsObserved };
+    : { projection: { projectionDigest: expectedProtection.targetProtectionDigest },
+      versions: expectedProtection.targetRulesetVersions,
+      requiredContexts: expectedProtection.targetRequiredContexts,
+      allowedMethods: expectedProtection.targetAllowedMergeMethods,
+      activeRuleTypes: expectedProtection.targetActiveRuleTypes,
+      bypassActorsObserved: expectedProtection.targetBypassActorsObserved };
   const requiredChecksDigest = await checks(api, target, candidate.headRevision,
-    protectedTarget.requiredContexts, mergedAt, expectedProof?.requiredChecks ?? null);
+    enrollment?.checkContexts ?? protectedTarget.requiredContexts, mergedAt,
+    (historical ? expectedProof?.successfulChecks : expectedProof?.requiredChecks) ?? null);
   const { observeIntegrationMethod } = await import('../bin/agentic-os-integration-proof.mjs');
   const methodProof = await observeIntegrationMethod({ api, target, input, candidate, mergedCommit,
     allowedMethods: protectedTarget.allowedMethods, activeRuleTypes: protectedTarget.activeRuleTypes,
     canonicalRef, retrospective, contentOnly });
   const method = methodProof.method;
-  const suite = await ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
+  const suite = historical ? null : await ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
     protectedTarget.activeRuleTypes, protectedTarget.versions, retrospective, expectedProof,
     method === 'rebase' ? methodProof.integrationMethodEvidence.choice.baseRevision : mergedCommit.parents[0]);
   const predecessorStartedAt = issuance === null ? successorAuthority.issuedAt
@@ -326,9 +304,10 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
         || initialRecovery.mergedAt !== mergedAt;
     if (retrospectiveMismatch
       || Date.parse(mergedAt) >= Date.parse(predecessorStartedAt)
-      || Date.parse(suite.pushedAt) >= Date.parse(predecessorStartedAt)
+      || suite !== null && Date.parse(suite.pushedAt) >= Date.parse(predecessorStartedAt)
       || method !== (contentOnly ? 'unproven' : 'squash')
-      || candidateCommit?.tree !== mergedCommit.tree) {
+      || candidateCommit?.tree !== mergedCommit.tree
+      || historical && enrollment.treeRevision !== mergedCommit.tree) {
       fail('retrospective integration was not provider-observed before recovery authority');
     }
   } else if (Date.parse(mergedAt) < Date.parse(predecessorStartedAt)
@@ -359,9 +338,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     targetRulesetVersions: protectedTarget.versions,
     requiredChecks: requiredChecksDigest.required,
     requiredChecksDigest: requiredChecksDigest.checksDigest,
-    ruleSuiteDigest: suite.ruleSuiteDigest,
-    ruleSuiteId: suite.suiteId, ruleSuiteResult: suite.result,
-    ruleSuitePushedAt: suite.pushedAt,
+    ...(suite === null ? {} : { ruleSuiteDigest: suite.ruleSuiteDigest,
+      ruleSuiteId: suite.suiteId, ruleSuiteResult: suite.result, ruleSuitePushedAt: suite.pushedAt }),
     ...(retrospective ? { integrationMode: input.integrationMode,
       candidateTreeRevision: candidateCommit.tree, mergeTreeRevision: mergedCommit.tree,
       baseRevision: reviewBaseRevision } : {}),
@@ -387,7 +365,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
       - Date.parse(mergedAt)) > PROVIDER_EVENT_SKEW_MS
     || candidateHead !== candidate.headRevision)
     fail('GitHub review does not prove exact protected integration');
-  const payload = { schema: 'agentic-os/github-integrate-provider-proof/v1', ...projection };
+  const payload = historical ? historicalContentProjection(projection, enrollment)
+    : { schema: 'agentic-os/github-integrate-provider-proof/v1', ...projection };
   const proof = freeze({ ...payload, proofDigest: governanceDigest(payload) });
   if (requirePlanBinding && input.plan.parametersDigest !== proof.proofDigest
     || expectedProof && !same(proof, expectedProof))

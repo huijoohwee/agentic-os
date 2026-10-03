@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.2.1"
-date: "2026-09-15"
+version: "1.4.0"
+date: "2026-10-03"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.2.1"
-tad_revision: "1.2.1"
-adr_revision: "1.2.1"
+prd_revision: "1.4.0"
+tad_revision: "1.4.0"
+adr_revision: "1.4.0"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.2.1"
-gtm_revision: "1.2.1"
+mvp_revision: "1.4.0"
+gtm_revision: "1.4.0"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -174,6 +174,50 @@ with exact local opt-in, successful checks, complete content/preservation proof 
 wrong identity, missing checks, failed source inclusion, hidden/dirty bytes, drift and stale consent fail.
 `__tests__/user-cleanup-recovery.test.mjs` covers those boundaries with real temporary Git repositories and
 mocked provider reads. Live execution receipts remain separate from these tests.
+
+## Current successor preservation adoption
+
+When native succession used one shared checkout and the successor is already quarantined, there may
+be no separate predecessor projection or cleanup receipt. Explicitly select a reviewed current
+`agentic-os/successor-preservation-adoption/v1` entry from the committed v2 transition policy. It binds
+the exact predecessor/successor refs and heads, successor review/merge, every accepted replacement path
+and the authentic successor quarantine coordinate. Cache lineage or ancestor equality alone is insufficient.
+
+Run from the clean/current canonical target clone, using the trusted authority policy's clean canonical
+checkout; both selected lanes must already be unmounted:
+
+```sh
+agentic-os cleanup-user preservation-plan --adoption=<exact-enrolled-json> --policy-root=<trusted-authority-canonical-root> --workflow=<review-workflow>
+agentic-os cleanup-user preservation-apply --plan=<saved-plan-json> --authorize=agentic-os:successor-preservation:<planDigest> --stopped
+agentic-os completion status --ref=<predecessor> --preservation=<actual-receipt-json>
+```
+
+Planning grants no effect. The independently authorized apply rechecks policy, source inclusion,
+selected successful review checks, refs, peer/cache identities and real retained bytes, then writes one
+create-only local preservation carrier under the existing clone-private cleanup root. It never moves
+the successor carrier or reconstructs predecessor registration. First issuance must remain in-window;
+immutable replay verifies the retained facts after expiry and has no new physical effect.
+
+The distinct receipt states `disposition:successor-preserved`,
+`historicalSuccessionAuthorityProven:false`, `physicalCleanupPerformed:false`,
+`providerAuthority:false` and `claimRetired:false`. Completion exposes
+`preservationDispositionVerified` and `preservationSatisfied` while predecessor `cleanupVerified`
+remains false. Selected source closeout can accept preservation; full ADLC still requires independent
+live provider retirement and applicable delivery/handover. See [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md)
+for the distinct record-only retirement operation, which cannot authorize physical quarantine.
+
+## Current already-quarantined retention
+
+Accepted `CLEANUP-AUTHORITY-001@1.2.0` adds `agentic-os/current-quarantine-adoption/v1`
+enrollment under the distinct committed v3 policy. It selects one original target/ref/head/review/merge,
+quarantine coordinate and exact original local receipt digest; historical quarantine authority stays false.
+Use the same preservation-plan entrypoint with a bounded `{adoption, originalReceipt}` JSON wrapper.
+The existing plan/apply/status owners select the distinct typed current-retention schemas and verify the
+original operation, receipt, registration/manifests, retained index/content, source, policy and current
+absent mounts/ref/peer/canonical state. The current carrier is create-only and performs no physical effect.
+It neither changes the original receipt nor recreates a registered-before target. Fresh independent
+provider integration and record-only retirement remain required; unknown historical actors stay unknown.
+Keep current seed recovery copies and accepted clean-state reconciliation; no deletion follows.
 
 ## Bounds, recovery and trust
 
