@@ -3,25 +3,25 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.4.0"
-tad_revision: "1.4.0"
-adr_revision: "1.4.0"
+prd_revision: "1.5.0"
+tad_revision: "1.5.0"
+adr_revision: "1.5.0"
 load_policy: on-demand
-version: "1.4.0"
-date: "2026-09-25"
+version: "1.5.0"
+date: "2026-10-04"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--storage-retention-economy"
-agent_id: "codex-storage-retention-economy"
+worktree_id: "device-0232231d4a19--storage-quarantine-economy"
+agent_id: "codex-storage-quarantine-economy"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "847c1f8099cc53282135c8d2ddc200b6e099afc7"
-mvp_revision: "1.4.0"
-gtm_revision: "1.4.0"
+reviewed_source_revision: "07ea7d989152214c0409ace72e1922e16a7d7963"
+mvp_revision: "1.5.0"
+gtm_revision: "1.5.0"
 ---
 
 # Storage compaction
@@ -226,6 +226,12 @@ history files, edit live databases or vacuum them as an incidental cleanup step.
 is unavailable, a filesystem fallback needs its own exact scope, understood effects, recovery/discard
 decision and authorized plan. Lack of a native command alone does not establish those conditions.
 
+Native dry runs can refresh metadata or use the network; inspect installed-version behavior and include
+that cost. Bind selected targets and retained versions, rejecting scope drift before execution. An
+accepted asynchronous request remains pending until native records and backing payloads reconcile.
+Journal it once; reobserve within a bounded deadline. On timeout preserve pending status and diagnose
+through the owner; do not duplicate an unresolved deletion request.
+
 For history retention, an operator-selected cutoff such as seven days is only a candidate filter.
 Use the latest relevant record/file activity plus live application state; creation dates and date-folder
 names are insufficient. A completed turn does not prove the task's objective is complete. Reconcile
@@ -254,7 +260,9 @@ resume as separate tested/untested outcomes. Extract to a new private location f
 never overwrite newer live state as a restore shortcut. A same-disk copy is not independent backup.
 
 Budget discovery, backup, verification, native deletion and likely rebuild/restore before execution.
-Include peak temporary space and retained evidence; a full-size backup can erase the intended benefit.
+Before bulk copying, reuse valid installed-tool/API capability proof; test unknown or changed capabilities
+on a disposable fixture. Budget source, archive, independent extraction and metadata together. Retain
+the source if measured net savings do not justify verification, storage and restore cost.
 Use a small, already-authorized batch to measure native request throughput before committing to a
 long pass. Estimate remaining duration from that observation and state uncertainty. Set operation,
 entry, read/output-byte and concurrency limits; a longer owner operation needs its own bounded plan
@@ -283,10 +291,9 @@ owns product history/indexing design; this local retirement observation does not
 
 ### MVP and GTM: evidence and handover
 
-The local session pilot selected 16 completed root tasks and 1,829 completed subtasks. Native deletion
-used 1,750 requests; all 1,417 retained task records and original paths, including three pins, were
-verified afterward. Fifteen files under old date directories had recent activity, demonstrating why
-folder age was unsuitable. Full backup readback passed; app-level task restoration remains untested.
+The session pilot selected 16 completed roots and 1,829 subtasks; native deletion used 1,750 requests.
+All 1,417 retained records/paths, including three pins, were verified. Fifteen files in old folders had
+recent activity: folder age was unsuitable. Backup readback passed; app-level restoration is untested.
 
 | Session pilot observation (2026-09-25, one macOS host) | Result |
 |---|---:|
@@ -315,6 +322,32 @@ new deletion automation, consumer compliance or production/runtime delivery. No 
 GTM: reuse the free local workflow for the next authorized cleanup, measuring net space gained and total
 active/machine time, including recovery and rebuild. Prefer the smallest eligible target whose benefit
 justifies that cost. Demand, willingness to pay, support cost and monetary savings remain unmeasured.
+
+### Native retirement and quarantine economy — STORAGE-001@1.5.0
+
+PRD: reduce repeated scans, failed copies and cleanup that merely moves disk cost. TAD/ADR: prioritize
+net allocation reduction against total verification/rebuild effort; reuse owners and still-valid receipts.
+Distinguish detached residue from native lifecycle projections whose receipts require their original
+paths. Archive or relocate only payloads allowed by the retention owner and authorized recovery choice;
+keep native projections in place when their owner supports only compression. Preserve immutable evidence
+and publish a separate durable recovery locator before removing an authorized former payload. A locator
+does not establish native receipt compatibility. Verify required metadata separately: a content/mode/link
+manifest alone does not cover ownership, timestamps, xattrs, ACLs or flags; disclose unverified surfaces.
+After interruption, follow the owner's resume contract. Manual recovery needs exact authorization and
+revalidated archive hash, restore proof, source and journal; an incomplete copy is not reusable.
+
+MVP acceptance: **AC-S11** reconcile accepted native requests with registry/payload absence and protected
+versions/data; **AC-S12** verify detached-payload recovery/locators while preserving path-dependent native
+receipts; **AC-S13** check tool capabilities and peak space before copying, then reconcile net allocation
+including evidence/staging and exclude previously counted cleanup. Review these cases against private
+artifacts `macintosh-hd-reclaim-20261003` (14.84 GiB selected allocation removed) and
+`quarantine-reclaim-20261004` (1.23 GiB net after recovery); keep their final verification receipts.
+Archive bytes/modes/links passed; application/provenance restoration remains untested. Local observations
+establish no cross-device benchmark or promised saving.
+GTM: measure phase/restore costs before another pass; retain eligible warm caches when eviction costs more.
+Money/performance gains remain unmeasured. One on-demand guide, under 6 KiB added, zero new modules,
+dependencies or always-load bytes. Run `npm run check` and prose/evidence review; publish via RELEASE.
+Rollback reverts guidance, preserving effects/recovery. No new deletion API, timer or retention expiry.
 
 <a id="operator-workflow"></a>
 
