@@ -157,3 +157,15 @@ checks and protected `test` plus `budgets` gates. Roll back through a source rev
 GTM: compare compatible CI observations before claiming elapsed or cash savings. This removes one
 known evaluator invocation, not a measured number of seconds. Bound this slice to seven files, 30 KB
 and 20 active minutes; external CI wait is separate. No always-loaded prompt or required gate changes.
+
+## Protected source release continuation — 2026-10-04
+
+The operator authorized proceeding with the OS lanes and placed Graph deployment KIV.
+PR328 remains immutable. Its native `coordination-source-release` successor includes
+protected main `f2061114fa0209bbf9a8ca73bad8e650ed53c17c` so the authority issuer can
+bind the current base. The join preserved every diagnostic executable and planning blob;
+only the three already-released artifact guides arrived from main. Criteria and runtime
+design remain unchanged. Fresh successor validation and protected checks own release proof;
+provider integration, retirement, recoverable cleanup and canonical sync retain separate
+receipts in workspace artifact `end-adlc-four-worktrees-20261004`. No Prod runtime binding
+or measured buyer outcome is introduced. This continuation adds zero runtime modules.
