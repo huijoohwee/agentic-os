@@ -180,3 +180,14 @@ Closeout is stalled; demand, willingness to pay and savings remain unmeasured. U
 document under12KiB, zero new runtime modules. Refresh implementation time/byte budget and measure
 source/bin headroom before publication. External review waits bind exact candidate/owner/recheck,
 never a promised completion time.
+
+## Protected source release continuation — 2026-10-04
+
+The operator selected the three OS lanes for source release and held Graph deployment KIV.
+PR330 and `03736ba245f1d3ce3ae90e4d38b8fd1ed1c4425d` remain immutable. The native
+`reviewed-recovery-source-release` successor will bind the accepted diagnostic successor
+and current protected base before fresh provider validation and integration. This handover
+changes no runtime contract, accepted enrollment, criterion or effect grant. Exact code-blob
+comparisons, required CI and separate integration/retirement/cleanup/sync receipts are retained
+in workspace artifact `end-adlc-four-worktrees-20261004`. OS has no production-activation
+binding. Graph's private Canvas production-license decision remains deferred by the operator.
