@@ -11,6 +11,7 @@ import {
 } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
+import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import {
   createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest,
   encodeEffectPlan,
@@ -215,8 +216,23 @@ test('exact dirty projection and registration are quarantined with refs and byte
       authorizationDigest: eligibility.eligibilityDigest }, cleanupOptions(fixture, {
       now: () => Date.parse('2026-09-02T01:05:00.000Z') }));
     assert.deepEqual(expiredReplay, receipt, 'completed exact quarantine replays after expiry');
+    assert.equal(observeRetainedWorktreeQuarantine(fixture.repo.root,
+      'agent/device/dirty', fixture.repo.head), true, 'protected quarantine satisfies retained observation');
+    assert.equal(observeRetainedWorktreeQuarantine(fixture.repo.root,
+      'agent/device/dirty', '0'.repeat(40)), false, 'retained head must match');
+    const operationPath = join(receipt.projectionQuarantinePath, '..', 'operation.json');
+    const operationBytes = readFileSync(operationPath);
+    const operation = JSON.parse(operationBytes);
+    operation.eligibility.schema = 'unsupported-cleanup-eligibility/v1';
+    operation.eligibility.planDigest = operation.eligibility.cleanupPlanDigest;
+    writeFileSync(operationPath, canonicalJson(operation));
+    assert.equal(observeRetainedWorktreeQuarantine(fixture.repo.root,
+      'agent/device/dirty', fixture.repo.head), false, 'unknown schema cannot supply a coordinate');
+    writeFileSync(operationPath, operationBytes);
     const retainedDrift = join(receipt.projectionQuarantinePath, 'post-response-drift.txt');
     writeFileSync(retainedDrift, 'retain me\n');
+    assert.equal(observeRetainedWorktreeQuarantine(fixture.repo.root,
+      'agent/device/dirty', fixture.repo.head), false, 'changed retained bytes cannot satisfy completion');
     await assert.rejects(executeWorktreeCleanup({ ...fixture.input, eligibility,
       authorizationDigest: eligibility.eligibilityDigest },
     cleanupOptions(fixture)),
