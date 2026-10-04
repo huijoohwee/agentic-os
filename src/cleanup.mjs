@@ -396,3 +396,4 @@ export async function runReleaseCommonSuccessorComplete({
     return 1;
   }
 }
+export { planSuccessorPreservation, applySuccessorPreservation, verifySuccessorPreservation } from '../bin/agentic-os-cleanup-user.mjs';

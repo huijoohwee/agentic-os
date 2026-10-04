@@ -149,6 +149,21 @@ export function makeFinding(input) {
   });
 }
 
+export function createDocumentationFinding(findingType, fields) {
+  return makeFinding({
+    findingType,
+    guidelineAnchor: fields.guidelineAnchor ?? "-",
+    artifactReference: fields.artifactReference,
+    evidenceExcerpt: fields.evidenceExcerpt,
+    remediation: {
+      class: "documentation-change",
+      statement: fields.statement,
+      state: "proposed",
+      operatorInstructionRef: null,
+    },
+  });
+}
+
 export function normalizeFinding(finding) {
   return makeFinding(finding);
 }
@@ -159,6 +174,12 @@ export function deduplicationKey(finding) {
     finding.guidelineAnchor,
     finding.artifactReference,
   ]);
+}
+
+export function compareFindingEvidenceIdentity(left, right) {
+  return left.findingType.localeCompare(right.findingType, "en") ||
+    left.artifactReference.localeCompare(right.artifactReference, "en") ||
+    left.evidenceExcerpt.localeCompare(right.evidenceExcerpt, "en");
 }
 
 export function compareFindings(left, right) {

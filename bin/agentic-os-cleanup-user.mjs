@@ -1,17 +1,25 @@
 /** Explicit local-consent cleanup; profile recovery requires its own operator opt-in. */
-import { lstatSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
-import { observeGit, repoRoot, remoteTransport, acquireOperationLock, finishOperationLock, observeGitLines, worktrees } from '../src/git.mjs';
+import { observeGit, repoRoot, remoteTransport, acquireOperationLock, finishOperationLock, observeGitLines, worktrees, commonDir } from '../src/git.mjs';
 import { loadRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
-import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget } from '../src/cleanup-quarantine.mjs';
+import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget, observeRetainedQuarantineEvidence } from '../src/cleanup-quarantine.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
+import { privateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateFileExclusive,
+  readPrivateFile } from '../src/file-integrity.mjs';
 import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
-import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES } from '../src/patch-identity.mjs';
+import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, integrationProof } from '../src/patch-identity.mjs';
+import { get } from '../src/lane-records.mjs';
+import { isLaneRef } from '../src/lane-id.mjs';
+import { validateGitHubTransitionPolicy, selectPreservationAdoption } from '../src/github-transition-policy.mjs';
+import { SUCCESSOR_PRESERVATION_SCHEMA, SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
+  CURRENT_QUARANTINE_SCHEMA, CURRENT_QUARANTINE_PLAN_SCHEMA,
+  validateRetentionDispositionPlan, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
 const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent';
 const NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 const KEY = 'agentic-os.userCleanup';
@@ -20,26 +28,17 @@ const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projecti
   sharedStateByteCeiling: 256 * 1024 * 1024, sharedStateEntryCeiling: 100000 });
 const read = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options });
 const same = (a, b) => canonicalJson(a) === canonicalJson(b);
+export const readUserCleanupJson = (path, label, parent = null) => JSON.parse(new TextDecoder('utf-8', { fatal: true })
+  .decode(parent ? readPrivateFile(path, 64000, label, parent) : readBoundedStableFile(path, 64000, label)));
 
-/**
- * Change-class fast path: when --change-class=docs-only is declared AND the
- * lane diff confirms only docs/markdown paths are touched, the local-consent
- * cleanup path is the accepted terminal state (providerAuthority:false is
- * sufficient; no protected-authority chain required for this change class).
- *
- * This is a CLI/observation-layer simplification. The cleanup mechanics
- * (quarantine, not delete) stay identical. It only relaxes the authority
- * chain requirement for the specific change class.
- */
+/** Classify the enrolled local-consent documentation path without changing physical mechanics. */
 function resolveChangeClass(declared, observed) {
   if (declared === undefined) return { declared: null, observed, fastPath: false };
   if (!SUPPORTED_CHANGE_CLASSES.includes(declared)) refuse('unsupported-change-class');
-  if (declared === 'docs-only') {
-    if (observed !== 'docs-only')
-      refuse('change-class-mismatch', `declared --change-class=docs-only but observed ${observed}`);
-    return { declared, observed, fastPath: true };
-  }
-  return { declared, observed, fastPath: false };
+  const fastPath = declared === 'docs-only';
+  if (fastPath && observed !== declared)
+    refuse('change-class-mismatch', `declared --change-class=docs-only but observed ${observed}`);
+  return { declared, observed, fastPath };
 }
 const fields = (value, names) => {
   if (!value || Array.isArray(value) || typeof value !== 'object'
@@ -249,82 +248,43 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
-/**
- * Unified cleanup CLI: dispatches to cleanup-user plan/apply/sweep with mode
- * flags, consolidating the three overlapping cleanup entry points into one
- * command. This is a thin UX wrapper over the existing binaries; it does not
- * change cleanup mechanics or authority semantics.
- *
- * Usage:
- *   agentic-os cleanup plan --target=<path> --pr=<n> --checks=<list> --workflow=<id>
- *     [--mode=protected|local-consent|recovery] [--change-class=docs-only] [--detached]
- *   agentic-os cleanup apply --plan=<json> --authorize=<digest> --stopped
- *   agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
- *
- * --mode defaults to 'local-consent' (the existing cleanup-user default).
- * --mode=protected is reserved for profile-governed repos (not implemented here;
- * those still use release-common complete → completion:scaffold → completion:plan/apply).
- */
+/** Unified CLI dispatch; physical consent and quarantine semantics remain unchanged. */
 const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [] });
 export function runUnifiedCleanup(root, argv, out = console.log) {
-  const sub = argv[0];
-  if (sub !== 'plan' && sub !== 'apply' && sub !== 'sweep')
-    refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep> [options]');
-  const rest = argv.slice(1);
-  if (sub === 'plan') {
-    const modeFlag = option(rest, 'mode') || 'local-consent';
-    if (!Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
-    const extraFlags = UNIFIED_MODE_FLAGS[modeFlag];
-    const changeClass = option(rest, 'change-class') || undefined;
-    const noCI = modeFlag === 'no-ci';
-    const checksToken = option(rest, 'checks');
-    const workflowToken = option(rest, 'workflow');
-    const plan = planUserCleanup({ cwd: root, target: option(rest, 'target'),
-      pr: Number(option(rest, 'pr')),
-      requiredChecks: noCI ? [] : (checksToken ? checksToken.split(',') : []),
-      workflow: noCI ? null : workflowToken,
-      recovery: extraFlags.includes('--recovery'),
-      detached: rest.includes('--detached'), noCI, changeClass, reviewedEquivalentCommit: option(rest, 'reviewed-equivalent-commit') || undefined });
-    out(canonicalJson(plan)); return 0;
-  }
-  if (sub === 'sweep') return runUserCleanupSweep(root, rest, out);
-  // apply
-  const plan = JSON.parse(new TextDecoder('utf-8', { fatal: true })
-    .decode(readBoundedStableFile(option(rest, 'plan'), 64000, 'user-cleanup-plan')));
-  out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(rest, 'authorize'), stopped: rest.includes('--stopped') })));
-  return 0;
+  if (!['plan', 'apply', 'sweep'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep> [options]');
+  return runUserCleanup(root, argv, out, { unified: true });
 }
 
-export function runUserCleanup(root, argv, out = console.log) {
+export function runUserCleanup(root, argv, out = console.log, { unified = false } = {}) {
+  if (['preservation-plan', 'preservation-apply'].includes(argv[0])) {
+    const planning = argv[0] === 'preservation-plan';
+    const input = readUserCleanupJson(option(argv, planning ? 'adoption' : 'plan'), planning ? 'preservation-adoption' : 'preservation-plan');
+    if (planning && input.adoption) fields(input, 'adoption,originalReceipt');
+    const result = planning ? planSuccessorPreservation({ cwd: root, adoption: input.adoption ?? input,
+      originalReceipt: input.originalReceipt, policyRoot: option(argv, 'policy-root'), workflow: option(argv, 'workflow') })
+      : applySuccessorPreservation(input, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') });
+    out(canonicalJson(result)); return 0;
+  }
   if (argv[0] === 'sweep') return runUserCleanupSweep(root, argv, out);
   if (argv[0] === 'plan') {
-    const pr = Number(option(argv, 'pr'));
+    const modeFlag = unified ? option(argv, 'mode') || 'local-consent' : null;
+    if (unified && !Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
+    const noCI = modeFlag === 'no-ci', pr = Number(option(argv, 'pr'));
     const changeClass = option(argv, 'change-class') || undefined;
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
-      requiredChecks: option(argv, 'checks').split(','), workflow: option(argv, 'workflow'),
-      recovery: argv.includes('--recovery'), detached: argv.includes('--detached'),
+      requiredChecks: noCI ? [] : unified && !option(argv, 'checks') ? [] : option(argv, 'checks').split(','),
+      workflow: noCI ? null : option(argv, 'workflow'), noCI,
+      recovery: modeFlag === 'recovery' || (!unified && argv.includes('--recovery')), detached: argv.includes('--detached'),
       reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
       changeClass });
     out(canonicalJson(plan)); return 0;
   }
-  const plan = JSON.parse(new TextDecoder('utf-8', { fatal: true })
-    .decode(readBoundedStableFile(option(argv, 'plan'), 64000, 'user-cleanup-plan')));
+  const plan = readUserCleanupJson(option(argv, 'plan'), 'user-cleanup-plan');
   out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })));
   return 0;
 }
 
-/**
- * Stale-ref sweep: produce a bounded retirement plan for lane refs that are
- * (a) merged into canonical, (b) past a staleness window, and (c) not mounted
- * in any active worktree. This is operator consent (providerAuthority:false);
- * it does not delete refs — it projects them to recoverable quarantine.
- *
- * Usage: cleanup-user sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
- *
- * The sweep is observation-only: it lists candidates and produces per-lane
- * quarantine plans. Each plan still requires explicit --authorize digest and
- * --stopped to apply, same as individual cleanup-user plan/apply.
- */
+/** Bounded observation-only stale-ref candidates; no refs or bytes are removed. */
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
 function runUserCleanupSweep(root, argv, out = console.log) {
   const staleDays = Number(option(argv, 'stale-older-than') ?? '0');
@@ -363,4 +323,143 @@ function runUserCleanupSweep(root, argv, out = console.log) {
   };
   out(canonicalJson(sweep));
   return 0;
+}
+
+function preservationPolicy(root) {
+  root = realpathSync(repoRoot(root));
+  const trust = loadRepositoryTrust(root), revision = read(root, ['rev-parse', 'refs/heads/main']);
+  if (trust.canonical.localRef !== 'refs/heads/main' || trust.canonical.remoteRef !== 'refs/remotes/origin/main'
+    || read(root, ['symbolic-ref', '--quiet', 'HEAD']) !== trust.canonical.localRef
+    || read(root, ['rev-parse', 'HEAD']) !== revision
+    || read(root, ['rev-parse', 'refs/remotes/origin/main']) !== revision
+    || read(root, ['status', '--porcelain', '--untracked-files=all'])) refuse('preservation-policy-canonical');
+  const bytes = read(root, ['show', `${revision}:.agentic-os/github-transition-policy.json`]);
+  const policy = validateGitHubTransitionPolicy(JSON.parse(bytes));
+  if (policy.authorityRepository !== trust.repository || policy.authorityRef !== 'refs/heads/main')
+    refuse('preservation-policy-trust');
+  return { root, revision, repository: trust.repository, policy };
+}
+function preservationObservation(root, adoption, policyRoot, workflow, options = {}) {
+  const current = policy(root, RECOVERY_MODE), authority = preservationPolicy(policyRoot);
+  selectPreservationAdoption(authority.policy, adoption);
+  if (adoption.repository !== `github.com/${current.repository}`) refuse('preservation-repository');
+  const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1';
+  const refs = retained ? [adoption.targetRef, adoption.targetRef] : [adoption.predecessorRef, adoption.successorRef];
+  if (refs.some(ref => !isLaneRef(ref)) || !retained && refs[0] === refs[1]) refuse('preservation-refs');
+  const peers = worktrees(root), cacheDigest = governanceDigest(refs.map(ref => get(ref, root)));
+  if (peers.some(peer => refs.includes(peer.branch))) refuse('preservation-mounted');
+  const heads = refs.map(ref => read(root, ['rev-parse', '--verify', `refs/heads/${ref}^{commit}`]));
+  if (heads[0] !== (retained ? adoption.targetHead : adoption.predecessorHead)
+    || heads[1] !== (retained ? adoption.targetHead : adoption.successorHead))
+    refuse('preservation-head-drift');
+  const direct = retained ? integrationProof(adoption.merge, heads[0], { cwd: root }) : null;
+  const integration = retained ? direct && { kind: 'current-quarantined', predecessorHead: heads[0], reviewedHead: heads[1],
+    merge: adoption.merge, pathCount: direct.pathCount, replacements: [] }
+    : successorIntegrationProof(adoption.merge, heads[0], heads[1], adoption.replacedPaths, { cwd: root });
+  if (!integration || read(root, ['merge-base', '--is-ancestor', adoption.merge, current.canonical], { allowFail: true }) === null)
+    refuse('preservation-integration');
+  const review = options.localReview ?? observeMergedReview({ repository: current.repository,
+    pr: Number(adoption.reviewLocator.split('/').at(-1)), requiredChecks: current.requiredChecks,
+    workflow, mode: RECOVERY_MODE }, { cwd: root, ...options });
+  if (review.url !== adoption.reviewLocator || review.head !== heads[1]
+    || review.branch !== refs[1] || review.merge !== adoption.merge) refuse('preservation-review');
+  const observed = observeRetainedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate,
+    retained ? { originalReceipt: options.originalReceipt, canonicalRef: current.localRef } : {});
+  const retention = observed && retained ? { ...observed, originalReceipt: options.originalReceipt } : observed;
+  if (!retention) refuse('preservation-retention');
+  if (retained && retention.originalReceiptDigest !== adoption.originalReceiptDigest) refuse('preservation-original-receipt');
+  if (!same(current, policy(root, RECOVERY_MODE)) || !same(authority, preservationPolicy(policyRoot))
+    || !same(peers, worktrees(root)) || cacheDigest !== governanceDigest(refs.map(ref => get(ref, root)))
+    || refs.some((ref, index) => read(root, ['rev-parse', `refs/heads/${ref}`]) !== heads[index]))
+    refuse('preservation-observation-race');
+  const state = { root, policyRoot: authority.root, policyRevision: authority.revision,
+    policyRepository: authority.repository, workflow, predecessorHead: heads[0], successorHead: heads[1],
+    peerRegistrationDigest: governanceDigest(peers), cacheDigest };
+  return { repository: adoption.repository, canonicalRevision: current.canonical,
+    profileDigest: current.repositoryProfileDigest, policyDigest: governanceDigest(authority.policy),
+    review, integration, retention, state };
+}
+export function planSuccessorPreservation({ cwd = process.cwd(), adoption, originalReceipt, policyRoot, workflow }, options = {}) {
+  const root = realpathSync(repoRoot(cwd)), issued = (options.now ?? Date.now)();
+  const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1';
+  const facts = preservationObservation(root, adoption, policyRoot, workflow, { ...options, originalReceipt });
+  const payload = { schema: retained ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
+    disposition: retained ? 'current-quarantine-retained' : 'successor-preserved',
+    adoption, adoptionDigest: governanceDigest(adoption), ...facts,
+    issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 900000).toISOString(),
+    physicalCleanupPerformed: false, providerAuthority: false, claimRetired: false,
+    [retained ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven']: false };
+  return validateRetentionDispositionPlan({ ...payload, planDigest: governanceDigest(payload) });
+}
+function preservationCarrier(root, planDigest) {
+  return join(realpathSync(commonDir(root)), 'agentic-os-cleanup-quarantine', planDigest, 'preservation.json');
+}
+function readPreservationCarrier(path) {
+  const base = privateDirectoryIdentity(dirname(dirname(path)), 'preservation base');
+  const parent = privateDirectoryIdentity(dirname(path), 'preservation directory');
+  if (!base || !parent) refuse('preservation-carrier');
+  const stored = readUserCleanupJson(path, 'preservation-carrier', parent);
+  assertPrivateDirectoryIdentity(base, 'preservation base');
+  return stored;
+}
+export function verifySuccessorPreservation(root, input, options = {}) {
+  const receipt = validateRetentionDispositionReceipt(input);
+  const { planDigest, planIssuedAt, ...planState } = receipt.state;
+  const { receiptDigest, ...content } = receipt;
+  validateRetentionDispositionPlan({ ...content, schema: receipt.disposition === 'current-quarantine-retained'
+    ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
+    state: planState, issuedAt: planIssuedAt, planDigest });
+  if (!/^[a-f0-9]{64}$/u.test(planDigest ?? '')) refuse('preservation-carrier');
+  const stored = readPreservationCarrier(preservationCarrier(root, planDigest));
+  if (!same(receipt, stored)) refuse('preservation-carrier');
+  const facts = preservationObservation(root, receipt.adoption, receipt.state.policyRoot, receipt.state.workflow,
+    { ...options, originalReceipt: receipt.retention.originalReceipt, ...(options.localOnly ? { localReview: receipt.review } : {}) });
+  for (const name of Object.keys(facts)) {
+    const expected = name === 'state' ? { ...facts.state, planDigest, planIssuedAt } : facts[name];
+    if (!same(receipt[name], expected)) refuse('preservation-drift');
+  }
+  if (!same(receipt, readPreservationCarrier(preservationCarrier(root, planDigest)))) refuse('preservation-carrier');
+  return receipt;
+}
+export function applySuccessorPreservation(input, { cwd = process.cwd(), authorization, stopped, ...options } = {}) {
+  const plan = validateRetentionDispositionPlan(input), root = realpathSync(repoRoot(cwd));
+  options.originalReceipt = plan.retention.originalReceipt;
+  if (root !== plan.state.root || stopped !== true
+    || authorization !== `agentic-os:successor-preservation:${plan.planDigest}`) refuse('preservation-authorization');
+  delete options.localOnly; delete options.localReview;
+  return locked(root, () => {
+    const path = preservationCarrier(root, plan.planDigest);
+    const base = privateDirectoryIdentity(dirname(dirname(path)), 'preservation base');
+    if (!base) refuse('preservation-carrier');
+    if (lstatSync(path, { throwIfNoEntry: false })) {
+      const stored = readPreservationCarrier(path);
+      if (stored.state?.planDigest !== plan.planDigest || stored.state?.planIssuedAt !== plan.issuedAt)
+        refuse('preservation-replay-plan');
+      const verified = verifySuccessorPreservation(root, stored, options);
+      assertPrivateDirectoryIdentity(base, 'preservation base');
+      return verified;
+    }
+    const now = (options.now ?? Date.now)();
+    if (!Number.isSafeInteger(now) || now < Date.parse(plan.issuedAt) || now >= Date.parse(plan.expiresAt))
+      refuse('preservation-expired');
+    const facts = preservationObservation(root, plan.adoption, plan.state.policyRoot, plan.state.workflow, options);
+    if (Object.keys(facts).some(name => !same(facts[name], plan[name]))) refuse('preservation-drift');
+    const issued = (options.now ?? Date.now)();
+    if (!Number.isSafeInteger(issued) || issued < now || issued >= Date.parse(plan.expiresAt))
+      refuse('preservation-expired');
+    const { planDigest, ...content } = plan;
+    const payload = { ...content, schema: plan.disposition === 'current-quarantine-retained' ? CURRENT_QUARANTINE_SCHEMA : SUCCESSOR_PRESERVATION_SCHEMA,
+      state: { ...plan.state, planDigest, planIssuedAt: plan.issuedAt }, issuedAt: new Date(issued).toISOString() };
+    const receipt = validateRetentionDispositionReceipt({ ...payload, receiptDigest: governanceDigest(payload) });
+    assertPrivateDirectoryIdentity(base, 'preservation base');
+    mkdirSync(dirname(path), { mode: 0o700 });
+    assertPrivateDirectoryIdentity(base, 'preservation base');
+    const parent = privateDirectoryIdentity(dirname(path), 'preservation directory');
+    if (!parent) refuse('preservation-carrier');
+    writePrivateFileExclusive(path, Buffer.from(canonicalJson(receipt)), { maxBytes: 64000, label: 'preservation carrier' });
+    const stored = validateRetentionDispositionReceipt(readUserCleanupJson(path, 'preservation-carrier', parent));
+    assertPrivateDirectoryIdentity(base, 'preservation base');
+    if (!same(receipt, stored)) refuse('preservation-carrier');
+    return stored;
+  });
 }

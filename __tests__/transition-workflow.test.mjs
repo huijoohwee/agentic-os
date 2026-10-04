@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { encodeGitHubTransitionPolicy, validateGitHubTransitionPolicy }
+import { GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA, encodeGitHubTransitionPolicy, validateGitHubTransitionPolicy }
   from '../src/github-transition-policy.mjs';
 
 const policyPath = new URL('../.agentic-os/github-transition-policy.json', import.meta.url);
@@ -19,6 +19,17 @@ test('committed transition workflow is bound to the canonical authority policy',
     'github.com/huijoohwee/agentic-graph',
     'github.com/huijoohwee/agentic-os',
   ]);
+
+  assert.equal(policy.schema, GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA);
+  assert.deepEqual(policy.historicalIntegrations.map(entry => entry.reviewLocator), [
+    'https://github.com/huijoohwee/agentic-graph/pull/1492',
+    'https://github.com/huijoohwee/agentic-graph/pull/1504',
+  ]);
+  for (const entry of policy.historicalIntegrations) {
+    assert.deepEqual(entry.checkContexts, ['Integration Gate']);
+    assert.deepEqual(entry.adoptionScope, [`recovery/current-historical-content/pr-${entry.reviewLocator.split('/').at(-1)}`]);
+  }
+  assert.equal(policy.preservationAdoptions[0].historicalSuccessionAuthorityProven, false);
 
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /workflow_dispatch:/u);

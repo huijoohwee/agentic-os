@@ -39,12 +39,12 @@ export function writeReceipt(directory, name, value) {
   if (Buffer.byteLength(bytes) > limit && value?.schema === 'agentic-os/test-receipt/v2' && Array.isArray(value.results)) {
     // Compact aggregates retain links to complete per-check receipts.
     const { stages, ...plan } = value.plan;
-    const suiteDefaults = { stage: 'behavior', reasons: ['broad-impact'] };
+    const suiteDefaults = { stage: 'behavior', reasons: plan.suites[0]?.reasons ?? ['broad-impact'] };
     plan.suiteDefaults = suiteDefaults;
     plan.suites = plan.suites.map(suite => Object.fromEntries(Object.entries(suite)
       .filter(([key, field]) => JSON.stringify(field) !== JSON.stringify(suiteDefaults[key]))));
     const resourceDefaults = { method: 'wait4', scope: 'waited-process-tree', memoryScope: 'maximum-single-process-rss' };
-    const results = value.results.map(({ outputDigest, ...result }) => {
+    const results = value.results.map(({ outputDigest, ...result }) => { if (result.stage === suiteDefaults.stage) delete result.stage;
       if (result.resources?.status !== 'measured' || Object.entries(resourceDefaults).some(([key, v]) => result.resources[key] !== v)) return result;
       const { method, scope, memoryScope, ...resources } = result.resources;
       return { ...result, resources };

@@ -108,21 +108,19 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
   const integratedReview = committedState.integratedReview ?? null;
   const hasIntegratedReview = integratedReview !== null;
   const warnings = status.findings.map(({ code, action, owner }) => ({ code, owner, action }));
-  const stillRequiresAuthenticatedWinners = [];
-  for (const item of [
-    'integration receipt object',
-    'integration plan bytes',
-    'integration request object',
-    'retirement receipt object',
-    'retirement plan bytes',
-    'retirement request object',
-    'preservation receipt object',
-    'no-remaining-value receipt object',
-    'integration workflow run',
-    'integration operation input',
-    'retirement workflow run',
-    'retirement operation input',
-  ]) stillRequiresAuthenticatedWinners.push(item);
+  const verifierTemplate = (operation) => ({
+    repository: authorityRepository,
+    targetRepository: status.repository,
+    operationInput: placeholder(`${operation}_OPERATION_INPUT`),
+    workflowRun: placeholder(`${operation}_WORKFLOW_RUN`),
+    policy: clone(transitionPolicy),
+  });
+  const stillRequiresAuthenticatedWinners = [
+    ...['integration', 'retirement'].flatMap(name =>
+      ['receipt object', 'plan bytes', 'request object'].map(kind => `${name} ${kind}`)),
+    'preservation receipt object', 'no-remaining-value receipt object',
+    ...['integration', 'retirement'].flatMap(name => ['workflow run', 'operation input'].map(kind => `${name} ${kind}`)),
+  ];
   const nextActions = [];
   if (!status.lane.mounted) {
     nextActions.push('Rebind the retained lane worktree path before cleanup planning.');
@@ -172,12 +170,7 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
           integrationPredecessorDigest: placeholder('INTEGRATION_PREDECESSOR_DIGEST'),
           preservationReceiptDigest: placeholder('PRESERVATION_RECEIPT_DIGEST'),
           noRemainingValueReceiptDigest: placeholder('NO_REMAINING_VALUE_RECEIPT_DIGEST'),
-          projectionByteCeiling: RECOVERY_LIMITS.projectionByteCeiling,
-          projectionEntryCeiling: RECOVERY_LIMITS.projectionEntryCeiling,
-          registrationByteCeiling: RECOVERY_LIMITS.registrationByteCeiling,
-          registrationEntryCeiling: RECOVERY_LIMITS.registrationEntryCeiling,
-          sharedStateByteCeiling: RECOVERY_LIMITS.sharedStateByteCeiling,
-          sharedStateEntryCeiling: RECOVERY_LIMITS.sharedStateEntryCeiling,
+          ...RECOVERY_LIMITS,
           authorizedEffects: [...CLEANUP_EFFECTS],
           retainedEffects: [...RETAINED_EFFECTS],
           expiresAt: placeholder('CLEANUP_EXPIRES_AT'),
@@ -191,66 +184,24 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
         preservationReceipt: placeholder('PRESERVATION_RECEIPT_OBJECT'),
         noRemainingValueReceipt: placeholder('NO_REMAINING_VALUE_RECEIPT_OBJECT'),
       },
-      integrationVerifier: {
-        repository: authorityRepository,
-        targetRepository: status.repository,
-        operationInput: placeholder('INTEGRATION_OPERATION_INPUT'),
-        workflowRun: placeholder('INTEGRATION_WORKFLOW_RUN'),
-          policy: clone(transitionPolicy),
-      },
-      retirementVerifier: {
-        repository: authorityRepository,
-        targetRepository: status.repository,
-        operationInput: placeholder('RETIREMENT_OPERATION_INPUT'),
-        workflowRun: placeholder('RETIREMENT_WORKFLOW_RUN'),
-          policy: clone(transitionPolicy),
-      },
+      integrationVerifier: verifierTemplate('INTEGRATION'),
+      retirementVerifier: verifierTemplate('RETIREMENT'),
     },
     nextActions,
   };
 }
 /**
- * Pre-fill the locally-derivable scaffold placeholders so the operator only
- * needs to replace the ~6 true authority fields (workflow runs + operation
- * inputs) that require authenticated GitHub Actions dispatch.
- *
- * Derivable fields (computed from local git/provider observation):
- *   - recoveryInventoryDigest, recoveryInventoryContentEntries (from lane worktree)
- *   - expiresAt (issuedAt + 900000ms, same 15-minute window as cleanup-user plans)
- *   - integratedResource, integratedImmutableRevision (already derived upstream)
- *
- * The remaining placeholders (candidateDigest, snapshotDigest, ownerStateDigest,
- * integrationProofDigest, all receipt objects, all verifier fields) genuinely
- * require authenticated transition receipt replay and are NOT derived here.
- *
- * This is observation-only: it does not authorize effects or grant cleanup
- * authority. The operator still runs completion:plan and completion:apply
- * with the full protected chain.
+ * Fill only local inventory observations and the bounded expiry; retain exact
+ * authenticated transition inputs, receipts and digests for protected replay.
+ * This observation grants no effects or cleanup authority. The operator must
+ * still run completion:plan and completion:apply with the full protected chain.
  */
 const DERIVE_TTL_MS = 900000;
-const AUTHORITATIVE_PLACEHOLDERS = Object.freeze(new Set([
-  'cleanup.plan.candidateDigest',
-  'cleanup.plan.snapshotDigest',
-  'cleanup.plan.integrationProofDigest',
-  'cleanup.plan.ownerStateDigest',
-  'cleanup.plan.integrationReceiptDigest',
-  'cleanup.plan.integrationPlanByteDigest',
-  'cleanup.plan.integrationPredecessorDigest',
-  'cleanup.plan.preservationReceiptDigest',
-  'cleanup.plan.noRemainingValueReceiptDigest',
-  'cleanup.integrationReceipt',
-  'cleanup.integrationPlanBytes',
-  'cleanup.retirementReceipt',
-  'cleanup.retirementPlanBytes',
-  'cleanup.integrationRequest',
-  'cleanup.retirementRequest',
-  'cleanup.preservationReceipt',
-  'cleanup.noRemainingValueReceipt',
-  'integrationVerifier.operationInput',
-  'integrationVerifier.workflowRun',
-  'retirementVerifier.operationInput',
-  'retirementVerifier.workflowRun',
-]));
+const AUTHORITATIVE_PLACEHOLDERS = Object.freeze(new Set(REQUIRED_PLACEHOLDERS.filter((key) => ![
+  'cleanup.plan.recoveryInventoryDigest',
+  'cleanup.plan.recoveryInventoryContentEntries',
+  'cleanup.plan.expiresAt',
+].includes(key))));
 export function deriveLocallyAvailableFields(scaffold, status, canonicalRoot) {
   const issuedAt = Date.now();
   const derived = {
@@ -276,12 +227,8 @@ export function deriveLocallyAvailableFields(scaffold, status, canonicalRoot) {
       const fieldPath = path ? `${path}.${key}` : key;
       if (isPlaceholder(value) && Object.hasOwn(derived, fieldPath)) {
         result[key] = derived[fieldPath];
-      } else if (isPlaceholder(value) && AUTHORITATIVE_PLACEHOLDERS.has(fieldPath)) {
-        result[key] = value; // preserve — requires authenticated workflow run
-      } else if (value !== null && typeof value === 'object') {
-        result[key] = fill(value, fieldPath);
       } else {
-        result[key] = value;
+        result[key] = fill(value, fieldPath);
       }
     }
     return result;
