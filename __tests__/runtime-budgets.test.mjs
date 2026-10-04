@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40937, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40907, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -55,7 +55,7 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'fda9e94b59ccda1dacb4a86bc543bdfcf22eceb64b1317108ecc94053211771d');
+    '37509b96918c423ce2e19a9b524798229dcd675fcc17a2677d2aa996a0a97c4e');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -63,17 +63,17 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
   const requirements = new Map([
     ['docs/adlc-guidelines.md', [
-      'START/resume opens Mission: link current codebase/workflow manifests; reuse evidence.',
-      'Minimize time-to-production: smallest valuable vertical diff',
-      'Lean bounded sprints state TTP ETA and time/byte/module caps',
-      'refresh on drift. External waits state dependency/condition/recheck, never ETA.',
-      'Global prompt: exact LF-terminated UTF-8, at most 1,000 bytes; code points secondary, tokens advisory.',
-      'New always-load guidance/modules declare deltas; otherwise replace, lazy-load, or reject.',
+      'START/resume Mission: link current codebase/workflow manifests; reuse evidence.',
+      'Minimize time-to-production: smallest useful diff',
+      'Sprint: TTP ETA, time/byte/module caps',
+      'refresh on drift. External: blocker/condition/recheck, no ETA.',
+      'Prompt: LF UTF-8 <=1,000 bytes; code points secondary; tokens advisory.',
+      'Declare always-load deltas; replace/lazy-load/reject.',
       'Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.',
-      'Lazy-load `../guides/AUTONOMOUS-GOAL-PURSUIT.md`',
-      'Edit owner files in disjoint path-scoped lanes; overlaps wait.',
-      'Land stages, commits, and publishes reserved paths.',
-      'Land the exact committed diff by protected merge.',
+      'On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md`',
+      'Canonical read-only; disjoint owner paths; overlaps wait.',
+      'Land stages/commits/publishes reserved paths;',
+      'integrate the exact committed diff by protected merge.',
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
@@ -98,14 +98,14 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       '[DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
-      'Global SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
+      'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
       'Free-tier/FOSS; no paid/addons/overages;',
       'No guesses/detours/duplicate checks;',
       'Fix owner/reuse/remove replacements; contract-only shims.',
       'Sprint: ETA+time/byte/module caps;',
       'lazy-load; refresh on drift.',
-      'No idle/poll loops; disjoint work or blocker+recheck, not ETA.',
-      'Before turn/session end: MUST update implemented PRD-TAD-ADR-MVP-GTM.',
+      'One owner/candidate/effect; event waits; bounded stale recheck.',
+      'Update PRD-TAD-ADR-MVP-GTM on material change/handoff; no per-turn records.',
       'cleanup global/local; authority+green proof/effect/receipt.',
     ]],
     ['AGENTS.md', [
@@ -144,7 +144,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.4.0', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.4.1', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',
