@@ -191,3 +191,17 @@ changes no runtime contract, accepted enrollment, criterion or effect grant. Exa
 comparisons, required CI and separate integration/retirement/cleanup/sync receipts are retained
 in workspace artifact `end-adlc-four-worktrees-20261004`. OS has no production-activation
 binding. Graph's private Canvas production-license decision remains deferred by the operator.
+
+## Retained observation correction — 2026-10-04
+
+PRD/MVP O01: after successful protected quarantine, completion must recognize the exact
+retained projection and registration. PR331 exposed a digest-field mismatch: protected
+eligibility carries `cleanupPlanDigest`, while local-consent eligibility carries `planDigest`.
+TAD/ADR: select the coordinate only for these two schemas in `src/cleanup-quarantine.mjs`;
+unknown schemas, wrong heads and changed manifests still fail closed. No receipt is rewritten,
+provider authority inferred or physical cleanup repeated. The existing cleanup lifecycle test
+reproduced the refusal before repair and covers those negative cases. Validation and protected
+release receipts belong to workspace artifact `end-adlc-four-worktrees-20261004`. GTM: this
+removes a false unfinished-lane signal; resource savings and buyer demand remain unmeasured.
+Budget: three existing files, zero added runtime lines, zero new modules/dependencies or
+always-load bytes; source limits remain 47 modules/15050 lines. Checked revert is rollback.
