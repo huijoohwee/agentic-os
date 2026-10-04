@@ -39,7 +39,11 @@ export function validateCommandArguments(command, argv) {
     case 'capabilities': return exact(argv, {
       options: ['query', 'kind', 'limit', 'id', 'root', 'revision'], flags: ['include-content'],
     });
-    case 'cleanup-user': return argv[0] === 'plan'
+    case 'cleanup-user': return argv[0] === 'preservation-plan'
+      ? exact(argv, { min: 1, max: 1, options: ['adoption', 'policy-root', 'workflow'], requiredOptions: ['adoption', 'policy-root', 'workflow'] })
+      : argv[0] === 'preservation-apply'
+        ? exact(argv, { min: 1, max: 1, options: ['plan', 'authorize'], flags: ['stopped'], requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
+      : argv[0] === 'plan'
       ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'], flags: ['recovery', 'detached'],
         requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
       : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
@@ -124,7 +128,7 @@ export function validateCommandArguments(command, argv) {
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
     case 'completion': return argv[0] === 'status'
-      ? exact(argv, { min: 1, options: ['ref'], requiredOptions: ['ref'] })
+      ? exact(argv, { min: 1, options: ['ref', 'preservation'], requiredOptions: ['ref'] })
       : 'completion requires status --ref=<lane>';
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });

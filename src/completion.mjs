@@ -2,10 +2,11 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson, createAuthorityTransitionReceiptEnvelope, governanceDigest,
   validateAuthorityTransitionReceiptEnvelope, validateCoordinationRequest } from './governance.mjs';
+import { cleanupRecordExact as exact, cleanupRecordDigest as digest,
+  cleanupRecordFields as typedFields, cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze } from './cleanup-records.mjs';
 export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v1';
 export const AUTHENTICATED_TRANSITION_SCHEMA =
   'agentic-os/authenticated-transition-operation-receipt/v1';
-const DIGEST = /^[0-9a-f]{64}$/u;
 const EFFECT = /^[a-z][a-z0-9-]{0,127}$/u;
 const PLAN_REFERENCE = /^effect-plan:sha256:([0-9a-f]{64})$/u;
 const PLAN_KEYS = Object.freeze([
@@ -23,14 +24,6 @@ const AUTHORITY_KEYS = Object.freeze([
   'fenceRevision', 'writeSetDigest', 'reviewLocator', 'predecessorDigest']);
 function fail(message) { throw new TypeError(message); }
 function snapshot(value) { return JSON.parse(canonicalJson(value)); }
-function exact(value, keys, label, required = true) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
-  const actual = Object.keys(value);
-  if (actual.some((key) => !keys.includes(key))
-    || required && keys.some((key) => !Object.hasOwn(value, key))) {
-    fail(`${label} fields are invalid`);
-  }
-}
 function text(value, label) {
   if (typeof value !== 'string' || value.length === 0
     || Buffer.byteLength(value, 'utf8') > 4096 || /[\u0000-\u001f\u007f]/u.test(value)) {
@@ -39,10 +32,6 @@ function text(value, label) {
   return value;
 }
 function optionalText(value, label) { return value === null ? null : text(value, label); }
-function digest(value, label) {
-  if (typeof value !== 'string' || !DIGEST.test(value)) fail(`${label} must be a sha256 digest`);
-  return value;
-}
 function instant(value, label) {
   const result = text(value, label), parsed = Date.parse(result);
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== result) {
@@ -52,8 +41,7 @@ function instant(value, label) {
 }
 function adapter(value) {
   exact(value, ['id', 'version'], 'authority adapter');
-  return { id: text(value.id, 'authority adapter id'), version: text(value.version,
-    'authority adapter version') };
+  return typedFields(value, 'id version', text, 'authority adapter ');
 }
 function strings(value, label, { nonempty = false } = {}) {
   if (!Array.isArray(value) || nonempty && value.length === 0) fail(`${label} must be an array`);
@@ -63,11 +51,6 @@ function strings(value, label, { nonempty = false } = {}) {
     fail(`${label} must be canonical, duplicate-free effect names`);
   }
   return result;
-}
-function freeze(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(freeze);
-  return Object.freeze(value);
 }
 function target(value) {
   exact(value, TARGET_KEYS, 'effect plan target');
@@ -92,14 +75,11 @@ function authority(value) {
   }
   return {
     requestedTransition: value.requestedTransition,
-    authoritySubject: text(value.authoritySubject, 'effect plan authoritySubject'),
-    ownerSubject: text(value.ownerSubject, 'effect plan ownerSubject'),
-    claimId: digest(value.claimId, 'effect plan claimId'),
+    ...typedFields(value, 'authoritySubject ownerSubject', text, 'effect plan '),
+    ...typedFields(value, 'claimId writeSetDigest predecessorDigest', digest, 'effect plan '),
     leaseEpoch: value.leaseEpoch,
     fenceRevision,
-    writeSetDigest: digest(value.writeSetDigest, 'effect plan writeSetDigest'),
     reviewLocator: optionalText(value.reviewLocator, 'effect plan reviewLocator'),
-    predecessorDigest: digest(value.predecessorDigest, 'effect plan predecessorDigest'),
   };
 }
 /** Create the semantic plan. Its exact canonical bytes have a separate transport digest. */
@@ -116,12 +96,10 @@ export function createEffectPlan(input) {
     schema: EFFECT_PLAN_SCHEMA,
     target: target(source.target),
     authority: authority(source.authority),
-    candidateDigest: digest(source.candidateDigest, 'candidateDigest'),
-    snapshotDigest: digest(source.snapshotDigest, 'snapshotDigest'),
+    ...typedFields(source, 'candidateDigest snapshotDigest parametersDigest', digest),
     effectClass: text(source.effectClass, 'effectClass'),
     allowedEffects,
     forbiddenEffects,
-    parametersDigest: digest(source.parametersDigest, 'parametersDigest'),
   };
   if (!EFFECT.test(payload.effectClass)) fail('effectClass must be a canonical effect name');
   const planDigest = governanceDigest(payload);
@@ -130,12 +108,8 @@ export function createEffectPlan(input) {
   }
   return freeze({ ...payload, planDigest });
 }
-export function validateEffectPlan(value) {
-  const source = snapshot(value), normalized = createEffectPlan(source);
-  exact(source, PLAN_KEYS, 'effect plan');
-  if (canonicalJson(source) !== canonicalJson(normalized)) fail('effect plan is not canonical');
-  return normalized;
-}
+export const validateEffectPlan = value =>
+  canonicalRecord(value, createEffectPlan, 'effect plan', 'effect plan is not canonical');
 export function encodeEffectPlan(value) {
   return Buffer.from(canonicalJson(validateEffectPlan(value)), 'utf8');
 }
@@ -181,18 +155,13 @@ function exactPlanReference(request, byteDigest) {
     fail('request must contain exactly the matching effect-plan byte digest');
   }
 }
+function fieldsMatch(left, right, names) {
+  return names.split(' ').every(name => left[name] === right[name]);
+}
 function planMatchesRequest(plan, request) {
-  const bound = plan.authority;
-  return plan.target.repository === request.repository
-    && plan.target.immutableRevision === request.immutableRevision
-    && bound.requestedTransition === request.requestedTransition
-    && bound.authoritySubject === request.authoritySubject
-    && bound.ownerSubject === request.ownerSubject
-    && bound.claimId === request.claimId
-    && bound.leaseEpoch === request.leaseEpoch
-    && bound.fenceRevision === request.fenceRevision
-    && bound.writeSetDigest === request.writeSetDigest
-    && bound.reviewLocator === request.reviewLocator;
+  return fieldsMatch(plan.target, request, 'repository immutableRevision')
+    && fieldsMatch(plan.authority, request, 'requestedTransition authoritySubject ownerSubject ' +
+      'claimId leaseEpoch fenceRevision writeSetDigest reviewLocator');
 }
 function authorityGrant(value) {
   const source = snapshot(value);
@@ -212,20 +181,11 @@ function authorityGrant(value) {
     || Date.parse(expiresAt) <= Date.parse(verifiedAt)) {
     fail('grant operation, verification, and expiry times are invalid');
   }
-  return freeze({ adapter: adapter(source.adapter),
-    authenticatedSubject: text(source.authenticatedSubject, 'authenticatedSubject'),
-    providerRecordLocator: text(source.providerRecordLocator, 'providerRecordLocator'),
+  return freeze({ ...source, adapter: adapter(source.adapter),
+    ...typedFields(source, 'authenticatedSubject providerRecordLocator', text),
     providerRecordDigest: digest(source.providerRecordDigest, 'providerRecordDigest'),
-    requestDigest: digest(source.requestDigest, 'grant.requestDigest'),
-    requestedTransition: source.requestedTransition,
-    planDigest: digest(source.planDigest, 'grant.planDigest'),
-    planByteDigest: digest(source.planByteDigest, 'grant.planByteDigest'),
-    sourceClaimId: digest(source.sourceClaimId, 'grant.sourceClaimId'),
-    sourceLeaseEpoch: source.sourceLeaseEpoch,
-    sourceFenceRevision: digest(source.sourceFenceRevision, 'grant.sourceFenceRevision'),
-    resultClaimId: digest(source.resultClaimId, 'grant.resultClaimId'),
-    resultLeaseEpoch: source.resultLeaseEpoch,
-    resultFenceRevision: digest(source.resultFenceRevision, 'grant.resultFenceRevision'),
+    ...typedFields(source, 'requestDigest planDigest planByteDigest sourceClaimId ' +
+      'sourceFenceRevision resultClaimId resultFenceRevision', digest, 'grant.'),
     resultState: text(source.resultState, 'grant.resultState'),
     operationReceiptDigest: digest(source.operationReceiptDigest, 'operationReceiptDigest'),
     transitionedAt, verifiedAt, expiresAt });
@@ -307,25 +267,15 @@ export function validateAuthenticatedTransitionOperationReceipt(value) {
   }
   const operation = authorityGrant(source.authorityOperation);
   const receipt = validateAuthorityTransitionReceiptEnvelope(source.transitionReceipt);
-  if (receipt.requestDigest !== source.requestDigest
-    || receipt.requestedTransition !== source.requestedTransition
-    || operation.requestDigest !== source.requestDigest
-    || operation.requestedTransition !== source.requestedTransition
-    || operation.planDigest !== source.planDigest
-    || operation.planByteDigest !== source.planByteDigest
+  if (!fieldsMatch(receipt, source, 'requestDigest requestedTransition')
+    || !fieldsMatch(operation, source, 'requestDigest requestedTransition planDigest planByteDigest')
     || receipt.authoritySubject !== operation.authenticatedSubject
-    || receipt.sourceClaimId !== operation.sourceClaimId
-    || receipt.sourceLeaseEpoch !== operation.sourceLeaseEpoch
-    || receipt.sourceFenceRevision !== operation.sourceFenceRevision
+    || !fieldsMatch(receipt, operation, 'sourceClaimId sourceLeaseEpoch sourceFenceRevision')
     || receipt.resultClaimId !== receipt.sourceClaimId
     || receipt.resultLeaseEpoch !== receipt.sourceLeaseEpoch + 1
     || receipt.resultFenceRevision === receipt.sourceFenceRevision
-    || receipt.resultClaimId !== operation.resultClaimId
-    || receipt.resultLeaseEpoch !== operation.resultLeaseEpoch
-    || receipt.resultFenceRevision !== operation.resultFenceRevision
-    || receipt.resultState !== operation.resultState
-    || receipt.operationReceiptDigest !== operation.operationReceiptDigest
-    || receipt.transitionedAt !== operation.transitionedAt) {
+    || !fieldsMatch(receipt, operation, 'resultClaimId resultLeaseEpoch resultFenceRevision ' +
+      'resultState operationReceiptDigest transitionedAt')) {
     fail('authenticated transition operation receipt is internally inconsistent');
   }
   const { receiptDigest, ...payload } = source;

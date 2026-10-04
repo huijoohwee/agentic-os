@@ -2,21 +2,22 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.1.0
-prd_revision: 1.1.0
-tad_revision: 1.1.0
-adr_revision: 1.1.0
-mvp_revision: 1.1.0
-gtm_revision: 1.1.0
+version: 1.2.0
+prd_revision: 1.2.0
+tad_revision: 1.2.0
+adr_revision: 1.2.0
+mvp_revision: 1.2.0
+gtm_revision: 1.2.0
 load_policy: on-demand
-lifecycle_status: review-candidate
+lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.1.0`. This proposes two explicit recovery contracts for protected
-owner review. Runtime implementation and exact policy enrollment are not accepted yet. Existing
-proof, retirement and physical cleanup contracts remain in force. Publishing this specification
-creates no receipt, activates no mode and authorizes no effect.
+Continuity `CLEANUP-AUTHORITY-001@1.2.0`. The owner accepted1.1.0 (protected PR323), then explicitly
+accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
+admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
+checks and protected review. Existing physical cleanup meanings remain in force. A specification,
+acceptance annotation or passing test creates no effect receipt.
 
 ## Existing owners and retained delivery
 
@@ -58,6 +59,9 @@ recovery transition. A narrower proof never silently inherits stronger historica
   adoption decision and explicitly retain historical succession authority as unproven.
 - P02: Ancestor/path equality, cached handoff, source inclusion or an unrelated green PR alone is
   insufficient. Missing, mounted, changed or foreign retention coordinates fail.
+- D01: An already-quarantined original target needs its own enrolled current retention disposition,
+  exact retained receipt/registration/manifests/index/source and fresh current integration claim.
+  Keep historical authority and actor unknown; do not remount or relabel the old physical receipt.
 - A01: Each integration, record-only retirement, physical cleanup and sync effect retains its own
   plan, grant and real receipt. No adoption backdates a claim or creates historical evidence.
 - A02: Full completion requires every applicable owner receipt and handover. Passing tests, local
@@ -100,6 +104,14 @@ only a current record-only claim; it cannot retire nonexistent past authority. E
 revalidates original semantics and retained facts without new effects. First publication always needs
 current authority and the current evidence window.
 
+Already-quarantined retention adds a separately enrolled current record-only basis. Its create-only
+local carrier binds exact target/ref/head/review/merge, retained quarantine/receipt/registration/index
+identities and committed policy. Reuse retained indexes; validate absent mounts, refs, peer/canonical
+state and content at publication and replay. Flags `physicalCleanupPerformed`, `providerAuthority` and
+`claimRetired` stay false. The provider independently retires only the fresh current integrated claim
+with the existing closed `record-retirement`/`retire-claim` operations. No filesystem/registration
+effect, expired-claim renewal or historical assertion follows. Preserve old receipt bytes and meaning.
+
 ## ADR: reviewed meaning and separate effects
 
 Acceptance approves explicit current recovery facts with historical unknowns retained. It neither
@@ -109,16 +121,17 @@ Retain expired evidence without extending or relabeling it.
 
 Reuse existing owners: zero runtime modules/dependencies, global prompt or consumer-pin changes.
 No direct registration repair, unsafe reconstruction, blanket grant or second task registry. Keep
-current seed bytes and recovery copies; their owner resolves them in its own lane. Consumer identities
+current seed bytes and recovery copies. Accepted reconciliation acknowledges current clean state and
+retained edited bytes; historical disposition actor/authority remains unknown and no deletion follows. Consumer identities
 belong to policy/evidence, not hardcoded runtime logic.
 
 Implementation owners: `src/github-transition-{policy,client,proof,provider,authority}.mjs`, committed
 transition policy, `src/cleanup{,-quarantine}.mjs`, `bin/agentic-os-{cleanup-user,completion-status,argv}.mjs`,
 lifecycle/integration/user-cleanup guides and bounded adversarial suites. Admit actual paths natively
 before code writes. Recover headroom by owner simplification without removing or compressing checks:
-source47 modules/15050 lines, bin111/23175 and per-file caps remain unchanged.
-This review candidate is documentation-only. Runtime scope, exact enrollment and provider effects
-are separately reviewed candidates. Protected acceptance precedes activating either new basis.
+source47 modules/15050 lines, protected bin112/23490 and per-file caps remain unchanged.
+The runtime scope is natively admitted from the accepted specification. Exact enrollment and provider
+effects remain separately reviewed candidates. Protected acceptance precedes activating either basis.
 
 ## MVP: meaningful tests and full completion audit
 
@@ -132,16 +145,49 @@ ancestry/cache alone, omitted/extra replacements, unrelated/failed review, chang
 mounted lanes, ref/cache/canonical races, expiry before recording and exact replay after expiry.
 Replay makes no physical effect and never upgrades local evidence into provider authority.
 
+The candidate reuses existing record validators, cleanup CLI dispatch, scaffold fields and finding
+wrappers to fit the unchanged module/line caps. It adds no runtime module or dependency. Affected
+adversarial checks and baseline canonical-output/refusal parity cover these owners; full native
+candidate validation and provider receipts remain separate evidence.
+
+D01 coverage rejects foreign/missing/changed quarantine, receipt, registration, index, manifest,
+review/source/policy, mounted/ref/peer/canonical races, expiry, mismatched winner/effect substitution
+and attempts to upgrade history. Current retention cannot satisfy physical-cleanup postconditions.
+
 A01/A02 join distinct authority, integration/retirement/disposition and delivery/handover receipts to
 exact source/policy/scope. Run native affected planner/required check and protected CI at the frozen
 candidate; reuse valid receipts. Bounded checks do not prove runtime or device parity. Keep the consumer
-runtime pin and existing verified Production carrier. Resolve current seed-owner disposition and
-shared Context/ledger handover before Full END ADLC; report any remaining exact unproved requirement.
+runtime pin and existing verified Production carrier. Join accepted current seed reconciliation and
+the exact Context/ledger successor through its existing checked-PR fallback before full END ADLC.
+Shared Context native trust/independent cleanup is outside the selected Graph closeout targets; retain
+those qualified gaps. Report any applicable missing owner receipt without inferring completion.
 
 ## GTM and bounded delivery
 
-Observed pain is stalled closeout and risk to retained work; demand, willingness to pay and savings
-remain unmeasured. Use FOSS and existing free resources. First pass:15 minutes design/admission,
+2026-10-04 closeout checkpoint: the admitted policy-bytes successor retains PR325 at
+`ac178c7b318ec9af1f2184e7d30abc69b7e57c9f` and fixes its one failed CI test. The committed
+policy now uses its encoder's exact bytes; the test asserts the v3 retention schema and exact
+retention enrollment. The focused transition-workflow test passes. Broader local validation
+stopped with `blocked-test-input-drift` after sibling publication changed clone refs; its passed
+checks remain bounded observations, not a complete candidate receipt. Exact successor CI must
+pass before protected integration. The user's END ADLC request continues A01/A02 preparation;
+it does not fabricate provider integration, retirement or physical cleanup evidence. Logs and
+next actions are retained in workspace artifact `end-adlc-four-worktrees-20261004`.
+No runtime module, dependency, criterion, design or accepted decision changes in this repair;
+buyer demand and measured savings remain unknown.
+
+Closeout is stalled; demand, willingness to pay and savings remain unmeasured. Use FOSS and existing free resources. First pass:15 minutes design/admission,
 document under12KiB, zero new runtime modules. Refresh implementation time/byte budget and measure
 source/bin headroom before publication. External review waits bind exact candidate/owner/recheck,
 never a promised completion time.
+
+## Protected source release continuation — 2026-10-04
+
+The operator selected the three OS lanes for source release and held Graph deployment KIV.
+PR330 and `03736ba245f1d3ce3ae90e4d38b8fd1ed1c4425d` remain immutable. The native
+`reviewed-recovery-source-release` successor will bind the accepted diagnostic successor
+and current protected base before fresh provider validation and integration. This handover
+changes no runtime contract, accepted enrollment, criterion or effect grant. Exact code-blob
+comparisons, required CI and separate integration/retirement/cleanup/sync receipts are retained
+in workspace artifact `end-adlc-four-worktrees-20261004`. OS has no production-activation
+binding. Graph's private Canvas production-license decision remains deferred by the operator.
