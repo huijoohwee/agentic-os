@@ -10,7 +10,6 @@ import { hash, LIMITS, manifestDigest, snapshotReader } from './agentic-os-test-
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeCheck, writeReceipt } from './agentic-os-test-receipt.mjs';
 
 import { ciBudgetsJobIsExact } from './agentic-os-doc-budget.mjs';
-
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FAST = ['lane-state.test.mjs', 'governance-contract.test.mjs', 'completion.test.mjs', 'authority-evidence.test.mjs'];
 const WORKFLOW_INPUTS = new Set(['.agentic-os.json', 'bin/agentic-os-workflow.mjs',
@@ -33,22 +32,22 @@ function workflowGuard(root, mode) {
 export function parseArguments(argv) {
   const [mode = 'affected', ...flags] = argv;
   if (!['affected', 'all', 'plan', 'fast', 'git'].includes(mode)) throw new Error('expected affected, all, plan, fast or git');
-  const options = { mode, base: 'origin/main', head: 'HEAD', committed: false, fresh: false, 'ci-run': null };
+  const options = { mode, base: 'origin/main', head: 'HEAD', committed: false, fresh: false, 'ci-run': null, concurrency: 4 };
   const seen = new Set();
   for (const flag of flags) {
-    const match = flag.match(/^--(base|head|ci-run)=(.+)$/u), key = match?.[1] ?? flag.slice(2);
+    const match = flag.match(/^--(base|head|ci-run|concurrency)=(.+)$/u), key = match?.[1] ?? flag.slice(2);
     if (seen.has(key)) throw new Error('duplicate test option'); seen.add(key);
     if (match && key === 'ci-run') {
       if (!/^[1-9][0-9]{0,15}$/u.test(match[2])) throw new Error('invalid ci-run');
       options['ci-run'] = match[2];
-    } else if (match) options[key] = match[2];
+    } else if (match && key === 'concurrency') { if (!/^[1-4]$/u.test(match[2])) throw new Error('invalid test concurrency'); options.concurrency = Number(match[2]); }
+    else if (match) options[key] = match[2];
     else if (['--committed', '--fresh'].includes(flag)) options[key] = true;
     else throw new Error(`unknown test option:${flag}`);
   }
   if (['fast', 'git'].includes(mode) && flags.length) throw new Error('fast/git accepts no options');
   return options;
 }
-
 /** Skip a second local suite only when bound CI already covers this exact HEAD. */
 export function boundCiCoverage(identity, observation) {
   if (observation == null) return null;
@@ -115,6 +114,7 @@ export function ciEvaluatorAllocation(workflow, environment, revision) {
 
 export async function runTests(argv, { root = ROOT, out = console.log, ci = false, ciObservation } = {}) {
   const options = parseArguments(argv);
+  if ((ci || process.env.CI || process.env.GITHUB_ACTIONS) && options.concurrency !== 4) throw Error('blocked-test-ci-concurrency');
   if (ci && (!options.committed || !options.fresh || options.mode !== 'affected')) throw Error('blocked-test-ci-options');
   root = realpathSync(root);
   const assertWorkflowCurrent = workflowGuard(root, options.mode);
@@ -158,7 +158,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     selected: plan.suites.length, skipped: plan.available - plan.suites.length,
     reused: coverage ? checks.length : preview.filter(check => check.reuse).length,
     estimatedCommandMs: coverage ? 0 : Math.ceil(preview.reduce((total, check) => total + (check.reuse ? 0 : check.estimatedMs), 0)),
-    concurrency: 4, timeBudgetMs: LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
+    concurrency: options.concurrency, timeBudgetMs: LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
     ...(coverage ? { boundCi: coverage } : {}) };
   if (options.mode === 'plan') {
     out(JSON.stringify({ identity: observed.identity, ...plan, cost: summary,
@@ -178,7 +178,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     if (ci) out('evaluators: allocated to required budgets job; result not observed by test job');
     writeReceipt(directory, 'last.json', receipt);
     out(`${plan.mode}: ${plan.suites.length}/${plan.available} suites; ${plan.changed.length} changed paths; ${summary.skipped} skipped`);
-    out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency 4; budget ${LIMITS.testMs / 1000}s`);
+    out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency ${summary.concurrency}; budget ${LIMITS.testMs / 1000}s`);
     if (plan.reasons.length) out(`coverage reasons: ${plan.reasons.join(', ')}`);
     for (const suite of plan.suites) out(`selected ${suite.path}: ${suite.reasons.join(', ')}`);
     if (coverage) {
@@ -220,7 +220,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
           out(result.output.slice(-16_000)); return false;
         }
         return true;
-      });
+      }, options.concurrency);
       if (receipt.outcome !== 'running') break;
     }
     stable();

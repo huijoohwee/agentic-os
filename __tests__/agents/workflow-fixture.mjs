@@ -20,6 +20,9 @@ export function fixture(options = {}) {
     synthesize: async () => ({ status: 'completed', output: 'reviewed listing fixture', costLog: cost }),
     verifyReceipt: async ({ receipt }) => ({ verified: true, ...receipt }), ...options });
 }
+// Real HTTP/SQLite scheduling cannot use the fake-clock fixture's 10 ms claim lease.
+export const realtimeFixture = options => fixture({ taskTimeoutMs: 500, taskLeaseMs: 1_500,
+  storeClaimTtlMs: 500, ...options });
 export const work = (runtime, operationId = 'work') => runtime.work({ runId: request.runId, workerId: 'worker', operationId }, context);
 export const retry = runtime => runtime.retry({ runId: request.runId, taskId: 'listing', operationId: 'retry' }, context);
 
