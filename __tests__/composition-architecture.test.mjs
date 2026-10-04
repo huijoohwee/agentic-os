@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +67,21 @@ test('document keeps agentic-os as SSOT without migrating runtime owners', () =>
   assert.match(readme, /`agentic-graph`/);
   assert.doesNotMatch(`${readme}\n${guide}`, /AgenticGraph|agenticgraph|\bKG(?:_|\b)/i);
   assert.doesNotMatch(guide, /Mercur/i);
+});
+
+test('versioned project has one Graph owner and retired OS planning variants stay absent', () => {
+  const routing = read(path.join(ROOT, 'guides/artifacts-prd-tad-adr-mvp-gtm.md'));
+  assert.match(routing, /github\.com\/huijoohwee\/agentic-graph\/blob\/.+\/docs\/documents\/agentic-graph-versioned-project-prd-tad-adr-mvp-gtm\.md/);
+  assert.match(routing, /doc_type: "Reference"/);
+  assert.doesNotMatch(routing, /^(?:continuity_id|prd_revision|tad_revision|adr_revision|mvp_revision|gtm_revision):/m);
+  for (const file of ['artifacts-reference-implementation.md', 'artifacts-implementation-handoff.md']) {
+    assert.equal(existsSync(path.join(ROOT, 'guides', file)), false, `retired product owner: ${file}`);
+  }
+  for (const directory of ['src', 'runtime', 'bin']) {
+    const files = readdirSync(path.join(ROOT, directory), { recursive: true });
+    assert.deepEqual(files.filter(file => /(?:^|\/)workspace-project[^/]*\.(?:[cm]?js|tsx?)$/u.test(file)), [],
+      `${directory} must not add another versioned-project runtime owner`);
+  }
 });
 
 test('central evidence is static, exact, and explicitly non-executing', () => {
