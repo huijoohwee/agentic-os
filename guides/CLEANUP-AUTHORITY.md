@@ -164,6 +164,18 @@ those qualified gaps. Report any applicable missing owner receipt without inferr
 
 ## GTM and bounded delivery
 
+2026-10-04 closeout checkpoint: the admitted policy-bytes successor retains PR325 at
+`ac178c7b318ec9af1f2184e7d30abc69b7e57c9f` and fixes its one failed CI test. The committed
+policy now uses its encoder's exact bytes; the test asserts the v3 retention schema and exact
+retention enrollment. The focused transition-workflow test passes. Broader local validation
+stopped with `blocked-test-input-drift` after sibling publication changed clone refs; its passed
+checks remain bounded observations, not a complete candidate receipt. Exact successor CI must
+pass before protected integration. The user's END ADLC request continues A01/A02 preparation;
+it does not fabricate provider integration, retirement or physical cleanup evidence. Logs and
+next actions are retained in workspace artifact `end-adlc-four-worktrees-20261004`.
+No runtime module, dependency, criterion, design or accepted decision changes in this repair;
+buyer demand and measured savings remain unknown.
+
 Closeout is stalled; demand, willingness to pay and savings remain unmeasured. Use FOSS and existing free resources. First pass:15 minutes design/admission,
 document under12KiB, zero new runtime modules. Refresh implementation time/byte budget and measure
 source/bin headroom before publication. External review waits bind exact candidate/owner/recheck,
