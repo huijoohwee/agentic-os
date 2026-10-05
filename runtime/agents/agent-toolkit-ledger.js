@@ -9,7 +9,7 @@ import {
 import { aggregateCosts } from "./running-agent-contract.js";
 import { normalizeJson } from "../json-contract.mjs";
 
-const pick = (value, keys) => Object.fromEntries(keys.filter(k => value[k] !== undefined).map(k => [k, value[k]]));
+const pick = (value, keys, required = false) => Object.fromEntries(keys.filter(k => required || value[k] !== undefined).map(k => [k, value[k]]));
 
 function iso(at) {
   return new Date(at).toISOString();
@@ -215,10 +215,14 @@ export function reserveToolkitEvaluation(record, { operationId, evidence, limits
   return { record: touch(record, limits, at), replay: false, reservationId, idempotencyKey };
 }
 
+function updateSpanEvaluation(record, span, limits, at, operation) {
+  const view = { ...record, spans: [], evaluation: span.evaluation };
+  operation(view); span.evaluation = view.evaluation; return touch(record, limits, at);
+}
+
 export function commitToolkitEvaluation(record, reservationId, outcome, limits, at) {
   const span = record.spans.find(s => s.evaluation?.reservationId === reservationId);
-  if (span) { const view = { ...record, spans: [], evaluation: span.evaluation };
-    commitToolkitEvaluation(view, reservationId, outcome, limits, at); span.evaluation = view.evaluation; return touch(record, limits, at); }
+  if (span) return updateSpanEvaluation(record, span, limits, at, view => commitToolkitEvaluation(view, reservationId, outcome, limits, at));
   if (record.evaluation.status !== "running" || record.evaluation.reservationId !== reservationId) {
     throw new AgentToolkitBlock("evaluation_stale", "Evaluation reservation is stale.");
   }
@@ -227,10 +231,7 @@ export function commitToolkitEvaluation(record, reservationId, outcome, limits, 
   }
   record.evaluation = {
     status: outcome.status,
-    attempts: record.evaluation.attempts,
-    operationId: record.evaluation.operationId,
-    idempotencyKey: record.evaluation.idempotencyKey,
-    subjectEvidence: record.evaluation.subjectEvidence,
+    ...pick(record.evaluation, ['attempts', 'operationId', 'idempotencyKey', 'subjectEvidence'], true),
     metric: outcome.metric,
     ...(outcome.status === "reported" ? { score: outcome.score } : {}),
     evidence: outcome.evidence,
@@ -242,8 +243,7 @@ export function commitToolkitEvaluation(record, reservationId, outcome, limits, 
 
 export function failToolkitEvaluation(record, reservationId, reasonCode, limits, at) {
   const span = record.spans.find(s => s.evaluation?.reservationId === reservationId);
-  if (span) { const view = { ...record, spans: [], evaluation: span.evaluation };
-    failToolkitEvaluation(view, reservationId, reasonCode, limits, at); span.evaluation = view.evaluation; return touch(record, limits, at); }
+  if (span) return updateSpanEvaluation(record, span, limits, at, view => failToolkitEvaluation(view, reservationId, reasonCode, limits, at));
   if (record.evaluation.status !== "running" || record.evaluation.reservationId !== reservationId) {
     return touch(record, limits, at);
   }
@@ -251,15 +251,9 @@ export function failToolkitEvaluation(record, reservationId, reasonCode, limits,
   const exhausted = !uncertain && record.evaluation.attempts >= limits.maxEvaluationAttempts;
   record.evaluation = {
     status: uncertain ? "in_doubt" : exhausted ? "unreported" : "pending",
-    attempts: record.evaluation.attempts,
-    operationId: record.evaluation.operationId,
-    idempotencyKey: record.evaluation.idempotencyKey,
-    subjectEvidence: record.evaluation.subjectEvidence,
+    ...pick(record.evaluation, ['attempts', 'operationId', 'idempotencyKey', 'subjectEvidence'], true),
     reasonCode,
-    ...(uncertain ? {
-      reservationId: record.evaluation.reservationId,
-      leaseExpiresAt: record.evaluation.leaseExpiresAt,
-    } : {}),
+    ...(uncertain ? pick(record.evaluation, ['reservationId', 'leaseExpiresAt'], true) : {}),
     ...(exhausted ? { completedAt: iso(at) } : {}),
   };
   return touch(record, limits, at);
@@ -309,10 +303,7 @@ export function createToolkitCohort({ request, principalId, limits, at }) {
     recordId: cohortRecordId(principalId, request.cohortId),
     cohortId: request.cohortId,
     ownerPrincipalId: principalId,
-    target: request.target,
-    adapter: request.adapter,
-    operation: request.operation,
-    profile: request.profile,
+    ...pick(request, ['target', 'adapter', 'operation', 'profile'], true),
     createdAt: iso(at),
     updatedAt: iso(at),
     expiresAt: at + limits.cohortTtlMs,
@@ -324,24 +315,15 @@ export function createToolkitCohort({ request, principalId, limits, at }) {
 
 export function assertToolkitCohort(record, request, principalId) {
   assertToolkitOwner(record, principalId);
-  if (!same(record.target, request.target)
-    || !same(record.adapter, request.adapter)
-    || record.operation !== request.operation
-    || !same(record.profile, request.profile)) {
+  if (record.operation !== request.operation || ['target', 'adapter', 'profile'].some(key => !same(record[key], request[key]))) {
     throw new AgentToolkitBlock("cohort_mismatch", "Cohort target, adapter, operation, or evaluation provenance changed.");
   }
 }
 
 function sampleFromRun(run) {
   return {
-    runId: run.runId,
-    candidate: run.candidate,
-    adapter: run.adapter,
-    operation: run.operation,
-    telemetryTrust: run.telemetryTrust,
-    status: run.status,
-    durationMs: run.completion.durationMs,
-    cost: run.completion.cost,
+    ...pick(run, ['runId', 'candidate', 'adapter', 'operation', 'telemetryTrust', 'status'], true),
+    ...pick(run.completion, ['durationMs', 'cost'], true),
     quality: run.evaluation.status === "reported" || run.evaluation.status === "unreported"
       ? run.evaluation
       : { status: "pending" },
@@ -351,31 +333,22 @@ function sampleFromRun(run) {
 
 export function appendToolkitSample(cohort, run, limits, at) {
   const sample = sampleFromRun(run);
-  const index = cohort.samples.findIndex((candidate) => candidate.runId === run.runId);
+  const index = cohort.samples.findIndex(candidate => candidate.runId === run.runId);
+  const validated = () => {
+    if (sample.quality.status !== 'pending' && cohort.samples.some(candidate => candidate.runId !== run.runId
+      && candidate.quality?.subjectEvidence?.digest === sample.quality.subjectEvidence?.digest))
+      sample.quality = { ...sample.quality, status: 'invalid', reasonCode: 'evidence_reused' };
+    return sample;
+  };
   if (index >= 0) {
     const existing = cohort.samples[index];
-    if (!same(existing.candidate, sample.candidate)
-      || !same(existing.adapter, sample.adapter)
-      || existing.operation !== sample.operation
-      || existing.telemetryTrust !== sample.telemetryTrust
-      || existing.status !== sample.status) {
+    if (['candidate', 'adapter'].some(key => !same(existing[key], sample[key]))
+      || ['operation', 'telemetryTrust', 'status'].some(key => existing[key] !== sample[key])) {
       throw new AgentToolkitBlock("sample_mismatch", "Immutable cohort sample identity changed.");
     }
-    if (existing.quality.status === "pending" && sample.quality.status !== "pending") {
-      const reused = cohort.samples.some((candidate) => candidate.runId !== run.runId
-        && candidate.quality?.subjectEvidence?.digest === sample.quality.subjectEvidence?.digest);
-      cohort.samples[index] = reused
-        ? { ...sample, quality: { ...sample.quality, status: "invalid", reasonCode: "evidence_reused" } }
-        : sample;
-    }
+    if (existing.quality.status === "pending" && sample.quality.status !== "pending") cohort.samples[index] = validated();
   } else {
-    if (sample.quality.status !== "pending") {
-      const reused = cohort.samples.some((candidate) => (
-        candidate.quality?.subjectEvidence?.digest === sample.quality.subjectEvidence?.digest
-      ));
-      if (reused) sample.quality = { ...sample.quality, status: "invalid", reasonCode: "evidence_reused" };
-    }
-    cohort.samples.push(sample);
+    cohort.samples.push(validated());
     while (cohort.samples.length > limits.maxSamples) cohort.samples.shift();
   }
   cohort.expiresAt = at + limits.cohortTtlMs;
