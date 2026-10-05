@@ -16,10 +16,10 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
-  // NATIVE-DESIGN-ENFORCEMENT: one portable policy verifier and one lazy CLI file.
-  // Two transport consumers; no lifecycle scenario family or runtime dependency.
+  // NATIVE-DESIGN-ENFORCEMENT@0.2.0: +105 existing-owner lines for declared reuse.
+  // Measured source cap 15050 -> 15154; no new module or runtime dependency.
   modules: 47,
-  totalLines: 15050,
+  totalLines: 15154,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
