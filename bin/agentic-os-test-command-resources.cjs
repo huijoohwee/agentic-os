@@ -1,16 +1,13 @@
 /** Optional waited-process accounting. No sampling, shell, output parsing or authority. */
 const { spawnSync } = require('node:child_process');
-
 const LIMIT = 4096;
 let capability;
 const supervisor = String.raw`
 import json, os, resource, signal, subprocess, sys
 def emit(value):
     os.write(3, (json.dumps(value, separators=(',', ':')) + '\n').encode())
-# Drain the child after a group cancellation so nested executors can release their locks.
-# A caught handler (not SIG_IGN) resets on exec: the child still receives normal signals.
-signal.signal(signal.SIGTERM, lambda *_: None)
-signal.signal(signal.SIGINT, lambda *_: None)
+# Drain nested cleanup; caught handlers reset on exec, preserving child signal behavior.
+for sig in (signal.SIGTERM, signal.SIGINT): signal.signal(sig, lambda *_: None)
 try:
     child = subprocess.Popen(sys.argv[1:], close_fds=True)
 except OSError:
@@ -26,7 +23,6 @@ if code < 0:
     os.kill(os.getpid(), -code)
 sys.exit(code)
 `;
-
 function resourceCommand(command, args, environment, platform = process.platform) {
   const direct = reason => ({ command, args, measured: false, reason });
   if (!['darwin', 'linux'].includes(platform)) return direct('unsupported-host');
@@ -40,7 +36,6 @@ function resourceCommand(command, args, environment, platform = process.platform
   return capability.executable ? { command: capability.executable, args: ['-I', '-c', supervisor, command, ...args], measured: true }
     : direct('native-accounting-unavailable');
 }
-
 function commandResourceReader(plan) {
   const chunks = []; let bytes = 0;
   return {
@@ -62,6 +57,5 @@ function commandResourceReader(plan) {
     },
   };
 }
-
 exports.resourceCommand = resourceCommand;
 exports.commandResourceReader = commandResourceReader;

@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
-
 export const LIMITS = Object.freeze({ files: 2048, fileBytes: 499_000, bytes: 16 * 1024 * 1024,
   gitMs: 10_000, testMs: 540_000, outputBytes: 480_000, receiptBytes: 128_000 });
 export const hash = value => createHash('sha256').update(value).digest('hex');
@@ -25,7 +24,7 @@ export function readGit(root, args, { input, binary = false } = {}) {
       maxBuffer: LIMITS.bytes, encoding: binary ? undefined : 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   } catch { throw new Error(`blocked-test-git:${args[0]}`); }
 }
-/** Workflow navigation is guarded separately; unrelated START must not change test inputs. */
+/** Ignore separately guarded workflow navigation and other branches' tracking metadata. */
 export function validationGitConfiguration(root) {
   const branch = readGit(root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim();
   const fields = readGit(root, ['config', '--null', '--list', '--show-origin']).split('\0');
@@ -33,14 +32,12 @@ export function validationGitConfiguration(root) {
   const retained = [];
   for (let index = 0; index < fields.length; index += 2) {
     const key = fields[index + 1].split('\n', 1)[0];
-    // Sibling START/publish updates clone-wide tracking metadata, not this checkout's inputs.
     const tracking = key.match(/^branch\.(.+)\.(?:remote|merge|pushremote)$/u);
     if (tracking && `refs/heads/${tracking[1]}` !== branch) continue;
     if (!/^agentic-os\.(?:workflowmanifest|workflow-(?:owner|member|ref)-[a-f0-9]{64})$/u.test(key))
       retained.push(fields[index], fields[index + 1]);
   }
-  if (readGit(root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim() !== branch)
-    throw Error('blocked-test-configuration-race');
+  if (readGit(root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim() !== branch) throw Error('blocked-test-configuration-race');
   return JSON.stringify([branch, retained.join('\0')]);
 }
 const oid = (root, ref) => {
@@ -136,7 +133,6 @@ function worktreeFiles(root, cache) {
 }
 export const manifestDigest = files => hash(JSON.stringify([...files].sort(([a], [b]) => a.localeCompare(b))
   .map(([path, file]) => [path, file.mode, file.digest])));
-
 // Cache lifetime is one runner invocation. Every boundary still inventories names, index,
 // refs, environment and file identities; only unchanged bytes and immutable Git blobs are reused.
 export function snapshotReader(options) {
