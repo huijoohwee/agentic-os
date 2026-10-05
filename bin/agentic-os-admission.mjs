@@ -141,21 +141,22 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (!selected) fail('mission-required', 'Existing lanes need their exact workflow identity; no new root is created for reuse');
         if (!selected.members.some(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository))
           fail('member-binding', 'The existing lane is not a member of the selected mission');
-        const liveDigest = scopeDigest(identity.reserved);
-        const recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit';
+        const liveDigest = scopeDigest(identity.reserved), recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit';
         const successorReadmit = row && row.ref !== ref && identity.lineage.some(link => link.predecessorRef === row.ref);
+        const writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved, nextDigest = scopeDigest(writePaths);
+        const predecessorPaths = row?.predecessorRef ? parseWritePaths((records[row.predecessorRef]?.writePaths ?? []).join(',')) : [];
+        // Reconcile expanded successor scope only between its published predecessor and exact pending target.
+        const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref && identity.lineage.some(link => link.predecessorRef === row.predecessorRef)
+          && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
         if (successorReadmit && !readmit) fail('successor-readmit', 'Explicit readmit must bind the retained successor to its existing mission slot');
         if (row && (row.path !== path || (row.ref !== ref && !successorReadmit) ||
-          (row.writeDigest !== liveDigest && !successorReadmit && !(recoveringReadmit && row.previousWriteDigest === liveDigest))))
+          (row.writeDigest !== liveDigest && !successorReadmit && !recoveringSuccessor && !(recoveringReadmit && row.previousWriteDigest === liveDigest))))
           fail('reservation-drift', 'Native scope evidence no longer matches the live lane projection');
         if (!readmit && requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Use explicit active readmit for additional paths');
         if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head
           && !(alignment && row.headRevision === alignment.candidateHead) || (recoveringReadmit && !readmit)))
           fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
-        const writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved;
-        const nextDigest = scopeDigest(writePaths);
-        if (recoveringReadmit && nextDigest !== row.writeDigest)
-          fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
+        if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected,
           { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);

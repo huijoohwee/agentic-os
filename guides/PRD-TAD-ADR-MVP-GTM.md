@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.20"
+version: "1.4.21"
 date: "2026-10-05"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -555,6 +555,7 @@ Five is a ceiling, not a measured optimum or parallel build target; use existing
 Count completed work and sprint lead time, plus disk/RSS/CPU, before raising active concurrency.
 Flat paths prevent nested ownership; raw Git/other clones/devices remain outside this cooperative local gate.
 ADR-EXEC-03 (2026-10-03): `node bin/agentic-os-lane-alignment.mjs --input=<json>` binds stopped writer/mission/exact SHAs through START. Keep base/published refs; reject overlaps, unsafe state and drift.
+E06 recovery / ADR-EXEC-04 (2026-10-05): START may reconcile a pending successor whose native scope already expanded: require the retained published predecessor/ancestry, unchanged predecessor scope digest, inherited path coverage and exact pending target union. Preserve immutable allocation history; never edit recovery evidence or widen the target. MVP: three existing owners, 15 active minutes/10 kB, no runtime/dependency/always-load delta; admission regressions cover both sides of cache publication and refuse wrong head, target or foreign scope. Native source checks and protected integration remain required; consumer recovery and revenue need their own evidence.
 PRD E17: Keep histories, blobs/modes, dirty bytes and prior hook migrations; lane-alignment/hook-trust/repository tests plus `npm run check` own proof.
 TAD E17: Journal candidate/recovery refs before writes; staging/index lock, ref CAS, separate exclusivity. Retry reuses candidate; partial effects preserve/block. Pin exact quarantine bytes; digest-assert historical fixtures.
 MVP E17: Approved repair: ten files/five runtime owners, 56 KiB additions; 25-minute estimate exceeded; next slice 10 active minutes plus checks. The 4 KiB scope refresh binds mandatory release-pin/migration correction; +1 lazy entry/+315 bin lines, zero dependency/spend/always-load delta. Gate/integration/adoption/browser pending. GTM E17: demand/revenue unvalidated.

@@ -311,6 +311,42 @@ for (const publishedCache of [false, true]) test(`interrupted readmission recove
   assert.equal(f.selected().manifest.allocations[0].state, 'active');
   assert.equal(f.effects.length, effects); assert.equal(worktrees(f.root).length, 2);
 });
+for (const publishedCache of [false, true]) test(`interrupted expanded successor readmit recovers ${publishedCache ? 'after' : 'before'} cache CAS`, async t => {
+  const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const predecessorRef = 'agent/test-device/one', ref = 'agent/test-device/next';
+  const target = lanePath('one', 'test-device', f.root), head = headSha('HEAD', target);
+  f.run('push', 'origin', `refs/heads/${predecessorRef}:refs/heads/${predecessorRef}`);
+  const predecessor = records.get(predecessorRef, f.root);
+  records.putExact({ ...predecessor, state: 'published', head }, predecessor, f.root);
+  runPublishedLaneSuccessor({ cwd: target, predecessorRef, scope: 'next', explicitHead: head,
+    remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {}, expandedWritePaths: ['build.txt'] });
+  const record = records.get(ref, f.root), old = f.selected().manifest.allocations[0];
+  const writePaths = ['build.txt', 'dependency.txt', 'owned.txt'];
+  const pending = { ...old, ref, predecessorRef, state: 'pending', operation: 'readmit',
+    previousWriteDigest: old.writeDigest, writeDigest: hash(JSON.stringify(writePaths)) };
+  const selected = changeRoot(f, { allocations: [pending] });
+  if (publishedCache) records.putExact({ ...record, writePaths }, record, f.root);
+  const resume = (paths = 'dependency.txt', expected = head) => cmdStart(f.root, ['next', '--device=test-device',
+    `--write=${paths}`, `--mission=${selected.path}`, '--readmit', `--expected-head=${expected}`], f.policy, f.profile, f.services);
+  const effects = f.effects.length, stable = records.get(ref, f.root);
+  await assert.rejects(resume('outside.txt'), /scope evidence|exact pending/);
+  await assert.rejects(resume('dependency.txt', 'f'.repeat(40)), /expected head/);
+  records.putExact({ ...stable, writePaths: [...stable.writePaths, 'outside.txt'] }, stable, f.root);
+  await assert.rejects(resume(), /scope evidence|exact pending/);
+  records.putExact(stable, records.get(ref, f.root), f.root);
+  if (!publishedCache) {
+    const prior = records.get(predecessorRef, f.root);
+    records.putExact({ ...prior, writePaths: ['different.txt'] }, prior, f.root);
+    await assert.rejects(resume(), /scope evidence/);
+    records.putExact(prior, records.get(predecessorRef, f.root), f.root);
+  }
+  assert.equal(f.selected().digest, selected.digest);
+  assert.equal(await resume(), 0);
+  assert.deepEqual(records.get(ref, f.root).writePaths, writePaths);
+  assert.equal(f.selected().manifest.allocations[0].state, 'active');
+  assert.equal(f.selected().manifest.allocations[0].previousWriteDigest, undefined);
+  assert.equal(f.effects.length, effects); assert.equal(worktrees(f.root).length, 2);
+});
 for (const hops of [1, 2, 3]) test(`${hops} published successors reuse the retained checkout and mission slot`, async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const target = lanePath('one', 'test-device', f.root), ref = 'agent/test-device/one', head = headSha('HEAD', target);
