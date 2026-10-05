@@ -4,8 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync, symlinkSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { validateValidationPolicy, selectValidationChecks, checkInputPatterns, VALIDATION_POLICY } from '../bin/agentic-os-validation-policy.mjs';
-import { consumerSnapshotReader } from '../bin/agentic-os-validation-inputs.mjs';
+import { validateValidationPolicy, selectValidationChecks, checkInputPatterns, matchesInput, VALIDATION_POLICY, VALIDATION_VERSION } from '../bin/agentic-os-validation-policy.mjs';
+import { consumerSnapshotReader, sourceDigest } from '../bin/agentic-os-validation-inputs.mjs';
+import { hash } from '../bin/agentic-os-test-inputs.mjs';
 import { validationArguments, resolveValidationCi, validationCheckDefinitions } from '../bin/agentic-os-validation.mjs';
 
 const check = (id, inputs, requires = []) => ({ id, command: ['node', 'checks.mjs', id], inputs, requires, reuse: 'local', timeoutMs: 3000 });
@@ -158,4 +159,100 @@ test('CI baseline cannot be overridden and a missing or mismatched event cannot 
   const blob=git('rev-parse','HEAD:a/source.txt');
   assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:blob}),/blocked-test-git/);
   assert.throws(()=>resolveValidationCi(root,{...headEnv,GITHUB_SHA:'b'.repeat(40)}),/blocked-test-git/);
+});
+
+// Count actual digest input serialization without introducing a production instrumentation seam.
+function digestCalls(run, onDigest = () => {}) {
+  const original = JSON.stringify; let calls = 0;
+  JSON.stringify = function (value, ...args) {
+    if (Array.isArray(value) && value.length && value.every(row => Array.isArray(row) && row.length === 3
+      && typeof row[0] === 'string' && /^(100644|100755|120000)$/.test(row[1]) && /^[a-f0-9]{40,64}$/.test(row[2]))) {
+      calls++; onDigest(calls, value);
+    }
+    return original.call(this, value, ...args);
+  };
+  try { return { value: run(), calls }; } finally { JSON.stringify = original; }
+}
+// Retain the pre-optimization identity formula as a compatibility oracle, not a timing claim.
+function priorFingerprints(value, plan, observed, ownerDigest) {
+  return plan.checks.map(item => {
+    const patterns = checkInputPatterns(value, item.id);
+    const files = new Map([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
+      || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path)));
+    const { root, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
+    const planInput = item.reuse === 'local-plan' ? { identity: observed.identity,
+      mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
+    return hash(JSON.stringify({ version: VALIDATION_VERSION, ownerDigest, check: value.checks.find(check => check.id === item.id),
+      sourceDigest: sourceDigest(files), root, configurationDigest, environmentDigest, node, executable, platform, arch, planInput }));
+  });
+}
+test('projection digests are shared only for identical canonical patterns within one call', t => {
+  const { root } = fixture(t), observed = consumerSnapshotReader({ root })();
+  const value = policy(); value.always = []; value.checks = [check('a', ['a/', 'b/']),
+    check('b', ['b/', 'a/']), check('c', ['a/']), { ...check('whole', ['*']), reuse: 'local-plan' }];
+  value.fallback = ['whole'];
+  const plan = selectValidationChecks(value, ['a/source.txt']), expected = priorFingerprints(value, plan, observed, 'owner');
+  const result = digestCalls(() => validationCheckDefinitions(value, plan, observed, 'owner'));
+  assert.equal(result.calls, 3, 'four checks require only three distinct source projections');
+  assert.deepEqual(result.value.map(item => item.fingerprint), expected);
+  assert.equal(new Set(expected).size, 4, 'separate commands and check policies retain separate identities');
+  const repeated = digestCalls(() => validationCheckDefinitions(value, plan, observed, 'owner'));
+  assert.equal(repeated.calls, 3, 'projection cache never survives an invocation');
+  for (const field of ['environmentDigest', 'configurationDigest', 'indexDigest', 'headRevision']) {
+    const changed = { ...observed, identity: { ...observed.identity, [field]: 'changed' } };
+    assert.deepEqual(validationCheckDefinitions(value, plan, changed, 'owner').map(item => item.fingerprint), priorFingerprints(value, plan, changed, 'owner'));
+    assert.notEqual(validationCheckDefinitions(value, plan, changed, 'owner').at(-1).fingerprint, expected.at(-1));
+  }
+  writeFileSync(join(root, 'a/source.txt'), 'two');
+  const changed = consumerSnapshotReader({ root })();
+  assert.notDeepEqual(validationCheckDefinitions(value, plan, changed, 'owner').map(item => item.fingerprint), expected);
+  assert.deepEqual(validationCheckDefinitions(value, plan, changed, 'owner').map(item => item.fingerprint), priorFingerprints(value, plan, changed, 'owner'));
+});
+
+test('committed snapshots digest fresh source once while immutable digest eviction remains bounded', t => {
+  const { root, git } = fixture(t), revision = git('rev-parse', 'HEAD');
+  const observe = consumerSnapshotReader({ root, base: 'HEAD', committed: true });
+  const first = digestCalls(observe); assert.equal(first.calls, 2, 'one immutable tree and one current inventory');
+  const warm = digestCalls(observe); assert.equal(warm.calls, 1); assert.deepEqual(warm.value.identity, first.value.identity);
+  assert.equal(warm.value.before, first.value.before); assert.ok(first.value.before instanceof Map);
+  for (let i = 0; i < 4; i++) {
+    git('commit', '--allow-empty', '-m', `revision ${i}`);
+    assert.equal(digestCalls(observe).calls, 2);
+  }
+  git('reset', '--soft', revision);
+  const revisited = digestCalls(observe); assert.equal(revisited.calls, 2);
+  assert.notEqual(revisited.value.before, first.value.before); assert.deepEqual(revisited.value.before, first.value.before);
+  assert.equal(digestCalls(observe).calls, 1);
+  writeFileSync(join(root, 'a/source.txt'), 'two');
+  assert.throws(observe, /dirty-ci/, 'same-length bytes must invalidate the warm committed observation');
+  git('checkout', '--', 'a/source.txt');
+  git('config', 'core.autocrlf', 'false');
+  assert.notEqual(observe().identity.configurationDigest, first.value.identity.configurationDigest);
+  git('update-index', '--assume-unchanged', 'a/source.txt'); assert.throws(observe, /hidden-source/);
+});
+
+test('fresh index changes and observation races are not hidden by digest memoization', t => {
+  const { root, git } = fixture(t), observe = consumerSnapshotReader({ root, base: 'HEAD' }), initial = observe();
+  git('update-index', '--chmod=+x', 'a/source.txt');
+  assert.notEqual(observe().identity.indexDigest, initial.identity.indexDigest);
+  git('update-index', '--chmod=-x', 'a/source.txt'); observe();
+  assert.throws(() => digestCalls(observe, calls => { if (calls === 1) git('update-index', '--chmod=+x', 'a/source.txt'); }), /observation-race/);
+  git('update-index', '--chmod=-x', 'a/source.txt'); observe();
+  assert.throws(() => digestCalls(observe, calls => { if (calls === 1) git('commit', '--allow-empty', '-m', 'concurrent ref'); }), /observation-race/);
+});
+
+
+test('local cold and warm observations digest only fresh working source, never the unused baseline', t => {
+  const { root } = fixture(t);
+  writeFileSync(join(root, 'a/source.txt'), 'uncommitted working source');
+  const observe = consumerSnapshotReader({ root }), serialized = [];
+  const capture = () => digestCalls(observe, (_count, rows) => serialized.push(rows));
+  const cold = capture(), warm = capture(), digests = serialized.map(rows => hash(JSON.stringify(rows)));
+  assert.equal(cold.calls, 1, 'cold local observation never hashes the baseline map');
+  assert.equal(warm.calls, 1, 'warm local observation hashes current source exactly once');
+  assert.deepEqual(digests, [cold.value.identity.sourceDigest, warm.value.identity.sourceDigest]);
+  assert.notEqual(digests[0], sourceDigest(cold.value.before), 'the sole digest is working source, not the baseline');
+  assert.equal(warm.value.before, cold.value.before); assert.ok(cold.value.before instanceof Map);
+  assert.deepEqual(warm.value.changed, ['a/source.txt']);
+  assert.deepEqual(warm.value.identity, cold.value.identity);
 });

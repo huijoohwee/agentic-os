@@ -68,7 +68,7 @@ export const sourceDigest = files => hash(JSON.stringify([...files].sort(([a], [
 export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEAD', committed = false }) {
   root = realpathSync(root); const cache = new Map(), trees = new Map(), scratch = { buffer: null };
   const committedTree = ref => {
-    if (!trees.has(ref)) { if (trees.size >= 4) trees.clear(); trees.set(ref, tree(root, ref)); }
+    if (!trees.has(ref)) { if (trees.size >= 4) trees.clear(); trees.set(ref, { files: tree(root, ref) }); }
     return trees.get(ref);
   };
   return () => {
@@ -90,13 +90,13 @@ export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEA
       const file = readWorkingFile(root, path, algorithm, cache, budget, scratch);
       if (file) after.set(path, file); else cache.delete(path);
     }
-    const before = committedTree(bases[0]);
-    if (committed && sourceDigest(committedTree(headRevision)) !== sourceDigest(after)) throw new Error('blocked-validation-dirty-ci');
+    const before = committedTree(bases[0]).files, afterDigest = sourceDigest(after), current = committed && committedTree(headRevision);
+    if (current && (current.digest ??= sourceDigest(current.files)) !== afterDigest) throw new Error('blocked-validation-dirty-ci');
     const changed = [...new Set([...before.keys(), ...after.keys()])].filter(path => {
       const a = before.get(path), b = after.get(path); return a?.oid !== b?.oid || a?.mode !== b?.mode;
     }).sort();
     const identity = { root, requestedBase, baseRevision: bases[0], headRevision,
-      sourceDigest: sourceDigest(after), indexDigest: hash(index),
+      sourceDigest: afterDigest, indexDigest: hash(index),
       configurationDigest: hash(validationGitConfiguration(root)),
       environmentDigest: hash(JSON.stringify(executionEnvironment())),
       node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch };
