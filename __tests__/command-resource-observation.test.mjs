@@ -41,8 +41,23 @@ test('unavailable executables and interrupted capture preserve failure semantics
   assert.equal(missing.reason, 'spawn-failed');
   const timeout = await executeCommand(process.cwd(), process.execPath, ['-e', 'setInterval(()=>{},1000)'], { timeoutMs: 100 });
   assert.equal(timeout.reason, 'timeout');
-  assert.equal(timeout.resources.status, 'unavailable');
-  assert.equal(timeout.resources.cpuMs, null);
+  assert.notEqual(timeout.exitCode, 0);
+  if (timeout.resources.status === 'measured') {
+    const { cpuMs, cpuUserMs, cpuSystemMs, peakMemoryBytes } = timeout.resources;
+    for (const n of [cpuMs, cpuUserMs, cpuSystemMs, peakMemoryBytes])
+      assert.ok(typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER);
+    assert.ok(Number.isSafeInteger(peakMemoryBytes));
+    assert.equal(cpuMs, cpuUserMs + cpuSystemMs);
+    assert.deepEqual(timeout.resources, { status: 'measured', method: 'wait4', scope: 'waited-process-tree',
+      memoryScope: 'maximum-single-process-rss', cpuMs, cpuUserMs, cpuSystemMs, peakMemoryBytes });
+  } else {
+    assert.equal(timeout.resources.status, 'unavailable');
+    for (const key of ['cpuMs', 'cpuUserMs', 'cpuSystemMs', 'peakMemoryBytes']) assert.equal(timeout.resources[key], null);
+  }
+  assert.deepEqual(commandResourceReader({ measured: true }).finish(), {
+    status: 'unavailable', reason: 'accounting-interrupted', cpuMs: null, cpuUserMs: null,
+    cpuSystemMs: null, peakMemoryBytes: null,
+  });
 });
 
 test('unsupported hosts retain exact argv and malformed or oversized resource frames stay unknown', () => {

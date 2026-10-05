@@ -138,7 +138,9 @@ MVP: reproduce the two invalidation failures and SIGINT/SIGTERM nested-stage loc
 Verify fresh cancellation receipts, no surviving owned leaf, preserved live foreign command/lock,
 repeated interrupts, replacement-lock refusal, bounded forced teardown and unchanged relevant guards.
 Run focused regressions then native affected validation; publication and protected integration remain
-separate. Sprint: five code/test modules plus this plan, 15 KiB patch and 25 active minutes.
+separate. Sprint: six code/test modules plus this plan, 17 KiB patch and 25 active minutes;
+the CI accounting assertion repair adds a five-minute light-test window. Timeout remains a failure
+even when drained accounting is measured; validate the full metrics contract and missing-frame case.
 No dependencies, paid capacity, always-load instruction bytes or additional background observers.
 
 GTM: free/FOSS existing consumer pilot. Avoided invalidation and orphan work are behavioral results;
