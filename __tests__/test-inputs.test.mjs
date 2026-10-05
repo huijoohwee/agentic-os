@@ -127,6 +127,20 @@ test('run-local snapshots reuse unchanged file objects but detect restored times
   assert.deepEqual(observe().changed, ['a.mjs', 'new.mjs']);
 });
 
+test('working snapshot cache evicts deleted tracked and retired untracked paths', t => {
+  const f = fixture(t), cache = { working: new Map(), committed: new Map() };
+  const observe = () => snapshot({ root: f.root, base: f.base }, cache);
+  writeFileSync(join(f.root, 'transient.mjs'), 'transient');
+  const first = observe(), retained = first.after.get('package.json');
+  rmSync(join(f.root, 'a.mjs')); rmSync(join(f.root, 'transient.mjs'));
+  const second = observe();
+  assert.equal(second.after.get('package.json'), retained, 'unchanged file remains reusable');
+  assert.equal(cache.working.size, second.after.size, 'cache retains only observed files');
+  assert.ok(!cache.working.has(join(second.identity.root, 'a.mjs')), 'missing tracked file is evicted');
+  assert.ok(!cache.working.has(join(second.identity.root, 'transient.mjs')), 'retired untracked file is evicted');
+  assert.ok(first.after.has('a.mjs'), 'earlier snapshots remain intact');
+});
+
 
 test('CI evaluator allocation requires the exact budgets owner and current provider context', () => {
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');

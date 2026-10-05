@@ -71,3 +71,37 @@ test('empty and symlink-only sources never allocate regular-file scratch storage
   writeFileSync(join(root, 'regular'), 'regular bytes');
   assert.equal(countStreamAllocations(observe).allocations, 1, 'first regular read allocates lazily');
 });
+
+test('consumer cache evicts retired and missing tracked files while retaining warm identities', t => {
+  const { root, git } = fixture(t);
+  for (const name of ['retained', 'tracked', 'transient']) writeFileSync(join(root, name), name);
+  git('add', 'retained', 'tracked');
+  const observe = consumerSnapshotReader({ root, base: 'HEAD' }), original = Map.prototype.set;
+  let cache, first;
+  Map.prototype.set = function (key, value) {
+    if (key === 'transient' && value?.identity && value.file?.digest) cache = this;
+    return original.call(this, key, value);
+  };
+  try { first = observe(); } finally { Map.prototype.set = original; }
+  assert.ok(cache instanceof Map);
+  rmSync(join(root, 'tracked')); rmSync(join(root, 'transient'));
+  const second = observe();
+  assert.equal(second.after.get('retained'), first.after.get('retained'));
+  assert.deepEqual([...cache.keys()], ['retained']);
+  assert.equal(first.after.size, 3, 'earlier snapshot survives cache eviction');
+});
+
+test('consumer immutable tree retention is bounded while current revisions stay reusable', t => {
+  const { root, git } = fixture(t), revision = git('rev-parse', 'HEAD');
+  const observe = consumerSnapshotReader({ root, base: 'HEAD' }), first = observe();
+  assert.equal(observe().before, first.before);
+  for (let i = 0; i < 4; i++) {
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', `revision ${i}`);
+    observe();
+  }
+  git('reset', '--soft', revision);
+  const revisited = observe();
+  assert.notEqual(revisited.before, first.before, 'old immutable tree is rebuilt after retention bound');
+  assert.deepEqual(revisited.before, first.before);
+  assert.equal(observe().before, revisited.before, 'newest immutable tree remains reusable');
+});
