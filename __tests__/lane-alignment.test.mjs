@@ -20,7 +20,7 @@ function write(root, path, value, mode = 0o644) {
   mkdirSync(dirname(join(root, path)), { recursive: true });
   writeFileSync(join(root, path), value); chmodSync(join(root, path), mode);
 }
-const commit = cwd => { git(cwd, 'add', '--all'); git(cwd, 'commit', '--quiet', '-m', 'fixture'); return git(cwd, 'rev-parse', 'HEAD'); };
+const commit = (cwd, message = 'fixture') => { git(cwd, 'add', '--all'); git(cwd, 'commit', '--quiet', '-m', message); return git(cwd, 'rev-parse', 'HEAD'); };
 function fixture(t, incoming = 'incoming/new module.sh', squash = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'lane-alignment-'))), root = join(parent, 'repo'), lane = join(parent, 'lane');
   const priorGlobal = process.env.GIT_CONFIG_GLOBAL, priorSystem = process.env.GIT_CONFIG_NOSYSTEM;
@@ -45,7 +45,11 @@ function fixture(t, incoming = 'incoming/new module.sh', squash = false) {
   put(prior, root); put({ ...prior, ref, state: 'active', handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: predecessor, predecessorHead: head } }, root);
   if (squash) git(root, 'merge', '--squash', predecessor);
   else write(root, incoming, '#!/bin/sh\nprintf protected\n', 0o755);
-  const target = commit(root); git(root, 'push', '--quiet', 'origin', 'main');
+  const target = commit(root, squash ? 'protected squash fixture' : 'fixture'); git(root, 'push', '--quiet', 'origin', 'main');
+  if (squash) {
+    assert.notEqual(target, head, 'a squash fixture must have a distinct protected commit');
+    assert.equal(git(root, 'rev-parse', `${target}^{tree}`), git(root, 'rev-parse', `${head}^{tree}`));
+  }
   const dirtyBytes = Buffer.from([0, 255, 13, 10, 82, 69, 84, 65, 73, 78]);
   write(lane, 'owned/edit.txt', dirtyBytes); rmSync(join(lane, 'owned/delete.txt'));
   chmodSync(join(lane, 'owned/tool.sh'), 0o644); write(lane, 'owned/- option "quote".txt', Buffer.from('untracked\0bytes\r\n'), 0o755);
@@ -165,7 +169,11 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
     write(lane, 'native-owned.txt', 'unfinished native owner\0bytes'); write(lane, 'node_modules/keep.bin', Buffer.from([0, 255, 1]));
     if (squash) git(f.root, 'merge', '--squash', predecessor);
     else write(f.root, overlapping ? 'native-owned.txt' : 'incoming/native-advance.txt', 'protected advance\n');
-    const target = commit(f.root); git(f.root, 'push', '--quiet', 'origin', 'main');
+    const target = commit(f.root, squash ? 'protected native squash fixture' : 'fixture'); git(f.root, 'push', '--quiet', 'origin', 'main');
+    if (squash) {
+      assert.notEqual(target, head, 'native squash integration must differ from its predecessor');
+      assert.equal(git(f.root, 'rev-parse', `${target}^{tree}`), git(f.root, 'rev-parse', `${head}^{tree}`));
+    }
     const before = readSelectedWorkflow(f.root, profile.repository, { required: true }), count = worktrees(f.root).length, cache = JSON.stringify(load(f.root));
     const input = join(dirname(f.root), 'alignment-input.json'); writeFileSync(input, JSON.stringify({ schema: 'agentic-os/lane-alignment-input/v1', scope: 'native-next', device: 'test-device', mission: before.path, expectedHead: head, expectedTarget: target, stopped: true }));
     const invoke = () => execFileSync(process.execPath, [fileURLToPath(new URL('../bin/agentic-os-lane-alignment.mjs', import.meta.url)), `--input=${input}`], { cwd: f.root, encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
