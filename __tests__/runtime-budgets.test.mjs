@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40907, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40931, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -93,7 +93,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'complete --ref=<lane>',
       'Cleanup preserves recovery bytes and requires exact eligible-target evidence',
       'diagnostics only',
-      'Publication stops at provider handoff. After exact protected merge',
+      'Publication stops at provider handoff. Authorized merges require green checks',
       'Integration, retirement, cleanup, sync and production grants remain separate.',
       '[DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.',
     ]],
@@ -251,7 +251,7 @@ test('this repository is inside its own module budget', () => {
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
     modules: 47, totalLines: 15_154, perModuleLines: 400,
-    binModules: 112, binLines: 23_541, runtimeModules: 96, runtimeLines: 23_023,
+    binModules: 112, binLines: 23_689, runtimeModules: 96, runtimeLines: 23_023,
   });
   assert.equal(entries.length, 47);
   assert.ok(entries.length <= MODULE_BUDGET.modules);

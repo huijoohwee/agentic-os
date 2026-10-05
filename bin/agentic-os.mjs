@@ -72,6 +72,7 @@ function cmdReleaseCommonHelp() {
       'Default path:',
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
       '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
+      '  agentic-os release-common promote plan --ref=<lane> | apply --plan=<file> --authorize=<token> [--authority-head=<head>]',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
@@ -157,6 +158,10 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     }
     case 'successor':
       return cmdSuccessor(root, rest, policy);
+    case 'promote': {
+      const completeModule = await import('./agentic-os-release-common-complete.mjs');
+      return completeModule.runSourcePromotion({ root, argv: rest, profile });
+    }
     default:
       err(`unknown release-common action "${action}"`);
       return cmdReleaseCommonHelp();

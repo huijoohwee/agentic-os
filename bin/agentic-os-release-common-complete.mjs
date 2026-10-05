@@ -14,12 +14,150 @@ import { cleanupWorkflowContext, releaseCommonLocalCleanupPolicy, runReleaseComm
 export { runReleaseCommonSuccessorComplete };
 import { isLaneRef } from '../src/lane-id.mjs';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { createWorkflowEffectGuard } from './agentic-os-workflow.mjs';
 import { get } from '../src/lane-records.mjs';
 import { option } from './agentic-os-argv.mjs';
+import { classifyPromotion } from './agentic-os-auxiliary.mjs';
 
 export const RELEASE_COMMON_COMPLETE_SCHEMA = 'agentic-os/release-common-complete-observation/v1';
+export const SOURCE_PROMOTION_SCHEMA = 'agentic-os/authorized-source-promotion/v1';
+
+const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const promotionFail = (reason, message) => fail(`blocked-source-promotion-${reason}`, message);
+
+export function validateSourcePromotionPlan(plan, { repository, ref, head, base, profileDigest, requiredChecks }) {
+  const { digest: supplied, ...core } = plan ?? {};
+  if (plan?.schema !== SOURCE_PROMOTION_SCHEMA || plan.repository !== repository
+    || plan.ref !== ref || plan.head !== head || plan.base !== base || plan.profileDigest !== profileDigest
+    || plan.method !== 'squash'
+    || JSON.stringify(plan.requiredChecks) !== JSON.stringify([...requiredChecks].sort())
+    || supplied !== digest(core))
+    promotionFail('plan-binding', 'promotion plan does not match current repository, source, base, or required checks');
+  return plan;
+}
+
+export function sourcePromotionChecks(checks, requiredChecks) {
+  if (!Array.isArray(checks)) promotionFail('checks-unavailable', 'required check inventory is unavailable');
+  const selected = [...requiredChecks].sort().map((name) => {
+    const matches = checks.filter((check) => check.name === name && check.app?.slug === 'github-actions'
+      && check.app?.id === 15368);
+    const newest = matches.sort((a, b) => b.id - a.id)[0];
+    if (!Number.isSafeInteger(newest?.id) || newest.id < 1
+      || newest.status !== 'completed' || newest.conclusion !== 'success')
+      promotionFail('checks-not-green', `required check ${name} is pending, failed, or missing`);
+    return { name, id: newest.id, status: newest.status, conclusion: newest.conclusion,
+      completedAt: newest.completed_at };
+  });
+  return selected;
+}
+
+export async function runSourcePromotion({ root, argv, profile,
+  provider = (args, json = true) => gh(args, { cwd: root, json }), out = (line) => process.stdout.write(`${line}\n`),
+  now = Date.now } = {}) {
+  const operation = argv[0];
+  const api = (path) => {
+    const result = provider(['api', path]);
+    if (result === null || result === undefined) promotionFail('provider-unavailable', `provider read failed: ${path}`);
+    return result;
+  };
+  const repository = profile.repository.replace(/^github.com\//u, '');
+  if (operation === 'plan') {
+    const ref = option(argv, 'ref');
+    const protectedBranch = profile.canonical.localRef.replace('refs/heads/', '');
+    if (!isLaneRef(ref) || currentBranch(root) !== protectedBranch)
+      promotionFail('canonical-required', 'plan must run from canonical with one bound lane ref');
+    const record = get(ref, root);
+    const head = headSha(record?.head);
+    if (!head || !Number.isSafeInteger(record?.pr)) promotionFail('lane-unpublished', 'lane has no exact published PR/head');
+    const pull = api(`repos/${repository}/pulls/${record.pr}`);
+    if (!pull || pull.state !== 'open' || pull.head?.sha !== head || pull.head?.repo?.full_name !== repository
+      || pull.base?.repo?.full_name !== repository || pull.base?.ref !== protectedBranch)
+      promotionFail('review-binding', 'PR is not open at the published source head and protected base');
+    const checks = api(`repos/${repository}/commits/${head}/check-runs?filter=latest&per_page=100`);
+    const requiredChecks = [...profile.requiredChecks].sort();
+    if (!Number.isSafeInteger(checks?.total_count) || checks.total_count > 100 || !Array.isArray(checks.check_runs)
+      || checks.total_count !== checks.check_runs.length) promotionFail('checks-incomplete', 'required check inventory is incomplete');
+    let selected;
+    try { selected = sourcePromotionChecks(checks.check_runs, requiredChecks); }
+    catch (error) {
+      if (error.reason !== 'blocked-source-promotion-checks-not-green') throw error;
+      out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'waiting', reason: error.message, authority: false }));
+      return 2;
+    }
+    const base = pull.base.sha;
+    if (!/^[0-9a-f]{40}$/u.test(base ?? '')) promotionFail('base-unavailable', 'protected base revision is unavailable');
+    const authorityClass = classifyPromotion(root, base, head).class;
+    const core = { schema: SOURCE_PROMOTION_SCHEMA, repository, ref, pr: pull.number, head, base,
+      profileDigest: profile.profileDigest, authorityClass, requiredChecks, checks: selected,
+      method: 'squash', createdAt: now(), expiresAt: now() + 300_000 };
+    const plan = { ...core, digest: digest(core) };
+    out(JSON.stringify({ plan, confirmation: `sha256:${plan.digest}`, authority: false }));
+    return 0;
+  }
+  if (operation !== 'apply') promotionFail('operation', 'promote requires plan or apply');
+  const saved = jsonFile(option(argv, 'plan'), 65_536, 'source-promotion-plan');
+  const plan = saved?.plan ?? saved;
+  const token = option(argv, 'authorize');
+  if (!token || token !== `sha256:${plan.digest}`) promotionFail('confirmation', 'exact plan confirmation is required');
+  const protectedBranch = profile.canonical.localRef.replace('refs/heads/', '');
+  if (currentBranch(root) !== protectedBranch)
+    promotionFail('canonical-required', 'apply must run from canonical trusted runtime');
+  const ref = plan.ref, record = get(ref, root), head = headSha(record?.head);
+  if (head !== plan.head || record.pr !== plan.pr) promotionFail('head-changed', 'published lane head or PR changed');
+  validateSourcePromotionPlan(plan, { repository, ref, head, base: plan.base, profileDigest: profile.profileDigest,
+    requiredChecks: profile.requiredChecks });
+  if (!Number.isSafeInteger(plan.expiresAt) || plan.expiresAt < now())
+    promotionFail('plan-expired', 'promotion plan expired; create a fresh plan');
+  const pull = api(`repos/${repository}/pulls/${plan.pr}`);
+  if (pull?.state === 'closed' && pull?.merged === true && pull?.head?.sha === plan.head) {
+    out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'already-merged', head: plan.head, authority: false }));
+    return 0;
+  }
+  if (!pull || pull.number !== plan.pr || pull.state !== 'open' || pull.head?.sha !== plan.head
+      || pull.head?.repo?.full_name !== repository || pull.base?.repo?.full_name !== repository
+      || pull.base?.sha !== plan.base || pull.base?.ref !== protectedBranch)
+    promotionFail('source-or-base-changed', 'PR source or protected base changed since planning');
+  const checks = api(`repos/${repository}/commits/${plan.head}/check-runs?filter=latest&per_page=100`);
+  if (!Number.isSafeInteger(checks?.total_count) || checks.total_count > 100 || !Array.isArray(checks.check_runs)
+    || checks.total_count !== checks.check_runs.length) promotionFail('checks-incomplete', 'required check inventory is incomplete');
+  let selected;
+  try { selected = sourcePromotionChecks(checks.check_runs, plan.requiredChecks); }
+  catch (error) {
+    if (error.reason !== 'blocked-source-promotion-checks-not-green') throw error;
+    out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'waiting', reason: error.message, authority: false }));
+    return 2;
+  }
+  if (JSON.stringify(selected) !== JSON.stringify(plan.checks)) promotionFail('checks-changed', 'required check evidence changed; create a fresh plan');
+  if (option(argv, 'authority-head') !== null && option(argv, 'authority-head') !== plan.head)
+    promotionFail('authority-head', 'authority-head must exactly match candidate source');
+  const promotion = classifyPromotion(root, plan.base, plan.head);
+  if (promotion.class !== plan.authorityClass) promotionFail('authority-class-changed', 'candidate authority class changed; create a fresh plan');
+  if (promotion.escalates === true && option(argv, 'authority-head') !== plan.head)
+    promotionFail('authority-head-required', 'authority-controlling source requires --authority-head=<exact head>');
+  // Github fences the head, while this immediate base recheck reduces (but cannot CAS-fence) base races.
+  const before = api(`repos/${repository}/pulls/${plan.pr}`);
+  if (before?.state !== 'open' || before?.head?.sha !== plan.head || before?.head?.repo?.full_name !== repository
+      || before?.base?.repo?.full_name !== repository || before?.base?.sha !== plan.base)
+    promotionFail('pre-effect-drift', 'source or base moved before the protected merge effect');
+  try {
+    provider(['pr', 'merge', String(plan.pr), '--repo', repository, '--squash', '--match-head-commit', plan.head], false);
+  } catch {
+    const observed = api(`repos/${repository}/pulls/${plan.pr}`);
+    if (observed?.merged === true && observed?.head?.sha === plan.head) {
+      out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'merged-after-uncertain-result', head: plan.head, authority: false }));
+      return 0;
+    }
+    promotionFail('effect-unknown', 'merge result is uncertain; exact PR was reobserved and must not be retried blindly');
+  }
+  const merged = api(`repos/${repository}/pulls/${plan.pr}`);
+  if (merged?.merged !== true || merged?.head?.sha !== plan.head)
+    promotionFail('merge-unverified', 'merge command returned but exact source integration is not verified');
+  out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'merged', head: plan.head,
+    mergeCommit: merged.merge_commit_sha ?? null, authority: false }));
+  return 0;
+}
 
 const COMPLETE_STATES = new Set(['published', 'queued', 'integrated']);
 
