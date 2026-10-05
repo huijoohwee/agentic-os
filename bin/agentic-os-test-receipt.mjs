@@ -155,7 +155,7 @@ export function executeCommand(root, command, args, { timeoutMs = LIMITS.testMs,
         observedOutputBytes: observedBytes, quietMs: now - lastOutputAt })); }
       catch { stop('progress-handler-failed'); }
     }, COMMAND_PROGRESS_INTERVAL_MS) : null;
-    process.once('SIGTERM', cancel); process.once('SIGINT', cancel);
+    process.on('SIGTERM', cancel); process.on('SIGINT', cancel);
     for (const channel of ['stdout', 'stderr']) child[channel].on('data', bytes => {
       lastOutputAt = performance.now();
       observedBytes += bytes.length;

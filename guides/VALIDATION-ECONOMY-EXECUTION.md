@@ -120,6 +120,32 @@ under different IDs before executing any stage. `node` and the running Node exec
 Release the exact lock after process teardown, including timeout, cancellation and spawn failure.
 A crashed owner leaves a blocking lock; never infer that deleting it or killing another process is safe.
 
+### Input isolation and cancellation repair (ADLC-OBS-004@0.2.0)
+
+PRD: unrelated lane tracking metadata must not discard a valid long-running check. Cancelling a
+nested check must stop its owned children, retain failure evidence and release only its own locks.
+The observed failures are unnecessary input invalidation and a supervisor exiting before nested cleanup.
+
+TAD/ADR: exclude only other branches' `remote`, `merge` and `pushRemote` configuration from the
+validation digest. Bind the current branch and retain its tracking, all other configuration, exact
+selected revisions, authored bytes, execution environment and provenance. Fail on branch observation
+drift. The existing accounting supervisor catches group termination while waiting for its child;
+exec children retain normal signal behavior. Keep repeated parent interrupts handled through teardown.
+The existing 250 ms force timer still bounds uncooperative children; no deadline or memory cap increases.
+Hard-killed/crashed owners remain blocked; no stale-lock deletion or foreign-process recovery is added.
+
+MVP: reproduce the two invalidation failures and SIGINT/SIGTERM nested-stage lock leaks before repair.
+Verify fresh cancellation receipts, no surviving owned leaf, preserved live foreign command/lock,
+repeated interrupts, replacement-lock refusal, bounded forced teardown and unchanged relevant guards.
+Run focused regressions then native affected validation; publication and protected integration remain
+separate. Sprint: six code/test modules plus this plan, 17 KiB patch and 25 active minutes;
+the CI accounting assertion repair adds a five-minute light-test window. Timeout remains a failure
+even when drained accounting is measured; validate the full metrics contract and missing-frame case.
+No dependencies, paid capacity, always-load instruction bytes or additional background observers.
+
+GTM: free/FOSS existing consumer pilot. Avoided invalidation and orphan work are behavioral results;
+CPU, time and cash savings remain unmeasured. Roll back through a checked source revert retaining receipts.
+
 ADR: reuse existing locks, input-bound check receipts and CI observation. No daemon, new result ledger,
 paid capacity, weakened gate or automatic retry. This guards cooperating native executors in one clone;
 it cannot prove arbitrary shell-command equivalence or exclude direct shell/provider execution. Release
