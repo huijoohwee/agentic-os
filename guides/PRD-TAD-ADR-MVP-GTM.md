@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.19"
-date: "2026-10-03"
+version: "1.4.20"
+date: "2026-10-05"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -209,7 +209,6 @@ model call, catalog, dependency or poller. Source authority and freshness remain
 ### Five flow patterns
 **Diagram PIPE-J1** · Class: Journey stage map · Notation: flowchart LR · Version: 1 — 2026-09-09 · Surface: markdown-canvas
 **Caption:** The builder hands an integrated change to the operator, who obtains separate delivery evidence.
-
 ```mermaid
 flowchart LR
   intent["Builder scopes outcome"]
@@ -218,7 +217,6 @@ flowchart LR
   integrated -->|"T07-T08"| release["Operator activates owner release"]
   release -->|"T09"| evidence["Evaluator verifies delivered behavior"]
 ```
-
 | PIPE-J1 node | Journey inventory / acceptance |
 |---|---|
 | intent | Bounded engineering objective; P01–P03 |
@@ -228,7 +226,6 @@ flowchart LR
 | evidence | Runtime demonstration; P09 |
 **Diagram PIPE-W1** · Class: User workflow · Notation: sequenceDiagram · Version: 1 — 2026-09-09 · Surface: text-only
 **Caption:** A protected source merge precedes owner activation, while failed prerequisites preserve the candidate.
-
 ```mermaid
 sequenceDiagram
   participant Builder
@@ -243,7 +240,6 @@ sequenceDiagram
     Operator-->>Builder: Typed blocker and retained evidence
   end
 ```
-
 | PIPE-W1 participant | Happy / alternate / error inventory |
 |---|---|
 | Builder | Author/check/publish; successor for later edits; preserve dirty work |
@@ -251,7 +247,6 @@ sequenceDiagram
 | Operator | Product release and proof; retry only under owner replay policy; missing inputs stop affected activation |
 **Diagram PIPE-D1** · Class: Data flow · Notation: flowchart LR · Version: 1 — 2026-09-09 · Surface: markdown-canvas
 **Caption:** Source-bound observations and authenticated receipts remain distinct data products.
-
 ```mermaid
 flowchart LR
   spec["Joined requirement revisions"]
@@ -260,7 +255,6 @@ flowchart LR
   checks -->|"provider verification"| receipt["Authenticated integration receipt"]
   receipt -->|"owner release and evaluator"| proof["Deployment and runtime evidence"]
 ```
-
 | PIPE-D1 node | Data inventory / residency |
 |---|---|
 | spec | Versioned Markdown; owning Git repository |
@@ -270,7 +264,6 @@ flowchart LR
 | proof | Version/configuration-bound results; product/evaluator owner; no secrets in Markdown |
 **Diagram PIPE-H1** · Class: Orchestration / harness flow · Notation: flowchart LR · Version: 1 — 2026-09-09 · Surface: markdown-canvas
 **Caption:** An external authoring agent invokes deterministic tools and receives observations; the CLI does not run an LLM loop.
-
 ```mermaid
 flowchart LR
   agent["External authoring agent"]
@@ -279,7 +272,6 @@ flowchart LR
   executor -->|"typed output or error"| observer["Caller evidence observer"]
   observer -->|"result for review"| agent
 ```
-
 | PIPE-H1 node | Harness inventory / input → output / cost and fallback |
 |---|---|
 | agent | Session objective + shared CID → scoped calls; model tokens belong to caller, unmeasured here; stop/escalate on unresolved decision |
@@ -290,7 +282,6 @@ This document adds no AI-powered runtime component. For the external authoring/r
 
 **Diagram PIPE-T1** · Class: Runtime topology · Notation: flowchart TB · Version: 1 — 2026-09-09 · Surface: markdown-canvas
 **Caption:** Local authoring, protected provider authority and product runtime evaluation have separate trust boundaries.
-
 ```mermaid
 flowchart TB
   subgraph local["Local authoring - device Git storage"]
@@ -309,7 +300,6 @@ flowchart TB
   github -->|"exact source handoff"| runtime
   runtime -->|"version bound execution evidence"| verifier
 ```
-
 | PIPE-T1 node | Role / type / lane / source | Residency and status |
 |---|---|---|
 | harness | Orchestrator / CLI / authoring / [CLI][cli] | Local clone/worktree; local `spec-complete`, delivered `undocumented` in this spec |
@@ -586,7 +576,6 @@ PRD: Home Catalog and Chat Prompt Presets must expose the local drone learning
 workspace through the existing `/python.learning @canvas #learning` inspection
 route. Demo opens an editable nine-second takeoff, hover, flight and landing
 example. Selection and Demo make no provider call and never run code.
-
 TAD/ADR: `runtime/agents/docs/PROMPT-PRESETS.md` is the current packaged catalog
 owner. ACOS PR951 predates this ownership transition; publishing only that older
 repository cannot update the active OS package. Retain its review history and
@@ -594,10 +583,16 @@ move the reviewed entry into this owner, with no second registry or dependency.
 Graph's consumer must integrate first, then its exact OS pin must admit this
 catalog before public release. MCP/WebMCP inspection, explicit Run, simulated
 GameXR receiver control and recorded Canvas sharing keep their existing owners.
-
 MVP/GTM: two files, <4 KiB source delta, no always-load instruction delta, zero
 paid services or new dependencies. Use native docs/check gates and Graph's
 source-backed catalog/browser proof; source integration, deployed catalog
 readback, phone/cloud sessions and buyer demand remain separate claims. Remove
 this row before reverting the Graph consumer. Release uses protected PRs and
 DEPLOY; END ADLC requires its exact source and runtime receipts.
+
+### Settled allocation retirement — TOOLKIT-RETIRE-001@1.0.0
+PRD: Given SQLite's finite queue, completed allocation windows must not permanently exhaust admission after principal churn; pending, unknown, overrun and actively fenced accounting remain held. This closes Commerce audit F3 before consumer host adoption; it does not increase capacity or authorize production.
+TAD/ADR: The existing SQLite transaction invokes its admission owner's bounded retirement planner. All-settled allocations retire seven days after their window ends, with exact admission/shard references; the existing seven-day maximum window makes overlapping policies invalid after retirement. Persist finite non-allocation retention and reservation-window metadata; recheck the trusted window under the allocation fence. Legacy settled indices use the maximum supported timer; unverifiable legacy orphans remain conservative. Keep record/schema identities and dependency-free composition; share SQLite fences, toolkit normalized boundaries/error handling and ledger projection instead of widening the existing source budgets; other storage adapters are unchanged.
+MVP acceptance: real SQLite churn across 100 principals, ten further expired retention horizons and restart; independent-connection fences/replay; held usage and eight-project quota; legacy retention; delayed closed-window reserve. `node --test __tests__/agent-resource-retirement.test.mjs` plus existing economics/durable-store tests and native `npm run check` own proof. Same-window capacity still refuses; retirement removes closed-window replay evidence only after all usage settles and the full overlap-prevention horizon expires.
+Budget/handoff: Initial 25-minute slice expanded by 25 active minutes for required owner reuse: six files, <75 kB patch, no added runtime module/dependency/always-load instruction or paid resource. Publish through RELEASE, protect exact checks/merge, then let Commerce adopt the merged pin and qualify its host separately. Roll back source before adoption; never resurrect retired accounting or infer consumer recovery from source tests.
+GTM: This removes a deterministic pilot-host outage path; buyer demand, payment, shared host-wide budgets, lost-device recovery and unattended availability remain separate unvalidated outcomes.

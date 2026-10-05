@@ -2,12 +2,11 @@ import { constants, closeSync, lstatSync, mkdirSync, openSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { canonicalizeJson } from '../json-contract.mjs';
+import { retireSettledToolkitRecords } from './agent-toolkit-admission.js';
 import { assertIdentifier } from './agent-swarm-contract.js';
-
 const SCHEMA = 'agentic-os/swarm-sqlite/v1';
 const DEFAULTS = Object.freeze({ maxRecords: 128, maxRecordsPerPrincipal: 32,
   maxRecordBytes: 499_999, maxActiveTasks: 8, maxActiveTasksPerPrincipal: 4, busyTimeoutMs: 1_000 });
-
 function privatePath(path, directory = false) {
   const stat = lstatSync(path);
   if ((directory ? !stat.isDirectory() : !stat.isFile() || stat.nlink !== 1)
@@ -15,7 +14,6 @@ function privatePath(path, directory = false) {
     throw new TypeError('Agent state requires a private owned directory and regular files.');
   }
 }
-
 /** Toolkit records reuse the same local atomic storage protocol in an inert envelope. */
 export async function createAgentToolkitSqliteStore(options) {
   const store = await createAgentSwarmSqliteStore(options);
@@ -35,7 +33,6 @@ export async function createAgentToolkitSqliteStore(options) {
     delete: id => store.delete(key(id)), stats: store.stats, close: store.close,
   });
 }
-
 function preparePath(directory) {
   if (typeof directory !== 'string' || !isAbsolute(directory)) {
     throw new TypeError('directory must be an absolute private state path.');
@@ -51,7 +48,6 @@ function preparePath(directory) {
   }
   return path;
 }
-
 /** Explicit local adapter. Core imports remain usable without Node's optional SQLite module. */
 export async function createAgentSwarmSqliteStore({ directory, now = () => Date.now(), ...options } = {}) {
   if (typeof now !== 'function') throw new TypeError('now must be a function.');
@@ -99,7 +95,6 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
     try { db.exec('ROLLBACK'); } catch { /* No transaction may have started. */ }
     db.close(); throw error;
   }
-
   function transaction(operation) {
     if (closed) throw new TypeError('Agent state store is closed.');
     db.exec('BEGIN IMMEDIATE');
@@ -107,6 +102,10 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
       const at = now(), prior = db.prepare('SELECT clock FROM agent_store_meta WHERE id=1').get().clock;
       if (!Number.isSafeInteger(at) || at < prior) throw new TypeError('Agent state clock regressed or is invalid.');
       db.prepare('UPDATE agent_store_meta SET clock=? WHERE id=1').run(at);
+      const rows = db.prepare('SELECT id, body, claim, claim_expires FROM agent_records').all()
+        .map(row => ({ ...row, body: JSON.parse(row.body) }));
+      for (const row of retireSettledToolkitRecords(rows, at)) db.prepare('UPDATE agent_records SET body=?, expires=? WHERE id=?')
+        .run(JSON.stringify(row.body), row.body.expiresAt, row.id);
       db.prepare('DELETE FROM agent_records WHERE expires<=?').run(at);
       db.prepare('UPDATE agent_records SET claim=NULL, claim_expires=NULL WHERE claim_expires<=?').run(at);
       const result = operation(at);
@@ -114,7 +113,6 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
       return result;
     } catch (error) { db.exec('ROLLBACK'); throw error; }
   }
-
   function record(value, at) {
     const safe = canonicalizeJson(value, 'swarm record');
     if (!safe || typeof safe !== 'object' || Array.isArray(safe)
@@ -129,28 +127,27 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
       + (safe.synthesis?.status === 'running' && safe.synthesis.leaseExpiresAt > at ? 1 : 0);
     return { id, principal, body, expires: safe.expiresAt, active };
   }
-
   function admit(candidate, insert, at) {
-    // Recompute expired peer execution leases atomically; a crash cannot retain capacity forever.
-    for (const row of db.prepare('SELECT id, body FROM agent_records').all()) {
-      const active = record(JSON.parse(row.body), at).active;
-      db.prepare('UPDATE agent_records SET active_tasks=? WHERE id=?').run(active, row.id);
-    }
-    const peers = db.prepare(`SELECT COUNT(*) AS total,
-      COALESCE(SUM(principal=?), 0) AS owned, COALESCE(SUM(active_tasks), 0) AS active,
-      COALESCE(SUM(CASE WHEN principal=? THEN active_tasks ELSE 0 END), 0) AS owned_active
-      FROM agent_records WHERE id<>?`).get(candidate.principal, candidate.principal, candidate.id);
-    if ((insert && peers.total >= limits.maxRecords) || peers.owned >= limits.maxRecordsPerPrincipal
-      || peers.active + candidate.active > limits.maxActiveTasks
-      || peers.owned_active + candidate.active > limits.maxActiveTasksPerPrincipal) {
+    // Recompute live execution leases; persisted counts never retain crashed capacity.
+    const peers = db.prepare('SELECT body FROM agent_records WHERE id<>?').all(candidate.id)
+      .map(row => record(JSON.parse(row.body), at));
+    const owned = peers.filter(row => row.principal === candidate.principal);
+    const active = rows => rows.reduce((total, row) => total + row.active, candidate.active);
+    if ((insert && peers.length >= limits.maxRecords) || owned.length >= limits.maxRecordsPerPrincipal
+      || active(peers) > limits.maxActiveTasks || active(owned) > limits.maxActiveTasksPerPrincipal)
       throw new RangeError('Agent state queue or execution capacity exceeded.');
-    }
   }
-
   const read = id => db.prepare('SELECT * FROM agent_records WHERE id=?').get(id);
   const key = value => assertIdentifier(value, 'runId');
   const claimKey = value => assertIdentifier(value, 'claimId', 512);
-  const owns = (id, claim) => read(id)?.claim === claim;
+  const keyed = operation => async (value, ...args) => {
+    const id = key(value); return transaction(at => operation(id, at, ...args));
+  };
+  const fenced = operation => keyed((id, at, claimValue, ...args) => {
+    if (read(id)?.claim !== claimKey(claimValue)) return false;
+    return operation(id, at, ...args);
+  });
+  const remove = id => { db.prepare('DELETE FROM agent_records WHERE id=?').run(id); return true; };
   return Object.freeze({
     async put(value) {
       return transaction(at => {
@@ -162,10 +159,7 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
         return true;
       });
     },
-    async get(value) {
-      const id = key(value);
-      return transaction(() => { const row = read(id); return row ? JSON.parse(row.body) : null; });
-    },
+    get: keyed(id => { const row = read(id); return row ? JSON.parse(row.body) : null; }),
     async listPending({ limit = 8 } = {}) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > limits.maxRecords)
         throw new TypeError('Pending run scan exceeds its configured bound.');
@@ -174,53 +168,27 @@ export async function createAgentSwarmSqliteStore({ directory, now = () => Date.
         .sort((a, b) => Date.parse(a.updatedAt ?? a.createdAt) - Date.parse(b.updatedAt ?? b.createdAt))
         .slice(0, limit));
     },
-    async claim(value, claimValue, claimExpiresAt) {
-      const id = key(value), claim = claimKey(claimValue);
-      return transaction(at => {
-        if (!Number.isSafeInteger(claimExpiresAt) || claimExpiresAt <= at) {
-          throw new TypeError('claimExpiresAt must be a future integer timestamp.');
-        }
-        const row = read(id);
-        if (!row || row.claim) return null;
-        db.prepare('UPDATE agent_records SET claim=?, claim_expires=? WHERE id=?').run(claim, claimExpiresAt, id);
-        return JSON.parse(row.body);
-      });
-    },
-    async replace(value, claimValue, replacement) {
-      const id = key(value), claim = claimKey(claimValue);
-      return transaction(at => {
-        if (!owns(id, claim)) return false;
-        const item = record(replacement, at);
-        if (item.id !== id) throw new TypeError('Replacement run identity changed.');
-        const prior = read(id);
-        if (JSON.parse(prior.body).ownerPrincipalId !== undefined && item.principal !== prior.principal) {
-          throw new TypeError('Replacement run principal changed.');
-        }
-        admit(item, false, at);
-        db.prepare(`UPDATE agent_records SET principal=?, body=?, expires=?, active_tasks=?,
-          claim=NULL, claim_expires=NULL WHERE id=?`).run(item.principal, item.body, item.expires, item.active, id);
-        return true;
-      });
-    },
-    async release(value, claimValue) {
-      const id = key(value), claim = claimKey(claimValue);
-      return transaction(() => {
-        if (!owns(id, claim)) return false;
-        db.prepare('UPDATE agent_records SET claim=NULL, claim_expires=NULL WHERE id=?').run(id);
-        return true;
-      });
-    },
-    async commit(value, claimValue) {
-      const id = key(value), claim = claimKey(claimValue);
-      return transaction(() => {
-        if (!owns(id, claim)) return false;
-        db.prepare('DELETE FROM agent_records WHERE id=?').run(id); return true;
-      });
-    },
-    async delete(value) {
-      const id = key(value);
-      return transaction(() => { db.prepare('DELETE FROM agent_records WHERE id=?').run(id); return true; });
-    },
+    claim: keyed((id, at, claimValue, claimExpiresAt) => {
+      const claim = claimKey(claimValue);
+      if (!Number.isSafeInteger(claimExpiresAt) || claimExpiresAt <= at)
+        throw new TypeError('claimExpiresAt must be a future integer timestamp.');
+      const row = read(id);
+      if (!row || row.claim) return null;
+      db.prepare('UPDATE agent_records SET claim=?, claim_expires=? WHERE id=?').run(claim, claimExpiresAt, id);
+      return JSON.parse(row.body);
+    }),
+    replace: fenced((id, at, replacement) => {
+      const item = record(replacement, at), prior = read(id);
+      if (item.id !== id) throw new TypeError('Replacement run identity changed.');
+      if (JSON.parse(prior.body).ownerPrincipalId !== undefined && item.principal !== prior.principal)
+        throw new TypeError('Replacement run principal changed.');
+      admit(item, false, at);
+      db.prepare(`UPDATE agent_records SET principal=?, body=?, expires=?, active_tasks=?,
+        claim=NULL, claim_expires=NULL WHERE id=?`).run(item.principal, item.body, item.expires, item.active, id);
+      return true;
+    }),
+    release: fenced(id => { db.prepare('UPDATE agent_records SET claim=NULL, claim_expires=NULL WHERE id=?').run(id); return true; }),
+    commit: fenced(remove), delete: keyed(remove),
     stats: () => Object.freeze({ persistence: 'local-sqlite', atomicClaims: true,
       horizontalRecovery: true, recoveryScope: 'same-local-filesystem', durableCommit: true,
       activeRuns: null, limits: Object.freeze({ ...limits }) }),

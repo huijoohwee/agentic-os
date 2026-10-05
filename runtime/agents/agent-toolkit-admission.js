@@ -1,66 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { assertIdentifier, AgentToolkitBlock, normalizeRunContext, normalizeResources, normalizeAllocation, RESOURCE_UNITS, AGENT_TOOLKIT_DEFAULTS } from "./agent-toolkit-contract.js";
 import { digestToolkitEvidence } from "./agent-toolkit-ledger.js";
-
 const SCHEMA = "agent-toolkit-admission/v1";
-
-function pause(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function principalDigest(principalId) {
-  return createHash("sha256").update(principalId).digest("hex");
-}
-
-function recordId(principalId) {
-  return `admission:${principalDigest(principalId)}`;
-}
-
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const principalDigest = principalId => createHash("sha256").update(principalId).digest("hex");
+const recordId = principalId => `admission:${principalDigest(principalId)}`;
 function shardRecordId(principalId, limits) {
   const shard = Number.parseInt(principalDigest(principalId).slice(0, 8), 16) % limits.principalShardCount;
   return `admission-shard:${shard}`;
 }
-
-function identityDigest(kind, value) {
-  return digestToolkitEvidence([kind, assertIdentifier(value, kind)]);
-}
-
-function live(entries, at) {
-  return entries.filter((entry) => entry.expiresAt > at);
-}
-
+const identityDigest = (kind, value) => digestToolkitEvidence([kind, assertIdentifier(value, kind)]);
+const live = (entries, at) => entries.filter(entry => entry.expiresAt > at);
 function createRecord(principalId, at, limits) {
-  return {
-    schema: SCHEMA,
-    recordId: recordId(principalId),
-    principalDigest: principalDigest(principalId),
-    requests: [],
-    runs: [],
-    cohorts: [],
-    updatedAt: new Date(at).toISOString(),
-    expiresAt: at + limits.requestWindowMs,
-  };
+  return { schema: SCHEMA, recordId: recordId(principalId), principalDigest: principalDigest(principalId),
+    requests: [], runs: [], cohorts: [], updatedAt: new Date(at).toISOString(), expiresAt: at + limits.requestWindowMs };
 }
-
 function createShardRecord(id, at, limits) {
-  return {
-    schema: "agent-toolkit-admission-shard/v1",
-    recordId: id,
-    principals: [],
-    updatedAt: new Date(at).toISOString(),
-    expiresAt: at + limits.cohortTtlMs,
-  };
+  return { schema: "agent-toolkit-admission-shard/v1", recordId: id,
+    principals: [], updatedAt: new Date(at).toISOString(), expiresAt: at + limits.cohortTtlMs };
 }
-
 function refresh(record, at, limits) {
-  const threshold = at - limits.requestWindowMs;
-  record.requests = record.requests.filter((timestamp) => timestamp > threshold);
+  record.requests = record.requests.filter(timestamp => timestamp > at - limits.requestWindowMs);
   record.runs = live(record.runs, at);
   record.cohorts = live(record.cohorts, at);
   return record;
 }
-
 function verdict(record, request, at, limits) {
   if (record.requests.length >= limits.maxRequestsPerWindow) {
     const retryAfterMs = Math.max(1, record.requests[0] + limits.requestWindowMs - at);
@@ -69,40 +33,30 @@ function verdict(record, request, at, limits) {
   if (request.action === 'reserve') {
     record.allocations ??= [];
     const project = identityDigest('projectId', request.projectId);
-    if (!record.allocations.includes(project)) {
+    if (!record.allocations.some(entry => (entry.digest ?? entry) === project)) {
       if (record.allocations.length >= 8) return { allowed: false, reasonCode: 'allocation_quota_exceeded' };
-      record.allocations.push(project);
+      record.allocations.push(request.allocationRecordId ? { digest: project, recordId: request.allocationRecordId, endsAt: request.allocationEndsAt } : project);
     }
   }
   if (request.action === "start" || request.action === "instrument") {
-    const runDigest = identityDigest("runId", request.runId);
-    const cohortDigest = identityDigest("cohortId", request.cohortId);
+    const runDigest = identityDigest("runId", request.runId), cohortDigest = identityDigest("cohortId", request.cohortId);
     const runKnown = record.runs.some((entry) => entry.digest === runDigest);
     const cohortKnown = record.cohorts.some((entry) => entry.digest === cohortDigest);
-    if (!runKnown && record.runs.length >= limits.maxPrincipalRuns) {
-      return { allowed: false, reasonCode: "run_quota_exceeded" };
-    }
-    if (!cohortKnown && record.cohorts.length >= limits.maxPrincipalCohorts) {
-      return { allowed: false, reasonCode: "cohort_quota_exceeded" };
-    }
+    if (!runKnown && record.runs.length >= limits.maxPrincipalRuns) return { allowed: false, reasonCode: "run_quota_exceeded" };
+    if (!cohortKnown && record.cohorts.length >= limits.maxPrincipalCohorts) return { allowed: false, reasonCode: "cohort_quota_exceeded" };
     if (!runKnown) record.runs.push({ digest: runDigest, runId: request.runId, expiresAt: at + limits.runTtlMs });
     if (!cohortKnown) record.cohorts.push({ digest: cohortDigest, expiresAt: at + limits.cohortTtlMs });
   }
   record.requests.push(at);
   return { allowed: true };
 }
-
 function finalize(record, at, limits) {
   record.updatedAt = new Date(at).toISOString();
-  record.expiresAt = Math.max(
-    record.allocations?.length ? Number.MAX_SAFE_INTEGER : 0,
-    at + limits.requestWindowMs,
-    ...record.runs.map((entry) => entry.expiresAt),
-    ...record.cohorts.map((entry) => entry.expiresAt),
-  );
+  record.retentionEndsAt = Math.max(at + limits.requestWindowMs,
+    ...record.runs.map(entry => entry.expiresAt), ...record.cohorts.map(entry => entry.expiresAt));
+  record.expiresAt = record.allocations?.length ? Number.MAX_SAFE_INTEGER : record.retentionEndsAt;
   return record;
 }
-
 /** Shared fenced mutation protocol for evidence, admission and allocations. */
 export async function mutateToolkitRecord({ store, id, now, limits = AGENT_TOOLKIT_DEFAULTS, create, transform }) {
   if (create && !await store.get(id)) await store.put(create());
@@ -122,49 +76,40 @@ export async function mutateToolkitRecord({ store, id, now, limits = AGENT_TOOLK
   }
   throw new AgentToolkitBlock('state_busy', 'State is owned by another coordinator.');
 }
-
 export function createAgentToolkitAdmissionController({ stateStore, now, limits } = {}) {
   if (!stateStore) throw new TypeError("Agent Toolkit admission requires an atomic state store.");
   if (typeof now !== "function") throw new TypeError("Agent Toolkit admission requires a clock.");
-
-  async function mutateRecord(id, at, create, transform) {
+  async function mutateRecord(id, create, transform) {
     try {
-      const result = await mutateToolkitRecord({ store: stateStore, id, now, limits, create,
-        transform: record => { const { replacement, result } = transform(record); return { record: replacement, value: result }; } });
+      const result = await mutateToolkitRecord({ store: stateStore, id, now, limits, create, transform });
       return Object.freeze(result.value ?? { allowed: false, reasonCode: 'admission_busy' });
     } catch (error) {
       if (!['state_busy', 'state_conflict'].includes(error.reasonCode)) throw error;
       return Object.freeze({ allowed: false, reasonCode: 'admission_busy' });
     }
   }
-
   async function reservePrincipal(principalId, at, persistent) {
-    const id = shardRecordId(principalId, limits);
-    const digest = principalDigest(principalId);
-    return mutateRecord(id, at, () => createShardRecord(id, at, limits), (record) => {
+    const id = shardRecordId(principalId, limits), digest = principalDigest(principalId);
+    return mutateRecord(id, () => createShardRecord(id, at, limits), (record) => {
       record.principals = live(record.principals, at);
       const existing = record.principals.find((entry) => entry.digest === digest);
       if (!existing && record.principals.length >= limits.maxPrincipalsPerShard) {
         record.updatedAt = new Date(at).toISOString();
         record.expiresAt = Math.max(at + limits.requestWindowMs, ...record.principals.map((entry) => entry.expiresAt));
-        return {
-          replacement: record,
-          result: { allowed: false, reasonCode: "principal_quota_exceeded" },
-        };
+        return { record, value: { allowed: false, reasonCode: "principal_quota_exceeded" } };
       }
       const expiresAt = persistent ? Number.MAX_SAFE_INTEGER : at + limits.cohortTtlMs;
-      if (existing) existing.expiresAt = Math.max(existing.expiresAt, expiresAt);
-      else record.principals.push({ digest, expiresAt });
+      const retentionEndsAt = at + limits.cohortTtlMs;
+      if (existing) { existing.expiresAt = Math.max(existing.expiresAt, expiresAt); existing.retentionEndsAt = Math.max(existing.retentionEndsAt ?? 0, retentionEndsAt); }
+      else record.principals.push({ digest, expiresAt, retentionEndsAt });
       record.updatedAt = new Date(at).toISOString();
       record.expiresAt = Math.max(...record.principals.map((entry) => entry.expiresAt));
-      return { replacement: record, result: { allowed: true } };
+      return { record, value: { allowed: true } };
     });
   }
-
   async function admit(request) {
     const principalId = assertIdentifier(request?.principalId, "principalId");
-    const id = recordId(principalId);
-    const at = Number(now());
+    const id = recordId(principalId), at = Number(now());
     if (!Number.isFinite(at)) throw new TypeError("now must return a finite timestamp.");
     const existing = await stateStore.get(id);
     if (!existing && !['start', 'instrument', 'reserve', 'query'].includes(request.action)) {
@@ -174,13 +119,12 @@ export function createAgentToolkitAdmissionController({ stateStore, now, limits 
       const principal = await reservePrincipal(principalId, at, request.action === 'reserve');
       if (!principal.allowed) return principal;
     }
-    return mutateRecord(id, at, () => createRecord(principalId, at, limits), (record) => {
+    return mutateRecord(id, () => createRecord(principalId, at, limits), (record) => {
       refresh(record, at, limits);
       const result = verdict(record, request, at, limits);
-      return { replacement: finalize(record, at, limits), result };
+      return { record: finalize(record, at, limits), value: result };
     });
   }
-
   return Object.freeze({
     admit,
     async runs(principalId) {
@@ -189,18 +133,13 @@ export function createAgentToolkitAdmissionController({ stateStore, now, limits 
       return { ids: entries.flatMap(e => e.runId ? [e.runId] : []), incomplete: entries.some(e => !e.runId) };
     },
     stats: () => Object.freeze({
-      configured: true,
-      persistence: stateStore.stats().persistence,
-      requestWindowMs: limits.requestWindowMs,
-      maxRequestsPerWindow: limits.maxRequestsPerWindow,
-      maxPrincipalRuns: limits.maxPrincipalRuns,
-      maxPrincipalCohorts: limits.maxPrincipalCohorts,
-      principalShardCount: limits.principalShardCount,
-      maxPrincipalsPerShard: limits.maxPrincipalsPerShard,
+      configured: true, persistence: stateStore.stats().persistence,
+      requestWindowMs: limits.requestWindowMs, maxRequestsPerWindow: limits.maxRequestsPerWindow,
+      maxPrincipalRuns: limits.maxPrincipalRuns, maxPrincipalCohorts: limits.maxPrincipalCohorts,
+      principalShardCount: limits.principalShardCount, maxPrincipalsPerShard: limits.maxPrincipalsPerShard,
     }),
   });
 }
-
 /** One atomic project record owns all dimensions; telemetry is never the ledger. */
 export function createAgentResourceAdmission({ stateStore: store, resolveContext, reconcile, now = () => Date.now() } = {}) {
   if (typeof resolveContext !== 'function' || !store || !['get', 'put', 'claim', 'replace', 'release'].every(k => typeof store[k] === 'function'))
@@ -231,15 +170,17 @@ export function createAgentResourceAdmission({ stateStore: store, resolveContext
   async function reserve({ context, principalId, runId, agentId, operationId, phase }) {
     const resolved = await resolve(context, principalId, phase), policy = resolved.allocation;
     for (const [key, value] of Object.entries({ runId, agentId, operationId, phase })) assertIdentifier(value, key, 256);
-    const admitted = await admission.admit({ action: 'reserve', principalId, projectId: resolved.context.projectId });
+    const id = identity(principalId, resolved.context.projectId);
+    const admitted = await admission.admit({ action: 'reserve', principalId, projectId: resolved.context.projectId, allocationRecordId: id, allocationEndsAt: policy.endsAt });
     if (!admitted.allowed) fail(admitted.reasonCode);
     const { bounds, ...allocation } = policy;
-    const id = identity(principalId, resolved.context.projectId), policyDigest = digestToolkitEvidence(allocation);
+    const policyDigest = digestToolkitEvidence(allocation);
     const entryId = digestToolkitEvidence([runId, agentId, operationId]);
     const requestDigest = digestToolkitEvidence([resolved.context, policyDigest, bounds, phase, runId, agentId, operationId]);
     const create = { schema: 'agent-resource-allocation/v1', recordId: id, ownerPrincipalId: principalId,
-      projectId: resolved.context.projectId, policy: allocation, policyDigest, entries: [], updatedAt: now(), expiresAt: Number.MAX_SAFE_INTEGER };
+      projectId: resolved.context.projectId, policy: allocation, policyDigest, entries: [], updatedAt: now(), expiresAt: policy.endsAt };
     return mutate(id, principalId, create, (record, at) => {
+      if (at < policy.startsAt || at >= policy.endsAt) fail('allocation_window_closed');
       if (record.policyDigest !== policyDigest) {
         if (at < record.policy.endsAt || policy.startsAt < record.policy.endsAt || record.entries.some(e => e.state !== 'settled')) fail('allocation_policy_conflict');
         record.previousDigest = digestToolkitEvidence(record);
@@ -258,7 +199,7 @@ export function createAgentResourceAdmission({ stateStore: store, resolveContext
         }
       }
       const entry = { id: entryId, requestDigest, runId, agentId, operationId, phase, bounds: policy.bounds, state: 'reserved', createdAt: at };
-      record.entries.push(entry);
+      record.entries.push(entry); record.expiresAt = Number.MAX_SAFE_INTEGER;
       return { ...clone(entry), recordId: id, replay: false };
     });
   }
@@ -296,4 +237,55 @@ export function createAgentResourceAdmission({ stateStore: store, resolveContext
       if (!proof || proof.reservationId !== reservation.id || proof.quiescent !== true) fail('reconciliation_unverified');
       return settle(reservation, principalId, proof.usage);
     } });
+}
+/** SQLite calls this under its transaction. Seven days after end precludes valid overlapping policies. */
+export function retireSettledToolkitRecords(rows, at) {
+  const data = row => row.body.payload, locked = row => row?.claim && row.claim_expires > at;
+  const records = rows.filter(row => typeof data(row)?.recordId === 'string' && row.body.status === 'completed'
+    && row.id === `toolkit:${principalDigest(data(row).recordId)}`);
+  const byId = new Map(records.map(row => [data(row).recordId, row])), changed = new Set();
+  const admissions = new Map(records.filter(row => data(row).schema === SCHEMA).map(row => [data(row).principalDigest, row]));
+  const shards = records.filter(row => data(row).schema === 'agent-toolkit-admission-shard/v1');
+  const expiry = (row, value) => {
+    if (Number.isSafeInteger(value) && row.body.expiresAt !== value) {
+      data(row).expiresAt = row.body.expiresAt = value; changed.add(row);
+    }
+  };
+  for (const row of records) {
+    const record = data(row);
+    if (record.schema !== 'agent-resource-allocation/v1' || locked(row)
+      || !Number.isSafeInteger(record.policy?.endsAt) || record.policy.endsAt + 7 * 86_400_000 > at
+      || !Array.isArray(record.entries) || record.entries.some(entry => entry.state !== 'settled')) continue;
+    const digest = principalDigest(record.ownerPrincipalId), owner = admissions.get(digest);
+    if (locked(owner) || shards.some(shard => locked(shard) && data(shard).principals.some(entry => entry.digest === digest))) continue;
+    expiry(row, at);
+    if (owner) {
+      const project = identityDigest('projectId', record.projectId);
+      data(owner).allocations = data(owner).allocations.filter(entry => (entry.digest ?? entry) !== project); changed.add(owner);
+    }
+  }
+  for (const row of admissions.values()) {
+    if (locked(row)) continue;
+    const record = data(row), allocations = record.allocations ?? [];
+    record.allocations = allocations.filter(entry => typeof entry === 'string' || !Number.isSafeInteger(entry.endsAt)
+      || entry.endsAt > at || byId.has(entry.recordId) && data(byId.get(entry.recordId)).expiresAt > at);
+    if (record.allocations.length !== allocations.length) changed.add(row);
+    if (changed.has(row)) expiry(row, record.allocations.length ? Number.MAX_SAFE_INTEGER
+      : record.retentionEndsAt ?? Date.parse(record.updatedAt) + 2_147_483_647);
+  }
+  for (const row of shards) {
+    if (locked(row)) continue;
+    const record = data(row);
+    for (const entry of record.principals) {
+      const owner = admissions.get(entry.digest), deadline = owner ? data(owner).expiresAt : entry.retentionEndsAt;
+      if (!locked(owner) && Number.isSafeInteger(deadline) && entry.expiresAt !== deadline) {
+        entry.expiresAt = deadline; changed.add(row);
+      }
+    }
+    if (changed.has(row)) {
+      record.principals = record.principals.filter(entry => entry.expiresAt > at);
+      expiry(row, Math.max(0, ...record.principals.map(entry => entry.expiresAt)));
+    }
+  }
+  return [...changed];
 }
