@@ -69,8 +69,7 @@ export function readRegular(root, path, limit = LIMITS.fileBytes, cache = null) 
   const stat = lstatSync(absolute);
   if (!stat.isFile() || stat.size > limit) throw new Error(`blocked-test-file:${path}`);
   const stamp = value => [value.dev, value.ino, value.mode, value.size, value.mtimeNs, value.ctimeNs].join(':');
-  const identity = stamp(lstatSync(absolute, { bigint: true }));
-  const previous = cache?.get(absolute);
+  const identity = stamp(lstatSync(absolute, { bigint: true })), previous = cache?.get(absolute);
   if (previous?.identity === identity) return previous.file;
   const bytes = readFileSync(absolute), after = lstatSync(absolute);
   if (bytes.length !== stat.size || after.ino !== stat.ino || after.dev !== stat.dev
@@ -119,11 +118,12 @@ function worktreeFiles(root, cache) {
   for (const path of ['package-lock.json', '.npmrc']) {
     try { lstatSync(join(root, path)); names.add(path); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
+  for (const path of cache?.keys() ?? []) if (!names.has(path.slice(root.length + 1))) cache.delete(path);
   const files = new Map(); let bytes = 0;
   for (const path of [...names].sort()) {
     let file;
     try { file = readRegular(root, path, LIMITS.fileBytes, cache); } catch (error) {
-      if (error.code === 'ENOENT') continue; throw error;
+      if (error.code === 'ENOENT') { cache?.delete(join(root, path)); continue; } throw error;
     }
     bytes += Buffer.byteLength(file.text);
     if (bytes > LIMITS.bytes) throw new Error('blocked-test-source-byte-budget');

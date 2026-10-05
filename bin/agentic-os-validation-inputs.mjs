@@ -66,10 +66,9 @@ const tree = (root, ref) => new Map(fields(readGit(root, ['ls-tree', '-r', '-z',
 export const sourceDigest = files => hash(JSON.stringify([...files].sort(([a], [b]) => a.localeCompare(b))
   .map(([path, file]) => [path, file.mode, file.oid])));
 export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEAD', committed = false }) {
-  root = realpathSync(root);
-  const cache = new Map(), trees = new Map(), scratch = { buffer: null };
+  root = realpathSync(root); const cache = new Map(), trees = new Map(), scratch = { buffer: null };
   const committedTree = ref => {
-    if (!trees.has(ref)) trees.set(ref, tree(root, ref));
+    if (!trees.has(ref)) { if (trees.size >= 4) trees.clear(); trees.set(ref, tree(root, ref)); }
     return trees.get(ref);
   };
   return () => {
@@ -80,15 +79,16 @@ export function consumerSnapshotReader({ root, base = 'origin/main', head = 'HEA
     if (bases.length !== 1 || !bases[0]) throw new Error('blocked-validation-merge-base');
     const hidden = fields(readGit(root, ['ls-files', '-v', '-z']));
     if (hidden.some(record => record[0] !== 'H')) throw new Error('blocked-validation-hidden-source');
-    const names = [...new Set(fields(readGit(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])))].sort();
+    const names = new Set(fields(readGit(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])));
+    for (const path of cache.keys()) if (!names.has(path)) cache.delete(path);
     const index = readGit(root, ['ls-files', '--stage', '-z']);
     if (fields(index).some(record => !/ 0\t/u.test(record))) throw new Error('blocked-validation-unmerged-index');
     const algorithm = readGit(root, ['rev-parse', '--show-object-format']).trim();
     if (!['sha1', 'sha256'].includes(algorithm)) throw new Error('blocked-validation-object-format');
     const after = new Map(), budget = { bytes: 0 };
-    for (const path of names) {
+    for (const path of [...names].sort()) {
       const file = readWorkingFile(root, path, algorithm, cache, budget, scratch);
-      if (file) after.set(path, file);
+      if (file) after.set(path, file); else cache.delete(path);
     }
     const before = committedTree(bases[0]);
     if (committed && sourceDigest(committedTree(headRevision)) !== sourceDigest(after)) throw new Error('blocked-validation-dirty-ci');

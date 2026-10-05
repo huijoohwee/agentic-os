@@ -146,6 +146,16 @@ No dependencies, paid capacity, always-load instruction bytes or additional back
 GTM: free/FOSS existing consumer pilot. Avoided invalidation and orphan work are behavioral results;
 CPU, time and cash savings remain unmeasured. Roll back through a checked source revert retaining receipts.
 
+Cache retention follow-up: the existing snapshot readers prune working entries against each fresh
+inventory and evict absent tracked files. Consumer immutable revision trees retain at most four
+entries, matching the OS reader. Nanosecond file identities, full hashes, byte limits and fresh
+configuration/environment/ref/index checks remain unchanged; caches stay invocation-local.
+Acceptance: removed/untracked and missing tracked entries disappear, warm file/tree objects remain
+reusable, old trees rebuild after eviction, and earlier snapshots remain intact. Use the existing
+input/source-economy tests. Budget: two runtime owners, two tests and this guide; 10 KiB incremental,
+26 KiB cumulative, 5 KiB net additions, ten active minutes, unchanged CLI cap. Verification costs stay inside
+the existing gate budget after planning; no persistent hash trust, new cache or savings claim is added.
+
 ADR: reuse existing locks, input-bound check receipts and CI observation. No daemon, new result ledger,
 paid capacity, weakened gate or automatic retry. This guards cooperating native executors in one clone;
 it cannot prove arbitrary shell-command equivalence or exclude direct shell/provider execution. Release
