@@ -7,6 +7,10 @@ const supervisor = String.raw`
 import json, os, resource, signal, subprocess, sys
 def emit(value):
     os.write(3, (json.dumps(value, separators=(',', ':')) + '\n').encode())
+# Drain the child after a group cancellation so nested executors can release their locks.
+# A caught handler (not SIG_IGN) resets on exec: the child still receives normal signals.
+signal.signal(signal.SIGTERM, lambda *_: None)
+signal.signal(signal.SIGINT, lambda *_: None)
 try:
     child = subprocess.Popen(sys.argv[1:], close_fds=True)
 except OSError:

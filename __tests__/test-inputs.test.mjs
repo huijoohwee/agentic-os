@@ -73,6 +73,23 @@ for (const consumer of [false, true]) test(`workflow navigation is separate from
     assert.notEqual(observe().identity.configurationDigest, prior, key);
   }
 });
+for (const consumer of [false, true]) test(`unrelated branch tracking cannot invalidate validation: consumer=${consumer}`, t => {
+  const f = fixture(t), observe = consumer ? consumerSnapshotReader({ root: f.root, base: f.base }) : f.observe;
+  f.git('tag', 'main'); // An ambiguous short ref must not hide current-branch tracking.
+  const before = observe().identity;
+  for (const key of ['remote', 'merge', 'pushRemote']) f.git('config', `branch.another.lane.${key}`, 'origin');
+  assert.deepEqual(observe().identity, before);
+  for (const key of ['branch.main.remote', 'branch.main.merge', 'branch.main.pushRemote',
+    'branch.another.lane.rebase', 'remote.origin.url', 'core.hooksPath']) {
+    const prior = observe().identity.configurationDigest;
+    f.git('config', key, 'changed');
+    assert.notEqual(observe().identity.configurationDigest, prior, key);
+  }
+  f.git('switch', '--detach', '-q', f.base);
+  const detached = observe().identity;
+  f.git('config', 'branch.main.remote', 'another-remote');
+  assert.deepEqual(observe().identity, detached);
+});
 test('ignored npm inputs bind receipts, while symlinks and escaping paths fail', t => {
   const f = fixture(t); writeFileSync(join(f.root, 'package-lock.json'), '{}');
   assert.ok(f.observe().changed.includes('package-lock.json'));
