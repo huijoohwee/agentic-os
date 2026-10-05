@@ -72,17 +72,17 @@ export function resolveValidationCi(root, environment = process.env) {
     checkout: environment.GITHUB_EVENT_NAME === 'pull_request' ? 'pull-request-merge' : 'event-revision' };
 }
 export function validationCheckDefinitions(policy, plan, observed, ownerDigest) {
-  return plan.checks.map(check => {
-    const patterns = checkInputPatterns(policy, check.id);
-    const files = new Map([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
-      || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path)));
+  const projections = new Map(); return plan.checks.map(check => {
+    const patterns = checkInputPatterns(policy, check.id), key = JSON.stringify([...patterns].sort());
+    if (!projections.has(key)) projections.set(key, sourceDigest([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
+      || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path))));
     const { root, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
     // Nested affected planners consume the whole candidate and baseline, not only file contents.
     // Partition selection is deliberately excluded so a narrow run can satisfy the same full plan.
     const planInput = check.reuse === 'local-plan' ? { identity: observed.identity,
       mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
     const fingerprint = hash(JSON.stringify({ version: VALIDATION_VERSION, ownerDigest, check: policy.checks.find(item => item.id === check.id),
-      sourceDigest: sourceDigest(files), root, configurationDigest, environmentDigest, node, executable, platform, arch, planInput }));
+      sourceDigest: projections.get(key), root, configurationDigest, environmentDigest, node, executable, platform, arch, planInput }));
     return { ...check, id: `consumer-${hash(check.id).slice(0, 24)}`, name: check.id, stage: 'owner-check', report: 'exit',
       command: check.command[0] === 'node' ? process.execPath : check.command[0], args: check.command.slice(1), fingerprint };
   });

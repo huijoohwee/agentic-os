@@ -552,41 +552,39 @@ The existing [startup evidence](VALIDATION-ECONOMY-EXECUTION.md#planning-bound-s
 [CI gate allocation](VALIDATION-ECONOMY-EXECUTION.md#ci-gate-allocation-adlc-obs-005010) contracts now live in
 one on-demand companion. Their semantics and required checks are unchanged.
 
-## Source scan allocation (ADLC-OBS-006@0.1.0)
+## Source scan and digest economy (ADLC-OBS-006@0.2.0)
 
-PRD: a local operator validating a large consumer must avoid repeated scratch allocations while
-retaining complete source identity and exact proof. Acceptance: one lazy 256 KiB streaming buffer
-per snapshot reader, zero regular-file buffer allocation for empty/symlink-only sources, unchanged
-binary hashes and byte caps, and same-length edits still invalidate cached file identities.
-
-TAD: `bin/agentic-os-validation-inputs.mjs` owns the private reader buffer and streams each regular
-file through it. Hash updates consume each chunk synchronously; receipts retain only identities.
-Warm unchanged observations use the existing metadata cache. Source/parent/type/race, hidden-index,
-configuration/environment and committed-CI checks remain in place; no result or authority cache is added.
-
-ADR: choose bounded scratch reuse over skipping source reads or ignoring Git configuration changes.
-The latter could alter arbitrary consumer commands and needs a separate input contract. This increment
-adds no dependency, service, always-loaded prompt bytes or default benchmark/CI job. Rollback is a
-checked source revert; retain earlier observations and receipts.
-
-MVP: `repository-validation-source-economy.test.mjs` verifies complete multi-chunk binary identities,
-bounded allocations across many files, independent readers, warm reuse, edits and lazy allocation.
-Run affected `npm run check`. Opt-in measurement: `node test/benchmarks/validation-source-economy.mjs`
-uses a disposable 2,056-file fixture; `--root=<checkout> --base=<revision>` inspects an existing source
-read-only. Its fixed owner import preserves affected-check isolation; `--samples=1..7` bounds measurement.
-Compare exact retained source revisions. Record module/source digests, file bytes, median wall/Node CPU
-time and allocation bytes; RSS snapshots are not a process-tree peak. Budget: 35 active minutes, five paths,
-60 KB changed bytes; external wait separate. The full check caught and removed an opaque benchmark import.
-Disposable benchmark Git maintenance is disabled; cleanup retries are bounded to three at 50 ms backoff.
-
-GTM: use this validation loop as the free local pilot. Before/after measurements and applicable check
-results are recorded at handoff. The initial Graph scan observed 8,559 files / 77,977,052 source bytes,
-1.94 s cold and 0.36–0.47 s warm. This diagnoses scan cost, not CI, cash savings, demand or buyer proof.
-The consumer retains its pinned OS until a separately checked dependency refresh; source release alone
-does not accelerate the currently running Graph CI or prove Production behavior.
-
-Measured checkpoint (2026-10-02): matching Graph source digest across three cold/warm samples;
-median cold scan 1034.09 → 773.98 ms, Node CPU 974.44 → 559.52 ms,
-and scratch allocations 8,559 → 1 (2,243,690,496 → 262,144 bytes).
-The five-sample 2,056-file fixture also preserves its source digest and allocates one buffer.
-These are local reader measurements; full offline/runtime suites and hosted CI retain their own costs.
+PRD: avoid repeated scratch allocations and duplicate digest work in large consumer validation while
+retaining complete source identity and exact proof. Keep one lazy 256 KiB streaming buffer per reader,
+zero regular-file buffer allocation for empty/symlink-only sources, unchanged hashes/byte caps and
+same-length edit detection. A committed warm observation derives one current source digest; checks
+with identical canonical input patterns share one projection digest within their defining invocation.
+TAD: `bin/agentic-os-validation-inputs.mjs` streams regular files through its private reader buffer.
+Each of the four immutable tree-cache entries retains its files Map; its digest is computed lazily
+only for committed HEAD comparison. The returned `before` Map/eviction stay compatible; working digests stay fresh.
+`bin/agentic-os-validation.mjs` memoizes projection digests by sorted input patterns for one call only.
+Each fingerprint still binds its complete check/policy, command, source, environment and plan identity.
+Source/parent/type/race, hidden-index, configuration/environment and committed-CI checks remain fresh.
+ADR: reuse calculations on the same captured inputs, never skip observations or required checks.
+No persistent/result/authority cache, dependency, service or default benchmark/CI job is introduced.
+Rollback reverts these two owners and their regression/spec changes while retaining earlier receipts.
+MVP: `repository-validation.test.mjs` compares fingerprints with the previous formula and counts actual
+digest serialization: one per canonical projection, one fresh working digest per warm committed scan.
+It covers cold/warm local scans with no baseline digest, independent calls, eviction, configuration/index identities
+and mutations during observation. Existing source-economy and input tests retain allocation/race coverage.
+The four-file increment is bounded to 16 KiB added content and eight active drafting minutes; no timing
+savings are claimed from unexecuted regressions. Run affected `npm run check` after native admission.
+GTM: use the native local validation loop as the free pilot; report invocation reductions separately
+from elapsed time. Graph's observed 11-plan run was 1347.8 s; duplicate digest work is source-established,
+but its share of that total is unmeasured. Source release alone does not accelerate a pinned consumer.
+Opt-in measurement remains `node test/benchmarks/validation-source-economy.mjs`: disposable 2,056-file
+fixture; `--root=<checkout> --base=<revision>` reads an existing source, `--samples=1..7` bounds work.
+Record exact revisions, module/source digests, bytes and median wall/Node CPU/allocation observations;
+RSS snapshots are not a process-tree peak. Fixed imports retain affected-check isolation; disposable
+Git maintenance is disabled, with cleanup retries bounded to three at 50 ms backoff.
+Historical allocation checkpoint (2026-10-02): matching Graph digest across three cold/warm samples;
+median cold scan 1034.09 → 773.98 ms, Node CPU 974.44 → 559.52 ms; scratch allocations 8,559 → 1
+(2,243,690,496 → 262,144 bytes). The five-sample 2,056-file fixture also preserved its source digest.
+The initial 8,559-file / 77,977,052-byte scan measured 1.94 s cold and 0.36–0.47 s warm. These are local
+reader observations, not hosted CI, cash savings, demand or Production/physical-device evidence.
+The previous allocation increment used five paths / 60 KB / 35 active minutes; external waits were separate.
