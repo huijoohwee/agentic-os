@@ -29,9 +29,9 @@ export const BUDGET = Object.freeze({
   // does not add a new agentic-os-*.mjs entry point.
   // 2026-09-23: 33 existing-owner lines batch final trace verification; a
   // matched 20-file run cut median wall 49% and current-process CPU 45%.
-  // 2026-10-03 E17: one lazy alignment entry; +315 lines. 2026-10-05: exact squash-equivalent join +51 owner lines.
+  // 2026-10-03 E17: lazy alignment +315; squash join +51; source promotion +148 across three owners, no module added.
   binModules: 112,
-  binLines: 23541,
+  binLines: 23689,
   runtimeModules: 96,
   runtimeLines: 23023,
 });

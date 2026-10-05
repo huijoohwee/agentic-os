@@ -2,8 +2,8 @@
 
 After [START](./START-WORKFLOW.md), run affected checks, then
 `npm run release:common -- publish --message="<message>"`.
-Publication stops at provider handoff. After exact protected merge, use
-`complete --ref=<lane>` (alias `complete-adlc`); `close` is diagnostics only.
+Publication stops at provider handoff. Authorized merges require green checks
+(see PRD E18). After protected merge, use `complete --ref=<lane>`; `close` is diagnostics only.
 Cleanup preserves recovery bytes and requires exact eligible-target evidence;
 `--bundle --stopped` supplies authenticated proof where required.
 
