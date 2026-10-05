@@ -21,7 +21,7 @@ function write(root, path, value, mode = 0o644) {
   writeFileSync(join(root, path), value); chmodSync(join(root, path), mode);
 }
 const commit = cwd => { git(cwd, 'add', '--all'); git(cwd, 'commit', '--quiet', '-m', 'fixture'); return git(cwd, 'rev-parse', 'HEAD'); };
-function fixture(t, incoming = 'incoming/new module.sh') {
+function fixture(t, incoming = 'incoming/new module.sh', squash = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'lane-alignment-'))), root = join(parent, 'repo'), lane = join(parent, 'lane');
   const priorGlobal = process.env.GIT_CONFIG_GLOBAL, priorSystem = process.env.GIT_CONFIG_NOSYSTEM;
   process.env.GIT_CONFIG_GLOBAL = join(parent, 'global-config'); process.env.GIT_CONFIG_NOSYSTEM = '1';
@@ -41,9 +41,11 @@ function fixture(t, incoming = 'incoming/new module.sh') {
   git(root, 'worktree', 'add', '--quiet', '-b', predecessor, lane, base);
   write(lane, 'legacy.txt', 'old94 retained UI\n'); write(lane, 'lane/committed.txt', 'published UI\n');
   const head = commit(lane); git(lane, 'push', '--quiet', 'origin', predecessor); git(lane, 'switch', '--quiet', '-c', ref);
-  const prior = { ref: predecessor, state: 'published', head, base, worktree: lane, writePaths: ['owned', 'lane', 'legacy.txt'] };
+  const prior = { ref: predecessor, state: 'published', head, base: 'refs/remotes/origin/main', baseSha: base, worktree: lane, writePaths: ['owned', 'lane', 'legacy.txt'] };
   put(prior, root); put({ ...prior, ref, state: 'active', handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: predecessor, predecessorHead: head } }, root);
-  write(root, incoming, '#!/bin/sh\nprintf protected\n', 0o755); const target = commit(root); git(root, 'push', '--quiet', 'origin', 'main');
+  if (squash) git(root, 'merge', '--squash', predecessor);
+  else write(root, incoming, '#!/bin/sh\nprintf protected\n', 0o755);
+  const target = commit(root); git(root, 'push', '--quiet', 'origin', 'main');
   const dirtyBytes = Buffer.from([0, 255, 13, 10, 82, 69, 84, 65, 73, 78]);
   write(lane, 'owned/edit.txt', dirtyBytes); rmSync(join(lane, 'owned/delete.txt'));
   chmodSync(join(lane, 'owned/tool.sh'), 0o644); write(lane, 'owned/- option "quote".txt', Buffer.from('untracked\0bytes\r\n'), 0o755);
@@ -147,8 +149,8 @@ test('alignment input rejects unknown keys instead of silently accepting a forge
 });
 
 test('dedicated CLI reuses the native successor allocation and completes workflow binding; overlap has no effects', async t => {
-  for (const mode of ['native completion', 'overlap refusal', 'interrupted START resume']) await t.test(mode, async sub => {
-    const overlapping = mode === 'overlap refusal';
+  for (const mode of ['native completion', 'overlap refusal', 'interrupted START resume', 'squash completion', 'squash interrupted START resume']) await t.test(mode, async sub => {
+    const overlapping = mode === 'overlap refusal', squash = mode.startsWith('squash');
     const f = fixture(sub), policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
     const profile = createRepositoryProfile({ repository: 'github.com/example/alignment', canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef }, adapters: { repository: { id: 'git', version: '1' }, provider: null } });
     write(f.root, '.agentic-os.json', JSON.stringify(profile)); write(f.root, 'prd-tad-adr-mvp-gtm.md', '# Plan\n');
@@ -161,7 +163,9 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
     const prior = get(predecessor, f.root); putExact({ ...prior, state: 'published', head, handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
     assert.equal(runPublishedLaneSuccessor({ cwd: lane, predecessorRef: predecessor, scope: 'native-next', explicitHead: head, remote: 'origin', protectedRef: policy.protectedRef, out() {} }), 0);
     write(lane, 'native-owned.txt', 'unfinished native owner\0bytes'); write(lane, 'node_modules/keep.bin', Buffer.from([0, 255, 1]));
-    write(f.root, overlapping ? 'native-owned.txt' : 'incoming/native-advance.txt', 'protected advance\n'); const target = commit(f.root); git(f.root, 'push', '--quiet', 'origin', 'main');
+    if (squash) git(f.root, 'merge', '--squash', predecessor);
+    else write(f.root, overlapping ? 'native-owned.txt' : 'incoming/native-advance.txt', 'protected advance\n');
+    const target = commit(f.root); git(f.root, 'push', '--quiet', 'origin', 'main');
     const before = readSelectedWorkflow(f.root, profile.repository, { required: true }), count = worktrees(f.root).length, cache = JSON.stringify(load(f.root));
     const input = join(dirname(f.root), 'alignment-input.json'); writeFileSync(input, JSON.stringify({ schema: 'agentic-os/lane-alignment-input/v1', scope: 'native-next', device: 'test-device', mission: before.path, expectedHead: head, expectedTarget: target, stopped: true }));
     const invoke = () => execFileSync(process.execPath, [fileURLToPath(new URL('../bin/agentic-os-lane-alignment.mjs', import.meta.url)), `--input=${input}`], { cwd: f.root, encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
@@ -170,7 +174,7 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
       assert.equal(git(lane, 'rev-parse', 'HEAD'), head); assert.equal(JSON.stringify(load(f.root)), cache);
       assert.equal(readSelectedWorkflow(f.root, profile.repository, { required: true }).digest, before.digest);
     } else {
-      if (mode === 'interrupted START resume') {
+      if (mode.endsWith('interrupted START resume')) {
         let receipt, caught;
         const lock = join(git(f.root, 'rev-parse', '--path-format=absolute', '--git-common-dir'), 'config.lock');
         const owner = { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment(value) {
@@ -198,11 +202,102 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
       assert.equal(after.members[0].child.source.revision, git(lane, 'rev-parse', 'HEAD'));
       assert.notEqual(after.manifest.allocations[0].headRevision, head);
       assert.deepEqual(git(lane, 'show', '-s', '--format=%P', 'HEAD').split(' '), [head, target]);
-      assert.equal(readFileSync(join(lane, 'incoming/native-advance.txt'), 'utf8'), 'protected advance\n');
+      if (squash) assert.equal(git(lane, 'rev-parse', 'HEAD^{tree}'), git(lane, 'rev-parse', `${head}^{tree}`));
+      else assert.equal(readFileSync(join(lane, 'incoming/native-advance.txt'), 'utf8'), 'protected advance\n');
     }
     assert.equal(worktrees(f.root).length, count); assert.equal(git(f.root, 'rev-parse', predecessor), head);
     assert.equal(readFileSync(join(lane, 'native-owned.txt'), 'utf8'), 'unfinished native owner\0bytes');
     assert.deepEqual(readFileSync(join(lane, 'node_modules/keep.bin')), Buffer.from([0, 255, 1]));
     assert.equal(git(lane, 'diff', '--cached', '--name-only'), '');
   });
+});
+
+function squashFixture(t) {
+  const f = fixture(t, undefined, true);
+  write(f.lane, 'legacy.txt', 'later committed toolbar behavior\n');
+  git(f.lane, 'add', '--', 'legacy.txt'); git(f.lane, 'commit', '--quiet', '-m', 'later edit');
+  f.head = git(f.lane, 'rev-parse', 'HEAD'); f.args.expectedHead = f.head;
+  write(f.lane, 'legacy.txt', Buffer.from('later dirty toolbar\0bytes'));
+  return f;
+}
+
+test('squash-equivalent native predecessor preserves later committed and dirty overlap through preparation and replay', t => {
+  const f = squashFixture(t), before = git(f.lane, 'status', '--porcelain'), beforeTree = git(f.lane, 'rev-parse', 'HEAD^{tree}');
+  const observed = plan(f); assert.equal(observed.squashPredecessor.head, f.prior.head);
+  const prepared = prepareLaneAlignment(observed); unchanged(f);
+  assert.equal(git(f.lane, 'status', '--porcelain'), before);
+  const receipt = applyLaneAlignment(plan(f)); unchanged(f, receipt.head);
+  assert.equal(git(f.lane, 'rev-parse', 'HEAD^{tree}'), beforeTree);
+  assert.equal(git(f.lane, 'status', '--porcelain'), before);
+  assert.equal(git(f.lane, 'show', '-s', '--format=%P', 'HEAD'), `${f.head} ${f.target}`);
+  assert.deepEqual(readFileSync(join(f.lane, 'legacy.txt')), Buffer.from('later dirty toolbar\0bytes'));
+  assert.equal(git(f.root, 'rev-parse', f.predecessor), f.prior.head);
+  assert.equal(receipt.head, prepared.candidateHead);
+  assert.equal(applyLaneAlignment(plan(f)).resumed, true);
+});
+
+test('squash equivalence refuses missing or wrong native lineage, nonancestor and changed protected tree or mode', async t => {
+  for (const kind of ['missing', 'wrong-head', 'foreign-worktree', 'nonancestor', 'tree', 'mode']) await t.test(kind, sub => {
+    const f = squashFixture(sub), current = get(f.ref, f.root);
+    if (kind === 'missing') { const next = { ...current }; delete next.handoff; putExact(next, current, f.root); }
+    if (kind === 'wrong-head') putExact({ ...current, handoff: { ...current.handoff, predecessorHead: f.target } }, current, f.root);
+    if (kind === 'foreign-worktree') putExact({ ...current, worktree: f.root }, current, f.root);
+    if (kind === 'nonancestor') {
+      const other = git(f.root, 'commit-tree', `${f.target}^{tree}`, '-m', 'unrelated predecessor');
+      git(f.root, 'update-ref', `refs/heads/${f.predecessor}`, other);
+      git(f.root, 'push', '--quiet', '--force', 'origin', f.predecessor);
+      put({ ...f.prior, head: other }, f.root);
+      putExact({ ...current, handoff: { ...current.handoff, predecessorHead: other } }, current, f.root);
+    }
+    if (kind === 'tree' || kind === 'mode') {
+      if (kind === 'tree') write(f.root, 'legacy.txt', 'different protected content\n');
+      else chmodSync(join(f.root, 'owned/tool.sh'), 0o644);
+      f.target = commit(f.root); git(f.root, 'push', '--quiet', 'origin', 'main'); f.args.expectedTarget = f.target;
+    }
+    refusal('overlap', () => plan(f)); unchanged(f);
+  });
+});
+
+test('squash predecessor refs and lineage are reobserved during prepare, apply and completed replay', async t => {
+  for (const phase of ['prepare', 'apply', 'replay']) for (const drift of ['local', 'remote', 'lineage']) await t.test(`${phase}-${drift}`, sub => {
+    const f = squashFixture(sub); let value = plan(f), expected = f.head;
+    if (phase !== 'prepare') value = prepareLaneAlignment(value);
+    if (phase === 'replay') expected = applyLaneAlignment(value).head;
+    if (drift === 'local') git(f.root, 'update-ref', `refs/heads/${f.predecessor}`, f.head);
+    if (drift === 'remote') git(f.root, 'push', '--quiet', 'origin', `${f.head}:refs/heads/${f.predecessor}`);
+    if (drift === 'lineage') { const prior = get(f.ref, f.root), next = { ...prior }; delete next.handoff; putExact(next, prior, f.root); }
+    const effect = phase === 'prepare' ? () => prepareLaneAlignment(value) : phase === 'apply' ? () => applyLaneAlignment(value) : () => plan(f);
+    assert.throws(effect, /blocked-lane-alignment-(?:squash-lineage|journal)/u); unchanged(f, expected);
+  });
+});
+
+
+test('a failure after the squash ancestry CAS reports retained effects and preserves new dirty bytes', t => {
+  const f = squashFixture(t), prepared = prepareLaneAlignment(plan(f)), hooks = join(dirname(f.root), 'test-hooks');
+  write(hooks, 'reference-transaction', `#!/bin/sh
+[ "$1" = committed ] || exit 0
+while read old new ref; do
+  if [ "$ref" = refs/heads/${f.ref} ]; then
+    printf 'post-CAS owner edit' > '${f.lane}/owned/edit.txt'
+  fi
+done
+`, 0o755);
+  git(f.root, 'config', 'core.hooksPath', hooks);
+  assert.throws(() => applyLaneAlignment(prepared), error => {
+    assert.equal(error.retainedOperation, true);
+    assert.equal(error.operationArtifacts.refPublished, true);
+    assert.equal(error.operationArtifacts.candidateHead, prepared.candidateHead);
+    assert.equal(error.operationArtifacts.targetHead, f.target);
+    return error.reason === 'blocked-lane-alignment-dirty';
+  });
+  assert.equal(git(f.lane, 'rev-parse', 'HEAD'), prepared.candidateHead);
+  assert.equal(readFileSync(join(f.lane, 'owned/edit.txt'), 'utf8'), 'post-CAS owner edit');
+  assert.equal(existsSync(prepared.journalPath), true);
+});
+
+
+test('prepared squash recovery rechecks the protected target before returning retained pins', t => {
+  const f = squashFixture(t), prepared = prepareLaneAlignment(plan(f));
+  write(f.root, 'later-protected.txt', 'protected advanced\n'); commit(f.root); git(f.root, 'push', '--quiet', 'origin', 'main');
+  refusal('target', () => prepareLaneAlignment(prepared)); unchanged(f);
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Exact disjoint protected-source refresh; imported lazily by START admission. */
+/** Exact disjoint or squash-equivalent protected-source refresh; imported lazily by START admission. */
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, writeSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -12,6 +12,8 @@ import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publi
 import { parseTreeEntries } from '../src/canonical-resources.mjs';
 import { readBoundedFile, snapshotBoundedJson } from '../src/catalog-input.mjs';
 import { assertDevice, isLaneRef, laneRef } from '../src/lane-id.mjs';
+import { get } from '../src/lane-records.mjs';
+import { successorLineage } from '../src/lane-state.mjs';
 const SCHEMA = 'agentic-os/lane-alignment-plan/v1', MAX = 500_000, AGGREGATE = 4 * 1024 * 1024;
 const SHA = /^[a-f0-9]{40}$/u, hash = value => createHash('sha256').update(value).digest('hex');
 const fail = (code, detail = {}) => { throw Object.assign(new Error(`blocked-lane-alignment-${code}: ${JSON.stringify(detail)}`), { reason: `blocked-lane-alignment-${code}`, detail }); };
@@ -41,6 +43,28 @@ function identity({ cwd, ref, expectedHead, targetRef, expectedTarget, stopped }
   if (remoteRefSha(remote, ref, cwd, transport.fetchUrl) !== null) fail('published');
   return cwd;
 }
+function squashBinding(input, expected = null) {
+  const record = get(input.ref, input.cwd), link = successorLineage(record);
+  const refuse = () => { if (expected) fail('squash-lineage'); return null; };
+  if (!link || record.ref !== input.ref || record.worktree !== input.cwd
+    || !['active', 'planned'].includes(record.state) || record.base !== input.targetRef) return refuse();
+  const previous = get(link.predecessorRef, input.cwd), localRef = `refs/heads/${link.predecessorRef}`;
+  if (!previous || previous.ref !== link.predecessorRef || previous.head !== link.predecessorHead
+    || previous.worktree !== record.worktree || previous.base !== record.base
+    || previous.baseSha !== record.baseSha || !['published', 'queued', 'integrated'].includes(previous.state)
+    || observeGit(['symbolic-ref', '--quiet', localRef], { cwd: input.cwd, allowFail: true }) !== null
+    || headSha(localRef, input.cwd) !== link.predecessorHead
+    || !isAncestor(link.predecessorHead, input.expectedHead, input.cwd)) return refuse();
+  const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd);
+  if (remoteRefSha(remote, link.predecessorRef, input.cwd, transport.fetchUrl) !== link.predecessorHead) return refuse();
+  const tree = headSha(`${link.predecessorHead}^{tree}`, input.cwd);
+  if (!SHA.test(tree ?? '') || tree !== headSha(`${input.expectedTarget}^{tree}`, input.cwd)) return refuse();
+  const binding = { ref: link.predecessorRef, head: link.predecessorHead, tree };
+  if (expected && !same(binding, expected)) return refuse();
+  return binding;
+}
+function assertSquashBinding(plan) { if (plan.squashPredecessor) squashBinding(plan, plan.squashPredecessor); }
+function alignmentFences(plan) { return plan.squashPredecessor ? [[`refs/heads/${plan.squashPredecessor.ref}`, plan.squashPredecessor.head]] : []; }
 function noFilters(cwd, allPaths) {
   if (allPaths.some(path => path === '.gitattributes' || path.endsWith('/.gitattributes'))) fail('filters');
   const settings = observeGit(['config', '--get-regexp', '^(core\.autocrlf|core\.eol|merge\.default)$'], { cwd, allowFail: true }) ?? '';
@@ -78,7 +102,8 @@ function assertDirty(plan) {
 }
 function verifyUnion(plan, candidate) {
   const old = tree(plan.cwd, plan.expectedHead), target = tree(plan.cwd, plan.expectedTarget), actual = tree(plan.cwd, candidate);
-  const incoming = new Set(plan.incomingPaths);
+  assertSquashBinding(plan);
+  const incoming = new Set(plan.squashPredecessor ? [] : plan.incomingPaths);
   if (changes(plan.cwd, plan.expectedHead, candidate).some(path => !incoming.has(path))) fail('postcondition');
   for (const path of new Set([...old.keys(), ...actual.keys(), ...incoming])) {
     if (!entryEqual(actual.get(path), (incoming.has(path) ? target : old).get(path))) fail('postcondition', { path });
@@ -90,16 +115,22 @@ function verifyUnion(plan, candidate) {
 const body = plan => Object.fromEntries(Object.entries(plan).filter(([key]) => !['resume', 'liveHead', 'digest'].includes(key)));
 function descriptor(value) {
   const plan = snapshot(value), required = ['schema', 'cwd', 'ref', 'expectedHead', 'targetRef', 'expectedTarget', 'stopped', 'journalPath', 'oldRef', 'candidateRef', 'mergeBase', 'authoredPaths', 'incomingPaths', 'dirty', 'candidateHead'];
-  if (!plan || required.some(key => !Object.hasOwn(plan, key)) || Object.keys(plan).some(key => ![...required, 'digest', 'resume', 'liveHead'].includes(key)) || plan.schema !== SCHEMA || plan.stopped !== true || !SHA.test(plan.expectedHead ?? '') || !SHA.test(plan.expectedTarget ?? '') || !SHA.test(plan.mergeBase ?? '') || plan.candidateHead !== null && !SHA.test(plan.candidateHead ?? '')) fail('journal');
+  if (!plan || required.some(key => !Object.hasOwn(plan, key)) || Object.keys(plan).some(key => ![...required, 'digest', 'resume', 'liveHead', 'squashPredecessor'].includes(key)) || plan.schema !== SCHEMA || plan.stopped !== true || !SHA.test(plan.expectedHead ?? '') || !SHA.test(plan.expectedTarget ?? '') || !SHA.test(plan.mergeBase ?? '') || plan.candidateHead !== null && !SHA.test(plan.candidateHead ?? '')) fail('journal');
   if (!same(journalLocation(plan), { journalPath: plan.journalPath, oldRef: plan.oldRef, candidateRef: plan.candidateRef }) || plan.cwd !== realpathSync(plan.cwd) || observeGit(['merge-base', plan.expectedHead, plan.expectedTarget], { cwd: plan.cwd }) !== plan.mergeBase) fail('journal');
   if (!Array.isArray(plan.dirty) || !Array.isArray(plan.authoredPaths) || !Array.isArray(plan.incomingPaths) || !plan.incomingPaths.length || !same(changes(plan.cwd, plan.mergeBase, plan.expectedHead), plan.authoredPaths) || !same(changes(plan.cwd, plan.mergeBase, plan.expectedTarget), plan.incomingPaths)) fail('journal');
+  if (Object.hasOwn(plan, 'squashPredecessor')) {
+    const binding = plan.squashPredecessor;
+    if (!binding || Object.keys(binding).sort().join(',') !== 'head,ref,tree'
+      || !isLaneRef(binding.ref) || !SHA.test(binding.head ?? '') || !SHA.test(binding.tree ?? '')) fail('journal');
+    assertSquashBinding(plan);
+  }
   let bytes = 0;
   for (const entry of plan.dirty) {
     if (!entry || Object.keys(entry).sort().join(',') !== 'mode,path,sha256,size,status' || !['modified', 'deleted', 'untracked'].includes(entry.status) || entry.status === 'deleted' && (entry.mode !== null || entry.size !== 0 || entry.sha256 !== null) || entry.status !== 'deleted' && (!['100644', '100755'].includes(entry.mode) || !Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > MAX || !/^[a-f0-9]{64}$/u.test(entry.sha256 ?? ''))) fail('journal');
     bytes += entry.size; if (bytes > AGGREGATE) fail('journal');
   }
   const all = [...new Set([...plan.incomingPaths, ...plan.authoredPaths, ...plan.dirty.map(entry => entry.path)])]; paths(Buffer.from(all.join('\0') + '\0'));
-  if (plan.incomingPaths.some(path => [...plan.authoredPaths, ...plan.dirty.map(entry => entry.path)].some(other => overlap(path, other)))) fail('journal');
+  if (!plan.squashPredecessor && plan.incomingPaths.some(path => [...plan.authoredPaths, ...plan.dirty.map(entry => entry.path)].some(other => overlap(path, other)))) fail('journal');
   return plan;
 }
 function privateDirectory(path) {
@@ -117,7 +148,7 @@ function readJournal(path) {
   let parsed;
   try { parsed = descriptor(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedFile(path, MAX, 'alignment journal')))); } catch (error) { fail('journal', { cause: error.message }); }
   const keys = 'authoredPaths,candidateHead,candidateRef,cwd,digest,dirty,expectedHead,expectedTarget,incomingPaths,journalPath,mergeBase,oldRef,ref,schema,stopped,targetRef';
-  if (!parsed || Object.keys(parsed).sort().join(',') !== keys || parsed.schema !== SCHEMA || parsed.digest !== hash(json(body(parsed))) || !SHA.test(parsed.candidateHead ?? '') || !SHA.test(parsed.mergeBase ?? '')) fail('journal');
+  if (!parsed || Object.keys(parsed).filter(key => key !== 'squashPredecessor').sort().join(',') !== keys || parsed.schema !== SCHEMA || parsed.digest !== hash(json(body(parsed))) || !SHA.test(parsed.candidateHead ?? '') || !SHA.test(parsed.mergeBase ?? '')) fail('journal');
   return parsed;
 }
 function verifyCompleted(plan) {
@@ -126,7 +157,7 @@ function verifyCompleted(plan) {
   const expectedPaths = plan.dirty.map(row => row.path).sort(), actual = dirtySnapshot(plan.cwd, plan.candidateHead);
   if (!same(actual, plan.dirty) || !same(actual.map(row => row.path).sort(), expectedPaths)) fail('postcondition');
   const target = tree(plan.cwd, plan.candidateHead);
-  for (const path of plan.incomingPaths) {
+  for (const path of plan.squashPredecessor ? [] : plan.incomingPaths) {
     const desired = target.get(path), stat = lstatSync(join(plan.cwd, path), { throwIfNoEntry: false });
     if (!desired) { if (stat) fail('postcondition', { path }); continue; }
     const captured = capture(join(plan.cwd, path), { maxBytes: MAX });
@@ -164,12 +195,14 @@ export function planLaneAlignment(input) {
   const authoredPaths = changes(input.cwd, mergeBase, input.expectedHead), incomingPaths = changes(input.cwd, mergeBase, input.expectedTarget), dirty = dirtySnapshot(input.cwd, input.expectedHead);
   if (!incomingPaths.length) fail('empty');
   const occupied = [...authoredPaths, ...dirty.map(row => row.path)];
-  if (incomingPaths.some(path => occupied.some(other => overlap(path, other)))) fail('overlap');
+  const overlapping = incomingPaths.some(path => occupied.some(other => overlap(path, other)));
+  const squashPredecessor = overlapping ? squashBinding(input) : null;
+  if (overlapping && !squashPredecessor) fail('overlap');
   const ignored = paths(observeGit(['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { cwd: input.cwd, binary: true, maxBuffer: MAX }), true);
-  if (incomingPaths.some(path => ignored.some(other => overlap(path, other)))) fail('overlap');
+  if (!squashPredecessor && incomingPaths.some(path => ignored.some(other => overlap(path, other)))) fail('overlap');
   noFilters(input.cwd, [...new Set([...incomingPaths, ...occupied])]);
   const old = tree(input.cwd, input.expectedHead), target = tree(input.cwd, input.expectedTarget), budget = { bytes: 0 };
-  for (const path of incomingPaths) {
+  for (const path of squashPredecessor ? [] : incomingPaths) {
     assertDirectoryAncestors(path, input.cwd, { allowMissing: true });
     for (const entry of [old.get(path), target.get(path)].filter(Boolean)) {
       if (!['100644', '100755'].includes(entry.mode) || entry.size > MAX || entry.size > AGGREGATE - budget.bytes) fail('path', { path }); budget.bytes += entry.size;
@@ -182,11 +215,11 @@ export function planLaneAlignment(input) {
       if (actual.mode !== old.get(path).mode || !actual.bytes.equals(git(['cat-file', 'blob', old.get(path).oid], { cwd: input.cwd, binary: true, maxBuffer: MAX }))) fail('dirty', { path });
     }
   }
-  return { schema: SCHEMA, ...input, ...location, mergeBase, authoredPaths, incomingPaths, dirty, candidateHead: null, resume: false, liveHead: input.expectedHead };
+  return { schema: SCHEMA, ...input, ...location, mergeBase, authoredPaths, incomingPaths, dirty, ...(squashPredecessor ? { squashPredecessor } : {}), candidateHead: null, resume: false, liveHead: input.expectedHead };
 }
 /** Persist exact candidate and recovery pins before any checkout materialization. */
 export function prepareLaneAlignment(plan) {
-  plan = descriptor(plan);
+  plan = descriptor(plan); if (plan.squashPredecessor) identity(plan, headSha('HEAD', plan.cwd) === plan.candidateHead ? plan.candidateHead : plan.expectedHead);
   noFilters(plan.cwd, [...plan.incomingPaths, ...plan.authoredPaths, ...plan.dirty.map(row => row.path)]);
   const artifacts = { operation: 'lane-alignment', phase: 'preparation', effectsRetained: Boolean(plan.candidateHead), previousHead: plan.expectedHead, targetHead: plan.expectedTarget, journalPath: plan.journalPath, oldRef: plan.oldRef, candidateRef: plan.candidateRef, candidateHead: plan.candidateHead, candidateTree: null, objectWriteAttempted: false, objectWriteResultUnknown: false, journalWriteAttempted: false, journalWriteResultUnknown: false, journalPublished: false, refPinWriteAttempted: false, refPinWriteResultUnknown: false, refPinAttempted: null, oldRefObserved: false, candidateRefObserved: false, prepared: false };
   try {
@@ -196,11 +229,11 @@ export function prepareLaneAlignment(plan) {
   } else {
     identity(plan); cleanIndex(plan.cwd, plan.expectedHead); assertDirty(plan);
     artifacts.effectsRetained = true; artifacts.objectWriteAttempted = true; artifacts.objectWriteResultUnknown = true;
-    const merged = git(['merge-tree', '--write-tree', plan.expectedHead, plan.expectedTarget], { cwd: plan.cwd, maxBuffer: MAX }).split('\n')[0];
+    const merged = plan.squashPredecessor ? headSha(`${plan.expectedHead}^{tree}`, plan.cwd) : git(['merge-tree', '--write-tree', plan.expectedHead, plan.expectedTarget], { cwd: plan.cwd, maxBuffer: MAX }).split('\n')[0];
     if (!SHA.test(merged)) fail('merge'); artifacts.candidateTree = merged; artifacts.objectWriteResultUnknown = false;
     const seconds = Math.max(...[plan.expectedHead, plan.expectedTarget].map(ref => Number(observeGit(['show', '--no-patch', '--format=%ct', ref], { cwd: plan.cwd }))));
     artifacts.objectWriteResultUnknown = true;
-    const candidateHead = git(['-c', 'commit.gpgSign=false', 'commit-tree', merged, '-p', plan.expectedHead, '-p', plan.expectedTarget], { cwd: plan.cwd, input: 'agentic-os exact disjoint lane alignment\n', env: { GIT_AUTHOR_NAME: 'agentic-os', GIT_AUTHOR_EMAIL: 'alignment@agentic-os.invalid', GIT_COMMITTER_NAME: 'agentic-os', GIT_COMMITTER_EMAIL: 'alignment@agentic-os.invalid', GIT_AUTHOR_DATE: `${seconds} +0000`, GIT_COMMITTER_DATE: `${seconds} +0000` } });
+    const candidateHead = git(['-c', 'commit.gpgSign=false', 'commit-tree', merged, '-p', plan.expectedHead, '-p', plan.expectedTarget], { cwd: plan.cwd, input: `agentic-os exact ${plan.squashPredecessor ? 'squash-equivalent' : 'disjoint'} lane alignment\n`, env: { GIT_AUTHOR_NAME: 'agentic-os', GIT_AUTHOR_EMAIL: 'alignment@agentic-os.invalid', GIT_COMMITTER_NAME: 'agentic-os', GIT_COMMITTER_EMAIL: 'alignment@agentic-os.invalid', GIT_AUTHOR_DATE: `${seconds} +0000`, GIT_COMMITTER_DATE: `${seconds} +0000` } });
     artifacts.candidateHead = candidateHead; artifacts.objectWriteResultUnknown = false; plan = { ...plan, candidateHead }; verifyUnion(plan, candidateHead);
     const parent = dirname(dirname(plan.journalPath));
     if (!existsSync(parent)) mkdirSync(parent, { mode: 0o700 }); privateDirectory(parent);
@@ -219,7 +252,7 @@ export function prepareLaneAlignment(plan) {
   for (const [ref, oid] of [[plan.oldRef, plan.expectedHead], [plan.candidateRef, plan.candidateHead]]) {
     if (observeGit(['symbolic-ref', '--quiet', ref], { cwd: plan.cwd, allowFail: true }) !== null) fail('journal');
     const current = headSha(ref, plan.cwd); if (current && current !== oid) fail('journal');
-    if (!current) { artifacts.refPinWriteAttempted = true; artifacts.refPinWriteResultUnknown = true; artifacts.refPinAttempted = ref; atomicAdvanceRef(ref, oid, '0'.repeat(40), [[`refs/heads/${plan.ref}`, plan.expectedHead], [plan.targetRef, plan.expectedTarget]], plan.cwd); artifacts.refPinWriteResultUnknown = false; }
+    if (!current) { artifacts.refPinWriteAttempted = true; artifacts.refPinWriteResultUnknown = true; artifacts.refPinAttempted = ref; atomicAdvanceRef(ref, oid, '0'.repeat(40), [[`refs/heads/${plan.ref}`, plan.expectedHead], [plan.targetRef, plan.expectedTarget], ...alignmentFences(plan)], plan.cwd); artifacts.refPinWriteResultUnknown = false; }
   }
   return plan;
   } catch (error) {
@@ -227,12 +260,30 @@ export function prepareLaneAlignment(plan) {
     if (artifacts.effectsRetained) Object.assign(error, { retainedOperation: true, operationError: { reason: error.reason ?? null, message: error.message }, operationArtifacts: artifacts }); throw error;
   }
 }
-/** Apply only the disjoint clean delta. Partial file/index effects remain journaled and blocked. */
+/** Apply a disjoint clean delta or proved same-tree ancestry join; retain partial-effect evidence. */
 export function applyLaneAlignment(input) {
   const plan = prepareLaneAlignment(input);
   if (headSha('HEAD', plan.cwd) === plan.candidateHead) { verifyCompleted(plan); return receipt(plan, true); }
   identity(plan); cleanIndex(plan.cwd, plan.expectedHead); assertDirty(plan);
   if (!same(dirtySnapshot(plan.cwd, plan.expectedHead), plan.dirty)) fail('partial');
+  if (plan.squashPredecessor) {
+    // Identical index/tree: no checkout, staging or quarantine operation is needed.
+    const artifacts = { effectsRetained: true, operation: 'lane-alignment', journalPath: plan.journalPath,
+      oldRef: plan.oldRef, candidateRef: plan.candidateRef, previousHead: plan.expectedHead,
+      candidateHead: plan.candidateHead, targetHead: plan.expectedTarget, refPublished: false };
+    try {
+      assertSquashBinding(plan);
+      atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.candidateHead, plan.expectedHead,
+        [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead],
+          [plan.candidateRef, plan.candidateHead], ...alignmentFences(plan)], plan.cwd);
+      artifacts.refPublished = true;
+      verifyCompleted(plan); return receipt(plan, plan.resume);
+    } catch (error) {
+      throw Object.assign(error, { retainedOperation: true,
+        operationError: { reason: error.reason ?? null, message: error.message }, operationArtifacts: artifacts,
+        recovery: 'Preserve journal, refs and bytes; reobserve the exact ancestry join before retrying.' });
+    }
+  }
   const old = tree(plan.cwd, plan.expectedHead), target = tree(plan.cwd, plan.candidateHead), limits = { maxEntryBytes: MAX, maxAggregateBytes: AGGREGATE, maxParentDirectories: 1024 };
   const source = plan.incomingPaths.filter(path => old.has(path)).map(path => ({ path, ...old.get(path) }));
   const targets = plan.incomingPaths.filter(path => target.has(path)).map(path => ({ path, ...target.get(path) }));
@@ -258,7 +309,7 @@ export function applyLaneAlignment(input) {
     throw Object.assign(error, { retainedOperation: true, operationError: { reason: error.reason ?? null, message: error.message }, operationArtifacts: { ...artifacts, stagingPath: staging?.path ?? null }, recovery: 'Preserve journal and bytes; retry only an exact completed source effect. Partial materialization requires reviewed native recovery.' });
   }
 }
-function receipt(plan, resumed) { return { schema: 'agentic-os/lane-alignment-receipt/v1', previousHead: plan.expectedHead, head: plan.candidateHead, targetHead: plan.expectedTarget, preservedDirtyPaths: plan.dirty.map(row => row.path), incomingPaths: plan.incomingPaths, journalPath: plan.journalPath, oldRef: plan.oldRef, candidateRef: plan.candidateRef, resumed }; }
+function receipt(plan, resumed) { return { ...(plan.squashPredecessor ? { squashPredecessor: plan.squashPredecessor } : {}), schema: 'agentic-os/lane-alignment-receipt/v1', previousHead: plan.expectedHead, head: plan.candidateHead, targetHead: plan.expectedTarget, preservedDirtyPaths: plan.dirty.map(row => row.path), incomingPaths: plan.incomingPaths, journalPath: plan.journalPath, oldRef: plan.oldRef, candidateRef: plan.candidateRef, resumed }; }
 export function validateLaneAlignmentInput(value) {
   const input = snapshotBoundedJson(value, { maxDepth: 2, maxNodes: 16, maxStringBytes: 4096, maxAggregateStringBytes: 16384, maxArrayLength: 0, maxObjectKeys: 8 });
   if (!input || Object.keys(input).sort().join(',') !== 'device,expectedHead,expectedTarget,mission,schema,scope,stopped' || input.schema !== 'agentic-os/lane-alignment-input/v1' || input.stopped !== true || !SHA.test(input.expectedHead ?? '') || !SHA.test(input.expectedTarget ?? '') || !isAbsolute(input.mission ?? '') || resolve(input.mission) !== input.mission || /[\x00-\x1f]/u.test(input.mission)) fail('input');
