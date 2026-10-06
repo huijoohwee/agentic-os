@@ -17,7 +17,7 @@ const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args,
   { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
-function fixture(t) {
+function fixture(t, { replacement = true } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-successor-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'root'), target = join(parent, 'old'), next = join(parent, 'next');
@@ -41,7 +41,8 @@ function fixture(t) {
   git(target, 'add', '.'); git(target, 'commit', '--quiet', '-m', 'old implementation');
   const oldHead = git(target, 'rev-parse', 'HEAD');
   git(root, 'worktree', 'add', '--quiet', '-b', nextRef, next, oldHead);
-  writeFileSync(join(next, 'starter.py'), 'speed = 3\n');
+  if (replacement) writeFileSync(join(next, 'starter.py'), 'speed = 3\n');
+  else writeFileSync(join(next, 'successor-note.md'), 'additional reviewed context\n');
   git(next, 'add', '.'); git(next, 'commit', '--quiet', '-m', 'reviewed replacement');
   const reviewedHead = git(next, 'rev-parse', 'HEAD');
   git(root, 'merge', '--squash', '--quiet', nextRef); git(root, 'commit', '--quiet', '-m', 'accepted review');
@@ -69,7 +70,8 @@ function fixture(t) {
     assert.fail(`unexpected provider read: ${path}`);
   };
   const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true,
-    successor: { predecessorRef: oldRef, predecessorHead: oldHead, replacedPaths: ['starter.py'] } };
+    successor: { predecessorRef: oldRef, predecessorHead: oldHead,
+      replacedPaths: replacement ? ['starter.py'] : [] } };
   const options = { api, now: () => NOW, observeRemote: () => `${merge}\trefs/heads/main` };
   return { root, target, next, nextRef, profile, oldRef, oldHead, reviewedHead, merge, input, options, check };
 }
@@ -106,7 +108,7 @@ test('reviewed successor closes a clean predecessor while preserving recovery by
     ['starter.py'], { cwd: s.root }), proof);
 });
 
-test('successor rejects omitted replacements, failed checks, changed target and unreviewed ancestry', t => {
+test('successor rejects incorrect replacements, failed checks, changed target and unreviewed ancestry', t => {
   const s = fixture(t);
   assert.equal(successorIntegrationProof(s.merge, s.oldHead, s.reviewedHead,
     [], { cwd: s.root }), null);
@@ -121,8 +123,24 @@ test('successor rejects omitted replacements, failed checks, changed target and 
     predecessorHead: s.reviewedHead } }, s.options), /successor-target-drift/);
   assert.equal(validateCommandArguments('release-common', ['complete', `--ref=${s.oldRef}`,
     '--via-pr=12', '--replaced=starter.py', '--stopped']), null);
+  assert.equal(validateCommandArguments('release-common', ['complete', `--ref=${s.oldRef}`,
+    '--via-pr=12', '--replaced=', '--stopped']), null);
   assert.ok(validateCommandArguments('release-common', ['complete', `--ref=${s.oldRef}`,
     '--via-pr=12', '--replaced=starter.py']));
+});
+
+test('reviewed successor permits an explicit empty replacement set when every predecessor path matches', t => {
+  const s = fixture(t, { replacement: false });
+  const proof = successorIntegrationProof(s.merge, s.oldHead, s.reviewedHead, [], { cwd: s.root });
+  assert.equal(proof.kind, 'reviewed-successor');
+  assert.equal(proof.pathCount, 2);
+  assert.deepEqual(proof.replacements, []);
+  const plan = planUserCleanup(s.input, s.options);
+  assert.deepEqual(plan.integration, proof);
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(existsSync(s.target), false);
+  assert.equal(receipt.providerAuthority, false);
 });
 
 function preservedFixture(t) {

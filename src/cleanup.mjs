@@ -342,7 +342,7 @@ export async function runReleaseCommonSuccessorComplete({
     const ref = option(argv, 'ref'), pr = Number(option(argv, 'via-pr'));
     const replacedPaths = (option(argv, 'replaced') ?? '').split(',').filter(Boolean);
     if (!isLaneRef(ref) || !Number.isSafeInteger(pr) || pr < 1 || !argv.includes('--stopped')
-      || replacedPaths.length === 0 || replacedPaths.length > 128)
+      || replacedPaths.length > 128)
       fail('blocked-release-common-successor-options',
         'Use --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped');
     const current = releaseCommonLocalCleanupPolicy(root, profile);
