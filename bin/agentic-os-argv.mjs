@@ -3,7 +3,7 @@ import { assertScope } from '../src/lane-id.mjs';
 import { MAX_TASK_CHECKOUTS } from '../src/canonical-resources.mjs';
 import { parseWritePaths } from '../src/worktree.mjs';
 function exact(argv, {
-  min = 0, max = min, options = [], flags = [], requiredOptions = [], requiredFlags = [],
+  min = 0, max = min, options = [], flags = [], requiredOptions = [], requiredFlags = [], allowEmptyOptions = [],
 }) {
   const positionals = [];
   const seen = new Set();
@@ -19,7 +19,7 @@ function exact(argv, {
     if (kind === 'flag' ? !flags.includes(name) : !options.includes(name))
       return `unknown or malformed ${token}`;
     if (seen.has(name)) return `duplicate --${name}`;
-    if (kind === 'option' && token.slice(equals + 1).length === 0) return `empty --${name}`;
+    if (kind === 'option' && token.slice(equals + 1).length === 0 && !allowEmptyOptions.includes(name)) return `empty --${name}`;
     seen.add(name);
   }
   if (positionals.length < min || positionals.length > max)
@@ -112,7 +112,7 @@ export function validateCommandArguments(command, argv) {
           return exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms'], requiredOptions: ['worktrees'] });
         if (option(argv, 'via-pr') !== null)
           return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'replaced'],
-            flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'] });
+            flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
     }
