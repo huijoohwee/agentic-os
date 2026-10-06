@@ -19,7 +19,7 @@ const runtimeFiles = ['bin/agentic-os-validation.mjs', 'bin/agentic-os-validatio
   'bin/agentic-os-validation-stages.mjs', 'bin/agentic-os-validation-observation.mjs',
   'bin/agentic-os-validation-progress.mjs', 'bin/agentic-os-test-command-resources.cjs',
   'bin/agentic-os-workflow.mjs', 'bin/agentic-os-workflow-archive.mjs', 'bin/agentic-os-workflow-observation.mjs'];
-const runtimeDigest = () => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path).digest])));
+export const runtimeDigest = cache => hash(JSON.stringify(runtimeFiles.map(path => [path, readRegular(runtimeRoot, path, 499_000, cache).digest])));
 export function validationArguments(argv) {
   const [mode = 'run', ...flags] = argv;
   if (!['plan', 'run', 'ci', 'observe'].includes(mode)) throw new Error('expected validation plan, run, ci or observe');
@@ -138,7 +138,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
     });
     assertWorkflowCurrent();
     const observe = consumerSnapshotReader({ root, base: options.base, head: options.head || 'HEAD', committed: options.committed });
-    const observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest();
+    const runtimeCache = new Map(), observed = observe(), plan = selectValidationChecks(policy, observed.changed, options), ownerDigest = runtimeDigest(runtimeCache);
     const directory = receiptDirectory(root);
     const context = economyContext(policyFile.digest, ownerDigest, observed.identity);
     const readCosts = () => readEconomy(directory, context, Date.now(), policy.checks.map(check => check.id));
@@ -176,7 +176,7 @@ export async function runRepositoryValidation(argv, { out = console.log } = {}) 
       outcome: 'running', startedAt: Date.now(), results: [], resources, costRegressions: [] };
     const stable = () => {
       assertWorkflowCurrent();
-      if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest() !== ownerDigest)
+      if (JSON.stringify(observe().identity) !== JSON.stringify(observed.identity) || runtimeDigest(runtimeCache) !== ownerDigest)
         throw new Error('blocked-validation-input-drift');
     };
     out(`${plan.mode}: ${checks.length}/${plan.available} owner checks; ${observed.changed.length} changed paths; no full-suite parity inferred`);
