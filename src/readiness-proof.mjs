@@ -336,10 +336,10 @@ export function violations(root = ROOT, options = {}) {
   return markdownFiles(root).flatMap((path) => inspectDocument(path, root, options));
 }
 
-function report(root = ROOT) {
-  const found = violations(root);
+export function report(root = ROOT) {
+  const files = markdownFiles(root), found = files.flatMap((path) => inspectDocument(path, root));
   if (found.length === 0) {
-    process.stdout.write(`ok   readiness proof ${markdownFiles(root).length} Markdown file(s)\n`);
+    process.stdout.write(`ok   readiness proof ${files.length} Markdown file(s)\n`);
     return 0;
   }
   process.stdout.write('readiness proof violations:\n');

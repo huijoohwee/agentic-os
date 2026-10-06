@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import fs from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import readinessTestReporter, {
@@ -10,6 +12,7 @@ import readinessTestReporter, {
   CONTRACT_PROOF_SCHEMA,
   LIVE_PROOF_SCHEMA,
   proofMarkers,
+  report,
   violations,
 } from '../src/readiness-proof.mjs';
 
@@ -74,6 +77,29 @@ test('a readiness claim is accepted only with one existing named proof', (t) => 
     '__tests__/proof.test.mjs': executableTest(claim),
   });
   assert.deepEqual(violations(root), []);
+});
+
+test('readiness success report uses one directory traversal', (t) => {
+  const root = fixture(t, {
+    'README.md': 'No readiness claim.\n',
+    'nested/guide.md': 'Still no claim.\n',
+    'nested/data.txt': 'Ignored by the Markdown inventory.\n',
+  });
+  const calls = [];
+  const original = readdirSync;
+  t.mock.method(fs, 'readdirSync', (path, ...args) => {
+    calls.push(path);
+    return original(path, ...args);
+  });
+  const output = [];
+  t.mock.method(process.stdout, 'write', chunk => { output.push(String(chunk)); return true; });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+
+  assert.equal(report(root), 0);
+
+  assert.deepEqual(output, ['ok   readiness proof 2 Markdown file(s)\n']);
+  assert.deepEqual(calls, [root, join(root, 'nested')]);
 });
 
 test('a strong readiness claim requires a structured passed live-provider receipt', (t) => {
