@@ -5,6 +5,7 @@ import { readFileSync, chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, sy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executionEnvironment, readRegular, safePath, snapshot, snapshotReader } from '../bin/agentic-os-test-inputs.mjs';
+import { runtimeDigest } from '../bin/agentic-os-validation.mjs';
 import { ciEvaluatorAllocation } from '../bin/agentic-os-tests.mjs';
 import { ciArguments } from '../bin/agentic-os-test-ci.mjs';
 import { consumerSnapshotReader } from '../bin/agentic-os-validation-inputs.mjs';
@@ -139,6 +140,13 @@ test('working snapshot cache evicts deleted tracked and retired untracked paths'
   assert.ok(!cache.working.has(join(second.identity.root, 'a.mjs')), 'missing tracked file is evicted');
   assert.ok(!cache.working.has(join(second.identity.root, 'transient.mjs')), 'retired untracked file is evicted');
   assert.ok(first.after.has('a.mjs'), 'earlier snapshots remain intact');
+});
+
+test('owner runtime digests reuse unchanged bounded bytes within one invocation', t => {
+  const cache = new Map(), before = runtimeDigest(cache), retained = [...cache.values()];
+  assert.equal(cache.size, 14, 'the fixed owner list bounds retained files');
+  assert.equal(runtimeDigest(cache), before);
+  assert.ok([...cache.values()].every((file, index) => file === retained[index]));
 });
 
 
