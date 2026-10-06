@@ -1,18 +1,18 @@
 ---
 title: "Repository Validation PRD-TAD-ADR-MVP-GTM"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.1"
+version: "1.1.2"
 owner: "agentic-os"
-date: "2026-10-03"
+date: "2026-10-06"
 lang: "en-US"
 frontmatter_contract: "required"
 load_policy: "on-demand"
 continuity_id: "REPOSITORY-VALIDATION-001"
-prd_revision: "1.1.1"
-tad_revision: "1.1.1"
-adr_revision: "1.1.1"
-mvp_revision: "1.1.1"
-gtm_revision: "1.1.1"
+prd_revision: "1.1.2"
+tad_revision: "1.1.2"
+adr_revision: "1.1.2"
+mvp_revision: "1.1.2"
+gtm_revision: "1.1.2"
 status: "implementation"
 ---
 
@@ -23,7 +23,7 @@ the consumer check-input, receipt-reuse and validation authority contract.
 
 ## PRD
 
-`REPOSITORY-VALIDATION-001@1.1.1`: a solo maintainer changes one source concern and
+`REPOSITORY-VALIDATION-001@1.1.2`: a solo maintainer changes one source concern and
 runs the checks affected by its declared inputs and dependencies through the pinned
 Agentic OS owner. Context: repeated whole-repository checks delay delivery. Intent:
 reduce avoidable execution without changing test assertions or protected authority.
@@ -46,19 +46,27 @@ remains the reusable policy and native OS test-runner guide.
 | V07 | Consumers invoke the pinned common executor through default validation and protected CI; owner commands remain in their source repositories. Unenrolled consumers are not claimed enforced. |
 | V08 | Every actual command updates bounded private cost observations. Learned order preserves selected coverage, prerequisites and mandatory precedence; stale or incompatible observations restore declared order. Reuse never counts as new execution. |
 | V09 | Before an expensive diagnostic retry, inspect retained evidence, identify the unanswered question and bind its incremental work to source/context and explicit limits. Partial traces, sampled cutoffs and unavailable resources remain qualified; fresh CI and mandatory coverage remain intact. |
+| V10 | Readiness proof inspection traverses the Markdown inventory once per invocation and reuses its count; it never reuses document bytes or proof results across invocations. |
 
 V01–V06 are exercised by `__tests__/repository-validation*.test.mjs` and the existing
-`__tests__/test-{impact,runner}.test.mjs`. V07 requires each consumer's reviewed
+`__tests__/test-{impact,runner}.test.mjs`; V10 is checked by
+`__tests__/readiness-proof.test.mjs`. V07 requires each consumer's reviewed
 package pin, script/workflow diff, protected checks and exact integration receipt.
 
 ## TAD and ADR
 
-TAD `1.1.1` consumes PRD `1.1.1`; ADR `1.1.1` binds V01–V09. Agentic OS owns the
+TAD `1.1.2` consumes PRD `1.1.2`; ADR `1.1.2` binds V01–V10. Agentic OS owns the
 selector, process bounds, input observation and receipt reuse. Each consumer owns
 `.agentic-os-validation.json`: source input boundaries, prerequisite relationships,
 existing commands and conservative fallback. Do not copy the executor or add a
 second persistent repository registry. Discover source/reference/projection roles
 through [fleet ownership](../FLEET.md) and checks through `test/repositories.json`.
+
+The readiness-proof CLI inspects one Markdown path inventory per invocation and reuses
+that inventory's count in its success output. It does not retain document bytes or proof
+results: every later invocation rereads the tree and performs fresh evidence checks. This
+removes a redundant recursive directory traversal without changing claim coverage or
+proof requirements; `__tests__/readiness-proof.test.mjs` checks the single inventory pass.
 
 The consumer policy has schema `agentic-os/repository-validation-policy/v1` and
 exact fields `repository`, `broadInputs`, `always`, `fallback`, and `checks`.
