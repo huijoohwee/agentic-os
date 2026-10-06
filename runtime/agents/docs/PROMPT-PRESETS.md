@@ -44,6 +44,19 @@ prompt_presets:
     mcp_token: "/python.learning"
     prompt: |-
       /python.learning @canvas #learning operation=inspect lesson=drone
+  - id: "flight-sim"
+    label: "Local Flight Simulator"
+    slash_command: "/flight-sim-prompt-preset"
+    runtime_command: "/flight.sim"
+    description: "Open the source-authored, local Flight Sim at /docs/workspace-seeds/agentic-graph-game-flight-sim-demo.md. Demo applies that canonical seed directly; no copied demo document, paid provider, or external runtime is required."
+    activation: "source-backed-canvas"
+    invocation_modes: ["native-chat-response", "mcp-invocation"]
+    chat_route: "active native shared runtime"
+    mcp_tool: "agentic-graph.control_local_flight_sim"
+    mcp_token: "/flight.sim"
+    source_path: "/docs/workspace-seeds/agentic-graph-game-flight-sim-demo.md"
+    prompt: |-
+      /flight.sim @canvas #flight operation=open
   - id: "xr-physics"
     label: "Physics Playground"
     slash_command: "/xr-physics-prompt-preset"
