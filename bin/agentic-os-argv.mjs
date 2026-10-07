@@ -94,8 +94,8 @@ export function validateCommandArguments(command, argv) {
     }
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'successor', 'promote'].includes(action))
-        return 'release-common requires start, publish, finish, close, complete, or successor (promote is also supported)';
+      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'successor', 'promote', 'scope-release'].includes(action))
+        return 'release-common requires start, publish, finish, close, complete, or successor; scope-release and promote are also supported';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
@@ -107,6 +107,12 @@ export function validateCommandArguments(command, argv) {
         : argv[1] === 'apply' ? exact(argv.slice(1), { min: 1, max: 1,
           options: ['plan', 'authorize', 'authority-head'], requiredOptions: ['plan', 'authorize'] })
           : 'promote requires plan or apply';
+      if (action === 'scope-release') return argv[1] === 'plan'
+        ? exact(argv.slice(1), { min: 1, max: 1, options: ['ref', 'path'], requiredOptions: ['ref', 'path'] })
+        : argv[1] === 'apply' ? exact(argv.slice(1), { min: 1, max: 1,
+          options: ['plan', 'authorize'], flags: ['stopped'],
+          requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
+          : 'scope-release requires plan or apply';
       if (action === 'complete') {
         if (option(argv, 'worktrees') !== null)
           return exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms'], requiredOptions: ['worktrees'] });
