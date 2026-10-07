@@ -216,6 +216,10 @@ focused. Keep prior full-suite failures visible; a faster run does not make them
 evidence only with its original identity and an explicit account of which relevant inputs stayed equal.
 Unknown dependencies, changed runner/configuration, or runtime inputs require fresh applicable checks.
 Never treat a result cache or a matching commit alone as proof of dirty worktree bytes or live readiness.
+Forbid rerunning a completed full smoke when source and test inputs are unchanged. Inspect its retained
+failure receipt, run only a focused diagnostic for a named unresolved question, or run the full smoke
+once after a relevant input changes. During readiness waits, stop immediately when an authoritative
+terminal UI error appears; do not spend the remaining timeout rediscovering that failure.
 
 Keep reusable policy here, executable checks in their owning repositories, and ecosystem result history
 in upstream `agentic-os/test/log.md`. Shared contract fixtures and the repository check index also live
