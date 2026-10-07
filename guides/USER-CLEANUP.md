@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.0"
-date: "2026-10-03"
+version: "1.4.1"
+date: "2026-10-07"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.0"
-tad_revision: "1.4.0"
-adr_revision: "1.4.0"
+prd_revision: "1.4.1"
+tad_revision: "1.4.1"
+adr_revision: "1.4.1"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.4.0"
-gtm_revision: "1.4.0"
+mvp_revision: "1.4.1"
+gtm_revision: "1.4.1"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -273,6 +273,21 @@ Experience assessment for `USER-CLEANUP-001@1.2.0` in the authoring environment:
 ## Simplification: change-class fast path, stale-ref sweep, and unified CLI
 
 The cleanup harness applies the same machinery to a docs typo as to a multi-repo production release. The following simplifications reduce operator burden for low-risk change classes without weakening any guarantee for the cases that need the full chain.
+
+### Measured worktree-cleanup economics (2026-10-07)
+
+Recent exact-target cleanup receipts show why pruning felt like a multi-hour operation:
+
+- Three sequential Graph lane cleanups each observed roughly 85,000 recovery entries and a 1.66–1.87 GB recoverable projection. Their plan-to-receipt windows were 120–123 seconds each. These windows include authorization and operator handling, so they are not CPU timings.
+- Those receipts report `bytesDeleted:false`, `branchesMutated:false`, and `claimRetired:false`. Cleanup quarantines the worktree projection and registration for recovery; it removes the mounted checkout path but does not reclaim its bytes or retire its branch claim. Storage reclamation and claim retirement are separate exact effects.
+- The post-cleanup Graph CI observation took 20.2 minutes, mostly execution, and the Agentic OS observation took 4.9 minutes. CI therefore dominated elapsed time after the local quarantine steps.
+- The Agentic OS lane cache also contained 14 active records for only two mounted worktrees; 13 records had no mounted checkout, and stale scopes overlapped the current CLI reservation. These records do not justify deleting refs or retiring claims automatically. They do explain admission and cleanup follow-up friction.
+
+The stale-ref sweep now reads the bounded 256-branch inventory with two batched `for-each-ref` calls and one worktree-registry read. Git subprocess count is constant with inventory size, rather than growing by up to three calls per branch. The sweep remains observation-only; each selected target still needs a fresh exact plan and stopped apply because quarantining one peer changes later recovery evidence.
+
+For validation, bind every check to the exact candidate and its inputs. Reuse a passing receipt only when those inputs are unchanged; **do not rerun the full smoke suite on unchanged source**. Run focused checks for documentation or isolated behavior changes, then one affected validation for the final changed candidate. Quarantine itself does not justify repeating source validation. A changed source revision or check input requires fresh evidence.
+
+Do not weaken recovery inventory checks to improve the timings above. Before treating quarantine as storage reclamation, obtain the separate exact retention authorization and verify its receipt. Before retiring stale lane claims, use the owning claim-retirement operation and preserve the branch/worktree identity evidence.
 
 ### Change-class fast path (`--change-class=docs-only`)
 

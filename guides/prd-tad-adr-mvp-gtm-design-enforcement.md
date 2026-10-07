@@ -1,16 +1,16 @@
 ---
 title: "Native design enforcement PRD-TAD-ADR-MVP-GTM"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "0.2.0"
+version: "0.3.0"
 date: "2026-10-05"
 lang: "en-US"
 owner: "Runtime maintainers"
 continuity_id: "NATIVE-DESIGN-ENFORCEMENT"
-prd_revision: "0.2.0"
-tad_revision: "0.2.0"
-adr_revision: "0.2.0"
-mvp_revision: "0.2.0"
-gtm_revision: "0.2.0"
+prd_revision: "0.3.0"
+tad_revision: "0.3.0"
+adr_revision: "0.3.0"
+mvp_revision: "0.3.0"
+gtm_revision: "0.3.0"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
@@ -171,3 +171,24 @@ passed; four unfinished suites timed out, so it is not reported as green. Provid
 must provide the full gate result for this successor.
 The Canvas locked dependency lacks this export; activation waits for protected source admission.
 No palette, MainPanel setting, live application, external service or deployment was changed.
+
+## Native reservation-release addition (0.3.0)
+
+ADLC may retain a stale exact path claim after a published candidate has already landed elsewhere.
+The native `scope-release` command supports this recovery without rewriting the candidate branch:
+`plan` binds the canonical protected head, published lane head/worktree, all current claims, and one
+exact normalized tracked-file entry. It proves that the protected and published trees have identical
+mode and blob identity and that the reserved file has no local edits. `apply` requires the plan's
+SHA-256 authorization token and `--stopped`, recomputes the observation immediately before a cache
+compare-and-set, and emits a receipt naming only the released path. The lane's branch and checkout
+bytes are retained; the claim cannot be emptied. A stale digest, dirty file, moved ref, missing claim,
+or changed lane inventory blocks the effect. The command is lazy-loaded and has no new dependency,
+provider call, always-load prompt delta, or production authority.
+
+This addition is limited to one maintenance command in the existing release-common adapter, one
+reused patch-identity owner, one focused test module and this planning revision; all changed files
+remain below 600 lines. Validation covers exact-byte parity,
+stale/dirty refusal, compare-and-set output and CLI grammar. Publication, protected merge, deployment,
+and checkout cleanup remain separate authorized transitions.
+The measured budget delta is 131 source lines and 14 CLI lines, with no module, dependency, provider
+request or always-load prompt growth; the bound plan and cache compare-and-set replace manual cache edits.

@@ -286,31 +286,65 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
 
 /** Bounded observation-only stale-ref candidates; no refs or bytes are removed. */
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
+const SWEEP_LIMIT = 256;
+const sweepRefFormat = '%(refname:short)%09%(objectname)%09%(objecttype)%09%(committerdate:unix)';
+
+/** Project one bounded ref snapshot; the caller revalidates each selected target before effects. */
+export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, staleDays, now = Date.now() }) {
+  if (!Array.isArray(refs) || !Array.isArray(mergedBranches) || !Array.isArray(activeBranches))
+    refuse('sweep-inventory-shape');
+  if (refs.length > SWEEP_LIMIT || mergedBranches.length > SWEEP_LIMIT) refuse('lane-inventory-over-budget');
+  if (!Number.isSafeInteger(staleDays) || staleDays < 0) refuse('stale-days-invalid');
+  if (!Number.isSafeInteger(now)) refuse('sweep-clock-invalid');
+  const merged = new Set(mergedBranches), active = new Set(activeBranches), seen = new Set();
+  if (merged.size !== mergedBranches.length || mergedBranches.some(branch => !isLaneRef(branch)))
+    refuse('sweep-merged-inventory');
+  const staleThreshold = staleDays > 0 ? now - staleDays * 86400000 : 0;
+  const candidates = [];
+  for (const row of refs) {
+    if (typeof row !== 'string') refuse('sweep-ref-shape');
+    const fields = row.split('\t');
+    if (fields.length !== 4) refuse('sweep-ref-shape');
+    const [branch, head, type, rawTime] = fields;
+    if (!isLaneRef(branch) || seen.has(branch) || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(head)
+      || type !== 'commit' || !/^-?\d+$/u.test(rawTime)) refuse('sweep-ref-shape');
+    seen.add(branch);
+    const commitMs = Number(rawTime) * 1000;
+    if (!Number.isSafeInteger(commitMs) || !Number.isFinite(new Date(commitMs).getTime())) refuse('sweep-commit-time');
+    const isMerged = merged.has(branch), mounted = active.has(branch);
+    const stale = staleDays > 0 ? commitMs < staleThreshold : true;
+    if (!stale) continue;
+    candidates.push({ branch, head, merged: isMerged, stale, mounted,
+      commitTime: new Date(commitMs).toISOString() });
+  }
+  if (mergedBranches.some(branch => !seen.has(branch))) refuse('sweep-ref-drift');
+  return candidates;
+}
+
+/** Read fixed-size batches so Git process count does not grow with the lane count. */
+export function observeUserCleanupSweep(root, { staleDays, requireMerged = false,
+  requireNoActiveWorktree = false, now = Date.now, observeLines = observeGitLines,
+  listWorktrees = worktrees, observePolicy = cwd => policy(cwd, MODE) } = {}) {
+  if (!Number.isSafeInteger(staleDays) || staleDays < 0) refuse('stale-days-invalid');
+  const current = observePolicy(root), canonical = current.canonical;
+  const refs = observeLines(['for-each-ref', `--format=${sweepRefFormat}`, '--count=257', 'refs/heads/agent'], { cwd: root });
+  if (refs.length > SWEEP_LIMIT) refuse('lane-inventory-over-budget');
+  const mergedBranches = observeLines(['for-each-ref', `--merged=${canonical}`,
+    '--format=%(refname:short)', '--count=257', 'refs/heads/agent'], { cwd: root });
+  if (mergedBranches.length > SWEEP_LIMIT) refuse('lane-inventory-over-budget');
+  const activeBranches = listWorktrees(root).map(row => row.branch).filter(Boolean);
+  const candidates = projectUserCleanupSweep({ refs, mergedBranches, activeBranches, staleDays, now: now() })
+    .filter(candidate => !requireMerged || candidate.merged)
+    .filter(candidate => !requireNoActiveWorktree || !candidate.mounted);
+  return { current, candidates };
+}
+
 function runUserCleanupSweep(root, argv, out = console.log) {
   const staleDays = Number(option(argv, 'stale-older-than') ?? '0');
   const requireMerged = argv.includes('--merged');
   const requireNoActiveWorktree = argv.includes('--no-active-worktree');
-  if (!Number.isSafeInteger(staleDays) || staleDays < 0) refuse('stale-days-invalid');
-  const current = policy(root, MODE);
+  const { current, candidates } = observeUserCleanupSweep(root, { staleDays, requireMerged, requireNoActiveWorktree });
   const canonical = current.canonical;
-  const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)',
-    'refs/heads/agent', '--count=257'], { cwd: root });
-  if (branches.length > 256) refuse('lane-inventory-over-budget');
-  const activeWorktrees = new Set(worktrees(root).map((w) => w.branch).filter(Boolean));
-  const staleThreshold = staleDays > 0 ? Date.now() - staleDays * 86400000 : 0;
-  const candidates = [];
-  for (const branch of branches) {
-    const head = read(root, ['rev-parse', '--verify', `refs/heads/${branch}^{commit}`], { allowFail: true });
-    if (!head) continue;
-    const merged = requireMerged ? read(root, ['merge-base', '--is-ancestor', head, canonical], { allowFail: true }) !== null : true;
-    if (requireMerged && !merged) continue;
-    const commitTime = Number(read(root, ['show', '-s', '--format=%ct', head], { allowFail: true }) ?? '0') * 1000;
-    const stale = staleDays > 0 ? commitTime < staleThreshold : true;
-    if (!stale) continue;
-    const mounted = activeWorktrees.has(branch);
-    if (requireNoActiveWorktree && mounted) continue;
-    candidates.push({ branch, head, merged, stale, mounted, commitTime: new Date(commitTime).toISOString() });
-  }
   const sweep = {
     schema: SWEEP_SCHEMA, observationOnly: true, authorizesEffects: false,
     repository: current.repository, canonicalRevision: canonical,

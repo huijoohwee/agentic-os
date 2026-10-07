@@ -32,7 +32,7 @@ count is secondary, and token estimates are advisory because tokenizers vary by 
 | Scope | Cap | Enforced by |
 |---|---|---|
 | Modules in `src/` | 47 | `bin/agentic-os-module-budget.mjs` |
-| Authored lines in `src/` | 15,050 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `src/` | 15,285 | `bin/agentic-os-module-budget.mjs` |
 | Lines in one module | 400 | `bin/agentic-os-module-budget.mjs` |
 
 The cap is the design constraint that keeps scenarios in the state table. A per-scenario quadruple of
@@ -41,6 +41,7 @@ roughly 195k lines, and at that size the harness is the product.
 
 A directive proposing a module pattern states its per-scenario multiplier and projected module delta;
 otherwise it is incomplete. New behavior belongs in the state table or an existing responsibility owner.
+
 
 ## Reading the failure
 

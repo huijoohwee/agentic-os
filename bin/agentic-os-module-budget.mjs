@@ -19,7 +19,7 @@ export const BUDGET = Object.freeze({
   // NATIVE-DESIGN-ENFORCEMENT@0.2.0: +105 existing-owner lines for declared reuse.
   // Measured source cap 15050 -> 15154; no new module or runtime dependency.
   modules: 47,
-  totalLines: 15154,
+  totalLines: 15285,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -30,8 +30,10 @@ export const BUDGET = Object.freeze({
   // 2026-09-23: 33 existing-owner lines batch final trace verification; a
   // matched 20-file run cut median wall 49% and current-process CPU 45%.
   // 2026-10-07 E18: +72 native auto-merge lines in existing completion owner; no module added.
+  // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
+  // 2026-10-07 cleanup sweep batching: +33 CLI lines for two bounded ref reads; no module/dependency.
   binModules: 112,
-  binLines: 23761,
+  binLines: 23808,
   runtimeModules: 96,
   runtimeLines: 23023,
 });
