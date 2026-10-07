@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createReservationScopeReleasePlan, applyReservationScopeRelease } from '../src/patch-identity.mjs';
 import * as laneRecords from '../src/lane-records.mjs';
 
-function fixture(t) {
+function fixture(t, { state = 'published', pr = 17 } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-scope-release-'));
   const root = join(parent, 'repo'), lanePath = join(parent, 'lane');
   mkdirSync(root);
@@ -30,8 +30,9 @@ function fixture(t) {
   run(['commit', '--quiet', '--message', 'published candidate'], lanePath);
   const head = run(['rev-parse', 'HEAD'], lanePath);
   laneRecords.put({ ref, device: 'device-0232231d4a19', scope: 'commerce-data-view-embed',
-    state: 'published', base: 'refs/remotes/origin/main', baseSha: base,
-    worktree: lanePath, pr: 17, createdAt: new Date(0).toISOString(), head,
+    state, base: 'refs/remotes/origin/main', baseSha: base,
+    worktree: lanePath, pr, createdAt: new Date(0).toISOString(),
+    head: state === 'published' ? head : base,
     writePaths: ['canvas/src/App.tsx', 'docs/commerce.md'] }, lanePath);
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   return { root, lanePath, ref, run };
@@ -53,6 +54,16 @@ test('release removes only the exact equal-byte claim and returns a retained rec
   assert.equal(s.run(['rev-parse', s.ref]), plan.laneHead);
   assert.equal(s.run(['rev-parse', 'HEAD'], s.lanePath), plan.laneHead);
   assert.equal(s.run(['status', '--porcelain=v1', '--untracked-files=all'], s.lanePath), '');
+});
+
+test('active unpublished lane releases a clean claim without adopting its candidate head', (t) => {
+  const s = fixture(t, { state: 'active', pr: null }), plan = createReservationScopeReleasePlan(request(s));
+  assert.equal(plan.laneState, 'active'); assert.notEqual(plan.laneRecordHead, plan.laneHead);
+  const receipt = applyReservationScopeRelease({ ...request(s), plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.laneState, 'active');
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
+  assert.equal(s.run(['rev-parse', 'HEAD'], s.lanePath), plan.laneHead);
 });
 
 test('changed reserved bytes stale the plan and preserve the claim', (t) => {
