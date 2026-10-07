@@ -14,7 +14,7 @@ import { readBoundedFile, snapshotBoundedJson } from '../src/catalog-input.mjs';
 import { assertDevice, isLaneRef, laneRef } from '../src/lane-id.mjs';
 import { get } from '../src/lane-records.mjs';
 import { successorLineage } from '../src/lane-state.mjs';
-const SCHEMA = 'agentic-os/lane-alignment-plan/v1', MAX = 500_000, AGGREGATE = 4 * 1024 * 1024;
+const SCHEMA = 'agentic-os/lane-alignment-plan/v1', MAX = 500_000, TARGET_ENTRY_MAX = 1024 * 1024, AGGREGATE = 4 * 1024 * 1024;
 const SHA = /^[a-f0-9]{40}$/u, hash = value => createHash('sha256').update(value).digest('hex');
 const fail = (code, detail = {}) => { throw Object.assign(new Error(`blocked-lane-alignment-${code}: ${JSON.stringify(detail)}`), { reason: `blocked-lane-alignment-${code}`, detail }); };
 const json = value => JSON.stringify(value), same = (a, b) => json(a) === json(b);
@@ -160,8 +160,8 @@ function verifyCompleted(plan) {
   for (const path of plan.squashPredecessor ? [] : plan.incomingPaths) {
     const desired = target.get(path), stat = lstatSync(join(plan.cwd, path), { throwIfNoEntry: false });
     if (!desired) { if (stat) fail('postcondition', { path }); continue; }
-    const captured = capture(join(plan.cwd, path), { maxBytes: MAX });
-    const bytes = git(['cat-file', 'blob', desired.oid], { cwd: plan.cwd, binary: true, maxBuffer: MAX });
+    const captured = capture(join(plan.cwd, path), { maxBytes: TARGET_ENTRY_MAX });
+    const bytes = git(['cat-file', 'blob', desired.oid], { cwd: plan.cwd, binary: true, maxBuffer: TARGET_ENTRY_MAX });
     if (!stat?.isFile() || captured.mode !== desired.mode || !captured.bytes.equals(bytes)) fail('postcondition', { path });
   }
 }
@@ -205,14 +205,14 @@ export function planLaneAlignment(input) {
   for (const path of squashPredecessor ? [] : incomingPaths) {
     assertDirectoryAncestors(path, input.cwd, { allowMissing: true });
     for (const entry of [old.get(path), target.get(path)].filter(Boolean)) {
-      if (!['100644', '100755'].includes(entry.mode) || entry.size > MAX || entry.size > AGGREGATE - budget.bytes) fail('path', { path }); budget.bytes += entry.size;
+      if (!['100644', '100755'].includes(entry.mode) || entry.size > TARGET_ENTRY_MAX || entry.size > AGGREGATE - budget.bytes) fail('path', { path }); budget.bytes += entry.size;
     }
     const stat = lstatSync(join(input.cwd, path), { throwIfNoEntry: false });
     if (stat && !stat.isFile()) fail('path', { path });
     if (!old.has(path) && stat) fail('overlap', { path });
     if (old.has(path)) {
-      const actual = capture(join(input.cwd, path), { maxBytes: MAX });
-      if (actual.mode !== old.get(path).mode || !actual.bytes.equals(git(['cat-file', 'blob', old.get(path).oid], { cwd: input.cwd, binary: true, maxBuffer: MAX }))) fail('dirty', { path });
+      const actual = capture(join(input.cwd, path), { maxBytes: TARGET_ENTRY_MAX });
+      if (actual.mode !== old.get(path).mode || !actual.bytes.equals(git(['cat-file', 'blob', old.get(path).oid], { cwd: input.cwd, binary: true, maxBuffer: TARGET_ENTRY_MAX }))) fail('dirty', { path });
     }
   }
   return { schema: SCHEMA, ...input, ...location, mergeBase, authoredPaths, incomingPaths, dirty, ...(squashPredecessor ? { squashPredecessor } : {}), candidateHead: null, resume: false, liveHead: input.expectedHead };
@@ -284,7 +284,7 @@ export function applyLaneAlignment(input) {
         recovery: 'Preserve journal, refs and bytes; reobserve the exact ancestry join before retrying.' });
     }
   }
-  const old = tree(plan.cwd, plan.expectedHead), target = tree(plan.cwd, plan.candidateHead), limits = { maxEntryBytes: MAX, maxAggregateBytes: AGGREGATE, maxParentDirectories: 1024 };
+  const old = tree(plan.cwd, plan.expectedHead), target = tree(plan.cwd, plan.candidateHead), limits = { maxEntryBytes: TARGET_ENTRY_MAX, maxAggregateBytes: AGGREGATE, maxParentDirectories: 1024 };
   const source = plan.incomingPaths.filter(path => old.has(path)).map(path => ({ path, ...old.get(path) }));
   const targets = plan.incomingPaths.filter(path => target.has(path)).map(path => ({ path, ...target.get(path) }));
   let index, staging; const artifacts = { effectsRetained: true, operation: 'lane-alignment', journalPath: plan.journalPath, oldRef: plan.oldRef, candidateRef: plan.candidateRef, previousHead: plan.expectedHead, candidateHead: plan.candidateHead, quarantinePath: null, installed: false, indexPublished: false, refPublished: false };
@@ -294,9 +294,9 @@ export function applyLaneAlignment(input) {
     const exclusive = `agentic-os:lane-alignment:exclusive:${plan.digest}`;
     const preserved = quarantineWorktreeEntries('agentic-os-lane-alignment-source', source, (entry, slot, root) => {
       assertDirty(plan);
-      const saved = capture(join(root, slot), { maxBytes: MAX });
-      if (saved.mode !== entry.mode || !saved.bytes.equals(git(['cat-file', 'blob', entry.oid], { cwd: plan.cwd, binary: true, maxBuffer: MAX }))) fail('postcondition');
-    }, plan.cwd, Buffer.from(json({ schema: SCHEMA, digest: plan.digest, exclusiveContract: exclusive })), { maxEntryBytes: MAX, maxAggregateBytes: AGGREGATE, maxManifestBytes: MAX });
+      const saved = capture(join(root, slot), { maxBytes: TARGET_ENTRY_MAX });
+      if (saved.mode !== entry.mode || !saved.bytes.equals(git(['cat-file', 'blob', entry.oid], { cwd: plan.cwd, binary: true, maxBuffer: TARGET_ENTRY_MAX }))) fail('postcondition');
+    }, plan.cwd, Buffer.from(json({ schema: SCHEMA, digest: plan.digest, exclusiveContract: exclusive })), { maxEntryBytes: TARGET_ENTRY_MAX, maxAggregateBytes: AGGREGATE, maxManifestBytes: MAX });
     artifacts.quarantinePath = preserved.path;
     preserved.verify(); identity(plan); assertDirty(plan);
     retireCleanProjectionUnderExclusiveContract(preserved, { exclusiveContract: exclusive, inventoryCount: 0 });
