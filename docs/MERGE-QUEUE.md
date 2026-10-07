@@ -34,10 +34,9 @@ retains refs until authenticated retirement and a separate cleanup receipt.
 Turning the queue on while leaving `strict` on is the common mistake: the two mechanisms solve the
 same problem and stack badly. Enable the queue, then turn `strict` off in the same change.
 
-Auto-merge is a merge-queue prerequisite on GitHub, but it is not equivalent to tested ordering.
-Checks on an auto-merge request can describe a stale base. Candidate-side `land` never arms it: the
-lane stays `published` until a trusted consumer authorizes ordering and an exact queue entry is
-re-observed.
+GitHub auto-merge is required by merge queues, not proof of tested ordering. E18 arms it only with
+exact authorization and observed strict fresh-base checks or a selected queue with `merge_group`;
+`land` never arms it, and armed is not integrated.
 
 ## Default integration and controlled fallback
 
