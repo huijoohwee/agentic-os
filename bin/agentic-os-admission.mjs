@@ -377,7 +377,9 @@ function readLaneRebindPlan(path) {
   let value;
   try { value = JSON.parse(readFileSync(path, 'utf8')); } catch { throw rebindBlock('plan', 'plan file is unreadable JSON'); }
   if (!value || value.schema !== REBIND_SCHEMA || typeof value.digest !== 'string') throw rebindBlock('plan', 'plan schema is invalid');
-  const { digest: expected, ...body } = value;
+  const { digest: expected, authorization: embeddedAuthorization, ...body } = value;
+  if (embeddedAuthorization !== undefined && embeddedAuthorization !== `agentic-os:lane-rebind:${expected}`)
+    throw rebindBlock('plan', 'plan authorization does not match its digest');
   if (rebindDigest(body) !== expected) throw rebindBlock('plan', 'plan digest does not match its contents');
   return value;
 }

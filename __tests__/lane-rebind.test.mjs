@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { get, put, putExact } from '../src/lane-records.mjs';
-import { applyLaneRebind, planLaneRebind } from '../bin/agentic-os-admission.mjs';
+import { applyLaneRebind, planLaneRebind, runLaneRebind } from '../bin/agentic-os-admission.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000 }).trim();
 const refs = cwd => git(cwd, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/remotes');
@@ -54,6 +54,17 @@ test('mounted rebind extends the reservation and preserves committed, dirty and 
   assert.deepEqual(readFileSync(join(f.lane, 'owned/untracked.bin')), Buffer.from([0, 255, 13, 10]));
   assert.deepEqual(get(f.ref, f.root).writePaths, plan.writePathsAfter);
   assert.equal(get(f.ref, f.root).head, head);
+});
+
+test('serialized plan command output round-trips through authenticated apply', t => {
+  const f = fixture(t), output = [];
+  assert.equal(runLaneRebind(f.root, ['plan', `--ref=${f.ref}`, '--mode=mounted'], value => output.push(value)), 0);
+  const serialized = JSON.parse(output[0]), path = savePlan(f, serialized, 'cli-plan.json');
+  assert.equal(serialized.authorization, authorize(serialized));
+  const receipt = applyLaneRebind({ cwd: f.root, planPath: path,
+    authorization: serialized.authorization, stopped: true });
+  assert.equal(receipt.authoredBytesPreserved, true);
+  assert.equal(get(f.ref, f.root).head, f.base);
 });
 
 test('mounted rebind refuses dirty-byte drift after planning without changing lane state', t => {
