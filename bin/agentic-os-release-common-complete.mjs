@@ -232,6 +232,7 @@ export async function runSourcePromotion({ root, argv, profile,
 }
 
 const COMPLETE_STATES = new Set(['published', 'queued', 'integrated']);
+const completionPriority = state => state === 'integrated' ? 0 : state === 'queued' ? 1 : state === 'published' ? 2 : 3;
 
 function fail(reason, message) {
   const error = new Error(message);
@@ -521,17 +522,18 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
     'Use canonical main and one absolute directory without symbolic links');
   directory = resolve(directory);
   const targets = inventory(root).filter(row => row.path !== root && dirname(row.path) === directory)
-    .sort((a, b) => a.path.localeCompare(b.path));
+    .map(target => ({ target, bound: isLaneRef(target.branch) ? record(target.branch, root) : null }))
+    .sort((a, b) => completionPriority(a.bound?.state) - completionPriority(b.bound?.state) || a.target.path.localeCompare(b.target.path));
   if (targets.length > 32) fail('blocked-progressive-completion-budget', 'Select at most 32 registered worktrees');
-  const deadline = now() + timeoutMs, results = [];
-  for (const target of targets) {
-    let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null };
-    try {
+  const eligibleTarget = ({ target, bound }) => COMPLETE_STATES.has(bound?.state) && bound.head === target.head && bound.worktree === target.path && !target.locked && !target.prunable;
+  let eligibleRemaining = targets.filter(eligibleTarget).length;
+  const deadline = now() + timeoutMs, results = []; for (const { target, bound } of targets) {
+    let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null }; try {
       const remaining = Math.ceil(deadline - now());
-      const bound = remaining > 0 && isLaneRef(target.branch) ? record(target.branch, root) : null;
-      if (remaining <= 0) result = { ...result, status: 'deferred', reason: 'pass-budget' };
-      else if (!bound || !COMPLETE_STATES.has(bound.state)) result.reason = 'requires-published-lane';
-      else if (bound.head !== target.head || bound.worktree !== target.path) result.reason = 'lane-binding-drift';
+      if (!bound || !COMPLETE_STATES.has(bound.state)) result.reason = 'requires-published-lane';
+      else if (target.locked || target.prunable || bound.head !== target.head || bound.worktree !== target.path)
+        result.reason = target.locked || target.prunable ? 'worktree-not-completable' : 'lane-binding-drift';
+      else if (remaining <= 0) result = { ...result, status: 'deferred', reason: 'pass-budget' };
       else {
         const guard = () => {
           const fresh = inventory(root).find(row => row.path === target.path), current = record(target.branch, root);
@@ -540,15 +542,13 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
             fail('worktree-binding-drift', 'Retain the changed worktree and reobserve its exact binding');
         };
         guard();
-        {
-          const code = await complete(target.branch, Math.min(60_000, remaining), guard);
+        const code = await complete(target.branch, Math.min(60_000, Math.max(1, Math.ceil(remaining / Math.max(1, eligibleRemaining--)))), guard);
           const settled = code === 0 ? status(root, target.branch, policy, profile) : null;
           result = { ...result, status: code === 2 ? 'waiting' : settled?.closeout?.missionState === 'source_complete'
             ? ['delivery_pending', 'delivery_scope_pending'].includes(settled.closeout.adlcState)
               ? settled.closeout.adlcState : 'source_complete' : 'blocked',
           reason: code === 2 ? 'review-pending' : code !== 0 ? 'completion-refused'
             : settled?.closeout?.missionState === 'source_complete' ? null : 'closeout-incomplete' };
-        }
       }
     } catch (error) { result.reason = error.reason ?? error.message; }
     results.push(result);
