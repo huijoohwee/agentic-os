@@ -31,9 +31,9 @@ export const BUDGET = Object.freeze({
   // matched 20-file run cut median wall 49% and current-process CPU 45%.
   // 2026-10-07 E18: +72 native auto-merge lines in existing completion owner; no module added.
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
-  // 2026-10-07 cleanup batching (+33) and user-authorized lane recovery (+181 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
+  // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 112,
-  binLines: 23989,
+  binLines: 23991,
   runtimeModules: 96,
   runtimeLines: 23023,
 });
