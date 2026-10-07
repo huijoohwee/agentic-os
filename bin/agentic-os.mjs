@@ -74,6 +74,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
       '  agentic-os release-common promote plan --ref=<lane> | apply --plan=<file> --authorize=<token> [--authority-head=<head>]',
       '  agentic-os release-common scope-release plan --ref=<published-lane> --path=<exact-file> | apply --plan=<file> --authorize=agentic-os:scope-release:<digest> --stopped',
+      '  agentic-os release-common rebind plan|apply  repair one exact local lane identity; no provider or cleanup authority',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
@@ -159,6 +160,8 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     }
     case 'successor':
       return cmdSuccessor(root, rest, policy);
+    case 'rebind':
+      return (await import('./agentic-os-admission.mjs')).runLaneRebind(root, rest, out);
     case 'promote': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
       return completeModule.runSourcePromotion({ root, argv: rest, profile });
