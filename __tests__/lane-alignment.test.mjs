@@ -145,6 +145,15 @@ test('non-regular dirty objects and oversized dirty files refuse before checkout
   });
 });
 
+test('an exact protected lockfile can use the bounded target allowance', t => {
+  const f = fixture(t), path = 'incoming/generated-lock.json', content = Buffer.alloc(500_001, 0x61);
+  write(f.root, path, content); f.target = commit(f.root, 'large protected lockfile');
+  git(f.root, 'push', '--quiet', 'origin', 'main'); f.args.expectedTarget = f.target;
+  const receipt = applyLaneAlignment(prepareLaneAlignment(plan(f)));
+  assert.deepEqual(bytes(f.lane, receipt.head, path), content);
+  assert.deepEqual(readFileSync(join(f.lane, path)), content);
+});
+
 test('alignment input rejects unknown keys instead of silently accepting a forged declaration', () => {
   const input = { schema: 'agentic-os/lane-alignment-input/v1', scope: 'successor', device: 'test', mission: '/tmp/mission.json', expectedHead: 'a'.repeat(40), expectedTarget: 'b'.repeat(40), stopped: true };
   assert.equal(validateLaneAlignmentInput(input).scope, input.scope);
