@@ -6,6 +6,7 @@ import { currentBranch, worktreeInventory } from '../src/git.mjs';
 import { loadRepositoryProfile } from '../src/git-repository.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { gh, observeGitHubReview } from '../src/github-provider.mjs';
+import { observe as observeProviderOrdering } from '../src/queue.mjs';
 import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-review.mjs';
 import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE } from './agentic-os-cleanup-recovery.mjs';
@@ -31,30 +32,76 @@ export function validateSourcePromotionPlan(plan, { repository, ref, head, base,
   const { digest: supplied, ...core } = plan ?? {};
   if (plan?.schema !== SOURCE_PROMOTION_SCHEMA || plan.repository !== repository
     || plan.ref !== ref || plan.head !== head || plan.base !== base || plan.profileDigest !== profileDigest
-    || plan.method !== 'squash'
+    || plan.method !== 'squash' || !['direct', 'auto'].includes(plan.mode ?? 'direct')
+    || (plan.mode === 'auto' && (!plan.ordering || plan.ordering.autoMerge !== true
+      || !['fresh-base', 'merge-queue'].includes(plan.ordering.mode)))
     || JSON.stringify(plan.requiredChecks) !== JSON.stringify([...requiredChecks].sort())
     || supplied !== digest(core))
     promotionFail('plan-binding', 'promotion plan does not match current repository, source, base, or required checks');
   return plan;
 }
 
-export function sourcePromotionChecks(checks, requiredChecks) {
+export function sourcePromotionChecks(checks, requiredChecks, { allowPending = false } = {}) {
   if (!Array.isArray(checks)) promotionFail('checks-unavailable', 'required check inventory is unavailable');
   const selected = [...requiredChecks].sort().map((name) => {
     const matches = checks.filter((check) => check.name === name && check.app?.slug === 'github-actions'
       && check.app?.id === 15368);
     const newest = matches.sort((a, b) => b.id - a.id)[0];
-    if (!Number.isSafeInteger(newest?.id) || newest.id < 1
-      || newest.status !== 'completed' || newest.conclusion !== 'success')
-      promotionFail('checks-not-green', `required check ${name} is pending, failed, or missing`);
+    if (!Number.isSafeInteger(newest?.id) || newest.id < 1)
+      promotionFail('checks-incomplete', `required check ${name} is missing or has no exact run identity`);
+    const pending = newest.conclusion === null && ['queued', 'in_progress'].includes(newest.status);
+    if (newest.status !== 'completed' || newest.conclusion !== 'success') {
+      if (!allowPending || !pending)
+        promotionFail(pending ? 'checks-pending' : 'checks-failed',
+          `required check ${name} is ${pending ? 'pending' : 'failed or missing'}`);
+    }
     return { name, id: newest.id, status: newest.status, conclusion: newest.conclusion,
-      completedAt: newest.completed_at };
+      startedAt: newest.started_at, completedAt: newest.completed_at ?? null };
   });
   return selected;
 }
 
+export function sourcePromotionCheckProgress(planned, observed) {
+  const rank = { queued: 0, in_progress: 1, completed: 2 };
+  if (!Array.isArray(planned) || !Array.isArray(observed) || planned.length !== observed.length)
+    promotionFail('checks-changed', 'required check inventory changed; create a fresh plan');
+  for (let index = 0; index < planned.length; index += 1) {
+    const before = planned[index], after = observed[index];
+    const queuedStart = before.status === 'queued' && before.startedAt === null
+      && ['in_progress', 'completed'].includes(after.status) && Number.isFinite(Date.parse(after.startedAt));
+    if (before.name !== after.name || before.id !== after.id
+      || (before.startedAt !== after.startedAt && !queuedStart)
+      || rank[before.status] === undefined || rank[after.status] === undefined
+      || rank[after.status] < rank[before.status])
+      promotionFail('checks-changed', 'required check run identity or progress changed; create a fresh plan');
+    if (before.status === 'completed' && (before.conclusion !== after.conclusion
+      || before.completedAt !== after.completedAt))
+      promotionFail('checks-changed', 'completed required check evidence changed; create a fresh plan');
+    if (after.status === 'completed' && after.conclusion !== 'success')
+      promotionFail('checks-failed', `required check ${after.name} failed`);
+  }
+  return observed;
+}
+
+export function sourcePromotionOrdering(observation, profile) {
+  const requiredChecks = [...profile.requiredChecks].sort();
+  const visibleChecks = [...(observation?.requiredChecks ?? [])].sort();
+  const queueSelected = profile.capabilities?.includes('tested-protected-ordering:merge-queue') === true;
+  const mode = observation?.strict === true ? 'fresh-base'
+    : queueSelected && observation?.queueEnabled === true && observation?.queuePolicySatisfied === true
+      && observation?.mergeGroupSupported === true ? 'merge-queue' : null;
+  if (!observation || observation.available !== true || observation.identityBound !== true
+    || observation.repo !== profile.repository || observation.observationErrors?.length !== 0
+    || observation.autoMerge !== true || !requiredChecks.every((check) => visibleChecks.includes(check)) || !mode)
+    promotionFail('auto-merge-policy', 'pending checks require enabled auto-merge, exact required checks, and observed fresh-base or tested queue protection');
+  return { repository: observation.repo, mode, strict: observation.strict, autoMerge: observation.autoMerge,
+    requiredChecks: visibleChecks, queueEnabled: observation.queueEnabled,
+    queuePolicySatisfied: observation.queuePolicySatisfied, mergeGroupSupported: observation.mergeGroupSupported };
+}
+
 export async function runSourcePromotion({ root, argv, profile,
   provider = (args, json = true) => gh(args, { cwd: root, json }), out = (line) => process.stdout.write(`${line}\n`),
+  orderingObserver = (args) => observeProviderOrdering(args),
   now = Date.now } = {}) {
   const operation = argv[0];
   const api = (path) => {
@@ -79,18 +126,28 @@ export async function runSourcePromotion({ root, argv, profile,
     const requiredChecks = [...profile.requiredChecks].sort();
     if (!Number.isSafeInteger(checks?.total_count) || checks.total_count > 100 || !Array.isArray(checks.check_runs)
       || checks.total_count !== checks.check_runs.length) promotionFail('checks-incomplete', 'required check inventory is incomplete');
-    let selected;
-    try { selected = sourcePromotionChecks(checks.check_runs, requiredChecks); }
+    let selected, mode = 'direct', ordering = null;
+    try { selected = sourcePromotionChecks(checks.check_runs, requiredChecks, { allowPending: true }); }
     catch (error) {
-      if (error.reason !== 'blocked-source-promotion-checks-not-green') throw error;
-      out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'waiting', reason: error.message, authority: false }));
+      if (error.reason !== 'blocked-source-promotion-checks-failed') throw error;
+      out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'blocked', reason: error.message, authority: false }));
       return 2;
+    }
+    if (selected.some((check) => check.status !== 'completed')) {
+      try {
+        ordering = sourcePromotionOrdering(orderingObserver({ cwd: root, profile }), profile);
+        mode = 'auto';
+      } catch (error) {
+        if (error.reason !== 'blocked-source-promotion-auto-merge-policy') throw error;
+        out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'waiting', reason: error.message, authority: false }));
+        return 2;
+      }
     }
     const base = pull.base.sha;
     if (!/^[0-9a-f]{40}$/u.test(base ?? '')) promotionFail('base-unavailable', 'protected base revision is unavailable');
     const authorityClass = classifyPromotion(root, base, head).class;
     const core = { schema: SOURCE_PROMOTION_SCHEMA, repository, ref, pr: pull.number, head, base,
-      profileDigest: profile.profileDigest, authorityClass, requiredChecks, checks: selected,
+      profileDigest: profile.profileDigest, authorityClass, requiredChecks, checks: selected, mode, ordering,
       method: 'squash', createdAt: now(), expiresAt: now() + 300_000 };
     const plan = { ...core, digest: digest(core) };
     out(JSON.stringify({ plan, confirmation: `sha256:${plan.digest}`, authority: false }));
@@ -123,13 +180,15 @@ export async function runSourcePromotion({ root, argv, profile,
   if (!Number.isSafeInteger(checks?.total_count) || checks.total_count > 100 || !Array.isArray(checks.check_runs)
     || checks.total_count !== checks.check_runs.length) promotionFail('checks-incomplete', 'required check inventory is incomplete');
   let selected;
-  try { selected = sourcePromotionChecks(checks.check_runs, plan.requiredChecks); }
+  try { selected = sourcePromotionChecks(checks.check_runs, plan.requiredChecks, { allowPending: plan.mode === 'auto' }); }
   catch (error) {
-    if (error.reason !== 'blocked-source-promotion-checks-not-green') throw error;
+    if (error.reason !== 'blocked-source-promotion-checks-pending') throw error;
     out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'waiting', reason: error.message, authority: false }));
     return 2;
   }
-  if (JSON.stringify(selected) !== JSON.stringify(plan.checks)) promotionFail('checks-changed', 'required check evidence changed; create a fresh plan');
+  if (plan.mode === 'auto') sourcePromotionCheckProgress(plan.checks, selected);
+  else if (JSON.stringify(selected) !== JSON.stringify(plan.checks))
+    promotionFail('checks-changed', 'required check evidence changed; create a fresh plan');
   if (option(argv, 'authority-head') !== null && option(argv, 'authority-head') !== plan.head)
     promotionFail('authority-head', 'authority-head must exactly match candidate source');
   const promotion = classifyPromotion(root, plan.base, plan.head);
@@ -141,17 +200,30 @@ export async function runSourcePromotion({ root, argv, profile,
   if (before?.state !== 'open' || before?.head?.sha !== plan.head || before?.head?.repo?.full_name !== repository
       || before?.base?.repo?.full_name !== repository || before?.base?.sha !== plan.base)
     promotionFail('pre-effect-drift', 'source or base moved before the protected merge effect');
+  if (plan.mode === 'auto') {
+    const ordering = sourcePromotionOrdering(orderingObserver({ cwd: root, profile }), profile);
+    if (JSON.stringify(ordering) !== JSON.stringify(plan.ordering))
+      promotionFail('auto-merge-policy-changed', 'repository merge protection changed since planning');
+  }
   try {
-    provider(['pr', 'merge', String(plan.pr), '--repo', repository, '--squash', '--match-head-commit', plan.head], false);
+    provider(['pr', 'merge', String(plan.pr), '--repo', repository,
+      ...(plan.mode === 'auto' ? ['--auto'] : []), '--squash', '--match-head-commit', plan.head], false);
   } catch {
     const observed = api(`repos/${repository}/pulls/${plan.pr}`);
     if (observed?.merged === true && observed?.head?.sha === plan.head) {
       out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'merged-after-uncertain-result', head: plan.head, authority: false }));
       return 0;
     }
+    if (plan.mode === 'auto' && observed?.state === 'open' && observed?.auto_merge?.enabled_by)
+      { out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'auto-merge-armed-after-uncertain-result', head: plan.head, authority: false })); return 0; }
     promotionFail('effect-unknown', 'merge result is uncertain; exact PR was reobserved and must not be retried blindly');
   }
   const merged = api(`repos/${repository}/pulls/${plan.pr}`);
+  if (plan.mode === 'auto' && merged?.state === 'open' && merged?.head?.sha === plan.head
+    && merged?.auto_merge?.enabled_by) {
+    out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'auto-merge-armed', head: plan.head, authority: false }));
+    return 0;
+  }
   if (merged?.merged !== true || merged?.head?.sha !== plan.head)
     promotionFail('merge-unverified', 'merge command returned but exact source integration is not verified');
   out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'merged', head: plan.head,
