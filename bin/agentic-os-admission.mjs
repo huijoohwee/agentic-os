@@ -1,8 +1,12 @@
 /** Same-mission START admission. Local economy evidence never grants provider authority. */
-import { basename, dirname, resolve } from 'node:path';
-import { acquireOperationLock, finishOperationLock, currentBranch, git, gitLines, headSha,
-  fetch as gitFetch, observeGit, remoteRefSha, remoteTransport, worktrees } from '../src/git.mjs';
-import { assertDevice, deviceSegment, laneRef } from '../src/lane-id.mjs';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import { acquireOperationLock, finishOperationLock, currentBranch, decodeNulFields, git, gitLines, headSha,
+  fetch as gitFetch, observeGit, observeGitLines, remoteRefSha, remoteTransport, repoRoot, trackedChanges,
+  untrackedPaths, worktrees } from '../src/git.mjs';
+import { snapshotWorktreeEntry } from '../src/file-integrity.mjs';
+import { assertDevice, deviceSegment, isLaneRef, laneRef } from '../src/lane-id.mjs';
 import { DEFAULT_TASK_CHECKOUTS, MAX_TASK_CHECKOUTS, assertCheckoutPlacement } from '../src/canonical-resources.mjs';
 import * as store from '../src/lane-records.mjs';
 import { readmissionPredecessors } from '../src/lane-state.mjs';
@@ -262,4 +266,173 @@ export async function cmdStart(root, argv, policy, profile, services) {
     operationError: error.operationError ?? { reason: error.reason ?? null, message: error.message },
     operationArtifacts: artifacts, operationResult: null });
   return finishOperationLock(lock, { label: 'start', result, error, artifacts });
+}
+
+/** Rebind a stopped local lane without projecting provider or cleanup authority. */
+const REBIND_SCHEMA = 'agentic-os/lane-rebind-plan/v1', REBIND_MAX_PATHS = 1_024,
+  REBIND_MAX_FILE_BYTES = 10_000_000, REBIND_MAX_TOTAL_BYTES = 64_000_000;
+const rebindHash = value => createHash('sha256').update(value).digest('hex');
+const rebindBlock = (reason, message) => Object.assign(new Error(message), {
+  reason: `blocked-lane-rebind-${reason}`,
+});
+function rebindCanonical(value) {
+  if (Array.isArray(value)) return `[${value.map(rebindCanonical).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort()
+    .map(key => `${JSON.stringify(key)}:${rebindCanonical(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+const rebindDigest = value => rebindHash(rebindCanonical(value));
+function refInventoryDigest(root) {
+  return rebindHash(observeGitLines(['for-each-ref', '--format=%(refname) %(objectname)',
+    'refs/heads', 'refs/remotes'], { cwd: root }).join('\n'));
+}
+function rebindPaths(output) {
+  const paths = decodeNulFields(output);
+  if (!paths || paths.length > REBIND_MAX_PATHS) throw rebindBlock('path-inventory', 'path inventory is unavailable or exceeds its bound');
+  return [...new Set(paths)].sort();
+}
+function laneChangedPaths(base, head, cwd) {
+  const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `${base}...${head}`], {
+    cwd, binary: true, allowFail: true,
+  });
+  if (output === null) throw rebindBlock('path-inventory', `cannot compare ${head} with ${base}`);
+  return output.length ? rebindPaths(output) : [];
+}
+function validateRebindPath(path) {
+  let parsed;
+  try { parsed = parseWritePaths(path); } catch { throw rebindBlock('path-inventory', `unsupported reserved path: ${path}`); }
+  if (parsed.length !== 1 || parsed[0] !== path) throw rebindBlock('path-inventory', `unsupported reserved path: ${path}`);
+}
+function laneDirtyEvidence(path) {
+  const tracked = trackedChanges(path), names = new Set([
+    ...tracked.headToIndex.map(row => row.path), ...tracked.indexToWorkingTree.map(row => row.path),
+    ...untrackedPaths(path, { includeIgnored: false }),
+  ]);
+  if (names.size > REBIND_MAX_PATHS) throw rebindBlock('dirty-budget', 'dirty path inventory exceeds its bound');
+  let total = 0;
+  const entries = [...names].sort().map(name => {
+    validateRebindPath(name);
+    const absolute = resolve(path, name), stat = lstatSync(absolute, { throwIfNoEntry: false });
+    if (!stat) return { path: name, kind: 'deleted' };
+    try {
+      const item = snapshotWorktreeEntry(absolute, { maxBytes: REBIND_MAX_FILE_BYTES,
+        aggregateBytes: REBIND_MAX_TOTAL_BYTES - total, budget: { bytes: 0 }, label: 'lane rebind dirty entry' });
+      total += item.bytes.length;
+      return { path: name, kind: item.kind, mode: item.mode, size: item.bytes.length,
+        sha256: rebindHash(item.bytes) };
+    } catch (error) { throw rebindBlock('dirty-entry', `${name}: ${error.message}`); }
+  });
+  const index = observeGit(['ls-files', '--stage', '-z'], { cwd: path, binary: true });
+  const status = observeGit(['status', '--porcelain=v2', '-z', '--untracked-files=all'], { cwd: path, binary: true });
+  return { entries, indexSha256: rebindHash(index), statusSha256: rebindHash(status), bytes: total };
+}
+function planLaneRebindCore({ cwd = process.cwd(), ref, mode }) {
+  if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
+  if (!['mounted', 'restore'].includes(mode)) throw rebindBlock('mode', 'mode must be mounted or restore');
+  const root = repoRoot(cwd);
+  if (currentBranch(root) !== 'main') throw rebindBlock('canonical', 'lane identity recovery must run from canonical main');
+  const record = store.get(ref, root);
+  if (!record || record.state !== 'active') throw rebindBlock('record', 'recovery requires one exact active lane record');
+  if (!record.worktree || !isAbsolute(record.worktree) || !record.base || !record.baseSha)
+    throw rebindBlock('record', 'lane record lacks an exact worktree or base binding');
+  const targetPath = resolve(record.worktree), head = headSha(`refs/heads/${ref}`, root);
+  if (!head) throw rebindBlock('branch', `local branch is missing: ${ref}`);
+  if (!record.head || !headSha(record.head, root) || head !== record.head
+    && observeGit(['merge-base', '--is-ancestor', record.head, head], { cwd: root, allowFail: true }) === null)
+    throw rebindBlock('ancestry', 'observed branch is not the recorded head or its descendant');
+  const registrations = worktrees(root), entry = registrations.find(row => row.branch === ref),
+    pathEntry = registrations.find(row => row.path === targetPath);
+  if (mode === 'mounted') {
+    if (!entry || entry.path !== targetPath || currentBranch(targetPath) !== ref
+      || headSha('HEAD', targetPath) !== head || realpathSync(targetPath) !== targetPath)
+      throw rebindBlock('identity', 'mounted worktree, branch, path or head differs from its recorded identity');
+  } else {
+    if (entry || pathEntry || existsSync(targetPath)) throw rebindBlock('restore-path', 'recorded worktree path or branch is already mounted or occupied');
+    const parent = resolve(targetPath, '..');
+    if (realpathSync(parent) !== parent) throw rebindBlock('restore-parent', 'recorded parent path is not canonical');
+  }
+  const protectedHead = headSha(record.base, root);
+  if (!protectedHead) throw rebindBlock('base', `recorded protected base is unavailable: ${record.base}`);
+  const dirty = mode === 'mounted' ? laneDirtyEvidence(targetPath)
+    : { entries: [], indexSha256: null, statusSha256: null, bytes: 0 };
+  const writePaths = [...new Set([...(record.writePaths ?? []), ...laneChangedPaths(record.base, head, root),
+    ...dirty.entries.map(row => row.path)])].sort();
+  if (!writePaths.length || writePaths.length > REBIND_MAX_PATHS) throw rebindBlock('reservation', 'expanded reservation is empty or exceeds its bound');
+  writePaths.forEach(validateRebindPath);
+  try { assertDisjointReservation({ cwd: root, ref, writePaths, protectedRef: record.base, records: store.load(root).lanes }); }
+  catch (error) { throw rebindBlock('path-overlap', error.message); }
+  const remote = record.base.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
+  const remoteHead = remote ? headSha(`refs/remotes/${remote}/${ref}`, root) : null;
+  const body = { schema: REBIND_SCHEMA, mode, ref, root, targetPath,
+    previousRecordSha256: rebindDigest(record), previousHead: record.head, head,
+    protectedRef: record.base, protectedHead, baseSha: record.baseSha, remoteHead,
+    refsSha256: refInventoryDigest(root), writePathsBefore: [...(record.writePaths ?? [])],
+    writePathsAfter: writePaths, addedPaths: writePaths.filter(path => !(record.writePaths ?? []).includes(path)),
+    dirty, restoredDirtyState: mode === 'restore' ? 'unobservable-at-missing-path' : 'exact-local-inventory',
+    updatedRecord: { ...record, head, worktree: targetPath, writePaths } };
+  return { ...body, digest: rebindDigest(body) };
+}
+export const planLaneRebind = planLaneRebindCore;
+function readLaneRebindPlan(path) {
+  let value;
+  try { value = JSON.parse(readFileSync(path, 'utf8')); } catch { throw rebindBlock('plan', 'plan file is unreadable JSON'); }
+  if (!value || value.schema !== REBIND_SCHEMA || typeof value.digest !== 'string') throw rebindBlock('plan', 'plan schema is invalid');
+  const { digest: expected, ...body } = value;
+  if (rebindDigest(body) !== expected) throw rebindBlock('plan', 'plan digest does not match its contents');
+  return value;
+}
+function laneRebindPostcondition(plan, root) {
+  const entry = worktrees(root).find(row => row.branch === plan.ref);
+  return entry?.path === plan.targetPath && currentBranch(plan.targetPath) === plan.ref
+    && headSha('HEAD', plan.targetPath) === plan.head && headSha(`refs/heads/${plan.ref}`, root) === plan.head;
+}
+function laneRebindReceipt(plan, resumed) {
+  return { schema: 'agentic-os/lane-rebind-receipt/v1', ref: plan.ref, mode: plan.mode,
+    worktree: plan.targetPath, previousHead: plan.previousHead, head: plan.head,
+    addedPaths: plan.addedPaths, restoredDirtyState: plan.restoredDirtyState,
+    refsPreserved: true, authoredBytesPreserved: plan.mode === 'mounted',
+    providerAuthority: false, integrationProof: false, cleanupAuthority: false, resumed };
+}
+export function applyLaneRebind({ cwd = process.cwd(), planPath, authorization, stopped }) {
+  if (!stopped) throw rebindBlock('stopped', 'apply requires --stopped after writers have stopped');
+  const root = repoRoot(cwd), plan = readLaneRebindPlan(resolve(planPath));
+  if (root !== plan.root) throw rebindBlock('root', 'plan belongs to a different repository');
+  if (authorization !== `agentic-os:lane-rebind:${plan.digest}`) throw rebindBlock('authorization', 'exact plan authorization is required');
+  const lock = acquireOperationLock('agentic-os-lane-rebind', root);
+  if (!lock) throw rebindBlock('busy', 'another lane identity recovery is active');
+  let result, error = null;
+  try {
+    const current = store.get(plan.ref, root);
+    if (rebindDigest(current) === rebindDigest(plan.updatedRecord) && laneRebindPostcondition(plan, root)) result = laneRebindReceipt(plan, true);
+    else {
+      if (rebindDigest(current) !== plan.previousRecordSha256) throw rebindBlock('record-drift', 'lane record changed after planning');
+      const fresh = planLaneRebindCore({ cwd: root, ref: plan.ref, mode: plan.mode });
+      if (fresh.digest !== plan.digest) throw rebindBlock('stale-plan', 'live lane identity or byte inventory changed after planning');
+      const beforeRefs = refInventoryDigest(root);
+      if (plan.mode === 'restore') git(['worktree', 'add', '--', plan.targetPath, plan.ref], { cwd: root });
+      if (!laneRebindPostcondition(plan, root)) throw rebindBlock('postcondition', 'rebound checkout differs from the planned branch and head');
+      if (refInventoryDigest(root) !== beforeRefs || beforeRefs !== plan.refsSha256) throw rebindBlock('refs-changed', 'branch or remote refs changed during recovery');
+      if (plan.mode === 'mounted' && rebindDigest(laneDirtyEvidence(plan.targetPath)) !== rebindDigest(plan.dirty))
+        throw rebindBlock('dirty-drift', 'authored worktree bytes changed during recovery');
+      store.putExact(plan.updatedRecord, current, root); result = laneRebindReceipt(plan, false);
+    }
+  } catch (caught) { error = caught; }
+  return finishOperationLock(lock, { label: 'lane-rebind', result, error,
+    artifacts: error?.reason?.startsWith('blocked-lane-rebind-') ? { planDigest: plan.digest,
+      ref: plan.ref, mode: plan.mode, worktree: plan.targetPath, head: plan.head } : null });
+}
+export function runLaneRebind(root, argv, out) {
+  try {
+    if (positional(argv)[0] === 'plan') {
+      const plan = planLaneRebindCore({ cwd: root, ref: option(argv, 'ref'), mode: option(argv, 'mode') });
+      out(JSON.stringify({ ...plan, authorization: `agentic-os:lane-rebind:${plan.digest}` }));
+      return 0;
+    }
+    out(JSON.stringify(applyLaneRebind({ cwd: root, planPath: option(argv, 'plan'),
+      authorization: option(argv, 'authorize'), stopped: flag(argv, 'stopped') })));
+    return 0;
+  } catch (error) {
+    out(JSON.stringify({ error: error.reason ?? 'blocked-lane-rebind', message: error.message }));
+    return 1;
+  }
 }
