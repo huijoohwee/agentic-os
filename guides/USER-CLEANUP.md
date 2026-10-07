@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.1"
+version: "1.4.2"
 date: "2026-10-07"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.1"
-tad_revision: "1.4.1"
-adr_revision: "1.4.1"
+prd_revision: "1.4.2"
+tad_revision: "1.4.2"
+adr_revision: "1.4.2"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--detached-cleanup"
+worktree_id: "device-0232231d4a19--progressive-completion-priority"
 agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.4.1"
-gtm_revision: "1.4.1"
+mvp_revision: "1.4.2"
+gtm_revision: "1.4.2"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -43,6 +43,11 @@ recoverable projection/registration quarantine; distinct local-consent receipt a
 `bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. The existing quarantine
 mechanics take an internal policy observer; protected cleanup never forwards caller-supplied policy
 overrides and still requires its authenticated integration/retirement joins. This is not a fallback.
+
+The progressive closeout pass uses cached lane state to try integrated, queued, then published lanes,
+with path order as the stable tie-breaker. It shares the pass deadline across eligible candidates;
+unpublished, dirty-binding, detached, or otherwise ineligible rows are reported without taking a
+provider wait slot. This is a completion-proximity heuristic, not a claim of measured dollar ROI.
 
 The default local path refuses any committed/local `.agentic-os.json` or repository trust anchor.
 Profile-governed recovery requires the separate explicit selection below; protected cleanup retains its
@@ -286,6 +291,12 @@ Recent exact-target cleanup receipts show why pruning felt like a multi-hour ope
 The stale-ref sweep now reads the bounded 256-branch inventory with two batched `for-each-ref` calls and one worktree-registry read. Git subprocess count is constant with inventory size, rather than growing by up to three calls per branch. The sweep remains observation-only; each selected target still needs a fresh exact plan and stopped apply because quarantining one peer changes later recovery evidence.
 
 For validation, bind every check to the exact candidate and its inputs. Reuse a passing receipt only when those inputs are unchanged; **do not rerun the full smoke suite on unchanged source**. Run focused checks for documentation or isolated behavior changes, then one affected validation for the final changed candidate. Quarantine itself does not justify repeating source validation. A changed source revision or check input requires fresh evidence.
+
+For a progressive closeout with several eligible lanes, use existing state to prioritize the shortest
+credible path to completion: already-integrated first, queued next, published last. Divide the remaining
+wait budget among eligible lanes so one pending external review cannot consume the whole pass. Preserve
+stable path ordering for ties, report noneligible blockers cheaply, and use a fresh bounded pass for later
+rechecks. This does not waive source checks, integration gates, user authority, or effect-specific receipts.
 
 Do not weaken recovery inventory checks to improve the timings above. Before treating quarantine as storage reclamation, obtain the separate exact retention authorization and verify its receipt. Before retiring stale lane claims, use the owning claim-retirement operation and preserve the branch/worktree identity evidence.
 

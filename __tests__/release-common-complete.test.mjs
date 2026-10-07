@@ -452,6 +452,39 @@ test('progressive completion closes serially, retains pending and detached work,
   assert.equal(rows.length, 2);
 });
 
+test('progressive completion prioritizes integrated lanes and shares wait budget across eligible targets', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const rows = [
+    { path: join(directory, 'a-published'), branch: 'agent/test-device/published', head },
+    { path: join(directory, 'z-integrated'), branch: 'agent/test-device/integrated', head },
+    { path: join(directory, 'b-queued'), branch: 'agent/test-device/queued', head },
+    { path: join(directory, 'c-active'), branch: 'agent/test-device/active', head },
+  ];
+  const states = new Map([
+    ['agent/test-device/published', 'published'],
+    ['agent/test-device/integrated', 'integrated'],
+    ['agent/test-device/queued', 'queued'],
+    ['agent/test-device/active', 'active'],
+  ]);
+  let elapsed = 0;
+  const calls = [], events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory, timeoutMs: 900,
+    now: () => elapsed, policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => rows,
+    record: ref => ({ state: states.get(ref), head, worktree: rows.find(row => row.branch === ref).path }),
+    complete: async (ref, timeoutMs) => { calls.push({ ref, timeoutMs }); elapsed += timeoutMs; return 2; },
+    out: line => events.push(JSON.parse(line)) });
+  assert.equal(code, 1);
+  assert.deepEqual(calls, [
+    { ref: 'agent/test-device/integrated', timeoutMs: 300 },
+    { ref: 'agent/test-device/queued', timeoutMs: 300 },
+    { ref: 'agent/test-device/published', timeoutMs: 300 },
+  ]);
+  assert.deepEqual(events.filter(event => event.event === 'worktree').map(event => event.status),
+    ['waiting', 'waiting', 'waiting', 'blocked']);
+});
+
 test('progressive completion does not count deploy-bound source closeout as end-to-end completion', async t => {
   const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
   const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
