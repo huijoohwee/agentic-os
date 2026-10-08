@@ -35,22 +35,38 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     err(`blocked-successor-recovery-required: rerun npm run successor -- ${record.scope} --expected-head=${lineage.predecessorHead}`);
     return 1;
   }
+  let committingReservedCandidate = false;
   const workflowContext = () => {
     const registration = worktrees(root).find(row => row.path === root && row.branch === ref);
     if (!registration) throw new Error('blocked-publication-worktree-binding');
     return { root, repository: profile.repository, phase: 'ci', ref,
       worktreeId: basename(registration.path), revision: headSha('HEAD', root),
-      dirty: Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) };
+      // The native committer verifies the reservation before it records a fresh
+      // candidate. Its dependency decision is bound to the clean parent revision.
+      dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) };
   };
   const assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
-  assertWorkflowCurrent('dependencies');
-  const configuredFlight = assertFlightRequirements(root, 'pre');
+  const message = option(argv, 'message');
+  let configuredFlight = null, beforeCommit, expectedDecision;
+  if (message === null) {
+    assertWorkflowCurrent('dependencies');
+    configuredFlight = assertFlightRequirements(root, 'pre');
+  } else {
+    // Dependency admission is read-only and happens before any publication
+    // observation. The following native commit is already reservation-bound.
+    committingReservedCandidate = true;
+    try {
+      beforeCommit = workflowContext();
+      expectedDecision = assertWorkflowCurrent('dependencies');
+    } finally {
+      committingReservedCandidate = false;
+    }
+  }
   const bodyFile = option(argv, 'body-file'), title = option(argv, 'title');
   validateReviewBody(root, ref, bodyFile, title);
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   const remote = remoteName(policy, root);
   const capturedRemote = remoteTransport(remote, root);
-  const message = option(argv, 'message');
   if (message !== null) {
     if (writePaths.length === 0) {
       err('blocked-write-scope-missing: autonomous land requires an admitted --write reservation');
@@ -63,14 +79,13 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
       err(`blocked-published-head-drift: preserve changes; commit locally, then run npm run successor -- <scope> --expected-head=${advertised}`);
       return 1;
     }
-    const beforeCommit = workflowContext();
-    const expectedDecision = assertWorkflowCurrent('dependencies');
     const committed = commitReservedChanges({ cwd: root, writePaths, message });
     if (committed) {
       out(`committed ${committed.head.slice(0, 9)} (${committed.paths.length} path(s))`);
       rebindWorkflowCandidate({ root, repository: profile.repository, ref, worktreeId: beforeCommit.worktreeId, expectedDecision,
         previousRevision: beforeCommit.revision, revision: committed.head });
     }
+    configuredFlight = assertFlightRequirements(root, 'pre');
   }
   const kind = providerKind(profile);
   if (providerAdapterRequired(policy) && kind !== 'github') {
