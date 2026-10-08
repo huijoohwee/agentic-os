@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
 import {
   git, repoRoot, currentBranch, configuredRemote, headSha,
   fetch as gitFetch, worktrees, refExists,
@@ -33,6 +34,7 @@ import {
 } from './agentic-os-auxiliary.mjs';
 import { runHookSetup } from './agentic-os-hooks.mjs';
 import { validateCommandArguments, cmdHelp, flag, option, positional } from './agentic-os-argv.mjs';
+import { createWorkflowEffectGuard, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
 function projectCache(record, root) {
@@ -81,26 +83,24 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
       'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>] [--message="<message>"]',
     ].join('\n'),
   );
   return 0;
 }
 async function cmdLand(cwd, argv, profile, policy) {
-  return (await import('./agentic-os-publication.mjs')).cmdLand(cwd, argv, profile, policy,
-    { out, err, projectCache, effectReceipt, remoteName });
+  return (await import('./agentic-os-publication.mjs')).cmdLand(cwd, argv, profile, policy, { out, err, projectCache, effectReceipt, remoteName });
 }
-function cmdSuccessor(root, argv, policy) {
+function cmdSuccessor(root, argv, policy, profile) {
   const predecessorRef = currentBranch(root);
-  if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) {
-    err('blocked-unbound-lane: successor requires a bound published lane worktree');
-    return 1;
-  }
-  const writeOption = option(argv, 'write'),
-    expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption);
-  return runPublishedLaneSuccessor({ cwd: root, predecessorRef,
-    scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
-    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths });
+  if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) return err('blocked-unbound-lane: successor requires a bound published lane worktree'), 1;
+  const writeOption = option(argv, 'write'), expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption), message = option(argv, 'message');
+  let committingReservedCandidate = false, beforeCommit = null, expectedDecision = null;
+  const workflowContext = () => { const registration = worktrees(root).find(row => row.path === root && row.branch === predecessorRef); if (!registration) throw new Error('blocked-successor-worktree-binding'); return { root, repository: profile.repository, phase: 'ci', ref: predecessorRef, worktreeId: basename(registration.path), revision: headSha('HEAD', root), dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) }; }, assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
+  if (message !== null) { committingReservedCandidate = true; try { beforeCommit = workflowContext(); expectedDecision = assertWorkflowCurrent('dependencies'); } finally { committingReservedCandidate = false; } }
+  return runPublishedLaneSuccessor({ cwd: root, predecessorRef, scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
+    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths, message,
+    onCommitted: beforeCommit === null ? null : ({ previousRevision, revision }) => { if (previousRevision !== beforeCommit.revision) throw new Error('blocked-successor-commit-drift'); rebindWorkflowCandidate({ root, repository: profile.repository, ref: predecessorRef, worktreeId: beforeCommit.worktreeId, expectedDecision, previousRevision, revision }); } });
 }
 async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, beforeClose = () => {}) {
   const [action = 'help', ...rest] = argv;
@@ -109,9 +109,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     case '--help':
     case '-h':
       return cmdReleaseCommonHelp();
-    case 'start': {
-      return cmdStart(root, rest, policy, profile);
-    }
+    case 'start': return cmdStart(root, rest, policy, profile);
     case 'publish':
       return cmdLand(cwd, rest, profile, policy);
     case 'finish': {
@@ -159,7 +157,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       return 0;
     }
     case 'successor':
-      return cmdSuccessor(root, rest, policy);
+      return cmdSuccessor(root, rest, policy, profile);
     case 'rebind':
       return (await import('./agentic-os-admission.mjs')).runLaneRebind(root, rest, out);
     case 'promote': {
@@ -375,7 +373,7 @@ async function main() {
     case 'memory': case 'workspace': return (await import('./agentic-os-workspace-sync.mjs'))
       .runWorkspaceCommand(root, policy, command, argv, out);
     case 'land': return cmdLand(cwd, argv, profile, policy);
-    case 'successor': return cmdSuccessor(root, argv, policy);
+    case 'successor': return cmdSuccessor(root, argv, policy, profile);
     case 'status': return cmdStatus(root, argv, profile, policy);
     case 'reap': return cmdReap(root, argv, policy, profile);
     case 'finish': return cmdFinish(root, argv, policy, profile);

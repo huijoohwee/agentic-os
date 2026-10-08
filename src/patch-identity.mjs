@@ -308,35 +308,32 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
     || pathSegments.some(segment => !segment || segment === '.' || segment === '..'))
     throw scopeFailure('blocked-scope-release-path', 'scope release accepts one exact normalized path');
   const protectedHead = headSha(`refs/heads/${protectedBranch}`, root);
-  if (!protectedHead || headSha(protectedRef, root) !== protectedHead)
-    throw scopeFailure('blocked-protected-head-drift', 'protected local and remote-tracking heads differ');
+  if (!protectedHead || headSha(protectedRef, root) !== protectedHead) throw scopeFailure('blocked-protected-head-drift', 'protected local and remote-tracking heads differ');
   const record = laneRecords.get(ref, root), lane = worktrees(root).find(entry => entry.branch === ref);
   const laneHead = headSha(`refs/heads/${ref}`, root);
   const activeUnpublished = record?.state === 'active' && record.pr === null
   if (!record || !record.writePaths?.includes(path) || !(record.state === 'published' || activeUnpublished)) throw scopeFailure('blocked-reservation-claim-missing', 'lane does not hold a releasable exact path claim');
-  if (!lane || !laneHead || realpathSync(lane.path) !== realpathSync(record.worktree ?? '') || currentBranch(lane.path) !== ref
-    || headSha('HEAD', lane.path) !== laneHead || record.state === 'published' && record.head !== laneHead) throw scopeFailure('blocked-lane-identity-drift', 'lane branch, worktree, or published cache head differs');
-  cleanReservedPath(path, lane.path);
+  const stalePublishedProjection = record.state === 'published' && !lane,
+    laneIdentityDrift = !laneHead || record.state === 'published' && record.head !== laneHead || !stalePublishedProjection
+      && (!lane || realpathSync(lane.path) !== realpathSync(record.worktree ?? '') || currentBranch(lane.path) !== ref || headSha('HEAD', lane.path) !== laneHead);
+  if (laneIdentityDrift) throw scopeFailure('blocked-lane-identity-drift', 'published lane ref or cache head differs');
+  if (lane) cleanReservedPath(path, lane.path);
   const pathEntry = exactTreeEntry(laneHead, path, root);
   const protectedPathEntry = exactTreeEntry(protectedHead, path, root, { allowAbsent: true });
   const remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef)?.[1] ?? null;
-  if (record.state === 'published' && (!remote || headSha(`refs/remotes/${remote}/${ref}`, root) !== laneHead))
-    throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref differs from its retained head');
-  const retainedPathEvidence = releaseEvidence({ path, laneHead, protectedHead, lanePathEntry: pathEntry,
-    protectedPathEntry });
-  if (releasedPathEvidence(record).some(item => item?.path === path))
-    throw scopeFailure('blocked-reservation-path-released', 'lane path has already been released');
-  const claims = laneRecords.list(root).filter(item => item.writePaths?.includes(path))
-    .sort((a, b) => a.ref.localeCompare(b.ref)).map(item => ({ ref: item.ref,
-      state: item.state, head: item.head ?? null, writePaths: [...item.writePaths] }));
+  if (record.state === 'published' && (!remote || headSha(`refs/remotes/${remote}/${ref}`, root) !== laneHead)) throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref differs from its retained head');
+  const retainedPathEvidence = releaseEvidence({ path, laneHead, protectedHead, lanePathEntry: pathEntry, protectedPathEntry });
+  if (releasedPathEvidence(record).some(item => item?.path === path)) throw scopeFailure('blocked-reservation-path-released', 'lane path has already been released');
+  const claims = laneRecords.list(root).filter(item => item.writePaths?.includes(path)).sort((a, b) => a.ref.localeCompare(b.ref))
+    .map(item => ({ ref: item.ref, state: item.state, head: item.head ?? null, writePaths: [...item.writePaths] }));
   const plan = { schema: RELEASE_PLAN, authorizesEffects: false, repositoryRoot: root,
     protectedBranch, protectedRef, protectedHead, laneRef: ref, laneHead,
-    laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: lane.path, path, pathEntry,
+    laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: record.worktree,
+    laneProjection: stalePublishedProjection ? 'unmounted-published' : 'mounted', path, pathEntry,
     protectedPathEntry, retainedPathEvidence,
     laneInventoryDigest: laneCacheDigest(root),
     exactClaims: claims, resultingWritePaths: record.writePaths.filter(item => item !== path) };
-  if (!plan.resultingWritePaths.length)
-    throw scopeFailure('blocked-empty-successor-scope', 'reservation release cannot empty the lane scope');
+  if (!plan.resultingWritePaths.length) throw scopeFailure('blocked-empty-successor-scope', 'reservation release cannot empty the lane scope');
   return Object.freeze({ ...plan, planDigest: scopeDigest(plan) });
 }
 
@@ -344,15 +341,10 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
 export function applyReservationScopeRelease({ cwd = process.cwd(), plan, authorization, stopped,
   protectedBranch, protectedRef }) {
   const unsigned = plan && Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planDigest'));
-  if (plan?.schema !== RELEASE_PLAN || plan.authorizesEffects !== false
-    || scopeDigest(unsigned) !== plan.planDigest)
-    throw scopeFailure('blocked-scope-release-plan-invalid', 'scope release plan digest or schema is invalid');
-  if (authorization !== `agentic-os:scope-release:${plan.planDigest}` || stopped !== true)
-    throw scopeFailure('blocked-scope-release-authorization', 'exact plan authorization and --stopped are required');
-  const observe = () => createReservationScopeReleasePlan({ cwd, ref: plan.laneRef,
-    path: plan.path, protectedBranch, protectedRef });
-  if (canonicalJson(observe()) !== canonicalJson(plan))
-    throw scopeFailure('blocked-scope-release-plan-stale', 'repository or lane facts changed after planning');
+  if (plan?.schema !== RELEASE_PLAN || plan.authorizesEffects !== false || scopeDigest(unsigned) !== plan.planDigest) throw scopeFailure('blocked-scope-release-plan-invalid', 'scope release plan digest or schema is invalid');
+  if (authorization !== `agentic-os:scope-release:${plan.planDigest}` || stopped !== true) throw scopeFailure('blocked-scope-release-authorization', 'exact plan authorization and --stopped are required');
+  const observe = () => createReservationScopeReleasePlan({ cwd, ref: plan.laneRef, path: plan.path, protectedBranch, protectedRef });
+  if (canonicalJson(observe()) !== canonicalJson(plan)) throw scopeFailure('blocked-scope-release-plan-stale', 'repository or lane facts changed after planning');
   const before = laneRecords.get(plan.laneRef, cwd);
   if (!before || canonicalJson(before.writePaths.filter(item => item !== plan.path))
     !== canonicalJson(plan.resultingWritePaths))
