@@ -18,7 +18,7 @@ export const CACHE_LIMITS = Object.freeze({
   objectFields: 64,
   arrayEntries: 1_024,
   depth: 20,
-  nodes: 50_000,
+  nodes: 100_000,
   stringBytes: 16_384,
   aggregateStringBytes: 400_000, // Interned strings; occurrences retain node/blob bounds.
 });
