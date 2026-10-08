@@ -125,6 +125,14 @@ current seed bytes and recovery copies. Accepted reconciliation acknowledges cur
 retained edited bytes; historical disposition actor/authority remains unknown and no deletion follows. Consumer identities
 belong to policy/evidence, not hardcoded runtime logic.
 
+Active unpublished lanes may need local admission recertification when a current native reservation
+is broader than the workflow allocation left by an interrupted pre-native candidate update. The
+explicit `start --readmit` path requires the exact mission and head, a disjoint live
+reservation covering every authored path, an unpublished branch, and an allocation candidate that
+is an ancestor of that head. It records a pending then active allocation with the prior scope digest
+retained. It preserves worktree bytes and refs and grants no provider, integration, cleanup,
+deployment, or historical authority.
+
 Implementation owners: `src/github-transition-{policy,client,proof,provider,authority}.mjs`, committed
 transition policy, `src/cleanup{,-quarantine}.mjs`, `bin/agentic-os-{cleanup-user,completion-status,argv}.mjs`,
 lifecycle/integration/user-cleanup guides and bounded adversarial suites. Admit actual paths natively
