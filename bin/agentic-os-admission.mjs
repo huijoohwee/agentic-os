@@ -103,8 +103,11 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const readmit = flag(argv, 'readmit'), expectedHead = option(argv, 'expected-head');
   if (expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)) fail('head', 'expected-head must be an exact commit SHA');
   if (readmit && (!input || !expectedHead)) fail('readmit-binding', 'readmit requires an exact mission and expected-head');
+  const refreshMethods = refresh?.owner ? { plan: refresh.owner.plan ?? refresh.owner.planLaneAlignment,
+    prepare: refresh.owner.prepare ?? refresh.owner.prepareLaneAlignment,
+    apply: refresh.owner.apply ?? refresh.owner.applyLaneAlignment } : null;
   if (refresh && (!readmit || refresh.stopped !== true || !/^[a-f0-9]{40}$/u.test(refresh.expectedTarget ?? '')
-    || ['planLaneAlignment', 'prepareLaneAlignment', 'applyLaneAlignment'].some(key => typeof refresh.owner?.[key] !== 'function')))
+    || ['plan', 'prepare', 'apply'].some(key => typeof refreshMethods?.[key] !== 'function')))
     fail('refresh-binding', 'Refresh requires stopped-writer readmission and one exact protected target');
   const lock = acquireOperationLock('agentic-os-start', root);
   if (!lock) { err('blocked-concurrent-start: another lane admission owns the clone-wide start lock'); return 1; }
@@ -131,9 +134,9 @@ export async function cmdStart(root, argv, policy, profile, services) {
       const registered = worktrees(root).find(item => item.branch === ref || item.path === path);
       if (registered) {
         const record = records[ref];
-        const alignmentOwner = refresh?.owner ?? null;
-        let alignment = refresh ? alignmentOwner.planLaneAlignment({ cwd: path, ref, expectedHead,
-          targetRef: policy.protectedRef, expectedTarget: refresh.expectedTarget, stopped: refresh.stopped }) : null;
+        let alignment = refresh ? refreshMethods.plan({ cwd: path, ref, expectedHead,
+          targetRef: policy.protectedRef, expectedTarget: refresh.expectedTarget, stopped: refresh.stopped,
+          ...(refresh.input ?? {}) }) : null;
         if (alignment?.candidateHead) Object.assign(artifacts, { effectsRetained: true, worktree: path, alignmentReceipt: { phase: 'observed-preparation', journalPath: alignment.journalPath,
           oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         const reusePaths = refresh ? parseWritePaths((record?.writePaths ?? []).join(',')) : requested;
@@ -165,7 +168,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
         if (alignment) {
-          alignment = alignmentOwner.prepareLaneAlignment(alignment);
+          alignment = refreshMethods.prepare(alignment);
           Object.assign(artifacts, { effectsRetained: true, worktree: path,
             alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
               oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
@@ -182,7 +185,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row);
           if (liveDigest !== nextDigest) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
           if (alignment) {
-            const receipt = alignmentOwner.applyLaneAlignment(alignment);
+            const receipt = refreshMethods.apply(alignment);
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
             selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
