@@ -274,6 +274,12 @@ function exactTreeEntry(revision, path, cwd) {
     throw scopeFailure('blocked-reservation-path-tree', `reserved path is not a regular file: ${path}`);
   return { mode, type, oid };
 }
+function releaseEvidence({ path, laneHead, protectedHead, lanePathEntry, protectedPathEntry }) {
+  const body = { schema: 'agentic-os/reservation-path-release/v1', path, laneHead, protectedHead,
+    lanePathEntry, protectedPathEntry, bytesDiffer: canonicalJson(lanePathEntry) !== canonicalJson(protectedPathEntry) };
+  return Object.freeze({ ...body, digest: scopeDigest(body) });
+}
+const releasedPathEvidence = record => Array.isArray(record?.handoff?.reservationPathReleases) ? record.handoff.reservationPathReleases : [];
 function cleanReservedPath(path, worktree) {
   const status = observeGit(['status', '--porcelain=v1', '--untracked-files=all', '--', path], {
     cwd: worktree, binary: true,
@@ -311,14 +317,21 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
     || headSha('HEAD', lane.path) !== laneHead || record.state === 'published' && record.head !== laneHead) throw scopeFailure('blocked-lane-identity-drift', 'lane branch, worktree, or published cache head differs');
   cleanReservedPath(path, lane.path);
   const pathEntry = exactTreeEntry(laneHead, path, root);
-  if (canonicalJson(pathEntry) !== canonicalJson(exactTreeEntry(protectedHead, path, root)))
-    throw scopeFailure('blocked-reservation-path-differs', 'published and protected file bytes differ');
+  const protectedPathEntry = exactTreeEntry(protectedHead, path, root);
+  const remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef)?.[1] ?? null;
+  if (record.state === 'published' && (!remote || headSha(`refs/remotes/${remote}/${ref}`, root) !== laneHead))
+    throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref differs from its retained head');
+  const retainedPathEvidence = releaseEvidence({ path, laneHead, protectedHead, lanePathEntry: pathEntry,
+    protectedPathEntry });
+  if (releasedPathEvidence(record).some(item => item?.path === path))
+    throw scopeFailure('blocked-reservation-path-released', 'lane path has already been released');
   const claims = laneRecords.list(root).filter(item => item.writePaths?.includes(path))
     .sort((a, b) => a.ref.localeCompare(b.ref)).map(item => ({ ref: item.ref,
       state: item.state, head: item.head ?? null, writePaths: [...item.writePaths] }));
   const plan = { schema: RELEASE_PLAN, authorizesEffects: false, repositoryRoot: root,
     protectedBranch, protectedRef, protectedHead, laneRef: ref, laneHead,
     laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: lane.path, path, pathEntry,
+    protectedPathEntry, retainedPathEvidence,
     laneInventoryDigest: laneCacheDigest(root),
     exactClaims: claims, resultingWritePaths: record.writePaths.filter(item => item !== path) };
   if (!plan.resultingWritePaths.length)
@@ -343,7 +356,15 @@ export function applyReservationScopeRelease({ cwd = process.cwd(), plan, author
   if (!before || canonicalJson(before.writePaths.filter(item => item !== plan.path))
     !== canonicalJson(plan.resultingWritePaths))
     throw scopeFailure('blocked-reservation-claim-missing', 'lane claim changed before compare-and-set');
-  const updated = { ...before, writePaths: plan.resultingWritePaths };
+  const priorReleases = releasedPathEvidence(before);
+  const updated = {
+    ...before,
+    writePaths: plan.resultingWritePaths,
+    handoff: {
+      ...(before.handoff || {}),
+      reservationPathReleases: [...priorReleases, plan.retainedPathEvidence],
+    },
+  };
   if (canonicalJson(observe()) !== canonicalJson(plan))
     throw scopeFailure('blocked-scope-release-plan-stale', 'repository facts changed before compare-and-set');
   laneRecords.putExact(updated, before, cwd);
@@ -354,6 +375,8 @@ export function applyReservationScopeRelease({ cwd = process.cwd(), plan, author
     branchBytesChanged: false, worktreeBytesChanged: false, planDigest: plan.planDigest,
     repositoryRoot: plan.repositoryRoot, laneRef: plan.laneRef, laneHead: plan.laneHead,
     laneState: plan.laneState, pathReleased: plan.path, pathEntry: plan.pathEntry,
+    protectedPathEntry: plan.protectedPathEntry, retainedPathEvidence: plan.retainedPathEvidence,
+    retainedAuthoredBytes: plan.retainedPathEvidence.bytesDiffer,
     previousRecordDigest: scopeDigest(before),
     resultingRecordDigest: scopeDigest(after), previousWritePaths: before.writePaths,
     resultingWritePaths: after.writePaths });

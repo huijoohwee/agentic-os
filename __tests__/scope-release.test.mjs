@@ -6,8 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createReservationScopeReleasePlan, applyReservationScopeRelease } from '../src/patch-identity.mjs';
 import * as laneRecords from '../src/lane-records.mjs';
+import { assertDisjointReservation } from '../src/worktree.mjs';
 
-function fixture(t, { state = 'published', pr = 17 } = {}) {
+function fixture(t, { state = 'published', pr = 17, changedReservedPath = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-scope-release-'));
   const root = join(parent, 'repo'), lanePath = join(parent, 'lane');
   mkdirSync(root);
@@ -25,10 +26,12 @@ function fixture(t, { state = 'published', pr = 17 } = {}) {
   run(['update-ref', 'refs/remotes/origin/main', base]);
   const ref = 'agent/device-0232231d4a19/commerce-data-view-embed';
   run(['worktree', 'add', '--quiet', '-b', ref, lanePath, base]);
+  if (changedReservedPath) writeFileSync(join(lanePath, 'canvas', 'src', 'App.tsx'), 'export const value = 2;\n');
   writeFileSync(join(lanePath, 'docs', 'commerce.md'), 'commerce reservation\n');
-  run(['add', 'docs/commerce.md'], lanePath);
+  run(['add', '.'], lanePath);
   run(['commit', '--quiet', '--message', 'published candidate'], lanePath);
   const head = run(['rev-parse', 'HEAD'], lanePath);
+  run(['update-ref', `refs/remotes/origin/${ref}`, head]);
   laneRecords.put({ ref, device: 'device-0232231d4a19', scope: 'commerce-data-view-embed',
     state, base: 'refs/remotes/origin/main', baseSha: base,
     worktree: lanePath, pr, createdAt: new Date(0).toISOString(),
@@ -50,10 +53,34 @@ test('release removes only the exact equal-byte claim and returns a retained rec
   assert.equal(receipt.effectsRetained, true);
   assert.equal(receipt.branchBytesChanged, false);
   assert.equal(receipt.worktreeBytesChanged, false);
+  assert.equal(receipt.retainedAuthoredBytes, false);
   assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
   assert.equal(s.run(['rev-parse', s.ref]), plan.laneHead);
   assert.equal(s.run(['rev-parse', 'HEAD'], s.lanePath), plan.laneHead);
   assert.equal(s.run(['status', '--porcelain=v1', '--untracked-files=all'], s.lanePath), '');
+});
+
+test('release retains exact authored bytes and frees only the handoff path for a successor reservation', (t) => {
+  const s = fixture(t, { changedReservedPath: true }), plan = createReservationScopeReleasePlan(request(s));
+  assert.equal(plan.retainedPathEvidence.bytesDiffer, true);
+  assert.throws(() => assertDisjointReservation({ cwd: s.root,
+    ref: 'agent/device-0232231d4a19/sequence-import-publication-race', writePaths: ['canvas/src/App.tsx'],
+    protectedRef: 'refs/remotes/origin/main', records: laneRecords.load(s.root).lanes }),
+  { reason: 'blocked-write-scope-overlap' });
+  const receipt = applyReservationScopeRelease({ ...request(s), plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.retainedAuthoredBytes, true);
+  assert.equal(receipt.retainedPathEvidence.lanePathEntry.oid, plan.pathEntry.oid);
+  const record = laneRecords.get(s.ref, s.root);
+  assert.equal(record.handoff.reservationPathReleases[0].path, 'canvas/src/App.tsx');
+  assertDisjointReservation({ cwd: s.root,
+    ref: 'agent/device-0232231d4a19/sequence-import-publication-race', writePaths: ['canvas/src/App.tsx'],
+    protectedRef: 'refs/remotes/origin/main', records: laneRecords.load(s.root).lanes });
+  assert.throws(() => assertDisjointReservation({ cwd: s.root,
+    ref: 'agent/device-0232231d4a19/sequence-import-publication-race', writePaths: ['canvas/src'],
+    protectedRef: 'refs/remotes/origin/main', records: laneRecords.load(s.root).lanes }),
+  { reason: 'blocked-write-scope-overlap' });
+  assert.equal(s.run(['show', `${s.ref}:canvas/src/App.tsx`]), 'export const value = 2;');
 });
 
 test('active unpublished lane releases a clean claim without adopting its candidate head', (t) => {
