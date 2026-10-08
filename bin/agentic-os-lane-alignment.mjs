@@ -317,15 +317,23 @@ export function validateLaneAlignmentInput(value) {
 }
 async function main() {
   const argv = process.argv.slice(2); if (argv.length !== 1 || !argv[0].startsWith('--input=') || !argv[0].slice(8)) fail('input');
-  const input = validateLaneAlignmentInput(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedFile(resolve(argv[0].slice(8)), MAX, 'lane alignment input'))));
+  const raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedFile(resolve(argv[0].slice(8)), MAX, 'lane alignment input')));
   const root = repoRoot(process.cwd()), { trustedRepositoryProfile, repositoryKind } = await import('./agentic-os-auxiliary.mjs');
   const { profile } = trustedRepositoryProfile(root, { allowUnanchored: false });
   if (!profile || repositoryKind(profile) !== 'git') fail('profile');
   const { providerPolicy } = await import('../src/lane-state.mjs'), policy = providerPolicy(profile);
   const store = await import('../src/lane-records.mjs'), { cmdStart } = await import('./agentic-os-admission.mjs');
+  if (raw?.schema === 'agentic-os/lane-selected-source-transplant-input/v1') {
+    const owner = await import('../src/lane-selected-source-transplant.mjs'), input = owner.validateSelectedSourceTransplantInput(raw);
+    return cmdStart(root, [input.scope, `--device=${input.device}`, `--mission=${input.mission}`, `--expected-head=${input.expectedHead}`, '--readmit'], policy, profile, {
+      out: text => process.stdout.write(`${text}\n`), err: text => process.stderr.write(`${text}\n`), projectCache: (record, cwd) => store.put(record, cwd), effectReceipt: (_operation, value) => value,
+      remoteName: (value, cwd) => configuredRemote(value.protectedRef.split('/')[2], cwd), requireCanonical: (cwd, value) => { if (currentBranch(cwd) !== value.protectedBranch) fail('canonical'); }, refresh: { expectedTarget: input.expectedTarget, stopped: true, input: { expectedBase: input.expectedBase, selectedPaths: input.paths }, owner: { plan: owner.planSelectedSourceTransplant, prepare: owner.prepareSelectedSourceTransplant, apply: owner.applySelectedSourceTransplant } },
+    });
+  }
+  const input = validateLaneAlignmentInput(raw);
   return cmdStart(root, [input.scope, `--device=${input.device}`, `--mission=${input.mission}`, `--expected-head=${input.expectedHead}`, '--readmit'], policy, profile, {
     out: text => process.stdout.write(`${text}\n`), err: text => process.stderr.write(`${text}\n`), projectCache: (record, cwd) => store.put(record, cwd), effectReceipt: (_operation, value) => value,
-    remoteName: (value, cwd) => configuredRemote(value.protectedRef.split('/')[2], cwd), requireCanonical: (cwd, value) => { if (currentBranch(cwd) !== value.protectedBranch) fail('canonical'); }, refresh: { expectedTarget: input.expectedTarget, stopped: true, owner: { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment } },
+    remoteName: (value, cwd) => configuredRemote(value.protectedRef.split('/')[2], cwd), requireCanonical: (cwd, value) => { if (currentBranch(cwd) !== value.protectedBranch) fail('canonical'); }, refresh: { expectedTarget: input.expectedTarget, stopped: true, owner: { plan: planLaneAlignment, prepare: prepareLaneAlignment, apply: applyLaneAlignment } },
   });
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().then(code => { process.exitCode = code; }).catch(async error => { const { formatRetainedOperation } = await import('./agentic-os-report.mjs'); const retained = formatRetainedOperation(error); if (retained) process.stderr.write(`${retained}\n`); process.stderr.write(`${error.message}\n`); process.exitCode = 1; });

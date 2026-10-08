@@ -16,10 +16,10 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
-  // NATIVE-DESIGN-ENFORCEMENT@0.2.0: +105 existing-owner lines for declared reuse.
-  // Measured source cap 15050 -> 15154; no new module or runtime dependency.
-  modules: 47,
-  totalLines: 15285,
+  // 2026-10-09 selected-source transplant: one lazy recovery source owner; no runtime dependency.
+  // Measured source cap 15285 -> 15452 and bin cap 23991 -> 24003 for bounded stale-lane recovery.
+  modules: 48,
+  totalLines: 15452,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -33,7 +33,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 112,
-  binLines: 23991,
+  binLines: 24003,
   runtimeModules: 96,
   runtimeLines: 23023,
 });
