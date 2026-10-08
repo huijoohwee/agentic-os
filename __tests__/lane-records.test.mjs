@@ -104,6 +104,25 @@ test('cache capacity retains every record without charging presentation whitespa
   assert.equal(runGit(root, 'rev-parse', CACHE_REF), current);
 });
 
+test('retained lane records can exceed the former node ceiling while the new ceiling stays bounded', (t) => {
+  const root = repository(t), value = { schema: SCHEMA, lanes: {} };
+  const paths = Array(125).fill('p');
+  for (let index = 0; index < 396; index += 1) {
+    const ref = `agent/device/retained-${index}`;
+    value.lanes[ref] = { ref, state: 'published', writePaths: paths };
+  }
+  assert(Buffer.byteLength(JSON.stringify(value)) < CACHE_LIMITS.bytes);
+  save(value, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(load(root))), value);
+
+  const over = { schema: SCHEMA, lanes: {} };
+  for (let index = 0; index < 800; index += 1) {
+    const ref = `agent/device/over-${index}`;
+    over.lanes[ref] = { ref, state: 'published', writePaths: paths };
+  }
+  assert.throws(() => save(over, root), /node budget exceeded/u);
+});
+
 test('repeated cache strings share the bounded pool while unique strings and blob bytes remain bounded', (t) => {
   const root = repository(t), value = { schema: SCHEMA, lanes: {} };
   const shared = 'scope/'.repeat(800);
