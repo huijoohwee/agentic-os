@@ -13,13 +13,13 @@ import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { inferMergedReviewWorkflow } from '../bin/agentic-os-cleanup-review.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-function fixture(t, concurrentBase = false, detached = false) {
+function fixture(t, concurrentBase = false, detached = false, mergedProjection = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-consent-recovery-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'root'), target = join(parent, 'lane'); mkdirSync(root);
   git(root, 'init', '--quiet', '--initial-branch=main');
   git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid');
-  const repository = 'example/GameXR', branch = 'agent/device/recovery', pr = 7;
+  const repository = 'example/GameXR', branch = 'agent/device-0232231d4a19/recovery', pr = 7;
   const profile = createRepositoryProfile({ repository: `github.com/${repository}`,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
@@ -41,19 +41,21 @@ function fixture(t, concurrentBase = false, detached = false) {
   }
   git(root, 'merge', '--squash', '--quiet', branch); git(root, 'commit', '--quiet', '-m', 'merged review');
   const merge = git(root, 'rev-parse', 'HEAD'); git(root, 'update-ref', 'refs/remotes/origin/main', merge);
+  if (mergedProjection) git(target, 'reset', '--hard', merge);
   git(root, 'remote', 'add', 'origin', `https://github.com/${repository}.git`);
   git(root, 'config', '--local', 'agentic-os.userCleanup', 'quarantine-recovery');
   if (detached) git(target, 'switch', '--detach', originalHead);
   mkdirSync(join(target, 'runtime')); writeFileSync(join(target, 'runtime/evidence.txt'), 'retained local evidence');
   symlinkSync('/unavailable/device/runtime', join(target, 'runtime/link'));
   const workflow = '.github/workflows/ci.yml';
+  const reviewBranch = mergedProjection ? 'agent/device-0232231d4a19/reviewed-source' : branch;
   const pull = { number: pr, merged: true, state: 'closed', merged_at: '2026-09-13T00:00:00Z',
     merge_commit_sha: merge, html_url: `https://github.com/${repository}/pull/${pr}`,
-    base: { ref: 'main', repo: { full_name: repository } }, head: { sha: head, ref: branch, repo: { full_name: repository } } };
+    base: { ref: 'main', repo: { full_name: repository } }, head: { sha: head, ref: reviewBranch, repo: { full_name: repository } } };
   const check = { name: 'test', id: 123, head_sha: head, app: { id: 15368, slug: 'github-actions' },
     status: 'completed', conclusion: 'success', completed_at: '2026-09-12T23:59:00Z',
     details_url: `https://github.com/${repository}/actions/runs/456/job/123` };
-  const run = { id: 456, head_sha: head, head_branch: branch, repository: { full_name: repository },
+  const run = { id: 456, head_sha: head, head_branch: reviewBranch, repository: { full_name: repository },
     head_repository: { full_name: repository }, event: 'pull_request', path: workflow,
     run_attempt: 1, status: 'completed', conclusion: 'success' };
   const checks = { total_count: 1, check_runs: [check] }, calls = [];
@@ -64,7 +66,7 @@ function fixture(t, concurrentBase = false, detached = false) {
     if (path.endsWith('/actions/runs/456')) return structuredClone(run);
     assert.fail(`unexpected provider effect or read: ${path}`);
   };
-  const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true, detached };
+  const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true, detached, mergedProjection };
   const options = { api, now: () => NOW, observeRemote: () => `${merge}\trefs/heads/main` };
   const plan = () => planUserCleanup(input, options);
   const apply = (p, overrides = {}) => applyUserCleanup(p, { cwd: root, ...options,
@@ -92,6 +94,18 @@ test('concurrent base changes use the existing exact mode/type/blob projection a
   assert.equal(p.integration.kind, 'exact-tree-projection'); assert.equal(p.integration.pathCount, 1);
   assert.equal(s.apply(p).result, 'quarantined');
   assert.equal(readFileSync(join(s.root, 'peer.txt'), 'utf8'), 'peer work\n');
+});
+test('explicit merged-projection recovery quarantines an attached lane at the exact accepted merge', t => {
+  const s = fixture(t, false, false, true);
+  assert.throws(() => planUserCleanup({ ...s.input, mergedProjection: false }, s.options), /target branch or head changed/);
+  const p = s.plan();
+  assert.deepEqual(p.mergedProjection, { branch: s.branch, head: s.merge });
+  assert.equal(p.integration.kind, 'equal-tree');
+  const receipt = s.apply(p);
+  assert.deepEqual(receipt.mergedProjection, p.mergedProjection);
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.claimRetired, false);
+  assert.equal(existsSync(s.target), false);
 });
 test('recovery remains opt-in; normal consent, no-CI, wrong trust and missing profile checks fail', t => {
   const s = fixture(t);
@@ -150,6 +164,8 @@ test('CLI requires an explicit recovery selection while keeping apply exact and 
   assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
     '--workflow=.github/workflows/ci.yml', '--recovery']), null);
   assert.ok(validateCommandArguments('cleanup-user', ['apply', '--plan=x', '--authorize=y', '--recovery', '--stopped']));
+  assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
+    '--workflow=.github/workflows/ci.yml', '--recovery', '--merged-projection']), null);
 });
 
 test('explicit detached ancestor recovery keeps the checked PR head distinct and preserves history and replay', t => {

@@ -30,7 +30,6 @@ const read = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 655
 const same = (a, b) => canonicalJson(a) === canonicalJson(b);
 export const readUserCleanupJson = (path, label, parent = null) => JSON.parse(new TextDecoder('utf-8', { fatal: true })
   .decode(parent ? readPrivateFile(path, 64000, label, parent) : readBoundedStableFile(path, 64000, label)));
-
 /** Classify the enrolled local-consent documentation path without changing physical mechanics. */
 function resolveChangeClass(declared, observed) {
   if (declared === undefined) return { declared: null, observed, fastPath: false };
@@ -82,8 +81,8 @@ function observePolicy(mechanics, root, resolver = null) {
 }
 function mechanics(plan) {
   return { ...(plan.mode === RECOVERY_MODE ? RECOVERY_LIMITS : LIMITS), mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
-    expectedBranch: plan.detachedHead ? null : plan.successor?.predecessorRef ?? plan.branch,
-    expectedHeadRevision: plan.detachedHead ?? plan.successor?.predecessorHead ?? plan.head,
+    expectedBranch: plan.detachedHead ? null : plan.successor?.predecessorRef ?? plan.mergedProjection?.branch ?? plan.branch,
+    expectedHeadRevision: plan.detachedHead ?? plan.successor?.predecessorHead ?? plan.mergedProjection?.head ?? plan.head,
     detachedRecovery: Boolean(plan.detachedHead),
     expectedCanonicalRef: 'refs/heads/main',
     expectedCanonicalRevision: plan.canonical, profileDigest: plan.policyDigest,
@@ -123,6 +122,7 @@ function validatePlan(input) {
     + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : '')
     + (Object.hasOwn(plan, 'reviewedEquivalentCommit') ? ',reviewedEquivalentCommit' : '')
     + (Object.hasOwn(plan, 'successor') ? ',successor' : '')
+    + (Object.hasOwn(plan, 'mergedProjection') ? ',mergedProjection' : '')
     + (Object.hasOwn(plan, 'changeClass') ? ',changeClass' : ''));
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
@@ -141,6 +141,7 @@ function validatePlan(input) {
       || typeof plan.successor.predecessorRef !== 'string'
       || !/^[a-f0-9]{40}$/u.test(plan.successor.predecessorHead)
       || !Array.isArray(plan.successor.replacedPaths)))
+    || (Object.hasOwn(plan, 'mergedProjection') && (plan.mode !== RECOVERY_MODE || plan.detachedHead || plan.successor || !plan.mergedProjection || Object.keys(plan.mergedProjection).sort().join(',') !== 'branch,head' || !isLaneRef(plan.mergedProjection.branch) || plan.mergedProjection.branch === plan.branch || plan.mergedProjection.head !== plan.merge))
     || plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch)
     refuse('plan-binding');
   return plan;
@@ -152,11 +153,12 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false, recovery = false, detached = false, changeClass = undefined, successor = undefined,
+  noCI = false, recovery = false, detached = false, mergedProjection = false, changeClass = undefined, successor = undefined,
   reviewedEquivalentCommit = undefined }, options = {}) {
   const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
+  if (typeof mergedProjection !== 'boolean' || mergedProjection && (!recovery || detached || successor)) refuse('merged-projection-options');
   if (reviewedEquivalentCommit !== undefined && (!recovery || !detached || successor || !/^[a-f0-9]{40}$/u.test(reviewedEquivalentCommit))) refuse('equivalent-options');
   if (recovery && changeClass !== undefined) refuse('incompatible-modes');
   if (successor && (!recovery || detached || typeof successor.predecessorRef !== 'string'
@@ -177,6 +179,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (successor && (inventory.branch !== successor.predecessorRef
       || inventory.headRevision !== successor.predecessorHead)) refuse('successor-target-drift');
     if (detached && inventory.branch !== null) refuse('target-not-detached');
+    if (mergedProjection && (!isLaneRef(inventory.branch) || inventory.branch === review.branch || inventory.headRevision !== review.merge)) refuse('merged-projection-target');
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
     const observedChangeClass = classifyLaneChangeClass(targetPath);
     const changeClassInfo = resolveChangeClass(changeClass, observedChangeClass);
@@ -190,6 +193,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       ...(reviewedEquivalentCommit ? { reviewedEquivalentCommit } : {}),
       ...(successor ? { successor: { predecessorRef: successor.predecessorRef,
         predecessorHead: successor.predecessorHead, replacedPaths: successor.replacedPaths } } : {}),
+      ...(mergedProjection ? { mergedProjection: { branch: inventory.branch, head: inventory.headRevision } } : {}),
       ...(changeClassInfo.declared ? { changeClass: changeClassInfo } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
@@ -243,6 +247,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
         historicalIntegrationMethodProven: false, ...(plan.reviewedEquivalentCommit ? { sourceIntegrated: false, historicalDraft: 'superseded' } : {}) } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
+      ...(plan.mergedProjection ? { mergedProjection: plan.mergedProjection } : {}),
       ...(plan.successor ? { successor: plan.successor } : {}),
       ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
@@ -254,7 +259,6 @@ export function runUnifiedCleanup(root, argv, out = console.log) {
   if (!['plan', 'apply', 'sweep'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep> [options]');
   return runUserCleanup(root, argv, out, { unified: true });
 }
-
 export function runUserCleanup(root, argv, out = console.log, { unified = false } = {}) {
   if (['preservation-plan', 'preservation-apply'].includes(argv[0])) {
     const planning = argv[0] === 'preservation-plan';
@@ -275,6 +279,7 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
       requiredChecks: noCI ? [] : unified && !option(argv, 'checks') ? [] : option(argv, 'checks').split(','),
       workflow: noCI ? null : option(argv, 'workflow'), noCI,
       recovery: modeFlag === 'recovery' || (!unified && argv.includes('--recovery')), detached: argv.includes('--detached'),
+      mergedProjection: argv.includes('--merged-projection'),
       reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
       changeClass });
     out(canonicalJson(plan)); return 0;
@@ -283,12 +288,10 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
   out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })));
   return 0;
 }
-
 /** Bounded observation-only stale-ref candidates; no refs or bytes are removed. */
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
 const SWEEP_LIMIT = 256;
 const sweepRefFormat = '%(refname:short)%09%(objectname)%09%(objecttype)%09%(committerdate:unix)';
-
 /** Project one bounded ref snapshot; the caller revalidates each selected target before effects. */
 export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, staleDays, now = Date.now() }) {
   if (!Array.isArray(refs) || !Array.isArray(mergedBranches) || !Array.isArray(activeBranches))
@@ -320,7 +323,6 @@ export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, 
   if (mergedBranches.some(branch => !seen.has(branch))) refuse('sweep-ref-drift');
   return candidates;
 }
-
 /** Read fixed-size batches so Git process count does not grow with the lane count. */
 export function observeUserCleanupSweep(root, { staleDays, requireMerged = false,
   requireNoActiveWorktree = false, now = Date.now, observeLines = observeGitLines,
