@@ -41,9 +41,9 @@ function fixture(t, { protectedHistory = false } = {}) {
       base: 'refs/remotes/origin/main', baseSha: base, worktree: lane.path, pr: 17,
       createdAt: new Date(0).toISOString(), head: tip, writePaths: ['change.txt'] }, lane.path);
   };
-  const invoke = (tip, expandedWritePaths = null) => runPublishedLaneSuccessor({ cwd: lane.path, predecessorRef: ref,
+  const invoke = (tip, expandedWritePaths = null, message = null, onCommitted = null) => runPublishedLaneSuccessor({ cwd: lane.path, predecessorRef: ref,
     scope: 'continued', explicitHead: tip, remote: 'origin', protectedRef: 'refs/remotes/origin/main', out() {},
-    expandedWritePaths });
+    expandedWritePaths, message, onCommitted });
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   return { root, bare, lane, ref, run, base, source, tree, canonical, commit, publish, invoke };
 }
@@ -67,6 +67,38 @@ test('successor excludes independent protected history from an older admission b
   assert.equal(s.run(['rev-parse', 'HEAD'], s.lane.path), tip);
   assert.equal(s.run(['status', '--porcelain'], s.lane.path), '');
   assert.deepEqual(get('agent/test-device/continued', s.lane.path).writePaths, ['change.txt']);
+});
+
+test('successor commits reserved dirty bytes before binding the continuation', t => {
+  const s = fixture(t), tip = s.commit(); s.publish(tip);
+  writeFileSync(join(s.lane.path, 'change.txt'), 'continued candidate\n');
+  s.invoke(tip, null, 'fix: retain successor bytes');
+  const head = s.run(['rev-parse', 'HEAD'], s.lane.path);
+  assert.equal(s.run(['rev-parse', `${head}^`], s.lane.path), tip);
+  assert.equal(s.run(['log', '-1', '--format=%s'], s.lane.path), 'fix: retain successor bytes');
+  assert.equal(s.run(['status', '--porcelain'], s.lane.path), '');
+  assert.equal(s.run(['--git-dir', s.bare, 'rev-parse', `refs/heads/${s.ref}`]), tip);
+  assert.equal(get('agent/test-device/continued', s.lane.path).head, head);
+});
+
+test('successor rebind hook observes the exact reserved commit before binding', t => {
+  const s = fixture(t), tip = s.commit(); s.publish(tip);
+  writeFileSync(join(s.lane.path, 'change.txt'), 'continued candidate\n');
+  let observed = null;
+  s.invoke(tip, null, 'fix: retain successor bytes', (commit) => {
+    observed = commit;
+    assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
+    assert.equal(s.run(['rev-parse', 'HEAD'], s.lane.path), commit.revision);
+  });
+  assert.deepEqual(observed, { previousRevision: tip, revision: s.run(['rev-parse', 'HEAD'], s.lane.path) });
+});
+
+test('successor cannot commit an unreserved dirty path', t => {
+  const s = fixture(t), tip = s.commit(); s.publish(tip);
+  writeFileSync(join(s.lane.path, 'outside.txt'), 'unreserved retained bytes\n');
+  assert.throws(() => s.invoke(tip, null, 'fix: must stay blocked'), { reason: 'blocked-write-outside-reservation' });
+  assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
+  assert.equal(s.run(['status', '--porcelain'], s.lane.path), '?? outside.txt');
 });
 
 test('protected paths still require a reservation when transiently changed in the lane', t => {

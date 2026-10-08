@@ -8,7 +8,8 @@ import { createReservationScopeReleasePlan, applyReservationScopeRelease } from 
 import * as laneRecords from '../src/lane-records.mjs';
 import { assertDisjointReservation } from '../src/worktree.mjs';
 
-function fixture(t, { state = 'published', pr = 17, changedReservedPath = false, addedReservedPath = false } = {}) {
+function fixture(t, { state = 'published', pr = 17, changedReservedPath = false, addedReservedPath = false,
+  unmountedPublished = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-scope-release-'));
   const root = join(parent, 'repo'), lanePath = join(parent, 'lane');
   mkdirSync(root);
@@ -39,6 +40,7 @@ function fixture(t, { state = 'published', pr = 17, changedReservedPath = false,
     worktree: lanePath, pr, createdAt: new Date(0).toISOString(),
     head: state === 'published' ? head : base,
     writePaths: ['canvas/src/App.tsx', ...(addedReservedPath ? [addedPath] : []), 'docs/commerce.md'] }, lanePath);
+  if (unmountedPublished) run(['worktree', 'remove', '--force', lanePath]);
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   return { root, lanePath, ref, run, addedPath };
 }
@@ -109,6 +111,17 @@ test('active unpublished lane releases a clean claim without adopting its candid
   assert.equal(receipt.laneState, 'active');
   assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
   assert.equal(s.run(['rev-parse', 'HEAD'], s.lanePath), plan.laneHead);
+});
+
+test('published unmounted projections release an exact remote-backed claim without touching a worktree', (t) => {
+  const s = fixture(t, { unmountedPublished: true }), plan = createReservationScopeReleasePlan(request(s));
+  assert.equal(plan.laneProjection, 'unmounted-published');
+  assert.equal(plan.laneWorktree, s.lanePath);
+  const receipt = applyReservationScopeRelease({ ...request(s), plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.worktreeBytesChanged, false);
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
+  assert.equal(s.run(['rev-parse', `refs/remotes/origin/${s.ref}`]), plan.laneHead);
 });
 
 test('changed reserved bytes stale the plan and preserve the claim', (t) => {
