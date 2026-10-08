@@ -139,7 +139,7 @@ export function validateCommandArguments(command, argv) {
       return null;
     }
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
-    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write'] });
+    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write', 'message'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
@@ -201,7 +201,7 @@ export function cmdHelp() {
       '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped  verify reviewed successor then quarantine the clean predecessor',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
       '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
-      '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>]  continue only after publish',
+      '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>] [--message=<text>]  continue after publish; message commits only reserved retained bytes',
       '',
       '  Underlying primitives and diagnostics:',
       '    npm run doctor            report harness and remote drift, change nothing',

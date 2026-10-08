@@ -81,7 +81,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
       'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>]',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>] [--message="<message>"]',
     ].join('\n'),
   );
   return 0;
@@ -100,7 +100,8 @@ function cmdSuccessor(root, argv, policy) {
     expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption);
   return runPublishedLaneSuccessor({ cwd: root, predecessorRef,
     scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
-    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths });
+    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths,
+    message: option(argv, 'message') });
 }
 async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, beforeClose = () => {}) {
   const [action = 'help', ...rest] = argv;

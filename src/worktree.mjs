@@ -236,7 +236,7 @@ function assertSuccessorGit(cwd) {
 }
 /** Preserve a published lane and continue its clean descendant in the same linked worktree. */
 export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope, explicitHead,
-  remote, protectedRef, out, expandedWritePaths = null }) {
+  remote, protectedRef, out, expandedWritePaths = null, message = null }) {
   const bound = parseLaneRef(boundRef), successorRef = laneRef(scope, bound.device);
   const lock = acquireOperationLock('agentic-os-start', cwd);
   if (!lock) throw successorError('blocked-concurrent-successor', 'another admission owns the start lock');
@@ -244,7 +244,8 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     successorRef, expectedHead: null, tip: null, binding: null, cachePublication: null, cacheState: 'not-attempted', recoveryCommand: null };
   let result, error = null, plannedRecord = null;
   try { assertSuccessorGit(cwd);
-    const currentStore = laneRecords.load(cwd), tip = headSha('HEAD', cwd);
+    const currentStore = laneRecords.load(cwd);
+    let tip = headSha('HEAD', cwd);
     const inheritedWritePaths = (currentStore.lanes[boundRef]?.writePaths ?? []).flatMap((path) => parseWritePaths(path)),
       requestedWritePaths = expandedWritePaths === null ? inheritedWritePaths
         : [...new Set([...inheritedWritePaths, ...expandedWritePaths])].sort();
@@ -267,8 +268,11 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
       throw successorError('blocked-successor-local-race', 'local lane ref changed before binding');
     const destinationAbsent = resuming || !refExists(`refs/heads/${successorRef}`, cwd)
       && !currentStore.lanes[successorRef];
+    const dirtyTracked = git(['status', '--porcelain=v1', '-z'], { cwd, binary: true }).length !== 0;
+    if (dirtyTracked && (typeof message !== 'string' || message.trim().length === 0)) throw successorError(
+      'blocked-dirty', 'successor retains dirty bytes; supply --message to commit only reserved files before binding');
     const state = transition('published', 'successor', { onCanonicalBranch: false,
-      dirtyTracked: git(['status', '--porcelain=v1', '-z'], { cwd, binary: true }).length !== 0,
+      dirtyTracked: dirtyTracked && message === null,
       predecessorExact: true, descendant: Boolean(tip && isAncestor(expectedHead, tip, cwd)),
       destinationAbsent: destinationAbsent && initialHeads[successorRef] === null });
     if (!state.ok) throw successorError(state.reason, `successor refused under lock by ${state.guard}`);
@@ -287,6 +291,13 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     assertDisjointReservationExcept({ cwd, ref: successorRef,
       writePaths: requestedWritePaths, protectedRef: currentRecord.base ?? protectedRef,
       records: currentStore.lanes, predecessorRef: boundRef });
+    if (dirtyTracked) {
+      const committed = commitReservedChanges({ cwd, writePaths: requestedWritePaths, message });
+      if (!committed) throw successorError('blocked-empty-commit', 'reserved dirty successor bytes disappeared before commit');
+      tip = committed.head; plannedRecord = { ...plannedRecord, head: tip }; artifacts.effectsRetained = true;
+      if (!isAncestor(expectedHead, tip, cwd) || currentBranch(cwd) !== boundRef || headSha(`refs/heads/${boundRef}`, cwd) !== tip)
+        throw successorError('blocked-successor-local-race', 'lane changed while committing the reserved successor bytes');
+    }
     if (!plannedRecord.worktree) throw successorError('blocked-successor-postcondition',
       'bound worktree registration is unavailable');
     if (!resuming) {
