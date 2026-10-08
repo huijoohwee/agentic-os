@@ -296,6 +296,29 @@ test('private committed revision refresh is explicit and committed unreserved by
   await assert.rejects(f.start('one', `--mission=${after.path}`, `--expected-head=${head}`, '--readmit'), /outside the current reservation/);
   assert.equal(readFileSync(join(target, 'unreserved.txt'), 'utf8'), 'retain\n');
 });
+
+test('explicit recertification retains an unpublished lane after its reservation outgrows the active allocation', async t => {
+  const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const ref = 'agent/test-device/one', target = lanePath('one', 'test-device', f.root);
+  const before = f.selected(), prior = records.get(ref, f.root), old = before.manifest.allocations[0];
+  writeFileSync(join(target, 'additional.txt'), 'retained owner bytes\n');
+  git(['add', 'additional.txt'], { cwd: target }); git(['-c', 'commit.gpgsign=false', 'commit', '-m', 'retained owner bytes'], { cwd: target });
+  const head = headSha('HEAD', target), writePaths = ['additional.txt', 'owned.txt'];
+  records.putExact({ ...prior, head, writePaths }, prior, f.root);
+  const args = ['one', '--device=test-device', `--write=${writePaths.join(',')}`, `--mission=${before.path}`,
+    '--readmit', `--expected-head=${head}`];
+  assert.equal(await cmdStart(f.root, args, f.policy, f.profile, f.services), 0);
+  const after = f.selected(), allocation = after.manifest.allocations[0];
+  assert.deepEqual(records.get(ref, f.root).writePaths, writePaths);
+  assert.equal(records.get(ref, f.root).head, head);
+  assert.equal(allocation.headRevision, head); assert.equal(allocation.writeDigest, hash(JSON.stringify(writePaths)));
+  assert.equal(allocation.state, 'active'); assert.equal(allocation.previousWriteDigest, undefined);
+  assert.equal(f.run('rev-parse', ref), head); assert.equal(headSha('HEAD', target), head);
+  assert.equal(readFileSync(join(target, 'additional.txt'), 'utf8'), 'retained owner bytes\n');
+  assert.equal(f.run('ls-remote', '--refs', 'origin', `refs/heads/${ref}`), '');
+  assert.match(f.events.at(-1), /"recertified"/);
+});
+
 for (const publishedCache of [false, true]) test(`interrupted readmission recovers exact scope ${publishedCache ? 'after' : 'before'} cache CAS`, async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const ref = 'agent/test-device/one', record = records.get(ref, f.root), before = f.selected();
