@@ -252,7 +252,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
       ...(plan.mergedProjection ? { mergedProjection: plan.mergedProjection } : {}),
-      ...(plan.historicalCheckGap ? { historicalCheckGap: plan.review.historicalCheckGap } : {}),
+      ...(plan.historicalCheckGap ? { historicalCheckGap: { ...plan.review.historicalCheckGap, requiredChecks: [...plan.review.historicalCheckGap.requiredChecks] } } : {}),
       ...(plan.successor ? { successor: plan.successor } : {}),
       ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
