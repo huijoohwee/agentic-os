@@ -17,9 +17,9 @@ export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
   // 2026-10-09 selected-source transplant: one lazy recovery source owner; no runtime dependency.
-  // Measured source cap 15285 -> 15452 and bin cap 23991 -> 24003 for bounded stale-lane recovery.
+  // Measured source cap 15285 -> 15459 and bin cap 23991 -> 24003 for bounded stale-lane recovery.
   modules: 48,
-  totalLines: 15452,
+  totalLines: 15459,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the

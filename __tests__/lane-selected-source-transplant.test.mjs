@@ -10,15 +10,19 @@ import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSel
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 }).trim();
 const commit = (cwd, message) => { run(cwd, 'add', '--all'); run(cwd, 'commit', '--quiet', '-m', message); return run(cwd, 'rev-parse', 'HEAD'); };
 
-function fixture(t) {
+function fixture(t, { divergent = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'lane-selected-source-transplant-'));
   const root = join(parent, 'repo'), remote = join(parent, 'remote.git'), lane = join(parent, 'lane'); mkdirSync(root);
   run(root, 'init', '--quiet', '--initial-branch=main');
   for (const [key, value] of [['user.name', 'Fixture'], ['user.email', 'fixture@example.invalid'], ['commit.gpgsign', 'false'], ['core.autocrlf', 'false']]) run(root, 'config', key, value);
   writeFileSync(join(root, 'source.txt'), 'first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntenth\n'); writeFileSync(join(root, 'base.txt'), 'base\n');
-  const base = commit(root, 'base'); run(root, 'init', '--quiet', '--bare', remote); run(root, 'remote', 'add', 'origin', remote); run(root, 'push', '--quiet', '-u', 'origin', 'main');
+  let base = commit(root, 'base'); run(root, 'init', '--quiet', '--bare', remote); run(root, 'remote', 'add', 'origin', remote); run(root, 'push', '--quiet', '-u', 'origin', 'main');
   const ref = 'agent/test-device/transplant'; run(root, 'worktree', 'add', '--quiet', '-b', ref, lane, base);
-  writeFileSync(join(lane, 'source.txt'), 'source first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntenth\n'); const source = commit(lane, 'selected source');
+  if (divergent) {
+    writeFileSync(join(lane, 'source.txt'), 'first\nsecond\nthird\nhistoric fourth\nfifth\nsixth\nseventh\neighth\nninth\ntenth\n');
+    base = commit(lane, 'historic source advance');
+  }
+  writeFileSync(join(lane, 'source.txt'), `source first\nsecond\nthird\n${divergent ? 'historic fourth' : 'fourth'}\nfifth\nsixth\nseventh\neighth\nninth\ntenth\n`); const source = commit(lane, 'selected source');
   writeFileSync(join(root, 'source.txt'), 'first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntarget tenth\n'); writeFileSync(join(root, 'target.txt'), 'protected\n');
   const target = commit(root, 'protected advance'); run(root, 'push', '--quiet', 'origin', 'main'); run(root, 'fetch', '--quiet', 'origin');
   put({ ref, device: 'test-device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: base,
@@ -54,5 +58,21 @@ test('selected source transplant retains the original lane and applies only the 
 test('selected source transplant rejects incomplete selection and preserves the source lane', t => {
   const f = fixture(t);
   assert.throws(() => planSelectedSourceTransplant(input(f, { selectedPaths: ['base.txt'] })), { reason: 'blocked-lane-selected-source-transplant-selection' });
+  assert.equal(run(f.lane, 'rev-parse', 'HEAD'), f.source); assert.equal(run(f.lane, 'status', '--porcelain'), '');
+});
+
+test('selected source transplant applies an exact source delta when its parent predates a divergent protected target', t => {
+  const f = fixture(t, { divergent: true });
+  const receipt = applySelectedSourceTransplant(planSelectedSourceTransplant(input(f)));
+  assert.equal(run(f.lane, 'show', `${receipt.head}:source.txt`), 'source first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntarget tenth');
+  assert.equal(run(f.lane, 'show', '-s', '--format=%P', receipt.head), f.target);
+  assert.equal(run(f.lane, 'diff', '--name-only', f.target, receipt.head), 'source.txt');
+});
+
+test('selected source transplant refuses an overlapping target change without moving the lane', t => {
+  const f = fixture(t);
+  writeFileSync(join(f.root, 'source.txt'), 'target first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntarget tenth\n');
+  const target = commit(f.root, 'overlapping protected advance'); run(f.root, 'push', '--quiet', 'origin', 'main'); run(f.root, 'fetch', '--quiet', 'origin');
+  assert.throws(() => prepareSelectedSourceTransplant(planSelectedSourceTransplant(input(f, { expectedTarget: target }))), { reason: 'blocked-lane-selected-source-transplant-merge' });
   assert.equal(run(f.lane, 'rev-parse', 'HEAD'), f.source); assert.equal(run(f.lane, 'status', '--porcelain'), '');
 });

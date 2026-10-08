@@ -52,7 +52,7 @@ function identity(input, acceptedHead = input.expectedHead) {
   const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd);
   if (remoteRefSha(remote, input.ref, input.cwd, transport.fetchUrl) !== null) fail('published');
   const parents = observeGit(['show', '--no-patch', '--format=%P', input.expectedHead], { cwd: input.cwd });
-  if (parents !== input.expectedBase || !isAncestor(input.expectedBase, input.expectedTarget, input.cwd)) fail('base');
+  if (parents !== input.expectedBase) fail('base');
   return remote;
 }
 function body(plan) { return Object.fromEntries(Object.entries(plan).filter(([key]) => !['digest', 'resume', 'liveHead'].includes(key))); }
@@ -91,7 +91,14 @@ function candidateTree(cwd, base, source, target, selected) {
     const deltaTree = git(['write-tree'], { cwd, env });
     const deltaHead = git(['-c', 'commit.gpgSign=false', 'commit-tree', deltaTree, '-p', base], { cwd,
       input: 'agentic-os exact selected-source delta\n', env: { GIT_AUTHOR_NAME: 'agentic-os', GIT_AUTHOR_EMAIL: 'transplant@agentic-os.invalid', GIT_COMMITTER_NAME: 'agentic-os', GIT_COMMITTER_EMAIL: 'transplant@agentic-os.invalid' } });
-    let mergedTree; try { mergedTree = git(['merge-tree', '--write-tree', target, deltaHead], { cwd, maxBuffer: MAX }).split('\n')[0]; } catch { fail('merge'); }
+    const patch = git(['diff', '--binary', '--full-index', base, source, '--', ...selected], {
+      cwd, binary: true, maxBuffer: 2 * AGGREGATE,
+    });
+    if (!Buffer.isBuffer(patch) || !patch.length || patch.length > 2 * AGGREGATE) fail('patch');
+    git(['read-tree', target], { cwd, env });
+    try { git(['apply', '--cached', '--3way', '--whitespace=nowarn'], { cwd, input: patch, env, maxBuffer: MAX }); }
+    catch { fail('merge'); }
+    const mergedTree = git(['write-tree'], { cwd, env });
     if (!SHA.test(mergedTree ?? '')) fail('merge');
     const candidateHead = git(['-c', 'commit.gpgSign=false', 'commit-tree', mergedTree, '-p', target], { cwd,
       input: 'agentic-os exact selected-source transplant\n', env: { GIT_AUTHOR_NAME: 'agentic-os', GIT_AUTHOR_EMAIL: 'transplant@agentic-os.invalid', GIT_COMMITTER_NAME: 'agentic-os', GIT_COMMITTER_EMAIL: 'transplant@agentic-os.invalid' } });
