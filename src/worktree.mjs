@@ -1,11 +1,7 @@
 /** Lane worktree lifecycle with atomic branch binding and external byte isolation. */
 import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import {
-  acquireOperationLock, currentBranch, decodeNulFields, finishOperationLock, git, gitLines,
-  headSha, isAncestor, observeGit, observeGitLines, refExists, remoteRefShas, remoteTransport,
-  commonDir, untrackedPaths, worktrees, worktreeCleanupRisks,
-} from './git.mjs';
+import { acquireOperationLock, currentBranch, decodeNulFields, finishOperationLock, git, gitLines, headSha, isAncestor, observeGit, observeGitLines, refExists, remoteRefShas, remoteTransport, commonDir, untrackedPaths, worktrees, worktreeCleanupRisks } from './git.mjs';
 import { isLaneRef, laneDirName, laneRef, parseLaneRef } from './lane-id.mjs';
 import { canonicalCheckoutRoot, assertCheckoutPlacement } from './canonical-resources.mjs';
 import { successorRecordPlan, transition } from './lane-state.mjs';
@@ -17,41 +13,27 @@ export function worktreeRoot(cwd = process.cwd()) {
   const registry = override ? resolve(override) : join(dirname(root), '.worktrees');
   return join(registry, basename(root));
 }
-export const lanePath = (scope, device, cwd = process.cwd()) =>
-  join(worktreeRoot(cwd), laneDirName(scope, device));
+export const lanePath = (scope, device, cwd = process.cwd()) => join(worktreeRoot(cwd), laneDirName(scope, device));
 export function laneBranches(cwd = process.cwd()) {
-  const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)',
-    'refs/heads/agent', `--count=${LANE_BRANCH_LIMIT + 1}`], { cwd });
+  const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)', 'refs/heads/agent', `--count=${LANE_BRANCH_LIMIT + 1}`], { cwd });
   if (branches.length > LANE_BRANCH_LIMIT) {
-    const error = Object.assign(new Error(`lane branch inventory exceeds ${LANE_BRANCH_LIMIT}; `
-      + 'preserve every ref and recover or partition it before survey'),
-    { reason: 'blocked-lane-inventory-over-budget' });
-    throw error;
+    throw Object.assign(new Error(`lane branch inventory exceeds ${LANE_BRANCH_LIMIT}; preserve every ref and recover or partition it before survey`),
+      { reason: 'blocked-lane-inventory-over-budget' });
   }
   return branches;
 }
 export function laneBranchSummary(cwd = process.cwd()) {
-  const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)',
-    'refs/heads/agent', `--count=${LANE_BRANCH_LIMIT + 1}`], { cwd });
+  const branches = observeGitLines(['for-each-ref', '--format=%(refname:short)', 'refs/heads/agent', `--count=${LANE_BRANCH_LIMIT + 1}`], { cwd });
   return Object.freeze({ count: branches.length, truncated: branches.length > LANE_BRANCH_LIMIT });
 }
 /** One exact lane selection bypasses only the unrelated global inventory count. */
 export function reapLaneBranches(ref = null, cwd = process.cwd()) {
   if (ref === null) return laneBranches(cwd);
-  if (!isLaneRef(ref)) {
-    const error = Object.assign(new TypeError(`invalid lane ref ${JSON.stringify(ref)}`),
-      { reason: 'blocked-invalid-lane-ref' });
-    throw error;
-  }
-  if (!refExists(`refs/heads/${ref}`, cwd)) {
-    const error = Object.assign(new Error(`lane branch does not exist: ${ref}`),
-      { reason: 'blocked-lane-ref-missing' });
-    throw error;
-  }
+  if (!isLaneRef(ref)) throw Object.assign(new TypeError(`invalid lane ref ${JSON.stringify(ref)}`), { reason: 'blocked-invalid-lane-ref' });
+  if (!refExists(`refs/heads/${ref}`, cwd)) throw Object.assign(new Error(`lane branch does not exist: ${ref}`), { reason: 'blocked-lane-ref-missing' });
   return [ref];
 }
-export const registeredLaneBranches = (cwd = process.cwd()) =>
-  worktrees(cwd).map((entry) => entry.branch).filter(isLaneRef);
+export const registeredLaneBranches = (cwd = process.cwd()) => worktrees(cwd).map((entry) => entry.branch).filter(isLaneRef);
 export const worktreeFor = (ref, cwd = process.cwd()) => worktrees(cwd).find((entry) => entry.branch === ref) ?? null;
 export const staleWorktrees = (cwd = process.cwd(), entries = worktrees(cwd)) => entries.filter((entry) => !existsSync(entry.path));
 /** Refuse an already-occupied lane identity before any provider evidence is fetched. */
@@ -69,21 +51,13 @@ export function assertProvisionable({ ref, scope, device, cwd = process.cwd() })
 function directDirectory(path) {
   const metadata = lstatSync(path, { throwIfNoEntry: false });
   if (!metadata) return null;
-  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
-    throw Object.assign(new Error(`worktree parent must be a direct directory: ${path}`),
-      { reason: 'blocked-worktree-parent-identity' });
-  }
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw Object.assign(new Error(`worktree parent must be a direct directory: ${path}`), { reason: 'blocked-worktree-parent-identity' });
   return Object.freeze({ path, dev: metadata.dev, ino: metadata.ino, mode: metadata.mode });
 }
 function createWorktreeParents(path, created) {
   const missing = [];
-  for (let cursor = dirname(path);;) {
-    if (directDirectory(cursor)) break;
-    missing.push(cursor);
-    const parent = dirname(cursor);
-    if (parent === cursor) throw new Error('worktree parent has no existing directory ancestor');
-    cursor = parent;
-  }
+  for (let cursor = dirname(path);;) { if (directDirectory(cursor)) break; missing.push(cursor); const parent = dirname(cursor);
+    if (parent === cursor) throw new Error('worktree parent has no existing directory ancestor'); cursor = parent; }
   for (const directory of missing.reverse()) {
     try {
       mkdirSync(directory);
@@ -96,10 +70,7 @@ function createWorktreeParents(path, created) {
     }
   }
 }
-function provisionArtifacts({
-  ref, path, baseSha, cwd, createdParents, worktreeAddReturned,
-  postconditionHead = null, postconditionBranch = null, provisionCompleted = false,
-}) {
+function provisionArtifacts({ ref, path, baseSha, cwd, createdParents, worktreeAddReturned, postconditionHead = null, postconditionBranch = null, provisionCompleted = false }) {
   let branchSha = null, branchObservationExact = true;
   try { branchSha = headSha(`refs/heads/${ref}`, cwd); } catch { branchObservationExact = false; }
   let registeredWorktree = null, registrationObservationExact = true;
@@ -107,9 +78,8 @@ function provisionArtifacts({
   let pathIdentity = null, pathObservationExact = true;
   try {
     const metadata = lstatSync(path, { throwIfNoEntry: false });
-    if (metadata) pathIdentity = Object.freeze({ path, dev: metadata.dev, ino: metadata.ino,
-      mode: metadata.mode, kind: metadata.isDirectory() && !metadata.isSymbolicLink()
-        ? 'directory' : metadata.isSymbolicLink() ? 'symlink' : 'other' });
+    if (metadata) pathIdentity = Object.freeze({ path, dev: metadata.dev, ino: metadata.ino, mode: metadata.mode,
+      kind: metadata.isDirectory() && !metadata.isSymbolicLink() ? 'directory' : metadata.isSymbolicLink() ? 'symlink' : 'other' });
   } catch { pathObservationExact = false; }
   const artifacts = {
     effectsRetained: createdParents.length > 0 || branchSha !== null
@@ -139,11 +109,7 @@ export function provision({ ref, scope, device, baseSha, cwd = process.cwd() }) 
     worktreeAddReturned = true;
     observed = observeGit(['rev-parse', 'HEAD'], { cwd: path });
     branch = observeGit(['branch', '--show-current'], { cwd: path });
-    if (observed !== baseSha || branch !== ref) {
-      throw Object.assign(new Error('provisioned worktree does not match captured base and lane ref'), {
-        reason: 'blocked-provision-postcondition',
-      });
-    }
+    if (observed !== baseSha || branch !== ref) throw Object.assign(new Error('provisioned worktree does not match captured base and lane ref'), { reason: 'blocked-provision-postcondition' });
   } catch (cause) {
     const artifacts = provisionArtifacts({ ref, path, baseSha, cwd, createdParents,
       worktreeAddReturned, postconditionHead: observed, postconditionBranch: branch });
@@ -206,7 +172,12 @@ function observedLanePaths(entry, record, protectedRef, cwd, writePaths) {
   const reserved = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   if (writePaths.some(requested => reserved.some(path => pathsOverlap(requested, path)))) return reserved;
   const observed = worktreeCleanupRisks(entry.path, { includeIgnored: false });
-  return [...new Set([...reserved, ...observed.tracked, ...observed.owned, ...observed.hidden, ...committedLanePaths(`refs/heads/${entry.branch}`, protectedRef, cwd)])].sort();
+  // A handoff authorizes one file; a broader reservation still overlaps retained bytes.
+  const released = new Set((Array.isArray(record?.handoff?.reservationPathReleases) ? record.handoff.reservationPathReleases
+    .map(item => item?.path).filter(path => typeof path === 'string') : []).filter(path => writePaths.includes(path)));
+  return [...new Set([...reserved, ...observed.tracked, ...observed.owned, ...observed.hidden,
+    ...committedLanePaths(`refs/heads/${entry.branch}`, protectedRef, cwd)])]
+    .filter(path => !released.has(path)).sort();
 }
 function assertDisjointReservationExcept({
   cwd, ref, writePaths, protectedRef, records, predecessorRef = null,
