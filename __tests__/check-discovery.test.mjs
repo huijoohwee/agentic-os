@@ -23,7 +23,7 @@ const writeJson = (target, value) => writeFileSync(target, `${JSON.stringify(val
 
 function fixture(t, ids = ['agentic-os']) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-check-discovery-')));
-  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  t.after(() => rmSync(parent, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }));
   const repositories = [];
   for (const entry of CATALOG.repositories.filter(item => ids.includes(item.id))) {
     const root = join(parent, entry.id); mkdirSync(root);

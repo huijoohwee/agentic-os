@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { git } from '../src/git.mjs';
 import { put, get } from '../src/lane-records.mjs';
 import { provision, runPublishedLaneSuccessor } from '../src/worktree.mjs';
+import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 
 function fixture(t, { protectedHistory = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-preserved-join-'));
@@ -41,9 +42,9 @@ function fixture(t, { protectedHistory = false } = {}) {
       base: 'refs/remotes/origin/main', baseSha: base, worktree: lane.path, pr: 17,
       createdAt: new Date(0).toISOString(), head: tip, writePaths: ['change.txt'] }, lane.path);
   };
-  const invoke = (tip, expandedWritePaths = null, message = null, onCommitted = null) => runPublishedLaneSuccessor({ cwd: lane.path, predecessorRef: ref,
-    scope: 'continued', explicitHead: tip, remote: 'origin', protectedRef: 'refs/remotes/origin/main', out() {},
-    expandedWritePaths, message, onCommitted });
+  const invoke = (tip, expandedWritePaths = null, message = null, onCommitted = null, reconcileCommitted = false, events = []) => runPublishedLaneSuccessor({ cwd: lane.path, predecessorRef: ref,
+    scope: 'continued', explicitHead: tip, remote: 'origin', protectedRef: 'refs/remotes/origin/main', out: line => events.push(line),
+    expandedWritePaths, message, onCommitted, reconcileCommitted });
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   return { root, bare, lane, ref, run, base, source, tree, canonical, commit, publish, invoke };
 }
@@ -156,6 +157,37 @@ test('successor accepts an explicit reservation expansion for published follow-u
   s.invoke(tip, ['change.txt', 'outside.txt']);
   const record = get('agent/test-device/continued', s.lane.path);
   assert.deepEqual(record.writePaths, ['change.txt', 'outside.txt']);
+});
+
+test('successor reconciles only immutable committed paths when explicitly requested', t => {
+  const s = fixture(t);
+  writeFileSync(join(s.lane.path, 'outside.txt'), 'transient\n');
+  s.run(['add', 'outside.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'outside'], s.lane.path);
+  s.run(['rm', '--quiet', 'outside.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'remove'], s.lane.path);
+  const tip = s.commit(s.tree, [s.run(['rev-parse', 'HEAD'], s.lane.path), s.canonical]); s.publish(tip);
+  assert.equal(validateCommandArguments('successor', ['continued', '--reconcile-committed']), null);
+  assert.throws(() => s.invoke(tip), { reason: 'blocked-write-outside-reservation' });
+  const events = [];
+  s.invoke(tip, null, null, null, true, events);
+  const record = get('agent/test-device/continued', s.lane.path);
+  assert.deepEqual(record.writePaths, ['change.txt', 'outside.txt']);
+  assert.deepEqual(JSON.parse(events.find(line => line.startsWith('{'))), {
+    schema: 'agentic-os/successor-reconciliation/v1', paths: ['outside.txt'],
+  });
+});
+
+test('reconciled committed paths still reject a mounted lane reservation', t => {
+  const s = fixture(t);
+  writeFileSync(join(s.lane.path, 'outside.txt'), 'transient\n');
+  s.run(['add', 'outside.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'outside'], s.lane.path);
+  s.run(['rm', '--quiet', 'outside.txt'], s.lane.path); s.run(['commit', '--quiet', '-m', 'remove'], s.lane.path);
+  const tip = s.commit(s.tree, [s.run(['rev-parse', 'HEAD'], s.lane.path), s.canonical]); s.publish(tip);
+  const peer = provision({ ref: 'agent/test-device/peer', scope: 'peer', device: 'test-device', baseSha: s.canonical, cwd: s.root });
+  put({ ref: 'agent/test-device/peer', device: 'test-device', scope: 'peer', state: 'active',
+    base: 'refs/remotes/origin/main', baseSha: s.base, worktree: peer.path,
+    createdAt: new Date(0).toISOString(), writePaths: ['outside.txt'] }, peer.path);
+  assert.throws(() => s.invoke(tip, null, null, null, true), { reason: 'blocked-write-scope-overlap' });
+  assert.equal(s.run(['branch', '--show-current'], s.lane.path), s.ref);
 });
 
 test('preserved joins have a hard 32-commit observation cap', t => {
