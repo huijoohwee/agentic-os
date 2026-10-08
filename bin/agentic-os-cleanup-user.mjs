@@ -123,6 +123,7 @@ function validatePlan(input) {
     + (Object.hasOwn(plan, 'reviewedEquivalentCommit') ? ',reviewedEquivalentCommit' : '')
     + (Object.hasOwn(plan, 'successor') ? ',successor' : '')
     + (Object.hasOwn(plan, 'mergedProjection') ? ',mergedProjection' : '')
+    + (Object.hasOwn(plan, 'historicalCheckGap') ? ',historicalCheckGap' : '')
     + (Object.hasOwn(plan, 'changeClass') ? ',changeClass' : ''));
   reviewOptions(plan);
   const { planDigest, ...content } = plan;
@@ -142,6 +143,7 @@ function validatePlan(input) {
       || !/^[a-f0-9]{40}$/u.test(plan.successor.predecessorHead)
       || !Array.isArray(plan.successor.replacedPaths)))
     || (Object.hasOwn(plan, 'mergedProjection') && (plan.mode !== RECOVERY_MODE || plan.detachedHead || plan.successor || !plan.mergedProjection || Object.keys(plan.mergedProjection).sort().join(',') !== 'branch,head' || !isLaneRef(plan.mergedProjection.branch) || plan.mergedProjection.branch === plan.branch || plan.mergedProjection.head !== plan.merge))
+    || (Object.hasOwn(plan, 'historicalCheckGap') && (!plan.historicalCheckGap || !plan.mergedProjection || !plan.review?.historicalCheckGap || plan.review.historicalCheckGap.checkRunsObserved !== 0 || !same(plan.review.historicalCheckGap.requiredChecks, plan.requiredChecks)))
     || plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch)
     refuse('plan-binding');
   return plan;
@@ -153,12 +155,13 @@ function locked(root, operation) {
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
-  noCI = false, recovery = false, detached = false, mergedProjection = false, changeClass = undefined, successor = undefined,
+  noCI = false, recovery = false, detached = false, mergedProjection = false, historicalCheckGap = false, changeClass = undefined, successor = undefined,
   reviewedEquivalentCommit = undefined }, options = {}) {
   const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
   if (typeof mergedProjection !== 'boolean' || mergedProjection && (!recovery || detached || successor)) refuse('merged-projection-options');
+  if (typeof historicalCheckGap !== 'boolean' || historicalCheckGap && (!recovery || !mergedProjection)) refuse('historical-check-gap-options');
   if (reviewedEquivalentCommit !== undefined && (!recovery || !detached || successor || !/^[a-f0-9]{40}$/u.test(reviewedEquivalentCommit))) refuse('equivalent-options');
   if (recovery && changeClass !== undefined) refuse('incompatible-modes');
   if (successor && (!recovery || detached || typeof successor.predecessorRef !== 'string'
@@ -172,7 +175,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     const current = resolvePolicy(root, mode, policyResolver, { changeClass }), targetPath = realpathSync(target);
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
-    const review = observeMergedReview({ ...current, pr, requiredChecks, workflow }, { cwd: root, ...options });
+    const review = observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main',
       allowDetached: detached, maxContentEntries: options.maxContentEntries ?? (recovery ? RECOVERY_LIMITS : LIMITS).projectionEntryCeiling });
@@ -194,6 +197,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
       ...(successor ? { successor: { predecessorRef: successor.predecessorRef,
         predecessorHead: successor.predecessorHead, replacedPaths: successor.replacedPaths } } : {}),
       ...(mergedProjection ? { mergedProjection: { branch: inventory.branch, head: inventory.headRevision } } : {}),
+      ...(historicalCheckGap ? { historicalCheckGap: true } : {}),
       ...(changeClassInfo.declared ? { changeClass: changeClassInfo } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
@@ -241,13 +245,14 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
     }
     return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
-      selectedChecksVerified: plan.mode !== NO_CI_MODE, noCI: plan.mode === NO_CI_MODE,
+      selectedChecksVerified: plan.mode !== NO_CI_MODE && !plan.historicalCheckGap, noCI: plan.mode === NO_CI_MODE,
       ...(plan.changeClass?.fastPath ? { changeClass: plan.changeClass, authorityTerminalState: 'local-consent' } : {}),
       ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy, integration: plan.integration,
         historicalIntegrationMethodProven: false, ...(plan.reviewedEquivalentCommit ? { sourceIntegrated: false, historicalDraft: 'superseded' } : {}) } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
       review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
       ...(plan.mergedProjection ? { mergedProjection: plan.mergedProjection } : {}),
+      ...(plan.historicalCheckGap ? { historicalCheckGap: plan.review.historicalCheckGap } : {}),
       ...(plan.successor ? { successor: plan.successor } : {}),
       ...applied.result, ...applied.artifacts, result: 'quarantined',
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
@@ -280,6 +285,7 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
       workflow: noCI ? null : option(argv, 'workflow'), noCI,
       recovery: modeFlag === 'recovery' || (!unified && argv.includes('--recovery')), detached: argv.includes('--detached'),
       mergedProjection: argv.includes('--merged-projection'),
+      historicalCheckGap: argv.includes('--historical-check-gap'),
       reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
       changeClass });
     out(canonicalJson(plan)); return 0;
@@ -340,7 +346,6 @@ export function observeUserCleanupSweep(root, { staleDays, requireMerged = false
     .filter(candidate => !requireNoActiveWorktree || !candidate.mounted);
   return { current, candidates };
 }
-
 function runUserCleanupSweep(root, argv, out = console.log) {
   const staleDays = Number(option(argv, 'stale-older-than') ?? '0');
   const requireMerged = argv.includes('--merged');
@@ -360,7 +365,6 @@ function runUserCleanupSweep(root, argv, out = console.log) {
   out(canonicalJson(sweep));
   return 0;
 }
-
 function preservationPolicy(root) {
   root = realpathSync(repoRoot(root));
   const trust = loadRepositoryTrust(root), revision = read(root, ['rev-parse', 'refs/heads/main']);
