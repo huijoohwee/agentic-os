@@ -236,24 +236,22 @@ function assertSuccessorGit(cwd) {
 }
 /** Preserve a published lane and continue its clean descendant in the same linked worktree. */
 export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope, explicitHead,
-  remote, protectedRef, out, expandedWritePaths = null, message = null, onCommitted = null }) {
+  remote, protectedRef, out, expandedWritePaths = null, message = null, onCommitted = null, reconcileCommitted = false }) {
   const bound = parseLaneRef(boundRef), successorRef = laneRef(scope, bound.device);
   const lock = acquireOperationLock('agentic-os-start', cwd);
   if (!lock) throw successorError('blocked-concurrent-successor', 'another admission owns the start lock');
   const artifacts = { effectsRetained: false, operation: 'successor', predecessorRef: boundRef,
-    successorRef, expectedHead: null, tip: null, binding: null, cachePublication: null, cacheState: 'not-attempted', recoveryCommand: null };
+    successorRef, expectedHead: null, tip: null, binding: null, cachePublication: null, cacheState: 'not-attempted', reconciledCommittedPaths: [], recoveryCommand: null };
   let result, error = null, plannedRecord = null;
   try { assertSuccessorGit(cwd);
     const currentStore = laneRecords.load(cwd);
     let tip = headSha('HEAD', cwd);
-    const inheritedWritePaths = (currentStore.lanes[boundRef]?.writePaths ?? []).flatMap((path) => parseWritePaths(path)),
-      requestedWritePaths = expandedWritePaths === null ? inheritedWritePaths
-        : [...new Set([...inheritedWritePaths, ...expandedWritePaths])].sort();
-    const plan = successorRecordPlan({ boundRef, successorRef, lanes: currentStore.lanes, explicitHead,
-      protectedRef, tip, worktree: worktreeFor(boundRef, cwd)?.path, device: bound.device,
-      scope, createdAt: new Date().toISOString(), writePaths: requestedWritePaths });
+    const inheritedWritePaths = (currentStore.lanes[boundRef]?.writePaths ?? []).flatMap((path) => parseWritePaths(path)), retainedWritePaths = reconcileCommitted ? (currentStore.lanes[successorRef]?.writePaths ?? []).flatMap((path) => parseWritePaths(path)) : [];
+    let requestedWritePaths = [...new Set([...inheritedWritePaths, ...(expandedWritePaths ?? []), ...retainedWritePaths])].sort();
+    let plan = successorRecordPlan({ boundRef, successorRef, lanes: currentStore.lanes, explicitHead, protectedRef, tip,
+      worktree: worktreeFor(boundRef, cwd)?.path, device: bound.device, scope, createdAt: new Date().toISOString(), writePaths: requestedWritePaths });
     if (plan.reason) throw successorError(plan.reason, plan.message);
-    const { resuming, predecessorRef, predecessorRecord: currentRecord, expectedHead } = plan;
+    let { resuming, predecessorRef, predecessorRecord: currentRecord, expectedHead } = plan;
     plannedRecord = plan.plannedRecord;
     Object.assign(artifacts, { predecessorRef, cacheState: resuming ? plannedRecord.state : 'absent', expectedHead, tip });
     const transport = remoteTransport(remote, cwd);
@@ -278,16 +276,19 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     if (!state.ok) throw successorError(state.reason, `successor refused under lock by ${state.guard}`);
     const provision = transition('planned', 'provision', { baseFetched: true });
     if (!provision.ok) throw successorError(provision.reason, `activation refused by ${provision.guard}`);
-    if (requestedWritePaths.length === 0) throw successorError('blocked-write-scope-missing',
-      'successor requires inherited write paths');
+    if (requestedWritePaths.length === 0) throw successorError('blocked-write-scope-missing', 'successor requires inherited write paths');
     const protectedSha = headSha(protectedRef, cwd); assertPreservedSuccessorJoins(expectedHead, tip, protectedSha, cwd);
     const committed = decodeNulFields(git(['log', '--format=', '--name-only', '-z',
       `${currentRecord.baseSha}..${tip}`, '--not', protectedSha], { cwd, binary: true }));
-    if (committed === null) throw successorError(
-      'blocked-invalid-write-scope', 'committed path inventory is not strict UTF-8');
+    if (committed === null) throw successorError('blocked-invalid-write-scope', 'committed path inventory is not strict UTF-8');
     const outside = [...new Set(committed)].filter((path) => !pathIsReserved(path, requestedWritePaths));
-    if (outside.length > 0) throw successorError('blocked-write-outside-reservation',
-      `preserve ${outside.length} committed path(s) outside the successor reservation`, { paths: outside });
+    if (outside.length > 0 && !reconcileCommitted) throw successorError('blocked-write-outside-reservation', `preserve ${outside.length} committed path(s) outside the successor reservation`, { paths: outside });
+    if (outside.length > 0) {
+      requestedWritePaths = [...new Set([...requestedWritePaths, ...outside])].sort();
+      plan = successorRecordPlan({ boundRef, successorRef, lanes: currentStore.lanes, explicitHead, protectedRef, tip, worktree: worktreeFor(boundRef, cwd)?.path, device: bound.device, scope, createdAt: new Date().toISOString(), writePaths: requestedWritePaths });
+      if (plan.reason) throw successorError(plan.reason, plan.message);
+      ({ resuming, predecessorRef, predecessorRecord: currentRecord, expectedHead } = plan); plannedRecord = plan.plannedRecord; artifacts.reconciledCommittedPaths = outside;
+    }
     assertDisjointReservationExcept({ cwd, ref: successorRef,
       writePaths: requestedWritePaths, protectedRef: currentRecord.base ?? protectedRef,
       records: currentStore.lanes, predecessorRef: boundRef });
@@ -330,7 +331,7 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
     if (JSON.stringify(laneRecords.get(successorRef, cwd)) !== JSON.stringify(activeRecord))
       throw successorError('blocked-successor-cache-race', 'successor cache activation changed');
     artifacts.cacheState = 'active';
-    out(`successor ${successorRef}`); out(`predecessor ${predecessorRef} @ ${expectedHead}`);
+    out(`successor ${successorRef}`); out(`predecessor ${predecessorRef} @ ${expectedHead}`); if (artifacts.reconciledCommittedPaths.length > 0) out(JSON.stringify({ schema: 'agentic-os/successor-reconciliation/v1', paths: artifacts.reconciledCommittedPaths }));
     out(`worktree ${boundWorktree}`); result = 0;
   } catch (caught) {
     const retained = caught.operationArtifacts ?? caught.artifacts ?? null; if (retained?.operation === 'preserve-lane-successor') artifacts.binding = retained;
@@ -350,7 +351,7 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
         artifacts.cacheState = !projected ? 'absent' : JSON.stringify(projected) === JSON.stringify(active)
           ? 'active' : JSON.stringify(projected) === JSON.stringify(plannedRecord) ? 'planned' : 'drifted';
       } catch { artifacts.cacheState = 'unreadable'; }
-      artifacts.recoveryCommand = `npm run successor -- ${scope} --expected-head=${artifacts.expectedHead}`;
+      artifacts.recoveryCommand = `npm run successor -- ${scope} --expected-head=${artifacts.expectedHead}${artifacts.reconciledCommittedPaths.length > 0 ? ' --reconcile-committed' : ''}`;
       const receipt = Object.freeze({ ...artifacts });
       error = Object.assign(new Error(`successor effects are preserved; without edits, rerun ${artifacts.recoveryCommand} after resolving any reported remote collision`,
         { cause: caught }), { reason: caught.reason ?? 'blocked-successor-retained',

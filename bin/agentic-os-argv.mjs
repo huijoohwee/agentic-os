@@ -138,7 +138,7 @@ export function validateCommandArguments(command, argv) {
       return null;
     }
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
-    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write', 'message'] });
+    case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write', 'message'], flags: ['reconcile-committed'] });
     case 'status': return exact(argv, { options: ['device'] });
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });

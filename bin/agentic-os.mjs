@@ -83,7 +83,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
       'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>] [--message="<message>"]',
+      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>] [--reconcile-committed] [--message="<message>"]',
     ].join('\n'),
   );
   return 0;
@@ -94,12 +94,12 @@ async function cmdLand(cwd, argv, profile, policy) {
 function cmdSuccessor(root, argv, policy, profile) {
   const predecessorRef = currentBranch(root);
   if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) return err('blocked-unbound-lane: successor requires a bound published lane worktree'), 1;
-  const writeOption = option(argv, 'write'), expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption), message = option(argv, 'message');
+  const writeOption = option(argv, 'write'), expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption), message = option(argv, 'message'), reconcileCommitted = flag(argv, 'reconcile-committed');
   let committingReservedCandidate = false, beforeCommit = null, expectedDecision = null;
   const workflowContext = () => { const registration = worktrees(root).find(row => row.path === root && row.branch === predecessorRef); if (!registration) throw new Error('blocked-successor-worktree-binding'); return { root, repository: profile.repository, phase: 'ci', ref: predecessorRef, worktreeId: basename(registration.path), revision: headSha('HEAD', root), dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) }; }, assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
   if (message !== null) { committingReservedCandidate = true; try { beforeCommit = workflowContext(); expectedDecision = assertWorkflowCurrent('dependencies'); } finally { committingReservedCandidate = false; } }
   return runPublishedLaneSuccessor({ cwd: root, predecessorRef, scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
-    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths, message,
+    remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths, message, reconcileCommitted,
     onCommitted: beforeCommit === null ? null : ({ previousRevision, revision }) => { if (previousRevision !== beforeCommit.revision) throw new Error('blocked-successor-commit-drift'); rebindWorkflowCandidate({ root, repository: profile.repository, ref: predecessorRef, worktreeId: beforeCommit.worktreeId, expectedDecision, previousRevision, revision }); } });
 }
 async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, beforeClose = () => {}) {
