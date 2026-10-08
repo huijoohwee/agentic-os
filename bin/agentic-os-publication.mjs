@@ -14,7 +14,6 @@ import { assertPublicationPreflight, classifyPromotion, publicationByteRisks, as
   pullRequestText, validateReviewBody, providerKind, assertProfileCurrent, assertProtectedRefCurrent } from './agentic-os-auxiliary.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { createWorkflowEffectGuard, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
-
 export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, effectReceipt, remoteName }) {
   const root = repoRoot(cwd);
   const ref = currentBranch(root);
@@ -35,22 +34,26 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     err(`blocked-successor-recovery-required: rerun npm run successor -- ${record.scope} --expected-head=${lineage.predecessorHead}`);
     return 1;
   }
+  let committingReservedCandidate = false;
   const workflowContext = () => {
     const registration = worktrees(root).find(row => row.path === root && row.branch === ref);
     if (!registration) throw new Error('blocked-publication-worktree-binding');
     return { root, repository: profile.repository, phase: 'ci', ref,
       worktreeId: basename(registration.path), revision: headSha('HEAD', root),
-      dirty: Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) };
-  };
-  const assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
-  assertWorkflowCurrent('dependencies');
-  const configuredFlight = assertFlightRequirements(root, 'pre');
+      dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) };
+  }, assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext), message = option(argv, 'message');
+  let configuredFlight = null, beforeCommit, expectedDecision;
+  committingReservedCandidate = message !== null;
+  try {
+    if (message === null) assertWorkflowCurrent('dependencies');
+    else { beforeCommit = workflowContext(); expectedDecision = assertWorkflowCurrent('dependencies'); }
+    configuredFlight = assertFlightRequirements(root, 'pre');
+  } finally { committingReservedCandidate = false; }
   const bodyFile = option(argv, 'body-file'), title = option(argv, 'title');
   validateReviewBody(root, ref, bodyFile, title);
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   const remote = remoteName(policy, root);
   const capturedRemote = remoteTransport(remote, root);
-  const message = option(argv, 'message');
   if (message !== null) {
     if (writePaths.length === 0) {
       err('blocked-write-scope-missing: autonomous land requires an admitted --write reservation');
@@ -63,8 +66,6 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
       err(`blocked-published-head-drift: preserve changes; commit locally, then run npm run successor -- <scope> --expected-head=${advertised}`);
       return 1;
     }
-    const beforeCommit = workflowContext();
-    const expectedDecision = assertWorkflowCurrent('dependencies');
     const committed = commitReservedChanges({ cwd: root, writePaths, message });
     if (committed) {
       out(`committed ${committed.head.slice(0, 9)} (${committed.paths.length} path(s))`);
