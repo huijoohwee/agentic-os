@@ -236,7 +236,7 @@ function assertSuccessorGit(cwd) {
 }
 /** Preserve a published lane and continue its clean descendant in the same linked worktree. */
 export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope, explicitHead,
-  remote, protectedRef, out, expandedWritePaths = null, message = null }) {
+  remote, protectedRef, out, expandedWritePaths = null, message = null, onCommitted = null }) {
   const bound = parseLaneRef(boundRef), successorRef = laneRef(scope, bound.device);
   const lock = acquireOperationLock('agentic-os-start', cwd);
   if (!lock) throw successorError('blocked-concurrent-successor', 'another admission owns the start lock');
@@ -297,6 +297,7 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
       tip = committed.head; plannedRecord = { ...plannedRecord, head: tip }; artifacts.effectsRetained = true;
       if (!isAncestor(expectedHead, tip, cwd) || currentBranch(cwd) !== boundRef || headSha(`refs/heads/${boundRef}`, cwd) !== tip)
         throw successorError('blocked-successor-local-race', 'lane changed while committing the reserved successor bytes');
+      if (onCommitted !== null) onCommitted(Object.freeze({ previousRevision: expectedHead, revision: tip }));
     }
     if (!plannedRecord.worktree) throw successorError('blocked-successor-postcondition',
       'bound worktree registration is unavailable');
