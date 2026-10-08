@@ -51,6 +51,8 @@ export function inferMergedReviewWorkflow({ repository, pr, requiredChecks }, op
 export function observeMergedReview(value, options = {}) {
   reviewOptions(value);
   const { read, pull, response, prefix } = mergedReview(value, options);
+  const historicalCheckGap = value.historicalCheckGap === true;
+  if (historicalCheckGap && (value.mode !== RECOVERY_MODE || response.total_count !== 0)) refuse('historical-check-gap');
   if (value.mode === 'explicit-local-user-consent-no-ci') {
     const status = read(`${prefix}/commits/${pull.head.sha}/status`);
     if (response.total_count !== 0 || !Array.isArray(status?.statuses)
@@ -58,7 +60,7 @@ export function observeMergedReview(value, options = {}) {
       || status.sha !== pull.head.sha) refuse('no-ci-evidence-drift');
   }
   const noCI = value.mode === 'explicit-local-user-consent-no-ci';
-  const checks = noCI ? [] : value.mode === RECOVERY_MODE ? recoveryChecks(value, pull, response.check_runs, read) : value.requiredChecks.map(name => {
+  const checks = noCI || historicalCheckGap ? [] : value.mode === RECOVERY_MODE ? recoveryChecks(value, pull, response.check_runs, read) : value.requiredChecks.map(name => {
     const candidates = response.check_runs.filter(c => c.name === name);
     if (candidates.length !== 1) refuse('check-ambiguous-or-missing');
     const c = candidates[0];
@@ -71,6 +73,7 @@ export function observeMergedReview(value, options = {}) {
   });
   return { repository: value.repository, pr: value.pr, url: pull.html_url, branch: pull.head.ref,
     head: pull.head.sha, merge: pull.merge_commit_sha, mergedAt: pull.merged_at, checks,
+    ...(historicalCheckGap ? { historicalCheckGap: { requiredChecks: [...value.requiredChecks], checkRunsObserved: 0 } } : {}),
     ...(noCI ? { noCI: true, checkRunsObserved: 0, legacyStatusesObserved: 0 } : {}),
     protectionProven: false, authority: 'observation-only' };
 }

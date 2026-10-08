@@ -107,6 +107,21 @@ test('explicit merged-projection recovery quarantines an attached lane at the ex
   assert.equal(receipt.claimRetired, false);
   assert.equal(existsSync(s.target), false);
 });
+test('explicit historical-check-gap recovery quarantines only an exact merged projection with no retained checks', t => {
+  const s = fixture(t, false, false, true);
+  assert.throws(() => planUserCleanup({ ...s.input, historicalCheckGap: true }, s.options), /historical-check-gap/);
+  s.checks.check_runs = []; s.checks.total_count = 0;
+  assert.throws(() => planUserCleanup({ ...s.input, historicalCheckGap: true, mergedProjection: false }, s.options), /historical-check-gap-options/);
+  assert.throws(s.plan, /check-not-successful/);
+  const p = planUserCleanup({ ...s.input, historicalCheckGap: true }, s.options);
+  assert.deepEqual(p.review.historicalCheckGap, { requiredChecks: ['test'], checkRunsObserved: 0 });
+  const receipt = s.apply(p);
+  assert.equal(receipt.selectedChecksVerified, false);
+  assert.deepEqual(receipt.historicalCheckGap, p.review.historicalCheckGap);
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.claimRetired, false);
+  assert.equal(existsSync(s.target), false);
+});
 test('recovery remains opt-in; normal consent, no-CI, wrong trust and missing profile checks fail', t => {
   const s = fixture(t);
   assert.throws(() => planUserCleanup({ ...s.input, recovery: false }, s.options), /local-enrollment/);
@@ -166,6 +181,8 @@ test('CLI requires an explicit recovery selection while keeping apply exact and 
   assert.ok(validateCommandArguments('cleanup-user', ['apply', '--plan=x', '--authorize=y', '--recovery', '--stopped']));
   assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
     '--workflow=.github/workflows/ci.yml', '--recovery', '--merged-projection']), null);
+  assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
+    '--workflow=.github/workflows/ci.yml', '--recovery', '--merged-projection', '--historical-check-gap']), null);
 });
 
 test('explicit detached ancestor recovery keeps the checked PR head distinct and preserves history and replay', t => {
