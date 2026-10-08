@@ -314,9 +314,13 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
   const laneHead = headSha(`refs/heads/${ref}`, root);
   const activeUnpublished = record?.state === 'active' && record.pr === null
   if (!record || !record.writePaths?.includes(path) || !(record.state === 'published' || activeUnpublished)) throw scopeFailure('blocked-reservation-claim-missing', 'lane does not hold a releasable exact path claim');
-  if (!lane || !laneHead || realpathSync(lane.path) !== realpathSync(record.worktree ?? '') || currentBranch(lane.path) !== ref
-    || headSha('HEAD', lane.path) !== laneHead || record.state === 'published' && record.head !== laneHead) throw scopeFailure('blocked-lane-identity-drift', 'lane branch, worktree, or published cache head differs');
-  cleanReservedPath(path, lane.path);
+  const stalePublishedProjection = record.state === 'published' && lane === undefined;
+  if (!laneHead || record.state === 'published' && record.head !== laneHead) throw scopeFailure(
+    'blocked-lane-identity-drift', 'published lane ref or cache head differs');
+  if (!stalePublishedProjection && (!lane || realpathSync(lane.path) !== realpathSync(record.worktree ?? '')
+    || currentBranch(lane.path) !== ref || headSha('HEAD', lane.path) !== laneHead)) throw scopeFailure(
+    'blocked-lane-identity-drift', 'lane branch, worktree, or published cache head differs');
+  if (lane) cleanReservedPath(path, lane.path);
   const pathEntry = exactTreeEntry(laneHead, path, root);
   const protectedPathEntry = exactTreeEntry(protectedHead, path, root, { allowAbsent: true });
   const remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef)?.[1] ?? null;
@@ -331,7 +335,8 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
       state: item.state, head: item.head ?? null, writePaths: [...item.writePaths] }));
   const plan = { schema: RELEASE_PLAN, authorizesEffects: false, repositoryRoot: root,
     protectedBranch, protectedRef, protectedHead, laneRef: ref, laneHead,
-    laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: lane.path, path, pathEntry,
+    laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: record.worktree,
+    laneProjection: stalePublishedProjection ? 'unmounted-published' : 'mounted', path, pathEntry,
     protectedPathEntry, retainedPathEvidence,
     laneInventoryDigest: laneCacheDigest(root),
     exactClaims: claims, resultingWritePaths: record.writePaths.filter(item => item !== path) };
