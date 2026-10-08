@@ -14,7 +14,6 @@ import { assertPublicationPreflight, classifyPromotion, publicationByteRisks, as
   pullRequestText, validateReviewBody, providerKind, assertProfileCurrent, assertProtectedRefCurrent } from './agentic-os-auxiliary.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { createWorkflowEffectGuard, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
-
 export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, effectReceipt, remoteName }) {
   const root = repoRoot(cwd);
   const ref = currentBranch(root);
@@ -41,27 +40,15 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     if (!registration) throw new Error('blocked-publication-worktree-binding');
     return { root, repository: profile.repository, phase: 'ci', ref,
       worktreeId: basename(registration.path), revision: headSha('HEAD', root),
-      // The native committer verifies the reservation before it records a fresh
-      // candidate. Its dependency decision is bound to the clean parent revision.
       dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) };
-  };
-  const assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
-  const message = option(argv, 'message');
+  }, assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext), message = option(argv, 'message');
   let configuredFlight = null, beforeCommit, expectedDecision;
-  if (message === null) {
-    assertWorkflowCurrent('dependencies');
+  committingReservedCandidate = message !== null;
+  try {
+    if (message === null) assertWorkflowCurrent('dependencies');
+    else { beforeCommit = workflowContext(); expectedDecision = assertWorkflowCurrent('dependencies'); }
     configuredFlight = assertFlightRequirements(root, 'pre');
-  } else {
-    // Dependency admission is read-only and happens before any publication
-    // observation. The following native commit is already reservation-bound.
-    committingReservedCandidate = true;
-    try {
-      beforeCommit = workflowContext();
-      expectedDecision = assertWorkflowCurrent('dependencies');
-    } finally {
-      committingReservedCandidate = false;
-    }
-  }
+  } finally { committingReservedCandidate = false; }
   const bodyFile = option(argv, 'body-file'), title = option(argv, 'title');
   validateReviewBody(root, ref, bodyFile, title);
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
@@ -85,7 +72,6 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
       rebindWorkflowCandidate({ root, repository: profile.repository, ref, worktreeId: beforeCommit.worktreeId, expectedDecision,
         previousRevision: beforeCommit.revision, revision: committed.head });
     }
-    configuredFlight = assertFlightRequirements(root, 'pre');
   }
   const kind = providerKind(profile);
   if (providerAdapterRequired(policy) && kind !== 'github') {
