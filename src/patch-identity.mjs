@@ -262,10 +262,11 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 const scopeDigest = value => createHash('sha256').update(canonicalJson(value)).digest('hex');
-function exactTreeEntry(revision, path, cwd) {
+function exactTreeEntry(revision, path, cwd, { allowAbsent = false } = {}) {
   const entries = decodeNulFields(observeGit(['ls-tree', '-z', revision, '--', path], {
     cwd, binary: true,
   }));
+  if (allowAbsent && entries?.length === 0) return null;
   if (entries?.length !== 1) throw scopeFailure('blocked-reservation-path-tree',
     `reserved path must resolve to one tracked file: ${path}`);
   const tab = entries[0].indexOf('\t'), [mode, type, oid] = entries[0].slice(0, tab).split(' ');
@@ -317,7 +318,7 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
     || headSha('HEAD', lane.path) !== laneHead || record.state === 'published' && record.head !== laneHead) throw scopeFailure('blocked-lane-identity-drift', 'lane branch, worktree, or published cache head differs');
   cleanReservedPath(path, lane.path);
   const pathEntry = exactTreeEntry(laneHead, path, root);
-  const protectedPathEntry = exactTreeEntry(protectedHead, path, root);
+  const protectedPathEntry = exactTreeEntry(protectedHead, path, root, { allowAbsent: true });
   const remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef)?.[1] ?? null;
   if (record.state === 'published' && (!remote || headSha(`refs/remotes/${remote}/${ref}`, root) !== laneHead))
     throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref differs from its retained head');
