@@ -146,7 +146,9 @@ export async function cmdStart(root, argv, policy, profile, services) {
         const recertification = readmit && row?.state === 'active' && row.ref === ref && row.writeDigest !== liveDigest
           && row.headRevision === selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)?.child.source.revision
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
-        const predecessorPaths = row?.predecessorRef ? parseWritePaths((records[row.predecessorRef]?.writePaths ?? []).join(',')) : [];
+        // A retired historical cache must not mask the current link, which is verified below.
+        const predecessorPaths = row?.predecessorRef && records[row.predecessorRef]
+          ? parseWritePaths(records[row.predecessorRef].writePaths.join(',')) : [];
         // Reconcile expanded successor scope only between its published predecessor and exact pending target.
         const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref && identity.lineage.some(link => link.predecessorRef === row.predecessorRef)
           && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
