@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
+import { canonicalJson, createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
@@ -118,6 +118,7 @@ test('explicit historical-check-gap recovery quarantines only an exact merged pr
   const receipt = s.apply(p);
   assert.equal(receipt.selectedChecksVerified, false);
   assert.deepEqual(receipt.historicalCheckGap, p.review.historicalCheckGap);
+  assert.doesNotThrow(() => canonicalJson(receipt));
   assert.equal(receipt.providerAuthority, false);
   assert.equal(receipt.claimRetired, false);
   assert.equal(existsSync(s.target), false);
