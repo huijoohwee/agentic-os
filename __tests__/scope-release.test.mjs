@@ -8,7 +8,7 @@ import { createReservationScopeReleasePlan, applyReservationScopeRelease } from 
 import * as laneRecords from '../src/lane-records.mjs';
 import { assertDisjointReservation } from '../src/worktree.mjs';
 
-function fixture(t, { state = 'published', pr = 17, changedReservedPath = false } = {}) {
+function fixture(t, { state = 'published', pr = 17, changedReservedPath = false, addedReservedPath = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-scope-release-'));
   const root = join(parent, 'repo'), lanePath = join(parent, 'lane');
   mkdirSync(root);
@@ -27,6 +27,8 @@ function fixture(t, { state = 'published', pr = 17, changedReservedPath = false 
   const ref = 'agent/device-0232231d4a19/commerce-data-view-embed';
   run(['worktree', 'add', '--quiet', '-b', ref, lanePath, base]);
   if (changedReservedPath) writeFileSync(join(lanePath, 'canvas', 'src', 'App.tsx'), 'export const value = 2;\n');
+  const addedPath = 'canvas/src/AddedReservation.ts';
+  if (addedReservedPath) writeFileSync(join(lanePath, addedPath), 'export const added = true;\n');
   writeFileSync(join(lanePath, 'docs', 'commerce.md'), 'commerce reservation\n');
   run(['add', '.'], lanePath);
   run(['commit', '--quiet', '--message', 'published candidate'], lanePath);
@@ -36,9 +38,9 @@ function fixture(t, { state = 'published', pr = 17, changedReservedPath = false 
     state, base: 'refs/remotes/origin/main', baseSha: base,
     worktree: lanePath, pr, createdAt: new Date(0).toISOString(),
     head: state === 'published' ? head : base,
-    writePaths: ['canvas/src/App.tsx', 'docs/commerce.md'] }, lanePath);
+    writePaths: ['canvas/src/App.tsx', ...(addedReservedPath ? [addedPath] : []), 'docs/commerce.md'] }, lanePath);
   t.after(() => rmSync(parent, { recursive: true, force: true }));
-  return { root, lanePath, ref, run };
+  return { root, lanePath, ref, run, addedPath };
 }
 
 const request = (s) => ({ cwd: s.root, ref: s.ref, path: 'canvas/src/App.tsx',
@@ -81,6 +83,22 @@ test('release retains exact authored bytes and frees only the handoff path for a
     protectedRef: 'refs/remotes/origin/main', records: laneRecords.load(s.root).lanes }),
   { reason: 'blocked-write-scope-overlap' });
   assert.equal(s.run(['show', `${s.ref}:canvas/src/App.tsx`]), 'export const value = 2;');
+});
+
+test('release retains an added lane file when the protected tree has no entry', (t) => {
+  const s = fixture(t, { addedReservedPath: true });
+  const plan = createReservationScopeReleasePlan({ ...request(s), path: s.addedPath });
+  assert.equal(plan.protectedPathEntry, null);
+  assert.equal(plan.retainedPathEvidence.bytesDiffer, true);
+  const receipt = applyReservationScopeRelease({ ...request(s), path: s.addedPath, plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.retainedAuthoredBytes, true);
+  assert.equal(receipt.retainedPathEvidence.lanePathEntry.oid, plan.pathEntry.oid);
+  assert.equal(receipt.retainedPathEvidence.protectedPathEntry, null);
+  assertDisjointReservation({ cwd: s.root,
+    ref: 'agent/device-0232231d4a19/sequence-import-publication-race', writePaths: [s.addedPath],
+    protectedRef: 'refs/remotes/origin/main', records: laneRecords.load(s.root).lanes });
+  assert.equal(s.run(['show', `${s.ref}:${s.addedPath}`]), 'export const added = true;');
 });
 
 test('active unpublished lane releases a clean claim without adopting its candidate head', (t) => {
