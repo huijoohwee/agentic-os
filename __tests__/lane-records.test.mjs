@@ -41,6 +41,25 @@ test('lane recovery cache marker accepts only the active or published unknown-di
     /recovery is invalid/u);
 });
 
+test('unrecoverable disposition binds the exact retained lane and refuses added authority', t => {
+  const root = repository(t), ref = 'agent/device/accepted', head = 'c'.repeat(40), worktree = '/tmp/accepted-lane';
+  const disposition = { schema: 'agentic-os/lane-recovery-disposition/v1',
+    outcome: 'unrecoverable-accepted', ref, head, worktree,
+    decision: 'accept-missing-checkout-bytes-as-unrecoverable',
+    recordedAt: '2026-10-09T00:00:00.000Z', preserveCheckout: true,
+    preserveRef: true, cleanupAuthorized: false, deploymentAuthorized: false };
+  const recovery = { schema: 'agentic-os/lane-recovery/v1',
+    dirtyState: 'unobservable-at-missing-path', disposition };
+  put({ ref, state: 'published', head, worktree, recovery }, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(get(ref, root).recovery.disposition)), disposition);
+  assert.throws(() => put({ ref, state: 'published', head, worktree,
+    recovery: { ...recovery, disposition: { ...disposition, ref: 'agent/device/other' } } }, root),
+  /recovery is invalid/u);
+  assert.throws(() => put({ ref, state: 'published', head, worktree,
+    recovery: { ...recovery, disposition: { ...disposition, cleanupAuthorized: true } } }, root),
+  /recovery is invalid/u);
+});
+
 test('provider projection retains review identity without accumulating review bodies', (t) => {
   const root = repository(t), body = 'review prose '.repeat(2000);
   const handoff = { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh',

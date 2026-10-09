@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { put } from '../src/lane-records.mjs';
+import { get, put } from '../src/lane-records.mjs';
 
 const REF = 'agent/device/completion-status';
 function fixture(t) {
@@ -115,6 +115,32 @@ test('restored active lane cannot be declared complete while missing checkout by
   assert.equal(report.closeout.adlcState, 'blocked');
   assert.equal(report.closeout.cleanupSatisfied, false);
   assert.equal(report.closeout.nextAction.id, 'resolve-unknown-lane-bytes');
+});
+
+test('accepted unrecoverable bytes are reported without granting cleanup or deployment', t => {
+  const subject = fixture(t), head = subject.git(subject.root, 'rev-parse', `refs/heads/${REF}`);
+  const worktree = subject.status().lane.path, disposition = {
+    schema: 'agentic-os/lane-recovery-disposition/v1', outcome: 'unrecoverable-accepted',
+    ref: REF, head, worktree, decision: 'accept-missing-checkout-bytes-as-unrecoverable',
+    recordedAt: '2026-10-09T00:00:00.000Z', preserveCheckout: true, preserveRef: true,
+    cleanupAuthorized: false, deploymentAuthorized: false,
+  };
+  put({ ref: REF, state: 'active', head, worktree, recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path', disposition,
+  } }, subject.root);
+  const report = subject.status();
+  assert.equal(report.lane.dirtyState, 'unrecoverable-accepted');
+  assert.equal(report.lane.recoveryDisposition.outcome, 'unrecoverable-accepted');
+  assert.ok(!report.findings.some(item => item.code === 'lane-dirty-state-unknown'));
+  assert.equal(report.grantsAuthority, false);
+  assert.equal(report.authorizesEffects, false);
+  assert.equal(report.cleanupVerified, false);
+  assert.equal(report.providerVerified, false);
+  assert.equal(get(REF, subject.root).recovery.dirtyState, 'unobservable-at-missing-path');
+  assert.equal(get(REF, subject.root).recovery.disposition.cleanupAuthorized, false);
+  assert.equal(get(REF, subject.root).recovery.disposition.deploymentAuthorized, false);
+  assert.equal(report.lane.path, worktree);
+  assert.equal(subject.git(subject.root, 'rev-parse', `refs/heads/${REF}`), head);
 });
 
 test('an external authority policy does not require workflow files in the target', (t) => {
