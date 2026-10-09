@@ -79,15 +79,18 @@ test('invalid policies cannot claim a narrow green plan', () => {
   }
 });
 
-test('whole-plan reuse binds revision, base and selection while allowing partition joins', t => {
+test('whole-plan reuse binds source, base and selection while allowing partition joins', t => {
   const { root } = fixture(t), first = consumerSnapshotReader({ root })();
   const value = policy(); value.checks[2].reuse = 'local-plan'; value.checks[2].inputs = ['*']; value.fallback = ['a'];
   const plan = selectValidationChecks(value, ['a/source.txt']);
   const fingerprint = (observed, selected = plan) => validationCheckDefinitions(value, selected, observed, 'owner').find(c => c.name === 'a').fingerprint;
   const original = fingerprint(first);
   assert.equal(fingerprint(first, selectValidationChecks(value, ['a/source.txt'], { only: ['a'] })), original);
-  for (const field of ['headRevision', 'requestedBase', 'baseRevision', 'sourceDigest', 'indexDigest', 'environmentDigest'])
+  for (const field of ['requestedBase', 'baseRevision', 'sourceDigest', 'environmentDigest'])
     assert.notEqual(fingerprint({ ...first, identity: { ...first.identity, [field]: 'changed' } }), original, field);
+  for (const field of ['headRevision', 'indexDigest'])
+    assert.equal(fingerprint({ ...first, identity: { ...first.identity, [field]: 'changed' } }), original,
+      `${field} is provenance when the exact source and base are unchanged`);
   assert.notEqual(fingerprint(first, selectValidationChecks(value, ['a/source.txt'], { all: true })), original);
 });
 
