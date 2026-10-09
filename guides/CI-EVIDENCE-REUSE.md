@@ -19,6 +19,9 @@ load_policy: on-demand
 
 [Shared cache policy](CACHE.md) routes cross-mechanism lifecycle decisions. This guide retains
 the exact provider/input bindings, freshness limits and fallback contract for CI evidence.
+Local source receipt reuse is a separate development optimization described in the
+[source-equivalent validation plan](prd-tad-adr-mvp-gtm-source-equivalent-validation-reuse.md).
+It never substitutes for provider-verified CI evidence or fresh protected execution.
 
 ## PRD / CI-EVIDENCE-001
 
