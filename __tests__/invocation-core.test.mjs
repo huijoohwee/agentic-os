@@ -42,8 +42,8 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
   const { entries, failures } = collectCatalogEntries(documents);
   assert.deepEqual(failures, []);
-  assert.equal(entries.length, 413);
-  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [135, 145, 133]);
+  assert.equal(entries.length, 416);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [136, 146, 134]);
   assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
   assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
   assert.ok(entries.some(e => e.token === '/python.learning'));
@@ -142,7 +142,7 @@ test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale res
   const before = collectCatalogEntries(original);
   original.delete(name);
   assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
-  assert.equal(before.entries.length, 413);
+  assert.equal(before.entries.length, 416);
   assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
 });
 
