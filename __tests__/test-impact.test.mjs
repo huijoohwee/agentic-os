@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkInputs, references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
+import { checkInputResolver, checkInputs, references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
 import { snapshot, LIMITS } from '../bin/agentic-os-test-inputs.mjs';
 import { writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 
@@ -145,6 +145,37 @@ test('actual source covers known budget/packaging regressions and preserves a sm
   const hook = select(['.githooks/pre-push']); assert.equal(hook.suites.length, hook.available);
   const contract = JSON.parse(readFileSync(new URL('../test/impact-contracts.json', import.meta.url)));
   assert.ok(contract.packaging.includes('space-path-entrypoints.test.mjs'));
+});
+
+test('reviewed lazy entrypoints select their route owners and bind deferred bytes', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url)), source = snapshot({ root, base: 'HEAD' });
+  const contract = JSON.parse(source.after.get('test/impact-contracts.json').text);
+  const select = changed => selectTests({ before: source.after, after: source.after, changed });
+  const inputs = checkInputResolver(source.after);
+  for (const edge of contract.deferred) {
+    const impact = select([edge.dependency]);
+    for (const name of edge.tests) {
+      assert.ok(paths(impact).includes(`__tests__/${name}`));
+      assert.ok(inputs(`__tests__/${name}`).paths.includes(edge.dependency));
+    }
+  }
+  const admission = select(['bin/agentic-os-admission.mjs']);
+  const admissionOwners = contract.deferred.find(edge => edge.dependency === 'bin/agentic-os-admission.mjs').tests
+    .map(name => `__tests__/${name}`);
+  assert.ok(admissionOwners.every(path => paths(admission).includes(path)));
+  assert.ok(!paths(admission).includes('__tests__/release-common-complete.test.mjs'));
+  assert.ok(checkInputs(source.after, '__tests__/doctor-start-regressions.test.mjs').paths
+    .includes('bin/agentic-os-admission.mjs'));
+  assert.ok(!checkInputs(source.after, '__tests__/release-common-complete.test.mjs').paths
+    .includes('bin/agentic-os-admission.mjs'));
+
+  const docs = select(['docs/START-WORKFLOW.md']);
+  assert.ok(paths(docs).includes('__tests__/runtime-budgets.test.mjs'));
+  assert.ok(paths(docs).includes('__tests__/composition-runtime-check.test.mjs'));
+  assert.ok(!paths(docs).includes('__tests__/workspace-startup.test.mjs'));
+  assert.throws(() => validateContracts({ ...contract, deferred: [{
+    importer: 'bin/agentic-os.mjs', dependency: 'bin/agentic-os-argv.mjs', tests: ['admission-economy.test.mjs'],
+  }] }, source.after), /contracts/);
 });
 
 test('150 mapped planning edits select document checks without path-count escalation', () => {

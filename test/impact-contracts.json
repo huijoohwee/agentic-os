@@ -36,6 +36,37 @@
       "tests": ["workspace-startup.test.mjs", "workspace-sync.test.mjs", "workspace-check.test.mjs", "startup-memory.test.mjs"]
     }
   ],
+  "deferred": [
+    {
+      "importer": "bin/agentic-os.mjs",
+      "dependency": "bin/agentic-os-admission.mjs",
+      "tests": [
+        "admission-economy.test.mjs",
+        "doctor-start-regressions.test.mjs",
+        "land-cache-recovery.test.mjs",
+        "lane-alignment.test.mjs",
+        "lane-rebind.test.mjs",
+        "lean-sprint-completion.test.mjs",
+        "mcp-server.test.mjs",
+        "operation-lock-integrity.test.mjs",
+        "provider-cli-profile.test.mjs",
+        "startup-memory.test.mjs",
+        "status-regressions.test.mjs",
+        "workspace-startup.test.mjs"
+      ]
+    },
+    {
+      "importer": "bin/agentic-os-checks.mjs",
+      "dependency": "bin/composition-runtime-check.mjs",
+      "tests": [
+        "check-discovery.test.mjs",
+        "clonability.test.mjs",
+        "composition-architecture.test.mjs",
+        "composition-read-efficiency.test.mjs",
+        "composition-runtime-check.test.mjs"
+      ]
+    }
+  ],
   "dependencies": {
     "__tests__/lib/alignment-audit-fast-check.mjs": ["package.json", "package-lock.json"],
     "bin/alignment-audit/guideline-lines.mjs": ["bin/alignment-audit/guideline-lines.mjs"],
