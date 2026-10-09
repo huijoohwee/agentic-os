@@ -148,7 +148,7 @@
       "sourceSha256": "31b9ea80832ae391bb4cccef87c9ddc1e0d35569de1175f6dc63bf5efaf8e2fd",
       "destination": "runtime/agents/docs/PROMPT-PRESETS.md",
       "export": "./agent-docs/PROMPT-PRESETS.md",
-      "sha256": "11bd99341fb998105bffd3ea4c9ba100f967756d5cbd6f1f254bc6928141f9bc"
+      "sha256": "f591419b291c489e70cb2b7d61bdc90993f9598a982c892da7bb866a1b903adf"
     },
     {
       "source": "docs/AGENT-TEAM.md",
