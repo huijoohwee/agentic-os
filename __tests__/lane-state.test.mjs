@@ -8,7 +8,35 @@ import {
   STATES,
   REFUSALS,
   PROOF_KINDS,
+  successorLineage,
 } from '../src/lane-state.mjs';
+import { governanceDigest } from '../src/governance.mjs';
+
+function reservationPathRelease(overrides = {}) {
+  const body = {
+    schema: 'agentic-os/reservation-path-release/v1',
+    path: 'src/feature.mjs',
+    laneHead: '1'.repeat(40),
+    protectedHead: '2'.repeat(40),
+    lanePathEntry: { mode: '100644', type: 'blob', oid: '3'.repeat(40) },
+    protectedPathEntry: { mode: '100644', type: 'blob', oid: '4'.repeat(40) },
+    bytesDiffer: true,
+    ...overrides,
+  };
+  return { ...body, digest: governanceDigest(body) };
+}
+
+function successorRecord(reservationPathReleases) {
+  return {
+    ref: 'agent/device/successor',
+    handoff: {
+      schema: 'agentic-os-lane-successor/v1',
+      predecessorRef: 'agent/device/predecessor',
+      predecessorHead: '5'.repeat(40),
+      ...(reservationPathReleases === undefined ? {} : { reservationPathReleases }),
+    },
+  };
+}
 
 test('unimplemented restack and ejection events are refused', () => {
   assert.equal(transition('queued', 'eject', {}).reason, REFUSALS.ILLEGAL);
@@ -121,4 +149,37 @@ test('an undefined event is refused rather than silently ignored', () => {
   const result = transition('active', 'deploy', {});
   assert.equal(result.ok, false);
   assert.equal(result.reason, REFUSALS.ILLEGAL);
+});
+
+test('successor lineage accepts exact scope-release receipts while retaining strict fields', () => {
+  const record = successorRecord([reservationPathRelease()]);
+  assert.equal(successorLineage(record), record.handoff);
+  const legacy = successorRecord();
+  assert.equal(successorLineage(legacy), legacy.handoff);
+  assert.equal(successorLineage({ ...record, handoff: { ...record.handoff, extra: true } }), false);
+  const normalized = successorRecord([reservationPathRelease()]);
+  normalized.handoff = Object.assign(Object.create(null), normalized.handoff);
+  normalized.handoff.reservationPathReleases = normalized.handoff.reservationPathReleases
+    .map(value => Object.assign(Object.create(null), value));
+  assert.equal(successorLineage(normalized), normalized.handoff);
+});
+
+test('successor lineage rejects altered, malformed, duplicate, or unbound scope-release evidence', () => {
+  const valid = reservationPathRelease();
+  const altered = { ...valid, bytesDiffer: false };
+  const wrongDigest = { ...valid, digest: '0'.repeat(64) };
+  const extraField = { ...valid, note: 'unbound' };
+  const invalidPath = reservationPathRelease({ path: '../outside.mjs' });
+  const invalidEntry = reservationPathRelease({ lanePathEntry: { mode: '120000', type: 'blob', oid: '3'.repeat(40) } });
+  for (const evidence of [altered, wrongDigest, extraField, invalidPath, invalidEntry])
+    assert.equal(successorLineage(successorRecord([evidence])), false);
+  assert.equal(successorLineage(successorRecord([valid, valid])), false);
+  assert.equal(successorLineage(successorRecord(Array(1025).fill(valid))), false);
+});
+
+test('successor lineage accepts a receipt proving the released path already matched protected bytes', () => {
+  const entry = { mode: '100644', type: 'blob', oid: '6'.repeat(40) };
+  const evidence = reservationPathRelease({ path: 'docs/unchanged.md',
+    lanePathEntry: { ...entry }, protectedPathEntry: { ...entry }, bytesDiffer: false });
+  assert.equal(successorLineage(successorRecord([evidence])).predecessorRef, 'agent/device/predecessor');
 });
