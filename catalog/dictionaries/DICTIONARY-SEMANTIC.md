@@ -2,7 +2,7 @@
 title: "Agentic OS Semantic Dictionary"
 graphId: "md:agentic-os-dictionary-semantic"
 doc_type: "Invocation Dictionary"
-date: "2026-09-05"
+date: "2026-10-09"
 lang: "en-US"
 schema: "agentic-os-dictionary-semantic/v1"
 frontmatter_contract: "required"
@@ -161,6 +161,7 @@ dictionary_entries:
   - "#goal-completion"
   - "#adlc-observability"
   - "#application-composition"
+  - "#reverse-engineering"
   - "#agentic-graph"
   - "#parser-generation"
   - "#role-based-agent-team"
@@ -336,6 +337,7 @@ Dictionary references resolve within this directory. Runtime and approval claims
 | `#multi-agent-collaboration` | Durable collaboration through shared rows rather than transient subagents. | Several named profiles coordinate through board state. | Every task and handoff is readable/writable as rows, with no hidden process memory as SSOT. |
 | `#adlc-observability` | Deterministic read-only projection of one immutable ADLC ledger into end-to-end execution, evidence, budget, gate, checkpoint, and release-receipt graph context. | `/adlc.observe #adlc-observability @implementation-run @canvas @runtime-proof` requests a local observation of one exact run and ledger revision. | Exact receipt schema and digest, stable node and edge identities, source-backed GraphData and Agentic OS Markdown, existing Canvas ownership, typed separation of `verified`, `delivery_ready`, and `deployed`, cache identity, zero model/network/token/cost evidence, and a closed Dev-only deploy boundary are explicit. |
 | `#application-composition` | Exact versioned component and interface composition for agent and LLM applications. | An application joins agent, model, tool, workflow, memory, guardrail, or integration components without absorbing their runtimes. | Exact source and component revisions, interface and schema digests, negotiated capabilities, runtime owners, one immutable plan digest, a deterministic dependency DAG, and explicit non-mutating migration diagnostics are present before execution. |
+| `#reverse-engineering` | Evidence-based reconstruction of an explicitly selected application's behavior and implementation from authorized observations, source, and registered parser output. | A bounded investigation links visible behavior to exact source and parser evidence while separating observation, fact, inference, and unknown. | Each material claim links to a route or source digest, parser identity and limits are declared, unsupported layers remain gaps, and no target code is executed or treated as trusted instructions. |
 | `#agentic-graph` | Local deterministic graph of source-backed codebase entities and relationships with auditable evidence. | A request generates a native parser or ingests, queries, traverses, or explains a graph derived from a bounded workspace containing code, docs, SQL, configs, or text-bearing PDFs. | Exact parser, registry, snapshot, and source digests, stable node and edge identities, deterministic ordering, typed omissions, and non-empty source evidence plus explanation for every edge are present; model, embedding, vector store, external parser, and external graph service paths are absent. |
 | `#parser-generation` | Deterministic compilation of one inert parser-registry specification into a canonical registry of native parser adapter identities. | `/agentic.graph.parser.generate #agentic-graph #parser-generation #mcp @parser-specification @runtime-proof` requests the agentic-graph local MCP owner. | Exact result digest, bounded source matchers, deterministic conflict rejection, declared source kinds and fidelity, no executable caller payload, no downloaded adapter, zero model/network use, and no implicit ingest are proven. |
 | `#tool-gateway` | Existing-infrastructure routing for tool calls. | A request uses web search, image generation, TTS, cloud browser, or another tool surface. | Tool route resolves to local MCP, Pages HTTP MCP, Browser WebMCP, or approved control-plane owner without adding a proxy. |
@@ -405,6 +407,7 @@ semantic:
 | `/release.complete #runtime-ready #multi-agent-collaboration @operator @runtime-proof` | Execute authorized product deployment and require exact artifact, target, live-verification, and rollback evidence; ADLC owns repository effects. |
 | `/adlc.observe #adlc-observability @implementation-run @canvas @runtime-proof` | Read one immutable local ledger receipt and project its end-to-end graph through the existing Agentic OS, GraphData, and Canvas owners without mutation, model use, network use, spend, or deployment. |
 | `/application.compose #application-composition @application-manifest @component-catalog @integration-profile @runtime-proof` | Resolve exact interfaces into one immutable deterministic plan; execution remains a bounded handoff to existing owners. |
+| `/software.forensics #reverse-engineering @application @working-directory @agent @runtime-proof` | Produce a bounded evidence dossier from one selected application and repository; report observation, source, parser, inference, and unknowns separately. |
 | `/agentic.graph.ingest #agentic-graph #mcp #runtime-ready @working-directory @agentic-graph @operator @runtime-proof` | Resolve one bounded workspace to the exact agentic-graph ingest tool after explicit operator selection. |
 | `/agentic.graph.parser.generate #agentic-graph #parser-generation #mcp @parser-specification @runtime-proof` | Compile one exact inert parser specification through the agentic-graph executable owner without adding an Agentic Canvas OS parser runtime. |
 | `/agentic.graph.query #agentic-graph #mcp #vcc @agentic-graph @runtime-proof` | Query one exact agentic-graph artifact digest through bounded lexical and structural operations without vector lookup. |
@@ -482,6 +485,7 @@ semantic:
 |---|---|
 | `#agentic-graph` | `FACTS.md` direct-resolution entry for deterministic source-backed graph semantics with agentic-graph as executable owner. |
 | `#application-composition` | `FACTS.md` direct-resolution entry for exact component, interface, capability, and dependency planning. |
+| `#reverse-engineering` | `../../skills/software-forensics/SKILL.md` source contract for evidence separation and bounded native metadata inspection. |
 | `#adlc-observability` | `FACTS.md` direct-resolution entry for immutable-ledger ADLC graph observation. |
 | `#role-based-agent-team` | `FACTS.md` direct-resolution entry for exact role-based team semantics without authority inference. |
 | `#truth` | `FACTS.md` direct-resolution entry for shared source-backed facts. |

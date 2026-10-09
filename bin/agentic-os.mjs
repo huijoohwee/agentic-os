@@ -350,6 +350,7 @@ async function main() {
   if (command === 'cleanup') return (await import('./agentic-os-cleanup-user.mjs')).runUnifiedCleanup(root, argv, out);
   if (command === 'pin') return (await import('./agentic-os-pin.mjs')).runPinCheck(root, argv, out);
   if (command === 'context') return (await import('./agentic-os-context.mjs')).runContext(root, argv, out);
+  if (command === 'source-evidence') return (await import('./agentic-os-source-evidence.mjs')).runSourceEvidenceBundle(argv, out);
   const setupCommand = ['setup', 'git-configure', 'guard-install'].includes(command);
   const trustedProfile = trustedRepositoryProfile(root, { allowUnanchored: setupCommand });
   const { profile } = trustedProfile;
