@@ -102,6 +102,44 @@ test('restore mode remounts the exact existing branch and leaves every ref uncha
   assert.equal(get(f.ref, f.root).head, head); assert.equal(existsSync(f.lane), true);
 });
 
+test('published restore requires an exact live remote head and preserves refs without claiming dirty bytes', t => {
+  const f = fixture(t); write(f.lane, 'owned/published.txt', 'retained commit\n');
+  const head = commit(f.lane, 'published candidate');
+  git(f.lane, 'push', '--quiet', 'origin', f.ref);
+  const current = get(f.ref, f.root);
+  putExact({ ...current, state: 'published', pr: 42, head }, current, f.root);
+  const beforeRefs = refs(f.root);
+  git(f.root, 'worktree', 'remove', f.lane);
+  const plan = planLaneRebind({ cwd: f.root, ref: f.ref, mode: 'restore' });
+  assert.equal(plan.remoteHead, head); assert.equal(plan.restoredDirtyState, 'unobservable-at-missing-path');
+  const receipt = applyLaneRebind({ cwd: f.root, planPath: savePlan(f, plan, 'published-restore.json'),
+    authorization: authorize(plan), stopped: true });
+  assert.equal(receipt.authoredBytesPreserved, false); assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.cleanupAuthority, false); assert.equal(refs(f.root), beforeRefs);
+  assert.equal(git(f.lane, 'rev-parse', 'HEAD'), head);
+  assert.equal(get(f.ref, f.root).state, 'published'); assert.equal(get(f.ref, f.root).head, head);
+  assert.equal(readFileSync(join(f.lane, 'owned/published.txt'), 'utf8'), 'retained commit\n');
+});
+
+test('published restore refuses a missing or moved remote lane ref before mounting', t => {
+  const f = fixture(t); write(f.lane, 'owned/published.txt', 'candidate\n');
+  const head = commit(f.lane, 'candidate'), current = get(f.ref, f.root);
+  putExact({ ...current, state: 'published', pr: 43, head }, current, f.root);
+  git(f.root, 'worktree', 'remove', f.lane);
+  const beforeRefs = refs(f.root);
+  assert.throws(() => planLaneRebind({ cwd: f.root, ref: f.ref, mode: 'restore' }),
+    error => error.reason === 'blocked-lane-rebind-published-head');
+  assert.equal(existsSync(f.lane), false); assert.equal(refs(f.root), beforeRefs);
+});
+
+test('published lane cannot use mounted rebind mode', t => {
+  const f = fixture(t), current = get(f.ref, f.root);
+  putExact({ ...current, state: 'published', pr: 44 }, current, f.root);
+  assert.throws(() => planLaneRebind({ cwd: f.root, ref: f.ref, mode: 'mounted' }),
+    error => error.reason === 'blocked-lane-rebind-record');
+  assert.equal(existsSync(f.lane), true);
+});
+
 test('record drift and missing stopped-writer attestation fail before any worktree mutation', t => {
   const f = fixture(t); write(f.lane, 'owned/committed.txt', 'authored\n'); commit(f.lane, 'authored');
   git(f.root, 'worktree', 'remove', f.lane);
