@@ -204,7 +204,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (row) fail('recovery-required', 'A retained allocation still consumes capacity; reconcile it without another checkout');
         const limit = Math.min(selected?.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS);
         const capacity = selected ? checkoutCapacity(selected, profile.repository, worktrees(root), explicitLimit) : { consumed: 0 };
-        if (limit === 0 || capacity.consumed >= limit) fail('capacity', 'Mission checkout allowance is exhausted; complete an existing eligible lane', { capacity: { ...capacity, limit } });
+        if (limit === 0 || capacity.consumed >= limit) fail('capacity', limit === 0 ? `Mission ${selected?.manifest.id ?? 'new task'} allows no checkout. Declare a separate task with a positive --checkout-limit.` : `Checkout allowance exhausted for workflow ${selected.manifest.id} (${capacity.consumed}/${limit}). Resume/reconcile its allocation or pass a committed --plan for a new task.`, { capacity: { ...capacity, limit } });
       }
     }
     if (result !== 0) {
