@@ -13,6 +13,7 @@
     "./DOCUMENTS.md": "./DOCUMENTS.md",
     "./FLEET.md": "./FLEET.md",
     "./skills/canvas/SKILL.md": "./skills/canvas/SKILL.md",
+    "./skills/software-forensics/SKILL.md": "./skills/software-forensics/SKILL.md",
     "./integration-policy": "./src/lane-state.mjs",
     "./records": "./src/governance.mjs",
     "./records/authority-evidence": "./src/authority-record.mjs",
@@ -43,6 +44,7 @@
     "./context/continuity": "./runtime/reasoning-continuity.mjs",
     "./context/json": "./runtime/json-contract.mjs",
     "./context/codebase": "./bin/agentic-os-context-index.mjs",
+    "./forensics/source-evidence": "./runtime/source-evidence-contract.mjs",
     "./generation": "./bin/agentic-os-generation.mjs",
     "./skills/esp-idf/SKILL.md": "./skills/esp-idf/SKILL.md",
     "./skills/esp-idf/references/editors.md": "./skills/esp-idf/references/editors.md",
@@ -194,7 +196,8 @@
     "agentic-os-release-common": "bin/agentic-os-release-common-wrapper.mjs",
     "agentic-os-authority": "bin/agentic-os-authority.mjs",
     "agentic-os-transition": "bin/agentic-os-transition.mjs",
-    "agentic-os-mcp": "bin/agentic-os-mcp.mjs"
+    "agentic-os-mcp": "bin/agentic-os-mcp.mjs",
+    "agentic-os-source-evidence": "bin/agentic-os-source-evidence.mjs"
   },
   "files": [
     ".agentic-os.json",

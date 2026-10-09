@@ -16,10 +16,10 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
-  // 2026-10-09 selected-source transplant: one lazy recovery source owner; no runtime dependency.
-  // Measured source cap 15285 -> 15459; 2026-10-09 raise bin cap +97 for bounded cache-loss recertification: one exact remote query per phase, no fetch/provider API, and closeout blocks on unknown bytes.
-  modules: 48,
-  totalLines: 15459,
+  // 2026-10-10: bounded GitHub REST fallback preserves source-bound review observation during GraphQL quota exhaustion.
+  // The source-evidence CLI and contract add one CLI and one runtime module; both remain lazy and provider-neutral.
+  modules: 49,
+  totalLines: 15536,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -32,9 +32,9 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 E18: +72 native auto-merge lines in existing completion owner; no module added.
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
-  binModules: 112,
-  binLines: 24100,
-  runtimeModules: 96,
+  binModules: 113,
+  binLines: 24180,
+  runtimeModules: 97,
   runtimeLines: 23023,
 });
 
