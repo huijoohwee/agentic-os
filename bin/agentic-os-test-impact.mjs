@@ -1,10 +1,8 @@
-/** Conservative source impact: literal references plus reviewed non-import contracts. No execution. */
+/** Conservative source impact with exact reviewed lazy-route contracts. No execution. */
 import { posix } from 'node:path';
 
-export const IMPACT_VERSION = 'agentic-os/test-impact/v2';
-export const CONTRACT_PATH = 'test/impact-contracts.json';
-const testPath = name => `__tests__/${name}`;
-const isTest = path => /^__tests__\/[^/]+\.test\.mjs$/u.test(path);
+export const IMPACT_VERSION = 'agentic-os/test-impact/v2', CONTRACT_PATH = 'test/impact-contracts.json';
+const testPath = name => `__tests__/${name}`, isTest = path => /^__tests__\/[^/]+\.test\.mjs$/u.test(path);
 const matches = (path, input) => input.endsWith('/') ? path.startsWith(input)
   : input === 'bin/agentic-os-test' ? path.startsWith(input) : path === input;
 const unique = values => [...new Set(values)].sort();
@@ -12,8 +10,7 @@ const unique = values => [...new Set(values)].sort();
 export function validateContracts(value, files) {
   const fail = () => { throw new Error('blocked-test-impact-contracts'); };
   if (!value || value.schema !== 'agentic-os/test-impact-contracts/v1'
-    || !['broad,dependencies,packaging,rules,schema,sentinels',
-      'broad,dependencies,isolated,packaging,rules,schema,sentinels'].includes(Object.keys(value).sort().join())) fail();
+    || !/^broad,(?:deferred,)?dependencies,(?:isolated,)?packaging,rules,schema,sentinels$/u.test(Object.keys(value).sort().join())) fail();
   const paths = list => Array.isArray(list) && list.length <= 256 && list.every(path =>
     typeof path === 'string' && path.length > 0 && path.length <= 256 && !/[\\\x00-\x1f]/u.test(path)
     && !path.startsWith('/') && !path.split('/').includes('..')) && new Set(list).size === list.length;
@@ -31,14 +28,19 @@ export function validateContracts(value, files) {
   for (const [path, inputs] of Object.entries(value.dependencies))
     if (!files.has(path) || !paths(inputs) || !inputs.length || inputs.some(input =>
       ![...files.keys()].some(candidate => matches(candidate, input)))) fail();
+  const deferred = value.deferred ?? [];
+  if (!Array.isArray(deferred) || deferred.length > 32 || deferred.some(edge => !edge || typeof edge !== 'object'
+    || Array.isArray(edge) || Object.keys(edge).sort().join() !== 'dependency,importer,tests' || !files.has(edge.importer)
+    || !files.has(edge.dependency) || !tests(edge.tests) || !edge.tests.length
+    || !references(edge.importer, files.get(edge.importer).text, files).lazyDependencies.has(edge.dependency))) fail();
   return value;
 }
 
 // A superset of imports: also includes literal file reads, subprocess entrypoints and re-exports.
 // Undeclared computed imports are opaque; no changed input is assumed independent of them.
 export function references(path, text, files, exports = {}) {
-  const dependencies = new Set(), unresolved = [];
-  const addReference = original => {
+  const dependencies = new Set(), lazyDependencies = new Set(), unresolved = [];
+  const addReference = (original, target = dependencies) => {
     const specifier = original.split(/[?#]/u)[0];
     if (specifier.includes('${') || specifier.includes('\\')) return;
     const exported = specifier === 'agentic-os' ? exports['.']
@@ -48,9 +50,10 @@ export function references(path, text, files, exports = {}) {
     // Also recognize split join(root, 'bin', 'entry.mjs') arguments by unique basename.
     if (!specifier.includes('/') && /\.(?:mjs|json|md|txt)$/u.test(specifier))
       candidates.push(...[...files.keys()].filter(file => posix.basename(file) === specifier));
-    for (const candidate of candidates) if (candidate !== path && files.has(candidate)) dependencies.add(candidate);
+    for (const candidate of candidates) if (candidate !== path && files.has(candidate)) target.add(candidate);
   };
   for (const match of text.matchAll(/(["'`])((?:\\[\s\S]|(?!\1)[^\\\r\n])*)\1/gu)) addReference(match[2]);
+  for (const match of text.matchAll(/\bimport\s*\(\s*(['"])([^'"\n]+)\1\s*\)/gu)) addReference(match[2], lazyDependencies);
   const modulePatterns = [
     /\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?['"]([^'"\n]+)['"]/gu,
     /\b(?:import|require)\s*\(\s*['"]([^'"\n]+)['"]/gu,
@@ -68,23 +71,20 @@ export function references(path, text, files, exports = {}) {
   if (/\b(?:import|require)\s*\(\s*[^'"\s]/u.test(text)) unresolved.push('computed-module-load');
   if (/\bimport\.meta\.resolve\s*\(\s*[^'"\s]/u.test(text)) unresolved.push('computed-module-resolution');
   if (/\b(?:import|export|require)\s*\/[/*]/u.test(text)) unresolved.push('comment-separated-module-load');
-  return { dependencies, unresolved };
+  return { dependencies, lazyDependencies, unresolved };
 }
 
 function reverseGraph(files, contracts) {
   const graph = new Map(), opaque = new Set();
-  let exports = {};
-  try { exports = JSON.parse(files.get('package.json')?.text ?? '{}').exports ?? {}; } catch { opaque.add('package.json'); }
-  const link = (dependency, consumer) => {
-    if (!graph.has(dependency)) graph.set(dependency, new Set());
-    graph.get(dependency).add(consumer);
-  };
+  let exports = {}; try { exports = JSON.parse(files.get('package.json')?.text ?? '{}').exports ?? {}; } catch { opaque.add('package.json'); }
+  const link = (dependency, consumer) => { if (!graph.has(dependency)) graph.set(dependency, new Set()); graph.get(dependency).add(consumer); };
   for (const [path, file] of files) {
     if (!path.endsWith('.mjs')) continue;
     const found = references(path, file.text, files, exports);
-    found.dependencies.forEach(dependency => link(dependency, path));
+    for (const dependency of found.dependencies) if (!contracts.deferred?.some(edge => edge.importer === path && edge.dependency === dependency && found.lazyDependencies.has(dependency))) link(dependency, path);
     if (found.unresolved.length && !Object.hasOwn(contracts.dependencies, path)) opaque.add(path);
   }
+  for (const edge of contracts.deferred ?? []) for (const name of edge.tests) link(edge.dependency, testPath(name));
   for (const [consumer, inputs] of Object.entries(contracts.dependencies))
     for (const path of files.keys()) if (inputs.some(input => matches(path, input)) && path !== consumer) link(path, consumer);
   return { graph, opaque };

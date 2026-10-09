@@ -1,18 +1,18 @@
 ---
 title: "Repository Validation PRD-TAD-ADR-MVP-GTM"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.2"
+version: "1.1.3"
 owner: "agentic-os"
-date: "2026-10-06"
+date: "2026-10-09"
 lang: "en-US"
 frontmatter_contract: "required"
 load_policy: "on-demand"
 continuity_id: "REPOSITORY-VALIDATION-001"
-prd_revision: "1.1.2"
-tad_revision: "1.1.2"
-adr_revision: "1.1.2"
-mvp_revision: "1.1.2"
-gtm_revision: "1.1.2"
+prd_revision: "1.1.3"
+tad_revision: "1.1.3"
+adr_revision: "1.1.3"
+mvp_revision: "1.1.3"
+gtm_revision: "1.1.3"
 status: "implementation"
 ---
 
@@ -23,7 +23,7 @@ the consumer check-input, receipt-reuse and validation authority contract.
 
 ## PRD
 
-`REPOSITORY-VALIDATION-001@1.1.2`: a solo maintainer changes one source concern and
+`REPOSITORY-VALIDATION-001@1.1.3`: a solo maintainer changes one source concern and
 runs the checks affected by its declared inputs and dependencies through the pinned
 Agentic OS owner. Context: repeated whole-repository checks delay delivery. Intent:
 reduce avoidable execution without changing test assertions or protected authority.
@@ -47,15 +47,17 @@ remains the reusable policy and native OS test-runner guide.
 | V08 | Every actual command updates bounded private cost observations. Learned order preserves selected coverage, prerequisites and mandatory precedence; stale or incompatible observations restore declared order. Reuse never counts as new execution. |
 | V09 | Before an expensive diagnostic retry, inspect retained evidence, identify the unanswered question and bind its incremental work to source/context and explicit limits. Partial traces, sampled cutoffs and unavailable resources remain qualified; fresh CI and mandatory coverage remain intact. |
 | V10 | Readiness proof inspection traverses the Markdown inventory once per invocation and reuses its count; it never reuses document bytes or proof results across invocations. |
+| V11 | A reviewed lazy-import edge narrows impact to declared route suites only when the exact importer/dependency pair is present and every listed suite's input fingerprint binds the deferred bytes. Missing or stale edge contracts fail closed. |
 
 V01–V06 are exercised by `__tests__/repository-validation*.test.mjs` and the existing
 `__tests__/test-{impact,runner}.test.mjs`; V10 is checked by
 `__tests__/readiness-proof.test.mjs`. V07 requires each consumer's reviewed
-package pin, script/workflow diff, protected checks and exact integration receipt.
+package pin, script/workflow diff, protected checks and exact integration receipt. V11
+is checked by `__tests__/test-impact.test.mjs` against the repository's registered lazy edges.
 
 ## TAD and ADR
 
-TAD `1.1.2` consumes PRD `1.1.2`; ADR `1.1.2` binds V01–V10. Agentic OS owns the
+TAD `1.1.3` consumes PRD `1.1.3`; ADR `1.1.3` binds V01–V11. Agentic OS owns the
 selector, process bounds, input observation and receipt reuse. Each consumer owns
 `.agentic-os-validation.json`: source input boundaries, prerequisite relationships,
 existing commands and conservative fallback. Do not copy the executor or add a
@@ -82,6 +84,10 @@ contracts in the boundaries. Use `reuse: never` for browser/provider checks,
 external files, ignored generated inputs and dependencies whose actual bytes are
 not bound. Installed dependencies are not fingerprinted by their lockfile alone.
 The native OS source runner retains its existing static-import and contract graph.
+Its `deferred` impact entries are an exact edge contract for source-literal dynamic
+imports: changed deferred modules select the listed route suites, and those suites
+bind the module bytes in their fingerprints. Do not defer an edge when its runtime
+consumers are unknown; ordinary static and undeclared dynamic edges stay conservative.
 
 ### Diagnostic decision contract
 
@@ -97,6 +103,11 @@ stages may read unbound generated or provider inputs, so Git identity alone cann
 Keep existing declared-input failure guards, command locks, deadlines, fresh CI and failure retention.
 No new cache, profiler, watcher, controller, dependency or runtime assertion is added. Rollback reverts
 these two guide changes while preserving every prior diagnostic and release receipt.
+
+ADR V11 selects exact test-route contracts for reviewed lazy CLI imports over file-level fanout from
+every importer. The importer/dependency pair must exist in source, the listed suites must cover its
+runtime routes, and their check fingerprints must bind the deferred module bytes. All other imports
+keep their conservative edges; this cannot skip a required test or make local reuse authoritative for CI.
 
 ### Continuous resource feedback
 
@@ -215,3 +226,22 @@ partial evidence, input uncertainty and gate preservation. These prove the guide
 against arbitrary tools. Protected source integration and consumer adoption remain separate receipts.
 GTM V09: the retained compiler investigation is the free local pilot; compare compatible executed work
 before reporting savings. CPU, model tokens, cash cost, demand and willingness to pay stay unmeasured.
+
+## V11 — Exact lazy-route impact
+
+The source selector now keeps each tested lazy CLI edge explicit. A change to a deferred module selects
+its declared route suites directly; every such suite's check-input fingerprint includes that module's
+bytes. An invalid, missing or changed importer/dependency pair fails before validation. Static imports,
+computed loaders and unreviewed dynamic imports retain the prior conservative behavior.
+
+Replay of the prior four-path admission/docs candidate planned 37 of 247 suites with the reviewed route
+contracts, versus 77 of 247 before this change: 40 fewer planned suites (52%). The prior runner estimated
+337 seconds of command time; no compatible after-run duration has been measured, so no elapsed-time or
+cash savings are claimed. The four changed files add no package, service, model call, token use or always-
+load bytes. Sprint cap: four files, 8 KiB additions, zero modules/dependencies, one `deferred` contract key,
+20 active minutes; protected CI remains fresh and mandatory. Rollback reverts the four-file source candidate
+and preserves receipts.
+
+GTM V11: use the free local maintainer loop to compare planned coverage first, then compatible elapsed
+command time on a later unchanged cohort. First-dollar conversion, demand, and willingness to pay remain
+unmeasured; this change makes no buyer or Production claim.

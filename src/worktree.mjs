@@ -364,16 +364,16 @@ export function runPublishedLaneSuccessor({ cwd, predecessorRef: boundRef, scope
 export function commitReservedChanges({ cwd, writePaths, message }) {
   if (typeof message !== 'string' || message.trim().length === 0 || message.length > 500)
     throw writeScopeError('blocked-invalid-commit-message', '--message must contain 1-500 characters');
-  const before = worktreeCleanupRisks(cwd, { includeIgnored: false }),
-    changed = [...new Set([...before.tracked, ...before.owned, ...before.hidden])].sort();
+  const before = worktreeCleanupRisks(cwd, { includeIgnored: false }), stagedBefore = decodeNulFields(git(['diff', '--cached', '--name-only', '--no-renames', '-z'], { cwd, binary: true })),
+    changed = [...new Set([...before.tracked, ...before.owned, ...before.hidden, ...stagedBefore])].sort();
   if (changed.length === 0) return null;
   const outside = changed.filter((path) => !pathIsReserved(path, writePaths));
   if (outside.length > 0) throw writeScopeError('blocked-write-outside-reservation',
     `preserve ${outside.length} path(s) outside this lane reservation`, { paths: outside });
-  const pending = [...decodeNulFields(git(['diff', '--name-only', '--no-renames', '-z'], { cwd, binary: true })), ...before.owned]
+  const pending = [...new Set([...decodeNulFields(git(['diff', '--name-only', '--no-renames', '-z'], { cwd, binary: true })), ...before.owned])]
     .filter((path) => pathIsReserved(path, writePaths));
   if (pending.length > 0) git(['--literal-pathspecs', 'add', '--', ...pending], { cwd });
-  const staged = gitLines(['diff', '--cached', '--name-only'], { cwd }); if (staged.length === 0)
+  const staged = decodeNulFields(git(['diff', '--cached', '--name-only', '--no-renames', '-z'], { cwd, binary: true })); if (staged.length === 0)
     throw writeScopeError('blocked-empty-commit', 'no reserved changes were staged');
   const stagedOutside = staged.filter((path) => !pathIsReserved(path, writePaths));
   if (stagedOutside.length > 0) throw writeScopeError('blocked-staged-outside-reservation',
