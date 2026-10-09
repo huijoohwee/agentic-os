@@ -6,7 +6,7 @@ import { acquireOperationLock, finishOperationLock, currentBranch, decodeNulFiel
   fetch as gitFetch, observeGit, observeGitLines, remoteRefSha, remoteTransport, repoRoot, trackedChanges,
   untrackedPaths, worktrees } from '../src/git.mjs';
 import { snapshotWorktreeEntry } from '../src/file-integrity.mjs';
-import { assertDevice, deviceSegment, isLaneRef, laneRef } from '../src/lane-id.mjs';
+import { assertDevice, deviceSegment, isLaneRef, laneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { DEFAULT_TASK_CHECKOUTS, MAX_TASK_CHECKOUTS, assertCheckoutPlacement } from '../src/canonical-resources.mjs';
 import * as store from '../src/lane-records.mjs';
 import { readmissionPredecessors } from '../src/lane-state.mjs';
@@ -328,9 +328,61 @@ function laneDirtyEvidence(path) {
   const status = observeGit(['status', '--porcelain=v2', '-z', '--untracked-files=all'], { cwd: path, binary: true });
   return { entries, indexSha256: rebindHash(index), statusSha256: rebindHash(status), bytes: total };
 }
-function planLaneRebindCore({ cwd = process.cwd(), ref, mode }) {
+function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, createdAt: suppliedCreatedAt = null }) {
   if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
-  if (!['mounted', 'restore'].includes(mode)) throw rebindBlock('mode', 'mode must be mounted or restore');
+  const root = repoRoot(cwd), identity = parseLaneRef(ref);
+  if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root }) !== '')
+    throw rebindBlock('canonical', 'recertification must run from clean canonical main');
+  if (store.get(ref, root)) throw rebindBlock('record', 'recertification requires the exact lane record to be absent');
+  if (typeof base !== 'string' || !/^refs\/remotes\/[^/]+\/main$/u.test(base)
+    || typeof baseSha !== 'string' || !/^[0-9a-f]{40}$/u.test(baseSha)
+    || typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/u.test(expectedHead)
+    || pr !== null && (!Number.isSafeInteger(pr) || pr < 1))
+    throw rebindBlock('request', 'recertification requires exact base, base SHA, head SHA and optional positive PR number');
+  if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || resolve(targetPath) !== targetPath
+    || lstatSync(targetPath, { throwIfNoEntry: false }))
+    throw rebindBlock('restore-path', 'recertification target must be an absent absolute path');
+  const parent = dirname(targetPath), parentInfo = lstatSync(parent, { throwIfNoEntry: false });
+  if (!parentInfo?.isDirectory() || parentInfo.isSymbolicLink() || realpathSync(parent) !== parent)
+    throw rebindBlock('restore-parent', 'recertification target parent must be an existing canonical directory');
+  const registrations = worktrees(root);
+  if (registrations.some(row => row.branch === ref || row.path === targetPath))
+    throw rebindBlock('restore-path', 'recertification ref or target is already registered');
+  const head = headSha(`refs/heads/${ref}`, root);
+  if (!head || head !== expectedHead) throw rebindBlock('branch', 'local lane ref does not match the exact expected head');
+  const remote = base.match(/^refs\/remotes\/([^/]+)\/main$/u)?.[1];
+  const protectedHead = headSha(base, root), canonicalHead = headSha('HEAD', root);
+  if (!remote || !protectedHead || canonicalHead !== headSha('refs/heads/main', root) || canonicalHead !== protectedHead
+    || headSha(baseSha, root) !== baseSha
+    || observeGit(['merge-base', '--is-ancestor', baseSha, head], { cwd: root, allowFail: true }) !== ''
+    || observeGit(['merge-base', '--is-ancestor', baseSha, protectedHead], { cwd: root, allowFail: true }) !== '')
+    throw rebindBlock('base', 'clean canonical main and the exact lane must descend from the recorded base SHA');
+  const transport = remoteTransport(remote, root), remoteHead = remoteRefSha(remote, ref, root, transport.fetchUrl);
+  if (remoteHead !== head) throw rebindBlock('published-head', 'live remote lane ref must exactly match the expected local head');
+  const writePaths = laneChangedPaths(baseSha, head, root);
+  if (!writePaths.length || writePaths.length > REBIND_MAX_PATHS)
+    throw rebindBlock('reservation', 'retained commits have no bounded changed-path reservation');
+  writePaths.forEach(validateRebindPath);
+  try { assertDisjointReservation({ cwd: root, ref, writePaths, protectedRef: base, records: store.load(root).lanes }); }
+  catch (error) { throw rebindBlock('path-overlap', error.message); }
+  const createdAt = suppliedCreatedAt ?? new Date().toISOString();
+  if (typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt))
+    || new Date(createdAt).toISOString() !== createdAt)
+    throw rebindBlock('request', 'recertification timestamp must be an exact ISO timestamp');
+  const updatedRecord = { ref, device: identity.device, scope: identity.scope, state: 'published', base, baseSha,
+    worktree: targetPath, pr, createdAt, head, writePaths,
+    recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path' } };
+  const body = { schema: REBIND_SCHEMA, mode: 'recertify', ref, root, targetPath, previousRecordSha256: rebindDigest(null),
+    previousHead: null, head, protectedRef: base, protectedHead, baseSha, remoteHead,
+    expectedHead, pr, refsSha256: refInventoryDigest(root), writePathsBefore: [], writePathsAfter: writePaths,
+    addedPaths: writePaths, dirty: null, restoredDirtyState: 'unobservable-at-missing-path', updatedRecord,
+    request: { base, baseSha, targetPath, expectedHead, pr, createdAt } };
+  return { ...body, digest: rebindDigest(body) };
+}
+function planLaneRebindCore({ cwd = process.cwd(), ref, mode, ...request }) {
+  if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
+  if (mode === 'recertify') return planLaneRecertification({ cwd, ref, ...request });
+  if (!['mounted', 'restore'].includes(mode)) throw rebindBlock('mode', 'mode must be mounted, restore or recertify');
   const root = repoRoot(cwd);
   if (currentBranch(root) !== 'main') throw rebindBlock('canonical', 'lane identity recovery must run from canonical main');
   const record = store.get(ref, root);
@@ -372,7 +424,7 @@ function planLaneRebindCore({ cwd = process.cwd(), ref, mode }) {
     refsSha256: refInventoryDigest(root), writePathsBefore: [...(record.writePaths ?? [])],
     writePathsAfter: writePaths, addedPaths: writePaths.filter(path => !(record.writePaths ?? []).includes(path)),
     dirty, restoredDirtyState: mode === 'restore' ? 'unobservable-at-missing-path' : 'exact-local-inventory',
-    updatedRecord: { ...record, head, worktree: targetPath, writePaths } };
+    updatedRecord: { ...record, head, worktree: targetPath, writePaths, ...(mode === 'restore' ? { recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path' } } : {}) } };
   return { ...body, digest: rebindDigest(body) };
 }
 export const planLaneRebind = planLaneRebindCore;
@@ -394,7 +446,7 @@ function laneRebindReceipt(plan, resumed) {
   return { schema: 'agentic-os/lane-rebind-receipt/v1', ref: plan.ref, mode: plan.mode,
     worktree: plan.targetPath, previousHead: plan.previousHead, head: plan.head,
     addedPaths: plan.addedPaths, restoredDirtyState: plan.restoredDirtyState,
-    refsPreserved: true, authoredBytesPreserved: plan.mode === 'mounted',
+    refsPreserved: true, committedBytesPreserved: true, authoredBytesPreserved: plan.mode === 'mounted',
     providerAuthority: false, integrationProof: false, cleanupAuthority: false, resumed };
 }
 export function applyLaneRebind({ cwd = process.cwd(), planPath, authorization, stopped }) {
@@ -410,11 +462,13 @@ export function applyLaneRebind({ cwd = process.cwd(), planPath, authorization, 
     if (rebindDigest(current) === rebindDigest(plan.updatedRecord) && laneRebindPostcondition(plan, root)) result = laneRebindReceipt(plan, true);
     else {
       if (rebindDigest(current) !== plan.previousRecordSha256) throw rebindBlock('record-drift', 'lane record changed after planning');
-      const fresh = planLaneRebindCore({ cwd: root, ref: plan.ref, mode: plan.mode });
+      const fresh = planLaneRebindCore({ cwd: root, ref: plan.ref, mode: plan.mode, ...plan.request });
       if (fresh.digest !== plan.digest) throw rebindBlock('stale-plan', 'live lane identity or byte inventory changed after planning');
       const beforeRefs = refInventoryDigest(root);
-      if (plan.mode === 'restore') git(['worktree', 'add', '--', plan.targetPath, plan.ref], { cwd: root });
+      if (plan.mode === 'restore' || plan.mode === 'recertify') git(['worktree', 'add', '--', plan.targetPath, plan.ref], { cwd: root });
       if (!laneRebindPostcondition(plan, root)) throw rebindBlock('postcondition', 'rebound checkout differs from the planned branch and head');
+      if (plan.mode === 'recertify' && observeGit(['status', '--porcelain', '--untracked-files=all', '--ignored=traditional'], { cwd: plan.targetPath }) !== '')
+        throw rebindBlock('postcondition', 'recertified checkout is not clean after materialization');
       if (refInventoryDigest(root) !== beforeRefs || beforeRefs !== plan.refsSha256) throw rebindBlock('refs-changed', 'branch or remote refs changed during recovery');
       if (plan.mode === 'mounted' && rebindDigest(laneDirtyEvidence(plan.targetPath)) !== rebindDigest(plan.dirty))
         throw rebindBlock('dirty-drift', 'authored worktree bytes changed during recovery');
@@ -428,7 +482,11 @@ export function applyLaneRebind({ cwd = process.cwd(), planPath, authorization, 
 export function runLaneRebind(root, argv, out) {
   try {
     if (positional(argv)[0] === 'plan') {
-      const plan = planLaneRebindCore({ cwd: root, ref: option(argv, 'ref'), mode: option(argv, 'mode') });
+      const mode = option(argv, 'mode');
+      const request = mode === 'recertify' ? { base: option(argv, 'base'), baseSha: option(argv, 'base-sha'),
+        targetPath: option(argv, 'worktree'), expectedHead: option(argv, 'expected-head'),
+        pr: option(argv, 'pr') === null ? null : Number(option(argv, 'pr')) } : {};
+      const plan = planLaneRebindCore({ cwd: root, ref: option(argv, 'ref'), mode, ...request });
       out(JSON.stringify({ ...plan, authorization: `agentic-os:lane-rebind:${plan.digest}` }));
       return 0;
     }

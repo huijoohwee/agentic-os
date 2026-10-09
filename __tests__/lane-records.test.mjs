@@ -26,6 +26,21 @@ function validStore(ref = 'agent/device/cache') {
   return { schema: SCHEMA, lanes: { [ref]: { ref, state: 'active' } } };
 }
 
+test('lane recovery cache marker accepts only the active or published unknown-dirty-state shape', t => {
+  const root = repository(t), ref = 'agent/device/recertified';
+  const recovery = { schema: 'agentic-os/lane-recovery/v1',
+    dirtyState: 'unobservable-at-missing-path' };
+  put({ ref, state: 'published', recovery }, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(get(ref, root).recovery)), recovery);
+  const legacy = { ...recovery, schema: 'agentic-os/lane-recertification/v1' };
+  put({ ref, state: 'published', recovery: legacy }, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(get(ref, root).recovery)), legacy);
+  put({ ref, state: 'active', recovery }, root);
+  assert.deepEqual(JSON.parse(JSON.stringify(get(ref, root).recovery)), recovery);
+  assert.throws(() => put({ ref, state: 'published', recovery: { ...recovery, dirtyState: 'clean' } }, root),
+    /recovery is invalid/u);
+});
+
 test('provider projection retains review identity without accumulating review bodies', (t) => {
   const root = repository(t), body = 'review prose '.repeat(2000);
   const handoff = { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh',

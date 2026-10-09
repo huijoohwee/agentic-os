@@ -42,7 +42,6 @@ roughly 195k lines, and at that size the harness is the product.
 A directive proposing a module pattern states its per-scenario multiplier and projected module delta;
 otherwise it is incomplete. New behavior belongs in the state table or an existing responsibility owner.
 
-
 ## Reading the failure
 
 Both checkers print the offending path, measured value, and cap. Caps do not rise under pressure. Fix

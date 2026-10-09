@@ -10,3 +10,5 @@ No `--plan`/`--mission`: clone selection; new task: committed `--plan`.
 Browser UI: immediately run `npm run dev`; visibly open reported URL for review,
 recheck after edits. No script/browser/page: report blocker, not live proof.
 Headless: N/A.
+
+See `guides/LANE-RECERTIFICATION.md`.

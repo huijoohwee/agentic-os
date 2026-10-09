@@ -10,6 +10,7 @@ import {
   RETAIN_ALL_CLEANUP, canonicalJson, createRepositoryProfile, governanceDigest, integrate, retire,
 } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
+import { put } from '../src/lane-records.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import {
@@ -364,6 +365,16 @@ test('cleanup requires live provider replay and retains partial quarantine coord
     assert.equal(existsSync(operation), true);
     assert.equal(existsSync(fixture.repo.target), !projectionOnly);
   }
+});
+
+test('worktree cleanup eligibility blocks unresolved recertification before provider replay', async t => {
+  const fixture = await lifecycle(t);
+  put({ ref: fixture.repo.branch, state: 'published', recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path',
+  } }, fixture.repo.root);
+  await assert.rejects(assessWorktreeCleanupEligibility(fixture.input, cleanupOptions(fixture)),
+    error => error.reason === 'blocked-cleanup-lane-state-unknown');
+  assert.equal(existsSync(fixture.repo.target), true);
 });
 
 test('cleanup accepts a fresh local continuation after the retired winner window expires',

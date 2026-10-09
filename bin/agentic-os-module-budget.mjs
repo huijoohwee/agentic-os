@@ -17,7 +17,7 @@ export const ROOT = join(HERE, '..');
 
 export const BUDGET = Object.freeze({
   // 2026-10-09 selected-source transplant: one lazy recovery source owner; no runtime dependency.
-  // Measured source cap 15285 -> 15459 and bin cap 23991 -> 24003 for bounded stale-lane recovery.
+  // Measured source cap 15285 -> 15459; 2026-10-09 raise bin cap +97 for bounded cache-loss recertification: one exact remote query per phase, no fetch/provider API, and closeout blocks on unknown bytes.
   modules: 48,
   totalLines: 15459,
   perModuleLines: 400,
@@ -33,7 +33,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 112,
-  binLines: 24003,
+  binLines: 24100,
   runtimeModules: 96,
   runtimeLines: 23023,
 });

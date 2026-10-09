@@ -11,6 +11,7 @@ import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recove
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { inferMergedReviewWorkflow } from '../bin/agentic-os-cleanup-review.mjs';
+import { put } from '../src/lane-records.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 function fixture(t, concurrentBase = false, detached = false, mergedProjection = false) {
@@ -87,6 +88,16 @@ test('explicit governed recovery preserves retain policy, exact branches, ignore
     'bytesDeleted', 'branchesMutated', 'objectsMutated']) assert.equal(receipt[name], false, name);
   assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
   assert.ok(s.calls.every(path => !/rulesets|protection|dispatch/.test(path)));
+});
+
+test('local cleanup refuses a recertified lane before provider review when checkout bytes are unknown', t => {
+  const s = fixture(t);
+  put({ ref: s.branch, state: 'published', recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path',
+  } }, s.root);
+  assert.throws(() => s.plan(), error => error.reason === 'lane-dirty-state-unknown');
+  assert.deepEqual(s.calls, []);
+  assert.equal(existsSync(s.target), true);
 });
 test('concurrent base changes use the existing exact mode/type/blob projection at the actual merge', t => {
   const s = fixture(t, true), p = s.plan();

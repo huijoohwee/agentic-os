@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
+import { put } from '../src/lane-records.mjs';
 
 const REF = 'agent/device/completion-status';
 function fixture(t) {
@@ -61,6 +62,33 @@ test('merged retained lane is source_complete without invented cleanup authority
   assert.equal(subject.git(subject.root, 'rev-parse', 'HEAD'), after.canonicalRevision);
 });
 
+test('integrated successor cannot hide an unintegrated predecessor behind an unrelated commit', (t) => {
+  const subject = fixture(t), predecessorRef = 'agent/device/unintegrated-source';
+  const base = subject.git(subject.root, 'rev-parse', 'HEAD'), predecessorPath = join(subject.root, '..', 'predecessor');
+  subject.git(subject.root, 'worktree', 'add', '--quiet', '-b', predecessorRef, predecessorPath, base);
+  writeFileSync(join(predecessorPath, 'source.txt'), 'authored source\n');
+  subject.git(predecessorPath, 'add', '.'); subject.git(predecessorPath, 'commit', '--quiet', '-m', 'authored source');
+  const predecessorHead = subject.git(predecessorPath, 'rev-parse', 'HEAD');
+
+  writeFileSync(join(subject.lane, 'ci-selector.txt'), 'selector-only change\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'unrelated CI selector');
+  const successorHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merge unrelated CI selector');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  put({ ref: REF, state: 'published', head: successorHead, handoff: {
+    schema: 'agentic-os-lane-successor/v1', predecessorRef, predecessorHead,
+  } }, subject.root);
+
+  const report = subject.status();
+  assert.equal(report.lineage.integrated, false);
+  assert.equal(report.integration, null);
+  assert.ok(report.findings.some(item => item.code === 'predecessor-integration-not-classified'));
+  assert.equal(report.closeout.missionState, 'continuable');
+  assert.equal(report.closeout.nextAction.id, 'reap-predecessor');
+  assert.equal(report.closeout.nextAction.command, `npm run reap -- --ref=${predecessorRef}`);
+});
+
 test('dirty lane and stale canonical tracking are separate blockers', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'untracked.txt'), 'preserve\n');
@@ -73,6 +101,20 @@ test('dirty lane and stale canonical tracking are separate blockers', (t) => {
   assert.ok(report.findings.some((item) => item.code === 'canonical-not-current-clean'));
   assert.equal(report.closeout.missionState, 'blocked');
   assert.equal(report.closeout.nextAction.id, 'preserve-lane-bytes');
+});
+
+test('restored active lane cannot be declared complete while missing checkout bytes are unresolved', t => {
+  const subject = fixture(t);
+  put({ ref: REF, state: 'active', recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path',
+  } }, subject.root);
+  const report = subject.status();
+  assert.equal(report.lane.dirtyState, 'unobservable-at-missing-path');
+  assert.ok(report.findings.some(item => item.code === 'lane-dirty-state-unknown'));
+  assert.equal(report.closeout.missionState, 'blocked');
+  assert.equal(report.closeout.adlcState, 'blocked');
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.nextAction.id, 'resolve-unknown-lane-bytes');
 });
 
 test('an external authority policy does not require workflow files in the target', (t) => {
