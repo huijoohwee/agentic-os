@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { put } from '../src/lane-records.mjs';
+import { get, put } from '../src/lane-records.mjs';
 
 const REF = 'agent/device/completion-status';
 function fixture(t) {
@@ -26,7 +26,7 @@ function fixture(t) {
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' } };
   const policy = { protectedBranch: 'main' };
   const status = () => inspectCompletionStatus(root, REF, policy, profile);
-  return { root, lane, git, status };
+  return { root, lane, git, profile, policy, status };
 }
 
 test('completion grammar accepts only one exact status target', () => {
@@ -117,6 +117,113 @@ test('restored active lane cannot be declared complete while missing checkout by
   assert.equal(report.closeout.nextAction.id, 'resolve-unknown-lane-bytes');
 });
 
+test('accepted unrecoverable bytes are reported without granting cleanup or deployment', t => {
+  const subject = fixture(t), head = subject.git(subject.root, 'rev-parse', `refs/heads/${REF}`);
+  const worktree = subject.status().lane.path, disposition = {
+    schema: 'agentic-os/lane-recovery-disposition/v1', outcome: 'unrecoverable-accepted',
+    ref: REF, head, worktree, decision: 'accept-missing-checkout-bytes-as-unrecoverable',
+    recordedAt: '2026-10-09T00:00:00.000Z', preserveCheckout: true, preserveRef: true,
+    cleanupAuthorized: false, deploymentAuthorized: false,
+  };
+  put({ ref: REF, state: 'active', head, worktree, recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path', disposition,
+  } }, subject.root);
+  const report = subject.status();
+  assert.equal(report.lane.dirtyState, 'unrecoverable-accepted');
+  assert.equal(report.lane.recoveryDisposition.outcome, 'unrecoverable-accepted');
+  assert.ok(!report.findings.some(item => item.code === 'lane-dirty-state-unknown'));
+  assert.equal(report.grantsAuthority, false);
+  assert.equal(report.authorizesEffects, false);
+  assert.equal(report.cleanupVerified, false);
+  assert.equal(report.providerVerified, false);
+  assert.equal(get(REF, subject.root).recovery.dirtyState, 'unobservable-at-missing-path');
+  assert.equal(get(REF, subject.root).recovery.disposition.cleanupAuthorized, false);
+  assert.equal(get(REF, subject.root).recovery.disposition.deploymentAuthorized, false);
+  assert.equal(report.lane.path, worktree);
+  assert.equal(subject.git(subject.root, 'rev-parse', `refs/heads/${REF}`), head);
+});
+
+test('accepted missing bytes close source only when an exact clean successor checkout remains', t => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, 'source.txt'), 'predecessor source\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'source');
+  const predecessorHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  subject.git(subject.lane, 'switch', '--quiet', '-c', 'agent/device/reviewed');
+  writeFileSync(join(subject.lane, 'source.txt'), 'reviewed replacement\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'reviewed replacement');
+  const reviewedHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  subject.git(subject.lane, 'switch', '--quiet', '-c', 'agent/device/retained', reviewedHead);
+  put({ ref: REF, state: 'published', head: predecessorHead, worktree: subject.lane, recovery: {
+    schema: 'agentic-os/lane-recertification/v1', dirtyState: 'unobservable-at-missing-path',
+  } }, subject.root);
+  const current = get(REF, subject.root), disposition = { schema: 'agentic-os/lane-recovery-disposition/v1',
+    outcome: 'unrecoverable-accepted', ref: REF, head: predecessorHead, worktree: subject.lane,
+    decision: 'accept-missing-checkout-bytes-as-unrecoverable', recordedAt: '2026-10-09T00:00:00.000Z',
+    preserveCheckout: true, preserveRef: true, cleanupAuthorized: false, deploymentAuthorized: false };
+  const recorded = put({ ...current, recovery: { ...current.recovery, disposition } }, subject.root);
+  subject.git(subject.root, 'merge', '--squash', 'refs/heads/agent/device/reviewed');
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'integrate reviewed successor');
+  const mergeHead = subject.git(subject.root, 'rev-parse', 'HEAD');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', mergeHead);
+  assert.equal(recorded.recovery.disposition.preserveRef, true);
+  const report = inspectCompletionStatus(subject.root, REF, subject.policy, subject.profile, {
+    successor: { predecessorHead, reviewedHead, merge: mergeHead, replacedPaths: ['source.txt'] },
+  });
+  assert.equal(report.integration.kind, 'reviewed-successor');
+  assert.equal(report.lane.path, null);
+  assert.equal(report.lane.retainedCheckout.path, realpathSync(subject.lane));
+  assert.equal(report.lane.retainedCheckout.head, reviewedHead);
+  assert.equal(report.lane.retainedCheckout.clean, true);
+  assert.equal(report.lane.dirtyState, 'unrecoverable-accepted');
+  assert.equal(report.recoveryDispositionSatisfied, true);
+  assert.equal(report.preservationDispositionVerified, false);
+  assert.equal(report.preservationSatisfied, false);
+  assert.equal(report.closeout.sourceIntegrated, true);
+  assert.equal(report.closeout.missionState, 'source_complete');
+  assert.equal(report.closeout.laneDisposition, 'retained-unrecoverable-accepted');
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.cleanupVerified, false);
+  assert.equal(report.providerVerified, false);
+  assert.equal(report.authorizesEffects, false);
+  assert.ok(!report.findings.some(item => ['lane-registration-detached', 'lane-dirty-state-unknown',
+    'provider-authority-unverified', 'cleanup-receipt-unverified'].includes(item.code)));
+});
+
+test('completion binds merged predecessor replacement to the recorded successor lineage', t => {
+  const subject = fixture(t), predecessorRef = 'agent/device/lineage-predecessor';
+  writeFileSync(join(subject.lane, 'source.txt'), 'predecessor source\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'predecessor source');
+  const predecessorHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  subject.git(subject.lane, 'branch', predecessorRef);
+  writeFileSync(join(subject.lane, 'source.txt'), 'reviewed source\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'reviewed successor');
+  const reviewedHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  subject.git(subject.lane, 'switch', '--quiet', '-c', 'agent/device/lineage-retained', reviewedHead);
+  writeFileSync(join(subject.lane, 'successor.txt'), 'retained successor\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'successor continuation');
+  const laneHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  subject.git(subject.root, 'merge', '--squash', 'agent/device/lineage-retained');
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'integrate successor');
+  const merge = subject.git(subject.root, 'rev-parse', 'HEAD');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', merge);
+  subject.git(subject.root, 'update-ref', `refs/heads/${REF}`, laneHead);
+  put({ ref: REF, state: 'published', head: laneHead, worktree: subject.lane,
+    handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef, predecessorHead },
+    recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path',
+      disposition: { schema: 'agentic-os/lane-recovery-disposition/v1', outcome: 'unrecoverable-accepted',
+        ref: REF, head: laneHead, worktree: subject.lane, decision: 'accept-missing-checkout-bytes-as-unrecoverable',
+        recordedAt: '2026-10-09T00:00:00.000Z', preserveCheckout: true, preserveRef: true,
+        cleanupAuthorized: false, deploymentAuthorized: false } } }, subject.root);
+  const report = inspectCompletionStatus(subject.root, REF, subject.policy, subject.profile, { successor: {
+    predecessorRef, predecessorHead, reviewedHead, merge, replacedPaths: ['source.txt'],
+  } });
+  assert.equal(report.lineage.integrated, true);
+  assert.equal(report.integration.kind, 'exact-tree-projection');
+  assert.equal(report.recoveryDispositionSatisfied, true);
+  assert.equal(report.closeout.missionState, 'source_complete');
+});
+
 test('an external authority policy does not require workflow files in the target', (t) => {
   const subject = fixture(t);
   mkdirSync(join(subject.root, '.agentic-os'));
@@ -154,6 +261,15 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   assert.equal(deploy.adlcState, 'delivery_pending');
   assert.equal(deploy.nextAction.id, 'deploy-workflow');
   assert.equal(deploy.authorizesEffects, false);
+  const acceptedRetained = deriveCloseoutVerdict({ ...base, laneMounted: false, laneClean: null,
+    quarantineProfile: true, recoveryDispositionSatisfied: true, deployBound: true });
+  assert.equal(acceptedRetained.missionState, 'source_complete');
+  assert.equal(acceptedRetained.laneDisposition, 'retained-unrecoverable-accepted');
+  assert.equal(acceptedRetained.cleanupSatisfied, false);
+  assert.equal(acceptedRetained.preservationSatisfied, false);
+  assert.equal(acceptedRetained.adlcState, 'delivery_pending');
+  assert.equal(acceptedRetained.nextAction.id, 'deploy-workflow');
+  assert.equal(acceptedRetained.authorizesEffects, false);
   const docs = deriveCloseoutVerdict({ ...base, deployBound: true, changeClass: 'docs-only' });
   assert.equal(docs.missionState, 'source_complete');
   assert.equal(docs.adlcState, 'delivery_scope_pending');
