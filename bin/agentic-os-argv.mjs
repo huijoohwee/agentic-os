@@ -91,6 +91,10 @@ export function validateCommandArguments(command, argv) {
         : operation === 'search' ? ['path', 'limit', 'after-line'] : operation === 'read' ? ['line', 'lines'] : [];
       return exact(argv, { min: 1, options: [...required, ...optional], requiredOptions: required });
     }
+    case 'source-evidence': return argv[0] === 'bundle'
+      ? exact(argv, { min: 1, max: 1, options: ['root', 'scope', 'id', 'label', 'output'],
+        requiredOptions: ['scope', 'id', 'label', 'output'] })
+      : 'source-evidence requires bundle';
     case 'release-common': {
       const action = argv[0] ?? 'help';
       if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
@@ -230,6 +234,7 @@ export function cmdHelp() {
       '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
       '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
       '  agentic-os context map|search|read --path=<source>  bounded native context; see guides/CONTEXT.md',
+      '  agentic-os source-evidence bundle --scope=<source> --id=<id> --label=<label> --output=<empty-directory>  create a reviewed immutable source bundle; no upload',
       '  agentic-os collaborate status [--offline]  observe opt-in shared coordination; not authority',
       '  agentic-os cleanup-user <plan|apply>  explicit local-consent quarantine; see guides/USER-CLEANUP.md',
       '  agentic-os collaborate <get|submit|claim|renew|release|report|archive> --input=<json>  cooperative work/handoff',

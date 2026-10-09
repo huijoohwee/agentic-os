@@ -3,6 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { loadRepositoryProfile, resolveRepositoryRoot } from './git-repository.mjs';
 import { remoteTransport } from './git.mjs';
 import { canonicalJson, governanceDigest, validateRepositoryProfile } from './governance.mjs';
+import { repositoryIdentity, remoteRepositoryIdentity, restListReviews, restReadReview,
+  restReviewNumber, restWriteReview } from './github-rest.mjs';
+export { remoteRepositoryIdentity } from './github-rest.mjs';
 
 export const GITHUB_ADAPTER = Object.freeze({ id: 'github', version: '1' });
 export const GITHUB_CAPABILITIES = Object.freeze([
@@ -14,35 +17,7 @@ const FIELDS = [
   'number', 'state', 'url', 'mergeStateStatus', 'headRefOid', 'headRefName',
   'baseRefName', 'headRepository', 'isCrossRepository', 'body', 'autoMergeRequest',
 ].join(',');
-
 const repositoryName = (value) => typeof value === 'string' ? value : value?.nameWithOwner ?? null;
-function repositoryIdentity(value) {
-  const match = value?.match(/^((?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?)\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/u);
-  const port = match?.[1].match(/\]:(\d+)$/u)?.[1]
-    ?? match?.[1].match(/^[^:]+:(\d+)$/u)?.[1];
-  return match && (!port || Number(port) <= 65535)
-    ? { host: match[1].toLowerCase(), name: match[2] } : null;
-}
-
-export function remoteRepositoryIdentity(value) {
-  if (typeof value !== 'string') return null;
-  let host;
-  let path;
-  try {
-    const parsed = new URL(value);
-    if (!parsed.host || parsed.search || parsed.hash) return null;
-    host = parsed.host.toLowerCase();
-    path = parsed.pathname.replace(/^\/+/, '');
-  } catch {
-    const scp = value.match(/^(?:[^@/\s]+@)?([A-Za-z0-9.-]+):([^?#\s]+)$/u);
-    if (!scp) return null;
-    [, host, path] = scp;
-    host = host.toLowerCase();
-  }
-  const name = path.endsWith('.git') ? path.slice(0, -4) : path;
-  const identity = repositoryIdentity(`${host}/${name}`);
-  return identity ? { ...identity, repository: `${identity.host}/${identity.name}` } : null;
-}
 
 export function bindProfileToRemote(profile, root) {
   const configured = repositoryIdentity(profile.repository);
@@ -90,6 +65,10 @@ export function ghAvailable({ timeoutMs = 2_000 } = {}) {
 }
 
 export let lastError = null, lastHttpStatus = null;
+
+export function graphQlRateLimited(message = lastError) {
+  return /graphql:\s*(?:api\s+)?rate limit (?:already )?exceeded/iu.test(message ?? '');
+}
 
 export function providerHttpStatus(error) {
   const raw = `${error.stdout ?? ''}${error.stderr ?? ''}`;
@@ -198,6 +177,7 @@ export function enqueue(ref, {
   if (typeof preserveExistingText !== 'boolean') throw new TypeError('review text preservation must be boolean');
   const reviewIdentity = { ref, expectedHead, expectedRepository, baseBranch };
   const call = (args, json = true) => provider(args, { cwd, json });
+  const restFallback = () => provider === gh && graphQlRateLimited();
   const target = repositoryIdentity(expectedRepository);
   const sourceBranch = branchName(ref);
   const revision = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(expectedHead ?? '');
@@ -215,14 +195,24 @@ export function enqueue(ref, {
   const pin = (args) => [...args, '--repo', expectedRepository];
   const view = pin(['pr', 'view', ref, '--json', FIELDS]);
   const identity = (review) => identityExact(review, reviewIdentity);
-  const snapshot = (url) => url ? call([
+  const snapshot = (url) => {
+    if (!url) return null;
+    const graph = call([
     'api', 'graphql', '--hostname', target.host,
     '-f', 'query=query($url:URI!){resource(url:$url){... on PullRequest{' +
       'number state url mergeStateStatus headRefOid headRefName baseRefName body ' +
       'headRepository{nameWithOwner url} baseRepository{nameWithOwner url} isCrossRepository ' +
       'autoMergeRequest{enabledAt} ' +
       'mergeQueueEntry{id position state}}}}', '-F', `url=${url}`,
-  ])?.data?.resource ?? null : null;
+    ])?.data?.resource ?? null;
+    return graph ?? (restFallback() ? restReadReview(call, target, restReviewNumber(url, target)) : null);
+  };
+  const list = () => {
+    const graph = call(pin([
+      'pr', 'list', '--state', 'all', '--head', ref, '--limit', '2', '--json', FIELDS,
+    ]));
+    return Array.isArray(graph) ? graph : restFallback() ? restListReviews(call, target, ref) : null;
+  };
   const bodyExact = (review) => identity(review)
     && review.body?.split('\n').includes(`Source-Head: ${expectedHead}`);
   const sourceHeadCurrent = () => {
@@ -233,8 +223,10 @@ export function enqueue(ref, {
     ? 'source-ref-moved' : 'source-head-assertion-missing';
   const reobserve = (fallback = null) => {
     const projected = call(view);
-    const observed = snapshot(projected?.url ?? fallback?.url) ?? projected;
-    return { review: observed ?? fallback, fresh: observed !== null };
+    const listed = projected || !restFallback() ? null : restListReviews(call, target, ref);
+    const candidate = projected ?? listed?.find(identity) ?? listed?.[0] ?? fallback;
+    const observed = snapshot(candidate?.url);
+    return { review: observed ?? candidate, fresh: observed !== null || candidate !== fallback };
   };
   const unknownWrite = (fallback = null) => {
     const { review, fresh } = reobserve(fallback);
@@ -245,9 +237,7 @@ export function enqueue(ref, {
       writeResultUnknown: true, reobservedAfterMutation: fresh,
       reobservationExact: fresh && bodyExact(review) });
   };
-  const listed = call(pin([
-    'pr', 'list', '--state', 'all', '--head', ref, '--limit', '2', '--json', FIELDS,
-  ]));
+  const listed = list();
   if (!Array.isArray(listed)) {
     return receipt({
       ref,
@@ -281,7 +271,8 @@ export function enqueue(ref, {
         identity: reviewIdentity, review: existing,
         written: false, failureReason: sourceHeadReason(), sourceHeadCurrent: false });
       mutationAttempted = true;
-      if (call(pin(['pr', 'edit', ref, '--body', body]), false) === null)
+      if (call(pin(['pr', 'edit', ref, '--body', body]), false) === null
+        && (!restFallback() || restWriteReview(call, target, `/${existing.number}`, 'PATCH', [['body', body]]) === null))
         return unknownWrite(existing);
     }
     if (title) {
@@ -293,7 +284,8 @@ export function enqueue(ref, {
           reobservedAfterMutation: observed?.fresh ?? false,
           reobservationExact: Boolean(observed?.fresh && bodyExact(observed.review)) }); }
       mutationAttempted = true;
-      if (call(pin(['pr', 'edit', ref, '--title', title]), false) === null)
+      if (call(pin(['pr', 'edit', ref, '--title', title]), false) === null
+        && (!restFallback() || restWriteReview(call, target, `/${existing.number}`, 'PATCH', [['title', title]]) === null))
         return unknownWrite(existing);
     }
   } else if (!existing) {
@@ -304,7 +296,9 @@ export function enqueue(ref, {
     if (call(pin([
       'pr', 'create', '--base', baseBranch, '--head', ref,
       '--title', title ?? ref, '--body', body ?? '',
-    ]), false) === null) return unknownWrite();
+    ]), false) === null && (!restFallback() || restWriteReview(call, target, '', 'POST', [
+      ['base', baseBranch], ['head', ref], ['title', title ?? ref], ['body', body ?? ''],
+    ]) === null)) return unknownWrite();
   }
   const { review: final, fresh } = reobserve(existing);
   const verified = (!mutationAttempted || fresh) && bodyExact(final);
@@ -356,7 +350,9 @@ export function observeGitHubReview({
   const supplied = provider(pin([
     'pr', 'list', '--state', 'all', '--head', ref, '--limit', '2', '--json', FIELDS,
   ]), { cwd: repository, json: true });
-  const listed = Array.isArray(supplied) ? JSON.parse(canonicalJson(supplied)) : null;
+  const listed = Array.isArray(supplied) ? JSON.parse(canonicalJson(supplied))
+    : provider === gh && graphQlRateLimited()
+      ? restListReviews((args) => provider(args, { cwd: repository, json: true }), target, ref) : null;
   const matching = listed ? listed.filter((review) => identityExact(review, {
     ref, expectedHead, expectedRepository: profile.repository, baseBranch,
   })) : [];

@@ -1,7 +1,8 @@
 /** Profile-driven GitHub protected-integration observation and handoff. */
 import { remoteTransport } from './git.mjs';
 import { enqueue as providerEnqueue, gh, ghAvailable, isAbsentClassicProtection,
-  lastError, lastHttpStatus } from './github-provider.mjs';
+  graphQlRateLimited, lastError, lastHttpStatus } from './github-provider.mjs';
+import { restOpenPullRequests, restRepositoryProjection } from './github-rest.mjs';
 import {
   INTEGRATION_METHOD_POLICY,
   effectivePullRequestMethods,
@@ -47,11 +48,7 @@ const PULL_REQUEST_PARAMETERS = Object.freeze([
   'required_review_thread_resolution', 'allowed_merge_methods',
 ]);
 export const providerPolicy = resolveProviderPolicy;
-function hostOf(value) {
-  try { return new URL(value).host.toLowerCase(); } catch {
-    return value.match(/^(?:[^@/]+@)?([^:/]+)(?::|\/)/u)?.[1]?.toLowerCase() ?? null;
-  }
-}
+function hostOf(value) { try { return new URL(value).host.toLowerCase(); } catch { return value.match(/^(?:[^@/]+@)?([^:/]+)(?::|\/)/u)?.[1]?.toLowerCase() ?? null; } }
 /** Observed provider state relevant to the livelock. Read-only. */
 export function observe({
   cwd = process.cwd(), profile, provider = gh, providerAvailable = ghAvailable,
@@ -60,11 +57,12 @@ export function observe({
   if (!providerAvailable()) return { available: false };
   const errors = [];
   const call = (args) => provider(args, { cwd });
+  const restFallback = () => provider === gh && graphQlRateLimited();
   const remote = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   const transport = remoteTransport(remote, cwd), selectedRemoteUrl = transport.fetchUrl;
-  const repo = selectedRemoteUrl
-    ? call(['repo', 'view', '--json', 'nameWithOwner,defaultBranchRef,url', '--', selectedRemoteUrl])
-    : null;
+  const graphqlRepo = selectedRemoteUrl
+    ? call(['repo', 'view', '--json', 'nameWithOwner,defaultBranchRef,url', '--', selectedRemoteUrl]) : null;
+  const repo = graphqlRepo ?? (restFallback() ? restRepositoryProjection(selectedRemoteUrl, call) : null);
   const hostname = hostOf(repo?.url ?? '');
   const repositoryName = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repo?.nameWithOwner ?? '')
     && hostname && hostname === hostOf(selectedRemoteUrl ?? '') ? repo.nameWithOwner : null;
@@ -111,7 +109,9 @@ export function observe({
   const queueRuleset = queueRules[0]?.ruleset ?? null;
   const prArgs = ['pr', 'list', '--state', 'open', '--limit', '100', '--json', 'number,headRefName'];
   if (repository) prArgs.push('--repo', repository);
-  const openPrs = repository ? call(prArgs) : null;
+  const graphqlOpenPrs = repository ? call(prArgs) : null;
+  const openPrs = graphqlOpenPrs ?? (restFallback()
+    ? restOpenPullRequests(repositoryName, hostname, call) : null);
   const allRules = applicable.flatMap((entry) => entry.rules);
   const checksRules = allRules.filter((rule) => rule.type === 'required_status_checks');
   const prRules = allRules.filter((rule) => rule.type === 'pull_request');
