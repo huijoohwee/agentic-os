@@ -77,6 +77,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common promote plan --ref=<lane> | apply --plan=<file> --authorize=<token> [--authority-head=<head>]',
       '  agentic-os release-common scope-release plan --ref=<published-lane> --path=<exact-file> | apply --plan=<file> --authorize=agentic-os:scope-release:<digest> --stopped',
       '  agentic-os release-common rebind plan|apply  repair one exact local lane identity; no provider or cleanup authority',
+      '    plan --ref=<lane> --mode=recertify --base=refs/remotes/origin/main --base-sha=<sha> --worktree=<path> --expected-head=<sha> [--pr=<n>]',
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',

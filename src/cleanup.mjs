@@ -33,8 +33,8 @@ export { observeQuarantineManifest } from './cleanup-quarantine.mjs';
 
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function typeFail(message) { throw new TypeError(message); }
+const assertLaneBytesResolved = (ref, root) => { if (isLaneRef(ref) && get(ref, root)?.recovery?.dirtyState === 'unobservable-at-missing-path') fail('blocked-cleanup-lane-state-unknown', 'reconstructed lane bytes remain unresolved; preserve and disposition them before cleanup'); };
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
-
 function cleanupContinuation(value, plan, retirement, retirementPlan, ownerStateDigest) {
   if (value === undefined) return null;
   const authority = validateWorktreeCleanupContinuation(value);
@@ -210,8 +210,8 @@ function cleanupResult(applied, eligibility) {
 }
 
 export async function assessWorktreeCleanupEligibility(input, options) {
-  const joined = await liveEvidenceJoin(input, options);
-  const evaluated = trustedClock(options, 'cleanup eligibility');
+  assertLaneBytesResolved(input?.plan?.expectedBranch ?? input?.plan?.branch, options.cwd); const joined = await liveEvidenceJoin(input, options);
+  assertLaneBytesResolved(joined.plan.expectedBranch ?? joined.plan.branch, options.cwd); const evaluated = trustedClock(options, 'cleanup eligibility');
   if (evaluated >= Date.parse(joined.expiresAt))
     fail('blocked-cleanup-expired', 'cleanup plan is not current');
   const observation = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd });
@@ -257,7 +257,7 @@ export async function executeWorktreeCleanup(input, options) {
   const eligibility = validateWorktreeCleanupEligibility(input.eligibility);
   if (input.authorizationDigest !== eligibility.eligibilityDigest)
     fail('blocked-cleanup-authorization', 'exact cleanup authorization is required');
-  const joined = await liveEvidenceJoin(input, options);
+  assertLaneBytesResolved(input.plan.expectedBranch ?? input.plan.branch, options.cwd); const joined = await liveEvidenceJoin(input, options);
   if (eligibility.cleanupPlanDigest !== joined.plan.planDigest
     || eligibility.cleanupPlanByteDigest !== worktreeCleanupPlanByteDigest(joined.plan)
     || eligibility.integrationReceiptDigest !== joined.integration.receiptDigest
@@ -277,7 +277,7 @@ export async function executeWorktreeCleanup(input, options) {
   if (lock === null) fail('blocked-cleanup-lock', 'another clone cleanup operation is active');
   let result = null, error = null, artifacts = null;
   try {
-    let applied = classifyExistingWorktreeQuarantine(joined.plan, eligibility,
+    assertLaneBytesResolved(joined.plan.expectedBranch ?? joined.plan.branch, options.cwd); let applied = classifyExistingWorktreeQuarantine(joined.plan, eligibility,
       { cwd: options.cwd });
     if (applied === null) {
       const before = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd });
@@ -320,18 +320,13 @@ export function releaseCommonLocalCleanupPolicy(root, profile) {
 
 /** Cleanup constraints apply to the destructive effect, never to merge observation or integration. */
 export function cleanupWorkflowContext(root, ref, repository) {
-  const registration = worktrees(root).find(row => row.branch === ref);
-  const record = get(ref, root), parsed = parseLaneRef(ref);
-  const retainedPath = record?.ref === ref && typeof record.worktree === 'string' ? record.worktree : null;
-  const worktreeId = registration ? basename(registration.path) : retainedPath ? basename(retainedPath)
-    : parsed ? `${parsed.device}--${parsed.scope}` : null;
-  return { root, repository, phase: 'cleanup', ref, worktreeId,
-    revision: registration ? observeGit(['rev-parse', 'HEAD'], { cwd: registration.path }) : record?.head,
+  const registration = worktrees(root).find(row => row.branch === ref), record = get(ref, root), parsed = parseLaneRef(ref);
+  const retainedPath = record?.ref === ref && typeof record.worktree === 'string' ? record.worktree : null,
+    worktreeId = registration ? basename(registration.path) : retainedPath ? basename(retainedPath) : parsed ? `${parsed.device}--${parsed.scope}` : null;
+  return { root, repository, phase: 'cleanup', ref, worktreeId, revision: registration ? observeGit(['rev-parse', 'HEAD'], { cwd: registration.path }) : record?.head,
     dirty: registration ? Boolean(observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: registration.path })) : false };
 }
-
-/** Explicit superseded-lane closeout. The accepted PR owns review/check evidence;
- * the predecessor's failed or closed PR is never represented as merged. */
+/** Explicit superseded-lane closeout; the accepted PR owns review/check evidence, and a failed or closed predecessor PR is never represented as merged. */
 export async function runReleaseCommonSuccessorComplete({
   root, argv, profile,
   out = line => process.stdout.write(`${line}\n`),
@@ -347,7 +342,7 @@ export async function runReleaseCommonSuccessorComplete({
         'Use --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped');
     const current = releaseCommonLocalCleanupPolicy(root, profile);
     const record = get(ref, root);
-    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
     if (!record || !['published', 'queued', 'integrated'].includes(record.state)
       || record.head !== status.lane.head || status.lane.clean === false)
       fail('blocked-release-common-successor-lane', 'one exact published, clean predecessor is required');

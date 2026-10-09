@@ -102,8 +102,17 @@ export function validateCommandArguments(command, argv) {
       const owner = { start: 'start', publish: 'land', finish: 'finish', close: 'finish', successor: 'successor' }[action];
       if (owner) return validateCommandArguments(owner, argv.slice(1));
       if (action === 'rebind') return argv[1] === 'plan'
-        ? (() => { const error = exact(argv.slice(1), { min: 1, max: 1, options: ['ref', 'mode'], requiredOptions: ['ref', 'mode'] });
-          return error ?? (['mounted', 'restore'].includes(option(argv, 'mode')) ? null : 'rebind mode must be mounted or restore'); })()
+        ? (() => { const mode = option(argv, 'mode'), recertify = mode === 'recertify';
+          const fields = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head', 'pr'] : [])];
+          const required = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head'] : [])];
+          const error = exact(argv.slice(1), { min: 1, max: 1, options: fields, requiredOptions: required });
+          if (error) return error;
+          if (!['mounted', 'restore', 'recertify'].includes(mode)) return 'rebind mode must be mounted, restore or recertify';
+          if (recertify && (!/^[0-9a-f]{40}$/u.test(option(argv, 'base-sha'))
+            || !/^[0-9a-f]{40}$/u.test(option(argv, 'expected-head'))
+            || option(argv, 'pr') !== null && !/^[1-9][0-9]*$/u.test(option(argv, 'pr'))))
+            return 'recertify requires exact 40-character SHAs and an optional positive PR number';
+          return null; })()
         : argv[1] === 'apply' ? exact(argv.slice(1), { min: 1, max: 1, options: ['plan', 'authorize'], flags: ['stopped'], requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
           : 'rebind requires plan or apply';
       if (action === 'promote') return argv[1] === 'plan'

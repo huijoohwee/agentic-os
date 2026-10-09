@@ -423,6 +423,8 @@ export async function runReleaseCommonLocalCleanup({
   try {
     const current = releaseCommonLocalCleanupPolicy(root, profile);
     const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    if (status.findings.some(item => item.code === 'lane-dirty-state-unknown'))
+      fail('blocked-release-common-lane-state-unknown', 'recover or disposition missing checkout bytes before closeout');
     const record = get(ref, root);
     let pr = record?.pr;
     if (record && pr == null && COMPLETE_STATES.has(record.state) && headSha(record.head)) {
@@ -493,6 +495,9 @@ export async function runReleaseCommonCompleteWait({
   try {
     const ref = option(argv, 'ref');
     const timeoutMs = Number(option(argv, 'timeout-ms', '60000'));
+    const status = inspectCompletionStatus(root, ref, { protectedBranch }, profile);
+    if (status.findings.some(item => item.code === 'lane-dirty-state-unknown'))
+      fail('blocked-release-common-lane-state-unknown', 'recover or disposition missing checkout bytes before waiting on review');
     const binding = resolveReleaseCommonCompleteBinding(root, ref, protectedBranch);
     const result = await watchReleaseCommonReview(binding, {
       timeoutMs, once,
@@ -525,12 +530,15 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
     .map(target => ({ target, bound: isLaneRef(target.branch) ? record(target.branch, root) : null }))
     .sort((a, b) => completionPriority(a.bound?.state) - completionPriority(b.bound?.state) || a.target.path.localeCompare(b.target.path));
   if (targets.length > 32) fail('blocked-progressive-completion-budget', 'Select at most 32 registered worktrees');
-  const eligibleTarget = ({ target, bound }) => COMPLETE_STATES.has(bound?.state) && bound.head === target.head && bound.worktree === target.path && !target.locked && !target.prunable;
+  const eligibleTarget = ({ target, bound }) => COMPLETE_STATES.has(bound?.state) && bound.head === target.head
+    && bound.worktree === target.path && bound.recovery?.dirtyState !== 'unobservable-at-missing-path'
+    && !target.locked && !target.prunable;
   let eligibleRemaining = targets.filter(eligibleTarget).length;
   const deadline = now() + timeoutMs, results = []; for (const { target, bound } of targets) {
     let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null }; try {
       const remaining = Math.ceil(deadline - now());
       if (!bound || !COMPLETE_STATES.has(bound.state)) result.reason = 'requires-published-lane';
+      else if (bound.recovery?.dirtyState === 'unobservable-at-missing-path') result.reason = 'lane-dirty-state-unknown';
       else if (target.locked || target.prunable || bound.head !== target.head || bound.worktree !== target.path)
         result.reason = target.locked || target.prunable ? 'worktree-not-completable' : 'lane-binding-drift';
       else if (remaining <= 0) result = { ...result, status: 'deferred', reason: 'pass-budget' };
