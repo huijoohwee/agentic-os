@@ -192,3 +192,35 @@ stale/dirty refusal, compare-and-set output and CLI grammar. Publication, protec
 and checkout cleanup remain separate authorized transitions.
 The measured budget delta is 131 source lines and 14 CLI lines, with no module, dependency, provider
 request or always-load prompt growth; the bound plan and cache compare-and-set replace manual cache edits.
+
+## Remote-exact scope release after local ref drift (0.4.0)
+
+On 2026-10-09, Sequence closeout found published records whose exact remote branch still matched the
+recorded candidate while the retained local branch ref had advanced to a descendant. The worktrees
+were unmounted and their refs had to remain untouched. The existing release refused this state even
+though it could safely release the old candidate's exact path claim; manually editing the cache or
+resetting a ref would lose trustworthy identity.
+
+Extend the existing `scope-release` owner only for an unmounted published projection where one live
+remote branch advertisement still equals the record head and the retained local branch is a strict
+descendant. Bind the record head, exact live remote head, local ref head, path blob, exact current
+claimants for that path and stopped acknowledgement in the plan. Read the path from the recorded
+commit. Apply rechecks the digest, local facts and one fresh exact remote ref before the cache
+compare-and-set, releases only that path claim, and emits all three heads in the receipt. Unrelated
+lane-cache changes do not stale this path-bound plan. Keep the
+local ref and all commit/worktree bytes unchanged. Mounted drift, a missing or moved remote ref,
+non-descendant refs, dirty mounted paths, changed cache inventory, empty successor scopes and stale
+plans continue to fail closed. The CLI reuses the existing lazy adapter and digest authorization.
+
+This is a bounded closeout recovery, not integration, retirement, or cleanup authority. It uses the
+existing Git transport once when planning and once when applying; there is no fetch, broad branch
+inventory, new dependency, runtime module, provider API, paid service or always-load prompt change.
+The path claim is still released one file at a time. The implementation touches only the existing
+identity module, its focused test, this design record and the joined pipeline PRD. Focused fixtures
+prove exact remote success, remote drift refusal, ancestry refusal, byte/ref retention and cache CAS.
+The focused suite passed 12/12; module checks passed at 48/48 modules and 15,459/15,459 source lines.
+The fresh affected gate selected 108 suites and reached its 540-second budget with four suites
+timed out; 104 suites passed, including the focused suite. Re-running the exact gate with its
+receipt cache reused 97/108 suites and passed all 1,218 tests in 159.8 seconds. This avoids repeating
+most completed work on retry, while the cold affected run remains over budget because shared-fixture
+tests in the central identity dependency dominate. No provider CI or production result is implied.

@@ -15,7 +15,7 @@ import { TextDecoder } from 'node:util';
 import { readBoundedFile } from './catalog-input.mjs';
 import {
   commitsAhead, currentBranch, decodeNulFields, headSha, isAncestor, observeGit,
-  observeGitLines, repoRoot, worktrees,
+  observeGitLines, remoteRefSha, repoRoot, worktrees,
 } from './git.mjs';
 import { isLaneRef } from './lane-id.mjs';
 import * as laneRecords from './lane-records.mjs';
@@ -254,84 +254,81 @@ export function surveyLanes(base, branches, { cwd } = {}) {
 const RELEASE_PLAN = 'agentic-os/reservation-scope-release-plan/v1';
 const RELEASE_RECEIPT = 'agentic-os/reservation-scope-release-receipt/v1';
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
+const REMOTE_HEAD = Symbol('reservation-scope-release-remote-head');
 const scopeFailure = (reason, message) => Object.assign(new Error(message), { reason });
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.keys(value).sort()
-    .map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
 }
 const scopeDigest = value => createHash('sha256').update(canonicalJson(value)).digest('hex');
 function exactTreeEntry(revision, path, cwd, { allowAbsent = false } = {}) {
-  const entries = decodeNulFields(observeGit(['ls-tree', '-z', revision, '--', path], {
-    cwd, binary: true,
-  }));
-  if (allowAbsent && entries?.length === 0) return null;
+  const entries = decodeNulFields(observeGit(['ls-tree', '-z', revision, '--', path], { cwd, binary: true }));
+  if (allowAbsent && entries.length === 0) return null;
   if (entries?.length !== 1) throw scopeFailure('blocked-reservation-path-tree',
     `reserved path must resolve to one tracked file: ${path}`);
   const tab = entries[0].indexOf('\t'), [mode, type, oid] = entries[0].slice(0, tab).split(' ');
-  if (tab < 0 || entries[0].slice(tab + 1) !== path || type !== 'blob'
-    || !['100644', '100755'].includes(mode) || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid))
+  if (tab < 0 || entries[0].slice(tab + 1) !== path || type !== 'blob' || !['100644', '100755'].includes(mode) || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid))
     throw scopeFailure('blocked-reservation-path-tree', `reserved path is not a regular file: ${path}`);
   return { mode, type, oid };
 }
 function releaseEvidence({ path, laneHead, protectedHead, lanePathEntry, protectedPathEntry }) {
-  const body = { schema: 'agentic-os/reservation-path-release/v1', path, laneHead, protectedHead,
-    lanePathEntry, protectedPathEntry, bytesDiffer: canonicalJson(lanePathEntry) !== canonicalJson(protectedPathEntry) };
+  const body = { schema: 'agentic-os/reservation-path-release/v1', path, laneHead, protectedHead, lanePathEntry, protectedPathEntry, bytesDiffer: canonicalJson(lanePathEntry) !== canonicalJson(protectedPathEntry) };
   return Object.freeze({ ...body, digest: scopeDigest(body) });
 }
 const releasedPathEvidence = record => Array.isArray(record?.handoff?.reservationPathReleases) ? record.handoff.reservationPathReleases : [];
 function cleanReservedPath(path, worktree) {
-  const status = observeGit(['status', '--porcelain=v1', '--untracked-files=all', '--', path], {
-    cwd: worktree, binary: true,
-  });
+  const status = observeGit(['status', '--porcelain=v1', '--untracked-files=all', '--', path], { cwd: worktree, binary: true });
   const diff = observeGit(['diff', '--quiet', 'HEAD', '--', path], { cwd: worktree, allowFail: true });
-  if (status.length || diff === null)
-    throw scopeFailure('blocked-reservation-path-dirty', `reserved path has local edits: ${path}`);
-}
-function laneCacheDigest(cwd) {
-  return scopeDigest(laneRecords.list(cwd).sort((a, b) => a.ref.localeCompare(b.ref)));
+  if (status.length || diff === null) throw scopeFailure('blocked-reservation-path-dirty', `reserved path has local edits: ${path}`);
 }
 
 export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, path,
-  protectedBranch, protectedRef }) {
+  protectedBranch, protectedRef, [REMOTE_HEAD]: liveRemoteHead } = {}) {
   const root = repoRoot(cwd);
   if (currentBranch(root) !== protectedBranch || !worktrees(root).some(entry =>
     entry.branch === protectedBranch && realpathSync(entry.path) === realpathSync(root)))
     throw scopeFailure('blocked-not-canonical-worktree', 'scope release requires the registered protected worktree');
   if (!/^refs\/remotes\/[A-Za-z0-9._-]+\//u.test(protectedRef ?? '') || !isLaneRef(ref))
     throw scopeFailure('blocked-scope-release-identity', 'scope release requires exact lane and protected refs');
-  const pathSegments = typeof path === 'string' ? path.split('/') : [];
   if (typeof path !== 'string' || !path || path.trim() !== path || path.startsWith('/')
     || path.endsWith('/') || path.startsWith(':') || path.includes(String.fromCharCode(92))
     || path.includes('\0') || ['*', '?', '['].some(symbol => path.includes(symbol))
-    || pathSegments.some(segment => !segment || segment === '.' || segment === '..'))
+    || path.split('/').some(segment => !segment || segment === '.' || segment === '..'))
     throw scopeFailure('blocked-scope-release-path', 'scope release accepts one exact normalized path');
   const protectedHead = headSha(`refs/heads/${protectedBranch}`, root);
   if (!protectedHead || headSha(protectedRef, root) !== protectedHead) throw scopeFailure('blocked-protected-head-drift', 'protected local and remote-tracking heads differ');
-  const record = laneRecords.get(ref, root), lane = worktrees(root).find(entry => entry.branch === ref);
-  const laneHead = headSha(`refs/heads/${ref}`, root);
-  const activeUnpublished = record?.state === 'active' && record.pr === null
+  const record = laneRecords.get(ref, root), lane = worktrees(root).find(entry => entry.branch === ref), localLaneRefHead = headSha(`refs/heads/${ref}`, root);
+  const activeUnpublished = record?.state === 'active' && record.pr === null;
   if (!record || !record.writePaths?.includes(path) || !(record.state === 'published' || activeUnpublished)) throw scopeFailure('blocked-reservation-claim-missing', 'lane does not hold a releasable exact path claim');
   const stalePublishedProjection = record.state === 'published' && !lane,
-    laneIdentityDrift = !laneHead || record.state === 'published' && record.head !== laneHead || !stalePublishedProjection
-      && (!lane || realpathSync(lane.path) !== realpathSync(record.worktree ?? '') || currentBranch(lane.path) !== ref || headSha('HEAD', lane.path) !== laneHead);
+    remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef)?.[1] ?? null;
+  const localRefDriftCandidate = stalePublishedProjection && record.head && localLaneRefHead
+    && localLaneRefHead !== record.head && isAncestor(record.head, localLaneRefHead, root);
+  if (record.state === 'published' && record.head !== localLaneRefHead && !localRefDriftCandidate) throw scopeFailure('blocked-lane-identity-drift', 'published lane ref or cache head differs');
+  const livePublishedHead = record.state === 'published' ? liveRemoteHead
+    ?? (remote ? remoteRefSha(remote, ref, root) : null) : null;
+  const remoteExactRefDrift = localRefDriftCandidate && livePublishedHead === record.head,
+    laneHead = record.state === 'published' ? record.head : localLaneRefHead;
+  const laneIdentityDrift = !localLaneRefHead
+    || (record.state === 'published' && record.head !== localLaneRefHead && !remoteExactRefDrift)
+    || (!stalePublishedProjection && (!lane || realpathSync(lane.path) !== realpathSync(record.worktree ?? '')
+      || currentBranch(lane.path) !== ref || headSha('HEAD', lane.path) !== localLaneRefHead));
   if (laneIdentityDrift) throw scopeFailure('blocked-lane-identity-drift', 'published lane ref or cache head differs');
   if (lane) cleanReservedPath(path, lane.path);
   const pathEntry = exactTreeEntry(laneHead, path, root);
   const protectedPathEntry = exactTreeEntry(protectedHead, path, root, { allowAbsent: true });
-  const remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef)?.[1] ?? null;
-  if (record.state === 'published' && (!remote || headSha(`refs/remotes/${remote}/${ref}`, root) !== laneHead)) throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref differs from its retained head');
+  if (record.state === 'published' && (!remote || livePublishedHead !== record.head)) throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref differs from its retained head');
   const retainedPathEvidence = releaseEvidence({ path, laneHead, protectedHead, lanePathEntry: pathEntry, protectedPathEntry });
   if (releasedPathEvidence(record).some(item => item?.path === path)) throw scopeFailure('blocked-reservation-path-released', 'lane path has already been released');
   const claims = laneRecords.list(root).filter(item => item.writePaths?.includes(path)).sort((a, b) => a.ref.localeCompare(b.ref))
     .map(item => ({ ref: item.ref, state: item.state, head: item.head ?? null, writePaths: [...item.writePaths] }));
   const plan = { schema: RELEASE_PLAN, authorizesEffects: false, repositoryRoot: root,
     protectedBranch, protectedRef, protectedHead, laneRef: ref, laneHead,
+    laneLocalRefHead: localLaneRefHead, laneRemoteHead: livePublishedHead,
     laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: record.worktree,
-    laneProjection: stalePublishedProjection ? 'unmounted-published' : 'mounted', path, pathEntry,
+    laneProjection: remoteExactRefDrift ? 'unmounted-published-ref-drift' : stalePublishedProjection ? 'unmounted-published' : 'mounted', path, pathEntry,
     protectedPathEntry, retainedPathEvidence,
-    laneInventoryDigest: laneCacheDigest(root),
     exactClaims: claims, resultingWritePaths: record.writePaths.filter(item => item !== path) };
   if (!plan.resultingWritePaths.length) throw scopeFailure('blocked-empty-successor-scope', 'reservation release cannot empty the lane scope');
   return Object.freeze({ ...plan, planDigest: scopeDigest(plan) });
@@ -343,7 +340,8 @@ export function applyReservationScopeRelease({ cwd = process.cwd(), plan, author
   const unsigned = plan && Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planDigest'));
   if (plan?.schema !== RELEASE_PLAN || plan.authorizesEffects !== false || scopeDigest(unsigned) !== plan.planDigest) throw scopeFailure('blocked-scope-release-plan-invalid', 'scope release plan digest or schema is invalid');
   if (authorization !== `agentic-os:scope-release:${plan.planDigest}` || stopped !== true) throw scopeFailure('blocked-scope-release-authorization', 'exact plan authorization and --stopped are required');
-  const observe = () => createReservationScopeReleasePlan({ cwd, ref: plan.laneRef, path: plan.path, protectedBranch, protectedRef });
+  const observe = () => createReservationScopeReleasePlan({ cwd, ref: plan.laneRef,
+    path: plan.path, protectedBranch, protectedRef, [REMOTE_HEAD]: plan.laneRemoteHead });
   if (canonicalJson(observe()) !== canonicalJson(plan)) throw scopeFailure('blocked-scope-release-plan-stale', 'repository or lane facts changed after planning');
   const before = laneRecords.get(plan.laneRef, cwd);
   if (!before || canonicalJson(before.writePaths.filter(item => item !== plan.path))
@@ -358,8 +356,9 @@ export function applyReservationScopeRelease({ cwd = process.cwd(), plan, author
       reservationPathReleases: [...priorReleases, plan.retainedPathEvidence],
     },
   };
-  if (canonicalJson(observe()) !== canonicalJson(plan))
-    throw scopeFailure('blocked-scope-release-plan-stale', 'repository facts changed before compare-and-set');
+  const remote = /^refs\/remotes\/([^/]+)\//u.exec(protectedRef ?? '')?.[1] ?? null;
+  if (plan.laneState === 'published' && (!remote || remoteRefSha(remote, plan.laneRef, cwd) !== plan.laneRemoteHead)) throw scopeFailure('blocked-reservation-remote-drift', 'published lane remote ref changed before compare-and-set');
+  if (canonicalJson(observe()) !== canonicalJson(plan)) throw scopeFailure('blocked-scope-release-plan-stale', 'local repository facts changed before compare-and-set');
   laneRecords.putExact(updated, before, cwd);
   const after = laneRecords.get(plan.laneRef, cwd);
   if (canonicalJson(after) !== canonicalJson(updated))
@@ -367,6 +366,7 @@ export function applyReservationScopeRelease({ cwd = process.cwd(), plan, author
   return Object.freeze({ schema: RELEASE_RECEIPT, effectsRetained: true,
     branchBytesChanged: false, worktreeBytesChanged: false, planDigest: plan.planDigest,
     repositoryRoot: plan.repositoryRoot, laneRef: plan.laneRef, laneHead: plan.laneHead,
+    laneLocalRefHead: plan.laneLocalRefHead, laneRemoteHead: plan.laneRemoteHead,
     laneState: plan.laneState, pathReleased: plan.path, pathEntry: plan.pathEntry,
     protectedPathEntry: plan.protectedPathEntry, retainedPathEvidence: plan.retainedPathEvidence,
     retainedAuthoredBytes: plan.retainedPathEvidence.bytesDiffer,
