@@ -176,3 +176,10 @@ test('successor lineage rejects altered, malformed, duplicate, or unbound scope-
   assert.equal(successorLineage(successorRecord([valid, valid])), false);
   assert.equal(successorLineage(successorRecord(Array(1025).fill(valid))), false);
 });
+
+test('successor lineage accepts a receipt proving the released path already matched protected bytes', () => {
+  const entry = { mode: '100644', type: 'blob', oid: '6'.repeat(40) };
+  const evidence = reservationPathRelease({ path: 'docs/unchanged.md',
+    lanePathEntry: { ...entry }, protectedPathEntry: { ...entry }, bytesDiffer: false });
+  assert.equal(successorLineage(successorRecord([evidence])).predecessorRef, 'agent/device/predecessor');
+});
