@@ -334,20 +334,18 @@ function planLaneRebindCore({ cwd = process.cwd(), ref, mode }) {
   const root = repoRoot(cwd);
   if (currentBranch(root) !== 'main') throw rebindBlock('canonical', 'lane identity recovery must run from canonical main');
   const record = store.get(ref, root);
-  if (!record || record.state !== 'active') throw rebindBlock('record', 'recovery requires one exact active lane record');
-  if (!record.worktree || !isAbsolute(record.worktree) || !record.base || !record.baseSha)
-    throw rebindBlock('record', 'lane record lacks an exact worktree or base binding');
+  const publishedRestore = record?.state === 'published' && mode === 'restore' && Number.isSafeInteger(record.pr) && record.pr > 0;
+  if (!record || record.state !== 'active' && !publishedRestore) throw rebindBlock('record', 'recovery requires one exact active lane or PR-bound published restore');
+  if (!record.worktree || !isAbsolute(record.worktree) || !record.base || !record.baseSha) throw rebindBlock('record', 'lane record lacks an exact worktree or base binding');
   const targetPath = resolve(record.worktree), head = headSha(`refs/heads/${ref}`, root);
   if (!head) throw rebindBlock('branch', `local branch is missing: ${ref}`);
   if (!record.head || !headSha(record.head, root) || head !== record.head
-    && observeGit(['merge-base', '--is-ancestor', record.head, head], { cwd: root, allowFail: true }) === null)
-    throw rebindBlock('ancestry', 'observed branch is not the recorded head or its descendant');
+    && observeGit(['merge-base', '--is-ancestor', record.head, head], { cwd: root, allowFail: true }) === null) throw rebindBlock('ancestry', 'observed branch is not the recorded head or its descendant');
   const registrations = worktrees(root), entry = registrations.find(row => row.branch === ref),
     pathEntry = registrations.find(row => row.path === targetPath);
   if (mode === 'mounted') {
     if (!entry || entry.path !== targetPath || currentBranch(targetPath) !== ref
-      || headSha('HEAD', targetPath) !== head || realpathSync(targetPath) !== targetPath)
-      throw rebindBlock('identity', 'mounted worktree, branch, path or head differs from its recorded identity');
+      || headSha('HEAD', targetPath) !== head || realpathSync(targetPath) !== targetPath) throw rebindBlock('identity', 'mounted worktree, branch, path or head differs from its recorded identity');
   } else {
     if (entry || pathEntry || existsSync(targetPath)) throw rebindBlock('restore-path', 'recorded worktree path or branch is already mounted or occupied');
     const parent = resolve(targetPath, '..');
@@ -363,8 +361,11 @@ function planLaneRebindCore({ cwd = process.cwd(), ref, mode }) {
   writePaths.forEach(validateRebindPath);
   try { assertDisjointReservation({ cwd: root, ref, writePaths, protectedRef: record.base, records: store.load(root).lanes }); }
   catch (error) { throw rebindBlock('path-overlap', error.message); }
-  const remote = record.base.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
-  const remoteHead = remote ? headSha(`refs/remotes/${remote}/${ref}`, root) : null;
+  const remote = record.base.match(/^refs\/remotes\/([^/]+)\//u)?.[1],
+    transport = publishedRestore && remote ? remoteTransport(remote, root) : null,
+    remoteHead = !remote ? null : publishedRestore ? remoteRefSha(remote, ref, root, transport.fetchUrl)
+      : headSha(`refs/remotes/${remote}/${ref}`, root);
+  if (publishedRestore && remoteHead !== head) throw rebindBlock('published-head', 'live remote lane ref must exactly match the recorded published head');
   const body = { schema: REBIND_SCHEMA, mode, ref, root, targetPath,
     previousRecordSha256: rebindDigest(record), previousHead: record.head, head,
     protectedRef: record.base, protectedHead, baseSha: record.baseSha, remoteHead,
@@ -380,8 +381,7 @@ function readLaneRebindPlan(path) {
   try { value = JSON.parse(readFileSync(path, 'utf8')); } catch { throw rebindBlock('plan', 'plan file is unreadable JSON'); }
   if (!value || value.schema !== REBIND_SCHEMA || typeof value.digest !== 'string') throw rebindBlock('plan', 'plan schema is invalid');
   const { digest: expected, authorization: embeddedAuthorization, ...body } = value;
-  if (embeddedAuthorization !== undefined && embeddedAuthorization !== `agentic-os:lane-rebind:${expected}`)
-    throw rebindBlock('plan', 'plan authorization does not match its digest');
+  if (embeddedAuthorization !== undefined && embeddedAuthorization !== `agentic-os:lane-rebind:${expected}`) throw rebindBlock('plan', 'plan authorization does not match its digest');
   if (rebindDigest(body) !== expected) throw rebindBlock('plan', 'plan digest does not match its contents');
   return value;
 }

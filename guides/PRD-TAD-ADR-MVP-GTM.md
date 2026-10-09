@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.22"
+version: "1.4.23"
 date: "2026-10-07"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,9 +11,9 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.22"
-tad_revision: "1.4.22"
-adr_revision: "1.4.22"
+prd_revision: "1.4.23"
+tad_revision: "1.4.23"
+adr_revision: "1.4.23"
 guideline_revision: "3.4.0"
 worktree_id: "device-0232231d4a19--native-lane-alignment"
 agent_id: "codex-native-lane-alignment"
@@ -21,8 +21,8 @@ load_policy: "on-demand"
 verification_scope: "ADLC closure observations, digest-bound local lane identity recovery, existing invocation reuse and bounded checks; consumer-authenticated runtime proof remains separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "5f5633b0b0c5694e28e4b46bedb240edf1365e59"
-mvp_revision: "1.4.22"
-gtm_revision: "1.4.22"
+mvp_revision: "1.4.23"
+gtm_revision: "1.4.23"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority.
@@ -36,7 +36,7 @@ load on demand; readiness, experience and demand remain distinct. Historical evi
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.22`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.23`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
@@ -56,7 +56,7 @@ Each `AC-Pnn` states Given/When/Then. Its `VCC-Pnn` is the stated check plus the
 | AC-P03 / VCC-P03 | Given a trusted profile and requested paths, when a lane starts, then the selected successor is hydrated and current ownership rechecked before writes; only a disjoint registered scope is provisioned and conflicting scope is refused; canonical stays an observation surface. For a browser UI task, start the admitted worktree's `npm run dev` and open its reported local URL for user review before implementation; recheck after changes and record any missing script, browser or failed preview instead of claiming live evidence. | `node --test __tests__/lean-sprint-completion.test.mjs __tests__/runtime-budgets.test.mjs`; source/worktree identity review and browser readback for UI consumers; F12. | T03 / ADR-P02, ADR-P04 |
 | AC-P04 / VCC-P04 | Given owner source and result bindings, when checks are discovered and composition inspected, then mismatched or absent evidence is reported without executing sibling code or upgrading its coverage; reuse existing MCP/invocation routes, bounded reads and matching check receipts. | `node --test __tests__/check-discovery.test.mjs __tests__/composition-runtime-check.test.mjs`; F17/F18. | T04 / ADR-P02, ADR-P05 |
 | AC-P05 / VCC-P05 | Given a checked scoped diff, when published, then its plan reflects material changes/handoffs and binds owner evidence and reserved changes to the exact candidate; later edits use a successor. Unchanged turns create no record duty; cached records grant no provider authority. | `node --test __tests__/lean-sprint-completion.test.mjs __tests__/lane-cache-publication-race.test.mjs`; F12/F13. | T05 / ADR-P02, ADR-P04 |
-| AC-P06 / VCC-P06 | Given an integrated candidate, when completion or cleanup is requested, then exact integration and each authorized cleanup effect remain independently verified and the observed result informs one successor Context; local recovery may rebind only the exact active ref/worktree/head after a digest-bound stopped-writer plan, preserving dirty bytes and refs while granting no provider or cleanup authority; after a delivery attempt, affected feature and planning records distinguish Development, Production Release and Runtime evidence with the next owner action. | `node --test __tests__/integration-cleanup-proof.test.mjs __tests__/completion.test.mjs __tests__/cleanup.test.mjs __tests__/canonical-sync-race.test.mjs __tests__/lane-rebind.test.mjs`; F13/F25. | T06 / ADR-P02, ADR-P04 |
+| AC-P06 / VCC-P06 | Given an integrated candidate, when completion or cleanup is requested, then exact integration and each authorized cleanup effect remain independently verified and the observed result informs one successor Context; local recovery may rebind an exact active ref/worktree/head after a digest-bound stopped-writer plan, preserving observed dirty bytes and refs, or restore a published lane at its absent recorded path only when its PR and live remote head match. Its unknown dirty state grants no provider, integration or cleanup authority; after a delivery attempt, affected feature and planning records distinguish Development, Production Release and Runtime evidence with the next owner action. | `node --test __tests__/integration-cleanup-proof.test.mjs __tests__/completion.test.mjs __tests__/cleanup.test.mjs __tests__/canonical-sync-race.test.mjs __tests__/lane-rebind.test.mjs`; F13/F25. | T06 / ADR-P02, ADR-P04 |
 | AC-P07 / VCC-P07 | Given selected operation requirements, when flight evaluates their presence and freshness, then only the selected scope is gated and the result grants no effects; no manifest means no invented enrollment. | `node --test __tests__/lifecycle-flight.test.mjs`; F18/F19. | T07 / ADR-P03 |
 | AC-P08 / VCC-P08 | Given an eligible Free/FOSS executor and exact release inputs, when Commerce activates and independently evaluates them, then release, isolated execution, lifecycle identity and readback agree; preserve admission and never substitute a local runner test for a deployed transport. | Commerce [release safety][commerce-release-test], [executor test][commerce-executor-test], [context test][commerce-context-test], then live owner receipts; F07–F09/F19. **Unfinished** at G08–G10. | T08 / ADR-P03 |
 | AC-P09 / VCC-P09 | Given those deployed owner versions and a valid confirmation, when the buyer completes and replays checkout, then receipt/readback matches and no second money effect occurs; offline drafts never authorize offline settlement. | F01–F05 owner checks and TECH-STACK runtime VCCs, followed by actual provider and replay evidence. **Unverified here**; demand remains separate. | T09 / ADR-P03 |
