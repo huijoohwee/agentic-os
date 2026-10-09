@@ -153,7 +153,7 @@ function normalizeStore(value) {
       && d.schema === 'agentic-os/lane-recovery-disposition/v1' && d.outcome === 'unrecoverable-accepted' && d.ref === ref && d.head === record.head && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(d.head) && d.worktree === record.worktree && d.decision === 'accept-missing-checkout-bytes-as-unrecoverable' && typeof d.recordedAt === 'string' && Number.isFinite(Date.parse(d.recordedAt)) && d.preserveCheckout === true && d.preserveRef === true && d.cleanupAuthorized === false && d.deploymentAuthorized === false;
     if (recovery && (!recovery.enumerable || !Object.hasOwn(recovery, 'value') || !plainObject(value)
       || Reflect.ownKeys(value).length !== (disposition ? 3 : 2) || Reflect.ownKeys(value).some(key => !['schema', 'dirtyState', 'disposition'].includes(key)) || !recoverySchema?.enumerable || !Object.hasOwn(recoverySchema, 'value') || !['agentic-os/lane-recovery/v1', 'agentic-os/lane-recertification/v1'].includes(recoverySchema.value)
-      || !dirtyState?.enumerable || !Object.hasOwn(dirtyState, 'value') || dirtyState.value !== 'unobservable-at-missing-path' || disposition && !validDisposition || !['active', 'published'].includes(stateProperty.value))) throw invalid(`record recovery is invalid for ${ref}`);
+      || !dirtyState?.enumerable || !Object.hasOwn(dirtyState, 'value') || dirtyState.value !== 'unobservable-at-missing-path' || disposition && !validDisposition || !['active', 'published', 'integrated'].includes(stateProperty.value))) throw invalid(`record recovery is invalid for ${ref}`);
     normalized.lanes[ref] = cloneJson(record, state);
   }
   return normalized;

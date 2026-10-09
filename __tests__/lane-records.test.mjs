@@ -6,12 +6,12 @@ import {
   existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import {
-  CACHE_LIMITS, CACHE_REF, SCHEMA, get, load, project, put, save, storePath,
+  CACHE_LIMITS, CACHE_REF, SCHEMA, get, load, project, put, putExact, save, storePath,
 } from '../src/lane-records.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -58,6 +58,55 @@ test('unrecoverable disposition binds the exact retained lane and refuses added 
   assert.throws(() => put({ ref, state: 'published', head, worktree,
     recovery: { ...recovery, disposition: { ...disposition, cleanupAuthorized: true } } }, root),
   /recovery is invalid/u);
+});
+
+test('record-only disposition uses exact CAS and retains the ref and clean checkout', t => {
+  const root = repository(t), ref = 'agent/device/accepted-write', lane = join(dirname(root), `${basename(root)}-accepted-write`);
+  runGit(root, 'config', 'user.email', 'test@example.invalid');
+  runGit(root, 'config', 'user.name', 'ADLC Test');
+  writeFileSync(join(root, 'base.txt'), 'base\n');
+  runGit(root, 'add', '.'); runGit(root, 'commit', '--quiet', '-m', 'base');
+  runGit(root, 'worktree', 'add', '--quiet', '-b', ref, lane);
+  const head = runGit(lane, 'rev-parse', 'HEAD');
+  put({ ref, state: 'published', head, worktree: lane, recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path',
+  } }, root);
+  const disposition = { schema: 'agentic-os/lane-recovery-disposition/v1',
+    outcome: 'unrecoverable-accepted', ref, head, worktree: lane,
+    decision: 'accept-missing-checkout-bytes-as-unrecoverable',
+    recordedAt: '2026-10-09T00:00:00.000Z', preserveCheckout: true, preserveRef: true,
+    cleanupAuthorized: false, deploymentAuthorized: false };
+  const current = get(ref, root), result = putExact({ ...current, recovery: {
+    ...current.recovery, disposition } }, current, root);
+  assert.equal(result.recovery.disposition.recordedAt, disposition.recordedAt);
+  assert.equal(result.recovery.disposition.preserveCheckout, true);
+  assert.equal(result.recovery.disposition.preserveRef, true);
+  assert.equal(result.recovery.disposition.cleanupAuthorized, false);
+  assert.equal(result.recovery.disposition.deploymentAuthorized, false);
+  assert.equal(runGit(root, 'rev-parse', `refs/heads/${ref}`), head);
+  assert.equal(runGit(lane, 'status', '--porcelain', '--untracked-files=all'), '');
+  put({ ...result, mode: 'changed-after-plan' }, root);
+  assert.throws(() => putExact({ ...result, mode: 'stale-write' }, result, root), /record drifted/u);
+});
+
+test('exact CAS refuses drift and leaves retained checkout bytes untouched', t => {
+  const root = repository(t), ref = 'agent/device/accepted-dirty', lane = join(dirname(root), `${basename(root)}-accepted-dirty`);
+  runGit(root, 'config', 'user.email', 'test@example.invalid');
+  runGit(root, 'config', 'user.name', 'ADLC Test');
+  writeFileSync(join(root, 'base.txt'), 'base\n');
+  runGit(root, 'add', '.'); runGit(root, 'commit', '--quiet', '-m', 'base');
+  runGit(root, 'worktree', 'add', '--quiet', '-b', ref, lane);
+  const head = runGit(lane, 'rev-parse', 'HEAD');
+  put({ ref, state: 'active', head, worktree: lane, recovery: {
+    schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path',
+  } }, root);
+  const current = get(ref, root);
+  writeFileSync(join(lane, 'dirty.txt'), 'preserve me\n');
+  assert.throws(() => putExact({ ...current, recovery: { ...current.recovery,
+    disposition: { ...current.recovery.disposition, cleanupAuthorized: true } } }, current, root),
+  /recovery is invalid/u);
+  assert.equal(get(ref, root).recovery.disposition, undefined);
+  assert.equal(readFileSync(join(lane, 'dirty.txt'), 'utf8'), 'preserve me\n');
 });
 
 test('provider projection retains review identity without accumulating review bodies', (t) => {
