@@ -1,7 +1,7 @@
 /** Read-only, byte-exact Git recovery inventory. */
 import { createHash } from 'node:crypto';
 import {
-  closeSync, constants, fstatSync, lstatSync, openSync, readlinkSync, readSync,
+  closeSync, constants, fstatSync, lstatSync, openSync, opendirSync, readlinkSync, readSync,
   realpathSync,
 } from 'node:fs';
 import { TextDecoder } from 'node:util';
@@ -11,19 +11,7 @@ import { readBoundedStableFile, sameCleanupNode as sameNode } from './cleanup-ma
 export const RECOVERY_INVENTORY_ALGORITHM =
   'agentic-os/git-recovery-inventory/netstring-sha256-v1';
 export const RECOVERY_INVENTORY_SCHEMA = 'agentic-os/recovery-inventory/v1';
-/*
- * N(bytes) is ASCII(byte-length) + ":" + bytes + ",".  A manifest is
- * N(algorithm), N(kind), N(decimal record count), then N(record) for each
- * sorted record.  A record is the concatenation of N(field) in the orders
- * below.  Tokens, modes, stages, lengths, counts, hashes, and object formats
- * are ASCII; paths and symlink targets are raw filesystem/Git bytes.
- *
- * index:  path, stage, Git mode, object format, object ID; path then stage.
- * content: category, path, kind, observed Git mode, byte length, SHA-256;
- *          path then category.  Kinds are file, symlink, and absent.  Absent
- *          is allowed only for a tracked stage-zero entry and hashes no bytes.
- * hidden: path, assume-unchanged bit, skip-worktree bit; path order.
- */
+/* Expand Git-collapsed ignored dirs; N(b)=ASCII(length):bytes,; rows sort by raw path bytes. */
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const SHA256_EMPTY = createHash('sha256').digest('hex');
 const BUFFER_SIZE = 64 * 1024;
@@ -55,21 +43,18 @@ function nulRecords(value, label) {
   if (!Buffer.isBuffer(value)) blocked(`${label} output is not bytes`);
   if (value.length === 0) return [];
   if (value.at(-1) !== 0) blocked(`${label} output is not NUL-terminated`);
-  const result = [];
-  let start = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== 0) continue;
+  const result = []; let start = 0;
+  for (let index = 0; index < value.length; index += 1) if (value[index] === 0) {
     if (index === start) blocked(`${label} contains an empty record`);
-    result.push(Buffer.from(value.subarray(start, index)));
-    start = index + 1;
+    result.push(Buffer.from(value.subarray(start, index))); start = index + 1;
   }
   return result;
 }
 function rawPath(value, label) {
-  if (!Buffer.isBuffer(value) || value.length === 0 || value.includes(0)
-    || value[0] === 47 || value.includes(92)
-    || value.length >= 2 && /[A-Za-z]/u.test(String.fromCharCode(value[0])) && value[1] === 58
-    || value.toString('binary').split('/').some((part) => !part || part === '.' || part === '..')) {
+  const windowsDrive = value?.length >= 2 && /[A-Za-z]/u.test(String.fromCharCode(value[0])) && value[1] === 58;
+  if (!Buffer.isBuffer(value) || value.length === 0 || value.includes(0) || value[0] === 47
+    || value.includes(92) || windowsDrive
+    || value.toString('binary').split('/').some(part => !part || part === '.' || part === '..')) {
     blocked(`${label} contains an unsafe repository-relative path`);
   }
   return value;
@@ -116,9 +101,7 @@ function indexRecords(raw, objectFormat) {
     const key = `${path.toString('hex')}:${stage}`;
     if (seen.has(key)) blocked('index inventory contains a duplicate path and stage');
     seen.add(key);
-    return { path, stage, mode: match[1], oid: match[2], fields: [
-      path, ascii(stage), ascii(match[1]), ascii(objectFormat), ascii(match[2]),
-    ] };
+    return { path, stage, mode: match[1], oid: match[2], fields: [path, ascii(stage), ascii(match[1]), ascii(objectFormat), ascii(match[2])] };
   }).sort((left, right) => Buffer.compare(left.path, right.path) || left.stage - right.stage);
 }
 function hiddenRecords(raw, indexPaths) {
@@ -132,7 +115,7 @@ function hiddenRecords(raw, indexPaths) {
     if (!assumeUnchanged && !skipWorktree) return [];
     const path = rawPath(Buffer.from(entry.subarray(2)), 'hidden inventory');
     if (!indexPaths.has(path.toString('hex'))) blocked('hidden path is absent from the index');
-    return [{ path, fields: [path, ascii(assumeUnchanged ? 1 : 0), ascii(skipWorktree ? 1 : 0)] }];
+    return [{ path, fields: [path, ascii(Number(assumeUnchanged)), ascii(Number(skipWorktree))] }];
   });
   return uniquePaths(records, 'hidden inventory');
 }
@@ -147,18 +130,15 @@ function parentChain(root, relative) {
     const path = fullPath(root, relative.subarray(0, separator));
     const metadata = lstatSync(path, { bigint: true, throwIfNoEntry: false });
     entries.push({ path, metadata });
-    if (!metadata?.isDirectory() || metadata.isSymbolicLink()) {
-      return { direct: false, entries };
-    }
+    if (!metadata?.isDirectory() || metadata.isSymbolicLink()) return { direct: false, entries };
   }
   return { direct: true, entries };
 }
 function assertParentChain(expected) {
-  for (const { path, metadata } of expected.entries) {
-    const current = lstatSync(path, { bigint: true, throwIfNoEntry: false });
-    if (metadata === undefined ? current !== undefined : !sameNode(metadata, current)) {
-      blocked('content parent changed during hashing', 'blocked-recovery-inventory-race');
-    }
+  for (const { path, metadata } of expected.entries) if (metadata === undefined
+    ? lstatSync(path, { bigint: true, throwIfNoEntry: false }) !== undefined
+    : !sameNode(metadata, lstatSync(path, { bigint: true, throwIfNoEntry: false }))) {
+    blocked('content parent changed during hashing', 'blocked-recovery-inventory-race');
   }
 }
 function gitMode(metadata) {
@@ -224,10 +204,31 @@ function contentRecord(root, category, path, trackedMode = null) {
   ] };
 }
 
-function listedContent(raw, label, root, category) {
-  return uniquePaths(nulRecords(raw, label).map((path) => ({
-    path: rawPath(path, label),
-  })), label).map(({ path }) => contentRecord(root, category, path));
+function listedContent(raw, label, root, category, maxEntries) {
+  const paths = [], pending = nulRecords(raw, label).map(path => [path, path.at(-1) === 47]);
+  let visited = 0;
+  while (pending.length) {
+    const [entry, directory] = pending.pop();
+    if (++visited > maxEntries) blocked('recovery inventory exceeds the cleanup content entry ceiling', 'blocked-recovery-inventory-budget');
+    const path = rawPath(directory ? entry.subarray(0, -1) : entry, label);
+    if (!directory) { paths.push(path); continue; }
+    const absolute = fullPath(root, path), before = lstatSync(absolute, { bigint: true, throwIfNoEntry: false });
+    if (!before || !before.isDirectory() || before.isSymbolicLink()) blocked(`${label} directory is unsafe`, 'blocked-recovery-inventory-race');
+    const handle = opendirSync(absolute, { encoding: 'buffer' });
+    try {
+      let child;
+      while ((child = handle.readSync()) !== null) {
+        if (!Buffer.isBuffer(child.name)) blocked(`${label} contains a non-byte path`);
+        const childPath = rawPath(Buffer.concat([path, Buffer.from('/'), child.name]), label);
+        pending.push([childPath, child.isDirectory() && !child.isSymbolicLink()]);
+        if (paths.length + pending.length > maxEntries) blocked(
+          'recovery inventory exceeds the cleanup content entry ceiling', 'blocked-recovery-inventory-budget');
+      }
+    } finally { handle.closeSync(); }
+    if (!sameNode(before, lstatSync(absolute, { bigint: true, throwIfNoEntry: false }))) blocked(
+      'listed directory changed during recovery inventory', 'blocked-recovery-inventory-race');
+  }
+  return uniquePaths(paths.map(path => ({ path })), label).map(({ path }) => contentRecord(root, category, path));
 }
 
 function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef) {
@@ -269,10 +270,10 @@ function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries,
   }
   const tracked = [...stageZero.values()].sort((left, right) => Buffer.compare(left.path, right.path))
     .map((entry) => contentRecord(root, CATEGORIES.tracked, entry.path, entry.mode));
-  const visibleUntracked = listedContent(visibleBytes,
-    'visible untracked inventory', root, CATEGORIES.visibleUntracked);
-  const ignoredRuntime = listedContent(ignoredBytes,
-    'ignored runtime inventory', root, CATEGORIES.ignoredRuntime);
+  const visibleUntracked = listedContent(visibleBytes, 'visible untracked inventory', root,
+    CATEGORIES.visibleUntracked, maxContentEntries - index.length);
+  const ignoredRuntime = listedContent(ignoredBytes, 'ignored runtime inventory', root,
+    CATEGORIES.ignoredRuntime, maxContentEntries - index.length - visibleUntracked.length);
   const allKeys = new Set(indexPaths);
   for (const record of [...visibleUntracked, ...ignoredRuntime]) {
     const key = record.path.toString('hex');
