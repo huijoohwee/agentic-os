@@ -46,7 +46,7 @@ function fixture(t) {
 
 test('zero declared allowance fails before fetch, hydration or checkout', async t => {
   const f = fixture(t);
-  await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=0'), /allowance is exhausted/);
+  await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=0'), /allows no checkout/);
   assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
   assert.equal(f.run('status', '--porcelain'), '');
 });
@@ -62,7 +62,7 @@ test('new planned missions default to one without inheriting unrelated mission n
   const second = f.selected();
   assert.notEqual(first.manifest.id, second.manifest.id);
   assert.equal(second.manifest.execution.checkoutLimit, 1);
-  await assert.rejects(f.start('three', `--mission=${second.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('three'), new RegExp(`exhausted for workflow ${second.manifest.id} \\(1/1\\).*committed --plan`));
 });
 
 test('CLI and native START reject declarations above five without effects', async t => {
@@ -100,7 +100,7 @@ test('same mission reuses dirty owned work and refuses another checkout at capac
   assert.equal(f.effects.length, previousEffects);
   assert.equal(readFileSync(join(target, 'owned.txt'), 'utf8'), 'unfinished owner bytes\n');
   assert.equal(f.selected().digest, first.digest);
-  await assert.rejects(f.start('two', `--mission=${first.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--mission=${first.path}`), /allowance(?: is)? exhausted/);
   await assert.rejects(f.start('two', `--mission=${first.path}`, '--checkout-limit=2'), /cannot reset or enlarge/);
   assert.equal(f.effects.length, previousEffects); assert.equal(worktrees(f.root).length, 2);
   assert.equal(readFileSync(first.path, 'utf8'), firstBytes);
@@ -122,7 +122,7 @@ test('a new declared task does not inherit the removed prior task navigation cap
   const retained = readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: 'test-device--one' });
   assert.equal(retained.digest, prior.digest);
   const effects = f.effects.length;
-  await assert.rejects(f.start('three', `--mission=${prior.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('three', `--mission=${prior.path}`), /allowance(?: is)? exhausted/);
   await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), /retained allocation/);
   assert.equal(f.effects.length, effects);
 });
@@ -177,7 +177,7 @@ test('another mission START does not displace exact active readmission or its ch
   assert.deepEqual(records.get('agent/test-device/one', f.root).writePaths, ['additional.txt', 'owned.txt']);
   assert.equal(readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: 'test-device--other' }).path, other.manifest);
   const own = readSelectedWorkflow(f.root, f.profile.repository, { worktreeId: basename(target) });
-  await assert.rejects(f.start('two', `--mission=${own.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--mission=${own.path}`), /allowance(?: is)? exhausted/);
   await assert.rejects(f.start('one', `--mission=${original.path}`), /selection-stale/);
   assert.equal(worktrees(f.root).length, 2);
 });
@@ -226,7 +226,7 @@ test('retained pending allocation blocks replay and consumes the final slot', as
   const pending = f.selected();
   await assert.rejects(f.start('one', `--mission=${pending.path}`), /retained allocation/);
   await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), /retained allocation/);
-  await assert.rejects(f.start('two', `--mission=${pending.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--mission=${pending.path}`), /allowance(?: is)? exhausted/);
   assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
   assert.equal(f.selected().digest, pending.digest);
 });
@@ -273,11 +273,11 @@ test('legacy adoption counts mounted member lanes and zero allows exact reuse on
   const target = lanePath('one', 'test-device', f.root), revision = headSha('HEAD', target);
   startWorkflow(f.root, f.profile.repository, { revision, planningPath: f.plan, worktreeId: basename(target) });
   const legacy = f.selected(), effects = f.effects.length;
-  await assert.rejects(f.start('two', `--mission=${legacy.path}`, '--checkout-limit=1'), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--mission=${legacy.path}`, '--checkout-limit=1'), /allowance(?: is)? exhausted/);
   assert.equal(f.effects.length, effects);
   assert.equal(await f.start('one', `--mission=${legacy.path}`, '--checkout-limit=0', `--expected-head=${revision}`), 0);
   const adopted = f.selected();
-  await assert.rejects(f.start('two', `--mission=${adopted.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--mission=${adopted.path}`), /allows no checkout/);
   assert.equal(worktrees(f.root).length, 2);
 });
 test('private committed revision refresh is explicit and committed unreserved bytes fail closed', async t => {
@@ -390,7 +390,7 @@ for (const hops of [1, 2, 3]) test(`${hops} published successors reuse the retai
   assert.equal(after.manifest.allocations[0].path, target);
   assert.equal(after.manifest.allocations[0].ref, predecessor);
   assert.equal(after.manifest.allocations[0].predecessorRef, ref);
-  await assert.rejects(f.start('two', `--mission=${after.path}`), /allowance is exhausted/);
+  await assert.rejects(f.start('two', `--mission=${after.path}`), /allowance(?: is)? exhausted/);
 });
 
 test('multi-hop readmission refuses a missing older remote without changing the mission or reservation', async t => {

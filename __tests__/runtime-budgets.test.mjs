@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40874, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40911, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -79,15 +79,17 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ['docs/START-WORKFLOW.md', [
       '`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> [--checkout-limit=<0..5>]`',
       '--mission=<manifest>',
-      'Five checkouts max per repo; canonical excluded; no nesting.',
-      'New mission defaults to one.',
-      'limits bind.',
-      'Zero reuses.',
+      'Five max/repo; canonical excluded; no nesting.',
+      'One checkout/new mission;',
+      'cap binds;',
+      'zero reuses.',
+      'No `--plan`/`--mission`: clone selection; new task: committed `--plan`.',
       '--readmit --expected-head=<sha>',
       'Work in returned checkout.',
-      'Browser UI: immediately run its `npm run dev`',
-      'visibly open the reported URL for user review; recheck after edits.',
-      'report blocker, not live proof. Headless: N/A.',
+      'Browser UI: immediately run `npm run dev`',
+      'visibly open reported URL for review, recheck after edits.',
+      'No script/browser/page: report blocker, not live proof.',
+      'Headless: N/A.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'complete --ref=<lane>',
