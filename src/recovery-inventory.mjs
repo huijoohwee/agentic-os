@@ -205,12 +205,12 @@ function contentRecord(root, category, path, trackedMode = null) {
 }
 
 function listedContent(raw, label, root, category, maxEntries) {
-  const paths = [], pending = nulRecords(raw, label).map(path => [path, path.at(-1) === 47]);
+  const paths = [], pending = nulRecords(raw, label).map(entry => [entry.at(-1) === 47 ? entry.subarray(0, -1) : entry, entry.at(-1) === 47]);
   let visited = 0;
   while (pending.length) {
     const [entry, directory] = pending.pop();
     if (++visited > maxEntries) blocked('recovery inventory exceeds the cleanup content entry ceiling', 'blocked-recovery-inventory-budget');
-    const path = rawPath(directory ? entry.subarray(0, -1) : entry, label);
+    const path = rawPath(entry, label);
     if (!directory) { paths.push(path); continue; }
     const absolute = fullPath(root, path), before = lstatSync(absolute, { bigint: true, throwIfNoEntry: false });
     if (!before || !before.isDirectory() || before.isSymbolicLink()) blocked(`${label} directory is unsafe`, 'blocked-recovery-inventory-race');
