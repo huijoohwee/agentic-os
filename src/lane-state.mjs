@@ -2,7 +2,7 @@
  * Pure ADLC lane state machine.
  * This is the executable copy of docs/LANE.md.
  */
-import { canonicalJson, validateRepositoryProfile } from './governance.mjs';
+import { canonicalJson, governanceDigest, validateRepositoryProfile } from './governance.mjs';
 import { isLaneRef } from './lane-id.mjs';
 export const PROVIDER_CAPABILITIES = Object.freeze({
   PULL_REQUEST: 'protected-integration:pull-request', MERGE_QUEUE: 'tested-protected-ordering:merge-queue',
@@ -288,15 +288,56 @@ export const TRANSITIONS = Object.freeze([
 ]);
 const SUCCESSOR_HANDOFF = 'agentic-os-lane-successor/v1';
 const successorRefusal = (reason, message) => ({ reason, message });
+const RELEASE_EVIDENCE_SCHEMA = 'agentic-os/reservation-path-release/v1';
+const RELEASE_EVIDENCE_KEYS = Object.freeze(['schema', 'path', 'laneHead', 'protectedHead',
+  'lanePathEntry', 'protectedPathEntry', 'bytesDiffer', 'digest']);
+const exactObjectKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
+  && [Object.prototype, null].includes(Object.getPrototypeOf(value))
+  && Reflect.ownKeys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+function validReleasedPathEntry(value) {
+  if (value === null) return true;
+  return exactObjectKeys(value, ['mode', 'type', 'oid'])
+    && ['100644', '100755'].includes(value.mode) && value.type === 'blob'
+    && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.oid ?? '');
+}
+function validReservationPathRelease(value) {
+  try {
+    if (!exactObjectKeys(value, RELEASE_EVIDENCE_KEYS) || value.schema !== RELEASE_EVIDENCE_SCHEMA
+      || typeof value.path !== 'string' || !value.path || value.path.length > 4096
+      || value.path.trim() !== value.path || value.path.startsWith('/') || value.path.endsWith('/')
+      || value.path.includes('\\') || value.path.includes('\0') || /[*?[]/u.test(value.path)
+      || /[\x00-\x1f\x7f]/u.test(value.path)
+      || value.path.split('/').some(part => !part || part === '.' || part === '..')
+      || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.laneHead ?? '')
+      || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.protectedHead ?? '')
+      || !validReleasedPathEntry(value.lanePathEntry)
+      || !validReleasedPathEntry(value.protectedPathEntry)
+      || value.bytesDiffer !== (canonicalJson(value.lanePathEntry) !== canonicalJson(value.protectedPathEntry))
+      || !/^[0-9a-f]{64}$/u.test(value.digest ?? '')) return false;
+    const { digest, ...body } = value;
+    return governanceDigest(body) === digest;
+  } catch { return false; }
+}
+function validReservationPathReleases(value) {
+  if (!Array.isArray(value) || value.length > 1024) return false;
+  const paths = new Set();
+  for (const release of value) {
+    if (!validReservationPathRelease(release) || paths.has(release.path)) return false;
+    paths.add(release.path);
+  }
+  return true;
+}
 export function successorLineage(record) {
   const value = record?.handoff;
   if (value?.schema !== SUCCESSOR_HANDOFF) return null;
   const keys = Reflect.ownKeys(value), prototype = Object.getPrototypeOf(value);
-  return prototype !== Object.prototype && prototype !== null || keys.length !== 3
+  const releases = Object.hasOwn(value, 'reservationPathReleases');
+  return prototype !== Object.prototype && prototype !== null || keys.length !== (releases ? 4 : 3)
     || !keys.includes('schema') || !keys.includes('predecessorRef')
     || !keys.includes('predecessorHead') || !isLaneRef(value.predecessorRef)
     || value.predecessorRef === record.ref
-    || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.predecessorHead ?? '') ? false : value;
+    || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.predecessorHead ?? '')
+    || releases && !validReservationPathReleases(value.reservationPathReleases) ? false : value;
 }
 /** Local predecessor pins; callers reobserve each exact remote and Git ancestry. */
 export function readmissionPredecessors(record, records, allocation = null) {
