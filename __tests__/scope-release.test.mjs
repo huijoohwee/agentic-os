@@ -9,14 +9,16 @@ import * as laneRecords from '../src/lane-records.mjs';
 import { assertDisjointReservation } from '../src/worktree.mjs';
 
 function fixture(t, { state = 'published', pr = 17, changedReservedPath = false, addedReservedPath = false,
-  unmountedPublished = false } = {}) {
+  unmountedPublished = false, localRefDrift = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-scope-release-'));
-  const root = join(parent, 'repo'), lanePath = join(parent, 'lane');
+  const root = join(parent, 'repo'), lanePath = join(parent, 'lane'), originPath = join(parent, 'origin.git');
   mkdirSync(root);
   const run = (args, cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+  run(['init', '--bare', '--quiet', originPath], parent);
   run(['init', '--quiet', '--initial-branch=main']);
   run(['config', 'user.email', 'test@example.invalid']);
   run(['config', 'user.name', 'ADLC Test']);
+  run(['remote', 'add', 'origin', originPath]);
   mkdirSync(join(root, 'canvas', 'src'), { recursive: true });
   mkdirSync(join(root, 'docs'));
   writeFileSync(join(root, 'canvas', 'src', 'App.tsx'), 'export const value = 1;\n');
@@ -24,6 +26,7 @@ function fixture(t, { state = 'published', pr = 17, changedReservedPath = false,
   run(['add', '.']);
   run(['commit', '--quiet', '--message', 'base']);
   const base = run(['rev-parse', 'HEAD']);
+  run(['push', '--quiet', 'origin', 'main']);
   run(['update-ref', 'refs/remotes/origin/main', base]);
   const ref = 'agent/device-0232231d4a19/commerce-data-view-embed';
   run(['worktree', 'add', '--quiet', '-b', ref, lanePath, base]);
@@ -34,15 +37,22 @@ function fixture(t, { state = 'published', pr = 17, changedReservedPath = false,
   run(['add', '.'], lanePath);
   run(['commit', '--quiet', '--message', 'published candidate'], lanePath);
   const head = run(['rev-parse', 'HEAD'], lanePath);
+  run(['push', '--quiet', 'origin', `refs/heads/${ref}`], lanePath);
   run(['update-ref', `refs/remotes/origin/${ref}`, head]);
   laneRecords.put({ ref, device: 'device-0232231d4a19', scope: 'commerce-data-view-embed',
     state, base: 'refs/remotes/origin/main', baseSha: base,
     worktree: lanePath, pr, createdAt: new Date(0).toISOString(),
     head: state === 'published' ? head : base,
     writePaths: ['canvas/src/App.tsx', ...(addedReservedPath ? [addedPath] : []), 'docs/commerce.md'] }, lanePath);
+  if (localRefDrift) {
+    writeFileSync(join(lanePath, 'docs', 'local-successor.md'), 'retained local successor\n');
+    run(['add', 'docs/local-successor.md'], lanePath);
+    run(['commit', '--quiet', '--message', 'local ref advance'], lanePath);
+  }
   if (unmountedPublished) run(['worktree', 'remove', '--force', lanePath]);
   t.after(() => rmSync(parent, { recursive: true, force: true }));
-  return { root, lanePath, ref, run, addedPath };
+  return { root, lanePath, originPath, ref, run, addedPath,
+    localRefHead: run(['rev-parse', `refs/heads/${ref}`]) };
 }
 
 const request = (s) => ({ cwd: s.root, ref: s.ref, path: 'canvas/src/App.tsx',
@@ -117,11 +127,76 @@ test('published unmounted projections release an exact remote-backed claim witho
   const s = fixture(t, { unmountedPublished: true }), plan = createReservationScopeReleasePlan(request(s));
   assert.equal(plan.laneProjection, 'unmounted-published');
   assert.equal(plan.laneWorktree, s.lanePath);
+  assert.equal(plan.laneLocalRefHead, plan.laneHead);
   const receipt = applyReservationScopeRelease({ ...request(s), plan,
     authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
   assert.equal(receipt.worktreeBytesChanged, false);
   assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
   assert.equal(s.run(['rev-parse', `refs/remotes/origin/${s.ref}`]), plan.laneHead);
+});
+
+test('unmounted published claim releases when live remote matches the record and local ref is a retained descendant', (t) => {
+  const s = fixture(t, { unmountedPublished: true, localRefDrift: true });
+  const plan = createReservationScopeReleasePlan(request(s));
+  assert.equal(plan.laneProjection, 'unmounted-published-ref-drift');
+  assert.equal(plan.laneHead, plan.laneRecordHead);
+  assert.equal(plan.laneRemoteHead, plan.laneRecordHead);
+  assert.equal(plan.laneLocalRefHead, s.localRefHead);
+  assert.notEqual(plan.laneLocalRefHead, plan.laneHead);
+  const receipt = applyReservationScopeRelease({ ...request(s), plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.branchBytesChanged, false);
+  assert.equal(receipt.worktreeBytesChanged, false);
+  assert.equal(receipt.laneLocalRefHead, s.localRefHead);
+  assert.equal(receipt.laneRemoteHead, plan.laneRecordHead);
+  assert.equal(s.run(['rev-parse', `refs/heads/${s.ref}`]), s.localRefHead);
+  assert.equal(s.run(['--git-dir', s.originPath, 'rev-parse', `refs/heads/${s.ref}`]), plan.laneRecordHead);
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
+});
+
+test('local ref drift without exact remote identity does not release the claim', (t) => {
+  const s = fixture(t, { unmountedPublished: true, localRefDrift: true });
+  const plan = createReservationScopeReleasePlan(request(s));
+  s.run(['push', '--quiet', 'origin', `refs/heads/${s.ref}`]);
+  assert.throws(() => applyReservationScopeRelease({ ...request(s), plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true }),
+  { reason: 'blocked-reservation-remote-drift' });
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths,
+    ['canvas/src/App.tsx', 'docs/commerce.md']);
+  assert.equal(s.run(['rev-parse', `refs/heads/${s.ref}`]), s.localRefHead);
+});
+
+test('unrelated lane-cache updates do not stale an exact path-bound plan', (t) => {
+  const s = fixture(t), plan = createReservationScopeReleasePlan(request(s));
+  const prior = laneRecords.get(s.ref, s.root);
+  laneRecords.put({ ...prior, ref: 'agent/device-0232231d4a19/unrelated-lane',
+    scope: 'unrelated-lane', writePaths: ['docs/unrelated.md'] }, s.root);
+  const receipt = applyReservationScopeRelease({ ...request(s), plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.pathReleased, 'canvas/src/App.tsx');
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths, ['docs/commerce.md']);
+  assert.deepEqual(laneRecords.get('agent/device-0232231d4a19/unrelated-lane', s.root).writePaths,
+    ['docs/unrelated.md']);
+});
+
+test('unmounted published local ref drift must descend from the recorded head', (t) => {
+  const s = fixture(t, { unmountedPublished: true, localRefDrift: true });
+  const tree = s.run(['rev-parse', `refs/heads/${s.ref}^{tree}`]);
+  const unrelated = s.run(['commit-tree', tree, '-m', 'unrelated ref']);
+  s.run(['update-ref', `refs/heads/${s.ref}`, unrelated]);
+  assert.throws(() => createReservationScopeReleasePlan(request(s)),
+    { reason: 'blocked-lane-identity-drift' });
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths,
+    ['canvas/src/App.tsx', 'docs/commerce.md']);
+});
+
+test('mounted published local ref drift remains blocked', (t) => {
+  const s = fixture(t, { localRefDrift: true });
+  assert.throws(() => createReservationScopeReleasePlan(request(s)),
+    { reason: 'blocked-lane-identity-drift' });
+  assert.deepEqual(laneRecords.get(s.ref, s.root).writePaths,
+    ['canvas/src/App.tsx', 'docs/commerce.md']);
+  assert.equal(s.run(['rev-parse', 'HEAD'], s.lanePath), s.localRefHead);
 });
 
 test('changed reserved bytes stale the plan and preserve the claim', (t) => {
