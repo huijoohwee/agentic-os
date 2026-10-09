@@ -32,6 +32,18 @@ prompt_presets:
     mcp_token: "/canvas.view.set"
     prompt: |-
       /canvas.view.set #canvas-view @canvas-view option=agent-run:tree
+  - id: "software-forensics"
+    label: "Software Forensics"
+    slash_command: "/software-forensics-prompt-preset"
+    runtime_command: "/software.forensics"
+    description: "Inspect an explicitly selected application and repository through a bounded evidence workflow spanning observed behavior, indexed source, graph relationships, and registered native-binary metadata. Demo opens the local demo.md record, which links to the portable walkthrough. No model call, remote write, target execution, or external dependency is required."
+    activation: "source-backed-canvas"
+    invocation_modes: ["native-chat-response", "mcp-invocation"]
+    chat_route: "active native shared runtime"
+    mcp_tool: "agentic-graph.agentic_canvas_os.docs.invoke"
+    mcp_token: "/software.forensics"
+    prompt: |-
+      /software.forensics @application @working-directory @agent @runtime-proof #reverse-engineering #vcc operation=inspect
   - id: "programmatic-drone-flight"
     label: "Programmatic Drone Flight"
     slash_command: "/programmatic-drone-flight-prompt-preset"
