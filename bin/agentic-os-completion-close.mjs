@@ -19,7 +19,7 @@ export const EMPTY_ACTIVE_LANE_RETIREMENT_RECEIPT = 'agentic-os/empty-active-lan
 const BUNDLE_KEYS = ['cleanup', 'integrationVerifier', 'retirementVerifier'];
 const CLEANUP_KEYS = ['plan', 'integrationReceipt', 'integrationPlanBytes', 'retirementReceipt', 'retirementPlanBytes', 'integrationRequest', 'retirementRequest', 'preservationReceipt', 'noRemainingValueReceipt'];
 const CONFIG_KEYS = ['repository', 'targetRepository', 'operationInput', 'workflowRun', 'policy'];
-const EMPTY_LANE_LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projectionEntryCeiling: 10_000, registrationByteCeiling: 16 * 1024 * 1024, registrationEntryCeiling: 10_000, sharedStateByteCeiling: 256 * 1024 * 1024, sharedStateEntryCeiling: 100_000 });
+const EMPTY_LANE_LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projectionEntryCeiling: 250_000, registrationByteCeiling: 16 * 1024 * 1024, registrationEntryCeiling: 10_000, sharedStateByteCeiling: 256 * 1024 * 1024, sharedStateEntryCeiling: 100_000 });
 const same = (left, right) => canonicalJson(left) === canonicalJson(right), sha = value => typeof value === 'string' && /^[0-9a-f]{40}$/u.test(value), iso = value => new Date(value).toISOString();
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function exact(value, keys, label) { if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) fail('blocked-completion-input', `${label} must have exactly ${keys.join(', ')}`); }
