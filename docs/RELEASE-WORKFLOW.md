@@ -1,12 +1,12 @@
 # Release workflow
 
-After [START](./START-WORKFLOW.md), run affected checks, then
-`npm run release:common -- publish --message="<message>"`.
-Publication stops at provider handoff. Authorized merges require green checks
-(see PRD E18). After protected merge, use `complete --ref=<lane>`; `close` is diagnostics only.
-Cleanup preserves recovery bytes and requires exact eligible-target evidence;
-`--bundle --stopped` supplies authenticated proof where required.
+Publish after checks: `npm run release:common -- publish`. Publication stops at provider handoff.
+Authorized merges require green checks. Complete: `complete --ref=<lane>`; `close`: diagnostics only.
+Cleanup preserves recovery bytes and requires exact eligible-target evidence; `--bundle --stopped` proves it.
 
-Published candidates stay immutable; native `successor` retains their checkout and
-mission cap. Integration, retirement, cleanup, sync and production grants remain separate.
-Continue [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.
+Integration, retirement, cleanup, sync and production grants remain separate.
+[DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.
+
+`npm run release:common -- retire-empty-active --ref=<lane>` quarantines a clean, active no candidate lane at its
+admitted base. It retains refs, objects, projection, registration; no provider, merge or deployment
+authority follows.

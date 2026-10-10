@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { startWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { fileURLToPath } from 'node:url';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
@@ -202,6 +202,30 @@ function complete(subject, timeoutMs) {
   });
 }
 
+function emptyActiveFixture(t) {
+  const subject = completeFixture(t, 'OPEN');
+  const ref = 'agent/test-device/empty-active', lane = join(dirname(subject.lane), 'empty-active');
+  const base = git(['rev-parse', 'HEAD'], { cwd: subject.root });
+  git(['worktree', 'add', '--quiet', '-b', ref, lane, 'main'], { cwd: subject.root });
+  put({ ref, device: 'test-device', scope: 'empty-active', state: 'active',
+    base: 'refs/remotes/origin/main', baseSha: base, worktree: lane, pr: null,
+    createdAt: new Date(0).toISOString(), writePaths: ['docs/example.md'] }, subject.root);
+  return { ...subject, ref, lane, base };
+}
+
+function retireEmptyActive(subject) {
+  return spawnSync(process.execPath, [CLI, 'release-common', 'retire-empty-active', `--ref=${subject.ref}`], {
+    cwd: subject.root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${subject.support}:${process.env.PATH}`,
+      AGENTIC_OS_TEST_REAL_GIT: execFileSync('which', ['git'], { encoding: 'utf8' }).trim(),
+      AGENTIC_OS_TEST_BARE: subject.bare,
+    },
+  });
+}
+
 test('watch reports changed review progress and succeeds on merge', async () => {
   const timer = clock();
   const states = ['OPEN', 'OPEN', 'MERGED'];
@@ -285,6 +309,44 @@ for (const cachedReview of [41, null]) test(`complete closes an exact merged rev
   assert.equal(settled.closeout.laneDisposition, 'quarantined');
   assert.equal(settled.cleanupVerified, true);
   assert.equal(settled.closeout.nextAction, null);
+});
+
+test('retire-empty-active quarantines one clean zero-candidate lane with a native receipt', (t) => {
+  const subject = emptyActiveFixture(t);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = result.stdout.split('\n').filter(line => line.startsWith('{'))
+    .map(line => JSON.parse(line)).find(value => value.schema === 'agentic-os/empty-active-lane-retirement-receipt/v1');
+  assert.ok(receipt, result.stdout);
+  assert.equal(receipt.result, 'quarantined');
+  assert.equal(receipt.noCandidateCommitted, true);
+  assert.equal(receipt.bytesDeleted, false);
+  assert.equal(receipt.branchesMutated, false);
+  assert.equal(receipt.objectsMutated, false);
+  assert.equal(existsSync(subject.lane), false);
+  assert.equal(git(['rev-parse', `refs/heads/${subject.ref}`], { cwd: subject.root }), subject.base);
+  const status = spawnSync(process.execPath, [CLI, 'completion', 'status', `--ref=${subject.ref}`], {
+    cwd: subject.root,
+    encoding: 'utf8',
+  });
+  assert.equal(status.status, 0, status.stderr);
+  const observed = JSON.parse(status.stdout);
+  assert.equal(observed.cleanupVerified, true);
+  assert.equal(observed.closeout.laneDisposition, 'quarantined');
+  assert.equal(observed.closeout.missionState, 'source_complete');
+});
+
+for (const mutation of ['candidate', 'dirty']) test(`retire-empty-active refuses a ${mutation} lane without cleanup`, (t) => {
+  const subject = emptyActiveFixture(t);
+  if (mutation === 'candidate') {
+    writeFileSync(join(subject.lane, 'candidate.txt'), 'candidate\n');
+    git(['add', 'candidate.txt'], { cwd: subject.lane });
+    git(['commit', '--quiet', '--message', 'candidate'], { cwd: subject.lane });
+  } else writeFileSync(join(subject.lane, 'dirty.txt'), 'dirty\n');
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /blocked-empty-active-lane-retirement-(target|dirty)/u);
+  assert.equal(existsSync(subject.lane), true);
 });
 
 test('release-common complete returns success when the profile retains worktree cleanup', (t) => {

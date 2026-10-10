@@ -133,6 +133,22 @@ is an ancestor of that head. It records a pending then active allocation with th
 retained. It preserves worktree bytes and refs and grants no provider, integration, cleanup,
 deployment, or historical authority.
 
+### Empty active reservation retirement — 2026-10-11
+
+PRD E01: a clean lane that never acquired a candidate commit must have a native
+closure path so it does not remain mounted solely because publication requires a
+candidate. TAD E02: the route accepts only the exact active cache record with no
+head, PR, handoff or unresolved byte state; the mounted branch must equal its
+admitted base, and that base must remain in clean current canonical source. ADR
+E03: reuse the existing bounded quarantine mechanism for both projection and
+registration, preserving branch and object bytes; record a digest-bound local
+receipt and do not manufacture review, provider, integration, deployment or
+deletion authority. MVP E04: prove the success case plus candidate, dirty,
+stale-base and malformed-record refusals. GTM E05: this removes inactive local
+checkout cost; buyer demand and monetary savings remain unmeasured. Budget: one
+small command module, six existing files, zero dependencies and zero always-load
+bytes. Rollback: protected revert; retained quarantines and refs stay available.
+
 Implementation owners: `src/github-transition-{policy,client,proof,provider,authority}.mjs`, committed
 transition policy, `src/cleanup{,-quarantine}.mjs`, `bin/agentic-os-{cleanup-user,completion-status,argv}.mjs`,
 lifecycle/integration/user-cleanup guides and bounded adversarial suites. Admit actual paths natively
