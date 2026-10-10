@@ -277,34 +277,33 @@ export const PROOF_KINDS = Object.freeze(['ancestor', 'exact-tree-projection']);
 export const TRANSITIONS = Object.freeze([
   { from: 'planned', event: 'provision', to: 'active', guards: ['baseFetched'] },
   { from: 'active', event: 'author', to: 'active', guards: ['onLaneWorktree'] },
-  { from: 'active', event: 'publish', to: 'published',
-    guards: ['onLaneWorktree', 'clean', 'hasCommits', 'pushed'] },
-  { from: 'published', event: 'successor', to: 'published',
-    guards: ['onLaneWorktree', 'clean', 'predecessorExact', 'descendant', 'destinationAbsent'] },
-  { from: 'published', event: 'enqueue', to: 'queued', guards: ['orderingDelegated', 'providerHandoff'] },
-  { from: 'queued', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
+  { from: 'active', event: 'publish', to: 'published', guards: ['onLaneWorktree', 'clean', 'hasCommits', 'pushed'] },
+  { from: 'published', event: 'successor', to: 'published', guards: ['onLaneWorktree', 'clean', 'predecessorExact', 'descendant', 'destinationAbsent'] },
+  { from: 'published', event: 'enqueue', to: 'queued', guards: ['orderingDelegated', 'providerHandoff'] }, { from: 'queued', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
   { from: 'published', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
   { from: 'active', event: 'integrate', to: 'integrated', guards: ['integratedProof'] },
 ]);
 const SUCCESSOR_HANDOFF = 'agentic-os-lane-successor/v1';
 const successorRefusal = (reason, message) => ({ reason, message });
+const releasedReservations = value => Array.isArray(value) && value.length > 0 && value.length <= 1024
+  && value.every(item => item?.schema === 'agentic-os/reservation-path-release/v1' && typeof item.path === 'string'
+    && !/(^\/|\/$|(^|\/)\.\.?($|\/)|[\\\0*?[])/u.test(item.path) && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(item.laneHead ?? '') && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(item.protectedHead ?? '')
+    && item.lanePathEntry?.type === 'blob' && (item.protectedPathEntry === null || item.protectedPathEntry?.type === 'blob') && typeof item.bytesDiffer === 'boolean' && /^[0-9a-f]{64}$/u.test(item.digest ?? ''));
 export function successorLineage(record) {
   const value = record?.handoff;
   if (value?.schema !== SUCCESSOR_HANDOFF) return null;
-  const keys = Reflect.ownKeys(value), prototype = Object.getPrototypeOf(value);
-  return prototype !== Object.prototype && prototype !== null || keys.length !== 3
-    || !keys.includes('schema') || !keys.includes('predecessorRef')
-    || !keys.includes('predecessorHead') || !isLaneRef(value.predecessorRef)
-    || value.predecessorRef === record.ref
-    || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.predecessorHead ?? '') ? false : value;
+  const keys = Reflect.ownKeys(value), prototype = Object.getPrototypeOf(value), hasReleases = Object.hasOwn(value, 'reservationPathReleases');
+  return prototype !== Object.prototype && prototype !== null || keys.length !== (hasReleases ? 4 : 3)
+    || !keys.includes('schema') || !keys.includes('predecessorRef') || !keys.includes('predecessorHead')
+    || !isLaneRef(value.predecessorRef) || value.predecessorRef === record.ref
+    || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(value.predecessorHead ?? '') || hasReleases && !releasedReservations(value.reservationPathReleases)
+    ? false : value;
 }
 /** Local predecessor pins; callers reobserve each exact remote and Git ancestry. */
 export function readmissionPredecessors(record, records, allocation = null) {
-  const chain = [], seen = new Set([record.ref]);
-  let current = record;
+  const chain = [], seen = new Set([record.ref]); let current = record;
   for (;;) {
-    const link = successorLineage(current);
-    if (link === null) break;
+    const link = successorLineage(current); if (link === null) break;
     if (link === false || chain.length === 32 || seen.has(link.predecessorRef)) return false;
     const previous = records[link.predecessorRef];
     if (!previous || previous.ref !== link.predecessorRef || previous.head != null && previous.head !== link.predecessorHead

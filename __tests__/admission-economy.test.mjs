@@ -424,6 +424,17 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
   }
   const record = rows['agent/device/lane-32'];
   assert.equal(readmissionPredecessors(record, rows).length, 32);
+  const released = { ...record, handoff: { ...record.handoff, reservationPathReleases: [{
+    schema: 'agentic-os/reservation-path-release/v1', path: 'docs/released.md',
+    laneHead: common.head, protectedHead: common.head,
+    lanePathEntry: { mode: '100644', type: 'blob', oid: common.head },
+    protectedPathEntry: { mode: '100644', type: 'blob', oid: common.head },
+    bytesDiffer: false, digest: 'b'.repeat(64),
+  }] } };
+  assert.equal(readmissionPredecessors(released, { ...rows, [record.ref]: released }).length, 32);
+  const malformedRelease = { ...released, handoff: { ...released.handoff,
+    reservationPathReleases: [{ ...released.handoff.reservationPathReleases[0], path: '../released.md' }] } };
+  assert.equal(readmissionPredecessors(malformedRelease, { ...rows, [record.ref]: malformedRelease }), false);
   assert.equal(readmissionPredecessors(rows['agent/device/lane-33'], rows), false);
   for (const patch of [undefined, { ...rows['agent/device/lane-0'], head: 'b'.repeat(40) },
     { ...rows['agent/device/lane-0'], worktree: '/other' },
