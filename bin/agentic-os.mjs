@@ -80,6 +80,7 @@ function cmdReleaseCommonHelp() {
       '    plan --ref=<lane> --mode=recertify --base=refs/remotes/origin/main --base-sha=<sha> --worktree=<path> --expected-head=<sha> [--pr=<n>]',
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
+      '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
@@ -158,6 +159,9 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       }
       return 0;
     }
+    case 'retire-empty-active':
+      return (await import('./agentic-os-completion-close.mjs'))
+        .runEmptyActiveLaneRetirement({ root, argv: rest, profile, out, err });
     case 'successor':
       return cmdSuccessor(root, rest, policy, profile);
     case 'rebind':

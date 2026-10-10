@@ -219,7 +219,7 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
         if (UTF8.decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retained-head'))
           !== `ref: refs/heads/${ref}\n`) continue;
         const record = readOperation(operation), e = record.eligibility;
-        if ((e.schema === 'agentic-os/worktree-cleanup-eligibility/v1' ? e.cleanupPlanDigest : e.schema === 'agentic-os/user-cleanup-eligibility/v1' ? e.planDigest : null) !== entry.name || !['projectionBytes', 'projectionEntries', 'registrationBytes', 'registrationEntries']
+        if ((e.schema === 'agentic-os/worktree-cleanup-eligibility/v1' ? e.cleanupPlanDigest : ['agentic-os/user-cleanup-eligibility/v1', 'agentic-os/empty-active-lane-retirement-eligibility/v1'].includes(e.schema) ? e.planDigest : null) !== entry.name || !['projectionBytes', 'projectionEntries', 'registrationBytes', 'registrationEntries']
           .every(key => Number.isSafeInteger(e[key]) && e[key] >= 0)
           || e.projectionBytes > 4 * 1024 ** 3 || e.projectionEntries > 250000
           || e.registrationBytes > 16 * 1024 ** 2 || e.registrationEntries > 20000) continue;

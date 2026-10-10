@@ -97,8 +97,8 @@ export function validateCommandArguments(command, argv) {
       : 'source-evidence requires bundle';
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
-        return 'release-common requires start, publish, finish, close, complete, or successor; scope-release, rebind and promote are also supported';
+      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'retire-empty-active', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
+        return 'release-common requires start, publish, finish, close, complete, or successor; retire-empty-active, scope-release, rebind and promote are also supported';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
@@ -138,6 +138,8 @@ export function validateCommandArguments(command, argv) {
             flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
+      if (action === 'retire-empty-active')
+        return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
     }
     case 'start': {
       const error = exact(argv, { min: 1, max: 1,
