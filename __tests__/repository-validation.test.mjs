@@ -179,9 +179,11 @@ function priorFingerprints(value, plan, observed, ownerDigest) {
     const patterns = checkInputPatterns(value, item.id);
     const files = new Map([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
       || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path)));
-    const { root, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
-    const planInput = item.reuse === 'local-plan' ? { identity: observed.identity,
-      mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
+    const { root, requestedBase, baseRevision, sourceDigest: wholeSourceDigest, configurationDigest,
+      environmentDigest, node, executable, platform, arch } = observed.identity;
+    const planInput = item.reuse === 'local-plan' ? { identity: { root, requestedBase, baseRevision,
+      sourceDigest: wholeSourceDigest, configurationDigest, environmentDigest, node, executable, platform, arch },
+    mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
     return hash(JSON.stringify({ version: VALIDATION_VERSION, ownerDigest, check: value.checks.find(check => check.id === item.id),
       sourceDigest: sourceDigest(files), root, configurationDigest, environmentDigest, node, executable, platform, arch, planInput }));
   });
@@ -198,10 +200,15 @@ test('projection digests are shared only for identical canonical patterns within
   assert.equal(new Set(expected).size, 4, 'separate commands and check policies retain separate identities');
   const repeated = digestCalls(() => validationCheckDefinitions(value, plan, observed, 'owner'));
   assert.equal(repeated.calls, 3, 'projection cache never survives an invocation');
-  for (const field of ['environmentDigest', 'configurationDigest', 'indexDigest', 'headRevision']) {
+  for (const field of ['environmentDigest', 'configurationDigest']) {
     const changed = { ...observed, identity: { ...observed.identity, [field]: 'changed' } };
     assert.deepEqual(validationCheckDefinitions(value, plan, changed, 'owner').map(item => item.fingerprint), priorFingerprints(value, plan, changed, 'owner'));
     assert.notEqual(validationCheckDefinitions(value, plan, changed, 'owner').at(-1).fingerprint, expected.at(-1));
+  }
+  for (const field of ['indexDigest', 'headRevision']) {
+    const changed = { ...observed, identity: { ...observed.identity, [field]: 'changed' } };
+    assert.deepEqual(validationCheckDefinitions(value, plan, changed, 'owner').map(item => item.fingerprint), expected,
+      `${field} is provenance, not a local plan input`);
   }
   writeFileSync(join(root, 'a/source.txt'), 'two');
   const changed = consumerSnapshotReader({ root })();
