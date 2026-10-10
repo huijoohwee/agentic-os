@@ -14,7 +14,7 @@ import { git, headSha, worktrees } from '../src/git.mjs';
 import * as records from '../src/lane-records.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { hash } from '../bin/agentic-os-test-inputs.mjs';
-import { readmissionPredecessors } from '../src/lane-state.mjs';
+import { readmissionPredecessors, successorRecordPlan } from '../src/lane-state.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -435,6 +435,16 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
   const malformedRelease = { ...released, handoff: { ...released.handoff,
     reservationPathReleases: [{ ...released.handoff.reservationPathReleases[0], path: '../released.md' }] } };
   assert.equal(readmissionPredecessors(malformedRelease, { ...rows, [record.ref]: malformedRelease }), false);
+  const recoveryRef = 'agent/device/recovery', predecessorRef = 'agent/device/predecessor',
+    recovery = { ref: recoveryRef, device: 'device', scope: 'recovery', state: 'active',
+      base: common.base, baseSha: common.baseSha, worktree: common.worktree, pr: null, createdAt: '2026-10-10T00:00:00.000Z',
+      writePaths: ['src/owned.mjs'], head: common.head,
+      handoff: { ...released.handoff, predecessorRef, predecessorHead: common.head } },
+    predecessor = { ...common, ref: predecessorRef, state: 'published', writePaths: recovery.writePaths };
+  assert.deepEqual(successorRecordPlan({ boundRef: recoveryRef, successorRef: recoveryRef,
+    lanes: { [recoveryRef]: recovery, [predecessorRef]: predecessor }, explicitHead: common.head,
+    protectedRef: common.base, tip: common.head, worktree: common.worktree, device: 'device',
+    scope: 'recovery', createdAt: 'ignored', writePaths: recovery.writePaths }).plannedRecord, recovery);
   assert.equal(readmissionPredecessors(rows['agent/device/lane-33'], rows), false);
   for (const patch of [undefined, { ...rows['agent/device/lane-0'], head: 'b'.repeat(40) },
     { ...rows['agent/device/lane-0'], worktree: '/other' },

@@ -349,7 +349,7 @@ export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHea
   const plannedRecord = { ref: successorRef, device, scope, state: 'planned', base: predecessorRecord.base,
     baseSha: predecessorRecord.baseSha, worktree, pr: null, createdAt: resuming ? recoveryRecord.createdAt : createdAt,
     writePaths: plannedWritePaths, head: tip,
-    handoff: { schema: SUCCESSOR_HANDOFF, predecessorRef, predecessorHead: expectedHead } };
+    handoff: { schema: SUCCESSOR_HANDOFF, predecessorRef, predecessorHead: expectedHead, ...(resuming && Object.hasOwn(lineage, 'reservationPathReleases') ? { reservationPathReleases: lineage.reservationPathReleases } : {}) } };
   const exact = recoveryRecord?.state === 'active' ? { ...plannedRecord, state: 'active' } : plannedRecord;
   if (resuming && JSON.stringify(recoveryRecord) !== JSON.stringify(exact)) return successorRefusal('blocked-successor-cache-race', 'successor recovery record differs from inherited authority');
   return { resuming, predecessorRef, predecessorRecord, expectedHead, plannedRecord: resuming ? recoveryRecord : plannedRecord };
