@@ -331,7 +331,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   revision(source.canonicalRevision, 'canonicalRevision');
   instant(source.issuedAt, 'issuedAt'); instant(source.expiresAt, 'expiresAt');
   if (Date.parse(source.issuedAt) >= Date.parse(source.expiresAt)) fail('successor preservation window is invalid');
-  const { review, integration, retention, state } = source, retainedHead = current && retention.originalReceipt.detachedHead !== null ? retention.originalReceipt.detachedHead : coordinates.successorHead;
+  const { review, integration, retention, state } = source, retainedHead = retention.originalReceipt?.detachedHead ?? coordinates.successorHead;
   exact(review, ['repository', 'pr', 'url', 'branch', 'head', 'merge', 'mergedAt', 'checks',
     'protectionProven', 'authority'], 'preservation review');
   exact(integration, ['kind', 'predecessorHead', 'reviewedHead', 'merge', 'pathCount', 'replacements'], 'preservation integration');
