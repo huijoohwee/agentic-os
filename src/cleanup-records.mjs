@@ -331,7 +331,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   revision(source.canonicalRevision, 'canonicalRevision');
   instant(source.issuedAt, 'issuedAt'); instant(source.expiresAt, 'expiresAt');
   if (Date.parse(source.issuedAt) >= Date.parse(source.expiresAt)) fail('successor preservation window is invalid');
-  const { review, integration, retention, state } = source;
+  const { review, integration, retention, state } = source, retainedHead = current && retention.originalReceipt.detachedHead !== null ? retention.originalReceipt.detachedHead : coordinates.successorHead;
   exact(review, ['repository', 'pr', 'url', 'branch', 'head', 'merge', 'mergedAt', 'checks',
     'protectionProven', 'authority'], 'preservation review');
   exact(integration, ['kind', 'predecessorHead', 'reviewedHead', 'merge', 'pathCount', 'replacements'], 'preservation integration');
@@ -353,7 +353,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   if (Date.parse(source.expiresAt) - Date.parse(receipt ? state.planIssuedAt : source.issuedAt) > 900000)
     fail('successor preservation window exceeds the admitted ceiling');
   text(state.policyRepository, 'policyRepository'); text(state.workflow, 'workflow');
-  digest(retention.operationDigest, 'retained operationDigest');
+  digest(retention.operationDigest, 'retained operationDigest'); revision(retention.retainedHead, 'retainedHead');
   for (const name of ['projectionManifest', 'registrationManifest']) {
     exact(retention[name], ['digest', 'bytes', 'entries'], name);
     digest(retention[name].digest, name); count(retention[name].entries, name);
@@ -371,7 +371,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
     || new Set(integration.replacements.map(row => row?.path)).size !== coordinates.replacedPaths.length
     || !Array.isArray(review.checks) || !review.checks.length || review.checks.length > 8
     || retention.coordinate !== adoption.quarantineCoordinate || retention.registrationRef !== coordinates.successorRef
-    || retention.retainedHead !== coordinates.successorHead || state.predecessorHead !== coordinates.predecessorHead
+    || retention.retainedHead !== retainedHead || state.predecessorHead !== coordinates.predecessorHead
     || state.successorHead !== coordinates.successorHead) fail('preservation source facts are not joined');
   for (const row of integration.replacements) {
     exact(row, ['path', 'old', 'accepted'], 'preservation replacement');
