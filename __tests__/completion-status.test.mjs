@@ -4,9 +4,11 @@ import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { get, put } from '../src/lane-records.mjs';
+import { governanceDigest } from '../src/governance.mjs';
 
 const REF = 'agent/device/completion-status';
 function fixture(t) {
@@ -27,6 +29,35 @@ function fixture(t) {
   const policy = { protectedBranch: 'main' };
   const status = () => inspectCompletionStatus(root, REF, policy, profile);
   return { root, lane, git, profile, policy, status };
+}
+function addDeliveryDisposition(subject, { disposition, evidencePath = 'docs/delivery-evidence.md', reason = null, candidateRevision = null } = {}) {
+  const root = subject.root;
+  candidateRevision ??= subject.git(root, 'rev-parse', 'HEAD');
+  const laneHead = subject.git(root, 'rev-parse', `refs/heads/${REF}`);
+  const paths = execFileSync('git', ['diff', '--name-only', '-z', '--no-renames', `refs/heads/main...${laneHead}`],
+    { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean).sort();
+  const evidence = execFileSync('git', ['show', `${candidateRevision}:${evidencePath}`], { cwd: root, encoding: 'utf8' });
+  const row = {
+    schema: 'agentic-os/delivery-disposition/v1', ref: REF, laneHead, paths, disposition,
+    candidateRevision, candidateDigest: 'a'.repeat(64),
+    sourceReleaseReceiptDigest: disposition === 'deployed' ? 'b'.repeat(64) : null,
+    deploymentReceiptDigest: disposition === 'deployed' ? 'c'.repeat(64) : null,
+    runtimeVerificationReceiptDigest: disposition === 'deployed' ? 'd'.repeat(64) : null,
+    evidencePath, evidenceDigest: createHash('sha256').update(evidence).digest('hex'),
+    decisionRef: 'https://github.com/example/repository/issues/42', reason,
+  };
+  const body = { schema: 'agentic-os/delivery-disposition-set/v1', repository: subject.profile.repository,
+    dispositions: [row] };
+  const set = { ...body, receiptDigest: governanceDigest(body) };
+  commitDispositionSet(subject, set);
+  return set;
+}
+function commitDispositionSet(subject, set) {
+  const root = subject.root;
+  writeFileSync(join(root, '.agentic-os-delivery-dispositions.json'), `${JSON.stringify(set, null, 2)}\n`);
+  subject.git(root, 'add', '.agentic-os-delivery-dispositions.json');
+  subject.git(root, 'commit', '--quiet', '-m', 'record product delivery disposition');
+  subject.git(root, 'update-ref', 'refs/remotes/origin/main', subject.git(root, 'rev-parse', 'HEAD'));
 }
 
 test('completion grammar accepts only one exact status target', () => {
@@ -376,4 +407,77 @@ test('docs-only lane in a production-bound repo requires product delivery-scope 
   assert.equal(report.closeout.adlcState, 'delivery_scope_pending');
   assert.equal(report.closeout.nextAction.id, 'assess-delivery-scope');
   assert.equal(report.closeout.authorizesEffects, false);
+});
+
+test('exact deployed delivery receipt closes ADLC without granting effect authority', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  mkdirSync(join(subject.root, 'docs'));
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  writeFileSync(join(subject.root, 'docs', 'delivery-evidence.md'), '# Production delivery\nExact Dev, Prod, and Runtime readback receipts are retained.\n');
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record product delivery evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const receipt = addDeliveryDisposition(subject, { disposition: 'deployed' });
+  const report = subject.status();
+  assert.ok(report.deliveryDisposition, report.deliveryDispositionError);
+  assert.equal(report.deliveryDisposition.disposition, 'deployed');
+  assert.equal(report.deliveryDisposition.setDigest, receipt.receiptDigest);
+  assert.equal(report.deliveryDisposition.producerAuthorityVerified, false);
+  assert.equal(report.closeout.deliveryDisposition.disposition, 'deployed');
+  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.nextAction, null);
+  assert.equal(report.authorizesEffects, false);
+  assert.equal(report.grantsAuthority, false);
+});
+
+test('exact docs-only no-deploy receipt closes delivery scope and retains decision evidence', (t) => {
+  const subject = fixture(t);
+  mkdirSync(join(subject.lane, 'docs'));
+  writeFileSync(join(subject.lane, 'docs', 'handover.md'), '# Handover\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'document handover');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  mkdirSync(join(subject.root, 'docs'), { recursive: true });
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  writeFileSync(join(subject.root, 'docs', 'delivery-evidence.md'), '# Scope decision\nThe exact docs path is not an input to the deployed artifact.\n');
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record delivery scope evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const receipt = addDeliveryDisposition(subject, { disposition: 'no-deploy', reason: 'The exact documentation path is not consumed by deployed artifacts.' });
+  const report = subject.status();
+  assert.equal(report.changeClass, 'docs-only');
+  assert.ok(report.deliveryDisposition, report.deliveryDispositionError);
+  assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
+  assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
+  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.deliveryDisposition.disposition, 'no-deploy');
+  assert.equal(report.closeout.nextAction, null);
+  assert.equal(report.authorizesEffects, false);
+});
+
+test('stale lane paths in a re-sealed disposition remain pending and fail loud', (t) => {
+  const subject = fixture(t);
+  mkdirSync(join(subject.lane, 'docs'));
+  writeFileSync(join(subject.lane, 'docs', 'handover.md'), '# Handover\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'document handover');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  mkdirSync(join(subject.root, 'docs'), { recursive: true });
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  writeFileSync(join(subject.root, 'docs', 'delivery-evidence.md'), '# Scope decision\n');
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record delivery scope evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const receipt = addDeliveryDisposition(subject, { disposition: 'no-deploy', reason: 'Docs path excluded from deployed artifact.' });
+  receipt.dispositions[0].paths = ['docs/other.md'];
+  const { receiptDigest: _oldDigest, ...body } = receipt;
+  const invalid = { ...body, receiptDigest: governanceDigest(body) };
+  commitDispositionSet(subject, invalid);
+  const report = subject.status();
+  assert.equal(report.deliveryDisposition, null);
+  assert.equal(report.deliveryDispositionError, 'blocked-delivery-disposition-lane-binding');
+  assert.equal(report.closeout.adlcState, 'delivery_scope_pending');
+  assert.equal(report.closeout.nextAction.id, 'repair-delivery-disposition');
+  assert.ok(report.findings.some(item => item.code === 'delivery-disposition-invalid'));
 });

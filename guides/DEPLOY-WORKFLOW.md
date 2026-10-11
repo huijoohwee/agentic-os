@@ -60,12 +60,18 @@ For that enrolled repo, `closeout.missionState=source_complete` means only sourc
 closeout passed. `closeout.adlcState=delivery_pending` and progressive completion's
 `deliveryPending` count keep END ADLC open until the product owner has separately verified
 Dev deployment/readback, promotion of the same candidate to Prod, and Prod readback.
-The OS observation grants no deploy authority and cannot turn a source receipt into a
-runtime receipt. Follow the owner controller and retain its exact Dev and Prod receipts.
+The product owner may record those results in `.agentic-os-delivery-dispositions.json` after
+following the owner controller. The row binds the exact lane ref/head/paths, candidate revision
+and digest, committed evidence path/digest and decision reference. A deployed disposition also
+binds source-release, deployment and runtime-verification receipt digests. `completion status`
+checks those current source bindings before clearing delivery pending. It does not authenticate
+the receipt producer, authorize deploy/promotion/rollback, or turn a source receipt into a
+runtime receipt. Retain the full Dev, Prod and Runtime evidence in the committed evidence file.
 For a documentation-only lane, `delivery_scope_pending` instead asks the product owner to
 check the exact changed paths against deployed artifact inputs. Some documentation is public
 content. Keep ADLC open until the owner supplies a bound deploy or no-deploy disposition;
-this observation alone grants neither a production effect nor a no-deploy exemption.
+no-deploy requires a documented reason and is accepted only when every exact changed path is
+docs-only. This observation grants neither a production effect nor a no-deploy exemption.
 
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
