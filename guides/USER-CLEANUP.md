@@ -290,6 +290,24 @@ Recent exact-target cleanup receipts show why pruning felt like a multi-hour ope
 
 The stale-ref sweep now reads the bounded 256-branch inventory with two batched `for-each-ref` calls and one worktree-registry read. Git subprocess count is constant with inventory size, rather than growing by up to three calls per branch. The sweep remains observation-only; each selected target still needs a fresh exact plan and stopped apply because quarantining one peer changes later recovery evidence.
 
+### Owner-controlled quarantine retirement
+
+Quarantine creation remains recoverable. Reclaiming a local-consent quarantine projection is a separate destructive operation; it never runs from age, sweep, cache pressure, or a general cleanup command. It accepts one exact SHA-256 coordinate at a time and only the `agentic-os/user-cleanup-eligibility/v1` record. Unknown and protected cleanup schemas fail closed.
+
+Run from a clean canonical `main` worktree after reviewing the exact coordinate and recovery loss:
+
+```sh
+agentic-os cleanup-user retire plan --coordinate=<64-hex-quarantine-coordinate>
+agentic-os cleanup-user retire apply --plan=<saved-plan.json> \
+  --authorize=agentic-os:quarantine-retirement:<plan-digest> --stopped --discard-recovery
+```
+
+The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, requires `lsof` to prove there are no open readers under the projection, and removes only that exact projection tree. For a normal `0755` worktree root it first tightens the root to `0700`, then checks every entry identity again before unlinking; if interrupted, the recovery bytes remain private and may need manual permission restoration. It preserves the worktree registration, operation metadata, branch refs, Git object database, and any existing preservation receipt. The receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
+
+The durable receipt reports logical bytes unlinked and explicitly leaves `physicalFreeSpaceIncreaseProven:false`. Filesystem snapshots, APFS local snapshots, concurrent system activity, and storage-provider behavior can keep blocks allocated after unlinking; the receipt does not claim a volume-level free-space delta. If open-file inspection is unavailable or uncertain, apply refuses. If interrupted after its durable intent is written, the coordinate is retained for manual review rather than automatically replayed.
+
+These receipts are tested against temporary repository fixtures only. A real coordinate still requires its own plan, loss acknowledgment, apply result, and receipt. This operation does not retire lane claims or prove provider authority.
+
 For validation, bind every check to the exact candidate and its inputs. Reuse a passing receipt only when those inputs are unchanged; **do not rerun the full smoke suite on unchanged source**. Run focused checks for documentation or isolated behavior changes, then one affected validation for the final changed candidate. Quarantine itself does not justify repeating source validation. A changed source revision or check input requires fresh evidence.
 
 For a progressive closeout with several eligible lanes, use existing state to prioritize the shortest
@@ -298,7 +316,7 @@ wait budget among eligible lanes so one pending external review cannot consume t
 stable path ordering for ties, report noneligible blockers cheaply, and use a fresh bounded pass for later
 rechecks. This does not waive source checks, integration gates, user authority, or effect-specific receipts.
 
-Do not weaken recovery inventory checks to improve the timings above. Before treating quarantine as storage reclamation, obtain the separate exact retention authorization and verify its receipt. Before retiring stale lane claims, use the owning claim-retirement operation and preserve the branch/worktree identity evidence.
+Do not weaken recovery inventory checks to improve the timings above. Before retiring a quarantine projection, use the exact owner-controlled retirement plan and receipt above. Before retiring stale lane claims, use the owning claim-retirement operation and preserve the branch/worktree identity evidence.
 
 ### Change-class fast path (`--change-class=docs-only`)
 
