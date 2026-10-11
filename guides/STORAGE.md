@@ -386,12 +386,12 @@ node bin/agentic-os-storage.mjs apply --plan=/private/dependency-plan.json \
 ```
 
 Only that quarantine's `projection/node_modules` is eligible. Native `ditto --hfsCompression --noclone`
-prepares a copy; the existing streamed preservation manifest must match before swapping directories.
-The full projection must still match its original quarantine receipt afterward. Files, modes, symlink
-bytes, authored patches, dependency availability, registration and receipt bytes remain preserved;
-filesystem representation alone changes. This mode never selects checkout dependencies. Unsupported platforms
-refuse this operation; a volume offering no savings leaves the original untouched. No package install,
-network call, source download or lifecycle script is needed.
+prepares a copy; the full projection manifest is checked before and after swapping directories.
+Files, modes, symlink bytes, authored patches, dependency availability, registration and receipt bytes
+remain preserved; filesystem representation alone changes. The planner accepts the exact legacy,
+user-cleanup, empty-active-lane-retirement and local-owner eligibility schemas, binding each to its
+native coordinate digest. Unknown or mismatched schemas fail closed. No checkout dependencies,
+package install, network call, source download or lifecycle script are selected.
 
 For the exact checkout's installed dependencies, stop its development servers, tests, package managers,
 and other consumers first, then opt into the separate target kind:

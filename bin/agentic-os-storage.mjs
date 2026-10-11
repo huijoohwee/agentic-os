@@ -37,11 +37,18 @@ function dependencyState(common, quarantine) {
   const target = direct(join(projection, 'node_modules'));
   const operationBytes = readBoundedStableFile(join(coordinate, 'operation.json'), 64000, 'storage-operation');
   const operation = JSON.parse(operationBytes), e = operation.eligibility;
+  const digestField = ({ 'agentic-os/worktree-cleanup-eligibility/v1': 'cleanupPlanDigest',
+    'agentic-os/user-cleanup-eligibility/v1': 'planDigest',
+    'agentic-os/empty-active-lane-retirement-eligibility/v1': 'planDigest',
+    'local-owner-authorized-quarantine-eligibility/v1': 'planDigest' })[e?.schema]
+    ?? (e?.schema === undefined ? 'cleanupPlanDigest' : null);
   if (operation.schema !== 'agentic-os/worktree-quarantine-operation/v1'
-    || e?.cleanupPlanDigest !== quarantine) fail('quarantine-operation');
+    || !digestField || e[digestField] !== quarantine) fail('quarantine-operation');
+  const expected = e.projectionManifest ?? e;
   const projectionManifest = storageManifest(projection);
-  if (projectionManifest.digest !== e.projectionManifestDigest
-    || projectionManifest.bytes !== e.projectionBytes || projectionManifest.entries !== e.projectionEntries)
+  if (projectionManifest.digest !== (expected.digest ?? expected.projectionManifestDigest)
+    || projectionManifest.bytes !== (expected.bytes ?? expected.projectionBytes)
+    || projectionManifest.entries !== (expected.entries ?? expected.projectionEntries))
     fail('quarantine-drift');
   const registration = direct(join(coordinate, 'registration'));
   return { target, state: { operationDigest: hash(operationBytes), projectionManifest,
