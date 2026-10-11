@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Feature Index"
 doc_type: "Feature Index"
-version: "1.0.3"
-date: "2026-09-30"
+version: "1.0.4"
+date: "2026-10-11"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "System architect function"
@@ -105,6 +105,12 @@ production-success claim: its [production preparation](https://github.com/huijoo
 failed the required isolated browser gate before authorization/deployment.
 XR MP4 diagnosis remains deferred (KIV) by the operator; the failure is not waived.
 The next production action requires an eligible candidate with that gate passed.
+
+## Delivery observation — HackaMap Source Files (2026-10-11)
+
+| Affected capability | Development | Production Release | Runtime indication and next step |
+|---|---|---|---|
+| Graph HackaMap whole-repository Source Files, inventory and D3 projections | [PR #1677](https://github.com/huijoohwee/agentic-graph/pull/1677) merged as `fae3fbedab50afea9e63a7e3f918e83deb8ebd5d`; its selected Integration Gate passed. The final [product plan handover](https://github.com/huijoohwee/agentic-graph/blob/8fc35723458874f61821464334baaaf6b25155c2/docs/documents/agentic-graph-hackamap-inventory-prd-tad-adr-mvp-gtm.md) merged as Graph PR [#1679](https://github.com/huijoohwee/agentic-graph/pull/1679); its docs-contract and Integration Gate passed in run [38150281092](https://github.com/huijoohwee/agentic-graph/actions/runs/38150281092). Recorded implementation evidence includes affected checks/builds, local Dev manifest/D3 browser readback, and shared-indexer reuse of 71/71 sources with 5,207 ms indexing / 6,697 ms total for that sample. | Human-authorized [Production Release run 38146256184](https://github.com/huijoohwee/agentic-graph/actions/runs/38146256184) completed for candidate `45b65f110b805b60b9d73f14da6acd27db604fb36612ec8dcef615a1b96d33a8`; Pages deployment `679b5af0-4329-4c3f-ac37-98a8fe190cc1`. Exact receipt identities and rollback predecessor are in the [Graph release runbook](https://github.com/huijoohwee/agentic-graph/blob/8fc35723458874f61821464334baaaf6b25155c2/docs/agentic-graph-acos-deploy-runbook.md). | Runbook reports production-complete: public route, transport/browser fidelity and returning-user cache convergence passed; no rollback was invoked. Physical-device/offline parity, semantic correctness, demand, willingness to pay and revenue remain unmeasured. Next: if a follow-on is admitted, run one timed device/browser browsing pilot and record accessibility/offline and buyer signals before changing limits or adding services. |
 
 ## How to read the index
 
