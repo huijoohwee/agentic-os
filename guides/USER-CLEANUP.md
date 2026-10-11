@@ -224,6 +224,13 @@ It neither changes the original receipt nor recreates a registered-before target
 provider integration and record-only retirement remain required; unknown historical actors stay unknown.
 Keep current seed recovery copies and accepted clean-state reconciliation; no deletion follows.
 
+For a detached original receipt, the retained observer also binds the quarantined registration's
+raw `HEAD` to `receipt.detachedHead` and rechecks that commit's Git tree against the enrolled reviewed
+head. It then inventories the retained index at that exact revision. Missing or mismatched receipt,
+tree, ref, or registration evidence fails closed. This local retention disposition preserves
+`providerAuthority:false` and `claimRetired:false`; it does not replace the independent provider
+retirement receipt.
+
 ## Bounds, recovery and trust
 
 Plans are at most 64,000 bytes and valid for at most 15 minutes. Provider reads have individual 15-second

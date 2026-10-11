@@ -228,4 +228,26 @@ reproduced the refusal before repair and covers those negative cases. Validation
 release receipts belong to workspace artifact `end-adlc-four-worktrees-20261004`. GTM: this
 removes a false unfinished-lane signal; resource savings and buyer demand remain unmeasured.
 Budget: three existing files, zero added runtime lines, zero new modules/dependencies or
-always-load bytes; source limits remain 47 modules/15050 lines. Checked revert is rollback.
+always-load bytes; source limits remain 49 modules/15536 lines. Checked revert is rollback.
+
+## Detached current-retention receipt join — 2026-10-12
+
+D01 current-quarantine adoption now includes the exact retained local-consent receipt for
+agentic-os PR397. The receipt binds lane `agent/device-cba000d3779d/software-forensics-preset`,
+reviewed head `e17b54e4a574a8086ecb53fd9b7d242dc79fbc82`, merged commit
+`3846c48dba4b40702451640e3e78e6bcc91408f4`, and quarantine coordinate
+`4b73b84c47d82b1ec6f4a70ce06e8c1ea1a56ac6e48000dbbaebeac944d505f6`. Its receipt digest is
+`fa4ed263252951ee38e86821285e64be81ad3d2f5255c4505c8df70aa9932265`.
+
+The quarantined registration is detached at the merged commit. The retained observer accepts that
+shape only when the original receipt names that exact detached head, its reviewed source and current
+lane head have equal Git trees, the reviewed PR identity still matches, and the retained index and
+content inventory revalidate against the detached revision. Mismatched receipts, trees, refs, or
+registration heads remain unobserved. The original receipt stays unchanged; `providerAuthority`,
+`claimRetired`, and `bytesDeleted` remain false. The policy entry selects current retention with
+`historicalQuarantineAuthorityProven: false`; protected live retirement and any applicable owner
+delivery/handover evidence remain separate Full END ADLC gates.
+
+Budget: two existing modules, one existing recovery test file, one exact v3 policy entry, and these
+two on-demand guide updates; zero dependencies or always-load bytes. Source module and aggregate
+line caps remain enforced. Revert the checked protected commit to roll back the observer and policy.

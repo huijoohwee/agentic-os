@@ -182,15 +182,12 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   return frozen({ ...base, observationDigest: governanceDigest(base) });
 }
 function privateDirectory(path, label) {
-  const stat = strictStat(path, label);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n
-    || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`);
+  const stat = strictStat(path, label); if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`);
 }
 function readOperation(path, eligibility = null) {
   const metadataPath = join(path, 'operation.json');
   let bytes, value;
-  try { bytes = readBoundedStableFile(metadataPath, 64_000,
-    'cleanup-retained-artifact'); }
+  try { bytes = readBoundedStableFile(metadataPath, 64_000, 'cleanup-retained-artifact'); }
   catch { fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata is unsafe'); }
   try { value = JSON.parse(UTF8.decode(bytes)); }
   catch { fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata is invalid'); }
@@ -205,6 +202,10 @@ function readOperation(path, eligibility = null) {
     fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata does not match');
   return value;
 }
+function detachedReviewedHead(root, registered, receipt, head) {
+  const oid = receipt?.detachedHead; if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid ?? '') || registered !== `${oid}\n`) return null;
+  const trees = [oid, head].map(revision => observeGit(['rev-parse', '--verify', `${revision}^{tree}`], { cwd: root, allowFail: true })); return trees[0] && trees[0] === trees[1] ? oid : null;
+}
 export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef } = {}) {
   try {
     const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT);
@@ -214,10 +215,10 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
       if (coordinate !== null && entry.name !== coordinate) continue;
       if (!/^[a-f0-9]{64}$/u.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
       try {
-        const operation = join(base, entry.name), registration = join(operation, 'registration');
-        privateDirectory(operation, 'cleanup-operation-directory');
-        if (UTF8.decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retained-head'))
-          !== `ref: refs/heads/${ref}\n`) continue;
+        const operation = join(base, entry.name), registration = join(operation, 'registration'); privateDirectory(operation, 'cleanup-operation-directory');
+        const registrationHead = UTF8.decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retained-head')),
+          detachedHead = detachedReviewedHead(root, registrationHead, originalReceipt, head), detachedRegistration = detachedHead !== null;
+        if (registrationHead !== `ref: refs/heads/${ref}\n` && !detachedRegistration) continue;
         const record = readOperation(operation), e = record.eligibility;
         if ((e.schema === 'agentic-os/worktree-cleanup-eligibility/v1' ? e.cleanupPlanDigest : ['agentic-os/user-cleanup-eligibility/v1', 'agentic-os/empty-active-lane-retirement-eligibility/v1'].includes(e.schema) ? e.planDigest : null) !== entry.name || !['projectionBytes', 'projectionEntries', 'registrationBytes', 'registrationEntries']
           .every(key => Number.isSafeInteger(e[key]) && e[key] >= 0)
@@ -230,30 +231,29 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
           || originalReceipt.registrationQuarantinePath !== registration || originalReceipt.executedAt !== record.executedAt
           || originalReceipt.result !== 'quarantined' || originalReceipt.projectionQuarantined !== true
           || originalReceipt.registrationQuarantined !== true || originalReceipt.stoppedAcknowledged !== true
+          || detachedRegistration && (originalReceipt.integration?.kind !== 'reviewed-equivalent-superseded-transition'
+            || originalReceipt.integration?.detachedHead !== detachedHead || originalReceipt.integration?.reviewedCommit !== head
+            || originalReceipt.integration?.sourceIntegrated !== false || originalReceipt.integration?.reviewedSource?.kind !== 'equal-tree'
+            || originalReceipt.integration.reviewedSource.headTree !== originalReceipt.integration.reviewedSource.mergeTree || originalReceipt.historicalDraft !== 'superseded')
+          || Boolean(originalReceipt.detachedHead) !== detachedRegistration
           || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
           || !absent(originalReceipt.targetPath, 'retained-target')
           || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
-        const projection = observeQuarantineManifest(join(operation, 'projection'), {
-          byteCeiling: e.projectionBytes, entryCeiling: e.projectionEntries, retainedHardlinks: true,
-        });
-        const retained = observeRegistrationManifest(registration, {
-          byteCeiling: e.registrationBytes, entryCeiling: e.registrationEntries,
-        });
-        const log = UTF8.decode(readBoundedStableFile(join(registration, 'logs', 'HEAD'),
-          16 * 1024 ** 2, 'retained-head-log')).trimEnd().split('\n').at(-1);
+        const projection = observeQuarantineManifest(join(operation, 'projection'), { byteCeiling: e.projectionBytes, entryCeiling: e.projectionEntries, retainedHardlinks: true }),
+          retained = observeRegistrationManifest(registration, { byteCeiling: e.registrationBytes, entryCeiling: e.registrationEntries });
+        const log = UTF8.decode(readBoundedStableFile(join(registration, 'logs', 'HEAD'), 16 * 1024 ** 2, 'retained-head-log')).trimEnd().split('\n').at(-1);
         // Git ref verification can append an old-head -> zero entry without moving HEAD.
         const [prior, next] = log?.split(' ') ?? [];
         const retainedHead = /^0{40}(?:0{24})?$/u.test(next ?? '') ? prior : next;
         if (projection.digest === e.projectionManifestDigest && projection.bytes === e.projectionBytes
           && projection.entries === e.projectionEntries && retained.digest === e.registrationManifestDigest
           && retained.bytes === e.registrationBytes && retained.entries === e.registrationEntries
-          && retainedHead === head) {
-          const inventory = originalReceipt ? collectRecoveryInventory({ cwd: join(operation, 'projection'), canonicalRef,
-            maxContentEntries: e.projectionEntries, repositoryContext: { commonDirectory: realpathSync(commonDir(root)),
-              gitDirectory: realpathSync(commonDir(root)), worktree: join(operation, 'projection'), indexFile: join(registration, 'index') } }) : null;
-          if (inventory && (inventory.branch !== ref || inventory.headRevision !== head || !same(record, readOperation(operation))
-            || !absent(originalReceipt.targetPath, 'retained-target')
-            || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
+          && retainedHead === (detachedRegistration ? detachedHead : head)) {
+          const repositoryContext = { commonDirectory: realpathSync(commonDir(root)), gitDirectory: realpathSync(commonDir(root)), worktree: join(operation, 'projection'), indexFile: join(registration, 'index') };
+          const inventory = originalReceipt ? collectRecoveryInventory({ cwd: join(operation, 'projection'), canonicalRef, allowDetached: detachedRegistration, retainedHeadRevision: detachedRegistration ? detachedHead : null, maxContentEntries: e.projectionEntries, repositoryContext }) : null;
+          if (inventory && (inventory.branch !== (detachedRegistration ? null : ref)
+            || inventory.headRevision !== (detachedRegistration ? detachedHead : head) || !same(record, readOperation(operation))
+            || !absent(originalReceipt.targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
           for (const path of [base, operation]) privateDirectory(path, 'cleanup-operation-directory');
           return frozen({ coordinate: entry.name, operationDigest: governanceDigest(record), registrationRef: ref,
             retainedHead, projectionManifest: projection, registrationManifest: retained,

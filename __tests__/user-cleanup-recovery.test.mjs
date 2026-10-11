@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { canonicalJson, createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
@@ -243,6 +244,25 @@ test('explicit reviewed-equivalent transition quarantines a superseded sibling w
   assert.equal(receipt.claimRetired, false);
   assert.equal(existsSync(s.target), false);
   assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
+});
+test('current retention joins an exact detached reviewed-equivalent receipt without upgrading authority', t => {
+  const s = fixture(t); git(s.target, 'switch', '--detach', s.merge);
+  const p = planUserCleanup({ ...s.input, detached: true, reviewedEquivalentCommit: s.head }, s.options);
+  const receipt = s.apply(p), observe = value => observeRetainedQuarantineEvidence(s.root,
+    s.branch, s.head, receipt.planDigest, { originalReceipt: value, canonicalRef: 'refs/heads/main' });
+  assert.equal(receipt.integration.kind, 'reviewed-equivalent-superseded-transition');
+  assert.equal(receipt.detachedHead, s.merge);
+  assert.ok(observe(receipt));
+  assert.equal(observeRetainedWorktreeQuarantine(s.root, s.branch, s.head), false);
+  assert.equal(receipt.providerAuthority, false); assert.equal(receipt.claimRetired, false);
+  const wrongHead = structuredClone(receipt); wrongHead.detachedHead = s.head;
+  assert.equal(observe(wrongHead), null);
+  const wrongTree = structuredClone(receipt); wrongTree.integration.reviewedSource.headTree = '0'.repeat(40);
+  assert.equal(observe(wrongTree), null);
+  const wrongRef = structuredClone(receipt); wrongRef.review.branch = 'agent/device-0232231d19/other';
+  assert.equal(observe(wrongRef), null);
+  const elevated = structuredClone(receipt); elevated.providerAuthority = true;
+  assert.equal(observe(elevated), null);
 });
 test('reviewed-equivalent mode refuses mismatched transitions and unreviewed commits', t => {
   const s = fixture(t, false, true);

@@ -238,9 +238,9 @@ function inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries,
   const canonicalRevision = strictText(gitLine([
     'rev-parse', '--verify', '--end-of-options', `${canonicalRef}^{commit}`,
   ], root, 'canonical revision', repositoryContext), 'canonical revision');
-  const detached = allowDetached && strictText(gitLine(
-    ['rev-parse', '--abbrev-ref', 'HEAD'], root, 'HEAD kind', repositoryContext), 'HEAD kind') === 'HEAD';
-  const branch = retainedRef?.slice('refs/heads/'.length) ?? (detached ? null : strictText(gitLine(
+  const detached = allowDetached && (/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(retainedRef ?? '')
+    || strictText(gitLine(['rev-parse', '--abbrev-ref', 'HEAD'], root, 'HEAD kind', repositoryContext), 'HEAD kind') === 'HEAD');
+  const branch = retainedRef?.startsWith('refs/heads/') ? retainedRef.slice('refs/heads/'.length) : (detached ? null : strictText(gitLine(
     ['symbolic-ref', '--quiet', '--short', 'HEAD'], root, 'branch', repositoryContext), 'branch'));
   const objectFormat = strictText(gitLine(
     ['rev-parse', '--show-object-format'], root, 'object format', repositoryContext), 'object format');
@@ -308,8 +308,9 @@ function frozen(value) {
 
 /** Collect twice and return only an exact, stable, path-free observation. */
 export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, allowDetached = false,
-  maxContentEntries = Number.MAX_SAFE_INTEGER, repositoryContext = null } = {}) {
+  maxContentEntries = Number.MAX_SAFE_INTEGER, repositoryContext = null, retainedHeadRevision = null } = {}) {
   if (typeof allowDetached !== 'boolean') throw new TypeError('allowDetached must be a boolean');
+  if (retainedHeadRevision !== null && (!allowDetached || !repositoryContext?.indexFile || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(retainedHeadRevision))) throw new TypeError('retainedHeadRevision requires detached inventory and an exact retained index');
   if (!Number.isSafeInteger(maxContentEntries) || maxContentEntries < 1)
     throw new TypeError('maxContentEntries must be a positive safe integer');
   if (typeof canonicalRef !== 'string' || !canonicalRef.startsWith('refs/')
@@ -326,13 +327,12 @@ export function collectRecoveryInventory({ cwd = process.cwd(), canonicalRef, al
     const text = UTF8.decode(readBoundedStableFile(join(dirname(repositoryContext.indexFile), 'HEAD'), 256,
       'retained-inventory-head'));
     const match = /^ref: (refs\/heads\/[^\x00-\x20]+)\n$/u.exec(text);
-    if (!match || gitBytes(['check-ref-format', match[1]], root,
-      { allowFail: true, repositoryContext }) === null) blocked('retained inventory HEAD is invalid');
-    return match[1];
+    if (match && gitBytes(['check-ref-format', match[1]], root, { allowFail: true, repositoryContext }) !== null) return match[1];
+    if (allowDetached && /^([0-9a-f]{40}(?:[0-9a-f]{24})?)\n$/u.exec(text)?.[1] === retainedHeadRevision) return retainedHeadRevision;
+    blocked('retained inventory HEAD is invalid');
   };
-  const retainedRef = retainedHead();
-  const first = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef);
-  const second = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef);
+  const retainedRef = retainedHead(), first = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef),
+    second = inventorySnapshot(root, canonicalRef, allowDetached, maxContentEntries, repositoryContext, retainedRef);
   const finalRoot = realpathSync(strictText(gitPath(['rev-parse', '--show-toplevel'], root,
     'repository root', repositoryContext), 'repository root'));
   const finalIdentity = lstatSync(finalRoot, { bigint: true, throwIfNoEntry: false });
