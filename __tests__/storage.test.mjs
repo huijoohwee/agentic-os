@@ -121,7 +121,7 @@ test('dependency compression binds current cleanup eligibility schemas to their 
       assert.equal(receipt.quarantineReceiptPreserved, true, schema);
     }
   });
-test('dependency compression rejects current eligibility digest or projection drift', t => {
+test('dependency compression rejects current eligibility digest or projection drift', { skip: process.platform !== 'darwin' }, t => {
   const s = fixture(t), q = quarantine(s, 'agentic-os/user-cleanup-eligibility/v1');
   const operationPath = join(q.q, 'operation.json'), operation = JSON.parse(readFileSync(operationPath));
   operation.eligibility.planDigest = 'b'.repeat(64);

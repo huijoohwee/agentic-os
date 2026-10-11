@@ -327,6 +327,7 @@ async function main() {
     argv = dispatch.argv;
   }
   if (command === 'complete-adlc') { command = 'release-common'; argv = ['complete', ...argv]; }
+  if (['cleanup-user', 'cleanup'].includes(command) && argv[0] === 'retire') return (await import('./agentic-os-cleanup-user.mjs')).runUserCleanup(repoRoot(process.cwd()), argv, out);
   const argumentError = validateCommandArguments(command, argv);
   if (argumentError) {
     err(`blocked-invalid-arguments: ${command}: ${argumentError}`);
