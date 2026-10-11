@@ -32,6 +32,16 @@ test('committed transition workflow is bound to the canonical authority policy',
   assert.equal(policy.preservationAdoptions[0].historicalSuccessionAuthorityProven, false);
   assert.deepEqual(policy.retentionAdoptions, [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
+    targetRef: 'agent/device-cba000d3779d/software-forensics-preset',
+    targetHead: 'e17b54e4a574a8086ecb53fd9b7d242dc79fbc82',
+    merge: '3846c48dba4b40702451640e3e78e6bcc91408f4',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/397',
+    quarantineCoordinate: '4b73b84c47d82b1ec6f4a70ce06e8c1ea1a56ac6e48000dbbaebeac944d505f6',
+    originalReceiptDigest: 'fa4ed263252951ee38e86821285e64be81ad3d2f5255c4505c8df70aa9932265',
+    historicalQuarantineAuthorityProven: false,
+  }, {
+    schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-graph',
     targetRef: 'agent/device-0232231d4a19/browser-history-authorization-stop',
     targetHead: 'bf533bf09735732b2f225fde161c859c4ba66ee3',
