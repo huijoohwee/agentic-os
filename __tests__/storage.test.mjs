@@ -26,7 +26,7 @@ function fixture(t) {
     stopped: true, now: NOW, ...options });
   return { root, plan, apply };
 }
-function quarantine(s) {
+function quarantine(s, eligibilitySchema = null) {
   const id = 'a'.repeat(64), q = join(s.root, '.git/agentic-os-cleanup-quarantine', id);
   const projection = join(q, 'projection'), registration = join(q, 'registration');
   mkdirSync(join(projection, 'node_modules/pkg'), { recursive: true }); mkdirSync(registration);
@@ -36,9 +36,15 @@ function quarantine(s) {
   symlinkSync('pkg/index.js', join(projection, 'node_modules/executable'));
   writeFileSync(join(registration, 'HEAD'), 'recovery metadata\n');
   const manifest = observeQuarantineManifest(projection, LIMITS);
+  const eligibility = eligibilitySchema === 'local-owner-authorized-quarantine-eligibility/v1'
+    ? { schema: eligibilitySchema, planDigest: id,
+      projectionManifest: { digest: manifest.digest, bytes: manifest.bytes, entries: manifest.entries } }
+    : { ...(eligibilitySchema ? { schema: eligibilitySchema } : {}),
+      [eligibilitySchema === 'agentic-os/worktree-cleanup-eligibility/v1' || !eligibilitySchema
+        ? 'cleanupPlanDigest' : 'planDigest']: id,
+      projectionManifestDigest: manifest.digest, projectionBytes: manifest.bytes, projectionEntries: manifest.entries };
   writeFileSync(join(q, 'operation.json'), JSON.stringify({ schema: 'agentic-os/worktree-quarantine-operation/v1',
-    eligibility: { cleanupPlanDigest: id, projectionManifestDigest: manifest.digest,
-      projectionBytes: manifest.bytes, projectionEntries: manifest.entries } }));
+    eligibility }));
   return { id, q, projection, manifest,
     plan: () => planStorage({ cwd: s.root, kind: 'dependencies', quarantine: id }, NOW) };
 }
@@ -101,6 +107,27 @@ test('APFS dependency compression preserves original projection manifest, modes,
     assert.ok(receipt.afterAllocatedBytes <= receipt.beforeAllocatedBytes);
     assert.equal(s.apply(plan).replayed, true);
   });
+test('dependency compression binds current cleanup eligibility schemas to their original manifests',
+  { skip: process.platform !== 'darwin' }, t => {
+    for (const schema of ['agentic-os/user-cleanup-eligibility/v1',
+      'agentic-os/empty-active-lane-retirement-eligibility/v1',
+      'local-owner-authorized-quarantine-eligibility/v1']) {
+      const s = fixture(t), q = quarantine(s, schema), plan = q.plan();
+      const original = readFileSync(join(q.q, 'operation.json'));
+      const receipt = s.apply(plan);
+      assert.equal(receipt.contentPreserved, true, schema);
+      assert.deepEqual(observeQuarantineManifest(q.projection, LIMITS), q.manifest, schema);
+      assert.deepEqual(readFileSync(join(q.q, 'operation.json')), original, schema);
+      assert.equal(receipt.quarantineReceiptPreserved, true, schema);
+    }
+  });
+test('dependency compression rejects current eligibility digest or projection drift', t => {
+  const s = fixture(t), q = quarantine(s, 'agentic-os/user-cleanup-eligibility/v1');
+  const operationPath = join(q.q, 'operation.json'), operation = JSON.parse(readFileSync(operationPath));
+  operation.eligibility.planDigest = 'b'.repeat(64);
+  writeFileSync(operationPath, JSON.stringify(operation));
+  assert.throws(q.plan, /quarantine-operation/);
+});
 test('dependency drift, symlink targets and unrelated paths are rejected', { skip: process.platform !== 'darwin' }, t => {
   const s = fixture(t), q = quarantine(s);
   assert.throws(() => planStorage({ cwd: s.root, kind: 'dependencies', quarantine: '../escape' }, NOW), /quarantine-id/);
