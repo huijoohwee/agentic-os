@@ -2,41 +2,33 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson, createAuthorityTransitionReceiptEnvelope, governanceDigest,
   validateAuthorityTransitionReceiptEnvelope, validateCoordinationRequest } from './governance.mjs';
-import { cleanupRecordExact as exact, cleanupRecordDigest as digest,
-  cleanupRecordFields as typedFields, cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze } from './cleanup-records.mjs';
+import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupRecordFields as typedFields,
+  cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze } from './cleanup-records.mjs';
 export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v1';
 export const AUTHENTICATED_TRANSITION_SCHEMA =
   'agentic-os/authenticated-transition-operation-receipt/v1';
 const EFFECT = /^[a-z][a-z0-9-]{0,127}$/u;
 const PLAN_REFERENCE = /^effect-plan:sha256:([0-9a-f]{64})$/u;
-const PLAN_KEYS = Object.freeze([
-  'schema', 'target', 'authority', 'candidateDigest', 'snapshotDigest', 'effectClass',
+const PLAN_KEYS = Object.freeze(['schema', 'target', 'authority', 'candidateDigest', 'snapshotDigest', 'effectClass',
   'allowedEffects', 'forbiddenEffects', 'parametersDigest', 'planDigest']);
 const TARGET_KEYS = Object.freeze(['repository', 'resource', 'immutableRevision']);
-const GRANT_KEYS = Object.freeze([
-  'adapter', 'authenticatedSubject', 'providerRecordLocator', 'providerRecordDigest',
-  'requestDigest', 'requestedTransition', 'planDigest', 'planByteDigest',
-  'sourceClaimId', 'sourceLeaseEpoch', 'sourceFenceRevision', 'resultClaimId',
-  'resultLeaseEpoch', 'resultFenceRevision', 'resultState', 'operationReceiptDigest',
-  'transitionedAt', 'verifiedAt', 'expiresAt']);
-const AUTHORITY_KEYS = Object.freeze([
-  'requestedTransition', 'authoritySubject', 'ownerSubject', 'claimId', 'leaseEpoch',
-  'fenceRevision', 'writeSetDigest', 'reviewLocator', 'predecessorDigest']);
+const GRANT_KEYS = Object.freeze(['adapter', 'authenticatedSubject', 'providerRecordLocator', 'providerRecordDigest',
+  'requestDigest', 'requestedTransition', 'planDigest', 'planByteDigest', 'sourceClaimId', 'sourceLeaseEpoch',
+  'sourceFenceRevision', 'resultClaimId', 'resultLeaseEpoch', 'resultFenceRevision', 'resultState',
+  'operationReceiptDigest', 'transitionedAt', 'verifiedAt', 'expiresAt']);
+const AUTHORITY_KEYS = Object.freeze(['requestedTransition', 'authoritySubject', 'ownerSubject', 'claimId',
+  'leaseEpoch', 'fenceRevision', 'writeSetDigest', 'reviewLocator', 'predecessorDigest']);
 function fail(message) { throw new TypeError(message); }
 function snapshot(value) { return JSON.parse(canonicalJson(value)); }
 function text(value, label) {
-  if (typeof value !== 'string' || value.length === 0
-    || Buffer.byteLength(value, 'utf8') > 4096 || /[\u0000-\u001f\u007f]/u.test(value)) {
-    fail(`${label} must be a bounded non-empty string`);
-  }
+  if (typeof value !== 'string' || value.length === 0 || Buffer.byteLength(value, 'utf8') > 4096
+    || /[\u0000-\u001f\u007f]/u.test(value)) fail(`${label} must be a bounded non-empty string`);
   return value;
 }
 function optionalText(value, label) { return value === null ? null : text(value, label); }
 function instant(value, label) {
   const result = text(value, label), parsed = Date.parse(result);
-  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== result) {
-    fail(`${label} must be an exact UTC instant`);
-  }
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== result) fail(`${label} must be an exact UTC instant`);
   return result;
 }
 function adapter(value) {
@@ -46,33 +38,20 @@ function adapter(value) {
 function strings(value, label, { nonempty = false } = {}) {
   if (!Array.isArray(value) || nonempty && value.length === 0) fail(`${label} must be an array`);
   const result = value.map((entry) => text(entry, label)).sort();
-  if (new Set(result).size !== result.length
-    || result.some((entry) => !EFFECT.test(entry))) {
-    fail(`${label} must be canonical, duplicate-free effect names`);
-  }
+  if (new Set(result).size !== result.length || result.some((entry) => !EFFECT.test(entry))) fail(`${label} must be canonical, duplicate-free effect names`);
   return result;
 }
 function target(value) {
   exact(value, TARGET_KEYS, 'effect plan target');
-  return {
-    repository: text(value.repository, 'effect plan target repository'),
-    resource: text(value.resource, 'effect plan target resource'),
-    immutableRevision: text(value.immutableRevision, 'effect plan immutable revision'),
-  };
+  return { repository: text(value.repository, 'effect plan target repository'),
+    resource: text(value.resource, 'effect plan target resource'), immutableRevision: text(value.immutableRevision, 'effect plan immutable revision') };
 }
 function authority(value) {
   exact(value, AUTHORITY_KEYS, 'effect plan authority');
-  if (!['claim', 'continue', 'integrate', 'retire'].includes(value.requestedTransition)) {
-    fail('effect plan requestedTransition is invalid');
-  }
-  if (!Number.isSafeInteger(value.leaseEpoch) || value.leaseEpoch < 1) {
-    fail('effect plan leaseEpoch must be a positive safe integer');
-  }
-  const fenceRevision = value.fenceRevision === null ? null
-    : digest(value.fenceRevision, 'effect plan fenceRevision');
-  if ((value.requestedTransition === 'claim') !== (fenceRevision === null)) {
-    fail('only an initial claim may omit the effect plan fenceRevision');
-  }
+  if (!['claim', 'continue', 'integrate', 'retire'].includes(value.requestedTransition)) fail('effect plan requestedTransition is invalid');
+  if (!Number.isSafeInteger(value.leaseEpoch) || value.leaseEpoch < 1) fail('effect plan leaseEpoch must be a positive safe integer');
+  const fenceRevision = value.fenceRevision === null ? null : digest(value.fenceRevision, 'effect plan fenceRevision');
+  if ((value.requestedTransition === 'claim') !== (fenceRevision === null)) fail('only an initial claim may omit the effect plan fenceRevision');
   return {
     requestedTransition: value.requestedTransition,
     ...typedFields(value, 'authoritySubject ownerSubject', text, 'effect plan '),
@@ -90,8 +69,7 @@ export function createEffectPlan(input) {
     fail('effect plan schema is invalid');
   const allowedEffects = strings(source.allowedEffects, 'allowedEffects', { nonempty: true });
   const forbiddenEffects = strings(source.forbiddenEffects, 'forbiddenEffects');
-  if (allowedEffects.some((entry) => forbiddenEffects.includes(entry)))
-    fail('allowedEffects and forbiddenEffects must be disjoint');
+  if (allowedEffects.some((entry) => forbiddenEffects.includes(entry))) fail('allowedEffects and forbiddenEffects must be disjoint');
   const payload = {
     schema: EFFECT_PLAN_SCHEMA,
     target: target(source.target),
@@ -103,9 +81,7 @@ export function createEffectPlan(input) {
   };
   if (!EFFECT.test(payload.effectClass)) fail('effectClass must be a canonical effect name');
   const planDigest = governanceDigest(payload);
-  if (source.planDigest !== undefined && digest(source.planDigest, 'planDigest') !== planDigest) {
-    fail('planDigest does not match effect plan');
-  }
+  if (source.planDigest !== undefined && digest(source.planDigest, 'planDigest') !== planDigest) fail('planDigest does not match effect plan');
   return freeze({ ...payload, planDigest });
 }
 export const validateEffectPlan = value =>
@@ -114,14 +90,11 @@ export function encodeEffectPlan(value) {
   return Buffer.from(canonicalJson(validateEffectPlan(value)), 'utf8');
 }
 function planBytes(value) {
-  if (!Buffer.isBuffer(value) && !(value instanceof Uint8Array)) {
-    fail('effect plan bytes must be a byte array');
-  }
+  if (!Buffer.isBuffer(value) && !(value instanceof Uint8Array)) fail('effect plan bytes must be a byte array');
   const bytes = Buffer.from(value);
   if (bytes.length === 0 || bytes.length > 500_000) fail('effect plan bytes exceed byte bounds');
   let parsed;
-  try { parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
-  catch { fail('effect plan bytes must be exact UTF-8 JSON'); }
+  try { parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); } catch { fail('effect plan bytes must be exact UTF-8 JSON'); }
   const plan = validateEffectPlan(parsed), encoded = encodeEffectPlan(plan);
   if (!bytes.equals(encoded)) fail('effect plan bytes are not exact canonical bytes');
   return { bytes, plan, byteDigest: createHash('sha256').update(bytes).digest('hex') };
@@ -133,54 +106,37 @@ function currentClock(now, label) {
   let prior = null;
   return () => {
     const value = now();
-    if (!Number.isSafeInteger(value) || value < 0 || prior !== null && value < prior) {
-      fail(`${label} trusted clock is invalid or moved backwards`);
-    }
+    if (!Number.isSafeInteger(value) || value < 0 || prior !== null && value < prior) fail(`${label} trusted clock is invalid or moved backwards`);
     prior = value;
     return value;
   };
 }
 function trustedClock(options, label) {
-  const source = options ?? {};
-  exact(source, ['now'], `${label} options`);
-  return currentClock(source.now, label);
+  const source = options ?? {}; exact(source, ['now'], `${label} options`); return currentClock(source.now, label);
 }
-function inWindow(value, start, end, label) {
-  if (value < Date.parse(start) || value >= Date.parse(end)) fail(`${label} is outside its validity window`);
-}
+function inWindow(value, start, end, label) { if (value < Date.parse(start) || value >= Date.parse(end)) fail(`${label} is outside its validity window`); }
 function exactPlanReference(request, byteDigest) {
-  const references = request.dependentWork.map((entry) => entry.match(PLAN_REFERENCE))
-    .filter(Boolean);
-  if (references.length !== 1 || references[0][1] !== byteDigest) {
-    fail('request must contain exactly the matching effect-plan byte digest');
-  }
+  const references = request.dependentWork.map((entry) => entry.match(PLAN_REFERENCE)).filter(Boolean);
+  if (references.length !== 1 || references[0][1] !== byteDigest) fail('request must contain exactly the matching effect-plan byte digest');
 }
 function fieldsMatch(left, right, names) {
   return names.split(' ').every(name => left[name] === right[name]);
 }
 function planMatchesRequest(plan, request) {
   return fieldsMatch(plan.target, request, 'repository immutableRevision')
-    && fieldsMatch(plan.authority, request, 'requestedTransition authoritySubject ownerSubject ' +
-      'claimId leaseEpoch fenceRevision writeSetDigest reviewLocator');
+    && fieldsMatch(plan.authority, request, 'requestedTransition authoritySubject ownerSubject claimId leaseEpoch fenceRevision writeSetDigest reviewLocator');
 }
 function authorityGrant(value) {
   const source = snapshot(value);
   exact(source, GRANT_KEYS, 'authenticated transition grant');
-  if (!['integrate', 'retire'].includes(source.requestedTransition)) {
-    fail('authenticated transition grant operation is invalid');
-  }
+  if (!['integrate', 'retire'].includes(source.requestedTransition)) fail('authenticated transition grant operation is invalid');
   for (const field of ['sourceLeaseEpoch', 'resultLeaseEpoch']) {
-    if (!Number.isSafeInteger(source[field]) || source[field] < 1) {
-      fail(`grant.${field} must be a positive safe integer`);
-    }
+    if (!Number.isSafeInteger(source[field]) || source[field] < 1) fail(`grant.${field} must be a positive safe integer`);
   }
   const transitionedAt = instant(source.transitionedAt, 'grant.transitionedAt');
   const verifiedAt = instant(source.verifiedAt, 'grant.verifiedAt');
   const expiresAt = instant(source.expiresAt, 'grant.expiresAt');
-  if (Date.parse(transitionedAt) > Date.parse(verifiedAt)
-    || Date.parse(expiresAt) <= Date.parse(verifiedAt)) {
-    fail('grant operation, verification, and expiry times are invalid');
-  }
+  if (Date.parse(transitionedAt) > Date.parse(verifiedAt) || Date.parse(expiresAt) <= Date.parse(verifiedAt)) fail('grant operation, verification, and expiry times are invalid');
   return freeze({ ...source, adapter: adapter(source.adapter),
     ...typedFields(source, 'authenticatedSubject providerRecordLocator', text),
     providerRecordDigest: digest(source.providerRecordDigest, 'providerRecordDigest'),
@@ -246,25 +202,16 @@ async function authenticatedTransitionReceipt(input, verifyAuthority, options, h
   return freeze({ ...payload, receiptDigest: governanceDigest(payload) });
 }
 /** Create a first in-window receipt. The verifier may publish one create-only provider record. */
-export function createAuthenticatedTransitionOperationReceipt(input, verifyAuthority, options) {
-  return authenticatedTransitionReceipt(input, verifyAuthority, options, false);
-}
+export function createAuthenticatedTransitionOperationReceipt(input, verifyAuthority, options) { return authenticatedTransitionReceipt(input, verifyAuthority, options, false); }
 /** Reconstruct an already-published exact immutable winner; this API authorizes no new effect. */
-export function replayAuthenticatedTransitionOperationReceipt(input, verifyAuthority) {
-  return authenticatedTransitionReceipt(input, verifyAuthority, undefined, true);
-}
+export function replayAuthenticatedTransitionOperationReceipt(input, verifyAuthority) { return authenticatedTransitionReceipt(input, verifyAuthority, undefined, true); }
 export function validateAuthenticatedTransitionOperationReceipt(value) {
   const source = snapshot(value);
   const keys = ['schema', 'requestDigest', 'requestedTransition', 'planDigest',
     'planByteDigest', 'authorityOperation', 'transitionReceipt', 'receiptDigest'];
   exact(source, keys, 'authenticated transition operation receipt');
-  if (source.schema !== AUTHENTICATED_TRANSITION_SCHEMA
-    || !['integrate', 'retire'].includes(source.requestedTransition)) {
-    fail('authenticated transition operation receipt semantics are invalid');
-  }
-  for (const field of ['requestDigest', 'planDigest', 'planByteDigest', 'receiptDigest']) {
-    digest(source[field], field);
-  }
+  if (source.schema !== AUTHENTICATED_TRANSITION_SCHEMA || !['integrate', 'retire'].includes(source.requestedTransition)) fail('authenticated transition operation receipt semantics are invalid');
+  for (const field of ['requestDigest', 'planDigest', 'planByteDigest', 'receiptDigest']) digest(source[field], field);
   const operation = authorityGrant(source.authorityOperation);
   const receipt = validateAuthorityTransitionReceiptEnvelope(source.transitionReceipt);
   if (!fieldsMatch(receipt, source, 'requestDigest requestedTransition')
@@ -281,4 +228,52 @@ export function validateAuthenticatedTransitionOperationReceipt(value) {
   const { receiptDigest, ...payload } = source;
   if (governanceDigest(payload) !== receiptDigest) fail('authenticated receipt digest is invalid');
   return freeze(source);
+}
+
+export const DELIVERY_DISPOSITION_SET_PATH = '.agentic-os-delivery-dispositions.json', DELIVERY_DISPOSITION_SET_SCHEMA = 'agentic-os/delivery-disposition-set/v1';
+const DELIVERY_ROW_SCHEMA = 'agentic-os/delivery-disposition/v1', DELIVERY_SET_KEYS = ['schema', 'repository', 'dispositions', 'receiptDigest'];
+const DELIVERY_ROW_KEYS = ['schema', 'ref', 'laneHead', 'paths', 'disposition', 'candidateRevision', 'candidateDigest', 'sourceReleaseReceiptDigest', 'deploymentReceiptDigest', 'runtimeVerificationReceiptDigest', 'evidencePath', 'evidenceDigest', 'decisionRef', 'reason'];
+const DELIVERY_SHA1 = /^[0-9a-f]{40}$/u, DELIVERY_SHA256 = /^[0-9a-f]{64}$/u;
+const deliveryFail = reason => { throw Object.assign(new TypeError('delivery disposition is invalid'), { reason: `blocked-delivery-disposition-${reason}` }); };
+function deliveryPath(value, label) {
+  text(value, label);
+  if (value.trim() !== value || value.startsWith('/') || value.includes('\\') || value.includes(':') || value.split('/').some(part => !part || part === '.' || part === '..')) deliveryFail(`${label}-path`);
+}
+function deliveryRow(row) {
+  exact(row, DELIVERY_ROW_KEYS, 'delivery row');
+  if (row.schema !== DELIVERY_ROW_SCHEMA || !/^agent\/[a-z0-9][a-z0-9._/-]{0,180}$/u.test(row.ref) || !DELIVERY_SHA1.test(row.laneHead ?? '') || !DELIVERY_SHA1.test(row.candidateRevision ?? '')) deliveryFail('row-identity');
+  if (!Array.isArray(row.paths) || !row.paths.length || row.paths.length > 512) deliveryFail('row-paths');
+  row.paths.forEach(path => deliveryPath(path, 'row'));
+  if (new Set(row.paths).size !== row.paths.length || canonicalJson(row.paths) !== canonicalJson([...row.paths].sort())) deliveryFail('row-path-order');
+  if (!DELIVERY_SHA256.test(row.candidateDigest ?? '') || !DELIVERY_SHA256.test(row.evidenceDigest ?? '')) deliveryFail('row-digest');
+  deliveryPath(row.evidencePath, 'evidence'); text(row.decisionRef, 'decision reference');
+  let url; try { url = new URL(row.decisionRef); } catch { deliveryFail('decision-ref'); }
+  if (url.protocol !== 'https:' || url.username || url.password) deliveryFail('decision-ref');
+  const keys = ['sourceReleaseReceiptDigest', 'deploymentReceiptDigest', 'runtimeVerificationReceiptDigest'];
+  if (row.disposition === 'deployed') {
+    if (keys.some(key => !DELIVERY_SHA256.test(row[key] ?? '')) || row.reason !== null) deliveryFail('deployed-receipts');
+  } else if (row.disposition === 'no-deploy') {
+    if (keys.some(key => row[key] !== null)) deliveryFail('no-deploy-receipts');
+    text(row.reason, 'no-deploy reason'); if (!row.reason.trim()) deliveryFail('no-deploy-reason');
+  } else deliveryFail('disposition');
+  return row;
+}
+/** Source/path/evidence binding only; consumer validation never authenticates or authorizes the producer. */
+export function validateDeliveryDispositionSet(value, expected) {
+  try {
+    const set = snapshot(value); exact(set, DELIVERY_SET_KEYS, 'delivery disposition set');
+    if (set.schema !== DELIVERY_DISPOSITION_SET_SCHEMA || set.repository !== expected.repository || !Array.isArray(set.dispositions) || !set.dispositions.length || set.dispositions.length > 32 || !DELIVERY_SHA256.test(set.receiptDigest ?? '')) deliveryFail('set-identity');
+    const { receiptDigest, ...body } = set;
+    if (governanceDigest(body) !== receiptDigest) deliveryFail('set-digest');
+    const rows = set.dispositions.map(deliveryRow), refs = rows.map(row => row.ref);
+    if (new Set(refs).size !== refs.length || canonicalJson(refs) !== canonicalJson([...refs].sort())) deliveryFail('set-order');
+    const row = rows.find(item => item.ref === expected.ref);
+    if (!row) return null;
+    if (row.laneHead !== expected.laneHead || canonicalJson(row.paths) !== canonicalJson(expected.paths)) deliveryFail('lane-binding');
+    if (!expected.candidateIsCurrent(row.candidateRevision) || !expected.laneIntegratedAtCandidate(row.candidateRevision, row.laneHead)) deliveryFail('candidate-stale');
+    const evidence = expected.readEvidence(row.evidencePath);
+    if (typeof evidence !== 'string' || Buffer.byteLength(evidence) > 128_000 || expected.sha256(evidence) !== row.evidenceDigest) deliveryFail('evidence-binding');
+    if (row.disposition === 'deployed' ? expected.changeClass === 'docs-only' || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only') deliveryFail('disposition-scope');
+    return Object.freeze({ ...row, receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
+  } catch (error) { if (error?.reason?.startsWith('blocked-delivery-disposition-')) throw error; deliveryFail('invalid'); }
 }
