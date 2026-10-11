@@ -1,4 +1,5 @@
 /** Exact local completion preflight. No provider call, fetch, authority or effect. */
+import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs'; import { currentBranch, headSha, isAncestor, observeGit, worktrees } from '../src/git.mjs';
 import { isLaneRef } from '../src/lane-id.mjs'; import { successorLineage } from '../src/lane-state.mjs';
 import { integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
@@ -6,10 +7,13 @@ import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs
 import { verifySuccessorPreservation, readUserCleanupJson } from './agentic-os-cleanup-user.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { get as getLaneRecord } from '../src/lane-records.mjs';
+import { DELIVERY_DISPOSITION_SET_PATH, validateDeliveryDispositionSet } from '../src/completion.mjs';
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
-const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 16384 });
-const committed = (root, revision, path) => read(root, ['show', `${revision}:${path}`]);
+const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 });
+const committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
+const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const lanePaths = (root, branch, head) => { const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `refs/heads/${branch}...${head}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }); return output === null ? null : output.split('\0').filter(Boolean).sort(); };
 const finding = (code, owner, action) => ({ code, owner, action });
 const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?.cleanup?.worktreeRegistration === 'quarantine';
 
@@ -22,14 +26,9 @@ const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?
  */
 const DOCS_ONLY_GLOBS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
 function classifyChangeClass(root, ref) {
-  const head = headSha(`refs/heads/${ref}`, root);
-  if (!head) return 'unknown';
-  const diff = observeGit(['diff', '--name-only', `refs/heads/main...${head}`], { cwd: root, allowFail: true, maxBuffer: 65536 });
-  if (!diff) return 'unknown';
+  const head = headSha(`refs/heads/${ref}`, root); if (!head) return 'unknown'; const diff = observeGit(['diff', '--name-only', `refs/heads/main...${head}`], { cwd: root, allowFail: true, maxBuffer: 65536 }); if (!diff) return 'unknown';
   const paths = diff.split('\n').filter(Boolean);
-  if (paths.length === 0) return 'empty';
-  const allDocs = paths.every((p) => DOCS_ONLY_GLOBS.some((re) => re.test(p)));
-  return allDocs ? 'docs-only' : 'mixed';
+  return paths.length === 0 ? 'empty' : paths.every(p => DOCS_ONLY_GLOBS.some(re => re.test(p))) ? 'docs-only' : 'mixed';
 }
 const APPLICABILITY = Object.freeze({
   'docs-only': {
@@ -39,51 +38,40 @@ const APPLICABILITY = Object.freeze({
 });
 function withApplicability(findings, changeClass) {
   const table = APPLICABILITY[changeClass] ?? {};
-  return findings.map((item) => {
-    const entry = table[item.code];
-    if (!entry) return { ...item, applicableToChangeClass: { applicable: true, changeClass } };
-    return { ...item, applicableToChangeClass: { applicable: false, changeClass, reason: entry.reason } };
-  });
+  return findings.map(item => { const entry = table[item.code]; return entry
+    ? { ...item, applicableToChangeClass: { applicable: false, changeClass, reason: entry.reason } }
+    : { ...item, applicableToChangeClass: { applicable: true, changeClass } }; });
 }
 function deployBound(root, revision) {
   const bytes = revision ? committed(root, revision, '.agentic-os-flight.json') : null;
-  try {
-    const value = bytes ? JSON.parse(bytes) : null;
-    return Boolean(value) && [...value.operations ?? [], ...(value.checks ?? []).flatMap((item) => item?.operations ?? [])].includes('production-activation');
-  } catch { return false; }
+  try { const value = bytes ? JSON.parse(bytes) : null; return Boolean(value) && [...value.operations ?? [], ...(value.checks ?? []).flatMap(item => item?.operations ?? [])].includes('production-activation'); } catch { return false; }
 }
-function enrollFail(code, owner, action, extra = {}) {
-  return { authorityRepository: extra.authorityRepository ?? null, localPolicyCandidate: false, files: extra.files ?? {}, findings: [finding(code, owner, action)] };
-}
+const enrollFail = (code, owner, action, extra = {}) => ({ authorityRepository: extra.authorityRepository ?? null, localPolicyCandidate: false, files: extra.files ?? {}, findings: [finding(code, owner, action)] });
 function enrollment(root, revision, repository) {
   const transitionBytes = committed(root, revision, TRANSITION_POLICY);
   if (transitionBytes === null) return enrollFail('authority-repository-unresolved', 'authority-operator', 'Identify an approved authority repository whose committed policy selects this target; local target files are not required.');
   let transition;
-  try {
-    transition = validateGitHubTransitionPolicy(JSON.parse(transitionBytes));
-    if (!transition.targetRepositories.includes(repository)) throw new Error('target not selected');
-  } catch { return enrollFail('transition-policy-invalid-or-target-unselected', 'authority-operator', 'Review the committed authority policy and target identity.'); }
+  try { transition = validateGitHubTransitionPolicy(JSON.parse(transitionBytes)); if (!transition.targetRepositories.includes(repository)) throw new Error('target not selected'); }
+  catch { return enrollFail('transition-policy-invalid-or-target-unselected', 'authority-operator', 'Review the committed authority policy and target identity.'); }
   if (transition.authorityRepository !== repository) return enrollFail('external-authority-unverified', 'authority-operator', 'Verify the selected authority repository, policy and workflow at their live trust root.', { authorityRepository: transition.authorityRepository });
   const files = [AUTHORITY_POLICY, TRANSITION_POLICY, AUTHORITY_WORKFLOW, TRANSITION_WORKFLOW];
   const present = Object.fromEntries(files.map((path) => [path, committed(root, revision, path) !== null]));
   const findings = files.filter((path) => !present[path]).map((path) => finding('enrollment-file-missing', 'repository-author', 'Enroll the reviewed authority or transition workflow through protected source integration.'));
-  if (present[AUTHORITY_POLICY]) {
-    try {
-      const candidate = JSON.parse(committed(root, revision, AUTHORITY_POLICY));
-      if (typeof candidate.targetRepositoryPrefix !== 'string' || !repository.startsWith(candidate.targetRepositoryPrefix) || candidate.workflowPath !== AUTHORITY_WORKFLOW) throw new Error('target not selected');
-    } catch { findings.push(finding('authority-policy-invalid-or-target-unselected', 'repository-author', 'Review the committed policy and target identity.')); }
-  }
+  if (present[AUTHORITY_POLICY]) try { const candidate = JSON.parse(committed(root, revision, AUTHORITY_POLICY));
+    if (typeof candidate.targetRepositoryPrefix !== 'string' || !repository.startsWith(candidate.targetRepositoryPrefix) || candidate.workflowPath !== AUTHORITY_WORKFLOW) throw new Error('target not selected');
+  } catch { findings.push(finding('authority-policy-invalid-or-target-unselected', 'repository-author', 'Review the committed policy and target identity.')); }
   if (transition.workflowPath !== TRANSITION_WORKFLOW) findings.push(finding('transition-workflow-mismatch', 'authority-operator', 'Align the committed transition policy and workflow path.'));
   return { authorityRepository: repository, files: present, localPolicyCandidate: findings.length === 0, findings };
 }
-export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, laneMounted, laneClean, laneHead, quarantineProfile, quarantineObserved, preservationObserved = false, preservationDisposition = 'successor-preserved', recoveryDispositionSatisfied = false, deployBound: deploy, changeClass = 'unknown', localPolicyCandidate, findingCodes, lineagePredecessorRef = null }) {
+export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, laneMounted, laneClean, laneHead, quarantineProfile, quarantineObserved, preservationObserved = false, preservationDisposition = 'successor-preserved', recoveryDispositionSatisfied = false, deployBound: deploy, deliveryDisposition = null, deliveryDispositionInvalid = false, changeClass = 'unknown', localPolicyCandidate, findingCodes, lineagePredecessorRef = null }) {
   const has = (code) => findingCodes.includes(code), blocked = has('lane-ref-missing')
     || has('lane-dirty') || has('lane-dirty-state-unknown');
   const laneDisposition = blocked ? 'blocked' : recoveryDispositionSatisfied ? 'retained-unrecoverable-accepted' : preservationObserved ? preservationDisposition : quarantineObserved ? 'quarantined' : quarantineProfile && laneMounted ? 'awaiting-cleanup' : !quarantineProfile && laneMounted ? 'retained' : laneHead && !laneMounted ? 'unmounted' : 'blocked';
   const cleanupSatisfied = !blocked && (!quarantineProfile && laneMounted && laneClean !== false || quarantineObserved === true);
   const preservationSatisfied = preservationObserved === true;
   const sourceComplete = sourceIntegrated && canonicalCurrent && (cleanupSatisfied || preservationSatisfied || recoveryDispositionSatisfied) && !blocked;
-  const assessDeliveryScope = sourceComplete && deploy && changeClass === 'docs-only';
+  const deliveryPending = sourceComplete && deploy && !deliveryDisposition;
+  const assessDeliveryScope = deliveryPending && changeClass === 'docs-only';
   const next = has('lane-dirty-state-unknown') ? ['resolve-unknown-lane-bytes', 'lane-owner', 'Recover and verify the missing worktree bytes, or record an explicit owner disposition before closeout.']
     : has('lane-dirty') ? ['preserve-lane-bytes', 'lane-owner', 'Preserve and resolve authored or untracked bytes before cleanup planning.']
       : has('lane-ref-missing') ? ['recover-lane-ref', 'lane-owner', 'Recover the exact local lane ref before completion.']
@@ -92,10 +80,11 @@ export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, lane
           : laneDisposition === 'awaiting-cleanup' && localPolicyCandidate ? ['completion-close', 'authority-operator', 'npm run completion:scaffold -- --ref=<lane>']
             : laneDisposition === 'awaiting-cleanup' ? ['release-common-complete', 'cleanup-operator', 'npm run release:common -- complete --ref=<lane>']
               : has('canonical-not-current-clean') ? ['canonical-sync-plan', 'repository-operator', 'npm run sync:canonical -- plan']
+                : sourceComplete && deliveryDispositionInvalid ? ['repair-delivery-disposition', 'product-owner', 'Correct the committed product delivery disposition so its exact lane, candidate and evidence bindings validate.']
                 : assessDeliveryScope ? ['assess-delivery-scope', 'product-owner', 'Check whether the exact documentation paths enter a deployed surface; retain product evidence before closing or deploying.']
                     : sourceComplete && preservationObserved ? ['verify-preservation-retirement', 'authority-operator', 'Verify the independently authenticated record-only retirement receipt before Full END ADLC.']
-                    : sourceComplete && deploy ? ['deploy-workflow', 'product-owner', 'Follow guides/DEPLOY-WORKFLOW.md for the enrolled production-activation checks.'] : null;
-  return Object.freeze({ schema: 'agentic-os/closeout-verdict/v1', observationOnly: true, authorizesEffects: false, sourceIntegrated: sourceIntegrated === true, canonicalCurrent: canonicalCurrent === true, laneDisposition, cleanupSatisfied, preservationSatisfied, deployBinding: Object.freeze({ present: deploy === true, operation: deploy ? 'production-activation' : null }), missionState: blocked ? 'blocked' : sourceComplete ? 'source_complete' : 'continuable', adlcState: blocked ? 'blocked' : sourceComplete && preservationObserved ? 'retirement_pending' : assessDeliveryScope ? 'delivery_scope_pending' : sourceComplete && deploy ? 'delivery_pending' : sourceComplete ? 'complete' : 'continuable', nextAction: next ? Object.freeze({ id: next[0], owner: next[1], command: next[2] }) : null });
+                    : deliveryPending ? ['deploy-workflow', 'product-owner', 'Follow guides/DEPLOY-WORKFLOW.md and record exact Dev, Prod and Runtime delivery evidence before closeout.'] : null;
+  return Object.freeze({ schema: 'agentic-os/closeout-verdict/v1', observationOnly: true, authorizesEffects: false, sourceIntegrated: sourceIntegrated === true, canonicalCurrent: canonicalCurrent === true, laneDisposition, cleanupSatisfied, preservationSatisfied, deployBinding: Object.freeze({ present: deploy === true, operation: deploy ? 'production-activation' : null }), deliveryDisposition: deliveryDisposition ? Object.freeze({ disposition: deliveryDisposition.disposition, receiptDigest: deliveryDisposition.receiptDigest, setDigest: deliveryDisposition.setDigest }) : null, missionState: blocked ? 'blocked' : sourceComplete ? 'source_complete' : 'continuable', adlcState: blocked ? 'blocked' : sourceComplete && preservationObserved ? 'retirement_pending' : assessDeliveryScope ? 'delivery_scope_pending' : deliveryPending ? 'delivery_pending' : sourceComplete ? 'complete' : 'continuable', nextAction: next ? Object.freeze({ id: next[0], owner: next[1], command: next[2] }) : null });
 }
 export function inspectCompletionStatus(root, ref, policy, profile, { successor = null, preservationReceipt = null } = {}) {
   if (!isLaneRef(ref)) throw Object.assign(new TypeError('completion requires an exact lane ref'), { reason: 'blocked-invalid-lane-ref' });
@@ -120,6 +109,15 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   const quarantineProfile = quarantines(profile);
   const quarantineObserved = Boolean(laneHead) && !laneMounted && observeRetainedWorktreeQuarantine(root, ref, laneHead);
   const changeClass = classifyChangeClass(root, ref);
+  const dispositionBytes = canonical ? committed(root, canonical, DELIVERY_DISPOSITION_SET_PATH) : null;
+  let deliveryDisposition = null, deliveryDispositionError = null;
+  if (dispositionBytes !== null) try {
+    const paths = laneHead && lanePaths(root, policy.protectedBranch, laneHead);
+    if (!paths) throw Object.assign(new Error('lane paths unavailable'), { reason: 'blocked-delivery-disposition-lane-paths' });
+    deliveryDisposition = validateDeliveryDispositionSet(JSON.parse(dispositionBytes), { repository: profile.repository, ref, laneHead, paths, changeClass,
+      deployBound: revision => deployBound(root, revision), candidateIsCurrent: revision => Boolean(canonical && isAncestor(revision, canonical, root)),
+      laneIntegratedAtCandidate: (revision, head) => Boolean(integrationProof(revision, head, { cwd: root })), readEvidence: path => committed(root, canonical, path), sha256 });
+  } catch (error) { deliveryDispositionError = error?.reason ?? 'blocked-delivery-disposition-invalid'; }
   const findings = [];
   if (!canonical || !tracking || canonical !== tracking || !canonicalClean) findings.push(finding('canonical-not-current-clean', 'repository-operator', 'Fetch and use the separately governed canonical synchronization workflow; preserve local bytes.'));
   if (!laneHead) findings.push(finding('lane-ref-missing', 'lane-owner', 'Recover the exact local lane ref before completion.'));
@@ -134,9 +132,11 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   if (quarantineProfile && !quarantineObserved && !preservation && !acceptedMissingBytes) findings.push(finding('cleanup-receipt-unverified', 'cleanup-operator', 'After live winner replay, assess and execute only the authorized exact quarantine plan.'));
   if (preservation) findings.push(finding('provider-retirement-unverified', 'authority-operator',
     'Source preservation is locally verified; bind the independent live record-only retirement receipt before Full END ADLC.'));
+  if (deliveryDispositionError) findings.push(finding('delivery-disposition-invalid', 'product-owner',
+    `Repair the exact committed delivery disposition (${deliveryDispositionError}); it must bind this lane, candidate, and committed evidence.`));
   const classifiedFindings = withApplicability(findings, changeClass);
-  const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, preservationObserved: Boolean(preservation), preservationDisposition: preservation?.disposition, recoveryDispositionSatisfied: acceptedMissingBytes, deployBound: deployBound(root, canonical), changeClass, localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: classifiedFindings.map((item) => item.code), lineagePredecessorRef: lineage && lineage !== false ? lineage.predecessorRef : null });
-  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, preservationDispositionVerified: Boolean(preservation),
+  const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, preservationObserved: Boolean(preservation), preservationDisposition: preservation?.disposition, recoveryDispositionSatisfied: acceptedMissingBytes, deployBound: deployBound(root, canonical), deliveryDisposition, deliveryDispositionInvalid: Boolean(deliveryDispositionError), changeClass, localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: classifiedFindings.map((item) => item.code), lineagePredecessorRef: lineage && lineage !== false ? lineage.predecessorRef : null });
+  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, preservationDispositionVerified: Boolean(preservation), deliveryDisposition, deliveryDispositionError,
     preservationSatisfied: Boolean(preservation), recoveryDispositionSatisfied: acceptedMissingBytes, preservationReceiptDigest: preservation?.receiptDigest ?? null, ref, repository: profile.repository, profileDigest: profile.profileDigest, changeClass, canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean, lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean, retainedCheckout, dirtyState: acceptedMissingBytes ? 'unrecoverable-accepted' : unknownDirtyState ? 'unobservable-at-missing-path' : laneMounted ? laneClean ? 'clean' : 'dirty' : 'unobserved', recoveryDisposition: acceptedMissingBytes ? recoveryDisposition : null }, lineage: lineage === false ? { valid: false, predecessorRef: null, predecessorHead: null, retainedBySuccessor: false, integrated: false } : lineage ? { valid: true, predecessorRef: lineage.predecessorRef, predecessorHead: lineage.predecessorHead, retainedBySuccessor: predecessorRetained, integrated: Boolean(predecessorIntegration || predecessorRetained && direct) } : null, integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null, ...(historical ? { reviewedHead: historical.reviewedHead, merge: historical.merge, replacements: historical.replacements.map(row => row.path) } : {}) } : null, enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository, files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null, closeout, findings: classifiedFindings };
 }
 export function runCompletionStatus(root, ref, policy, profile, out = console.log, { preservationPath = null } = {}) {
