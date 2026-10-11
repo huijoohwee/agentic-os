@@ -8,6 +8,7 @@ import { canonicalJson, createRepositoryProfile, governanceDigest } from '../src
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
+import { validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
@@ -263,6 +264,37 @@ test('current retention joins an exact detached reviewed-equivalent receipt with
   assert.equal(observe(wrongRef), null);
   const elevated = structuredClone(receipt); elevated.providerAuthority = true;
   assert.equal(observe(elevated), null);
+
+  const adoption = { schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: `github.com/${s.profile.repository}`, targetRef: s.branch, targetHead: s.head,
+    merge: s.merge, reviewLocator: s.pull.html_url, quarantineCoordinate: receipt.planDigest,
+    originalReceiptDigest: governanceDigest(receipt), historicalQuarantineAuthorityProven: false };
+  const workflow = s.input.workflow, retention = { ...observe(receipt), originalReceipt: receipt };
+  const payload = { schema: 'agentic-os/current-quarantine-retention-plan/v1',
+    disposition: 'current-quarantine-retained', adoption, adoptionDigest: governanceDigest(adoption),
+    repository: adoption.repository, canonicalRevision: s.merge, profileDigest: s.profile.profileDigest,
+    policyDigest: 'a'.repeat(64),
+    review: { repository: s.profile.repository, pr: s.pull.number, url: s.pull.html_url,
+      branch: s.branch, head: s.head, merge: s.merge, mergedAt: s.pull.merged_at,
+      checks: [{ name: s.check.name, checkId: s.check.id, runId: s.run.id,
+        attempt: s.run.run_attempt, workflow, conclusion: s.check.conclusion,
+        completedAt: s.check.completed_at, url: s.check.details_url }],
+      protectionProven: false, authority: 'observation-only' },
+    integration: { kind: 'current-quarantined', predecessorHead: s.head, reviewedHead: s.head,
+      merge: s.merge, pathCount: 2, replacements: [] },
+    retention, state: { root: s.root, policyRoot: s.root, policyRevision: s.merge,
+      policyRepository: s.profile.repository, workflow, predecessorHead: s.head,
+      successorHead: s.head, peerRegistrationDigest: 'b'.repeat(64), cacheDigest: 'c'.repeat(64) },
+    issuedAt: new Date(NOW + 1000).toISOString(), expiresAt: new Date(NOW + 901000).toISOString(),
+    physicalCleanupPerformed: false, providerAuthority: false, claimRetired: false,
+    historicalQuarantineAuthorityProven: false };
+  const sign = value => ({ ...value, planDigest: governanceDigest(value) });
+  const valid = validateRetentionDispositionPlan(sign(payload));
+  assert.equal(valid.retention.retainedHead, s.merge);
+  assert.notEqual(valid.retention.retainedHead, valid.review.head);
+  const substituted = structuredClone(payload); substituted.retention.retainedHead = s.head;
+  assert.throws(() => validateRetentionDispositionPlan(sign(substituted)),
+    /preservation source facts are not joined/);
 });
 test('reviewed-equivalent mode refuses mismatched transitions and unreviewed commits', t => {
   const s = fixture(t, false, true);
