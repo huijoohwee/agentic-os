@@ -24,11 +24,29 @@ test('committed transition workflow is bound to the canonical authority policy',
   assert.deepEqual(policy.historicalIntegrations.map(entry => entry.reviewLocator), [
     'https://github.com/huijoohwee/agentic-graph/pull/1492',
     'https://github.com/huijoohwee/agentic-graph/pull/1504',
+    'https://github.com/huijoohwee/agentic-os/pull/425',
+  ]);
+  const historicalChecks = new Map([
+    ['https://github.com/huijoohwee/agentic-graph/pull/1492', ['Integration Gate']],
+    ['https://github.com/huijoohwee/agentic-graph/pull/1504', ['Integration Gate']],
+    ['https://github.com/huijoohwee/agentic-os/pull/425', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
-    assert.deepEqual(entry.checkContexts, ['Integration Gate']);
+    assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
     assert.deepEqual(entry.adoptionScope, [`recovery/current-historical-content/pr-${entry.reviewLocator.split('/').at(-1)}`]);
   }
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/425')), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/425',
+    baseRevision: '2834a81c5f7d7e30efaa2d0a712ddacd64cd063d',
+    headRevision: 'afa0662ec056b849c0d7fb85ed80fb7e7cb641bc',
+    mergeRevision: '7f4988180fc5fc369929757fc71a8c928ef8a620',
+    treeRevision: 'e3c8a87c8495c4039d597f78d9b2c548112f2656',
+    checkContexts: ['budgets', 'test'],
+    adoptionScope: ['recovery/current-historical-content/pr-425'],
+    rationale: 'Current recording of PR #425 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
+  });
   assert.equal(policy.preservationAdoptions[0].historicalSuccessionAuthorityProven, false);
   assert.deepEqual(policy.retentionAdoptions, [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
