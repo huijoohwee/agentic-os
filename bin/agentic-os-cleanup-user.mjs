@@ -15,7 +15,7 @@ import { privateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateF
 import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
-import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, integrationProof } from '../src/patch-identity.mjs';
+import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
 import { get } from '../src/lane-records.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
 import { validateGitHubTransitionPolicy, selectPreservationAdoption } from '../src/github-transition-policy.mjs';
@@ -463,7 +463,7 @@ function preservationObservation(root, adoption, policyRoot, workflow, options =
   if (heads[0] !== (retained ? adoption.targetHead : adoption.predecessorHead)
     || heads[1] !== (retained ? adoption.targetHead : adoption.successorHead))
     refuse('preservation-head-drift');
-  const direct = retained ? integrationProof(adoption.merge, heads[0], { cwd: root }) : null;
+  const direct = retained ? exactCurrentIntegrationProof(adoption.merge, heads[0], { cwd: root }) : null;
   const integration = retained ? direct && { kind: 'current-quarantined', predecessorHead: heads[0], reviewedHead: heads[1],
     merge: adoption.merge, pathCount: direct.pathCount, replacements: [] }
     : successorIntegrationProof(adoption.merge, heads[0], heads[1], adoption.replacedPaths, { cwd: root });

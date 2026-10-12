@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import {
   currentBranch, decodeNulFields, headSha, isAncestor, observeGit, worktreePreservationEntries,
 } from './git.mjs';
-import { integrationProof } from './patch-identity.mjs';
+import { exactCurrentIntegrationProof } from './patch-identity.mjs';
 
 export class CanonicalResourceError extends Error {
   constructor(code, detail = {}) {
@@ -57,7 +57,7 @@ export function canonicalReconciliation(localSha, targetSha, receiptDigest, cwd)
   };
   if (!SHA256.test(receiptDigest ?? '')) reject('non-fast-forward', { localSha, targetSha,
     remedy: 'run agentic-os reconcile plan with an exact integration receipt' });
-  const proof = integrationProof(targetSha, localSha, { cwd });
+  const proof = exactCurrentIntegrationProof(targetSha, localSha, { cwd });
   if (proof?.kind !== 'exact-tree-projection') reject('non-fast-forward', { localSha, targetSha,
     remedy: 'local commits are not exactly represented by the protected target' });
   return { relation: 'squash-integrated-divergence', reconciliation: Object.freeze({
@@ -87,7 +87,7 @@ export function classifyCanonicalReconciliation({ cwd = process.cwd(), branch, t
   else if (isAncestor(localSha, targetSha, cwd)) status = 'behind-fast-forwardable';
   else if (isAncestor(targetSha, localSha, cwd)) status = 'ahead-needs-pr';
   else {
-    proof = integrationProof(targetSha, localSha, { cwd });
+    proof = exactCurrentIntegrationProof(targetSha, localSha, { cwd });
     status = proof?.kind === 'exact-tree-projection' ? 'squash-integrated-divergence' : 'true-conflict';
   }
   const paths = changedPaths(cwd, localSha, targetSha);

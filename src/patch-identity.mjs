@@ -1,12 +1,4 @@
-/**
- * Integration oracle. Answers "is this lane already on the protected branch?"
- * as a computed local classification. It never replaces authenticated authority,
- * an Integration Receipt, or recovery evidence.
- *
- * Squash merges rewrite lane commits into one new commit, so ancestry alone
- * reports a finished lane as unmerged forever. Exact path-state identity covers
- * squash without trusting whitespace-insensitive patch IDs or commit messages.
- */
+/** Local content classification only; it never replaces provider authority or recovery evidence. */
 
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -56,10 +48,7 @@ export function sourceHeadTrailer(sha) {
   return `${SOURCE_HEAD_TRAILER}: ${sha}`;
 }
 
-/**
- * Patch-identity split of `ref` against `base`, via git cherry.
- * `-` means an equivalent patch already exists upstream, `+` means pending.
- */
+/** Split upstream-equivalent (`-`) and pending (`+`) commits using `git cherry`. */
 export function cherry(base, ref, { cwd } = {}) {
   const upstream = [];
   const pending = [];
@@ -80,9 +69,8 @@ function changedPaths(mergeBase, tip, { cwd } = {}) {
   return decodeNulFields(output);
 }
 
-const PROJECTION_BATCH_PATHS = 128;
-const PROJECTION_BATCH_PATH_BYTES = 32 * 1024;
-const PROJECTION_BATCH_OUTPUT_BYTES = 64 * 1024;
+const PROJECTION_BATCH_PATHS = 128, PROJECTION_BATCH_PATH_BYTES = 32 * 1024,
+  PROJECTION_BATCH_OUTPUT_BYTES = 64 * 1024;
 
 /** Bound process arguments; parent/child selectors must never share an ls-tree query. */
 function* projectionBatches(paths) {
@@ -131,12 +119,30 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
     const laneEntries = treeEntries(ref, batch, { cwd });
     if (!laneEntries || !baseEntries.equals(laneEntries)) return null;
   }
-  return {
-    kind: 'exact-tree-projection',
-    detail: `${paths.length} lane-touched path(s) exactly match ${base}`,
-    pathCount: paths.length,
-    pending: [],
-  };
+  return { kind: 'exact-tree-projection', detail: `${paths.length} lane-touched path(s) exactly match ${base}`,
+    pathCount: paths.length, pending: [] };
+}
+
+const HISTORICAL_TREE_SCAN_LIMIT = 512;
+function laneTipHasTreeDelta(tip, cwd) {
+  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u);
+  const parentTree = row.length === 2 && headSha(`${row[0]}^{tree}`, cwd);
+  return Boolean(parentTree && row.length === 2 && parentTree !== row[1]);
+}
+function historicalFullTreeMatch(base, ref, { cwd } = {}) {
+  const tip = headSha(ref, cwd), tree = tip && headSha(`${tip}^{tree}`, cwd);
+  const mergeBase = observeGit(['merge-base', base, ref], { cwd, allowFail: true }); if (!tree || !mergeBase) return null;
+  const commits = observeGitLines(['log', '--first-parent', `--max-count=${HISTORICAL_TREE_SCAN_LIMIT}`,
+    '--format=%H %T', base, `^${mergeBase}`], { cwd });
+  for (const row of commits) {
+    const match = /^([0-9a-f]{40}(?:[0-9a-f]{24})?) ([0-9a-f]{40}(?:[0-9a-f]{24})?)$/u.exec(row);
+    if (!match) return null;
+    if (match[2] === tree) return { kind: 'historical-full-tree-match',
+      detail: `lane tree exactly matches protected first-parent commit ${match[1]}`,
+      matchRevision: match[1], matchTree: tree, currentTreeDiffers: headSha(`${base}^{tree}`, cwd) !== tree,
+      pathCount: null, pending: [] };
+  }
+  return null;
 }
 
 /** Exact historical transition in a reviewed PR series; never integration authority. */
@@ -165,35 +171,29 @@ export function reviewedEquivalentTransitionProof(merge, detached, reviewed, hea
     detachedHead: detached, reviewedCommit: reviewed, pathCount: oldPaths.length, sourceIntegrated: false };
 }
 
-/**
- * Strongest available proof that `ref` is integrated into `base`, or null.
- *
- * @returns {{kind: 'ancestor'|'exact-tree-projection',
- *            detail: string, pending: string[]} | null}
- */
-export function integrationProof(base, ref, { cwd } = {}) {
+function integrationProofFor(base, ref, { cwd } = {}, historical) {
   const baseTip = headSha(base, cwd);
   const tip = headSha(ref, cwd);
   if (!baseTip || !tip) return null;
-
-  if (isAncestor(tip, baseTip, cwd)) {
-    return { kind: 'ancestor', baseHead: baseTip, head: tip,
-      detail: `${tip} is an ancestor of ${baseTip}`, pending: [] };
-  }
-
+  if (isAncestor(tip, baseTip, cwd)) return { kind: 'ancestor', baseHead: baseTip, head: tip,
+    detail: `${tip} is an ancestor of ${baseTip}`, pending: [] };
   const laneCommits = commitsAhead(baseTip, tip, cwd);
-  if (laneCommits.length === 0) {
-    return { kind: 'ancestor', baseHead: baseTip, head: tip,
-      detail: `${tip} adds no commits over ${baseTip}`, pending: [] };
-  }
+  if (laneCommits.length === 0) return { kind: 'ancestor', baseHead: baseTip, head: tip,
+    detail: `${tip} adds no commits over ${baseTip}`, pending: [] };
+  if (!laneTipHasTreeDelta(tip, cwd)) return null;
 
-  const content = exactTreeProjectionProof(baseTip, tip, { cwd });
+  const content = exactTreeProjectionProof(baseTip, tip, { cwd })
+    ?? (historical ? historicalFullTreeMatch(baseTip, tip, { cwd }) : null);
   return content ? { ...content, baseHead: baseTip, head: tip } : null;
 }
 
-/** Historical, explicit supersession of a lane by a reviewed successor. This is
- * content evidence, not provider authority. Compare the accepted merge tree,
- * rather than today's main tree, so later edits cannot rewrite history. */
+/** Exact current ancestry or touched-path state; suitable for cleanup and sync decisions. */
+export function exactCurrentIntegrationProof(base, ref, { cwd } = {}) { return integrationProofFor(base, ref, { cwd }, false); }
+
+/** Content history classification; never cleanup, synchronization, or provider authority. */
+export function integrationProof(base, ref, { cwd } = {}) { return integrationProofFor(base, ref, { cwd }, true); }
+
+/** Historical successor content proof; provider authority remains separate. */
 export function successorIntegrationProof(merge, predecessor, reviewedHead, replacedPaths, { cwd } = {}) {
   const merged = headSha(merge, cwd), old = headSha(predecessor, cwd), reviewed = headSha(reviewedHead, cwd);
   if (!merged || !old || !reviewed || !isAncestor(old, reviewed, cwd)
