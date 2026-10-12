@@ -346,7 +346,11 @@ export async function runReleaseCommonSuccessorComplete({
     if (!record || !['published', 'queued', 'integrated'].includes(record.state)
       || record.head !== status.lane.head || status.lane.clean === false)
       fail('blocked-release-common-successor-lane', 'one exact published, clean predecessor is required');
-    const assertWorkflowCurrent = createWorkflowEffectGuard(() => cleanupWorkflowContext(root, ref, profile.repository));
+    let reviewedCandidate = null;
+    const assertWorkflowCurrent = createWorkflowEffectGuard(() => ({
+      ...cleanupWorkflowContext(root, ref, profile.repository),
+      ...(reviewedCandidate === null ? {} : { revision: reviewedCandidate }),
+    }));
     const workflow = inferMergedReviewWorkflow({ repository: current.repository, pr,
       requiredChecks: [...current.requiredChecks].sort() }, { cwd: root, api });
     if (!status.lane.mounted) {
@@ -361,7 +365,6 @@ export async function runReleaseCommonSuccessorComplete({
         fail('blocked-release-common-successor-replay', 'retained closeout or live canonical state drifted');
       out(JSON.stringify(settled)); return 0;
     }
-    assertWorkflowCurrent();
     const resolvePolicy = (policyRoot, mode) => {
       if (policyRoot !== root || mode !== RECOVERY_MODE)
         fail('blocked-release-common-successor-policy', 'successor recovery policy drifted');
@@ -376,6 +379,7 @@ export async function runReleaseCommonSuccessorComplete({
     const successor = { ...plan.successor, reviewedHead: plan.head, merge: plan.merge };
     if (plan.integration.kind !== 'reviewed-successor')
       fail('blocked-release-common-successor-integration', 'reviewed successor must remain exact');
+    reviewedCandidate = plan.head;
     assertWorkflowCurrent();
     const receipt = applyUserCleanup(plan, { cwd: root,
       authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true, ...options });
