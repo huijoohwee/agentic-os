@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -271,6 +271,45 @@ test('an external authority policy does not require workflow files in the target
   assert.equal(report.enrollment.authorityRepository, 'github.com/example/authority');
   assert.ok(report.findings.some((item) => item.code === 'external-authority-unverified'));
   assert.ok(!report.findings.some((item) => item.code === 'enrollment-file-missing'));
+});
+
+test('completion status reads each commit-addressed policy object once per invocation', (t) => {
+  const subject = fixture(t), support = join(subject.root, '..', 'git-wrapper');
+  mkdirSync(join(subject.root, '.agentic-os'), { recursive: true });
+  mkdirSync(join(subject.root, '.github', 'workflows'), { recursive: true });
+  writeFileSync(join(subject.root, '.agentic-os', 'github-transition-policy.json'), JSON.stringify({
+    schema: 'agentic-os/github-transition-policy/v1',
+    authorityRepository: subject.profile.repository, authorityRef: 'refs/heads/main',
+    workflowPath: '.github/workflows/adlc-transition.yml',
+    targetRepositories: [subject.profile.repository], evidenceRefPrefix: 'refs/heads/adlc/authority/',
+  }));
+  writeFileSync(join(subject.root, '.github', 'adlc-authority-policy.json'), JSON.stringify({
+    targetRepositoryPrefix: 'github.com/example/', workflowPath: '.github/workflows/adlc-authority.yml',
+  }));
+  writeFileSync(join(subject.root, '.github', 'workflows', 'adlc-authority.yml'), 'name: authority\n');
+  writeFileSync(join(subject.root, '.github', 'workflows', 'adlc-transition.yml'), 'name: transition\n');
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'enroll local authority');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+
+  mkdirSync(support);
+  const logPath = join(support, 'calls.txt'), wrapper = join(support, 'git');
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const quote = (value) => `"${value.replaceAll('"', '\\"')}"`;
+  writeFileSync(wrapper, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${quote(logPath)}\nexec ${quote(realGit)} "$@"\n`, { mode: 0o755 });
+  const priorPath = process.env.PATH;
+  let report;
+  try {
+    process.env.PATH = `${support}:${priorPath}`;
+    report = subject.status();
+  } finally {
+    if (priorPath === undefined) delete process.env.PATH;
+    else process.env.PATH = priorPath;
+  }
+
+  const shows = readFileSync(logPath, 'utf8').trim().split('\n').filter((line) => line.startsWith('show '));
+  assert.equal(report.enrollment.localPolicyCandidate, true);
+  assert.equal(new Set(shows).size, shows.length, 'a commit:path object should be read once per status invocation');
+  assert.equal(shows.length, 6, 'four enrollment objects and two optional bindings fit the read cache');
 });
 
 test('closeout ranks canonical-sync and deploy without granting those effects', () => {
