@@ -256,13 +256,14 @@ test('retrospective proof widens rule suite lookup for older merges', async () =
   assert.equal(winner.stored.providerProof.ruleSuiteId, '801');
 });
 
-test('canonical containment accepts compare payloads without head_commit', async () => {
+test('equal canonical revision skips commit-history ancestry reads', async () => {
   const fixture = await successorFixture((state) => {
     historicalSquash(state, { rulesUpdatedAfterMerge: true });
-    state.compareHeadCommitMissing = true;
   });
   const winner = await publishGitHubTransitionAuthority(fixture.common);
   assert.equal(winner.stored.providerProof.observedCanonicalHead, MERGE);
+  assert.equal(fixture.api.calls.some((route) => route.startsWith(
+    'GET /repos/example/target/commits?')), false);
 });
 
 test('successor predecessor authority fails closed on policy-anchor and source-tree drift',

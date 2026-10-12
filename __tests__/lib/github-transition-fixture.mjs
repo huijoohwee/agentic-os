@@ -349,11 +349,13 @@ function apiFixture(issuance) {
         enforcement: 'active', result: state.ruleEvaluation, rule_type,
       })),
     });
-    if (route === `GET /repos/example/target/compare/${MERGE}...${state.targetHead}`)
-      return response({ status: state.compareStatus, base_commit: { sha: MERGE },
-        merge_base_commit: { sha: state.compareStatus === 'diverged' ? TARGET_BASE : MERGE },
-        ...(state.compareHeadCommitMissing ? {} : { head_commit: { sha: state.targetHead } }),
-        commits: [{ sha: state.targetHead }] });
+    if (route === 'GET /repos/example/target/commits') {
+      assert.equal(parsed.searchParams.get('sha'), state.targetHead);
+      assert.equal(parsed.searchParams.get('per_page'), '25');
+      const parents = state.compareStatus !== 'ahead' ? []
+        : state.targetHead === LATER ? [MERGE] : state.mergeParents;
+      return response([{ sha: state.targetHead, parents: parents.map((sha) => ({ sha })) }]);
+    }
     const runMatch = route.match(/^GET \/repos\/example\/evidence\/actions\/runs\/(\d+)$/u);
     if (runMatch) {
       const id = runMatch[1], input = [...publications.values()].find((entry) =>
