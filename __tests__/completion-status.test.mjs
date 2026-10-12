@@ -28,7 +28,7 @@ function fixture(t) {
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' } };
   const policy = { protectedBranch: 'main' };
   const status = () => inspectCompletionStatus(root, REF, policy, profile);
-  return { root, lane, git, profile, policy, status };
+  return { parent, root, lane, git, profile, policy, status };
 }
 function addDeliveryDisposition(subject, { disposition, evidencePath = 'docs/delivery-evidence.md', reason = null, candidateRevision = null } = {}) {
   const root = subject.root;
@@ -494,6 +494,64 @@ test('exact docs-only no-deploy receipt closes delivery scope and retains decisi
   assert.equal(report.closeout.deliveryDisposition.disposition, 'no-deploy');
   assert.equal(report.closeout.nextAction, null);
   assert.equal(report.authorizesEffects, false);
+});
+
+test('exact control-ledger no-deploy proof closes scope and supports later ledger-only maintenance', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, '.agentic-os-delivery-dispositions.json'), '{}\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'record delivery disposition');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  mkdirSync(join(subject.root, 'docs'), { recursive: true });
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  writeFileSync(join(subject.root, 'docs', 'delivery-evidence.md'),
+    '# Artifact boundary\nThe product stager copies only its explicit artifact entries; the delivery ledger is excluded from the product artifact.\n');
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record artifact boundary evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const receipt = addDeliveryDisposition(subject, { disposition: 'no-deploy', evidencePath: 'docs/delivery-evidence.md',
+    reason: 'The delivery ledger is excluded from the product artifact.' });
+  const report = subject.status();
+  assert.equal(report.changeClass, 'control-ledger-only');
+  assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
+  assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
+  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.authorizesEffects, false);
+
+  const maintenanceRef = 'agent/device/control-ledger-maintenance', maintenance = join(subject.parent, 'maintenance');
+  subject.git(subject.root, 'worktree', 'add', '--quiet', '-b', maintenanceRef, maintenance);
+  const ledgerPath = join(subject.root, '.agentic-os-delivery-dispositions.json');
+  writeFileSync(join(maintenance, '.agentic-os-delivery-dispositions.json'), `${readFileSync(ledgerPath, 'utf8')} `);
+  subject.git(maintenance, 'add', '.agentic-os-delivery-dispositions.json');
+  subject.git(maintenance, 'commit', '--quiet', '-m', 'maintain delivery ledger');
+  subject.git(subject.root, 'merge', '--squash', maintenanceRef);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged ledger maintenance');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const maintenanceReport = inspectCompletionStatus(subject.root, maintenanceRef, subject.policy, subject.profile);
+  assert.equal(maintenanceReport.changeClass, 'control-ledger-only');
+  assert.equal(maintenanceReport.deliveryDisposition.scopeRule, 'exact-control-ledger-artifact-exclusion');
+  assert.equal(maintenanceReport.deliveryDisposition.evidenceForRef, REF);
+  assert.equal(maintenanceReport.closeout.adlcState, 'complete');
+});
+
+test('control-ledger no-deploy rule rejects any additional changed path', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, '.agentic-os-delivery-dispositions.json'), '{}\n');
+  writeFileSync(join(subject.lane, 'runtime.js'), 'export const runtime = true;\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'mix ledger and runtime');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  mkdirSync(join(subject.root, 'docs'), { recursive: true });
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  writeFileSync(join(subject.root, 'docs', 'delivery-evidence.md'), 'artifact boundary\n');
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record artifact boundary evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  addDeliveryDisposition(subject, { disposition: 'no-deploy', evidencePath: 'docs/delivery-evidence.md',
+    reason: 'The ledger is excluded from the product artifact.' });
+  const report = subject.status();
+  assert.equal(report.changeClass, 'mixed');
+  assert.equal(report.deliveryDisposition, null);
+  assert.equal(report.deliveryDispositionError, 'blocked-delivery-disposition-disposition-scope');
+  assert.equal(report.closeout.adlcState, 'delivery_pending');
 });
 
 test('stale lane paths in a re-sealed disposition remain pending and fail loud', (t) => {
