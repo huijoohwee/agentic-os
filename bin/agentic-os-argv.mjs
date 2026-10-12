@@ -103,7 +103,9 @@ export function validateCommandArguments(command, argv) {
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
-      const owner = { start: 'start', publish: 'land', finish: 'finish', close: 'finish', successor: 'successor' }[action];
+      if (action === 'close') return exact(argv.slice(1), {
+        options: ['ref', 'preservation', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] });
+      const owner = { start: 'start', publish: 'land', finish: 'finish', successor: 'successor' }[action];
       if (owner) return validateCommandArguments(owner, argv.slice(1));
       if (action === 'rebind') return argv[1] === 'plan'
         ? (() => { const mode = option(argv, 'mode'), recertify = mode === 'recertify';
@@ -158,7 +160,7 @@ export function validateCommandArguments(command, argv) {
     case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
     case 'completion': return argv[0] === 'status'
-      ? exact(argv, { min: 1, options: ['ref', 'preservation'], requiredOptions: ['ref'] })
+      ? exact(argv, { min: 1, options: ['ref', 'preservation', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] })
       : 'completion requires status --ref=<lane>';
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });
@@ -244,7 +246,7 @@ export function cmdHelp() {
       '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
       '  Follow-up and diagnostics:',
-      '  agentic-os completion status --ref=<lane>  read-only completion blockers and owner actions',
+      '  agentic-os completion status --ref=<lane> [--preservation=<json>] [--integration-receipt=<json> --retirement-receipt=<json>]  receipt pair requires preservation; read-only',
       '  npm run completion:scaffold -- --ref=<lane>  print a cleanup bundle scaffold with exact lane facts, committed policy, default limits, and remaining placeholders',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',

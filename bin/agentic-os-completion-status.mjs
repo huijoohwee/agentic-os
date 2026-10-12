@@ -7,11 +7,15 @@ import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs
 import { verifySuccessorPreservation, readUserCleanupJson } from './agentic-os-cleanup-user.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { get as getLaneRecord } from '../src/lane-records.mjs';
-import { DELIVERY_DISPOSITION_SET_PATH, validateDeliveryDispositionSet } from '../src/completion.mjs';
+import { DELIVERY_DISPOSITION_SET_PATH, bindRetirementOperationReceipts,
+  validateDeliveryDispositionSet } from '../src/completion.mjs';
+
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
-const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 });
-const committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
+const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 }), committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
+export const retirementReviewLocator = (repository, laneRecord, preservationReceipt) => {
+  const path = typeof repository === 'string' ? repository.replace(/^github\.com\//u, '') : '', lane = Number.isSafeInteger(laneRecord?.pr) && laneRecord.pr > 0 ? `https://github.com/${path}/pull/${laneRecord.pr}` : null, preserved = preservationReceipt?.adoption?.reviewLocator ?? null, locator = lane ?? preserved, match = typeof locator === 'string' ? /^https:\/\/github\.com\/([^/?#]+\/[^/?#]+)\/pull\/([1-9][0-9]*)$/u.exec(locator) : null; if (!/^[^/?#]+\/[^/?#]+$/u.test(path) || !match || match[1] !== path || lane && preserved !== lane) throw new TypeError('exact review locator is unavailable or inconsistent'); return locator;
+};
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const lanePaths = (root, branch, head) => { const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `refs/heads/${branch}...${head}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }); return output === null ? null : output.split('\0').filter(Boolean).sort(); };
 const finding = (code, owner, action) => ({ code, owner, action });
@@ -63,12 +67,13 @@ function enrollment(root, revision, repository) {
   if (transition.workflowPath !== TRANSITION_WORKFLOW) findings.push(finding('transition-workflow-mismatch', 'authority-operator', 'Align the committed transition policy and workflow path.'));
   return { authorityRepository: repository, files: present, localPolicyCandidate: findings.length === 0, findings };
 }
-export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, laneMounted, laneClean, laneHead, quarantineProfile, quarantineObserved, preservationObserved = false, preservationDisposition = 'successor-preserved', recoveryDispositionSatisfied = false, deployBound: deploy, deliveryDisposition = null, deliveryDispositionInvalid = false, changeClass = 'unknown', localPolicyCandidate, findingCodes, lineagePredecessorRef = null }) {
+export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, laneMounted, laneClean, laneHead, quarantineProfile, quarantineObserved, preservationObserved = false, preservationDisposition = 'successor-preserved', recoveryDispositionSatisfied = false, retirementReceiptVerified = false, deployBound: deploy, deliveryDisposition = null, deliveryDispositionInvalid = false, changeClass = 'unknown', localPolicyCandidate, findingCodes, lineagePredecessorRef = null }) {
   const has = (code) => findingCodes.includes(code), blocked = has('lane-ref-missing')
     || has('lane-dirty') || has('lane-dirty-state-unknown');
   const laneDisposition = blocked ? 'blocked' : recoveryDispositionSatisfied ? 'retained-unrecoverable-accepted' : preservationObserved ? preservationDisposition : quarantineObserved ? 'quarantined' : quarantineProfile && laneMounted ? 'awaiting-cleanup' : !quarantineProfile && laneMounted ? 'retained' : laneHead && !laneMounted ? 'unmounted' : 'blocked';
   const cleanupSatisfied = !blocked && (!quarantineProfile && laneMounted && laneClean !== false || quarantineObserved === true);
   const preservationSatisfied = preservationObserved === true;
+  const retirementSatisfied = retirementReceiptVerified === true;
   const sourceComplete = sourceIntegrated && canonicalCurrent && (cleanupSatisfied || preservationSatisfied || recoveryDispositionSatisfied) && !blocked;
   const deliveryPending = sourceComplete && deploy && !deliveryDisposition;
   const assessDeliveryScope = deliveryPending && changeClass === 'docs-only';
@@ -82,11 +87,12 @@ export function deriveCloseoutVerdict({ sourceIntegrated, canonicalCurrent, lane
               : has('canonical-not-current-clean') ? ['canonical-sync-plan', 'repository-operator', 'npm run sync:canonical -- plan']
                 : sourceComplete && deliveryDispositionInvalid ? ['repair-delivery-disposition', 'product-owner', 'Correct the committed product delivery disposition so its exact lane, candidate and evidence bindings validate.']
                 : assessDeliveryScope ? ['assess-delivery-scope', 'product-owner', 'Check whether the exact documentation paths enter a deployed surface; retain product evidence before closing or deploying.']
-                    : sourceComplete && preservationObserved ? ['verify-preservation-retirement', 'authority-operator', 'Verify the independently authenticated record-only retirement receipt before Full END ADLC.']
+                    : sourceComplete && preservationObserved && !retirementSatisfied ? ['verify-preservation-retirement', 'authority-operator', 'Bind the exact integration and retirement receipts with --integration-receipt and --retirement-receipt.']
                     : deliveryPending ? ['deploy-workflow', 'product-owner', 'Follow guides/DEPLOY-WORKFLOW.md and record exact Dev, Prod and Runtime delivery evidence before closeout.'] : null;
-  return Object.freeze({ schema: 'agentic-os/closeout-verdict/v1', observationOnly: true, authorizesEffects: false, sourceIntegrated: sourceIntegrated === true, canonicalCurrent: canonicalCurrent === true, laneDisposition, cleanupSatisfied, preservationSatisfied, deployBinding: Object.freeze({ present: deploy === true, operation: deploy ? 'production-activation' : null }), deliveryDisposition: deliveryDisposition ? Object.freeze({ disposition: deliveryDisposition.disposition, receiptDigest: deliveryDisposition.receiptDigest, setDigest: deliveryDisposition.setDigest }) : null, missionState: blocked ? 'blocked' : sourceComplete ? 'source_complete' : 'continuable', adlcState: blocked ? 'blocked' : sourceComplete && preservationObserved ? 'retirement_pending' : assessDeliveryScope ? 'delivery_scope_pending' : deliveryPending ? 'delivery_pending' : sourceComplete ? 'complete' : 'continuable', nextAction: next ? Object.freeze({ id: next[0], owner: next[1], command: next[2] }) : null });
+  return Object.freeze({ schema: 'agentic-os/closeout-verdict/v1', observationOnly: true, authorizesEffects: false, sourceIntegrated: sourceIntegrated === true, canonicalCurrent: canonicalCurrent === true, laneDisposition, cleanupSatisfied, preservationSatisfied, retirementSatisfied, deployBinding: Object.freeze({ present: deploy === true, operation: deploy ? 'production-activation' : null }), deliveryDisposition: deliveryDisposition ? Object.freeze({ disposition: deliveryDisposition.disposition, receiptDigest: deliveryDisposition.receiptDigest, setDigest: deliveryDisposition.setDigest }) : null, missionState: blocked ? 'blocked' : sourceComplete ? 'source_complete' : 'continuable', adlcState: blocked ? 'blocked' : sourceComplete && preservationObserved && !retirementSatisfied ? 'retirement_pending' : assessDeliveryScope ? 'delivery_scope_pending' : deliveryPending ? 'delivery_pending' : sourceComplete ? 'complete' : 'continuable', nextAction: next ? Object.freeze({ id: next[0], owner: next[1], command: next[2] }) : null });
 }
-export function inspectCompletionStatus(root, ref, policy, profile, { successor = null, preservationReceipt = null } = {}) {
+export function inspectCompletionStatus(root, ref, policy, profile, { successor = null, preservationReceipt = null,
+  integrationReceipt = null, retirementReceipt = null, retirementReceiptError = null } = {}) {
   if (!isLaneRef(ref)) throw Object.assign(new TypeError('completion requires an exact lane ref'), { reason: 'blocked-invalid-lane-ref' });
   if (currentBranch(root) !== policy.protectedBranch) throw Object.assign(new Error('completion status runs from the canonical checkout'), { reason: 'blocked-canonical-required' });
   const canonical = headSha(profile.canonical.localRef, root), tracking = headSha(profile.canonical.remoteRef, root), canonicalClean = read(root, ['status', '--porcelain', '--untracked-files=all']) === '';
@@ -100,6 +106,16 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
     || (preservation.adoption.predecessorHead ?? preservation.adoption.targetHead) !== laneHead)) throw new TypeError('preservation does not bind this lane');
   successor ??= preservation?.adoption.predecessorRef ? { ...preservation.adoption, reviewedHead: preservation.adoption.successorHead,
     predecessorHead: preservation.adoption.predecessorHead, replacedPaths: preservation.adoption.replacedPaths } : null;
+  let retirementReceiptBinding = null;
+  if ((integrationReceipt === null) !== (retirementReceipt === null)) retirementReceiptError ??= 'receipt-pair-required';
+  if (integrationReceipt !== null && retirementReceipt !== null && !retirementReceiptError) try {
+    const reviewLocator = retirementReviewLocator(profile.repository, laneRecord, preservation);
+    retirementReceiptBinding = bindRetirementOperationReceipts(integrationReceipt, retirementReceipt, {
+      repository: profile.repository, reviewLocator, preservationReceipt: preservation,
+    });
+    if (!tracking || !isAncestor(retirementReceiptBinding.integratedRevision, tracking, root))
+      throw new TypeError('retirement merge is not retained by current canonical source');
+  } catch { retirementReceiptError = 'retirement-receipt-binding-invalid'; }
   const direct = laneHead && tracking ? integrationProof(tracking, laneHead, { cwd: root }) : null;
   const historical = !direct && successor && laneHead === successor.predecessorHead
     && tracking && read(root, ['merge-base', '--is-ancestor', successor.merge, tracking]) === ''
@@ -130,17 +146,28 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   if (enrolled) findings.push(...enrolled.findings);
   if (quarantineProfile && !quarantineObserved && !preservation && !acceptedMissingBytes && enrolled?.localPolicyCandidate) findings.push(finding('provider-authority-unverified', 'authority-operator', 'Follow CLEANUP-AUTHORITY.md: bind the exact PR, checks, protection, issuance, integration and retirement winners.'));
   if (quarantineProfile && !quarantineObserved && !preservation && !acceptedMissingBytes) findings.push(finding('cleanup-receipt-unverified', 'cleanup-operator', 'After live winner replay, assess and execute only the authorized exact quarantine plan.'));
-  if (preservation) findings.push(finding('provider-retirement-unverified', 'authority-operator',
-    'Source preservation is locally verified; bind the independent live record-only retirement receipt before Full END ADLC.'));
+  if (retirementReceiptError) findings.push(finding('provider-retirement-receipt-invalid', 'authority-operator',
+    'Supply a valid integrate/retire receipt pair bound to this lane and its current merge.'));
+  if (preservation && !retirementReceiptBinding) findings.push(finding('provider-retirement-unverified', 'authority-operator',
+    'Source preservation is locally verified; bind the exact integration and record-only retirement receipts.'));
   if (deliveryDispositionError) findings.push(finding('delivery-disposition-invalid', 'product-owner',
     `Repair the exact committed delivery disposition (${deliveryDispositionError}); it must bind this lane, candidate, and committed evidence.`));
   const classifiedFindings = withApplicability(findings, changeClass);
-  const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, preservationObserved: Boolean(preservation), preservationDisposition: preservation?.disposition, recoveryDispositionSatisfied: acceptedMissingBytes, deployBound: deployBound(root, canonical), deliveryDisposition, deliveryDispositionInvalid: Boolean(deliveryDispositionError), changeClass, localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: classifiedFindings.map((item) => item.code), lineagePredecessorRef: lineage && lineage !== false ? lineage.predecessorRef : null });
-  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, preservationDispositionVerified: Boolean(preservation), deliveryDisposition, deliveryDispositionError,
+  const closeout = deriveCloseoutVerdict({ sourceIntegrated: Boolean(projection), canonicalCurrent: Boolean(canonical && tracking && canonical === tracking && canonicalClean), laneMounted, laneClean, laneHead: Boolean(laneHead), quarantineProfile, quarantineObserved, preservationObserved: Boolean(preservation), preservationDisposition: preservation?.disposition, recoveryDispositionSatisfied: acceptedMissingBytes, retirementReceiptVerified: Boolean(retirementReceiptBinding), deployBound: deployBound(root, canonical), deliveryDisposition, deliveryDispositionInvalid: Boolean(deliveryDispositionError), changeClass, localPolicyCandidate: enrolled?.localPolicyCandidate === true, findingCodes: classifiedFindings.map((item) => item.code), lineagePredecessorRef: lineage && lineage !== false ? lineage.predecessorRef : null });
+  return { schema: 'agentic-os/completion-status/v1', observationOnly: true, grantsAuthority: false, authorizesEffects: false, providerVerified: false, cleanupVerified: quarantineObserved, preservationDispositionVerified: Boolean(preservation), retirementReceiptBinding, retirementReceiptError,
+    deliveryDisposition, deliveryDispositionError,
     preservationSatisfied: Boolean(preservation), recoveryDispositionSatisfied: acceptedMissingBytes, preservationReceiptDigest: preservation?.receiptDigest ?? null, ref, repository: profile.repository, profileDigest: profile.profileDigest, changeClass, canonicalRevision: canonical, remoteTrackingRevision: tracking, canonicalClean, lane: { path: lanePath, mounted: laneMounted, head: laneHead, clean: laneClean, retainedCheckout, dirtyState: acceptedMissingBytes ? 'unrecoverable-accepted' : unknownDirtyState ? 'unobservable-at-missing-path' : laneMounted ? laneClean ? 'clean' : 'dirty' : 'unobserved', recoveryDisposition: acceptedMissingBytes ? recoveryDisposition : null }, lineage: lineage === false ? { valid: false, predecessorRef: null, predecessorHead: null, retainedBySuccessor: false, integrated: false } : lineage ? { valid: true, predecessorRef: lineage.predecessorRef, predecessorHead: lineage.predecessorHead, retainedBySuccessor: predecessorRetained, integrated: Boolean(predecessorIntegration || predecessorRetained && direct) } : null, integration: projection ? { kind: projection.kind, pathCount: projection.pathCount ?? null, ...(historical ? { reviewedHead: historical.reviewedHead, merge: historical.merge, replacements: historical.replacements.map(row => row.path) } : {}) } : null, enrollment: enrolled ? { authorityRepository: enrolled.authorityRepository, files: enrolled.files, localPolicyCandidate: enrolled.localPolicyCandidate } : null, closeout, findings: classifiedFindings };
 }
-export function runCompletionStatus(root, ref, policy, profile, out = console.log, { preservationPath = null } = {}) {
+export function runCompletionStatus(root, ref, policy, profile, out = console.log, { preservationPath = null,
+  integrationReceiptPath = null, retirementReceiptPath = null } = {}) {
   const preservationReceipt = preservationPath ? readUserCleanupJson(preservationPath, 'preservation-receipt') : null;
-  out(JSON.stringify(inspectCompletionStatus(root, ref, policy, profile, { preservationReceipt })));
+  let integrationReceipt = null, retirementReceipt = null, retirementReceiptError = null;
+  if (Boolean(integrationReceiptPath) !== Boolean(retirementReceiptPath)) retirementReceiptError = 'receipt-pair-required';
+  else if (integrationReceiptPath) try {
+    integrationReceipt = readUserCleanupJson(integrationReceiptPath, 'integration-operation-receipt');
+    retirementReceipt = readUserCleanupJson(retirementReceiptPath, 'retirement-operation-receipt');
+  } catch { retirementReceiptError = 'receipt-file-unreadable'; }
+  out(JSON.stringify(inspectCompletionStatus(root, ref, policy, profile,
+    { preservationReceipt, integrationReceipt, retirementReceipt, retirementReceiptError })));
   return 0;
 }
