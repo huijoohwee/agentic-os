@@ -9,10 +9,13 @@ import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.
 import { get as getLaneRecord } from '../src/lane-records.mjs';
 import { DELIVERY_DISPOSITION_SET_PATH, bindRetirementOperationReceipts,
   validateDeliveryDispositionSet } from '../src/completion.mjs';
+
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
-const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 });
-const committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
+const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 }), committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
+export const retirementReviewLocator = (repository, laneRecord, preservationReceipt) => {
+  const path = typeof repository === 'string' ? repository.replace(/^github\.com\//u, '') : '', lane = Number.isSafeInteger(laneRecord?.pr) && laneRecord.pr > 0 ? `https://github.com/${path}/pull/${laneRecord.pr}` : null, preserved = preservationReceipt?.adoption?.reviewLocator ?? null, locator = lane ?? preserved, match = typeof locator === 'string' ? /^https:\/\/github\.com\/([^/?#]+\/[^/?#]+)\/pull\/([1-9][0-9]*)$/u.exec(locator) : null; if (!/^[^/?#]+\/[^/?#]+$/u.test(path) || !match || match[1] !== path || lane && preserved !== lane) throw new TypeError('exact review locator is unavailable or inconsistent'); return locator;
+};
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const lanePaths = (root, branch, head) => { const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `refs/heads/${branch}...${head}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }); return output === null ? null : output.split('\0').filter(Boolean).sort(); };
 const finding = (code, owner, action) => ({ code, owner, action });
@@ -106,9 +109,7 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   let retirementReceiptBinding = null;
   if ((integrationReceipt === null) !== (retirementReceipt === null)) retirementReceiptError ??= 'receipt-pair-required';
   if (integrationReceipt !== null && retirementReceipt !== null && !retirementReceiptError) try {
-    const reviewLocator = Number.isSafeInteger(laneRecord?.pr)
-      ? `https://${profile.repository.replace(/^github\.com\//u, '')}/pull/${laneRecord.pr}` : null;
-    if (!reviewLocator) throw new TypeError('exact lane review is unavailable');
+    const reviewLocator = retirementReviewLocator(profile.repository, laneRecord, preservation);
     retirementReceiptBinding = bindRetirementOperationReceipts(integrationReceipt, retirementReceipt, {
       repository: profile.repository, reviewLocator, preservationReceipt: preservation,
     });

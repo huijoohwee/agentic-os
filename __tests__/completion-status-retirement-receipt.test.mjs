@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { deriveCloseoutVerdict } from '../bin/agentic-os-completion-status.mjs';
+import { deriveCloseoutVerdict, retirementReviewLocator } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { bindRetirementOperationReceipts, createAuthenticatedTransitionOperationReceipt,
   createEffectPlan, encodeEffectPlan } from '../src/completion.mjs';
@@ -75,6 +75,22 @@ test('completion status accepts a locally bound receipt pair without claiming pr
   assert.equal(validateCommandArguments('release-common', ['close', '--ref=agent/device/receipt-test',
     '--preservation=/evidence/preservation.json', '--integration-receipt=/evidence/integration.json',
     '--retirement-receipt=/evidence/retirement.json']), null);
+});
+
+test('retained preservation supplies the review locator after lane registration is quarantined', async () => {
+  const { integration, retirement } = await receiptPair();
+  const preservationReceipt = { repository: REPOSITORY, adoption: { reviewLocator: REVIEW, merge: MERGE } };
+  const reviewLocator = retirementReviewLocator(REPOSITORY, null, preservationReceipt);
+  assert.equal(reviewLocator, REVIEW);
+  const binding = bindRetirementOperationReceipts(integration, retirement, {
+    repository: REPOSITORY, reviewLocator, preservationReceipt,
+  });
+  assert.equal(binding.state, 'retired');
+  assert.throws(() => retirementReviewLocator(REPOSITORY, null, {
+    adoption: { reviewLocator: 'https://github.com/other/repository/pull/42' },
+  }), /exact review locator/u);
+  assert.throws(() => retirementReviewLocator(REPOSITORY, { pr: 43 }, preservationReceipt),
+    /exact review locator/u);
 });
 
 test('completion status rejects receipts with the wrong review, merge, digest, or lease predecessor', async () => {
