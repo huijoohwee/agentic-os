@@ -6,7 +6,7 @@ import { createGitHubAuthorityReadProvider } from './github-authority-client.mjs
 import { createGitHubProtectionProjection } from './github-authority-issuer.mjs';
 import { observeGitHubIntegrationProof } from './github-transition-proof.mjs';
 import {
-  deriveGitHubTransitionRunName, validateGitHubStoredTransition,
+  GITHUB_RETROSPECTIVE_CONTENT_MODE, deriveGitHubTransitionRunName, validateGitHubStoredTransition,
   validateGitHubTransitionInput, validateGitHubTransitionWorkflowRun,
 } from './github-transition-client.mjs';
 import { validateTransitionText as text, validateTransitionInstant as instant, GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_POLICY_PATH, encodeGitHubTransitionPolicy,
@@ -323,14 +323,17 @@ export function createGitHubTransitionRestProvider({ repository: identity,
       if (disposition) {
         const adoptedPolicy = await committedPolicy(call, repo, policy, workflowRevision);
         assertGitHubTransitionPolicyOperation(adoptedPolicy, input);
-        if (prior.stored.operationInput.integrationMode !== GITHUB_HISTORICAL_CONTENT_MODE
+        const priorMode = prior.stored.operationInput.integrationMode;
+        const verifiedChecks = observedProof.successfulChecks ?? observedProof.requiredChecks;
+        if (![GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_RETROSPECTIVE_CONTENT_MODE].includes(priorMode)
+          || !Array.isArray(verifiedChecks)
           || disposition.policyDigest !== governanceDigest(adoptedPolicy)
           || disposition.state.policyRepository !== repo.repository || disposition.state.policyRevision !== workflowRevision
           || observedProof.reviewLocator !== disposition.adoption.reviewLocator
           || observedProof.mergeRevision !== disposition.adoption.merge
           || observedProof.candidateHeadRevision !== (disposition.adoption.successorHead ?? disposition.adoption.targetHead)
           || !same(disposition.review.checks.map(check => [String(check.checkId), check.name]).sort(),
-            observedProof.successfulChecks.map(check => [check.checkRunId, check.context]).sort()))
+            verifiedChecks.map(check => [check.checkRunId, check.context]).sort()))
           fail('record-only retirement does not bind the adopted provider integration');
       }
       const payload = { coordinate: prior.stored.coordinate,

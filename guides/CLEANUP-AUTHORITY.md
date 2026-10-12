@@ -251,3 +251,20 @@ delivery/handover evidence remain separate Full END ADLC gates.
 Budget: two existing modules, one existing recovery test file, one exact v3 policy entry, and these
 two on-demand guide updates; zero dependencies or always-load bytes. Source module and aggregate
 line caps remain enforced. Revert the checked protected commit to roll back the observer and policy.
+
+### Detached current-retention validator join — 2026-10-12
+
+The retained observer already admits the exact receipt-bound detached merge commit, but the shared
+preservation-record validator still required `retention.retainedHead` to equal the reviewed PR head.
+That rejects valid evidence where those commit IDs differ despite the original receipt binding both
+and their Git trees matching. Keep the observer as the filesystem authority. At the record boundary,
+bind the retained head to the enrolled original receipt's detached head, or to the reviewed head when
+the receipt is attached. The live observer separately verifies the receipt's lane, reviewed commit,
+reviewed-equivalent transition, equal-tree source, retained index and inventory; local/provider
+authority flags stay false. All malformed joins remain rejected.
+
+Acceptance adds a complete current-retention-plan fixture with distinct reviewed and detached commit
+IDs, plus negative cases for a substituted detached head and an observer refusal on mismatched tree. Budget: one
+existing runtime module, one existing recovery test and this plan update; zero new modules,
+dependencies, or always-load bytes. Roll back the protected successor commit to restore the previous
+validator.
