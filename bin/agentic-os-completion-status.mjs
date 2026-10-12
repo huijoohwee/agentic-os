@@ -52,16 +52,16 @@ function deployBound(root, revision) {
 }
 const enrollFail = (code, owner, action, extra = {}) => ({ authorityRepository: extra.authorityRepository ?? null, localPolicyCandidate: false, files: extra.files ?? {}, findings: [finding(code, owner, action)] });
 function enrollment(root, revision, repository) {
-  const transitionBytes = committed(root, revision, TRANSITION_POLICY);
+  const cache = new Map(); let cachedBytes = 0, readPolicy = (path) => { const key = `${revision}\0${path}`; if (cache.has(key)) return cache.get(key); const value = committed(root, revision, path), bytes = value === null ? 0 : Buffer.byteLength(value, 'utf8'); if (cache.size < 4 && bytes <= 64 * 1024 && cachedBytes + bytes <= 128 * 1024) { cache.set(key, value); cachedBytes += bytes; } return value; }, transitionBytes = readPolicy(TRANSITION_POLICY);
   if (transitionBytes === null) return enrollFail('authority-repository-unresolved', 'authority-operator', 'Identify an approved authority repository whose committed policy selects this target; local target files are not required.');
   let transition;
   try { transition = validateGitHubTransitionPolicy(JSON.parse(transitionBytes)); if (!transition.targetRepositories.includes(repository)) throw new Error('target not selected'); }
   catch { return enrollFail('transition-policy-invalid-or-target-unselected', 'authority-operator', 'Review the committed authority policy and target identity.'); }
   if (transition.authorityRepository !== repository) return enrollFail('external-authority-unverified', 'authority-operator', 'Verify the selected authority repository, policy and workflow at their live trust root.', { authorityRepository: transition.authorityRepository });
   const files = [AUTHORITY_POLICY, TRANSITION_POLICY, AUTHORITY_WORKFLOW, TRANSITION_WORKFLOW];
-  const present = Object.fromEntries(files.map((path) => [path, committed(root, revision, path) !== null]));
+  const present = Object.fromEntries(files.map((path) => [path, readPolicy(path) !== null]));
   const findings = files.filter((path) => !present[path]).map((path) => finding('enrollment-file-missing', 'repository-author', 'Enroll the reviewed authority or transition workflow through protected source integration.'));
-  if (present[AUTHORITY_POLICY]) try { const candidate = JSON.parse(committed(root, revision, AUTHORITY_POLICY));
+  if (present[AUTHORITY_POLICY]) try { const candidate = JSON.parse(readPolicy(AUTHORITY_POLICY));
     if (typeof candidate.targetRepositoryPrefix !== 'string' || !repository.startsWith(candidate.targetRepositoryPrefix) || candidate.workflowPath !== AUTHORITY_WORKFLOW) throw new Error('target not selected');
   } catch { findings.push(finding('authority-policy-invalid-or-target-unselected', 'repository-author', 'Review the committed policy and target identity.')); }
   if (transition.workflowPath !== TRANSITION_WORKFLOW) findings.push(finding('transition-workflow-mismatch', 'authority-operator', 'Align the committed transition policy and workflow path.'));
