@@ -122,7 +122,19 @@ export function recordCiStageReuse(root, stages, verified) {
 /** Export content-bound failed-stage logs for the current source; no release authority. */
 export function exportFailureDiagnostics(root, destination) {
   root = realpathSync(root);
-  const directory = validationStageDirectory(root), receipt = JSON.parse(readRegular(directory, STAGES_FILE, LIMITS.receiptBytes).text);
+  const directory = validationStageDirectory(root);
+  let stageFile;
+  try { stageFile = readRegular(directory, STAGES_FILE, LIMITS.receiptBytes); }
+  catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    mkdirSync(destination, { recursive: false, mode: 0o700 });
+    const manifest = { schema: 'agentic-os/validation-failure-diagnostics/v2', authority: false,
+      status: 'unavailable', reason: 'stage-receipt-missing', rootCause: null,
+      source: validationSource(root), expectedReceipt: 'agentic-os-tests/stages/validation-stages.json' };
+    writeReceipt(destination, 'manifest.json', manifest);
+    return manifest;
+  }
+  const receipt = JSON.parse(stageFile.text);
   if (receipt.schema !== STAGES_SCHEMA || receipt.authority !== false || receipt.outcome !== 'failed'
     || JSON.stringify(receipt.source) !== JSON.stringify(validationSource(root)) || receipt.source?.dirty !== false
     || !Array.isArray(receipt.results) || receipt.results.length > 128) throw Error('blocked-failure-diagnostics-source');
