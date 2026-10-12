@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.0
-prd_revision: 1.2.0
-tad_revision: 1.2.0
-adr_revision: 1.2.0
-mvp_revision: 1.2.0
-gtm_revision: 1.2.0
+version: 1.2.1
+prd_revision: 1.2.1
+tad_revision: 1.2.1
+adr_revision: 1.2.1
+mvp_revision: 1.2.1
+gtm_revision: 1.2.1
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.0`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.1`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -268,3 +268,25 @@ IDs, plus negative cases for a substituted detached head and an observer refusal
 existing runtime module, one existing recovery test and this plan update; zero new modules,
 dependencies, or always-load bytes. Roll back the protected successor commit to restore the previous
 validator.
+
+## Historical content enrollment — agentic-os PR #425 — 2026-10-13
+
+The policy owner explicitly accepted the narrowly scoped current recovery basis for PR #425. The
+enrollment binds repository `github.com/huijoohwee/agentic-os`, base
+`2834a81c5f7d7e30efaa2d0a712ddacd64cd063d`, reviewed head
+`afa0662ec056b849c0d7fb85ed80fb7e7cb641bc`, squash merge
+`7f4988180fc5fc369929757fc71a8c928ef8a620`, and equal source/merge tree
+`e3c8a87c8495c4039d597f78d9b2c548112f2656`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/425>; its selected successful check contexts are
+`budgets` and `test` from the exact PR run.
+
+The distinct scope is `recovery/current-historical-content/pr-425`. Recovery re-observes current
+protection and ancestry, but does not claim historical protection, required-check policy, Ruleset
+Suite, or merge-method proof. The transition proof contract keeps `methodProven:false` and
+`mergeMethod:"unproven"`. This enrollment prepares only current integration evidence; it grants no
+merge, retirement, cleanup, deployment, or canonical-sync effect. Each later effect still needs its
+own exact plan, authority and receipt.
+
+Budget: one exact v1 enrollment, one existing policy test and this on-demand owner record; zero
+runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
+remove this current PR enrollment; retained source history and prior enrollments stay intact.
