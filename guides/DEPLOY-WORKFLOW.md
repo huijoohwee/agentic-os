@@ -55,6 +55,9 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
 After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `deploy-workflow`
 only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
 OS stop is `source_complete`; do not invent a generic deploy command.
+The closeout reports `completionScope=source-only` and `adlcState=source_complete` for that
+lane. This describes its source and lane closeout only; it makes no delivery claim for another
+lane or product.
 
 For that enrolled repo, `closeout.missionState=source_complete` means only source and lane
 closeout passed. `closeout.adlcState=delivery_pending` and progressive completion's
@@ -70,6 +73,10 @@ runtime receipt. Retain the full Dev, Prod and Runtime evidence in the committed
 For a documentation-only lane, `delivery_scope_pending` instead asks the product owner to
 check the exact changed paths against deployed artifact inputs. Some documentation is public
 content. Keep ADLC open until the owner supplies a bound deploy or no-deploy disposition.
+For delivery-bound lanes, `adlcState=complete` requires a valid disposition that closes the
+enrolled delivery scope. A preservation lane also needs its bound retirement receipt pair;
+`completionScope=retirement-bound` reports `retirement_pending` until that pair validates.
+Status values apply to one exact lane and do not summarize siblings.
 No-deploy requires a documented reason and is accepted for docs-only paths, or for the single
 exact `.agentic-os-delivery-dispositions.json` path when the committed evidence digest binds the
 product artifact boundary and the reason says the ledger is excluded from the product artifact.

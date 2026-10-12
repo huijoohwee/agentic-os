@@ -120,6 +120,7 @@ test('read-only closeout remains retirement-pending until the exact receipt pair
   const pending = deriveCloseoutVerdict({ ...shared, findingCodes: ['provider-retirement-unverified'] });
   assert.equal(pending.adlcState, 'retirement_pending');
   const bound = deriveCloseoutVerdict({ ...shared, retirementReceiptVerified: true });
+  assert.equal(bound.completionScope, 'retirement-bound');
   assert.equal(bound.adlcState, 'complete');
   assert.equal(bound.retirementSatisfied, true);
   assert.equal(bound.authorizesEffects, false);

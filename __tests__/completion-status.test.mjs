@@ -87,7 +87,8 @@ test('merged retained lane is source_complete without invented cleanup authority
   assert.ok(!after.findings.some((item) => item.code === 'provider-authority-unverified'));
   assert.ok(!after.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
   assert.equal(after.closeout.missionState, 'source_complete');
-  assert.equal(after.closeout.adlcState, 'complete');
+  assert.equal(after.closeout.completionScope, 'source-only');
+  assert.equal(after.closeout.adlcState, 'source_complete');
   assert.equal(after.closeout.laneDisposition, 'retained');
   assert.equal(after.closeout.nextAction, null);
   assert.equal(subject.git(subject.root, 'rev-parse', 'HEAD'), after.canonicalRevision);
@@ -213,7 +214,8 @@ test('accepted missing bytes close source only when an exact clean successor che
   assert.equal(report.closeout.missionState, 'source_complete');
   assert.equal(report.closeout.laneDisposition, 'retained-unrecoverable-accepted');
   assert.equal(report.closeout.cleanupSatisfied, false);
-  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.completionScope, 'source-only');
+  assert.equal(report.closeout.adlcState, 'source_complete');
   assert.equal(report.cleanupVerified, false);
   assert.equal(report.providerVerified, false);
   assert.equal(report.authorizesEffects, false);
@@ -320,6 +322,8 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   };
   const complete = deriveCloseoutVerdict(base);
   assert.equal(complete.missionState, 'source_complete');
+  assert.equal(complete.completionScope, 'source-only');
+  assert.equal(complete.adlcState, 'source_complete');
   assert.equal(complete.nextAction, null);
   const sync = deriveCloseoutVerdict({
     ...base, canonicalCurrent: false, findingCodes: ['canonical-not-current-clean'],
@@ -328,6 +332,7 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   assert.equal(sync.nextAction.id, 'canonical-sync-plan');
   const deploy = deriveCloseoutVerdict({ ...base, deployBound: true });
   assert.equal(deploy.missionState, 'source_complete');
+  assert.equal(deploy.completionScope, 'delivery-bound');
   assert.equal(deploy.adlcState, 'delivery_pending');
   assert.equal(deploy.nextAction.id, 'deploy-workflow');
   assert.equal(deploy.authorizesEffects, false);
@@ -466,6 +471,7 @@ test('exact deployed delivery receipt closes ADLC without granting effect author
   assert.equal(report.deliveryDisposition.setDigest, receipt.receiptDigest);
   assert.equal(report.deliveryDisposition.producerAuthorityVerified, false);
   assert.equal(report.closeout.deliveryDisposition.disposition, 'deployed');
+  assert.equal(report.closeout.completionScope, 'delivery-bound');
   assert.equal(report.closeout.adlcState, 'complete');
   assert.equal(report.closeout.nextAction, null);
   assert.equal(report.authorizesEffects, false);
@@ -490,6 +496,7 @@ test('exact docs-only no-deploy receipt closes delivery scope and retains decisi
   assert.ok(report.deliveryDisposition, report.deliveryDispositionError);
   assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
   assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
+  assert.equal(report.closeout.completionScope, 'delivery-bound');
   assert.equal(report.closeout.adlcState, 'complete');
   assert.equal(report.closeout.deliveryDisposition.disposition, 'no-deploy');
   assert.equal(report.closeout.nextAction, null);
@@ -514,6 +521,7 @@ test('exact control-ledger no-deploy proof closes scope and supports later ledge
   assert.equal(report.changeClass, 'control-ledger-only');
   assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
   assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
+  assert.equal(report.closeout.completionScope, 'delivery-bound');
   assert.equal(report.closeout.adlcState, 'complete');
   assert.equal(report.authorizesEffects, false);
 
@@ -530,6 +538,7 @@ test('exact control-ledger no-deploy proof closes scope and supports later ledge
   assert.equal(maintenanceReport.changeClass, 'control-ledger-only');
   assert.equal(maintenanceReport.deliveryDisposition.scopeRule, 'exact-control-ledger-artifact-exclusion');
   assert.equal(maintenanceReport.deliveryDisposition.evidenceForRef, REF);
+  assert.equal(maintenanceReport.closeout.completionScope, 'delivery-bound');
   assert.equal(maintenanceReport.closeout.adlcState, 'complete');
 });
 
