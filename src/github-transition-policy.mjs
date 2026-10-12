@@ -8,11 +8,52 @@ export const GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA = 'agentic-os/github-trans
 export const GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA = 'agentic-os/github-transition-policy/v3';
 export const GITHUB_HISTORICAL_CONTENT_MODE = 'historical-content-facts/v1';
 export const GITHUB_TRANSITION_POLICY_PATH = '.agentic-os/github-transition-policy.json';
+export const GITHUB_ANCESTRY_PAGE_SIZE = 25;
+export const GITHUB_ANCESTRY_MAX_PAGES = 16;
+export const GITHUB_ANCESTRY_RESPONSE_BYTES = 256 * 1024;
 const KEYS = ['schema', 'authorityRepository', 'authorityRef', 'workflowPath',
   'targetRepositories', 'evidenceRefPrefix'];
 const REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const REF_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 function fail(message) { throw new TypeError(message); }
+const GIT_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+function ancestryReaches(commits, head, ancestor) {
+  const pending = [head], visited = new Set();
+  while (pending.length) {
+    const revision = pending.pop();
+    if (revision === ancestor) return true;
+    if (visited.has(revision)) continue;
+    visited.add(revision);
+    pending.push(...(commits.get(revision)?.parents ?? []));
+  }
+  return false;
+}
+/** Prove ancestry from bounded GitHub commit pages; a partial history is never a negative proof. */
+export async function isGitHubCommitAncestor({ ancestorRevision, headRevision, readPage }) {
+  if (![ancestorRevision, headRevision].every((value) => typeof value === 'string' && GIT_OBJECT_ID.test(value))
+    || typeof readPage !== 'function') fail('GitHub ancestry inputs are invalid');
+  if (ancestorRevision === headRevision) return true;
+  const commits = new Map();
+  for (let page = 1; page <= GITHUB_ANCESTRY_MAX_PAGES; page++) {
+    const rows = await readPage({ headRevision, page, perPage: GITHUB_ANCESTRY_PAGE_SIZE });
+    if (!Array.isArray(rows) || rows.length > GITHUB_ANCESTRY_PAGE_SIZE)
+      fail('GitHub ancestry page is invalid');
+    const pageIds = new Set();
+    for (const row of rows) {
+      const sha = row?.sha, parents = row?.parents;
+      if (typeof sha !== 'string' || !GIT_OBJECT_ID.test(sha) || !Array.isArray(parents)
+        || parents.length > 64 || pageIds.has(sha) || commits.has(sha)
+        || parents.some((parent) => typeof parent !== 'string' || !GIT_OBJECT_ID.test(parent) || parent === sha))
+        fail('GitHub ancestry commit is invalid or repeated');
+      pageIds.add(sha);
+      commits.set(sha, { parents: [...new Set(parents)] });
+    }
+    if (page === 1 && !commits.has(headRevision)) fail('GitHub ancestry page omitted its exact head');
+    if (ancestryReaches(commits, headRevision, ancestorRevision)) return true;
+    if (rows.length < GITHUB_ANCESTRY_PAGE_SIZE) return false;
+  }
+  fail('GitHub ancestry page budget ended before proof');
+}
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function text(value, label) {
   if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096

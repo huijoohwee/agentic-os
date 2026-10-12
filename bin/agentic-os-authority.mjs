@@ -12,9 +12,8 @@ import { deriveGitHubAuthorityExpiry, issueGitHubAuthority, projectGitHubTargetR
   observeGitHubRetrospectiveTarget, parseAuthorityArguments, projectGitHubTargetReview, validateGitHubAuthorityDispatch,
   validateGitHubPreparedPublication, verifyGitHubAuthorityIssuanceLive } from '../src/github-authority-operation.mjs';
 export { parseAuthorityArguments } from '../src/github-authority-operation.mjs';
-import { deriveGitHubAuthorityRunName } from '../src/github-authority-client.mjs';
-export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024,
-  MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
+import { deriveGitHubAuthorityRunName } from '../src/github-authority-client.mjs'; import { isGitHubCommitAncestor } from '../src/github-transition-policy.mjs';
+export const MAX_AUTHORITY_INPUT_BYTES = 64 * 1024, MAX_AUTHORITY_EVENT_BYTES = 256 * 1024, MAX_AUTHORITY_RESPONSE_BYTES = 256 * 1024, MAX_AUTHORITY_OUTPUT_BYTES = 64 * 1024;
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const DIGEST = /^[0-9a-f]{64}$/u, SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u,
@@ -468,10 +467,11 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
           readCommit: async (revision) => { const found = await gitCommit(target, revision);
             return { revision: found.revision, parents: found.parentRevisions, tree: found.tree,
               committedAt: found.committedAt }; },
-          compare: (base, head) => request('GET', `${target.path}/compare/${base}...${head}`,
-            undefined, { project: (value) => ({ status: value.status, base_commit: { sha: value.base_commit?.sha },
-              merge_base_commit: { sha: value.merge_base_commit?.sha },
-              head_commit: { sha: value.head_commit?.sha ?? value.commits?.at(-1)?.sha ?? null } }) }) });
+          isAncestor: (ancestorRevision, headRevision) => isGitHubCommitAncestor({ ancestorRevision,
+            headRevision, readPage: ({ page, perPage }) => request('GET',
+              `${target.path}/commits?sha=${headRevision}&per_page=${perPage}&page=${page}`, undefined,
+              { project: (rows) => rows.map((entry) => ({ sha: entry.sha,
+                parents: entry.parents?.map((parent) => parent.sha) })) }) }) });
       }
       return { repository: target.repository, repositoryId: identifier(source.id, 'GitHub target repository id'), owner,
         canonicalBranch: baseBranch, canonicalRevision: baseRevision, candidateBranch: headBranch,

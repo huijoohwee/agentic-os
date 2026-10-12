@@ -213,8 +213,14 @@ test('explicit retrospective issuance binds an exact historical squash and curre
       historicalBaseRevision: TARGET_BASE, liveCanonicalRevision: LIVE_TARGET,
       candidateTreeRevision: TARGET_TREE, mergeTreeRevision: TARGET_TREE,
     });
-    assert.ok(api.calls.some((call) => call.route
-      === `GET /repos/example/target/compare/${MERGE}...${LIVE_TARGET}`));
+    const ancestryPages = api.calls.filter((call) => call.route === 'GET /repos/example/target/commits');
+    const pageNumbers = ancestryPages.map((call) => Number(call.parsed.searchParams.get('page')));
+    assert.ok(pageNumbers.length >= 3 && pageNumbers.length % 3 === 0);
+    for (let offset = 0; offset < pageNumbers.length; offset += 3)
+      assert.deepEqual(pageNumbers.slice(offset, offset + 3), [1, 2, 3],
+        'each exact ancestry read stops when its merge ancestor appears on page three');
+    assert.ok(ancestryPages.every((call) => call.parsed.searchParams.get('per_page') === '25'));
+    assert.ok(!api.calls.some((call) => call.route.includes('/compare/')));
     assert.ok(api.calls.every((call) => call.init.headers['x-github-api-version']
       === '2026-03-10'));
     const reader = createGitHubAuthorityReadProvider({ issuance,
@@ -259,7 +265,7 @@ test('retrospective issuance fails closed on mode, review, event, squash, tree, 
     ]) {
       const api = fixture(t, options, root), result = await api.run();
       assert.equal(result.code, 1, JSON.stringify(options));
-      assert.match(result.stderr.values.join(''), /retrospective/u);
+      assert.match(result.stderr.values.join(''), /retrospective|ancestry/u);
       assert.equal(api.calls.some((call) => call.init.method !== 'GET'), false);
     }
   });

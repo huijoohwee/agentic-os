@@ -222,10 +222,19 @@ function fixture(t, options = {}, root = sandbox(t)) {
     if (route === `GET /repos/example/target/git/commits/${MERGE}`)
       return commit(MERGE, [options.mergeParent ?? TARGET_BASE],
         options.mergeTree ?? TARGET_TREE, '2026-09-02T00:08:00Z');
-    if (route === `GET /repos/example/target/compare/${MERGE}...${LIVE_TARGET}`)
-      return response({ status: options.compareStatus ?? 'ahead', base_commit: { sha: MERGE },
-        merge_base_commit: { sha: options.mergeBase ?? MERGE },
-        commits: options.emptyCompareCommits ? [] : [{ sha: options.compareTip ?? LIVE_TARGET }] });
+    if (route === 'GET /repos/example/target/commits') {
+      assert.equal(parsed.searchParams.get('sha'), LIVE_TARGET);
+      assert.equal(parsed.searchParams.get('per_page'), '25');
+      const history = [LIVE_TARGET, ...Array.from({ length: 51 }, (_, index) =>
+        (index + 1).toString(16).padStart(40, '0')), MERGE];
+      const rows = options.emptyCompareCommits ? [] : options.compareStatus
+        && options.compareStatus !== 'ahead' ? [{ sha: LIVE_TARGET, parents: [] }]
+        : options.compareTip ? [{ sha: LIVE_TARGET, parents: [{ sha: options.compareTip }] }]
+          : history.map((sha, index) => ({ sha,
+            parents: [{ sha: history[index + 1] ?? TARGET_BASE }] }));
+      const page = Number(parsed.searchParams.get('page'));
+      return response(rows.slice((page - 1) * 25, page * 25));
+    }
     if (route === 'GET /repos/example/evidence/rules/branches/release/2026') {
       assert.equal(parsed.searchParams.get('per_page'), '100');
       return options.rulesObject ? response({ rules: entries(canonicalRules, '11') }) : response(entries(canonicalRules, '11', { emptyChecks: options.emptyChecks }));
