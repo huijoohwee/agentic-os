@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { canonicalJson, governanceDigest, retire } from '../src/governance.mjs';
 import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
-import { createGitHubTransitionInput, createGitHubStoredTransition, deriveGitHubTransitionInputDigest, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
+import { GITHUB_RETROSPECTIVE_CONTENT_MODE, createGitHubTransitionInput, createGitHubStoredTransition, deriveGitHubTransitionInputDigest, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA, GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA, validateGitHubTransitionPolicy, validateTransitionProviderProof } from '../src/github-transition-policy.mjs';
 import { RECORD_ONLY_RETIREMENT_EFFECTS, RECORD_ONLY_RETIREMENT_RETAINED_EFFECTS } from '../src/cleanup-records.mjs';
@@ -171,6 +171,29 @@ test('current original record-only retirement binds fresh H01 winner and exact r
   const before = fx.api.calls.length;
   await publishGitHubTransitionAuthority({ ...retired.common, now: () => Date.parse('2026-09-03T00:00:00Z') });
   assert.ok(!fx.api.calls.slice(before).some(route => route.startsWith('POST ')));
+});
+
+test('current original record-only retirement accepts exact retrospective content proof', async () => {
+  const fx = await integrationFixture(state => {
+    state.transitionPolicy = RETENTION_POLICY;
+    historicalSquash(state);
+  }, {
+    initialReviewState: 'merged', integrationMode: GITHUB_RETROSPECTIVE_CONTENT_MODE, scope: SCOPE,
+  });
+  const { receipt } = await publish(fx);
+  const retired = retirement(fx, receipt, retainedDisposition());
+  const winner = await publishGitHubTransitionAuthority(retired.common);
+  assert.equal(winner.stored.operationInput.preservationDisposition.receiptDigest,
+    retired.operationInput.preservationDisposition.receiptDigest);
+  assert.equal(winner.stored.providerProof.physicalCleanupPerformed, false);
+  assert.equal(winner.stored.providerProof.historicalQuarantineAuthorityProven, false);
+  assert.equal(winner.stored.providerProof.integrationProofDigest,
+    fx.final.plan.parametersDigest);
+  const result = await createAuthenticatedTransitionOperationReceipt({
+    request: retired.request, planBytes: retired.planBytes,
+  }, createGitHubTransitionAuthorityVerifier(retired.common), { now: () => NOW });
+  assert.equal(result.transitionReceipt.resultState, 'retired');
+  assert.equal(fx.api.publications.size, 2);
 });
 
 test('current original disposition rejects altered old receipt, upgraded history, expiry and cleanup effects', async () => {
