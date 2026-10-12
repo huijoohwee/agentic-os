@@ -84,7 +84,7 @@ export function projectGitHubTargetReview(value) {
 }
 /** Validate a historical squash using provider-owned PR, event, commit, and ancestry evidence. */
 export async function observeGitHubRetrospectiveTarget({ query, repositoryValue,
-  liveCanonicalRevision, liveCandidateRevision, pull, eventPage, readCommit, compare }) {
+  liveCanonicalRevision, liveCandidateRevision, pull, eventPage, readCommit, isAncestor }) {
   const target = parseGitHubRepositoryIdentity(query.repository, 'target repository');
   let locator; try { locator = new URL(query.reviewLocator); } catch { fail('retrospective review URL is invalid'); }
   const prefix = `/${target.owner}/${target.name}/pull/`, number = locator.pathname.slice(prefix.length),
@@ -110,14 +110,12 @@ export async function observeGitHubRetrospectiveTarget({ query, repositoryValue,
     fail('retrospective authority merge event is not exact');
   const [candidateCommit, mergeCommit] = await Promise.all([readCommit(query.candidateHeadRevision),
     readCommit(mergeRevision)]), ancestry = mergeRevision === liveCanonicalRevision
-    ? null : await compare(mergeRevision, liveCanonicalRevision);
+    || await isAncestor(mergeRevision, liveCanonicalRevision);
   if (candidateCommit.revision !== query.candidateHeadRevision || mergeCommit.revision !== mergeRevision
     || mergeCommit.parents.length !== 1 || mergeCommit.parents[0] !== query.canonicalRevision
     || candidateCommit.tree !== mergeCommit.tree
     || Math.abs(Date.parse(mergeCommit.committedAt) - mergedTime) > 5_000
-    || ancestry && (ancestry.status !== 'ahead'
-      || ancestry.base_commit?.sha !== mergeRevision || ancestry.merge_base_commit?.sha !== mergeRevision
-      || ancestry.head_commit?.sha !== liveCanonicalRevision))
+    || !ancestry)
     fail('retrospective authority lacks exact squash-tree or current ancestry proof');
   const review = { locator: query.reviewLocator, state: 'merged', draft: false,
     headRepository: query.repository, headBranch: query.candidateBranch, headRevision: query.candidateHeadRevision,

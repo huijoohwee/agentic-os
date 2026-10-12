@@ -208,11 +208,7 @@ function targetProtection(observation, target, ref, classicProtection = null, re
 }
 async function descendant(api, target, base, head) {
   if (base === head) return 'equal';
-  const response = await api.call('GET', `${target.path}/compare/${base}...${head}`);
-  const value = object(api.exact(response, [200], 'GitHub canonical inclusion'),
-    'GitHub canonical inclusion');
-  if (value.status !== 'ahead' || value.base_commit?.sha !== base || value.merge_base_commit?.sha !== base
-    || (value.head_commit?.sha ?? value.commits?.at(-1)?.sha) !== head)
+  if (typeof api.isAncestor !== 'function' || !await api.isAncestor(target, base, head))
     fail('integrated revision is not contained by the protected canonical ref');
   return 'ancestor';
 }

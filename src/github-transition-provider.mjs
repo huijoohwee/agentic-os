@@ -3,6 +3,7 @@ import { freezeCleanupRecord as freeze } from './cleanup-records.mjs';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { createGitHubAuthorityReadProvider } from './github-authority-client.mjs';
+import { GITHUB_ANCESTRY_RESPONSE_BYTES, isGitHubCommitAncestor } from './github-transition-policy.mjs';
 import { createGitHubProtectionProjection } from './github-authority-issuer.mjs';
 import { observeGitHubIntegrationProof } from './github-transition-proof.mjs';
 import {
@@ -11,7 +12,6 @@ import {
 } from './github-transition-client.mjs';
 import { validateTransitionText as text, validateTransitionInstant as instant, GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_POLICY_PATH, encodeGitHubTransitionPolicy,
   assertGitHubTransitionPolicyOperation, validateTransitionRevision as sha, validateTransitionIdentifier as id, validateGitHubTransitionPolicy } from './github-transition-policy.mjs';
-
 const API = 'https://api.github.com', MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,38})?$/u,
   REF_RULES = Object.freeze(['deletion', 'non_fast_forward', 'update']);
@@ -30,10 +30,10 @@ function repository(value) {
 }
 function encodedPath(value) { return value.split('/').map(encodeURIComponent).join('/'); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
-async function bytes(response) {
+async function bytes(response, maxBytes = MAX_RESPONSE_BYTES) {
   const length = response.headers?.get?.('content-length');
   if (length && (!/^(?:0|[1-9][0-9]*)$/u.test(length)
-    || Number(length) > MAX_RESPONSE_BYTES)) fail('GitHub transition response exceeds bounds');
+    || Number(length) > maxBytes)) fail('GitHub transition response exceeds bounds');
   if (!response.body || typeof response.body.getReader !== 'function')
     fail('GitHub transition response body is unavailable');
   const reader = response.body.getReader(), chunks = []; let total = 0;
@@ -41,7 +41,7 @@ async function bytes(response) {
     for (;;) {
       const next = await reader.read(); if (next.done) break;
       const chunk = Buffer.from(next.value); total += chunk.length;
-      if (total > MAX_RESPONSE_BYTES) fail('GitHub transition response exceeds bounds');
+      if (total > maxBytes) fail('GitHub transition response exceeds bounds');
       chunks.push(chunk);
     }
   } finally { reader.releaseLock(); }
@@ -74,7 +74,7 @@ function rest(token, fetchImpl, timeoutMs) {
   const secret = text(token, 'GitHub token');
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs)
     || timeoutMs < 1 || timeoutMs > 60_000) fail('GitHub transition REST options are invalid');
-  return async (method, path, { body = null, absent = false } = {}) => {
+  return async (method, path, { body = null, absent = false, maxResponseBytes = MAX_RESPONSE_BYTES } = {}) => {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       let response;
@@ -87,7 +87,7 @@ function rest(token, fetchImpl, timeoutMs) {
       if (!response || !Number.isInteger(response.status) || response.redirected
         || response.status >= 300 && response.status < 400)
         fail('GitHub transition REST response is invalid');
-      const raw = await bytes(response);
+      const raw = await bytes(response, maxResponseBytes);
       if (absent && response.status === 404) return { value: null, status: 404, headers: response.headers };
       let value = null;
       if (raw.length) { try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)); }
@@ -286,6 +286,12 @@ export function createGitHubTransitionRestProvider({ repository: identity,
       call, exact: exactStatus, gitRef: (repoValue, ref) => gitRef(call, repoValue, ref),
       rules: (repoValue, ref) => rulesProjection(call, repoValue, ref, true, true),
       commit: (repoValue, revision) => commit(call, repoValue, revision), sha,
+      isAncestor: (repoValue, ancestorRevision, headRevision) => isGitHubCommitAncestor({ ancestorRevision,
+        headRevision, readPage: async ({ page, perPage }) => exactStatus(await call('GET',
+          `${repoValue.path}/commits?sha=${headRevision}&per_page=${perPage}&page=${page}`,
+          { maxResponseBytes: GITHUB_ANCESTRY_RESPONSE_BYTES }), [200], 'GitHub ancestry commits')
+          .map(({ sha: revision, parents }) => ({ sha: revision,
+            parents: parents?.map(({ sha: parent }) => parent) })) }),
     }, target, input, initialProvider: initial, expectedProof, requirePlanBinding, policy: verifiedPolicy });
   };
   return Object.freeze({

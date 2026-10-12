@@ -1,13 +1,13 @@
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
+import { isGitHubCommitAncestor } from './github-transition-policy.mjs';
 import { validateGitHubAuthorityIssuance, validateGitHubStoredAuthorityBundle } from './github-authority-issuer.mjs';
 import { effectPlanByteDigest, validateEffectPlanBytes } from './completion.mjs';
 import { observeGitHubRetrospectiveTarget, projectGitHubTargetRepository, projectGitHubTargetReview,
   verifyGitHubAuthorityIssuanceLive }
   from './github-authority-operation.mjs'; export { verifyGitHubAuthorityIssuanceLive };
-export const GITHUB_AUTHORITY_READ_ADAPTER = Object.freeze({ id: 'github-rest-authority-read', version: '1' });
-export const GITHUB_AUTHORITY_RUN_NAME_PREFIX = 'ADLC authority ';
+export const GITHUB_AUTHORITY_READ_ADAPTER = Object.freeze({ id: 'github-rest-authority-read', version: '1' }), GITHUB_AUTHORITY_RUN_NAME_PREFIX = 'ADLC authority ';
 export const GITHUB_AUTHORITY_LIVE_VERIFICATION_SCHEMA = 'agentic-os/github-authority-live-verification/v1';
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
@@ -286,11 +286,11 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
             commit_id: entry.commit_id, commit_url: entry.commit_url, created_at: entry.created_at })) });
         return observeGitHubRetrospectiveTarget({ query, repositoryValue: value,
           liveCanonicalRevision: base, liveCandidateRevision: head, pull, eventPage,
-          readCommit: (revision) => commit(repo, revision), compare: (before, after) =>
-            request(`${repo.path}/compare/${before}...${after}`, { project: (entry) => ({ status: entry.status,
-              base_commit: { sha: entry.base_commit?.sha },
-              merge_base_commit: { sha: entry.merge_base_commit?.sha },
-              head_commit: { sha: entry.head_commit?.sha ?? entry.commits?.at(-1)?.sha ?? null } }) }) });
+          readCommit: (revision) => commit(repo, revision),
+          isAncestor: (ancestorRevision, headRevision) => isGitHubCommitAncestor({ ancestorRevision,
+            headRevision, readPage: ({ page, perPage }) => request(`${repo.path}/commits?sha=${headRevision}&per_page=${perPage}&page=${page}`,
+              { project: (rows) => rows.map((entry) => ({ sha: entry.sha,
+                parents: entry.parents?.map((parent) => parent.sha) })) }) }) });
       }
       return { repository: repo.repository, repositoryId: identifier(value.id, 'target repository id'),
         owner: actor(value.owner, 'target owner'), canonicalBranch: query.canonicalBranch,
