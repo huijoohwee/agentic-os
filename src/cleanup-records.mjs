@@ -2,7 +2,6 @@
 import { createHash } from 'node:crypto';
 import { basename, resolve } from 'node:path';
 import { canonicalJson, governanceDigest } from './governance.mjs';
-
 export const WORKTREE_CLEANUP_PLAN_SCHEMA = 'agentic-os/worktree-cleanup-plan/v1';
 export const CLEANUP_EVIDENCE_SCHEMA = 'agentic-os/cleanup-evidence-receipt/v1';
 export const WORKTREE_CLEANUP_CONTINUATION_SCHEMA = 'agentic-os/worktree-cleanup-continuation/v1';
@@ -13,6 +12,7 @@ export const SUCCESSOR_PRESERVATION_SCHEMA = 'agentic-os/successor-preservation-
 export const SUCCESSOR_PRESERVATION_PLAN_SCHEMA = 'agentic-os/successor-preservation-plan/v1';
 export const CURRENT_QUARANTINE_SCHEMA = 'agentic-os/current-quarantine-retention-receipt/v1';
 export const CURRENT_QUARANTINE_PLAN_SCHEMA = 'agentic-os/current-quarantine-retention-plan/v1';
+export const CURRENT_QUARANTINE_RECONCILIATION_SCHEMA = 'agentic-os/current-quarantine-reconciliation/v1';
 export const RECORD_ONLY_RETIREMENT_EFFECTS = Object.freeze(['record-retirement', 'retire-claim']);
 export const CLEANUP_EFFECTS = Object.freeze(['quarantine-worktree-projection', 'quarantine-worktree-registration']);
 export const RETAINED_EFFECTS = Object.freeze(['delete-branch', 'delete-object', 'delete-ref',
@@ -48,7 +48,6 @@ const QUARANTINE_POSTCONDITIONS = Object.freeze({
   objectMutationAttempted: false, directoryByteRemovalAttempted: false,
   operatingSystemExclusivityProven: false, result: 'quarantined',
 });
-
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
 function exact(value, keys, label, required = true) {
@@ -132,7 +131,6 @@ export function deriveCleanupOwnerStateDigest(value) {
     claimId: digest(source.claimId, 'owner-state claimId'),
     fenceRevision: digest(source.fenceRevision, 'owner-state fenceRevision'), state: text(source.state, 'owner-state state') });
 }
-
 export function createCleanupEvidenceReceipt(input) {
   const source = snap(input), keys = ['schema', 'kind', 'repository', 'targetPath', 'candidateDigest',
     'snapshotDigest', 'integrationReceiptDigest', 'recoveryInventoryDigest',
@@ -160,10 +158,7 @@ export function createCleanupEvidenceReceipt(input) {
     unpreservedValueCount: source.unpreservedValueCount };
   return signedRecord(source, payload, 'receiptDigest', 'evidence receiptDigest', 'cleanup evidence digest is invalid');
 }
-
-export const validateCleanupEvidenceReceipt = value =>
-  canonicalRecord(value, createCleanupEvidenceReceipt, 'cleanup evidence receipt', 'cleanup evidence receipt is not canonical');
-
+export const validateCleanupEvidenceReceipt = value => canonicalRecord(value, createCleanupEvidenceReceipt, 'cleanup evidence receipt', 'cleanup evidence receipt is not canonical');
 export function createWorktreeCleanupPlan(input) {
   const source = snap(input);
   exact(source, PLAN_KEYS, 'worktree cleanup plan input', false);
@@ -190,14 +185,11 @@ export function createWorktreeCleanupPlan(input) {
     expiresAt: instant(source.expiresAt, 'cleanup expiresAt') };
   return signedRecord(source, payload, 'planDigest', 'cleanup planDigest', 'cleanup plan digest is invalid');
 }
-
 export const validateWorktreeCleanupPlan = value =>
   canonicalRecord(value, createWorktreeCleanupPlan, 'worktree cleanup plan', 'worktree cleanup plan is not canonical');
 export const encodeWorktreeCleanupPlan = (value) =>
   Buffer.from(canonicalJson(validateWorktreeCleanupPlan(value)), 'utf8');
-export const worktreeCleanupPlanByteDigest = (value) =>
-  createHash('sha256').update(encodeWorktreeCleanupPlan(value)).digest('hex');
-
+export const worktreeCleanupPlanByteDigest = (value) => createHash('sha256').update(encodeWorktreeCleanupPlan(value)).digest('hex');
 export function createWorktreeCleanupContinuation(input) {
   const source = snap(input); exact(source, CONTINUATION_KEYS, 'worktree cleanup continuation input', false);
   if (source.schema !== undefined && source.schema !== WORKTREE_CLEANUP_CONTINUATION_SCHEMA)
@@ -216,7 +208,6 @@ export function createWorktreeCleanupContinuation(input) {
     fail('cleanup continuation window is invalid');
   return signedRecord(source, payload, 'authorityDigest', 'cleanup continuation authorityDigest', 'cleanup continuation digest is invalid');
 }
-
 export const validateWorktreeCleanupContinuation = value =>
   canonicalRecord(value, createWorktreeCleanupContinuation, 'worktree cleanup continuation', 'worktree cleanup continuation is not canonical');
 export function createWorktreeCleanupEligibility(input) {
@@ -250,7 +241,6 @@ export function createWorktreeCleanupEligibility(input) {
     fail('cleanup eligibility window is invalid');
   return signedRecord(source, payload, 'eligibilityDigest', 'eligibilityDigest', 'cleanup eligibility digest is invalid');
 }
-
 export const validateWorktreeCleanupEligibility = value =>
   canonicalRecord(value, createWorktreeCleanupEligibility, 'worktree cleanup eligibility', 'cleanup eligibility is not canonical');
 export function createWorktreeCleanupReceipt(input) {
@@ -289,10 +279,20 @@ export function createWorktreeCleanupReceipt(input) {
     fail('cleanup receipt postconditions are invalid');
   return signedRecord(source, payload, 'receiptDigest', 'receiptDigest', 'cleanup receipt digest is invalid');
 }
-
-export const validateWorktreeCleanupReceipt = value =>
-  canonicalRecord(value, createWorktreeCleanupReceipt, 'worktree cleanup receipt', 'cleanup receipt is not canonical');
-
+export const validateWorktreeCleanupReceipt = value => canonicalRecord(value, createWorktreeCleanupReceipt, 'worktree cleanup receipt', 'cleanup receipt is not canonical');
+function registrationManifest(value, label) {
+  exact(value, ['digest', 'bytes', 'entries'], label); const result = { digest: digest(value.digest, `${label} digest`), bytes: value.bytes, entries: count(value.entries, `${label} entries`) };
+  if (!Number.isSafeInteger(result.bytes) || result.bytes < 0 || result.bytes > MAX_REGISTRATION_BYTES) fail(`${label} bytes are invalid`); return freezeCleanupRecord(result);
+}
+/** A record-only basis for one observed registration-index divergence; its cause remains unknown. */
+export function createCurrentQuarantineReconciliation(input) {
+  const source = snap(input), keys = ['schema', 'repository', 'reviewLocator', 'targetRef', 'targetHead', 'merge', 'quarantineCoordinate', 'originalReceiptDigest', 'originalRegistrationManifest', 'currentRegistrationManifest', 'historicalQuarantineAuthorityProven', 'historicalRegistrationManifestProven', 'registrationMutationCauseProven', 'physicalCleanupPerformed', 'providerAuthority', 'claimRetired', 'basisDigest'];
+  exact(source, keys, 'current quarantine reconciliation input', false); if (source.schema !== undefined && source.schema !== CURRENT_QUARANTINE_RECONCILIATION_SCHEMA) fail('current quarantine reconciliation schema is invalid');
+  const payload = { schema: CURRENT_QUARANTINE_RECONCILIATION_SCHEMA, repository: text(source.repository, 'reconciliation repository'), reviewLocator: text(source.reviewLocator, 'reconciliation reviewLocator'), targetRef: text(source.targetRef, 'reconciliation targetRef'), targetHead: revision(source.targetHead, 'reconciliation targetHead'), merge: revision(source.merge, 'reconciliation merge'), quarantineCoordinate: digest(source.quarantineCoordinate, 'reconciliation quarantineCoordinate'), originalReceiptDigest: digest(source.originalReceiptDigest, 'reconciliation originalReceiptDigest'), originalRegistrationManifest: registrationManifest(source.originalRegistrationManifest, 'reconciliation originalRegistrationManifest'), currentRegistrationManifest: registrationManifest(source.currentRegistrationManifest, 'reconciliation currentRegistrationManifest'), historicalQuarantineAuthorityProven: source.historicalQuarantineAuthorityProven, historicalRegistrationManifestProven: source.historicalRegistrationManifestProven, registrationMutationCauseProven: source.registrationMutationCauseProven, physicalCleanupPerformed: source.physicalCleanupPerformed, providerAuthority: source.providerAuthority, claimRetired: source.claimRetired };
+  if (same(payload.originalRegistrationManifest, payload.currentRegistrationManifest) || ['historicalQuarantineAuthorityProven', 'historicalRegistrationManifestProven', 'registrationMutationCauseProven', 'physicalCleanupPerformed', 'providerAuthority', 'claimRetired'].some(key => payload[key] !== false)) fail('current quarantine reconciliation claims are invalid');
+  return signedRecord(source, payload, 'basisDigest', 'current quarantine reconciliation basisDigest', 'current quarantine reconciliation digest is invalid');
+}
+export const validateCurrentQuarantineReconciliation = value => canonicalRecord(value, createCurrentQuarantineReconciliation, 'current quarantine reconciliation', 'current quarantine reconciliation is not canonical');
 function preservationRecord(value, receipt, allowCurrent = false) {
   const source = snap(value), checksum = receipt ? 'receiptDigest' : 'planDigest';
   const current = allowCurrent && source.disposition === 'current-quarantine-retained';
@@ -394,5 +394,4 @@ export const validateSuccessorPreservationReceipt = value => preservationRecord(
 export const validateSuccessorPreservationPlan = value => preservationRecord(value, false);
 export const validateRetentionDispositionReceipt = value => preservationRecord(value, true, true);
 export const validateRetentionDispositionPlan = value => preservationRecord(value, false, true);
-
 export { exact as cleanupRecordExact, digest as cleanupRecordDigest, typedFields as cleanupRecordFields, canonicalRecord as cleanupRecordCanonical };
