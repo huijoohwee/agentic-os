@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { bindRetirementOperationReceipts, deriveCloseoutVerdict } from '../bin/agentic-os-completion-status.mjs';
+import { deriveCloseoutVerdict } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, encodeEffectPlan } from '../src/completion.mjs';
+import { bindRetirementOperationReceipts, createAuthenticatedTransitionOperationReceipt,
+  createEffectPlan, encodeEffectPlan } from '../src/completion.mjs';
 import { createCoordinationRequest, governanceDigest } from '../src/governance.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');

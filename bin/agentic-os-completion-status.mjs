@@ -7,7 +7,7 @@ import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs
 import { verifySuccessorPreservation, readUserCleanupJson } from './agentic-os-cleanup-user.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { get as getLaneRecord } from '../src/lane-records.mjs';
-import { DELIVERY_DISPOSITION_SET_PATH, validateAuthenticatedTransitionOperationReceipt,
+import { DELIVERY_DISPOSITION_SET_PATH, bindRetirementOperationReceipts,
   validateDeliveryDispositionSet } from '../src/completion.mjs';
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
@@ -17,34 +17,6 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const lanePaths = (root, branch, head) => { const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `refs/heads/${branch}...${head}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }); return output === null ? null : output.split('\0').filter(Boolean).sort(); };
 const finding = (code, owner, action) => ({ code, owner, action });
 const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?.cleanup?.worktreeRegistration === 'quarantine';
-
-export function bindRetirementOperationReceipts(integrationValue, retirementValue,
-  { repository, reviewLocator, preservationReceipt } = {}) {
-  const integration = validateAuthenticatedTransitionOperationReceipt(integrationValue);
-  const retirement = validateAuthenticatedTransitionOperationReceipt(retirementValue);
-  const integrated = integration.transitionReceipt, retired = retirement.transitionReceipt;
-  const preservation = preservationReceipt;
-  if (integration.requestedTransition !== 'integrate' || retirement.requestedTransition !== 'retire'
-    || !preservation || preservation.repository !== repository
-    || preservation.adoption?.reviewLocator !== reviewLocator
-    || preservation.adoption?.merge !== integrated.immutableRevision
-    || integrated.repository !== repository || retired.repository !== repository
-    || integrated.reviewLocator !== reviewLocator
-    || integrated.resultState !== 'integrated' || retired.resultState !== 'retired'
-    || integrated.immutableRevision !== retired.immutableRevision
-    || integrated.authoritySubject !== retired.authoritySubject
-    || integrated.resultClaimId !== retired.sourceClaimId
-    || integrated.resultLeaseEpoch !== retired.sourceLeaseEpoch
-    || integrated.resultFenceRevision !== retired.sourceFenceRevision
-    || retired.resultClaimId !== integrated.resultClaimId
-    || retired.resultLeaseEpoch !== integrated.resultLeaseEpoch + 1) {
-    throw new TypeError('retirement receipts do not bind the exact review, merge, or integration predecessor');
-  }
-  return Object.freeze({ schema: 'agentic-os/retirement-receipt-binding/v1', state: 'retired',
-    integrationReceiptDigest: integration.receiptDigest, retirementReceiptDigest: retirement.receiptDigest,
-    integratedRevision: integrated.immutableRevision, reviewLocator: integrated.reviewLocator,
-    producerAuthorityVerified: false, grantsAuthority: false });
-}
 
 /**
  * Classify whether a finding is applicable given the lane's change class.

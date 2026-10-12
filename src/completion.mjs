@@ -230,6 +230,35 @@ export function validateAuthenticatedTransitionOperationReceipt(value) {
   return freeze(source);
 }
 
+/** Bind the local shape of an exact integration/retirement pair; never authenticate or authorize it. */
+export function bindRetirementOperationReceipts(integrationValue, retirementValue,
+  { repository, reviewLocator, preservationReceipt } = {}) {
+  const integration = validateAuthenticatedTransitionOperationReceipt(integrationValue);
+  const retirement = validateAuthenticatedTransitionOperationReceipt(retirementValue);
+  const integrated = integration.transitionReceipt, retired = retirement.transitionReceipt;
+  const preservation = preservationReceipt;
+  if (integration.requestedTransition !== 'integrate' || retirement.requestedTransition !== 'retire'
+    || !preservation || preservation.repository !== repository
+    || preservation.adoption?.reviewLocator !== reviewLocator
+    || preservation.adoption?.merge !== integrated.immutableRevision
+    || integrated.repository !== repository || retired.repository !== repository
+    || integrated.reviewLocator !== reviewLocator
+    || integrated.resultState !== 'integrated' || retired.resultState !== 'retired'
+    || integrated.immutableRevision !== retired.immutableRevision
+    || integrated.authoritySubject !== retired.authoritySubject
+    || integrated.resultClaimId !== retired.sourceClaimId
+    || integrated.resultLeaseEpoch !== retired.sourceLeaseEpoch
+    || integrated.resultFenceRevision !== retired.sourceFenceRevision
+    || retired.resultClaimId !== integrated.resultClaimId
+    || retired.resultLeaseEpoch !== integrated.resultLeaseEpoch + 1) {
+    throw new TypeError('retirement receipts do not bind the exact review, merge, or integration predecessor');
+  }
+  return Object.freeze({ schema: 'agentic-os/retirement-receipt-binding/v1', state: 'retired',
+    integrationReceiptDigest: integration.receiptDigest, retirementReceiptDigest: retirement.receiptDigest,
+    integratedRevision: integrated.immutableRevision, reviewLocator: integrated.reviewLocator,
+    producerAuthorityVerified: false, grantsAuthority: false });
+}
+
 export const DELIVERY_DISPOSITION_SET_PATH = '.agentic-os-delivery-dispositions.json', DELIVERY_DISPOSITION_SET_SCHEMA = 'agentic-os/delivery-disposition-set/v1';
 const DELIVERY_ROW_SCHEMA = 'agentic-os/delivery-disposition/v1', DELIVERY_SET_KEYS = ['schema', 'repository', 'dispositions', 'receiptDigest'];
 const DELIVERY_ROW_KEYS = ['schema', 'ref', 'laneHead', 'paths', 'disposition', 'candidateRevision', 'candidateDigest', 'sourceReleaseReceiptDigest', 'deploymentReceiptDigest', 'runtimeVerificationReceiptDigest', 'evidencePath', 'evidenceDigest', 'decisionRef', 'reason'];

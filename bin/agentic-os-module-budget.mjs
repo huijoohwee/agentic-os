@@ -18,8 +18,9 @@ export const ROOT = join(HERE, '..');
 export const BUDGET = Object.freeze({
   // 2026-10-10: bounded GitHub REST fallback preserves source-bound review observation during GraphQL quota exhaustion.
   // The source-evidence CLI and contract add one CLI and one runtime module; both remain lazy and provider-neutral.
+  // 2026-10-12: exact T06 retirement receipt binding adds 29 src and 37 bin lines in existing owners; zero modules/dependencies.
   modules: 49,
-  totalLines: 15536,
+  totalLines: 15562,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -33,7 +34,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24180,
+  binLines: 24217,
   runtimeModules: 97,
   runtimeLines: 23023,
 });
