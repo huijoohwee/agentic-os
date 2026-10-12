@@ -23,6 +23,7 @@ import {
 } from '../src/git.mjs';
 import {
   cherry,
+  exactCurrentIntegrationProof,
   integrationProof,
   sourceHeadTrailer,
 } from '../src/patch-identity.mjs';
@@ -514,7 +515,7 @@ test('whitespace-insensitive patch identity cannot authorize exact-byte retireme
   assert.equal(integrationProof('main', 'agent/dev/whitespace', { cwd: dir }), null);
 });
 
-test('a later disjoint advance preserves projection but a touched-path change invalidates it', (t) => {
+test('later protected edits preserve historical proof after current projection changes', (t) => {
   const { dir, run } = fixture();
   t.after(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -530,7 +531,11 @@ test('a later disjoint advance preserves projection but a touched-path change in
   writeFileSync(join(dir, 'later.txt'), 'different later bytes\n');
   run(['add', 'later.txt']);
   run(['commit', '--quiet', '--message', 'change touched path']);
-  assert.equal(integrationProof('main', 'agent/dev/later', { cwd: dir }), null);
+  const proof = integrationProof('main', 'agent/dev/later', { cwd: dir });
+  assert.equal(proof.kind, 'historical-full-tree-match');
+  assert.equal(proof.matchTree, run(['rev-parse', 'agent/dev/later^{tree}']));
+  assert.equal(proof.currentTreeDiffers, true);
+  assert.equal(exactCurrentIntegrationProof('main', 'agent/dev/later', { cwd: dir }), null);
 });
 
 test('mode and deletion state are part of the exact projection', (t) => {
