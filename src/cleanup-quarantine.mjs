@@ -199,12 +199,15 @@ function readOperation(path, eligibility = null) {
     || new Date(Date.parse(value.executedAt)).toISOString() !== value.executedAt
     || Date.parse(value.executedAt) < Date.parse(eligibility.evaluatedAt)
     || Date.parse(value.executedAt) >= Date.parse(eligibility.expiresAt))
-    fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata does not match');
-  return value;
+    fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata does not match'); return value;
 }
 function detachedReviewedHead(root, registered, receipt, head) {
   const oid = receipt?.detachedHead; if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid ?? '') || registered !== `${oid}\n`) return null;
   const trees = [oid, head].map(revision => observeGit(['rev-parse', '--verify', `${revision}^{tree}`], { cwd: root, allowFail: true })); return trees[0] && trees[0] === trees[1] ? oid : null;
+}
+function detachedReceiptMatches(receipt, detachedHead, reviewedHead) {
+  const i=receipt?.integration,p=i?.detached?.inclusion,exact=i?.kind==='equal-tree'&&i.headTree===i.mergeTree&&i.detached?.head===detachedHead&&i.detached?.reviewedHead===reviewedHead&&p?.kind==='equal-tree'&&p.headTree===i.headTree&&p.mergeTree===i.mergeTree;
+  return exact||i?.kind==='reviewed-equivalent-superseded-transition'&&i.detachedHead===detachedHead&&i.reviewedCommit===reviewedHead&&i.sourceIntegrated===false&&i.reviewedSource?.kind==='equal-tree'&&i.reviewedSource.headTree===i.reviewedSource.mergeTree&&receipt.historicalDraft==='superseded';
 }
 export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef } = {}) {
   try {
@@ -231,10 +234,7 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
           || originalReceipt.registrationQuarantinePath !== registration || originalReceipt.executedAt !== record.executedAt
           || originalReceipt.result !== 'quarantined' || originalReceipt.projectionQuarantined !== true
           || originalReceipt.registrationQuarantined !== true || originalReceipt.stoppedAcknowledged !== true
-          || detachedRegistration && (originalReceipt.integration?.kind !== 'reviewed-equivalent-superseded-transition'
-            || originalReceipt.integration?.detachedHead !== detachedHead || originalReceipt.integration?.reviewedCommit !== head
-            || originalReceipt.integration?.sourceIntegrated !== false || originalReceipt.integration?.reviewedSource?.kind !== 'equal-tree'
-            || originalReceipt.integration.reviewedSource.headTree !== originalReceipt.integration.reviewedSource.mergeTree || originalReceipt.historicalDraft !== 'superseded')
+          || detachedRegistration && !detachedReceiptMatches(originalReceipt, detachedHead, head)
           || Boolean(originalReceipt.detachedHead) !== detachedRegistration
           || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
           || !absent(originalReceipt.targetPath, 'retained-target')

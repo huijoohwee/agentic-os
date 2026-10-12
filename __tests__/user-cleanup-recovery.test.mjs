@@ -296,6 +296,24 @@ test('current retention joins an exact detached reviewed-equivalent receipt with
   assert.throws(() => validateRetentionDispositionPlan(sign(substituted)),
     /preservation source facts are not joined/);
 });
+test('current retention joins an exact-head detached equal-tree receipt without rewriting it', t => {
+  const s = fixture(t); git(s.target, 'switch', '--detach', s.head);
+  const p = planUserCleanup({ ...s.input, detached: true }, s.options);
+  assert.equal(p.integration.kind, 'equal-tree');
+  const receipt = s.apply(p);
+  const observe = value => observeRetainedQuarantineEvidence(s.root, s.branch, s.head,
+    receipt.planDigest, { originalReceipt: value, canonicalRef: 'refs/heads/main' });
+  assert.equal(receipt.detachedHead, s.head);
+  assert.equal(receipt.integration.detached.head, s.head);
+  assert.equal(receipt.integration.detached.reviewedHead, s.head);
+  assert.ok(observe(receipt));
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.claimRetired, false);
+  const wrongHead = structuredClone(receipt); wrongHead.integration.detached.head = s.merge;
+  assert.equal(observe(wrongHead), null);
+  const wrongTree = structuredClone(receipt); wrongTree.integration.detached.inclusion.mergeTree = '0'.repeat(40);
+  assert.equal(observe(wrongTree), null);
+});
 test('reviewed-equivalent mode refuses mismatched transitions and unreviewed commits', t => {
   const s = fixture(t, false, true);
   const unrelated = git(s.root, 'commit-tree', `${s.originalHead}^{tree}`, '-p', `${s.originalHead}^`, '-m', 'unreviewed');
