@@ -11,6 +11,10 @@ run can answer and the missing evidence that makes it necessary. A timeout witho
 diagnostic proves incomplete execution; it does not identify a compiler error or expensive source type.
 Before a rerun can overwrite mutable aggregate/per-command receipts or logs, retain their bounded
 content-bound predecessor through the existing diagnostic export and private handover owners.
+If a failed workflow has no stage receipt, export a bounded `unavailable` marker that binds the
+observed source and names the missing relative receipt path; keep the root cause unknown. This lets
+the existing failure artifact step succeed without treating missing instrumentation as a pass or
+replacing the original gate output.
 For a large-object assertion, evaluate the same identity/equality condition as a Boolean and report
 a concise custom failure message with bounded useful scalar context instead of rendering an entire
 object or DOM tree. Preserve exact assertion semantics and parent-owned timeout/output/teardown limits.

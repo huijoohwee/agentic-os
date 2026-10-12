@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runValidationStages, validationStageDirectory, STAGES_FILE } from '../bin/agentic-os-validation-stages.mjs';
@@ -48,6 +48,20 @@ test('failure diagnostics refuse changed source and successful stages', async t 
   writeFileSync(join(root, 'source'), 'source');
   await run('console.log("passed")');
   assert.throws(() => exportFailureDiagnostics(root, join(root, '.git', 'passed')), /diagnostics-source/);
+});
+
+test('missing stage receipt exports an unavailable marker without inventing a failure cause', t => {
+  const { root } = fixture(t), destination = join(root, '.git', 'missing-export');
+  const manifest = exportFailureDiagnostics(root, destination);
+  assert.equal(manifest.schema, 'agentic-os/validation-failure-diagnostics/v2');
+  assert.equal(manifest.authority, false);
+  assert.equal(manifest.status, 'unavailable');
+  assert.equal(manifest.reason, 'stage-receipt-missing');
+  assert.equal(manifest.rootCause, null);
+  assert.equal(manifest.expectedReceipt, 'agentic-os-tests/stages/validation-stages.json');
+  assert.equal(manifest.source.dirty, false);
+  assert.deepEqual(readdirSync(destination), ['manifest.json']);
+  assert.equal(JSON.stringify(manifest).includes(root), false);
 });
 
 test('complete diagnostics remain byte-bounded and passing commands retain no full log', async t => {
