@@ -293,8 +293,7 @@ export function validateDeliveryDispositionSet(value, expected) {
     const set = snapshot(value); exact(set, DELIVERY_SET_KEYS, 'delivery disposition set');
     if (set.schema !== DELIVERY_DISPOSITION_SET_SCHEMA || set.repository !== expected.repository || !Array.isArray(set.dispositions) || !set.dispositions.length || set.dispositions.length > 32 || !DELIVERY_SHA256.test(set.receiptDigest ?? '')) deliveryFail('set-identity');
     const { receiptDigest, ...body } = set;
-    if (governanceDigest(body) !== receiptDigest) deliveryFail('set-digest');
-    const rows = set.dispositions.map(deliveryRow), refs = rows.map(row => row.ref);
+    if (governanceDigest(body) !== receiptDigest) deliveryFail('set-digest'); const rows = set.dispositions.map(deliveryRow), refs = rows.map(row => row.ref);
     if (new Set(refs).size !== refs.length || canonicalJson(refs) !== canonicalJson([...refs].sort())) deliveryFail('set-order');
     const row = rows.find(item => item.ref === expected.ref);
     if (!row) return null;
@@ -302,7 +301,7 @@ export function validateDeliveryDispositionSet(value, expected) {
     if (!expected.candidateIsCurrent(row.candidateRevision) || !expected.laneIntegratedAtCandidate(row.candidateRevision, row.laneHead)) deliveryFail('candidate-stale');
     const evidence = expected.readEvidence(row.evidencePath);
     if (typeof evidence !== 'string' || Buffer.byteLength(evidence) > 128_000 || expected.sha256(evidence) !== row.evidenceDigest) deliveryFail('evidence-binding');
-    if (row.disposition === 'deployed' ? expected.changeClass === 'docs-only' || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only') deliveryFail('disposition-scope');
+    if (row.disposition === 'deployed' ? ['docs-only', 'control-ledger-only'].includes(expected.changeClass) || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only' && !(expected.changeClass === 'control-ledger-only' && canonicalJson(expected.paths) === canonicalJson([DELIVERY_DISPOSITION_SET_PATH]))) deliveryFail('disposition-scope');
     return Object.freeze({ ...row, receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
   } catch (error) { if (error?.reason?.startsWith('blocked-delivery-disposition-')) throw error; deliveryFail('invalid'); }
 }

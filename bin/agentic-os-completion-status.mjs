@@ -31,15 +31,10 @@ const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?
 const DOCS_ONLY_GLOBS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
 function classifyChangeClass(root, ref) {
   const head = headSha(`refs/heads/${ref}`, root); if (!head) return 'unknown'; const diff = observeGit(['diff', '--name-only', `refs/heads/main...${head}`], { cwd: root, allowFail: true, maxBuffer: 65536 }); if (!diff) return 'unknown';
-  const paths = diff.split('\n').filter(Boolean);
-  return paths.length === 0 ? 'empty' : paths.every(p => DOCS_ONLY_GLOBS.some(re => re.test(p))) ? 'docs-only' : 'mixed';
+  const paths = diff.split('\n').filter(Boolean); return paths.length === 0 ? 'empty' : paths.length === 1 && paths[0] === DELIVERY_DISPOSITION_SET_PATH ? 'control-ledger-only' : paths.every(p => DOCS_ONLY_GLOBS.some(re => re.test(p))) ? 'docs-only' : 'mixed';
 }
-const APPLICABILITY = Object.freeze({
-  'docs-only': {
-    'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' },
-    'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' },
-  },
-});
+const APPLICABILITY = Object.freeze({ 'docs-only': { 'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' }, 'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' } } });
+const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason);
 function withApplicability(findings, changeClass) {
   const table = APPLICABILITY[changeClass] ?? {};
   return findings.map(item => { const entry = table[item.code]; return entry
@@ -130,9 +125,13 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   if (dispositionBytes !== null) try {
     const paths = laneHead && lanePaths(root, policy.protectedBranch, laneHead);
     if (!paths) throw Object.assign(new Error('lane paths unavailable'), { reason: 'blocked-delivery-disposition-lane-paths' });
-    deliveryDisposition = validateDeliveryDispositionSet(JSON.parse(dispositionBytes), { repository: profile.repository, ref, laneHead, paths, changeClass,
-      deployBound: revision => deployBound(root, revision), candidateIsCurrent: revision => Boolean(canonical && isAncestor(revision, canonical, root)),
-      laneIntegratedAtCandidate: (revision, head) => Boolean(integrationProof(revision, head, { cwd: root })), readEvidence: path => committed(root, canonical, path), sha256 });
+    const set = JSON.parse(dispositionBytes), expected = { repository: profile.repository, ref, laneHead, paths, changeClass, deployBound: revision => deployBound(root, revision), candidateIsCurrent: revision => Boolean(canonical && isAncestor(revision, canonical, root)), laneIntegratedAtCandidate: (revision, head) => Boolean(integrationProof(revision, head, { cwd: root })), readEvidence: path => committed(root, canonical, path), sha256 };
+    deliveryDisposition = validateDeliveryDispositionSet(set, expected);
+    if (changeClass === 'control-ledger-only' && !deliveryDisposition) {
+      const proof = set.dispositions.find(row => controlLedgerProof(row) && JSON.stringify(row.paths) === JSON.stringify([DELIVERY_DISPOSITION_SET_PATH])), proofPaths = proof && lanePaths(root, policy.protectedBranch, proof.laneHead), inherited = proof && validateDeliveryDispositionSet(set, { ...expected, ref: proof.ref, laneHead: proof.laneHead, paths: proofPaths });
+      if (inherited) deliveryDisposition = Object.freeze({ ...inherited, ref, laneHead, paths, scopeRule: 'exact-control-ledger-artifact-exclusion', evidenceForRef: proof.ref });
+    }
+    if (changeClass === 'control-ledger-only' && deliveryDisposition && !controlLedgerProof(deliveryDisposition)) throw Object.assign(new TypeError('control ledger no-deploy proof is incomplete'), { reason: 'blocked-delivery-disposition-control-ledger-exclusion-proof' });
   } catch (error) { deliveryDispositionError = error?.reason ?? 'blocked-delivery-disposition-invalid'; }
   const findings = [];
   if (!canonical || !tracking || canonical !== tracking || !canonicalClean) findings.push(finding('canonical-not-current-clean', 'repository-operator', 'Fetch and use the separately governed canonical synchronization workflow; preserve local bytes.'));
