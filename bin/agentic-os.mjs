@@ -122,7 +122,11 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       const status = cmdFinishAndReap(root, rest, policy, profile);
       if (status !== 0) return status;
       return (await import('./agentic-os-completion-status.mjs'))
-        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out, { preservationPath: option(rest, 'preservation') });
+        .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out, {
+          preservationPath: option(rest, 'preservation'),
+          integrationReceiptPath: option(rest, 'integration-receipt'),
+          retirementReceiptPath: option(rest, 'retirement-receipt'),
+        });
     }
     case 'complete': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
@@ -386,7 +390,11 @@ async function main() {
     case 'reap': return cmdReap(root, argv, policy, profile);
     case 'finish': return cmdFinish(root, argv, policy, profile);
     case 'completion': return (await import('./agentic-os-completion-status.mjs'))
-      .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out, { preservationPath: option(argv, 'preservation') });
+      .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out, {
+        preservationPath: option(argv, 'preservation'),
+        integrationReceiptPath: option(argv, 'integration-receipt'),
+        retirementReceiptPath: option(argv, 'retirement-receipt'),
+      });
     case 'canonical-sync': return runCanonicalSync(root, argv, policy);
     case 'reconcile': requireCanonical(root, policy); return runReconcile(root, argv, policy);
     case 'queue': return cmdQueue(root, argv, profile);

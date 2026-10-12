@@ -4,6 +4,15 @@ Completion separates observation, authority, integration, retirement and cleanup
 `agentic-os completion status --ref=<lane>` is read-only; grants no new receipts.
 Guides: [authority](../guides/CLEANUP-AUTHORITY.md), [local](../guides/USER-CLEANUP.md).
 
+To inspect locally retained authenticated transition evidence, pass the exact pair together with the
+verified preservation carrier: `--preservation=<json> --integration-receipt=<json>
+--retirement-receipt=<json>`. Completion status checks receipt digests,
+integrate/retire states, repository, the lane record's PR locator, shared merge revision, preservation
+merge, and the retirement lease/fence predecessor. It also requires the merge to remain in canonical
+history. This is structural consumer validation only: `providerVerified` and
+`producerAuthorityVerified` remain false, and the result grants no authority or effect. Missing, partial,
+unreadable, or mismatched pairs remain blockers. No plan is reconstructed, fetched, or executed.
+
 ## Stable package surfaces
 
 - `agentic-os/records/completion` owns canonical effect plans and deterministic transition receipts.
