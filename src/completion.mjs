@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import { canonicalJson, createAuthorityTransitionReceiptEnvelope, governanceDigest,
   validateAuthorityTransitionReceiptEnvelope, validateCoordinationRequest } from './governance.mjs';
 import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupRecordFields as typedFields,
-  cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze } from './cleanup-records.mjs';
+  cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze,
+  createWorktreeCleanupContinuation, deriveCleanupOwnerStateDigest,
+  validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan,
+  worktreeCleanupPlanByteDigest } from './cleanup-records.mjs';
 export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v1';
 export const AUTHENTICATED_TRANSITION_SCHEMA =
   'agentic-os/authenticated-transition-operation-receipt/v1';
@@ -228,6 +231,17 @@ export function validateAuthenticatedTransitionOperationReceipt(value) {
   const { receiptDigest, ...payload } = source;
   if (governanceDigest(payload) !== receiptDigest) fail('authenticated receipt digest is invalid');
   return freeze(source);
+}
+
+/** Derive a bounded local cleanup continuation from exact authenticated lifecycle receipts. */ export function deriveCompletionCleanupContinuation(cleanup, now = Date.now) {
+  const fail = (reason, message) => { throw Object.assign(new Error(message), { reason }); }, plan = validateWorktreeCleanupPlan(cleanup.plan), integration = validateAuthenticatedTransitionOperationReceipt(cleanup.integrationReceipt), retirement = validateAuthenticatedTransitionOperationReceipt(cleanup.retirementReceipt), retirementPlan = validateEffectPlanBytes(cleanup.retirementPlanBytes), integrated = integration.transitionReceipt, retired = retirement.transitionReceipt;
+  if (integration.requestedTransition !== 'integrate' || integrated.resultState !== 'integrated' || retirement.requestedTransition !== 'retire' || retired.resultState !== 'retired' || retired.sourceClaimId !== integrated.resultClaimId || retired.sourceLeaseEpoch !== integrated.resultLeaseEpoch || retired.sourceFenceRevision !== integrated.resultFenceRevision) fail('blocked-cleanup-continuation-unjoined', 'continuation requires the exact integrated then retired receipt pair');
+  const ownerStateDigest = deriveCleanupOwnerStateDigest({ claimId: integrated.resultClaimId, leaseEpoch: integrated.resultLeaseEpoch, fenceRevision: integrated.resultFenceRevision, state: integrated.resultState }), issuedAt = now(), expiresAt = Date.parse(plan.expiresAt);
+  if (ownerStateDigest !== plan.ownerStateDigest || retirementPlan.planDigest !== retirement.planDigest || retirementPlan.target.repository !== plan.repository || retirementPlan.target.resource !== plan.targetPath || retirementPlan.target.immutableRevision !== plan.integratedImmutableRevision || retirementPlan.candidateDigest !== plan.candidateDigest || retirementPlan.snapshotDigest !== plan.snapshotDigest || retirementPlan.authority.predecessorDigest !== integration.receiptDigest || retirementPlan.authority.requestedTransition !== 'retire' || retirementPlan.authority.claimId !== retired.sourceClaimId || retirementPlan.authority.leaseEpoch !== retired.sourceLeaseEpoch || retirementPlan.authority.fenceRevision !== retired.sourceFenceRevision) fail('blocked-cleanup-continuation-unjoined', 'continuation does not join the exact cleanup plan and lifecycle receipts');
+  if (!Number.isSafeInteger(issuedAt) || issuedAt < Date.parse(retirement.authorityOperation.transitionedAt) || issuedAt >= expiresAt) fail('blocked-cleanup-continuation-expired', 'continuation must issue after retirement and before the cleanup plan expires');
+  const bindings = { authorityKind: 'retired-cleanup-continuation', repository: plan.repository, targetPath: plan.targetPath, integratedImmutableRevision: plan.integratedImmutableRevision, candidateDigest: plan.candidateDigest, snapshotDigest: plan.snapshotDigest, ownerStateDigest, retirementReceiptDigest: retirement.receiptDigest, priorCleanupPlanByteDigest: retirementPlan.parametersDigest, cleanupPlanDigest: plan.planDigest, cleanupPlanByteDigest: worktreeCleanupPlanByteDigest(plan) };
+  if (cleanup.cleanupContinuation !== undefined && cleanup.cleanupContinuation !== null) { const continuation = validateWorktreeCleanupContinuation(cleanup.cleanupContinuation); if (Object.entries(bindings).some(([key, value]) => continuation[key] !== value) || Date.parse(continuation.issuedAt) < Date.parse(retirement.authorityOperation.transitionedAt) || Date.parse(continuation.issuedAt) > issuedAt || Date.parse(continuation.expiresAt) > expiresAt || Date.parse(continuation.expiresAt) <= issuedAt) fail('blocked-cleanup-continuation-unjoined', 'supplied continuation exceeds or differs from the exact receipt-bound cleanup plan'); return continuation; }
+  return createWorktreeCleanupContinuation({ ...bindings, issuedAt: new Date(issuedAt).toISOString(), expiresAt: plan.expiresAt });
 }
 
 /** Bind the local shape of an exact integration/retirement pair; never authenticate or authorize it. */
