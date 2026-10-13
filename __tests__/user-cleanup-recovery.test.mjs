@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonicalJson, createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
-import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
@@ -71,6 +71,7 @@ function fixture(t, concurrentBase = false, detached = false, mergedProjection =
   };
   const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true, detached, mergedProjection };
   const options = { api, now: () => NOW, observeRemote: () => `${merge}\trefs/heads/main` };
+  put({ ref: branch, state: 'published', worktree: target, pr, head }, root);
   const plan = () => planUserCleanup(input, options);
   const apply = (p, overrides = {}) => applyUserCleanup(p, { cwd: root, ...options,
     authorization: `agentic-os:user-cleanup:${p.planDigest}`, stopped: true, ...overrides });
@@ -90,6 +91,17 @@ test('explicit governed recovery preserves retain policy, exact branches, ignore
     'bytesDeleted', 'branchesMutated', 'objectsMutated']) assert.equal(receipt[name], false, name);
   assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
   assert.ok(s.calls.every(path => !/rulesets|protection|dispatch/.test(path)));
+});
+
+test('recovery planning derives the exact target, PR, profile checks and merged workflow from one lane ref', t => {
+  const s = fixture(t), plan = planRecoveryCleanupFromLane({ cwd: s.root, ref: s.branch }, s.options);
+  assert.equal(plan.targetPath, s.target);
+  assert.equal(plan.pr, s.input.pr);
+  assert.equal(plan.workflow, s.input.workflow);
+  assert.deepEqual(plan.requiredChecks, ['test']);
+  assert.equal(plan.branch, s.branch);
+  assert.equal(plan.head, s.head);
+  assert.throws(() => planRecoveryCleanupFromLane({ cwd: s.root, ref: 'agent/device-0232231d4a19/missing' }, s.options), /recovery-lane-binding/);
 });
 
 test('local cleanup refuses a recertified lane before provider review when checkout bytes are unknown', t => {
@@ -197,6 +209,11 @@ test('CLI requires an explicit recovery selection while keeping apply exact and 
     '--workflow=.github/workflows/ci.yml', '--recovery', '--merged-projection']), null);
   assert.equal(validateCommandArguments('cleanup-user', ['plan', '--target=/tmp/a', '--pr=1', '--checks=test',
     '--workflow=.github/workflows/ci.yml', '--recovery', '--merged-projection', '--historical-check-gap']), null);
+  assert.equal(validateCommandArguments('cleanup-user', ['plan', '--recovery', '--ref=agent/device-0232231d4a19/recovery']), null);
+  assert.ok(validateCommandArguments('cleanup-user', ['plan', '--ref=agent/device-0232231d4a19/recovery']));
+  assert.equal(validateCommandArguments('cleanup', ['plan', '--mode=recovery', '--ref=agent/device-0232231d4a19/recovery']), null);
+  assert.ok(validateCommandArguments('cleanup', ['plan', '--ref=agent/device-0232231d4a19/recovery']));
+  assert.equal(validateCommandArguments('release-common', ['allocation-release', '--ref=agent/device-0232231d4a19/recovery']), null);
 });
 
 test('explicit detached ancestor recovery keeps the checked PR head distinct and preserves history and replay', t => {
