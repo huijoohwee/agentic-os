@@ -90,7 +90,6 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
 }
 export async function cmdStart(root, argv, policy, profile, services) {
   const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null } = services;
-  requireCanonical(root, policy);
   const [scope] = positional(argv), device = assertDevice(option(argv, 'device') ?? deviceSegment());
   if (!scope) { err('usage: start <scope> --write=<paths>'); return 1; }
   const ref = laneRef(scope, device);
@@ -113,6 +112,10 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null, protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
     provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false, fetchReceipt: null, provisionReceipt: null, alignmentReceipt: null, allocation: null, workflow: null };
   try {
+    const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
+    Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
+    artifacts.effectsRetained ||= fetched.effectsRetained;
+    requireCanonical(root, policy);
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
@@ -211,9 +214,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId,
           revision: member?.child.source.revision ?? headSha(policy.protectedRef, root), ref });
       }
-      const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
-      Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
-      artifacts.effectsRetained ||= fetched.effectsRetained;
       const baseSha = assertProfileCurrent(root, policy, profile);
       artifacts.baseSha = baseSha;
       if (!baseSha) fail('base', 'Protected base is unavailable after native fetch');
