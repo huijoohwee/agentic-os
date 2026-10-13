@@ -146,6 +146,7 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
       ...(hasIntegratedReview ? [] : ['cleanup.plan.integratedResource', 'cleanup.plan.integratedImmutableRevision']),
       ...(hasCommittedTransitionPolicy ? REQUIRED_PLACEHOLDERS : [...REQUIRED_PLACEHOLDERS, ...POLICY_PLACEHOLDERS]),
     ],
+    autoDerivedFields: ['cleanup.cleanupContinuation'],
     stillRequiresAuthenticatedWinners,
     bundleTemplate: {
       cleanup: {
@@ -183,6 +184,7 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
         retirementRequest: placeholder('RETIREMENT_REQUEST_OBJECT'),
         preservationReceipt: placeholder('PRESERVATION_RECEIPT_OBJECT'),
         noRemainingValueReceipt: placeholder('NO_REMAINING_VALUE_RECEIPT_OBJECT'),
+        cleanupContinuation: null,
       },
       integrationVerifier: verifierTemplate('INTEGRATION'),
       retirementVerifier: verifierTemplate('RETIREMENT'),
