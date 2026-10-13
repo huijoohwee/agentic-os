@@ -1,4 +1,3 @@
-/** Same-mission START admission. Local economy evidence never grants provider authority. */
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
@@ -32,7 +31,6 @@ const selectedAgain = (root, repository, prior) => {
 function successor(root, repository, selected, changes) {
   selectedAgain(root, repository, selected);
   const workspace = workflowPaths(root, repository).workspace;
-  // Stored member paths are workspace-relative; resolved child paths are already digest verified.
   const value = { ...selected.manifest, ...changes,
     members: changes.members ?? selected.members.map(row => ({ ...row.ref, file: row.path })),
     previous: { file: selected.path, digest: selected.digest },
@@ -60,7 +58,7 @@ function recordAllocation(root, repository, selected, allocation) {
 }
 export function checkoutCapacity(selected, repository, inventory, explicitLimit = null) {
   const own = new Set(selected.members.filter(row => row.child.source.repository === repository).map(row => row.child.context.worktreeId));
-  const consumed = new Set((selected.manifest.allocations ?? []).filter(row => own.has(row.worktreeId)).map(row => row.worktreeId));
+  const consumed = new Set((selected.manifest.allocations ?? []).filter(row => own.has(row.worktreeId) && ['pending', 'active'].includes(row.state)).map(row => row.worktreeId));
   for (const row of inventory) if (own.has(basename(row.path))) consumed.add(basename(row.path));
   return { limit: Math.min(selected.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS), consumed: consumed.size, worktreeIds: [...consumed].sort() };
 }
@@ -152,10 +150,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
         const recertification = readmit && row?.state === 'active' && row.ref === ref && row.writeDigest !== liveDigest
           && row.headRevision === selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)?.child.source.revision
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
-        // A retired historical cache must not mask the current link, which is verified below.
         const predecessorPaths = row?.predecessorRef && records[row.predecessorRef]
           ? parseWritePaths(records[row.predecessorRef].writePaths.join(',')) : [];
-        // Reconcile expanded successor scope only between its published predecessor and exact pending target.
         const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref && identity.lineage.some(link => link.predecessorRef === row.predecessorRef)
           && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
         if (successorReadmit && !readmit) fail('successor-readmit', 'Explicit readmit must bind the retained successor to its existing mission slot');
@@ -269,8 +265,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
     operationArtifacts: artifacts, operationResult: null });
   return finishOperationLock(lock, { label: 'start', result, error, artifacts });
 }
-
-/** Rebind a stopped local lane without projecting provider or cleanup authority. */
 const REBIND_SCHEMA = 'agentic-os/lane-rebind-plan/v1', REBIND_MAX_PATHS = 1_024,
   REBIND_MAX_FILE_BYTES = 10_000_000, REBIND_MAX_TOTAL_BYTES = 64_000_000;
 const rebindHash = value => createHash('sha256').update(value).digest('hex');
