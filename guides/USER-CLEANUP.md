@@ -94,13 +94,18 @@ targets and recoverable cleanup; it may persist across turns. The caller selects
 
 ```sh
 git config --local agentic-os.userCleanup quarantine-recovery
+agentic-os cleanup-user plan --recovery --ref=<lane>
+# Explicit form, when the lane record cannot supply one of these exact bindings:
 agentic-os cleanup-user plan --recovery --target=<absolute-worktree-path> --pr=<number> \
   --checks=<sorted-profile-checks> --workflow=.github/workflows/<review-workflow>.yml
 ```
 
-Review and apply one exact plan with the same `apply --plan --authorize --stopped` interface above. Run
-from the surviving canonical checkout with the reviewed upstream CLI. Remove the clone-local opt-in after
-the selected batch. Never invoke code from a directory after it has been quarantined.
+The lane-ref form derives the mounted target, PR, profile-required checks and historical workflow from the
+current canonical lane record. It independently rechecks the exact branch/head, merged review, successful
+checks, content inclusion, inventory and remote main before emitting the same 15-minute plan. Local recovery
+enrollment and the separate `apply --plan --authorize --stopped` confirmation remain required. Run from the
+surviving canonical checkout with the reviewed upstream CLI. Remove the clone-local opt-in after the selected
+batch. Never invoke code from a directory after it has been quarantined.
 
 Admission requires the existing valid clone trust anchor and committed Git/GitHub profile, equal clean
 local/tracking/live main, and every profile-required check. Each selected check must belong to the exact
@@ -346,12 +351,27 @@ agentic-os cleanup-user sweep --stale-older-than=<days> [--merged] [--no-active-
 
 Each candidate still requires explicit `--authorize=<plan-digest>` and `--stopped` to apply, same as individual `cleanup-user plan/apply`.
 
+### Verified workflow allocation release
+
+After `completion status` reports `missionState: source_complete`, `cleanupSatisfied: true`, and an unmounted
+lane, release its consumed checkout allocation from canonical `main`:
+
+```sh
+agentic-os release-common allocation-release --ref=<lane>
+```
+
+The command rechecks that closeout before creating an immutable workflow successor whose allocation state is
+`released`. It retains the lane ref, worktree identity, head, prior workflow manifests and quarantine evidence.
+Only `pending` and `active` allocations consume checkout capacity, so the released history no longer blocks a
+subsequent disjoint lane. A mounted, dirty, unintegrated, or unquarantined lane fails closed.
+
 ### Unified cleanup CLI (`agentic-os cleanup`)
 
 A thin wrapper that consolidates the three cleanup entry points into one command with mode flags:
 
 ```sh
 agentic-os cleanup plan --target=<path> --pr=<n> --checks=<list> --workflow=<id> [--mode=local-consent|recovery|no-ci] [--change-class=docs-only] [--detached]
+agentic-os cleanup plan --mode=recovery --ref=<lane>
 agentic-os cleanup apply --plan=<json> --authorize=<digest> --stopped
 agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-worktree]
 ```

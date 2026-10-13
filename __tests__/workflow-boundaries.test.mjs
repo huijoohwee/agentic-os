@@ -7,7 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { collectWorkflow, startWorkflow, readWorkflowManifestPage, WORKFLOW_PHASES,
   collectWorkflowValue, readSelectedWorkflow, assertWorkflowEffect, validateWorkflowPlanning,
-  rebindWorkflowCandidate, createWorkflowEffectGuard } from '../bin/agentic-os-workflow.mjs';
+  rebindWorkflowCandidate, createWorkflowEffectGuard, releaseWorkflowAllocation } from '../bin/agentic-os-workflow.mjs';
+import { checkoutCapacity } from '../bin/agentic-os-admission.mjs';
 
 test('one selected workflow retains multiple worktrees through idempotent start/end boundaries', t => {
   const base=realpathSync(mkdtempSync(join(tmpdir(),'workflow-boundaries-'))),root=join(base,'repo');mkdirSync(root);
@@ -233,6 +234,21 @@ test('immutable successors retain execution constraints and partial allocation i
   s.collect({ allocations: [{ ...successor, state: 'active' }] });
   assert.equal(s.selected().manifest.allocations[0].predecessorRef, row.ref);
   assert.equal(s.guard({ ref: successor.ref, worktreeId: 'missing-registration', phase: 'preparation' }).status, 'eligible');
+  const released = releaseWorkflowAllocation(s.root, s.repository, successor.ref);
+  assert.equal(released.released, true);
+  assert.equal(s.selected().manifest.allocations[0].state, 'released');
+  assert.equal(checkoutCapacity(s.selected(), s.repository, []).consumed, 0);
+  assert.throws(() => s.guard({ ref: successor.ref, phase: 'preparation' }), /allocation-released/);
+  assert.throws(() => s.collect({ allocations: [{ ...successor, state: 'active' }] }), /allocation-release-lineage/);
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, successor.ref), /allocation-release-state/);
+  const nextId = 'device--next', current = s.selected();
+  const nextMember = collectWorkflowValue(s.root, s.repository, { schema: 'agentic-os/workflow-observation-input/v1', id: nextId,
+    source: { repository: s.repository, revision: s.revision, tree: s.git('rev-parse', 'HEAD^{tree}') },
+    context: { workflowId: current.manifest.id, worktreeId: nextId }, expected: WORKFLOW_PHASES, phases: [] }, join(s.base, 'next-member.json'));
+  const next = { ...row, worktreeId: nextId, ref: 'agent/device/next', path: join(s.base, 'next-lane') };
+  s.collect({ members: [...current.members.map(entry => ({ ...entry.ref, file: entry.path })),
+    { id: nextId, file: nextMember.manifest, digest: nextMember.digest }], allocations: [...current.manifest.allocations, next] });
+  assert.equal(checkoutCapacity(s.selected(), s.repository, []).consumed, 1);
   assert.throws(() => s.collect({ allocations: [row, row] }), /allocation-duplicate/);
 });
 
