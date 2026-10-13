@@ -542,6 +542,75 @@ test('exact control-ledger no-deploy proof closes scope and supports later ledge
   assert.equal(maintenanceReport.closeout.adlcState, 'complete');
 });
 
+test('delivery evidence and ledger paths close only with artifact-exclusion no-deploy evidence', (t) => {
+  const subject = fixture(t);
+  mkdirSync(join(subject.lane, 'docs', 'reports'), { recursive: true });
+  writeFileSync(join(subject.lane, 'docs', 'reports', 'delivery.json'), '{"release":"verified"}\n');
+  writeFileSync(join(subject.lane, '.agentic-os-delivery-dispositions.json'), '{}\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'record delivery evidence');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merge delivery evidence');
+  mkdirSync(join(subject.root, 'docs', 'reports'), { recursive: true });
+  writeFileSync(join(subject.root, 'docs', 'reports', 'artifact-boundary.json'), '{"productArtifact":"explicit allowlist"}\n');
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record artifact boundary evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const receipt = addDeliveryDisposition(subject, { disposition: 'no-deploy', evidencePath: 'docs/reports/artifact-boundary.json',
+    reason: 'The delivery report and disposition record are excluded from the product artifact.' });
+  const report = subject.status();
+  assert.equal(report.changeClass, 'delivery-evidence-only');
+  assert.ok(report.deliveryDisposition, report.deliveryDispositionError);
+  assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
+  assert.equal(report.deliveryDisposition.scopeRule, 'delivery-evidence-artifact-exclusion');
+  assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
+  assert.equal(report.closeout.completionScope, 'delivery-bound');
+  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.authorizesEffects, false);
+});
+
+test('delivery evidence classifier rejects unrelated runtime paths', (t) => {
+  const subject = fixture(t);
+  mkdirSync(join(subject.lane, 'docs', 'reports'), { recursive: true });
+  writeFileSync(join(subject.lane, 'docs', 'reports', 'delivery.json'), '{"release":"verified"}\n');
+  writeFileSync(join(subject.lane, 'runtime.js'), 'export const runtime = true;\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'mix report and runtime');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merge mixed lane');
+  mkdirSync(join(subject.root, 'docs', 'reports'), { recursive: true });
+  writeFileSync(join(subject.root, 'docs', 'reports', 'artifact-boundary.json'), '{"productArtifact":"explicit allowlist"}\n');
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record artifact boundary evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  addDeliveryDisposition(subject, { disposition: 'no-deploy', evidencePath: 'docs/reports/artifact-boundary.json',
+    reason: 'The report is excluded from the product artifact.' });
+  const report = subject.status();
+  assert.equal(report.changeClass, 'mixed');
+  assert.equal(report.deliveryDisposition, null);
+  assert.equal(report.deliveryDispositionError, 'blocked-delivery-disposition-disposition-scope');
+  assert.equal(report.closeout.adlcState, 'delivery_pending');
+});
+
+test('delivery evidence-only lane cannot claim product deployment', (t) => {
+  const subject = fixture(t);
+  mkdirSync(join(subject.lane, 'docs', 'reports'), { recursive: true });
+  writeFileSync(join(subject.lane, 'docs', 'reports', 'delivery.json'), '{"release":"verified"}\n');
+  writeFileSync(join(subject.lane, '.agentic-os-delivery-dispositions.json'), '{}\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'record delivery evidence');
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merge delivery evidence');
+  mkdirSync(join(subject.root, 'docs', 'reports'), { recursive: true });
+  writeFileSync(join(subject.root, 'docs', 'reports', 'artifact-boundary.json'), '{"productArtifact":"explicit allowlist"}\n');
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), JSON.stringify({ operations: ['production-activation'] }));
+  subject.git(subject.root, 'add', '.'); subject.git(subject.root, 'commit', '--quiet', '-m', 'record artifact boundary evidence');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  addDeliveryDisposition(subject, { disposition: 'deployed', evidencePath: 'docs/reports/artifact-boundary.json' });
+  const report = subject.status();
+  assert.equal(report.changeClass, 'delivery-evidence-only');
+  assert.equal(report.deliveryDisposition, null);
+  assert.equal(report.deliveryDispositionError, 'blocked-delivery-disposition-disposition-scope');
+  assert.equal(report.closeout.adlcState, 'delivery_pending');
+});
+
 test('control-ledger no-deploy rule rejects any additional changed path', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, '.agentic-os-delivery-dispositions.json'), '{}\n');
