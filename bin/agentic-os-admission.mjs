@@ -16,8 +16,7 @@ import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
 const fail = (reason, message, facts = {}) => { throw Object.assign(new Error(message), { reason: `blocked-admission-${reason}`, ...facts }); };
-const scopeDigest = paths => hash(JSON.stringify([...paths].sort()));
-const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
+const scopeDigest = paths => hash(JSON.stringify([...paths].sort())); const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
 const limitValue = text => {
   if (text === null) return null;
   if (!/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > MAX_TASK_CHECKOUTS) fail('allowance', `checkout-limit must be an explicit integer from 0 to ${MAX_TASK_CHECKOUTS}`);
@@ -188,6 +187,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
             selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+            store.putExact({ ...record, head: identity.head, writePaths }, record, root);
             out(JSON.stringify(receipt));
           }
           const { previousWriteDigest, ...completed } = allocation;

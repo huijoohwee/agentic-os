@@ -1,5 +1,4 @@
 /** Local content classification only; it never replaces provider authority or recovery evidence. */
-
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -11,12 +10,10 @@ import {
 } from './git.mjs';
 import { isLaneRef } from './lane-id.mjs';
 import * as laneRecords from './lane-records.mjs';
-
 export const SOURCE_HEAD_TRAILER = 'Source-Head';
 export const SUPPORTED_CHANGE_CLASSES = Object.freeze(['docs-only']);
 const DOCS_ONLY_PATTERNS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u,
   /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
-
 export function classifyLaneChangeClass(targetPath) {
   const head = observeGit(['rev-parse', '--verify', 'HEAD'], { cwd: targetPath, allowFail: true });
   if (!head) return 'unknown';
@@ -27,7 +24,6 @@ export function classifyLaneChangeClass(targetPath) {
   if (paths.length === 0) return 'empty';
   return paths.every(path => DOCS_ONLY_PATTERNS.some(pattern => pattern.test(path))) ? 'docs-only' : 'mixed';
 }
-
 /** Local byte-preservation check only; never historical integration or cleanup authority. */
 export function assertPreservedSuccessorJoins(base, tip, protectedRef, cwd) {
   const refuse = message => { throw Object.assign(new Error(message), { reason: 'blocked-successor-merge' }); };
@@ -42,12 +38,10 @@ export function assertPreservedSuccessorJoins(base, tip, protectedRef, cwd) {
       refuse('successor refuses joins that change either parent tree');
   }
 }
-
 /** Trailer line the merge queue puts in the squash message. */
 export function sourceHeadTrailer(sha) {
   return `${SOURCE_HEAD_TRAILER}: ${sha}`;
 }
-
 /** Split upstream-equivalent (`-`) and pending (`+`) commits using `git cherry`. */
 export function cherry(base, ref, { cwd } = {}) {
   const upstream = [];
@@ -60,7 +54,6 @@ export function cherry(base, ref, { cwd } = {}) {
   }
   return { upstream, pending };
 }
-
 function changedPaths(mergeBase, tip, { cwd } = {}) {
   const output = observeGit(
     ['diff', '--name-only', '-z', '--no-renames', mergeBase, tip],
@@ -71,7 +64,6 @@ function changedPaths(mergeBase, tip, { cwd } = {}) {
 
 const PROJECTION_BATCH_PATHS = 128, PROJECTION_BATCH_PATH_BYTES = 32 * 1024,
   PROJECTION_BATCH_OUTPUT_BYTES = 64 * 1024;
-
 /** Bound process arguments; parent/child selectors must never share an ls-tree query. */
 function* projectionBatches(paths) {
   let batch = [], bytes = 0;
@@ -87,7 +79,6 @@ function* projectionBatches(paths) {
   }
   if (batch.length > 0) yield batch;
 }
-
 function treeEntries(revision, paths, { cwd } = {}) {
   const output = observeGit(['--literal-pathspecs', 'ls-tree', '-z', revision, '--', ...paths], {
     cwd, binary: true, allowFail: true, maxBuffer: PROJECTION_BATCH_OUTPUT_BYTES,
@@ -104,7 +95,6 @@ function treeEntries(revision, paths, { cwd } = {}) {
   }
   return output;
 }
-
 /** Exact mode/type/blob state for every path changed by the lane. */
 export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
   const mergeBase = observeGit(['merge-base', base, ref], { cwd, allowFail: true });
@@ -122,12 +112,20 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
   return { kind: 'exact-tree-projection', detail: `${paths.length} lane-touched path(s) exactly match ${base}`,
     pathCount: paths.length, pending: [] };
 }
-
-const HISTORICAL_TREE_SCAN_LIMIT = 512;
-function laneTipHasTreeDelta(tip, cwd) {
-  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u);
-  const parentTree = row.length === 2 && headSha(`${row[0]}^{tree}`, cwd);
-  return Boolean(parentTree && row.length === 2 && parentTree !== row[1]);
+const HISTORICAL_TREE_SCAN_LIMIT = 512, ALIGNMENT_ANCESTRY_LIMIT = 32;
+function laneTipHasTreeDelta(tip, base, cwd, depth = 0) {
+  if (depth === ALIGNMENT_ANCESTRY_LIMIT) return false;
+  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u),
+    parents = row.slice(0, -1), tree = row.at(-1), first = parents[0], firstTree = first && headSha(`${first}^{tree}`, cwd);
+  return Boolean(firstTree) && (firstTree !== tree || parents.length === 2 && isAncestor(parents[1], base, cwd)
+    && laneTipHasTreeDelta(first, base, cwd, depth + 1));
+}
+function exactAlignmentProjectionProof(base, tip, cwd) {
+  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u),
+    parents = row.slice(0, -1), tree = row.at(-1), first = parents[0], firstTree = first && headSha(`${first}^{tree}`, cwd);
+  if (parents.length !== 2 || !firstTree || firstTree !== tree || tree !== headSha(`${base}^{tree}`, cwd)
+    || !isAncestor(parents[1], base, cwd) || !laneTipHasTreeDelta(first, base, cwd)) return null;
+  return exactTreeProjectionProof(base, first, { cwd });
 }
 function historicalFullTreeMatch(base, ref, { cwd } = {}) {
   const tip = headSha(ref, cwd), tree = tip && headSha(`${tip}^{tree}`, cwd);
@@ -180,9 +178,11 @@ function integrationProofFor(base, ref, { cwd } = {}, historical) {
   const laneCommits = commitsAhead(baseTip, tip, cwd);
   if (laneCommits.length === 0) return { kind: 'ancestor', baseHead: baseTip, head: tip,
     detail: `${tip} adds no commits over ${baseTip}`, pending: [] };
-  if (!laneTipHasTreeDelta(tip, cwd)) return null;
+  const alignment = exactAlignmentProjectionProof(baseTip, tip, cwd);
+  if (!laneTipHasTreeDelta(tip, baseTip, cwd) && !alignment) return null;
 
   const content = exactTreeProjectionProof(baseTip, tip, { cwd })
+    ?? alignment
     ?? (historical ? historicalFullTreeMatch(baseTip, tip, { cwd }) : null);
   return content ? { ...content, baseHead: baseTip, head: tip } : null;
 }
