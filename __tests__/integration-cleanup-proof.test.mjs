@@ -6,7 +6,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { git, worktreeCleanupRisks } from '../src/git.mjs';
-import { cherry, integrationProof, surveyLanes } from '../src/patch-identity.mjs';
+import { cherry, exactCurrentIntegrationProof, integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
 import { retire } from '../src/worktree.mjs';
 
@@ -42,6 +42,34 @@ test('partially landed lane is not proven and reports the pending remainder', (t
   const { upstream, pending } = cherry('main', 'agent/dev/five', { cwd: dir });
   assert.equal(upstream.length, 1, 'the landed commit is equivalent, not identical');
   assert.equal(pending.length, 1, 'the remaining commit is genuinely pending');
+});
+
+test('aligned merge tip projects its candidate delta when first-parent tree is unchanged', (t) => {
+  const { dir, run } = fixture();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const base = run(['rev-parse', 'main']);
+  run(['switch', '--quiet', '--create', 'agent/dev/aligned']);
+  commitFile(run, dir, 'aligned.txt', 'candidate\n', 'candidate delta');
+  const candidate = run(['rev-parse', 'HEAD']);
+  const aligned = run(['commit-tree', `${candidate}^{tree}`, '-p', candidate, '-p', base], {
+    input: 'alignment merge with candidate tree\n',
+  });
+  run(['update-ref', 'refs/heads/agent/dev/aligned', aligned, candidate]);
+  assert.equal(run(['rev-parse', `${aligned}^1^{tree}`]), run(['rev-parse', `${aligned}^{tree}`]));
+  assert.notEqual(run(['rev-parse', `${aligned}^2^{tree}`]), run(['rev-parse', `${aligned}^{tree}`]));
+
+  run(['switch', '--quiet', 'main']);
+  assert.equal(exactCurrentIntegrationProof('main', 'agent/dev/aligned', { cwd: dir }), null,
+    'changed candidate content must remain pending');
+  const squash = run(['commit-tree', `${candidate}^{tree}`, '-p', base], {
+    input: 'protected squash projection\n',
+  });
+  run(['update-ref', 'refs/heads/main', squash, base]);
+  const proof = exactCurrentIntegrationProof('main', 'agent/dev/aligned', { cwd: dir });
+  assert.equal(proof?.kind, 'exact-tree-projection');
+  assert.equal(proof?.pathCount, 1);
+  assert.equal(integrationProof('main', 'agent/dev/aligned', { cwd: dir })?.kind,
+    'exact-tree-projection');
 });
 
 test('compatibility retirement cannot delete even a clean exact worktree', (t) => {

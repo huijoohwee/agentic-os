@@ -125,9 +125,9 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
 
 const HISTORICAL_TREE_SCAN_LIMIT = 512;
 function laneTipHasTreeDelta(tip, cwd) {
-  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u);
-  const parentTree = row.length === 2 && headSha(`${row[0]}^{tree}`, cwd);
-  return Boolean(parentTree && row.length === 2 && parentTree !== row[1]);
+  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u), tree = row.at(-1);
+  return row.length >= 2 && row.length <= 17 && row.every(hash => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(hash))
+    && row.slice(0, -1).some(parent => { const parentTree = headSha(`${parent}^{tree}`, cwd); return parentTree !== null && parentTree !== undefined && parentTree !== tree; });
 }
 function historicalFullTreeMatch(base, ref, { cwd } = {}) {
   const tip = headSha(ref, cwd), tree = tip && headSha(`${tip}^{tree}`, cwd);
