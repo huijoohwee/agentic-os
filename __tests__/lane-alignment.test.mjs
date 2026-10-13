@@ -218,6 +218,7 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
       assert.equal(after.manifest.allocations[0].state, 'active');
       assert.equal(after.members[0].child.source.revision, git(lane, 'rev-parse', 'HEAD'));
       assert.notEqual(after.manifest.allocations[0].headRevision, head);
+      assert.equal(get('agent/test-device/native-next', f.root).head, git(lane, 'rev-parse', 'HEAD'));
       assert.deepEqual(git(lane, 'show', '-s', '--format=%P', 'HEAD').split(' '), [head, target]);
       if (squash) assert.equal(git(lane, 'rev-parse', 'HEAD^{tree}'), git(lane, 'rev-parse', `${head}^{tree}`));
       else assert.equal(readFileSync(join(lane, 'incoming/native-advance.txt'), 'utf8'), 'protected advance\n');
