@@ -123,11 +123,22 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
     pathCount: paths.length, pending: [] };
 }
 
-const HISTORICAL_TREE_SCAN_LIMIT = 512;
-function laneTipHasTreeDelta(tip, cwd) {
-  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u);
-  const parentTree = row.length === 2 && headSha(`${row[0]}^{tree}`, cwd);
-  return Boolean(parentTree && row.length === 2 && parentTree !== row[1]);
+const HISTORICAL_TREE_SCAN_LIMIT = 512, ALIGNMENT_ANCESTRY_LIMIT = 32;
+function laneTipHasTreeDelta(tip, base, cwd, depth = 0) {
+  if (depth === ALIGNMENT_ANCESTRY_LIMIT) return false;
+  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u),
+    parents = row.slice(0, -1), tree = row.at(-1), first = parents[0], firstTree = first && headSha(`${first}^{tree}`, cwd);
+  if (!firstTree) return false;
+  if (firstTree !== tree) return true;
+  return parents.length === 2 && isAncestor(parents[1], base, cwd)
+    && laneTipHasTreeDelta(first, base, cwd, depth + 1);
+}
+function exactAlignmentProjectionProof(base, tip, cwd) {
+  const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u),
+    parents = row.slice(0, -1), tree = row.at(-1), first = parents[0], firstTree = first && headSha(`${first}^{tree}`, cwd);
+  if (parents.length !== 2 || !firstTree || firstTree !== tree || tree !== headSha(`${base}^{tree}`, cwd)
+    || !isAncestor(parents[1], base, cwd) || !laneTipHasTreeDelta(first, base, cwd)) return null;
+  return exactTreeProjectionProof(base, first, { cwd });
 }
 function historicalFullTreeMatch(base, ref, { cwd } = {}) {
   const tip = headSha(ref, cwd), tree = tip && headSha(`${tip}^{tree}`, cwd);
@@ -180,9 +191,11 @@ function integrationProofFor(base, ref, { cwd } = {}, historical) {
   const laneCommits = commitsAhead(baseTip, tip, cwd);
   if (laneCommits.length === 0) return { kind: 'ancestor', baseHead: baseTip, head: tip,
     detail: `${tip} adds no commits over ${baseTip}`, pending: [] };
-  if (!laneTipHasTreeDelta(tip, cwd)) return null;
+  const alignment = exactAlignmentProjectionProof(baseTip, tip, cwd);
+  if (!laneTipHasTreeDelta(tip, baseTip, cwd) && !alignment) return null;
 
   const content = exactTreeProjectionProof(baseTip, tip, { cwd })
+    ?? alignment
     ?? (historical ? historicalFullTreeMatch(baseTip, tip, { cwd }) : null);
   return content ? { ...content, baseHead: baseTip, head: tip } : null;
 }

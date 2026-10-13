@@ -83,3 +83,20 @@ test('empty lane-tip commits cannot reuse a historical tree match', t => {
   run(['switch', '--quiet', 'main']);
   assert.equal(integrationProof('main', lane, { cwd }), null);
 });
+
+test('a protected-base alignment merge carries its first-parent projection', t => {
+  const { cwd, run } = fixture();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  run(['switch', '--quiet', '--create', 'agent/dev/alignment']);
+  commitFile(run, cwd, 'lane.txt', 'lane\n', 'lane change');
+  run(['switch', '--quiet', 'main']);
+  run(['merge', '--quiet', '--squash', 'agent/dev/alignment']);
+  run(['commit', '--quiet', '--message', 'reviewed squash']);
+  run(['switch', '--quiet', 'agent/dev/alignment']);
+  run(['merge', '--quiet', '--no-ff', '--no-commit', 'main']);
+  run(['commit', '--quiet', '--message', 'native alignment']);
+  const lane = run(['rev-parse', 'HEAD']);
+  const proof = integrationProof('main', lane, { cwd });
+  assert.equal(proof.kind, 'exact-tree-projection');
+  assert.equal(proof.pathCount, 1);
+});
