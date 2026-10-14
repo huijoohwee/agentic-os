@@ -20,6 +20,7 @@ function priorRuntimeFiles(selected, quarantineLegacy = true) {
     ['src/catalog-input.mjs', ['catalog-input-copy.mjs.txt', '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667']],
     ['src/git.mjs', ['git-remote-single.mjs.txt', '1f483041e700fc091d03624471a276584ce78b92c92b040e0f14600feadd2e62']],
     ['src/git-tracked.mjs', ['git-tracked-single.mjs.txt', 'faf207e17cee7deb8317fa01de127ff80a9d7d1cb56e8ca2c130947ee6d17320']],
+    ['src/file-integrity.mjs', ['file-integrity-pre-hardlinks.mjs.txt', 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f']],
     ['bin/agentic-os-filter-compare.mjs', ['filter-compare-single.mjs.txt', 'afb14ae8138a1007b7fc2c5cf7ef9f905dc68201b1bd092a5e26b70bb46952a7']],
     ['src/guard-main.mjs', ['guard-main-pre-f6.mjs.txt', '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309']],
     ...(quarantineLegacy ? [['src/quarantine.mjs', ['quarantine-v1.mjs.txt', 'f70229577ab83dd398a7e958beb8082b1fe4ecb2683c5f225cc99917d970928d']]]
@@ -202,7 +203,10 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
         sha256: '70086b33be5c04f2bacd5d3165c94eb0000bf5fbbb776358e7bb1c75088a4f9e' }
     : file.path === 'src/guard-main.mjs'
       ? { ...file, bytes: readFileSync(new URL('./fixtures/guard-main-pre-f6.mjs.txt', import.meta.url)),
-        sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' } : file)
+        sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' }
+    : file.path === 'src/file-integrity.mjs'
+      ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)),
+        sha256: 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f' } : file)
     : priorRuntimeFiles(selected, !currentRelease);
   const files = source.map((file) => {
     if (latest && file.path === 'src/git-tracked.mjs') return { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)), sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' };
