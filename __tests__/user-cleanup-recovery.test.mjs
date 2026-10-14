@@ -4,11 +4,14 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
+import { canonicalJson, createRepositoryProfile, governanceDigest, retire } from '../src/governance.mjs';
+import { createAuthenticatedTransitionOperationReceipt, createEffectPlan,
+  effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
-import { validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
+import { CLEANUP_EFFECTS, RETAINED_EFFECTS, createWorktreeCleanupEligibility,
+  validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
@@ -77,6 +80,33 @@ function fixture(t, concurrentBase = false, detached = false, mergedProjection =
   const apply = (p, overrides = {}) => applyUserCleanup(p, { cwd: root, ...options,
     authorization: `agentic-os:user-cleanup:${p.planDigest}`, stopped: true, ...overrides });
   return { root, target, profile, head, originalHead, merge, branch, input, options, plan, apply, pull, check, checks, run, calls };
+}
+async function protectedRetirementReceipt(s, reviewLocator = s.pull.html_url) {
+  const hash = character => character.repeat(64), authority = { requestedTransition: 'retire',
+    authoritySubject: 'github-user:42', ownerSubject: 'github-user:42', claimId: hash('1'),
+    leaseEpoch: 2, fenceRevision: hash('2'), writeSetDigest: governanceDigest(['source.txt']),
+    reviewLocator, predecessorDigest: hash('3') };
+  const plan = createEffectPlan({ target: { repository: `github.com/${s.profile.repository}`,
+    resource: s.target, immutableRevision: s.merge }, authority, candidateDigest: hash('4'),
+    snapshotDigest: hash('5'), effectClass: 'claim-retirement-with-cleanup',
+    allowedEffects: [...CLEANUP_EFFECTS, 'retire-claim'], forbiddenEffects: RETAINED_EFFECTS,
+    parametersDigest: hash('6') }), planBytes = encodeEffectPlan(plan), byteDigest = effectPlanByteDigest(planBytes);
+  const request = retire({ repository: plan.target.repository, authoritySubject: authority.authoritySubject,
+    ownerSubject: authority.ownerSubject, scope: ['source.txt'], claimId: authority.claimId,
+    leaseEpoch: authority.leaseEpoch, fenceRevision: authority.fenceRevision,
+    immutableRevision: s.merge, reviewLocator,
+    dependentWork: [`effect-plan:sha256:${byteDigest}`],
+    observedAt: new Date(NOW - 60_000).toISOString(), expiresAt: new Date(NOW + 600_000).toISOString() });
+  return createAuthenticatedTransitionOperationReceipt({ request, planBytes }, async input => ({
+    adapter: { id: 'fixture-provider', version: '1' }, authenticatedSubject: 'github-user:42',
+    providerRecordLocator: 'provider://retirement/1', providerRecordDigest: hash('7'),
+    requestDigest: request.requestDigest, requestedTransition: 'retire', planDigest: plan.planDigest,
+    planByteDigest: input.planByteDigest, sourceClaimId: authority.claimId, sourceLeaseEpoch: 2,
+    sourceFenceRevision: hash('2'), resultClaimId: authority.claimId, resultLeaseEpoch: 3,
+    resultFenceRevision: hash('8'), resultState: 'retired', operationReceiptDigest: hash('9'),
+    transitionedAt: new Date(NOW - 30_000).toISOString(), verifiedAt: new Date(NOW - 20_000).toISOString(),
+    expiresAt: new Date(NOW + 600_000).toISOString(),
+  }), { now: () => NOW });
 }
 test('explicit governed recovery preserves retain policy, exact branches, ignored bytes and replay', t => {
   const s = fixture(t), p = s.plan(), refs = git(s.root, 'show-ref');
@@ -313,6 +343,72 @@ test('current retention joins an exact detached reviewed-equivalent receipt with
   const substituted = structuredClone(payload); substituted.retention.retainedHead = s.head;
   assert.throws(() => validateRetentionDispositionPlan(sign(substituted)),
     /preservation source facts are not joined/);
+});
+test('current retention joins protected retirement receipt to the exact retained cleanup eligibility', async t => {
+  const s = fixture(t), cleanupReceipt = s.apply(s.plan()), retirementReceipt = await protectedRetirementReceipt(s),
+    operationPath = join(s.root, '.git', 'agentic-os-cleanup-quarantine', cleanupReceipt.planDigest, 'operation.json'),
+    operation = JSON.parse(readFileSync(operationPath, 'utf8')), prior = operation.eligibility;
+  operation.eligibility = createWorktreeCleanupEligibility({
+    cleanupPlanDigest: cleanupReceipt.planDigest, cleanupPlanByteDigest: 'a'.repeat(64),
+    integrationReceiptDigest: 'b'.repeat(64), integrationPlanByteDigest: 'c'.repeat(64),
+    retirementReceiptDigest: retirementReceipt.receiptDigest, preservationReceiptDigest: 'd'.repeat(64),
+    noRemainingValueReceiptDigest: 'e'.repeat(64), retirementPlanByteDigest: retirementReceipt.planByteDigest,
+    recoveryInventoryDigest: '1'.repeat(64), recoveryInventoryContentEntries: 0,
+    ownerStateDigest: 'f'.repeat(64), profileDigest: s.profile.profileDigest, canonicalRevision: s.merge,
+    targetObservationDigest: '0'.repeat(64), projectionManifestDigest: prior.projectionManifestDigest,
+    projectionBytes: prior.projectionBytes, projectionEntries: prior.projectionEntries,
+    registrationManifestDigest: prior.registrationManifestDigest,
+    registrationBytes: prior.registrationBytes, registrationEntries: prior.registrationEntries,
+    peerRegistrationDigest: '2'.repeat(64), sharedRefDigest: '3'.repeat(64),
+    objectInventoryDigest: '4'.repeat(64), sharedStateBytes: 1, sharedStateEntries: 0,
+    eligibleEffects: CLEANUP_EFFECTS, evaluatedAt: new Date(NOW - 1000).toISOString(),
+    expiresAt: new Date(NOW + 300_000).toISOString(),
+  });
+  writeFileSync(operationPath, canonicalJson(operation));
+  const observe = receipt => observeRetainedQuarantineEvidence(s.root, s.branch,
+    s.head, cleanupReceipt.planDigest, { originalReceipt: receipt, canonicalRef: 'refs/heads/main',
+    });
+  const retained = observe(retirementReceipt);
+  assert.ok(retained);
+  assert.equal(retained.originalReceiptDigest, retirementReceipt.receiptDigest);
+  assert.equal(retained.registrationRef, s.branch);
+  assert.equal(retained.retainedHead, s.head);
+  const tampered = structuredClone(retirementReceipt); tampered.transitionReceipt.immutableRevision = '0'.repeat(40);
+  assert.equal(observe(tampered), null);
+  const adoption = { schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: `github.com/${s.profile.repository}`, targetRef: s.branch, targetHead: s.head,
+    merge: s.merge, reviewLocator: s.pull.html_url, quarantineCoordinate: cleanupReceipt.planDigest,
+    originalReceiptDigest: retirementReceipt.receiptDigest, historicalQuarantineAuthorityProven: false };
+  const payload = { schema: 'agentic-os/current-quarantine-retention-plan/v1',
+    disposition: 'current-quarantine-retained', adoption, adoptionDigest: governanceDigest(adoption),
+    repository: adoption.repository, canonicalRevision: s.merge, profileDigest: s.profile.profileDigest,
+    policyDigest: '5'.repeat(64),
+    review: { repository: s.profile.repository, pr: s.input.pr, url: s.pull.html_url,
+      branch: s.branch, head: s.head, merge: s.merge, mergedAt: s.pull.merged_at,
+      checks: [{ name: s.check.name, checkId: s.check.id, runId: s.run.id, attempt: s.run.run_attempt,
+        workflow: s.input.workflow, conclusion: s.check.conclusion, completedAt: s.check.completed_at,
+        url: s.check.details_url }], protectionProven: false, authority: 'observation-only' },
+    integration: { kind: 'current-quarantined', predecessorHead: s.head, reviewedHead: s.head,
+      merge: s.merge, pathCount: 0, replacements: [] },
+    retention: { ...retained, originalReceipt: retirementReceipt,
+      originalReceiptDigest: retirementReceipt.receiptDigest },
+    state: { root: s.root, policyRoot: s.root, policyRevision: s.merge,
+      policyRepository: s.profile.repository, workflow: s.input.workflow,
+      predecessorHead: s.head, successorHead: s.head,
+      peerRegistrationDigest: '6'.repeat(64), cacheDigest: '7'.repeat(64) },
+    issuedAt: new Date(NOW + 1000).toISOString(), expiresAt: new Date(NOW + 901_000).toISOString(),
+    physicalCleanupPerformed: false, providerAuthority: false, claimRetired: false,
+    historicalQuarantineAuthorityProven: false };
+  const sign = value => ({ ...value, planDigest: governanceDigest(value) });
+  assert.equal(validateRetentionDispositionPlan(sign(payload)).retention.originalReceiptDigest,
+    retirementReceipt.receiptDigest);
+  const otherReviewReceipt = await protectedRetirementReceipt(s, s.pull.html_url.replace(/\/7$/u, '/8')),
+    otherAdoption = { ...adoption, originalReceiptDigest: otherReviewReceipt.receiptDigest },
+    mismatched = { ...payload, adoption: otherAdoption, adoptionDigest: governanceDigest(otherAdoption),
+      retention: { ...payload.retention, originalReceipt: otherReviewReceipt,
+        originalReceiptDigest: otherReviewReceipt.receiptDigest } };
+  assert.throws(() => validateRetentionDispositionPlan(sign(mismatched)),
+    /protected retirement receipt does not join the selected review/);
 });
 test('current retention joins an exact-head detached equal-tree receipt without rewriting it', t => {
   const s = fixture(t); git(s.target, 'switch', '--detach', s.head);

@@ -5,20 +5,19 @@ import { join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest, RETAIN_ALL_CLEANUP } from './governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef, resolveRepositoryRoot } from './git-repository.mjs';
+import { validateAuthenticatedTransitionOperationReceipt } from './completion.mjs';
 import { collectRecoveryInventory } from './recovery-inventory.mjs';
 import { commonDir, observeGit, worktreeInventory } from './git.mjs';
 import { boundedDirectoryEntries, observeQuarantineManifest, readBoundedStableFile, sameCleanupNode as sameNode, strictCleanupStat as strictStat } from './cleanup-manifest.mjs';
-import { freezeCleanupRecord as frozen, validateCurrentQuarantineReconciliation } from './cleanup-records.mjs';
+import { freezeCleanupRecord as frozen, validateCurrentQuarantineReconciliation,
+  validateWorktreeCleanupEligibility } from './cleanup-records.mjs';
 export { observeQuarantineManifest } from './cleanup-manifest.mjs';
 const UTF8 = new TextDecoder('utf-8', { fatal: true }), QUARANTINE_ROOT = 'agentic-os-cleanup-quarantine',
   OPERATION_SCHEMA = 'agentic-os/worktree-quarantine-operation/v1';
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
 function absent(path, label) {
-  try { lstatSync(path); return false; } catch (error) {
-    if (error.code === 'ENOENT') return true;
-    fail(`blocked-${label}`, `${label} absence is not proven`);
-  }
+  try { lstatSync(path); return false; } catch (error) { if (error.code === 'ENOENT') return true; fail(`blocked-${label}`, `${label} absence is not proven`); }
 }
 function selectedManifest(root, names, limits, { allowMissing = false, label, retainedHardlinks = false, observe = observeQuarantineManifest } = {}) {
   const rootBefore = strictStat(root, `${label}-root`);
@@ -35,8 +34,7 @@ function selectedManifest(root, names, limits, { allowMissing = false, label, re
     if (!Number.isSafeInteger(bytes) || bytes > limits.byteCeiling || !Number.isSafeInteger(entries) || entries > limits.entryCeiling) fail('blocked-cleanup-manifest', `${label} ceiling exceeded`);
     return { name, manifest };
   });
-  const rootAfter = lstatSync(root, { bigint: true, throwIfNoEntry: false });
-  if (!sameNode(rootBefore, rootAfter)) fail('blocked-cleanup-manifest', `${label} root changed during observation`);
+  const rootAfter = lstatSync(root, { bigint: true, throwIfNoEntry: false }); if (!sameNode(rootBefore, rootAfter)) fail('blocked-cleanup-manifest', `${label} root changed during observation`);
   return frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1', label, mode: (rootBefore.mode & 0o7777n).toString(8), items }), bytes, entries });
 }
 function observeRegistrationManifest(root, limits) {
@@ -117,9 +115,7 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries, projectionManifest, registrationManifest, ...shared };
   return frozen({ ...base, observationDigest: governanceDigest(base) });
 }
-function privateDirectory(path, label) {
-  const stat = strictStat(path, label); if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`);
-}
+function privateDirectory(path, label) { const stat = strictStat(path, label); if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`); }
 function readOperation(path, eligibility = null) {
   const metadataPath = join(path, 'operation.json');
   let bytes, value;
@@ -145,21 +141,26 @@ function detachedReceiptMatches(receipt, detachedHead, reviewedHead) {
   const i=receipt?.integration,p=i?.detached?.inclusion,exact=i?.kind==='equal-tree'&&i.headTree===i.mergeTree&&i.detached?.head===detachedHead&&i.detached?.reviewedHead===reviewedHead&&p?.kind==='equal-tree'&&p.headTree===i.headTree&&p.mergeTree===i.mergeTree;
   return exact||i?.kind==='reviewed-equivalent-superseded-transition'&&i.detachedHead===detachedHead&&i.reviewedCommit===reviewedHead&&i.sourceIntegrated===false&&i.reviewedSource?.kind==='equal-tree'&&i.reviewedSource.headTree===i.reviewedSource.mergeTree&&receipt.historicalDraft==='superseded';
 }
-function exactManifest(value, expected) {
-  return value?.digest === expected.digest && value?.bytes === expected.bytes && value?.entries === expected.entries;
+function exactManifest(value, expected) { return value?.digest === expected.digest && value?.bytes === expected.bytes && value?.entries === expected.entries; }
+function retainedTargetPath(registration) {
+  const backlink = UTF8.decode(readBoundedStableFile(join(registration, 'gitdir'), 8192, 'retained-worktree-backlink'));
+  if (!backlink.endsWith('/.git\n')) fail('blocked-cleanup-retained-artifact', 'retained worktree backlink does not identify a direct checkout');
+  const target = backlink.slice(0, -6);
+  if (!target.startsWith('/') || target === '/' || resolve(target) !== target) fail('blocked-cleanup-retained-artifact', 'retained worktree backlink path is invalid');
+  return target;
+}
+function protectedRetirementReceipt(originalReceipt, eligibility, coordinate) {
+  const receipt = validateAuthenticatedTransitionOperationReceipt(originalReceipt), transition = receipt.transitionReceipt, cleanup = validateWorktreeCleanupEligibility(eligibility);
+  if (receipt.requestedTransition !== 'retire' || transition.resultState !== 'retired' || transition.immutableRevision !== cleanup.canonicalRevision || cleanup.cleanupPlanDigest !== coordinate || cleanup.retirementReceiptDigest !== receipt.receiptDigest || cleanup.retirementPlanByteDigest !== receipt.planByteDigest) fail('blocked-cleanup-retained-artifact', 'protected retirement receipt does not bind the retained cleanup operation');
+  return receipt;
 }
 function reconciliationCandidate(value, { originalReceipt, originalRegistrationManifest,
   ref, head, coordinate }) {
   const basis = validateCurrentQuarantineReconciliation(value);
-  if (basis.targetRef !== ref || basis.targetHead !== head || basis.quarantineCoordinate !== coordinate || basis.merge !== originalReceipt?.review?.merge || basis.originalReceiptDigest !== governanceDigest(originalReceipt) || !exactManifest(basis.originalRegistrationManifest, originalRegistrationManifest))
-    fail('blocked-cleanup-retained-artifact', 'reconciliation basis does not bind retained registration facts');
+  if (basis.targetRef !== ref || basis.targetHead !== head || basis.quarantineCoordinate !== coordinate || basis.merge !== originalReceipt?.review?.merge || basis.originalReceiptDigest !== governanceDigest(originalReceipt) || !exactManifest(basis.originalRegistrationManifest, originalRegistrationManifest)) fail('blocked-cleanup-retained-artifact', 'reconciliation basis does not bind retained registration facts');
   return basis;
 }
-function reconciliationMatches(basis, currentRegistrationManifest) {
-  if (!exactManifest(basis.currentRegistrationManifest, currentRegistrationManifest))
-    fail('blocked-cleanup-retained-artifact', 'reconciliation basis current registration differs');
-  return basis;
-}
+function reconciliationMatches(basis, currentRegistrationManifest) { if (!exactManifest(basis.currentRegistrationManifest, currentRegistrationManifest)) fail('blocked-cleanup-retained-artifact', 'reconciliation basis current registration differs'); return basis; }
 function retainedInventorySnapshot(root, operation, registration, canonicalRef, detachedRegistration,
   detachedHead, maxContentEntries) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retained-index-'), { encoding: 'utf8' }));
@@ -193,7 +194,10 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
           .every(key => Number.isSafeInteger(e[key]) && e[key] >= 0)
           || e.projectionBytes > 4 * 1024 ** 3 || e.projectionEntries > 250000
           || e.registrationBytes > 16 * 1024 ** 2 || e.registrationEntries > 20000) continue;
-        if (originalReceipt && (originalReceipt.schema !== 'agentic-os/user-cleanup-receipt/v1'
+        const protectedReceipt = originalReceipt?.schema === 'agentic-os/authenticated-transition-operation-receipt/v1';
+        if (protectedReceipt) protectedRetirementReceipt(originalReceipt, e, entry.name);
+        const targetPath = protectedReceipt ? retainedTargetPath(registration) : originalReceipt?.targetPath;
+        if (originalReceipt && !protectedReceipt && (originalReceipt.schema !== 'agentic-os/user-cleanup-receipt/v1'
           || originalReceipt.mode !== 'explicit-local-user-consent-recovery' || originalReceipt.planDigest !== entry.name
           || originalReceipt.review?.branch !== ref || originalReceipt.review?.head !== head
           || originalReceipt.operationPath !== operation || originalReceipt.projectionQuarantinePath !== join(operation, 'projection')
@@ -203,8 +207,8 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
           || detachedRegistration && !detachedReceiptMatches(originalReceipt, detachedHead, head)
           || Boolean(originalReceipt.detachedHead) !== detachedRegistration
           || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
-          || !absent(originalReceipt.targetPath, 'retained-target')
-          || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
+          )) continue;
+        if (originalReceipt && (!targetPath || !absent(targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === targetPath || row.branch === ref))) continue;
         const originalRegistrationManifest = { digest: e.registrationManifestDigest,
           bytes: e.registrationBytes, entries: e.registrationEntries };
         const candidate = reconciliation !== null ? reconciliationCandidate(reconciliation,
@@ -226,16 +230,14 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
           && retainedHead === (detachedRegistration ? detachedHead : head)) {
           const inventory = originalReceipt ? retainedInventorySnapshot(root, operation, registration,
             canonicalRef, detachedRegistration, detachedHead, e.projectionEntries) : null;
-          if (inventory && (inventory.branch !== (detachedRegistration ? null : ref)
-            || inventory.headRevision !== (detachedRegistration ? detachedHead : head) || !same(record, readOperation(operation))
-            || !absent(originalReceipt.targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === originalReceipt.targetPath || row.branch === ref))) continue;
+          if (inventory && (inventory.branch !== (detachedRegistration ? null : ref) || inventory.headRevision !== (detachedRegistration ? detachedHead : head) || !same(record, readOperation(operation)) || !absent(targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === targetPath || row.branch === ref))) continue;
           for (const path of [base, operation]) privateDirectory(path, 'cleanup-operation-directory');
           return frozen({ coordinate: entry.name, operationDigest: governanceDigest(record), registrationRef: ref,
             retainedHead, projectionManifest: projection, registrationManifest: retained,
             ...(basis ? { reconciliationDigest: basis.basisDigest,
               originalRegistrationManifest: basis.originalRegistrationManifest,
               registrationReconciled: true } : {}),
-            ...(inventory ? { originalReceiptDigest: governanceDigest(originalReceipt),
+            ...(inventory ? { originalReceiptDigest: protectedReceipt ? originalReceipt.receiptDigest : governanceDigest(originalReceipt),
               retainedIndexInventoryDigest: inventory.indexInventoryDigest, recoveryInventoryDigest: governanceDigest(inventory) } : {}) });
         }
       } catch (error) {
