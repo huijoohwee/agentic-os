@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -20,11 +20,11 @@ function registrationManifest(path) {
     byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: false,
   }) }));
   return { digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1',
-    label: 'worktree-registration', mode: '700', items }),
+    label: 'worktree-registration', mode: (statSync(path).mode & 0o777).toString(8), items }),
   bytes: items.reduce((sum, item) => sum + item.manifest.bytes, 0),
   entries: names.length + items.reduce((sum, item) => sum + item.manifest.entries, 0) };
 }
-function fixture(t) {
+function fixture(t, { registrationMode = 0o700 } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retirement-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'); mkdirSync(root);
@@ -38,7 +38,8 @@ function fixture(t) {
   const registration = join(operationPath, 'registration');
   mkdirSync(quarantine, { mode: 0o700 }); mkdirSync(operationPath, { mode: 0o700 });
   mkdirSync(projection, { mode: 0o755 }); writeFileSync(join(projection, 'recovery.txt'), 'discard me\n', { mode: 0o600 });
-  mkdirSync(registration, { mode: 0o700 }); mkdirSync(join(registration, 'logs'), { mode: 0o700 });
+  mkdirSync(registration, { mode: registrationMode }); chmodSync(registration, registrationMode);
+  mkdirSync(join(registration, 'logs'), { mode: 0o700 });
   writeFileSync(join(registration, 'HEAD'), `ref: refs/heads/${branch}\n`, { mode: 0o600 });
   writeFileSync(join(registration, 'logs', 'HEAD'), `${'0'.repeat(40)} ${head} Fixture <fixture@example.invalid> 1791676800 +0000\tcheckout: moving from main to ${branch}\n`, { mode: 0o600 });
   const projectionManifest = observeQuarantineManifest(projection, {
@@ -70,10 +71,13 @@ function apply(state, extra = {}) {
 test('exact local-consent retirement removes only the projection and leaves branch evidence', t => {
   const state = fixture(t), refs = g(state.root, 'show-ref');
   const receipt = apply(state);
-  assert.equal(receipt.schema, 'agentic-os/quarantine-retirement-receipt/v1');
+  assert.equal(receipt.schema, 'agentic-os/quarantine-retirement-receipt/v2');
   assert.equal(receipt.logicalBytesUnlinked, Buffer.byteLength('discard me\n'));
   assert.equal(receipt.bytesDeleted, true); assert.equal(receipt.physicalFreeSpaceIncreaseProven, false);
   assert.equal(receipt.recoveryBytesDiscarded, true); assert.equal(receipt.registrationRetained, true);
+  assert.equal(receipt.projectionRootPermissionsTightened, true);
+  assert.equal(receipt.registrationRootModeBefore, 0o700);
+  assert.equal(receipt.registrationRootPermissionsTightened, false);
   assert.equal(receipt.branchRefsMutated, false); assert.equal(receipt.objectDatabaseMutated, false);
   assert.equal(existsSync(state.projection), false); assert.equal(existsSync(state.registration), true);
   assert.equal(readFileSync(join(state.operationPath, 'operation.json'), 'utf8').length > 0, true);
@@ -81,6 +85,20 @@ test('exact local-consent retirement removes only the projection and leaves bran
   assert.equal(receipt.receiptDigest, governanceDigest(Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== 'receiptDigest'))));
   assert.equal(existsSync(join(state.operationPath, 'retirement.json')), true);
   assert.throws(() => apply(state, { now: () => NOW + 2_000_000 }), /retirement-evidence/u);
+});
+
+test('legacy registration roots are bound, probed, and tightened before projection deletion', t => {
+  const state = fixture(t, { registrationMode: 0o755 }), probed = [];
+  assert.equal(state.plan.schema, 'agentic-os/quarantine-retirement-plan/v2');
+  assert.equal(state.plan.registrationRoot[3], 0o755);
+  assert.equal(statSync(state.registration).mode & 0o777, 0o755);
+  const receipt = apply(state, { probe: path => probed.push(path) });
+  assert.deepEqual(probed, [state.projection, state.registration]);
+  assert.equal(receipt.registrationRootModeBefore, 0o755);
+  assert.equal(receipt.registrationRootPermissionsTightened, true);
+  assert.equal(statSync(state.registration).mode & 0o777, 0o700);
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(join(state.registration, 'HEAD')), true);
 });
 
 test('retirement requires the exact plan digest and both irreversible acknowledgments', t => {
@@ -98,6 +116,22 @@ test('open readers, plan drift, and noncanonical or protected coordinates retain
   assert.throws(() => apply(state), /evidence/u);
   assert.equal(existsSync(state.projection), true);
   assert.throws(() => planQuarantineRetirement({ cwd: state.root, coordinate: '../outside', now: () => NOW }), /coordinate/u);
+});
+
+test('retirement refuses a replaced registration root even when its files are moved intact', t => {
+  const state = fixture(t), replacement = join(tmpdir(), `agentic-os-registration-replacement-${process.pid}`);
+  renameSync(state.registration, replacement);
+  mkdirSync(state.registration, { mode: 0o700 });
+  renameSync(join(replacement, 'HEAD'), join(state.registration, 'HEAD'));
+  renameSync(join(replacement, 'logs'), join(state.registration, 'logs'));
+  rmSync(replacement, { recursive: true, force: true });
+  assert.throws(() => apply(state), /retirement-drift/u);
+  assert.equal(existsSync(join(state.projection, 'recovery.txt')), true);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
+});
+
+test('registration roots with unsupported permissions remain ineligible', t => {
+  assert.throws(() => fixture(t, { registrationMode: 0o750 }), /retirement-registration/u);
 });
 
 test('stale plans and interrupted intents fail closed', t => {
