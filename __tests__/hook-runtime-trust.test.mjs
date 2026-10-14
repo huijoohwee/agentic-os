@@ -24,7 +24,9 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes
     .toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync'));
   assert.equal(digest(quarantineBytes), '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
-  const predecessor = selected.files.map(file => released && file.path === 'src/quarantine.mjs'
+  const predecessor = selected.files.map(file => released && file.path === 'src/file-integrity.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)) }
+    : released && file.path === 'src/quarantine.mjs'
     ? { ...file, bytes: quarantineBytes } : released === 'pre-alignment' ? file : released !== 'retained-context' && file.path === 'bin/agentic-os-filter-compare.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)) }
     : file.path === 'src/git-tracked.mjs'
