@@ -5,15 +5,18 @@ import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, open
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
-import { atomicAdvanceRef, commonDir, configuredRemote, currentBranch, decodeNulFields, git, gitDir, headSha, isAncestor, observeGit, quarantineWorktreeEntries, remoteRefSha, remoteTransport, repoRoot, retireCleanProjectionUnderExclusiveContract, worktrees } from '../src/git.mjs';
+import { acquireOperationLock, atomicAdvanceRef, commonDir, configuredRemote, currentBranch, decodeNulFields, finishOperationLock, git, gitDir, headSha, isAncestor, observeGit, quarantineWorktreeEntries, remoteRefSha, remoteTransport, repoRoot, retireCleanProjectionUnderExclusiveContract, worktrees } from '../src/git.mjs';
 import { assertDirectoryAncestors } from '../src/git.mjs';
 import { snapshotWorktreeEntry } from '../src/file-integrity.mjs';
 import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publishCanonicalIndex, removeStagedTree, stageTreeEntries } from '../src/canonical-staging.mjs';
 import { parseTreeEntries } from '../src/canonical-resources.mjs';
 import { readBoundedFile, snapshotBoundedJson } from '../src/catalog-input.mjs';
 import { assertDevice, isLaneRef, laneRef } from '../src/lane-id.mjs';
-import { get } from '../src/lane-records.mjs';
+import { get, putExact } from '../src/lane-records.mjs';
 import { successorLineage } from '../src/lane-state.mjs';
+import { gh, remoteRepositoryIdentity } from '../src/github-provider.mjs';
+import { repositoryIdentity } from '../src/github-rest.mjs';
+import { flag, option, positional } from './agentic-os-argv.mjs';
 const SCHEMA = 'agentic-os/lane-alignment-plan/v1', MAX = 500_000, TARGET_ENTRY_MAX = 1024 * 1024, AGGREGATE = 4 * 1024 * 1024;
 const SHA = /^[a-f0-9]{40}$/u, hash = value => createHash('sha256').update(value).digest('hex');
 const fail = (code, detail = {}) => { throw Object.assign(new Error(`blocked-lane-alignment-${code}: ${JSON.stringify(detail)}`), { reason: `blocked-lane-alignment-${code}`, detail }); };
@@ -315,6 +318,221 @@ export function validateLaneAlignmentInput(value) {
   if (!input || Object.keys(input).sort().join(',') !== 'device,expectedHead,expectedTarget,mission,schema,scope,stopped' || input.schema !== 'agentic-os/lane-alignment-input/v1' || input.stopped !== true || !SHA.test(input.expectedHead ?? '') || !SHA.test(input.expectedTarget ?? '') || !isAbsolute(input.mission ?? '') || resolve(input.mission) !== input.mission || /[\x00-\x1f]/u.test(input.mission)) fail('input');
   assertDevice(input.device); laneRef(input.scope, input.device); return input;
 }
+const PROVIDER_REBIND_SCHEMA = 'agentic-os/provider-lane-rebind-plan/v1';
+const providerRebindHash = value => createHash('sha256').update(value).digest('hex');
+const providerRebindJson = value => Array.isArray(value) ? `[${value.map(providerRebindJson).join(',')}]`
+  : value && typeof value === 'object' ? `{${Object.keys(value).sort()
+    .map(key => `${JSON.stringify(key)}:${providerRebindJson(value[key])}`).join(',')}}` : JSON.stringify(value);
+const providerRebindDigest = value => providerRebindHash(providerRebindJson(value));
+const providerRebindBlock = (reason, message) => Object.assign(new Error(message), {
+  reason: `blocked-lane-provider-rebind-${reason}`,
+});
+function providerPathRange(left, right, cwd) {
+  const value = observeGit(['diff', '--name-only', '-z', '--no-renames', left, right], {
+    cwd, binary: true, allowFail: true,
+  });
+  const paths = value === null ? null : decodeNulFields(value);
+  if (!paths || paths.length > 1_024) throw providerRebindBlock('path-budget', 'provider refresh path range is unavailable or exceeds 1,024 paths');
+  return [...new Set(paths)].sort();
+}
+function providerWorktreeMatchesRevision(worktree, revision) {
+  return observeGit(['diff', '--quiet', revision, '--'], { cwd: worktree, allowFail: true }) === ''
+    && observeGit(['diff', '--cached', '--quiet', revision, '--'], { cwd: worktree, allowFail: true }) === '';
+}
+function providerUntrackedPaths(worktree) {
+  const read = args => decodeNulFields(observeGit(args, { cwd: worktree, binary: true }) ?? Buffer.alloc(0));
+  return [...new Set([
+    ...read(['ls-files', '--others', '--directory', '--exclude-standard', '-z']),
+    ...read(['ls-files', '--others', '--directory', '--ignored', '--exclude-standard', '-z']),
+  ].map(path => path.replace(/\/$/u, '')).filter(Boolean))].sort();
+}
+function providerAssertNoCollision(plan) {
+  const paths = providerUntrackedPaths(plan.worktree), overlaps = (left, right) => left === right
+    || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  if (plan.changedPaths.some(path => paths.some(local => overlaps(path, local))))
+    throw providerRebindBlock('untracked-collision', 'provider update would replace or cover a visible or ignored local path');
+}
+function providerReview({ profile, pr, root, provider }) {
+  const identity = repositoryIdentity(profile.repository);
+  if (!identity) throw providerRebindBlock('repository', 'provider profile has no exact host-qualified repository identity');
+  const raw = provider(['api', `repos/${identity.name}/pulls/${pr}`, '--hostname', identity.host], { cwd: root, json: true });
+  if (!raw || typeof raw !== 'object') throw providerRebindBlock('provider-read', 'GitHub PR observation failed');
+  const review = { number: raw.number, state: raw.state,
+    head: { sha: raw.head?.sha, ref: raw.head?.ref, repository: raw.head?.repo?.full_name ?? null },
+    base: { sha: raw.base?.sha, ref: raw.base?.ref, repository: raw.base?.repo?.full_name ?? null } };
+  if (review.number !== pr || !['open', 'closed'].includes(review.state))
+    throw providerRebindBlock('provider-shape', 'GitHub PR observation is incomplete or has an unsupported state');
+  return review;
+}
+function providerRefreshPostcondition(plan, root) {
+  const row = worktrees(root).find(item => item.branch === plan.ref);
+  return headSha(`refs/heads/${plan.ref}`, root) === plan.head && row?.path === plan.worktree
+    && currentBranch(plan.worktree) === plan.ref && headSha('HEAD', plan.worktree) === plan.head
+    && observeGit(['status', '--porcelain=v2', '--untracked-files=no'], { cwd: plan.worktree }) === '';
+}
+function providerRefreshReceipt(plan, resumed) {
+  return { schema: 'agentic-os/provider-lane-rebind-receipt/v1', ref: plan.ref, pr: plan.pr,
+    worktree: plan.worktree, previousHead: plan.previousHead, head: plan.head,
+    previousBaseSha: plan.previousBaseSha, baseSha: plan.baseSha, planDigest: plan.digest, providerVerified: true,
+    providerAuthority: false, integrationProof: false, cleanupAuthority: false, deploymentAuthority: false,
+    retainedRefs: true, resumed };
+}
+export function planProviderLaneRefresh({ cwd = process.cwd(), ref, pr, expectedHead, expectedBase,
+  profile, provider = gh, remoteReader = remoteRefSha }) {
+  const root = repoRoot(cwd), branch = profile?.canonical?.localRef?.replace(/^refs\/heads\//u, '');
+  if (!isLaneRef(ref) || !Number.isSafeInteger(pr) || pr < 1
+    || !/^[0-9a-f]{40}$/u.test(expectedHead ?? '') || !/^[0-9a-f]{40}$/u.test(expectedBase ?? ''))
+    throw providerRebindBlock('request', 'provider refresh requires an exact lane, PR, head SHA and base SHA');
+  if (!branch || currentBranch(root) !== branch
+    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root }) !== '')
+    throw providerRebindBlock('canonical', 'provider refresh must run from clean canonical main');
+  const record = get(ref, root), worktree = record?.worktree;
+  if (!record || record.state !== 'published' || record.pr !== pr || record.base !== profile.canonical.remoteRef
+    || !/^[0-9a-f]{40}$/u.test(record.head ?? '') || !/^[0-9a-f]{40}$/u.test(record.baseSha ?? '')
+    || !existsSync(worktree ?? '')) throw providerRebindBlock('record', 'one exact published PR-bound lane record and mounted worktree are required');
+  const mounted = worktrees(root).find(row => row.branch === ref && row.path === worktree);
+  if (!mounted || currentBranch(worktree) !== ref || headSha('HEAD', worktree) !== record.head
+    || headSha(`refs/heads/${ref}`, root) !== record.head)
+    throw providerRebindBlock('identity', 'mounted worktree, local lane ref and published record must match');
+  if (observeGit(['diff', '--quiet', 'HEAD', '--'], { cwd: worktree, allowFail: true }) !== ''
+    || observeGit(['diff', '--cached', '--quiet', 'HEAD', '--'], { cwd: worktree, allowFail: true }) !== '')
+    throw providerRebindBlock('dirty', 'tracked worktree or index changes must be resolved before provider refresh');
+  const remote = record.base.match(/^refs\/remotes\/([^/]+)\//u)?.[1], transport = remote && remoteTransport(remote, root);
+  const configuredIdentity = repositoryIdentity(profile.repository), observedIdentity = transport && remoteRepositoryIdentity(transport.fetchUrl);
+  if (!remote || !configuredIdentity || !observedIdentity || configuredIdentity.host !== observedIdentity.host
+    || configuredIdentity.name !== observedIdentity.name)
+    throw providerRebindBlock('repository', 'configured repository and protected Git remote do not match');
+  const review = providerReview({ profile, pr, root, provider }), providerName = configuredIdentity.name;
+  const baseBranch = branch;
+  if (review.state !== 'open' || review.head.ref !== ref || review.head.repository !== providerName
+    || review.base.ref !== baseBranch || review.base.repository !== providerName
+    || review.head.sha !== expectedHead || review.base.sha !== expectedBase)
+    throw providerRebindBlock('provider-binding', 'live PR repository, branch, head, base or state differs from the exact request');
+  const remoteHead = remoteReader(remote, ref, root, transport.fetchUrl);
+  if (remoteHead !== expectedHead || headSha(record.base, root) !== expectedBase
+    || headSha(profile.canonical.localRef, root) !== expectedBase)
+    throw providerRebindBlock('remote-binding', 'live source ref and clean canonical base must match the provider PR');
+  if (record.head === expectedHead || record.baseSha === expectedBase
+    || observeGit(['merge-base', '--is-ancestor', record.baseSha, expectedBase], { cwd: root, allowFail: true }) !== ''
+    || observeGit(['merge-base', '--is-ancestor', record.head, expectedHead], { cwd: root, allowFail: true }) !== '')
+    throw providerRebindBlock('ancestry', 'provider update must advance the published head and protected base');
+  const parents = (observeGit(['rev-list', '--parents', '-n', '1', expectedHead], { cwd: root }) ?? '').split(/\s+/u);
+  if (parents.length !== 3 || parents[0] !== expectedHead || parents[1] !== record.head || parents[2] !== expectedBase)
+    throw providerRebindBlock('merge-shape', 'provider head must be the exact two-parent update merge of the old lane head and current base');
+  const mergeTree = observeGit(['merge-tree', '--write-tree', record.head, expectedBase], { cwd: root, allowFail: true })
+    ?.trim().split(/\s+/u)[0];
+  if (!/^[0-9a-f]{40}$/u.test(mergeTree ?? '') || headSha(`${expectedHead}^{tree}`, root) !== mergeTree)
+    throw providerRebindBlock('merge-tree', 'provider merge tree does not equal the locally verified merge result');
+  const reserved = [...new Set(record.writePaths ?? [])].sort();
+  if (!reserved.length || reserved.length > 1_024) throw providerRebindBlock('reservation', 'published lane reservation is empty or exceeds its bound');
+  const sourcePaths = providerPathRange(expectedBase, expectedHead, root);
+  const changedPaths = providerPathRange(record.head, expectedHead, root);
+  const covered = path => reserved.some(parent => path === parent || path.startsWith(`${parent}/`));
+  if (!sourcePaths.length || sourcePaths.some(path => !covered(path)))
+    throw providerRebindBlock('reservation', 'updated PR projection escapes the original lane reservation');
+  const untracked = providerUntrackedPaths(worktree), overlaps = (left, right) => left === right
+    || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  if (changedPaths.some(path => untracked.some(local => overlaps(path, local))))
+    throw providerRebindBlock('untracked-collision', 'provider update would replace or cover a visible or ignored local path');
+  const expectedRefs = [...new Map([[record.base, expectedBase], [profile.canonical.localRef, expectedBase]])];
+  const body = { schema: PROVIDER_REBIND_SCHEMA, root, ref, pr, worktree, previousHead: record.head,
+    previousBaseSha: record.baseSha, head: expectedHead, base: record.base, baseSha: expectedBase,
+    providerReview: review, remoteHead, sourcePaths, changedPaths, reservation: reserved,
+    untrackedPathsSha256: providerRebindHash(JSON.stringify(untracked)),
+    previousRecordSha256: providerRebindDigest(record), expectedRefs, profileDigest: profile.profileDigest,
+    updatedRecord: { ...record, head: expectedHead, baseSha: expectedBase },
+    request: { ref, pr, expectedHead, expectedBase } };
+  return { ...body, digest: providerRebindDigest(body) };
+}
+function readProviderLaneRefreshPlan(path) {
+  let value;
+  try { value = JSON.parse(readBoundedFile(path, 128_000, 'provider lane rebind plan').toString('utf8')); }
+  catch { throw providerRebindBlock('plan', 'plan file is unreadable, non-regular or exceeds its 128,000-byte bound'); }
+  const { digest, authorization, ...body } = value ?? {};
+  if (body.schema !== PROVIDER_REBIND_SCHEMA || typeof digest !== 'string'
+    || digest !== providerRebindDigest(body) || authorization !== undefined
+      && authorization !== `agentic-os:provider-lane-rebind:${digest}`)
+    throw providerRebindBlock('plan', 'plan schema, digest or embedded authorization is invalid');
+  return value;
+}
+export function applyProviderLaneRefresh({ cwd = process.cwd(), planPath, authorization, stopped,
+  profile, provider = gh, remoteReader = remoteRefSha }) {
+  if (!stopped) throw providerRebindBlock('stopped', 'apply requires --stopped after writers have stopped');
+  const root = repoRoot(cwd), plan = readProviderLaneRefreshPlan(resolve(planPath));
+  if (root !== plan.root || profile?.profileDigest !== plan.profileDigest
+    || authorization !== `agentic-os:provider-lane-rebind:${plan.digest}`)
+    throw providerRebindBlock('authorization', 'repository, profile or exact plan authorization differs');
+  const lock = acquireOperationLock('agentic-os-provider-lane-rebind', root);
+  if (!lock) throw providerRebindBlock('busy', 'another provider lane rebind owns the clone-wide operation lock');
+  let result, error = null;
+  try {
+    const current = get(plan.ref, root);
+    if (current && providerRebindDigest(current) === providerRebindDigest(plan.updatedRecord) && providerRefreshPostcondition(plan, root)) {
+      const review = providerReview({ profile, pr: plan.pr, root, provider });
+      const remote = plan.base.match(/^refs\/remotes\/([^/]+)\//u)?.[1], transport = remoteTransport(remote, root);
+      if (providerRebindDigest(review) !== providerRebindDigest(plan.providerReview)
+        || remoteReader(remote, plan.ref, root, transport.fetchUrl) !== plan.head)
+        throw providerRebindBlock('provider-drift', 'provider PR or source ref moved after the lane was refreshed');
+      result = providerRefreshReceipt(plan, true);
+    } else {
+      if (!current || providerRebindDigest(current) !== plan.previousRecordSha256)
+        throw providerRebindBlock('record-drift', 'published lane record changed after planning');
+      if (headSha(`refs/heads/${plan.ref}`, root) === plan.head) {
+        const remote = plan.base.match(/^refs\/remotes\/([^/]+)\//u)?.[1], transport = remoteTransport(remote, root);
+        const review = providerReview({ profile, pr: plan.pr, root, provider });
+        if (providerRebindDigest(review) !== providerRebindDigest(plan.providerReview)
+          || remoteReader(remote, plan.ref, root, transport.fetchUrl) !== plan.head
+          || plan.expectedRefs.some(([name, sha]) => headSha(name, root) !== sha)
+          || !worktrees(root).some(row => row.branch === plan.ref && row.path === plan.worktree)
+          || currentBranch(plan.worktree) !== plan.ref || headSha('HEAD', plan.worktree) !== plan.head)
+          throw providerRebindBlock('recovery-binding', 'partially applied provider refresh no longer matches its exact provider and ref plan');
+        if (!providerWorktreeMatchesRevision(plan.worktree, plan.previousHead))
+          throw providerRebindBlock('recovery-bytes', 'resume requires tracked index and worktree bytes to remain at the exact previous head');
+        providerAssertNoCollision(plan);
+        git(['reset', '--hard', '--no-recurse-submodules', plan.head], { cwd: plan.worktree });
+        if (!providerRefreshPostcondition(plan, root)
+          || plan.expectedRefs.some(([name, sha]) => headSha(name, root) !== sha))
+          throw providerRebindBlock('recovery-postcondition', 'resumed provider refresh did not reach its exact planned head');
+        putExact(plan.updatedRecord, current, root);
+        result = providerRefreshReceipt(plan, true);
+      } else {
+      let fresh;
+      try { fresh = planProviderLaneRefresh({ cwd: root, ...plan.request, profile, provider, remoteReader }); }
+      catch (caught) {
+        if (caught.reason?.startsWith('blocked-lane-provider-rebind-'))
+          throw providerRebindBlock('stale-plan', 'provider, refs, reservation or worktree changed after planning');
+        throw caught;
+      }
+      if (fresh.digest !== plan.digest) throw providerRebindBlock('stale-plan', 'provider, refs, reservation or worktree changed after planning');
+      atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.head, plan.previousHead, plan.expectedRefs, root);
+      providerAssertNoCollision(plan);
+      git(['reset', '--hard', '--no-recurse-submodules', plan.head], { cwd: plan.worktree });
+      if (plan.expectedRefs.some(([name, sha]) => headSha(name, root) !== sha)
+        || !providerRefreshPostcondition(plan, root))
+        throw providerRebindBlock('postcondition', 'exact provider head refresh did not satisfy the planned local postcondition');
+      putExact(plan.updatedRecord, current, root);
+      result = providerRefreshReceipt(plan, false);
+      }
+    }
+  } catch (caught) { error = caught; }
+  return finishOperationLock(lock, { label: 'provider lane rebind', result, error,
+    artifacts: error?.reason?.startsWith('blocked-lane-provider-rebind-') ? {
+      planDigest: plan.digest, ref: plan.ref, pr: plan.pr, worktree: plan.worktree,
+      previousHead: plan.previousHead, targetHead: plan.head, refsMayHaveAdvanced: headSha(`refs/heads/${plan.ref}`, root) === plan.head,
+    } : null });
+}
+export function runProviderLaneRefresh(root, argv, profile, out) {
+  try {
+    if (positional(argv)[0] === 'plan') {
+      const plan = planProviderLaneRefresh({ cwd: root, profile, ref: option(argv, 'ref'), pr: Number(option(argv, 'pr')),
+        expectedHead: option(argv, 'expected-head'), expectedBase: option(argv, 'expected-base') });
+      out(JSON.stringify({ ...plan, authorization: `agentic-os:provider-lane-rebind:${plan.digest}` })); return 0;
+    }
+    out(JSON.stringify(applyProviderLaneRefresh({ cwd: root, planPath: option(argv, 'plan'),
+      authorization: option(argv, 'authorize'), stopped: flag(argv, 'stopped'), profile }))); return 0;
+  } catch (error) { out(JSON.stringify({ error: error.reason ?? 'blocked-lane-provider-rebind', message: error.message })); return 1; }
+}
+
 async function main() {
   const argv = process.argv.slice(2); if (argv.length !== 1 || !argv[0].startsWith('--input=') || !argv[0].slice(8)) fail('input');
   const raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedFile(resolve(argv[0].slice(8)), MAX, 'lane alignment input')));
