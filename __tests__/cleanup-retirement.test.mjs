@@ -191,6 +191,20 @@ test('an exact fresh resume plan finishes a partially unlinked projection and re
   assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
 });
 
+test('resume hashes and retires a residual tree larger than the governance node budget', t => {
+  const state = fixture(t, { projectionFiles: 1100 }), intent = interrupt(state);
+  const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
+  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v3');
+  assert.equal(resume.resumeIntentDigest, intent.intentDigest);
+  assert.ok(resume.projection.entries > 1000);
+  const receipt = applyQuarantineRetirement(resume, { cwd: state.root,
+    authorization: `agentic-os:quarantine-retirement:${resume.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 3_000, probe: () => {} });
+  assert.equal(receipt.resumedLogicalBytesUnlinked, resume.projection.bytes);
+  assert.equal(receipt.logicalBytesUnlinked, state.plan.projection.bytes);
+  assert.equal(existsSync(state.projection), false);
+});
+
 test('resume refuses residual projection drift after planning', t => {
   const state = fixture(t); interrupt(state);
   const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
