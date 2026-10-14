@@ -1,4 +1,3 @@
-/** Explicit local-consent cleanup; profile recovery requires its own operator opt-in. */
 import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -12,7 +11,7 @@ import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { privateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateFileExclusive,
   readPrivateFile, captureExactTree, pathIdentity, removeExactTree, unlinkExactPath,
   tightenLegacyPrivateDirectory } from '../src/file-integrity.mjs';
-import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
+import { inferMergedReviewWorkflow, observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
 import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
@@ -37,7 +36,6 @@ function refuseUnknownLaneBytes(targetPath, root) {
 }
 export const readUserCleanupJson = (path, label, parent = null) => JSON.parse(new TextDecoder('utf-8', { fatal: true })
   .decode(parent ? readPrivateFile(path, 64000, label, parent) : readBoundedStableFile(path, 64000, label)));
-/** Classify the enrolled local-consent documentation path without changing physical mechanics. */
 function resolveChangeClass(declared, observed) {
   if (declared === undefined) return { declared: null, observed, fastPath: false };
   if (!SUPPORTED_CHANGE_CLASSES.includes(declared)) refuse('unsupported-change-class');
@@ -57,9 +55,6 @@ function policy(root, mode = MODE, { changeClass = undefined } = {}) {
   if (![MODE, NO_CI_MODE, RECOVERY_MODE].includes(mode)
     || read(root, ['config', '--local', '--get-all', KEY], { allowFail: true }) !== enrollment)
     refuse('local-enrollment-required');
-  // For docs-only change class, the profile-governed repository check is
-  // relaxed: local consent is the accepted terminal state and the protected
-  // authority chain is not required for this change class.
   if (mode !== RECOVERY_MODE && changeClass !== 'docs-only'
     && (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
     || read(root, ['ls-tree', 'refs/heads/main', '--', '.agentic-os.json'])
@@ -271,6 +266,20 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     return validatePlan(plan);
   });
 }
+export function planRecoveryCleanupFromLane({ cwd = process.cwd(), ref } = {}, options = {}) {
+  const root = realpathSync(repoRoot(cwd));
+  if (!isLaneRef(ref)) refuse('recovery-lane-ref');
+  const current = resolvePolicy(root, RECOVERY_MODE, options.resolvePolicy ?? null), record = get(ref, root);
+  if (!record || !['published', 'queued', 'integrated'].includes(record.state) || !Number.isSafeInteger(record.pr) || record.pr < 1
+    || typeof record.worktree !== 'string' || !/^[a-f0-9]{40}$/u.test(record.head ?? ''))
+    refuse('recovery-lane-binding');
+  let targetPath; try { targetPath = realpathSync(record.worktree); } catch { refuse('recovery-lane-target'); }
+  if (targetPath !== record.worktree || currentBranch(targetPath) !== ref || read(targetPath, ['rev-parse', '--verify', 'HEAD']) !== record.head) refuse('recovery-lane-binding');
+  const requiredChecks = [...current.requiredChecks].sort(), workflow = inferMergedReviewWorkflow({ repository: current.repository, pr: record.pr, requiredChecks }, { cwd: root, ...options });
+  const plan = planUserCleanup({ cwd: root, target: targetPath, pr: record.pr, requiredChecks, workflow, recovery: true }, options);
+  if (plan.targetPath !== targetPath || plan.pr !== record.pr || plan.branch !== ref || plan.head !== record.head) refuse('recovery-lane-binding');
+  return plan;
+}
 export function applyUserCleanup(input, { cwd = process.cwd(), authorization, stopped, now = Date.now, ...options } = {}) {
   const plan = validatePlan(input), root = realpathSync(repoRoot(cwd));
   const policyResolver = options.resolvePolicy ?? null;
@@ -323,7 +332,6 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
-/** Unified CLI dispatch; physical consent and quarantine semantics remain unchanged. */
 const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [] });
 export function runUnifiedCleanup(root, argv, out = console.log) {
   if (!['plan', 'apply', 'sweep', 'retire'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep|retire> [options]');
@@ -349,12 +357,19 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
   if (argv[0] === 'plan') {
     const modeFlag = unified ? option(argv, 'mode') || 'local-consent' : null;
     if (unified && !Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
+    const recovery = modeFlag === 'recovery' || (!unified && argv.includes('--recovery'));
+    const ref = option(argv, 'ref');
+    if (ref !== null) {
+      if (!recovery) refuse('recovery-lane-mode');
+      out(canonicalJson(planRecoveryCleanupFromLane({ cwd: root, ref })));
+      return 0;
+    }
     const noCI = modeFlag === 'no-ci', pr = Number(option(argv, 'pr'));
     const changeClass = option(argv, 'change-class') || undefined;
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
       requiredChecks: noCI ? [] : unified && !option(argv, 'checks') ? [] : option(argv, 'checks').split(','),
       workflow: noCI ? null : option(argv, 'workflow'), noCI,
-      recovery: modeFlag === 'recovery' || (!unified && argv.includes('--recovery')), detached: argv.includes('--detached'),
+      recovery, detached: argv.includes('--detached'),
       mergedProjection: argv.includes('--merged-projection'),
       historicalCheckGap: argv.includes('--historical-check-gap'),
       reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
@@ -365,11 +380,9 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
   out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })));
   return 0;
 }
-/** Bounded observation-only stale-ref candidates; no refs or bytes are removed. */
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
 const SWEEP_LIMIT = 256;
 const sweepRefFormat = '%(refname:short)%09%(objectname)%09%(objecttype)%09%(committerdate:unix)';
-/** Project one bounded ref snapshot; the caller revalidates each selected target before effects. */
 export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, staleDays, now = Date.now() }) {
   if (!Array.isArray(refs) || !Array.isArray(mergedBranches) || !Array.isArray(activeBranches))
     refuse('sweep-inventory-shape');
@@ -400,7 +413,6 @@ export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, 
   if (mergedBranches.some(branch => !seen.has(branch))) refuse('sweep-ref-drift');
   return candidates;
 }
-/** Read fixed-size batches so Git process count does not grow with the lane count. */
 export function observeUserCleanupSweep(root, { staleDays, requireMerged = false,
   requireNoActiveWorktree = false, now = Date.now, observeLines = observeGitLines,
   listWorktrees = worktrees, observePolicy = cwd => policy(cwd, MODE) } = {}) {

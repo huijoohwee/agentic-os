@@ -1,4 +1,3 @@
-/** Same-mission START admission. Local economy evidence never grants provider authority. */
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
@@ -17,8 +16,7 @@ import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
 const fail = (reason, message, facts = {}) => { throw Object.assign(new Error(message), { reason: `blocked-admission-${reason}`, ...facts }); };
-const scopeDigest = paths => hash(JSON.stringify([...paths].sort()));
-const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
+const scopeDigest = paths => hash(JSON.stringify([...paths].sort())); const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
 const limitValue = text => {
   if (text === null) return null;
   if (!/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > MAX_TASK_CHECKOUTS) fail('allowance', `checkout-limit must be an explicit integer from 0 to ${MAX_TASK_CHECKOUTS}`);
@@ -32,7 +30,6 @@ const selectedAgain = (root, repository, prior) => {
 function successor(root, repository, selected, changes) {
   selectedAgain(root, repository, selected);
   const workspace = workflowPaths(root, repository).workspace;
-  // Stored member paths are workspace-relative; resolved child paths are already digest verified.
   const value = { ...selected.manifest, ...changes,
     members: changes.members ?? selected.members.map(row => ({ ...row.ref, file: row.path })),
     previous: { file: selected.path, digest: selected.digest },
@@ -60,7 +57,7 @@ function recordAllocation(root, repository, selected, allocation) {
 }
 export function checkoutCapacity(selected, repository, inventory, explicitLimit = null) {
   const own = new Set(selected.members.filter(row => row.child.source.repository === repository).map(row => row.child.context.worktreeId));
-  const consumed = new Set((selected.manifest.allocations ?? []).filter(row => own.has(row.worktreeId)).map(row => row.worktreeId));
+  const consumed = new Set((selected.manifest.allocations ?? []).filter(row => own.has(row.worktreeId) && ['pending', 'active'].includes(row.state)).map(row => row.worktreeId));
   for (const row of inventory) if (own.has(basename(row.path))) consumed.add(basename(row.path));
   return { limit: Math.min(selected.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS), consumed: consumed.size, worktreeIds: [...consumed].sort() };
 }
@@ -92,7 +89,6 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
 }
 export async function cmdStart(root, argv, policy, profile, services) {
   const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null } = services;
-  requireCanonical(root, policy);
   const [scope] = positional(argv), device = assertDevice(option(argv, 'device') ?? deviceSegment());
   if (!scope) { err('usage: start <scope> --write=<paths>'); return 1; }
   const ref = laneRef(scope, device);
@@ -115,6 +111,10 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null, protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
     provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false, fetchReceipt: null, provisionReceipt: null, alignmentReceipt: null, allocation: null, workflow: null };
   try {
+    const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
+    Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
+    artifacts.effectsRetained ||= fetched.effectsRetained;
+    requireCanonical(root, policy);
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
@@ -149,10 +149,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
         const recertification = readmit && row?.state === 'active' && row.ref === ref && row.writeDigest !== liveDigest
           && row.headRevision === selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)?.child.source.revision
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
-        // A retired historical cache must not mask the current link, which is verified below.
         const predecessorPaths = row?.predecessorRef && records[row.predecessorRef]
           ? parseWritePaths(records[row.predecessorRef].writePaths.join(',')) : [];
-        // Reconcile expanded successor scope only between its published predecessor and exact pending target.
         const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref && identity.lineage.some(link => link.predecessorRef === row.predecessorRef)
           && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
         if (successorReadmit && !readmit) fail('successor-readmit', 'Explicit readmit must bind the retained successor to its existing mission slot');
@@ -189,6 +187,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
             selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+            store.putExact({ ...record, head: identity.head, writePaths }, record, root);
             out(JSON.stringify(receipt));
           }
           const { previousWriteDigest, ...completed } = allocation;
@@ -215,9 +214,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId,
           revision: member?.child.source.revision ?? headSha(policy.protectedRef, root), ref });
       }
-      const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
-      Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
-      artifacts.effectsRetained ||= fetched.effectsRetained;
       const baseSha = assertProfileCurrent(root, policy, profile);
       artifacts.baseSha = baseSha;
       if (!baseSha) fail('base', 'Protected base is unavailable after native fetch');
@@ -269,8 +265,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
     operationArtifacts: artifacts, operationResult: null });
   return finishOperationLock(lock, { label: 'start', result, error, artifacts });
 }
-
-/** Rebind a stopped local lane without projecting provider or cleanup authority. */
 const REBIND_SCHEMA = 'agentic-os/lane-rebind-plan/v1', REBIND_MAX_PATHS = 1_024,
   REBIND_MAX_FILE_BYTES = 10_000_000, REBIND_MAX_TOTAL_BYTES = 64_000_000;
 const rebindHash = value => createHash('sha256').update(value).digest('hex');

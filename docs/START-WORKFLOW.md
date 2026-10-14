@@ -1,14 +1,14 @@
-# Start workflow
+# Start
 
-`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> [--checkout-limit=<0..5>]`
+Use release:common start <scope> --write=<paths>. New task: committed --plan.
 
-Five max/repo; canonical excluded; no nesting. One checkout/new mission;
-resume `--mission=<manifest>`; cap binds; zero reuses.
-No `--plan`/`--mission`: clone selection; new task: committed `--plan`.
-`--readmit --expected-head=<sha>` extends disjoint scope; published lanes use
-`successor`. Work in returned checkout.
-Browser UI: immediately run `npm run dev`; visibly open reported URL for review,
-recheck after edits. No script/browser/page: report blocker, not live proof.
-Headless: N/A.
+Five per repo; canonical excluded; no nesting. One checkout/task; resume its
+bound mission. Without plan/mission, use clone. Readmit/published continuation:
+see guides/LANE-RECERTIFICATION.md.
 
-See `guides/LANE-RECERTIFICATION.md`.
+Valid START locks and fetches the profile's protected ref (normally origin/main)
+before canonical/mission checks, including reuse/refusal. Failure stops before
+lane mutation; fetch updates tracking only, not local main or release authority.
+
+Browser: run npm run dev; open/recheck URL. Unsupported: report blocker, not
+live proof. Headless: N/A.

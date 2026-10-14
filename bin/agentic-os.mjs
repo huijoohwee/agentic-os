@@ -34,7 +34,7 @@ import {
 } from './agentic-os-auxiliary.mjs';
 import { runHookSetup } from './agentic-os-hooks.mjs';
 import { validateCommandArguments, cmdHelp, flag, option, positional } from './agentic-os-argv.mjs';
-import { createWorkflowEffectGuard, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
+import { createWorkflowEffectGuard, rebindWorkflowCandidate, releaseWorkflowAllocation } from './agentic-os-workflow.mjs';
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
 function projectCache(record, root) {
@@ -80,6 +80,7 @@ function cmdReleaseCommonHelp() {
       '    plan --ref=<lane> --mode=recertify --base=refs/remotes/origin/main --base-sha=<sha> --worktree=<path> --expected-head=<sha> [--pr=<n>]',
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
+      '  agentic-os release-common allocation-release --ref=<lane>   free one fully closed workflow allocation while retaining its history',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
@@ -166,6 +167,14 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     case 'retire-empty-active':
       return (await import('./agentic-os-completion-close.mjs'))
         .runEmptyActiveLaneRetirement({ root, argv: rest, profile, out, err });
+    case 'allocation-release': {
+      const completionModule = await import('./agentic-os-completion-status.mjs');
+      const ref = option(rest, 'ref'), status = completionModule.inspectCompletionStatus(root, ref, policy, profile);
+      if (status.closeout.missionState !== 'source_complete' || status.closeout.cleanupSatisfied !== true
+        || status.lane.mounted !== false) { err('blocked-allocation-release-closeout: release requires an unmounted lane with current source-complete quarantine evidence'); return 1; }
+      try { out(JSON.stringify(releaseWorkflowAllocation(root, profile.repository, ref))); return 0; }
+      catch (error) { err(`${error.reason ?? 'blocked-allocation-release'}: ${error.message}`); return 1; }
+    }
     case 'successor':
       return cmdSuccessor(root, rest, policy, profile);
     case 'rebind':
