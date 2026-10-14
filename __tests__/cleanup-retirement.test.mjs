@@ -70,6 +70,14 @@ function apply(state, extra = {}) {
     authorization: state.authorization, stopped: true, discardRecovery: true,
     now: () => NOW + 1_000, probe: () => {}, ...extra });
 }
+function interrupt(state) {
+  const content = { schema: 'agentic-os/quarantine-retirement-intent/v2', planDigest: state.plan.planDigest,
+    plan: state.plan, authorizationDigest: governanceDigest(state.authorization), authorizedAt: NOW + 1_000 };
+  const intent = { ...content, intentDigest: governanceDigest(content) };
+  writeFileSync(join(state.operationPath, 'retirement.intent.json'), canonicalJson(intent), { mode: 0o600 });
+  chmodSync(state.projection, 0o700); rmSync(join(state.projection, 'recovery.txt'));
+  return intent;
+}
 
 test('exact local-consent retirement removes only the projection and leaves branch evidence', t => {
   const state = fixture(t), refs = g(state.root, 'show-ref');
@@ -164,6 +172,34 @@ test('stale plans and interrupted intents fail closed', t => {
   writeFileSync(join(state.operationPath, 'retirement.intent.json'), '{}', { mode: 0o600 });
   assert.throws(() => apply(state), /state/u);
   assert.equal(existsSync(state.projection), true);
+});
+
+test('an exact fresh resume plan finishes a partially unlinked projection and retains prior consent evidence', t => {
+  const state = fixture(t), intent = interrupt(state);
+  const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
+  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v3');
+  assert.equal(resume.resumeIntentDigest, intent.intentDigest);
+  assert.equal(resume.projection.bytes, 0);
+  const receipt = applyQuarantineRetirement(resume, { cwd: state.root,
+    authorization: `agentic-os:quarantine-retirement:${resume.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 3_000, probe: () => {} });
+  assert.equal(receipt.originalIntentDigest, intent.intentDigest);
+  assert.equal(receipt.logicalBytesUnlinked, state.plan.projection.bytes);
+  assert.equal(receipt.resumedLogicalBytesUnlinked, 0);
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(state.registration), true);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
+});
+
+test('resume refuses residual projection drift after planning', t => {
+  const state = fixture(t); interrupt(state);
+  const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
+  writeFileSync(join(state.projection, 'new.txt'), 'unreviewed residual\n', { mode: 0o600 });
+  assert.throws(() => applyQuarantineRetirement(resume, { cwd: state.root,
+    authorization: `agentic-os:quarantine-retirement:${resume.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 3_000, probe: () => {} }), /retirement-drift/u);
+  assert.equal(existsSync(join(state.projection, 'new.txt')), true);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), true);
 });
 
 test('cleanup CLI routes the nested retire command to its exact argument grammar', t => {
