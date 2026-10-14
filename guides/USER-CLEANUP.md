@@ -227,7 +227,7 @@ for the distinct record-only retirement operation, which cannot authorize physic
 
 Accepted `CLEANUP-AUTHORITY-001@1.2.0` adds `agentic-os/current-quarantine-adoption/v1`
 enrollment under the distinct committed v3 policy. It selects one original target/ref/head/review/merge,
-quarantine coordinate and exact original local receipt digest; historical quarantine authority stays false.
+quarantine coordinate and exact original receipt digest; historical quarantine authority stays false.
 Use the same preservation-plan entrypoint with a bounded `{adoption, originalReceipt}` JSON wrapper.
 The existing plan/apply/status owners select the distinct typed current-retention schemas and verify the
 original operation, receipt, registration/manifests, retained index/content, source, policy and current
@@ -242,6 +242,13 @@ head. It then inventories the retained index at that exact revision. Missing or 
 tree, ref, or registration evidence fails closed. This local retention disposition preserves
 `providerAuthority:false` and `claimRetired:false`; it does not replace the independent provider
 retirement receipt.
+
+An authenticated retirement receipt can also serve as `originalReceipt` when its digest and plan byte
+digest match the quarantined `worktree-cleanup-eligibility/v1`, whose cleanup plan digest is the exact
+quarantine coordinate. The observer validates the retirement receipt, joins its review URL and merge to
+the enrolled source, and derives the absent checkout path from the preserved registration backlink.
+This records retained state only; it does not repeat cleanup, discard bytes, or assert historical
+quarantine authority.
 
 ## Bounds, recovery and trust
 
