@@ -19,6 +19,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-10: bounded GitHub REST fallback preserves source-bound review observation during GraphQL quota exhaustion.
   // The source-evidence CLI and contract add one CLI and one runtime module; both remain lazy and provider-neutral.
   // 2026-10-12: T06 receipts (+29 src/+37 bin) and bounded ancestry (+40 src, zero modules; 25/page ×16; ≤256 KiB/page).
+  // 2026-10-13: exact PR/ref/merge-tree refresh adds 236 lines to the existing owner; no module, dependency or always-load delta.
   modules: 49,
   totalLines: 15602,
   perModuleLines: 400,
@@ -34,7 +35,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24217,
+  binLines: 24453,
   runtimeModules: 97,
   runtimeLines: 23023,
 });

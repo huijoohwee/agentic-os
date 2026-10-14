@@ -41,3 +41,26 @@ or ignored bytes that existed only in the missing checkout. The cache record the
 bytes `unobservable-at-missing-path`; completion, release-common closeout, and both cleanup paths block
 while the marker remains. Recover the missing files and obtain an owner-reviewed disposition before
 any closeout. Never claim the restored clean checkout proves the missing checkout was clean.
+
+## Provider-verified refresh after a strict-base update
+
+Use this only when a published, mounted PR branch was updated by the provider to satisfy strict
+protected-branch checks. It accepts only an open same-repository PR whose exact new head is a
+two-parent merge of the recorded lane head and the current protected base. The provider head must
+match the exact advertised branch ref, and its tree must match the local merge-tree result. The PR's
+current base-to-head paths must remain inside the lane's existing reservation.
+
+```sh
+npm run release:common -- rebind plan \
+  --ref=<lane> --mode=provider-refresh --pr=<number> \
+  --expected-head=<provider-head-sha> --expected-base=<protected-base-sha>
+npm run release:common -- rebind apply --mode=provider-refresh \
+  --plan=<saved-plan.json> \
+  --authorize=agentic-os:provider-lane-rebind:<plan-digest> --stopped
+```
+
+Plan and apply each make one exact PR read and one exact remote-ref query. Apply compare-and-swaps
+the local lane ref, resets only the stopped mounted checkout to the verified merge head, and then
+compare-and-swaps the non-authoritative lane cache. It preserves unrelated visible and ignored
+paths, and refuses if an updated tracked path collides with one. The receipt proves local identity
+refresh only: it grants no merge, integration, check, cleanup, deployment, or provider-write authority.

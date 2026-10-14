@@ -113,18 +113,25 @@ export function validateCommandArguments(command, argv) {
       const owner = { start: 'start', publish: 'land', finish: 'finish', successor: 'successor' }[action];
       if (owner) return validateCommandArguments(owner, argv.slice(1));
       if (action === 'rebind') return argv[1] === 'plan'
-        ? (() => { const mode = option(argv, 'mode'), recertify = mode === 'recertify';
-          const fields = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head', 'pr'] : [])];
-          const required = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head'] : [])];
+        ? (() => { const mode = option(argv, 'mode'), recertify = mode === 'recertify', providerRefresh = mode === 'provider-refresh';
+          const fields = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head', 'pr'] : []),
+            ...(providerRefresh ? ['pr', 'expected-head', 'expected-base'] : [])];
+          const required = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head'] : []),
+            ...(providerRefresh ? ['pr', 'expected-head', 'expected-base'] : [])];
           const error = exact(argv.slice(1), { min: 1, max: 1, options: fields, requiredOptions: required });
           if (error) return error;
-          if (!['mounted', 'restore', 'recertify'].includes(mode)) return 'rebind mode must be mounted, restore or recertify';
+          if (!['mounted', 'restore', 'recertify', 'provider-refresh'].includes(mode)) return 'rebind mode must be mounted, restore, recertify or provider-refresh';
           if (recertify && (!/^[0-9a-f]{40}$/u.test(option(argv, 'base-sha'))
             || !/^[0-9a-f]{40}$/u.test(option(argv, 'expected-head'))
             || option(argv, 'pr') !== null && !/^[1-9][0-9]*$/u.test(option(argv, 'pr'))))
             return 'recertify requires exact 40-character SHAs and an optional positive PR number';
+          if (providerRefresh && (!/^[0-9a-f]{40}$/u.test(option(argv, 'expected-head'))
+            || !/^[0-9a-f]{40}$/u.test(option(argv, 'expected-base')) || !/^[1-9][0-9]*$/u.test(option(argv, 'pr'))))
+            return 'provider-refresh requires exact 40-character head/base SHAs and a positive PR number';
           return null; })()
-        : argv[1] === 'apply' ? exact(argv.slice(1), { min: 1, max: 1, options: ['plan', 'authorize'], flags: ['stopped'], requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
+        : argv[1] === 'apply' ? (() => { const mode = option(argv, 'mode');
+          const error = exact(argv.slice(1), { min: 1, max: 1, options: ['plan', 'authorize', 'mode'], flags: ['stopped'], requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] });
+          return error ?? (mode === null || mode === 'provider-refresh' ? null : 'rebind apply mode must be provider-refresh'); })()
           : 'rebind requires plan or apply';
       if (action === 'promote') return argv[1] === 'plan'
         ? exact(argv.slice(1), { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] })
