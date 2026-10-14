@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -24,7 +24,7 @@ function registrationManifest(path) {
   bytes: items.reduce((sum, item) => sum + item.manifest.bytes, 0),
   entries: names.length + items.reduce((sum, item) => sum + item.manifest.entries, 0) };
 }
-function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
+function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionHardlink = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retirement-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'); mkdirSync(root);
@@ -38,6 +38,7 @@ function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
   const registration = join(operationPath, 'registration');
   mkdirSync(quarantine, { mode: 0o700 }); mkdirSync(operationPath, { mode: 0o700 });
   mkdirSync(projection, { mode: 0o755 }); writeFileSync(join(projection, 'recovery.txt'), 'discard me\n', { mode: 0o600 });
+  if (projectionHardlink) { writeFileSync(join(projection, 'shared-a'), 'shared bytes\n'); linkSync(join(projection, 'shared-a'), join(projection, 'shared-b')); }
   for (let index = 0; index < projectionFiles; index += 1)
     writeFileSync(join(projection, `entry-${String(index).padStart(4, '0')}`), 'x', { mode: 0o600 });
   mkdirSync(registration, { mode: registrationMode }); chmodSync(registration, registrationMode);
@@ -45,7 +46,7 @@ function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
   writeFileSync(join(registration, 'HEAD'), `ref: refs/heads/${branch}\n`, { mode: 0o600 });
   writeFileSync(join(registration, 'logs', 'HEAD'), `${'0'.repeat(40)} ${head} Fixture <fixture@example.invalid> 1791676800 +0000\tcheckout: moving from main to ${branch}\n`, { mode: 0o600 });
   const projectionManifest = observeQuarantineManifest(projection, {
-    byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: false,
+    byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: projectionHardlink,
   });
   const retainedRegistration = registrationManifest(registration);
   const eligibility = { schema: 'agentic-os/user-cleanup-eligibility/v1', planDigest: coordinate,
@@ -111,6 +112,16 @@ test('large retirement trees use bounded row comparisons and complete without pa
   assert.equal(existsSync(state.projection), false);
   assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
   assert.equal(existsSync(join(state.operationPath, 'retirement.json')), true);
+  assert.equal(existsSync(join(state.registration, 'HEAD')), true);
+});
+
+test('quarantine retirement removes same-tree hard links without a false drift stop', t => {
+  const state = fixture(t, { projectionHardlink: true });
+  const receipt = apply(state);
+  assert.equal(receipt.bytesDeleted, true);
+  assert.equal(receipt.logicalBytesUnlinked, Buffer.byteLength('discard me\n') + 2 * Buffer.byteLength('shared bytes\n'));
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
   assert.equal(existsSync(join(state.registration, 'HEAD')), true);
 });
 
