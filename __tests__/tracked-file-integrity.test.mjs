@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
-  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync,
-  symlinkSync, unlinkSync, utimesSync,
+  chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync,
+  statSync, symlinkSync, unlinkSync, utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  TRACKED_FILE_LIMITS, tightenLegacyPrivateDirectory,
+  captureExactTree, privateDirectoryIdentity, removeExactTree, TRACKED_FILE_LIMITS,
+  tightenLegacyPrivateDirectory,
 } from '../src/file-integrity.mjs';
 import { git, shallowTrackedChanges, trackedChanges, worktreeCleanupRisks } from '../src/git.mjs';
 import { publicationByteRisks } from '../bin/agentic-os-auxiliary.mjs';
@@ -31,6 +32,16 @@ function fixture(t, { filtered = false } = {}) {
   run(['commit', '--quiet', '--message', 'base']);
   return { root, run };
 }
+
+test('exact-tree removal accounts for link metadata changed by its own unlink', (t) => {
+  const parent = mkdtempSync(join(tmpdir(), 'agentic-os-hardlink-removal-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'tree'), first = join(root, 'first'), second = join(root, 'second');
+  mkdirSync(root, { mode: 0o700 }); writeFileSync(first, 'shared bytes\n'); linkSync(first, second);
+  const identity = privateDirectoryIdentity(root), manifest = captureExactTree(identity, [first, second]);
+  assert.equal(removeExactTree(identity, manifest), true);
+  assert.equal(existsSync(root), false);
+});
 
 test('a transformed core.autocrlf checkout is conservatively reported as raw-byte drift', (t) => {
   const { root, run } = fixture(t);

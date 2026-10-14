@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -24,7 +24,7 @@ function registrationManifest(path) {
   bytes: items.reduce((sum, item) => sum + item.manifest.bytes, 0),
   entries: names.length + items.reduce((sum, item) => sum + item.manifest.entries, 0) };
 }
-function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
+function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionHardlink = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retirement-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'); mkdirSync(root);
@@ -38,6 +38,7 @@ function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
   const registration = join(operationPath, 'registration');
   mkdirSync(quarantine, { mode: 0o700 }); mkdirSync(operationPath, { mode: 0o700 });
   mkdirSync(projection, { mode: 0o755 }); writeFileSync(join(projection, 'recovery.txt'), 'discard me\n', { mode: 0o600 });
+  if (projectionHardlink) { writeFileSync(join(projection, 'shared-a'), 'shared bytes\n'); linkSync(join(projection, 'shared-a'), join(projection, 'shared-b')); }
   for (let index = 0; index < projectionFiles; index += 1)
     writeFileSync(join(projection, `entry-${String(index).padStart(4, '0')}`), 'x', { mode: 0o600 });
   mkdirSync(registration, { mode: registrationMode }); chmodSync(registration, registrationMode);
@@ -45,7 +46,7 @@ function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
   writeFileSync(join(registration, 'HEAD'), `ref: refs/heads/${branch}\n`, { mode: 0o600 });
   writeFileSync(join(registration, 'logs', 'HEAD'), `${'0'.repeat(40)} ${head} Fixture <fixture@example.invalid> 1791676800 +0000\tcheckout: moving from main to ${branch}\n`, { mode: 0o600 });
   const projectionManifest = observeQuarantineManifest(projection, {
-    byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: false,
+    byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: projectionHardlink,
   });
   const retainedRegistration = registrationManifest(registration);
   const eligibility = { schema: 'agentic-os/user-cleanup-eligibility/v1', planDigest: coordinate,
@@ -68,6 +69,14 @@ function apply(state, extra = {}) {
   return applyQuarantineRetirement(state.plan, { cwd: state.root,
     authorization: state.authorization, stopped: true, discardRecovery: true,
     now: () => NOW + 1_000, probe: () => {}, ...extra });
+}
+function interrupt(state) {
+  const content = { schema: 'agentic-os/quarantine-retirement-intent/v2', planDigest: state.plan.planDigest,
+    plan: state.plan, authorizationDigest: governanceDigest(state.authorization), authorizedAt: NOW + 1_000 };
+  const intent = { ...content, intentDigest: governanceDigest(content) };
+  writeFileSync(join(state.operationPath, 'retirement.intent.json'), canonicalJson(intent), { mode: 0o600 });
+  chmodSync(state.projection, 0o700); rmSync(join(state.projection, 'recovery.txt'));
+  return intent;
 }
 
 test('exact local-consent retirement removes only the projection and leaves branch evidence', t => {
@@ -114,6 +123,16 @@ test('large retirement trees use bounded row comparisons and complete without pa
   assert.equal(existsSync(join(state.registration, 'HEAD')), true);
 });
 
+test('quarantine retirement removes same-tree hard links without a false drift stop', t => {
+  const state = fixture(t, { projectionHardlink: true });
+  const receipt = apply(state);
+  assert.equal(receipt.bytesDeleted, true);
+  assert.equal(receipt.logicalBytesUnlinked, Buffer.byteLength('discard me\n') + 2 * Buffer.byteLength('shared bytes\n'));
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
+  assert.equal(existsSync(join(state.registration, 'HEAD')), true);
+});
+
 test('retirement requires the exact plan digest and both irreversible acknowledgments', t => {
   const state = fixture(t);
   for (const input of [
@@ -153,6 +172,34 @@ test('stale plans and interrupted intents fail closed', t => {
   writeFileSync(join(state.operationPath, 'retirement.intent.json'), '{}', { mode: 0o600 });
   assert.throws(() => apply(state), /state/u);
   assert.equal(existsSync(state.projection), true);
+});
+
+test('an exact fresh resume plan finishes a partially unlinked projection and retains prior consent evidence', t => {
+  const state = fixture(t), intent = interrupt(state);
+  const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
+  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v3');
+  assert.equal(resume.resumeIntentDigest, intent.intentDigest);
+  assert.equal(resume.projection.bytes, 0);
+  const receipt = applyQuarantineRetirement(resume, { cwd: state.root,
+    authorization: `agentic-os:quarantine-retirement:${resume.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 3_000, probe: () => {} });
+  assert.equal(receipt.originalIntentDigest, intent.intentDigest);
+  assert.equal(receipt.logicalBytesUnlinked, state.plan.projection.bytes);
+  assert.equal(receipt.resumedLogicalBytesUnlinked, 0);
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(state.registration), true);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
+});
+
+test('resume refuses residual projection drift after planning', t => {
+  const state = fixture(t); interrupt(state);
+  const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
+  writeFileSync(join(state.projection, 'new.txt'), 'unreviewed residual\n', { mode: 0o600 });
+  assert.throws(() => applyQuarantineRetirement(resume, { cwd: state.root,
+    authorization: `agentic-os:quarantine-retirement:${resume.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 3_000, probe: () => {} }), /retirement-drift/u);
+  assert.equal(existsSync(join(state.projection, 'new.txt')), true);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), true);
 });
 
 test('cleanup CLI routes the nested retire command to its exact argument grammar', t => {

@@ -30,20 +30,17 @@ export function pathIdentity(path, label = 'filesystem entry') {
   if (identity.kind === 'other') throw new Error(`${label} has an unsupported type`);
   return identity;
 }
-
 export function assertPathIdentity(expected, label = 'filesystem entry') {
   const actual = pathIdentity(expected.path, label);
   if (!sameNode(expected, actual)) throw new Error(`${label} identity changed`);
   return actual;
 }
-
 export function unlinkExactPath(expected, label = 'filesystem entry') {
   assertPathIdentity(expected, label);
   unlinkSync(expected.path);
 }
 function assertCopyLimit(maxBytes, label) {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
-    throw new TypeError(`${label} byte limit must be a nonnegative safe integer`);
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new TypeError(`${label} byte limit must be a nonnegative safe integer`);
 }
 function writeAll(descriptor, bytes) {
   for (let offset = 0; offset < bytes.length;) {
@@ -54,8 +51,7 @@ function writeAll(descriptor, bytes) {
 }
 function assertOpenedPath(opened, path, label, { singleLink = false } = {}) {
   const atPath = lstatSync(path, { bigint: true, throwIfNoEntry: false });
-  if (!opened.isFile() || !sameNode(opened, atPath) || (singleLink && opened.nlink !== 1n))
-    throw new Error(`${label} identity changed`);
+  if (!opened.isFile() || !sameNode(opened, atPath) || (singleLink && opened.nlink !== 1n)) throw new Error(`${label} identity changed`);
   return identitySnapshot(opened, path);
 }
 /** Copy one stable regular file to a new, distinct, single-link pathname. */
@@ -158,13 +154,11 @@ function sameOwnedEntry(expected, actual) {
       && expected.ctimeNs === actual.ctimeNs && expected.size === actual.size
       && expected.mtimeNs === actual.mtimeNs);
 }
-
 function exactTreeError(label, detail) {
   return Object.assign(new Error(`${label} contains unknown, missing, or replaced entries`), {
     code: 'ERR_EXACT_TREE_DRIFT', detail,
   });
 }
-
 function assertDescendants(root, paths, label) {
   if (new Set(paths).size !== paths.length) throw exactTreeError(label, { duplicate: true });
   for (const path of paths) {
@@ -173,7 +167,6 @@ function assertDescendants(root, paths, label) {
       throw exactTreeError(label, { outside: path });
   }
 }
-
 function scanTree(root, label) {
   const entries = [];
   const visit = (directory) => {
@@ -205,15 +198,30 @@ export function captureExactTree(root, paths, label = 'private temporary tree') 
 export function removeExactTree(root, manifest, label = 'private temporary tree') {
   const paths = manifest.map(({ path }) => path);
   const actual = captureExactTree(root, paths, label);
-  const actualByPath = new Map(actual.map((entry) => [entry.path, entry]));
-  const changed = manifest.filter((entry) => !sameOwnedEntry(entry, actualByPath.get(entry.path)))
+  const changed = manifest.filter((entry, index) => !sameOwnedEntry(entry, actual[index]))
     .map(({ path }) => path);
   if (changed.length > 0) throw exactTreeError(label, { changed });
+  const expectedByPath = new Map(manifest.map((entry) => [entry.path, entry]));
+  const filesByInode = new Map();
+  for (const entry of manifest.filter(({ kind }) => kind !== 'directory')) {
+    const key = `${entry.dev}:${entry.ino}`, group = filesByInode.get(key) ?? [];
+    group.push(entry); filesByInode.set(key, group);
+  }
   const deepest = (left, right) => right.path.length - left.path.length;
   for (const entry of manifest.filter(({ kind }) => kind !== 'directory').sort(deepest)) {
-    if (!sameOwnedEntry(entry, pathIdentity(entry.path, label)))
+    const expected = expectedByPath.get(entry.path), current = pathIdentity(entry.path, label);
+    if (!sameOwnedEntry(expected, current))
       throw exactTreeError(label, { changed: [entry.path] });
     unlinkSync(entry.path);
+    expectedByPath.delete(entry.path);
+    const key = `${entry.dev}:${entry.ino}`, siblings = filesByInode.get(key).filter(({ path }) => expectedByPath.has(path));
+    if (!siblings.length) continue;
+    const sibling = pathIdentity(siblings[0].path, label);
+    if (sibling.ctimeNs === current.ctimeNs
+      || !sameOwnedEntry({ ...siblings[0], nlink: current.nlink - 1n, ctimeNs: sibling.ctimeNs }, sibling))
+      throw exactTreeError(label, { changed: siblings.map(({ path }) => path) });
+    for (const { path } of siblings)
+      expectedByPath.set(path, { ...expectedByPath.get(path), nlink: sibling.nlink, ctimeNs: sibling.ctimeNs });
   }
   for (const entry of manifest.filter(({ kind }) => kind === 'directory').sort(deepest)) {
     const actualEntry = pathIdentity(entry.path, label);
@@ -242,11 +250,9 @@ function ownedDirectoryIdentity(path, label, mode) {
 export function privateDirectoryIdentity(path, label = 'private directory') {
   return ownedDirectoryIdentity(path, label, 0o700n);
 }
-
 export function legacyPrivateDirectoryIdentity(path, label = 'private directory') {
   return ownedDirectoryIdentity(path, label, 0o755n);
 }
-
 /** Tighten the exact opened legacy directory without following or adopting a replacement path. */
 export function tightenLegacyPrivateDirectory(
   path, label = 'private directory', { onTightenAttempt = null, onTightened = null } = {},
@@ -280,23 +286,17 @@ export function tightenLegacyPrivateDirectory(
     throw new Error(`${label} identity changed after mode tightening`);
   return actual;
 }
-
 export function assertPrivateDirectoryIdentity(expected, label = 'private directory') {
   const actual = privateDirectoryIdentity(expected.path, label);
   if (!actual || actual.dev !== expected.dev || actual.ino !== expected.ino
-      || actual.mode !== expected.mode || actual.uid !== expected.uid)
-    throw new Error(`${label} identity changed`);
+      || actual.mode !== expected.mode || actual.uid !== expected.uid) throw new Error(`${label} identity changed`);
   return actual;
 }
 
 /** Read one stable, private, single-link regular file inside a stable private directory. */
 export function readPrivateFile(path, maxBytes, label, parent) {
   const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
-  if (!before) {
-    const error = new Error(`${label} is missing`);
-    error.code = 'ENOENT';
-    throw error;
-  }
+  if (!before) throw Object.assign(new Error(`${label} is missing`), { code: 'ENOENT' });
   if (!before.isFile() || before.isSymbolicLink())
     throw new Error(`${label} must be a direct regular file`);
   if ((before.mode & 0o7777n) !== 0o600n) throw new Error(`${label} mode must be 0600`);
