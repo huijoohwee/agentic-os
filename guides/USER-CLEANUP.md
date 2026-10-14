@@ -119,6 +119,13 @@ merge must remain an ancestor of current main. This is content inclusion, not pr
 method or historical branch enforcement. Squash defaults, strict squash-only profiles and revision-bound
 rebase choices continue to govern integration. Recovery neither merges nor rewrites a branch.
 
+If the lane record already marks missing checkout bytes `unrecoverable-accepted`, recovery mode may
+quarantine the exact retained checkout only when its ref, head and path still match the record and the
+checkout is clean. The fresh plan binds the merged PR, successful checks and complete inventory; apply
+retains the projection, registration, refs and objects. Missing historical bytes remain unrecovered,
+and this operation does not authorize their discard, retire a claim or grant provider authority. Closeout
+accepts the disposition only while it independently verifies that retained quarantine.
+
 For a stopped detached worktree retained at an ancestor of the checked PR head, explicitly add
 `--detached` to the recovery plan. The plan keeps the reviewed PR head and actual detached HEAD separate.
 Both must have exact source-content inclusion at the actual merge, and the detached commit must be an
