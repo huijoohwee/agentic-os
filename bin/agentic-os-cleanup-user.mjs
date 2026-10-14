@@ -1,4 +1,3 @@
-/** Explicit local-consent cleanup; profile recovery requires its own operator opt-in. */
 import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -9,10 +8,10 @@ import { loadRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget, observeRetainedQuarantineEvidence } from '../src/cleanup-quarantine.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
-import { privateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateFileExclusive,
+import { privateDirectoryIdentity, legacyPrivateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateFileExclusive,
   readPrivateFile, captureExactTree, pathIdentity, removeExactTree, unlinkExactPath,
   tightenLegacyPrivateDirectory } from '../src/file-integrity.mjs';
-import { observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
+import { inferMergedReviewWorkflow, observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
 import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
@@ -37,7 +36,6 @@ function refuseUnknownLaneBytes(targetPath, root) {
 }
 export const readUserCleanupJson = (path, label, parent = null) => JSON.parse(new TextDecoder('utf-8', { fatal: true })
   .decode(parent ? readPrivateFile(path, 64000, label, parent) : readBoundedStableFile(path, 64000, label)));
-/** Classify the enrolled local-consent documentation path without changing physical mechanics. */
 function resolveChangeClass(declared, observed) {
   if (declared === undefined) return { declared: null, observed, fastPath: false };
   if (!SUPPORTED_CHANGE_CLASSES.includes(declared)) refuse('unsupported-change-class');
@@ -57,9 +55,6 @@ function policy(root, mode = MODE, { changeClass = undefined } = {}) {
   if (![MODE, NO_CI_MODE, RECOVERY_MODE].includes(mode)
     || read(root, ['config', '--local', '--get-all', KEY], { allowFail: true }) !== enrollment)
     refuse('local-enrollment-required');
-  // For docs-only change class, the profile-governed repository check is
-  // relaxed: local consent is the accepted terminal state and the protected
-  // authority chain is not required for this change class.
   if (mode !== RECOVERY_MODE && changeClass !== 'docs-only'
     && (lstatSync(join(root, '.agentic-os.json'), { throwIfNoEntry: false })
     || read(root, ['ls-tree', 'refs/heads/main', '--', '.agentic-os.json'])
@@ -161,24 +156,25 @@ function locked(root, operation) {
   try { result = operation(); } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
-const RETIRE_SCHEMA = 'agentic-os/quarantine-retirement-plan/v1';
+const RETIRE_SCHEMA = 'agentic-os/quarantine-retirement-plan/v2';
+function retirementPrivateDirectory(path, label) { const id = pathIdentity(path, label), mode = Number(id.mode & 0o7777n), checked = mode === 0o700 ? privateDirectoryIdentity(path, label) : mode === 0o755 ? legacyPrivateDirectoryIdentity(path, label) : null; if (id.kind !== 'directory' || typeof process.getuid === 'function' && id.uid !== BigInt(process.getuid()) || !checked || checked.dev !== id.dev || checked.ino !== id.ino || checked.uid !== id.uid || checked.mode !== id.mode) refuse('retirement-registration'); return [String(id.dev), String(id.ino), String(id.uid), mode]; }
 function retirementFacts(root, coordinate) {
   if (!/^[a-f0-9]{64}$/u.test(coordinate ?? '')) refuse('retirement-coordinate');
   const common = realpathSync(commonDir(root)), base = join(common, 'agentic-os-cleanup-quarantine'), op = join(base, coordinate);
   if (!privateDirectoryIdentity(base, 'cleanup quarantine') || !privateDirectoryIdentity(op, 'cleanup operation')) refuse('retirement-path');
   const record = readUserCleanupJson(join(op, 'operation.json'), 'retirement-operation'), e = record.eligibility;
   if (record.schema !== 'agentic-os/worktree-quarantine-operation/v1' || e?.schema !== 'agentic-os/user-cleanup-eligibility/v1' || e.planDigest !== coordinate) refuse('retirement-schema');
-  const projection = join(op, 'projection'), registration = join(op, 'registration'), decode = bytes => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  const projection = join(op, 'projection'), registration = join(op, 'registration'), registrationRoot = retirementPrivateDirectory(registration, 'retirement-registration'), decode = bytes => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   const match = /^ref: refs\/heads\/(.+)\n$/u.exec(decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retirement-head')));
   if (!match || !isLaneRef(match[1])) refuse('retirement-ref');
   const log = decode(readBoundedStableFile(join(registration, 'logs/HEAD'), 16 * 1024 ** 2, 'retirement-head-log')).trimEnd().split('\n').at(-1)?.split(' ') ?? [], head = /^0{40}(?:0{24})?$/u.test(log[1] ?? '') ? log[0] : log[1], evidence = observeRetainedQuarantineEvidence(root, match[1], head, coordinate);
   if (!evidence || worktrees(root).some(row => row.branch === match[1])) refuse('retirement-evidence');
   const stat = lstatSync(projection, { bigint: true }), mode = stat.mode & 0o7777n; if (!stat.isDirectory() || stat.isSymbolicLink() || typeof process.getuid === 'function' && stat.uid !== BigInt(process.getuid()) || ![0o700n, 0o755n].includes(mode)) refuse('retirement-projection');
   const names = readdirSync(op).sort(), expected = ['operation.json', 'projection', 'registration', ...(names.includes('preservation.json') ? ['preservation.json'] : [])].sort();
-  if (!same(names, expected) || !privateDirectoryIdentity(registration, 'retirement-registration')) refuse('retirement-state');
+  if (!same(names, expected) || !same(registrationRoot, retirementPrivateDirectory(registration, 'retirement-registration'))) refuse('retirement-state');
   return { root, common, coordinate, operationDigest: governanceDigest(record), eligibilityDigest: governanceDigest(e), branch: match[1], head,
     branchTip: read(root, ['rev-parse', '--verify', `refs/heads/${match[1]}^{commit}`], { allowFail: true }), projection: evidence.projectionManifest,
-    registration: evidence.registrationManifest, preservationReceiptDigest: names.includes('preservation.json') ? governanceDigest(readUserCleanupJson(join(op, 'preservation.json'), 'retirement-preservation')) : null, operationPath: op, projectionPath: projection, registrationPath: registration, rootMode: Number(mode) };
+    registration: evidence.registrationManifest, registrationRoot, preservationReceiptDigest: names.includes('preservation.json') ? governanceDigest(readUserCleanupJson(join(op, 'preservation.json'), 'retirement-preservation')) : null, operationPath: op, projectionPath: projection, registrationPath: registration, rootMode: Number(mode) };
 }
 function retirementTree(path) { const paths = [], visit = root => { for (const name of readdirSync(root).sort()) { const child = join(root, name), id = pathIdentity(child, 'retirement-tree'); paths.push(child); if (id.kind === 'directory') visit(child); } };
   visit(path); return paths.map(value => retirementIdentity(pathIdentity(value, 'retirement-tree')));
@@ -191,7 +187,7 @@ export function planQuarantineRetirement({ cwd = process.cwd(), coordinate, now 
     return { ...payload, planDigest: governanceDigest(payload) }; });
 }
 export function applyQuarantineRetirement(plan, { cwd = process.cwd(), authorization, stopped, discardRecovery, now = Date.now, probe = path => { try { execFileSync('lsof', ['-t', '+D', path], { timeout: 120000, stdio: ['ignore','pipe','pipe'] }); refuse('retirement-open-files'); } catch (error) { if (error.reason) throw error; if (error.status !== 1 || error.stderr?.length) refuse('retirement-open-scan'); } } } = {}) {
-  fields(plan, 'authority,branch,branchTip,common,coordinate,eligibilityDigest,expiresAt,head,issuedAt,operationDigest,preservationReceiptDigest,projection,registration,recoveryBytesDiscarded,retentionPolicy,root,schema,rootMode,planDigest');
+  fields(plan, 'authority,branch,branchTip,common,coordinate,eligibilityDigest,expiresAt,head,issuedAt,operationDigest,preservationReceiptDigest,projection,registration,registrationRoot,recoveryBytesDiscarded,retentionPolicy,root,schema,rootMode,planDigest');
   const root = realpathSync(repoRoot(cwd)), { planDigest, ...body } = plan;
   if (!/^[a-f0-9]{64}$/u.test(planDigest ?? '') || !Number.isSafeInteger(body.issuedAt) || !Number.isSafeInteger(body.expiresAt) || body.expiresAt - body.issuedAt !== 900000 || root !== body.root || governanceDigest(body) !== planDigest || authorization !== `agentic-os:quarantine-retirement:${planDigest}` || stopped !== true || discardRecovery !== true) refuse('retirement-authorization');
   if (currentBranch(root) !== 'main' || read(root, ['status', '--porcelain', '--untracked-files=all'])) refuse('retirement-controller');
@@ -199,18 +195,17 @@ export function applyQuarantineRetirement(plan, { cwd = process.cwd(), authoriza
     const observed = { ...facts }; ['operationPath','projectionPath','registrationPath'].forEach(key => delete observed[key]);
     const time = now(); if (!Number.isSafeInteger(time) || time < body.issuedAt || time >= body.expiresAt) refuse('retirement-expired');
     if (Object.keys(expected).some(key => !same(expected[key], key === 'schema' ? RETIRE_SCHEMA : key === 'authority' ? 'explicit-local-user-consent' : key === 'retentionPolicy' ? 'manual-per-coordinate-no-age-eviction' : key === 'recoveryBytesDiscarded' ? true : observed[key]))) refuse('retirement-drift');
-    const projectionTree = retirementTree(facts.projectionPath), registrationTree = retirementTree(facts.registrationPath); probe(facts.projectionPath);
-    const fresh = retirementFacts(root, body.coordinate); if (!same(fresh.projection, body.projection) || !same(fresh.registration, body.registration) || fresh.operationDigest !== body.operationDigest || fresh.branchTip !== body.branchTip || !same(projectionTree, retirementTree(facts.projectionPath))) refuse('retirement-drift');
-    const intentPath = join(facts.operationPath, 'retirement.intent.json'), receiptPath = join(facts.operationPath, 'retirement.json'); if (lstatSync(intentPath, { throwIfNoEntry: false }) || lstatSync(receiptPath, { throwIfNoEntry: false })) refuse('retirement-state');
-    const intentContent = { schema: 'agentic-os/quarantine-retirement-intent/v1', planDigest, plan, authorizationDigest: governanceDigest(authorization), authorizedAt: time }, intent = { ...intentContent, intentDigest: governanceDigest(intentContent) }; writePrivateFileExclusive(intentPath, Buffer.from(canonicalJson(intent)), { maxBytes: 64000, label: 'retirement intent' });
-    try { if (facts.rootMode === 0o755) tightenLegacyPrivateDirectory(facts.projectionPath, 'retirement projection'); const tightenedTree = retirementTree(facts.projectionPath); if (!same(projectionTree, tightenedTree)) refuse('retirement-tree-drift');
-      const rootId = privateDirectoryIdentity(facts.projectionPath, 'retirement projection'), entries = captureExactTree(rootId, tightenedTree.map(row => row[0]), 'retirement projection');
+    const projectionTree = retirementTree(facts.projectionPath), registrationTree = retirementTree(facts.registrationPath); probe(facts.projectionPath); probe(facts.registrationPath);
+    const fresh = retirementFacts(root, body.coordinate); if (!same(fresh.projection, body.projection) || !same(fresh.registration, body.registration) || !same(fresh.registrationRoot, body.registrationRoot) || fresh.preservationReceiptDigest !== body.preservationReceiptDigest || fresh.operationDigest !== body.operationDigest || fresh.branchTip !== body.branchTip || !same(projectionTree, retirementTree(facts.projectionPath)) || !same(registrationTree, retirementTree(facts.registrationPath))) refuse('retirement-drift'); const intentPath = join(facts.operationPath, 'retirement.intent.json'), receiptPath = join(facts.operationPath, 'retirement.json'); if (lstatSync(intentPath, { throwIfNoEntry: false }) || lstatSync(receiptPath, { throwIfNoEntry: false })) refuse('retirement-state');
+    const intentContent = { schema: 'agentic-os/quarantine-retirement-intent/v2', planDigest, plan, authorizationDigest: governanceDigest(authorization), authorizedAt: time }, intent = { ...intentContent, intentDigest: governanceDigest(intentContent) }; writePrivateFileExclusive(intentPath, Buffer.from(canonicalJson(intent)), { maxBytes: 64000, label: 'retirement intent' });
+    try { if (!same(retirementPrivateDirectory(facts.registrationPath, 'retirement registration'), body.registrationRoot)) refuse('retirement-registration-drift');
+      if (body.registrationRoot[3] === 0o755) tightenLegacyPrivateDirectory(facts.registrationPath, 'retirement registration', { onTightenAttempt: e => { if (e.dev !== body.registrationRoot[0] || e.ino !== body.registrationRoot[1]) refuse('retirement-registration-drift'); } }); const privateRegistration = privateDirectoryIdentity(facts.registrationPath, 'retirement registration'); if (!privateRegistration || [String(privateRegistration.dev), String(privateRegistration.ino), String(privateRegistration.uid)].some((value, index) => value !== body.registrationRoot[index]) || (privateRegistration.mode & 0o7777n) !== 0o700n || !same(registrationTree, retirementTree(facts.registrationPath))) refuse('retirement-registration-drift'); if (facts.rootMode === 0o755) tightenLegacyPrivateDirectory(facts.projectionPath, 'retirement projection'); const tightenedTree = retirementTree(facts.projectionPath); if (!same(projectionTree, tightenedTree)) refuse('retirement-tree-drift'); const rootId = privateDirectoryIdentity(facts.projectionPath, 'retirement projection'), entries = captureExactTree(rootId, tightenedTree.map(row => row[0]), 'retirement projection');
       if (!same(tightenedTree, entries.map(retirementIdentity))) refuse('retirement-tree-drift'); removeExactTree(rootId, entries, 'retirement projection');
       if (!same(registrationTree, retirementTree(facts.registrationPath)) || read(root, ['rev-parse', '--verify', `refs/heads/${facts.branch}^{commit}`], { allowFail: true }) !== body.branchTip) refuse('retirement-registration-drift');
-      const receipt = { schema: 'agentic-os/quarantine-retirement-receipt/v1', planDigest, coordinate: body.coordinate, receiptPath,
+      const receipt = { schema: 'agentic-os/quarantine-retirement-receipt/v2', planDigest, coordinate: body.coordinate, receiptPath,
         authorizationDigest: intent.authorizationDigest, branch: body.branch, retainedHead: body.head, branchTip: body.branchTip, operationDigest: body.operationDigest, eligibilityDigest: body.eligibilityDigest,
         logicalBytesUnlinked: body.projection.bytes, recoveryBytesDiscarded: true, stoppedAcknowledged: true, bytesDeleted: true, projectionRootModeBefore: body.rootMode,
-        rootPermissionsTightened: body.rootMode === 0o755, physicalFreeSpaceIncreaseProven: false, registrationRetained: true,
+        projectionRootPermissionsTightened: body.rootMode === 0o755, registrationRootModeBefore: body.registrationRoot[3], registrationRootPermissionsTightened: body.registrationRoot[3] === 0o755, physicalFreeSpaceIncreaseProven: false, registrationRetained: true,
         branchRefsMutated: false, objectDatabaseMutated: false, providerAuthority: false, claimRetired: false,
         operatingSystemExclusivityProven: false, executedAt: time };
       const signed = { ...receipt, receiptDigest: governanceDigest(receipt) }; writePrivateFileExclusive(receiptPath, Buffer.from(canonicalJson(signed)), { maxBytes: 64000, label: 'retirement receipt' }); unlinkExactPath(pathIdentity(intentPath, 'retirement intent'), 'retirement intent'); return signed;
@@ -271,6 +266,20 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     return validatePlan(plan);
   });
 }
+export function planRecoveryCleanupFromLane({ cwd = process.cwd(), ref } = {}, options = {}) {
+  const root = realpathSync(repoRoot(cwd));
+  if (!isLaneRef(ref)) refuse('recovery-lane-ref');
+  const current = resolvePolicy(root, RECOVERY_MODE, options.resolvePolicy ?? null), record = get(ref, root);
+  if (!record || !['published', 'queued', 'integrated'].includes(record.state) || !Number.isSafeInteger(record.pr) || record.pr < 1
+    || typeof record.worktree !== 'string' || !/^[a-f0-9]{40}$/u.test(record.head ?? ''))
+    refuse('recovery-lane-binding');
+  let targetPath; try { targetPath = realpathSync(record.worktree); } catch { refuse('recovery-lane-target'); }
+  if (targetPath !== record.worktree || currentBranch(targetPath) !== ref || read(targetPath, ['rev-parse', '--verify', 'HEAD']) !== record.head) refuse('recovery-lane-binding');
+  const requiredChecks = [...current.requiredChecks].sort(), workflow = inferMergedReviewWorkflow({ repository: current.repository, pr: record.pr, requiredChecks }, { cwd: root, ...options });
+  const plan = planUserCleanup({ cwd: root, target: targetPath, pr: record.pr, requiredChecks, workflow, recovery: true }, options);
+  if (plan.targetPath !== targetPath || plan.pr !== record.pr || plan.branch !== ref || plan.head !== record.head) refuse('recovery-lane-binding');
+  return plan;
+}
 export function applyUserCleanup(input, { cwd = process.cwd(), authorization, stopped, now = Date.now, ...options } = {}) {
   const plan = validatePlan(input), root = realpathSync(repoRoot(cwd));
   const policyResolver = options.resolvePolicy ?? null;
@@ -323,7 +332,6 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
-/** Unified CLI dispatch; physical consent and quarantine semantics remain unchanged. */
 const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [] });
 export function runUnifiedCleanup(root, argv, out = console.log) {
   if (!['plan', 'apply', 'sweep', 'retire'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep|retire> [options]');
@@ -349,12 +357,19 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
   if (argv[0] === 'plan') {
     const modeFlag = unified ? option(argv, 'mode') || 'local-consent' : null;
     if (unified && !Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
+    const recovery = modeFlag === 'recovery' || (!unified && argv.includes('--recovery'));
+    const ref = option(argv, 'ref');
+    if (ref !== null) {
+      if (!recovery) refuse('recovery-lane-mode');
+      out(canonicalJson(planRecoveryCleanupFromLane({ cwd: root, ref })));
+      return 0;
+    }
     const noCI = modeFlag === 'no-ci', pr = Number(option(argv, 'pr'));
     const changeClass = option(argv, 'change-class') || undefined;
     const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
       requiredChecks: noCI ? [] : unified && !option(argv, 'checks') ? [] : option(argv, 'checks').split(','),
       workflow: noCI ? null : option(argv, 'workflow'), noCI,
-      recovery: modeFlag === 'recovery' || (!unified && argv.includes('--recovery')), detached: argv.includes('--detached'),
+      recovery, detached: argv.includes('--detached'),
       mergedProjection: argv.includes('--merged-projection'),
       historicalCheckGap: argv.includes('--historical-check-gap'),
       reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
@@ -365,11 +380,9 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
   out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })));
   return 0;
 }
-/** Bounded observation-only stale-ref candidates; no refs or bytes are removed. */
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
 const SWEEP_LIMIT = 256;
 const sweepRefFormat = '%(refname:short)%09%(objectname)%09%(objecttype)%09%(committerdate:unix)';
-/** Project one bounded ref snapshot; the caller revalidates each selected target before effects. */
 export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, staleDays, now = Date.now() }) {
   if (!Array.isArray(refs) || !Array.isArray(mergedBranches) || !Array.isArray(activeBranches))
     refuse('sweep-inventory-shape');
@@ -400,7 +413,6 @@ export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, 
   if (mergedBranches.some(branch => !seen.has(branch))) refuse('sweep-ref-drift');
   return candidates;
 }
-/** Read fixed-size batches so Git process count does not grow with the lane count. */
 export function observeUserCleanupSweep(root, { staleDays, requireMerged = false,
   requireNoActiveWorktree = false, now = Date.now, observeLines = observeGitLines,
   listWorktrees = worktrees, observePolicy = cwd => policy(cwd, MODE) } = {}) {

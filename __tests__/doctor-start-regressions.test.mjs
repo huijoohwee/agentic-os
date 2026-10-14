@@ -389,7 +389,7 @@ test('a held clone-wide start lock refuses before branch or worktree mutation', 
   assert.equal(existsSync(lock), true, 'a refused contender must not remove another holder lock');
 });
 
-test('duplicate lane identity refuses before an advanced remote mutates tracking evidence', (t) => {
+test('duplicate lane identity refuses after START refreshes the protected tracking ref', (t) => {
   const { parent, root, run } = fixture(t);
   const bare = join(parent, 'remote.git');
   git(['init', '--quiet', '--bare', bare], { cwd: parent });
@@ -409,8 +409,8 @@ test('duplicate lane identity refuses before an advanced remote mutates tracking
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /blocked-lane-already-exists/u);
-  assert.equal(run(['rev-parse', 'refs/remotes/origin/main']), before,
-    'duplicate lane refusal must precede fetch evidence mutation');
+  assert.equal(run(['rev-parse', 'refs/remotes/origin/main']), advanced,
+    'START must refresh the protected ref before refusing duplicate lane identity');
   assert.equal(run(['--git-dir', bare, 'rev-parse', 'refs/heads/main']), advanced);
   assert.equal(run(['rev-parse', 'refs/heads/agent/test-device/duplicate']), before);
   assert.equal(git(['rev-parse', 'HEAD'], { cwd: created.path }), before);

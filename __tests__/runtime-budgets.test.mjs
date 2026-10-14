@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40949, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40920, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -77,19 +77,16 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
     ]],
     ['docs/START-WORKFLOW.md', [
-      '`npm run release:common -- start <scope> --write=<paths> --plan=<committed-plan> [--checkout-limit=<0..5>]`',
-      '--mission=<manifest>',
-      'Five max/repo; canonical excluded; no nesting.',
-      'One checkout/new mission;',
-      'cap binds;',
-      'zero reuses.',
-      'No `--plan`/`--mission`: clone selection; new task: committed `--plan`.',
-      '--readmit --expected-head=<sha>',
-      'Work in returned checkout.',
-      'Browser UI: immediately run `npm run dev`',
-      'visibly open reported URL for review, recheck after edits.',
-      'No script/browser/page: report blocker, not live proof.',
-      'Headless: N/A.',
+      'Use release:common start <scope> --write=<paths>. New task: committed --plan.',
+      'Five per repo; canonical excluded; no nesting.',
+      'One checkout/task; resume its bound mission.',
+      'Without plan/mission, use clone.',
+      'Readmit/published continuation: see guides/LANE-RECERTIFICATION.md.',
+      "Valid START locks and fetches the profile's protected ref (normally origin/main)",
+      'before canonical/mission checks, including reuse/refusal.',
+      'fetch updates tracking only, not local main or release authority.',
+      'Browser: run npm run dev; open/recheck URL.',
+      'Unsupported: report blocker, not live proof. Headless: N/A.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'complete --ref=<lane>',

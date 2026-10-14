@@ -35,20 +35,49 @@ function fixture(t) {
   const remote = join(parent, 'remote.git'); run('init', '--quiet', '--bare', remote);
   run('remote', 'add', 'origin', remote); run('push', '--quiet', '-u', 'origin', 'main');
   ensureRepositoryTrust(root, profile, { allowCreate: true });
-  const events = [], effects = [];
+  const events = [], effects = [], fetches = [];
   const services = { out: line => events.push(line), err: line => events.push(line),
-    projectCache: (record, cwd) => records.put(record, cwd), effectReceipt: (operation, receipt) => { effects.push(operation); return receipt; },
-    remoteName: () => 'origin', requireCanonical: () => assert.equal(run('branch', '--show-current'), 'main') };
+    projectCache: (record, cwd) => records.put(record, cwd), effectReceipt: (operation, receipt) => {
+      if (operation === 'fetch') { fetches.push(receipt); events.push('fetch'); }
+      else effects.push(operation);
+      return receipt;
+    }, remoteName: () => 'origin', requireCanonical: () => {
+      events.push('canonical');
+      assert.equal(run('branch', '--show-current'), 'main');
+    } };
   const start = (scope, ...flags) => cmdStart(root, [scope, '--device=test-device', '--write=owned.txt', ...flags], policy, profile, services);
   const selected = () => readSelectedWorkflow(root, profile.repository, { required: true });
-  return { root, parent, run, plan, profile, policy, events, effects, start, selected, services };
+  return { root, parent, run, plan, profile, policy, events, effects, fetches, start, selected, services };
 }
 
-test('zero declared allowance fails before fetch, hydration or checkout', async t => {
+test('zero declared allowance still refreshes the protected ref before refusing checkout', async t => {
   const f = fixture(t);
   await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=0'), /allows no checkout/);
-  assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
+  assert.equal(f.fetches.length, 1); assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
   assert.equal(f.run('status', '--porcelain'), '');
+});
+
+test('START refreshes the protected branch before canonical checks and mission planning', async t => {
+  const f = fixture(t), initialHead = headSha(f.policy.protectedRef, f.root);
+  const updater = join(f.parent, 'updater');
+  await exec('git', ['clone', '--quiet', join(f.parent, 'remote.git'), updater]);
+  await exec('git', ['-C', updater, 'config', 'user.name', 'Test']);
+  await exec('git', ['-C', updater, 'config', 'user.email', 'test@example.invalid']);
+  writeFileSync(join(updater, 'upstream.txt'), 'new protected revision\n');
+  await exec('git', ['-C', updater, 'add', 'upstream.txt']);
+  await exec('git', ['-C', updater, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'advance protected branch']);
+  const expectedHead = (await exec('git', ['-C', updater, 'rev-parse', 'HEAD'])).stdout.trim();
+  const remote = join(f.parent, 'remote.git');
+  await exec('git', ['-C', remote, 'fetch', '--quiet', updater, 'main']);
+  await exec('git', ['-C', remote, 'update-ref', 'refs/heads/main', expectedHead]);
+  assert.notEqual(initialHead, expectedHead);
+  assert.equal(headSha(f.policy.protectedRef, f.root), initialHead);
+
+  assert.equal(await f.start('fresh', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
+  assert.equal(headSha(f.policy.protectedRef, f.root), expectedHead);
+  assert.equal(f.events.indexOf('fetch') < f.events.indexOf('canonical'), true);
+  assert.equal(f.fetches.length, 1);
+  assert.equal(f.selected().manifest.allocations[0].baseRevision, expectedHead);
 });
 
 
