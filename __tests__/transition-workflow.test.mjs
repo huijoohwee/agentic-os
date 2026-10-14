@@ -25,11 +25,15 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-graph/pull/1492',
     'https://github.com/huijoohwee/agentic-graph/pull/1504',
     'https://github.com/huijoohwee/agentic-os/pull/425',
+    'https://github.com/huijoohwee/agentic-os/pull/438',
+    'https://github.com/huijoohwee/agentic-os/pull/441',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-graph/pull/1492', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-graph/pull/1504', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-os/pull/425', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/438', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/441', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -47,6 +51,24 @@ test('committed transition workflow is bound to the canonical authority policy',
     adoptionScope: ['recovery/current-historical-content/pr-425'],
     rationale: 'Current recording of PR #425 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
   });
+  for (const [number, baseRevision, headRevision, mergeRevision, treeRevision] of [
+    ['438', 'df4f6f3c922e81f74c201946d183347430b376ac', '8cd0e1d4872fe8633f1470c6654ba219ad5d0c84', 'e1a08ce7467daeddd7d02bf37b5d81258137e5b8', 'ab4271f21113f65e9b4dc6be58ac4f6735ee6bee'],
+    ['441', 'e1a08ce7467daeddd7d02bf37b5d81258137e5b8', '50c38ea3d45cdbfce817ad3e13bcc0c2886efb50', '0a62aae2c1d6dd60a1ac75164fad415dde4f809f', '0469f45ce0e1fd0ff8125b61ebdfff877f3600a7'],
+  ]) {
+    const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
+    assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
+      schema: 'agentic-os/historical-content-enrollment/v1',
+      repository: 'github.com/huijoohwee/agentic-os',
+      reviewLocator,
+      baseRevision,
+      headRevision,
+      mergeRevision,
+      treeRevision,
+      checkContexts: ['budgets', 'test'],
+      adoptionScope: [`recovery/current-historical-content/pr-${number}`],
+      rationale: `Current recording of PR #${number} merge content with historical protection, required-check policy, rule-suite and method authority unproven.`,
+    });
+  }
   assert.equal(policy.preservationAdoptions[0].historicalSuccessionAuthorityProven, false);
   assert.deepEqual(policy.retentionAdoptions, [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
