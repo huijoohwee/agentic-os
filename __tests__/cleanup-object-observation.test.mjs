@@ -9,6 +9,7 @@ import { observeWorktreeCleanupTarget } from '../src/cleanup-quarantine.mjs';
 import { createRepositoryProfile, RETAIN_ALL_CLEANUP, governanceDigest } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
+import { deriveLocallyAvailableFields } from '../bin/agentic-os-completion-scaffold.mjs';
 
 const limits = { byteCeiling: 1000000, entryCeiling: 1000 };
 const git = (cwd, ...args) => execFileSync('git', args, {cwd,encoding:'utf8'}).trim();
@@ -56,4 +57,56 @@ test('cleanup observes actual local-clone shared objects but refuses a hardlinke
   assert.ok(observed.sharedStateBytes > 0); assert.equal(lstatSync(object).nlink,2);
   linkSync(join(target,'file'),join(parent,'projection-alias'));
   assert.throws(()=>observeWorktreeCleanupTarget(plan,{cwd:root}), /unsupported bytes|inventory|unsafe|hardlink/);
+});
+test('cleanup planning reuses the scaffold inventory only within its expiry and apply refreshes it', t => {
+  const parent = temporary(t), root = join(parent,'repo'), target = join(parent,'lane'); mkdirSync(root);
+  git(root,'init','--quiet','--initial-branch=stable');
+  git(root,'config','user.name','Fixture'); git(root,'config','user.email','fixture@example.invalid');
+  const profile = createRepositoryProfile({repository:'github.com/example/repository',
+    canonical:{localRef:'refs/heads/stable',remoteRef:'refs/remotes/origin/stable'},
+    adapters:{repository:{id:'git',version:'1'},provider:null},
+    cleanup:{...RETAIN_ALL_CLEANUP,worktreeProjection:'quarantine',worktreeRegistration:'quarantine'}});
+  writeFileSync(join(root,'.agentic-os.json'),JSON.stringify(profile)); writeFileSync(join(root,'file'),'source');
+  git(root,'add','.'); git(root,'commit','--quiet','-m','fixture');
+  const head = git(root,'rev-parse','HEAD'); git(root,'update-ref','refs/remotes/origin/stable',head);
+  ensureRepositoryTrust(root,profile,{allowCreate:true});
+  git(root,'worktree','add','--quiet','-b','agent/device/snapshot',target,'stable');
+  const inventory = collectRecoveryInventory({cwd:target,canonicalRef:'refs/heads/stable'});
+  const observedAt = Date.now();
+  const scaffold = deriveLocallyAvailableFields({canonicalRef:'refs/heads/stable',profileDigest:profile.profileDigest,
+    requiredPlaceholders:['cleanup.plan.recoveryInventoryDigest',
+      'cleanup.plan.recoveryInventoryContentEntries','cleanup.plan.expiresAt'],
+    bundleTemplate:{cleanup:{plan:{repository:profile.repository,targetPath:target,
+      expectedBranch:'agent/device/snapshot',expectedHeadRevision:head,
+      expectedCanonicalRef:'refs/heads/stable',expectedCanonicalRevision:head,
+      profileDigest:profile.profileDigest,projectionEntryCeiling:1000,
+      recoveryInventoryDigest:'REPLACE_WITH_RECOVERY_INVENTORY_DIGEST',
+      recoveryInventoryContentEntries:'REPLACE_WITH_RECOVERY_INVENTORY_CONTENT_ENTRIES',
+      expiresAt:'REPLACE_WITH_CLEANUP_EXPIRES_AT'}}}},
+  {repository:profile.repository,ref:'agent/device/snapshot',canonicalRevision:head,
+    lane:{path:target,head}},root,{now:()=>observedAt});
+  assert.equal(scaffold.bundleTemplate.cleanup.plan.recoveryInventoryDigest,governanceDigest(inventory));
+  assert.equal(scaffold.bundleTemplate.cleanup.plan.recoveryInventoryContentEntries,
+    inventory.inventoryEntries.content);
+  const expiresAt = scaffold.bundleTemplate.cleanup.plan.expiresAt;
+  assert.ok(Math.abs(Date.parse(expiresAt) - observedAt - 900000) <= 1000);
+  assert.throws(()=>deriveLocallyAvailableFields(scaffold,
+    {repository:profile.repository,ref:'agent/device/snapshot',canonicalRevision:head,
+      lane:{path:target,head:'0'.repeat(40)}},root,{now:()=>observedAt}),
+  /scaffold identity/u);
+  const plan = {repository:profile.repository,targetPath:target,expectedBranch:'agent/device/snapshot',
+    expectedHeadRevision:head,expectedCanonicalRef:'refs/heads/stable',expectedCanonicalRevision:head,
+    profileDigest:profile.profileDigest,recoveryInventoryDigest:governanceDigest(inventory),
+    recoveryInventoryContentEntries:inventory.inventoryEntries.content,
+    expiresAt,
+    projectionByteCeiling:1000000,projectionEntryCeiling:1000,registrationByteCeiling:1000000,
+    registrationEntryCeiling:1000,sharedStateByteCeiling:1000000,sharedStateEntryCeiling:1000};
+  const reused = observeWorktreeCleanupTarget(plan,{cwd:root,reuseRecoveryInventory:true,
+    now:()=>Date.parse(expiresAt)-1});
+  assert.equal(reused.recoveryInventoryDigest,governanceDigest(inventory));
+  writeFileSync(join(target,'late-untracked'),'must be seen before apply');
+  assert.throws(()=>observeWorktreeCleanupTarget(plan,{cwd:root,forceFreshRecoveryInventory:true}),
+    /recovery inventory changed/u);
+  assert.throws(()=>observeWorktreeCleanupTarget(plan,{cwd:root,reuseRecoveryInventory:true,
+    now:()=>Date.parse(expiresAt)}),/recovery inventory changed/u);
 });
