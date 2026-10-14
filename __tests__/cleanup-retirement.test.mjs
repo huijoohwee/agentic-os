@@ -24,7 +24,7 @@ function registrationManifest(path) {
   bytes: items.reduce((sum, item) => sum + item.manifest.bytes, 0),
   entries: names.length + items.reduce((sum, item) => sum + item.manifest.entries, 0) };
 }
-function fixture(t, { registrationMode = 0o700 } = {}) {
+function fixture(t, { registrationMode = 0o700, projectionFiles = 0 } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retirement-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'); mkdirSync(root);
@@ -38,6 +38,8 @@ function fixture(t, { registrationMode = 0o700 } = {}) {
   const registration = join(operationPath, 'registration');
   mkdirSync(quarantine, { mode: 0o700 }); mkdirSync(operationPath, { mode: 0o700 });
   mkdirSync(projection, { mode: 0o755 }); writeFileSync(join(projection, 'recovery.txt'), 'discard me\n', { mode: 0o600 });
+  for (let index = 0; index < projectionFiles; index += 1)
+    writeFileSync(join(projection, `entry-${String(index).padStart(4, '0')}`), 'x', { mode: 0o600 });
   mkdirSync(registration, { mode: registrationMode }); chmodSync(registration, registrationMode);
   mkdirSync(join(registration, 'logs'), { mode: 0o700 });
   writeFileSync(join(registration, 'HEAD'), `ref: refs/heads/${branch}\n`, { mode: 0o600 });
@@ -98,6 +100,17 @@ test('legacy registration roots are bound, probed, and tightened before projecti
   assert.equal(receipt.registrationRootPermissionsTightened, true);
   assert.equal(statSync(state.registration).mode & 0o777, 0o700);
   assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(join(state.registration, 'HEAD')), true);
+});
+
+test('large retirement trees use bounded row comparisons and complete without partial intents', t => {
+  const state = fixture(t, { projectionFiles: 1200 });
+  const receipt = apply(state);
+  assert.equal(receipt.bytesDeleted, true);
+  assert.equal(receipt.logicalBytesUnlinked, Buffer.byteLength('discard me\n') + 1200);
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.intent.json')), false);
+  assert.equal(existsSync(join(state.operationPath, 'retirement.json')), true);
   assert.equal(existsSync(join(state.registration, 'HEAD')), true);
 });
 
