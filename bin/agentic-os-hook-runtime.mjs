@@ -48,7 +48,7 @@ const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-186e587d30bb0daf6927cdc1e0b528c7102e4bf9538f6a25e7a0de64c3205753',
   'v1-c9b1a5145b4253d1ad57ce901b40526d7c57cb7f4b02556953a3be2e1617f79d',
   'v1-f02f83febf4448eb30b353acd06ec2274fb9ab7253eb537285fd6fb17af0dee5',
-  'v1-40628b45b7fd1f33546dcf6e41bb4869614db132a4a42a4ac85f1625122ba51c',
+  'v1-40628b45b7fd1f33546dcf6e41bb4869614db132a4a42a4ac85f1625122ba51c','v1-fc400b918a251d063e794f477cc5202e0fbdbb5017969ca904ae9b867ee1c9b8',
 ]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
@@ -74,7 +74,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/catalog-input.mjs', mode: 0o644,
     sha256: '89276893b78148da2b67e88902ab22f6b4908a723dc4bb7ff038fe6174100219' }),
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,
-    sha256: 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f' }),
+    sha256: 'ce0a72635965be4d1ae48cb82f67f6a39492f456c53df022e714d85dbb7e18de' }),
   Object.freeze({ path: 'src/governance.mjs', mode: 0o644,
     sha256: 'ea91f7a577936590c13dac1a353ef02dbf445f86ac73b347084c9b74e38c5f10' }),
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
