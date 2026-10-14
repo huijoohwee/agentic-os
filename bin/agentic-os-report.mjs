@@ -152,7 +152,9 @@ export function formatEffectReceipt(operation, receipt) {
   if (typeof operation !== 'string' || operation.length === 0
       || !receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return null;
   const exact = JSON.stringify(receipt);
-  if (Buffer.byteLength(exact) <= RETAINED_RECEIPT_LIMIT) return exact;
+  const compactFetch = operation === 'fetch' && receipt.schema === 'agentic-os/git-fetch/v1'
+    && receipt.fetchCompleted === true;
+  if (Buffer.byteLength(exact) <= (compactFetch ? 16 * 1024 : RETAINED_RECEIPT_LIMIT)) return exact;
   const { projection, truncated } = boundedProjection(receipt);
   const output = JSON.stringify({
     schema: 'agentic-os/effect-receipt-projection/v1', operation,

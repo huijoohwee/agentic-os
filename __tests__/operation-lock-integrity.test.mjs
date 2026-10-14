@@ -220,6 +220,49 @@ test('effect receipts stay exact when bounded and explicitly project large ref i
   assert.match(projected.receiptDigest, /^[0-9a-f]{64}$/u);
 });
 
+test('successful fetch receipt output projects ref inventories into a compact digest', () => {
+  const refsBefore = Array.from({ length: 180 }, (_, index) => ({
+    oid: 'a'.repeat(40),
+    ref: `refs/remotes/upstream/${String(index).padStart(4, '0')}-${'r'.repeat(120)}`,
+    symbolicTarget: null,
+  }));
+  const refsAfter = refsBefore.map((entry) => ({ ...entry, oid: 'b'.repeat(40) }));
+  const refChanges = refsBefore.map((before, index) => ({
+    before, after: refsAfter[index], ref: before.ref,
+  }));
+  const receipt = {
+    schema: 'agentic-os/git-fetch/v1', effectsRetained: true, operation: 'fetch',
+    remote: 'upstream', urlDigest: 'c'.repeat(64),
+    fetchAttempted: true, fetchCompleted: true, fetchHeadWritten: true,
+    autoMaintenanceRun: false, writeResultUnknown: false,
+    objectWriteResultUnknown: false, reobservationExact: true,
+    refsBefore, refsAfter, refChanges,
+  };
+  const exact = JSON.stringify(receipt);
+  assert.ok(Buffer.byteLength(exact) > 16 * 1024);
+  assert.ok(Buffer.byteLength(exact) < 480 * 1024);
+
+  const formatted = formatEffectReceipt('fetch', receipt);
+  assert.ok(Buffer.byteLength(formatted) <= 16 * 1024);
+  const projected = JSON.parse(formatted);
+  assert.equal(projected.schema, 'agentic-os/effect-receipt-projection/v1');
+  assert.equal(projected.receiptSchema, receipt.schema);
+  const canonical = (value) => Array.isArray(value) ? value.map(canonical)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort()
+      .map((key) => [key, canonical(value[key])])) : value;
+  assert.equal(projected.receiptDigest, createHash('sha256')
+    .update(JSON.stringify(canonical(receipt))).digest('hex'));
+  assert.equal(projected.receiptDigestAlgorithm, 'sha256-canonical-json');
+  assert.equal(projected.boundedProjection, true);
+  assert.equal(projected.projectionTruncated, true);
+  assert.equal(projected.receiptProjection.fetchCompleted, true);
+  assert.equal(projected.receiptProjection.refsBeforeCount, refsBefore.length);
+  assert.equal(projected.receiptProjection.refsBeforeProjectionTruncated, true);
+  assert.equal(projected.receiptProjection.refsAfterCount, refsAfter.length);
+  assert.equal(projected.receiptProjection.refChangesCount, refChanges.length);
+  assert.ok(Buffer.byteLength(formatted) < Buffer.byteLength(exact));
+});
+
 test('retained provision projection bounds parent receipts without losing effect identity', () => {
   const createdParents = Array.from({ length: 2_000 }, (_, index) => ({
     path: `/retained/${String(index).padStart(4, '0')}/${'p'.repeat(220)}`,
