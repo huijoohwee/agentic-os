@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs';
-import { basename } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
-  git, repoRoot, currentBranch, configuredRemote, headSha,
-  fetch as gitFetch, worktrees, refExists,
+  configuredRemote, currentBranch, fetch as gitFetch, git, headSha, repoRoot, worktrees, refExists,
 } from '../src/git.mjs';
 import { assertDevice, deviceSegment, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { legalEvents } from '../src/lane-state.mjs';
@@ -78,6 +78,8 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common scope-release plan --ref=<published-lane> --path=<exact-file> | apply --plan=<file> --authorize=agentic-os:scope-release:<digest> --stopped',
       '  agentic-os release-common rebind plan|apply  repair one exact local lane identity; no provider or cleanup authority',
       '    plan --ref=<lane> --mode=recertify --base=refs/remotes/origin/main --base-sha=<sha> --worktree=<path> --expected-head=<sha> [--pr=<n>]',
+      '    provider refresh: rebind plan --ref=<lane> --mode=provider-refresh --pr=<n> --expected-head=<sha> --expected-base=<sha>',
+      '    provider refresh apply: rebind apply --mode=provider-refresh --plan=<file> --authorize=agentic-os:provider-lane-rebind:<digest> --stopped',
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
@@ -169,6 +171,8 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     case 'successor':
       return cmdSuccessor(root, rest, policy, profile);
     case 'rebind':
+      if (option(rest, 'mode') === 'provider-refresh') return (await import('./agentic-os-lane-alignment.mjs'))
+        .runProviderLaneRefresh(root, rest, profile, out);
       return (await import('./agentic-os-admission.mjs')).runLaneRebind(root, rest, out);
     case 'promote': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
@@ -408,10 +412,12 @@ async function main() {
       return 1;
   }
 }
-try {
-  process.exit(await main());
-} catch (error) {
-  const retained = report.formatRetainedOperation(error); if (retained) err(retained);
-  err(`agentic-os: ${error.reason ? `${error.reason}: ` : ''}${error.message}`);
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
+  try {
+    process.exit(await main());
+  } catch (error) {
+    const retained = report.formatRetainedOperation(error); if (retained) err(retained);
+    err(`agentic-os: ${error.reason ? `${error.reason}: ` : ''}${error.message}`);
+    process.exit(1);
+  }
 }

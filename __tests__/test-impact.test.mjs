@@ -163,10 +163,11 @@ test('reviewed lazy entrypoints select their route owners and bind deferred byte
   const admissionOwners = contract.deferred.find(edge => edge.dependency === 'bin/agentic-os-admission.mjs').tests
     .map(name => `__tests__/${name}`);
   assert.ok(admissionOwners.every(path => paths(admission).includes(path)));
-  assert.ok(!paths(admission).includes('__tests__/release-common-complete.test.mjs'));
+  assert.ok(paths(admission).includes('__tests__/release-common-complete.test.mjs'),
+    'CLI subprocess consumers stay in the conservative dependency impact');
   assert.ok(checkInputs(source.after, '__tests__/doctor-start-regressions.test.mjs').paths
     .includes('bin/agentic-os-admission.mjs'));
-  assert.ok(!checkInputs(source.after, '__tests__/release-common-complete.test.mjs').paths
+  assert.ok(checkInputs(source.after, '__tests__/release-common-complete.test.mjs').paths
     .includes('bin/agentic-os-admission.mjs'));
 
   const docs = select(['docs/START-WORKFLOW.md']);
