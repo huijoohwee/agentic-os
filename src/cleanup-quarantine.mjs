@@ -10,8 +10,7 @@ import { commonDir, observeGit, worktreeInventory } from './git.mjs';
 import { boundedDirectoryEntries, observeQuarantineManifest, readBoundedStableFile, sameCleanupNode as sameNode, strictCleanupStat as strictStat } from './cleanup-manifest.mjs';
 import { freezeCleanupRecord as frozen, validateCurrentQuarantineReconciliation } from './cleanup-records.mjs';
 export { observeQuarantineManifest } from './cleanup-manifest.mjs';
-const UTF8 = new TextDecoder('utf-8', { fatal: true });
-const QUARANTINE_ROOT = 'agentic-os-cleanup-quarantine',
+const UTF8 = new TextDecoder('utf-8', { fatal: true }), QUARANTINE_ROOT = 'agentic-os-cleanup-quarantine',
   OPERATION_SCHEMA = 'agentic-os/worktree-quarantine-operation/v1';
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
@@ -91,7 +90,7 @@ function trustedState(plan, cwd) {
   return { root, trust, profile, canonicalRevision: observed.revision };
 }
 /** Observe the exact active projection, dirty recovery inventory, policy, refs, and admin bytes. */
-export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observePolicy = trustedState } = {}) {
+export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observePolicy = trustedState, reuseRecoveryInventory = false, forceFreshRecoveryInventory = false, now = Date.now } = {}) {
   const trusted = observePolicy(plan, cwd), controller = realpathSync(trusted.root);
   if (controller === plan.targetPath) fail('blocked-cleanup-controller', 'cleanup must run from a surviving peer worktree');
   const common = realpathSync(commonDir(controller));
@@ -106,14 +105,16 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   const retainedHead = detachedRecovery ? null : observeGit(['rev-parse', '--verify', `refs/heads/${plan.expectedBranch}^{commit}`], { cwd: controller, allowFail: true });
   if (!projectionStat.isDirectory() || projectionStat.isSymbolicLink() || realpathSync(plan.targetPath) !== plan.targetPath) fail('blocked-target-projection', 'target projection is not one direct directory');
   if (entry.head !== plan.expectedHeadRevision || entry.branch !== plan.expectedBranch || (detachedRecovery ? !entry.detached : retainedHead !== plan.expectedHeadRevision)) fail('blocked-target-identity', 'target branch or head changed');
-  const recoveryInventory = collectRecoveryInventory({ cwd: plan.targetPath, canonicalRef: plan.expectedCanonicalRef, allowDetached: detachedRecovery, maxContentEntries: plan.projectionEntryCeiling });
-  const recoveryInventoryDigest = governanceDigest(recoveryInventory);
-  if (recoveryInventoryDigest !== plan.recoveryInventoryDigest || recoveryInventory.inventoryEntries.content !== plan.recoveryInventoryContentEntries || recoveryInventory.headRevision !== plan.expectedHeadRevision || recoveryInventory.canonicalRevision !== plan.expectedCanonicalRevision || recoveryInventory.branch !== plan.expectedBranch) fail('blocked-recovery-inventory-drift', 'dirty recovery inventory changed or is unbound');
+  const remaining = Date.parse(plan.expiresAt) - now(), canReuse = reuseRecoveryInventory && !forceFreshRecoveryInventory
+    && Number.isSafeInteger(remaining) && remaining > 0 && remaining <= 900_000
+    && /^[0-9a-f]{64}$/u.test(plan.recoveryInventoryDigest ?? '') && Number.isSafeInteger(plan.recoveryInventoryContentEntries) && plan.recoveryInventoryContentEntries >= 0;
+  const recoveryInventory = canReuse ? null : collectRecoveryInventory({ cwd: plan.targetPath, canonicalRef: plan.expectedCanonicalRef, allowDetached: detachedRecovery, maxContentEntries: plan.projectionEntryCeiling });
+  const recoveryInventoryDigest = recoveryInventory ? governanceDigest(recoveryInventory) : plan.recoveryInventoryDigest, recoveryInventoryContentEntries = recoveryInventory?.inventoryEntries.content ?? plan.recoveryInventoryContentEntries;
+  if (recoveryInventory && (recoveryInventoryDigest !== plan.recoveryInventoryDigest || recoveryInventoryContentEntries !== plan.recoveryInventoryContentEntries || recoveryInventory.headRevision !== plan.expectedHeadRevision || recoveryInventory.canonicalRevision !== plan.expectedCanonicalRevision || recoveryInventory.branch !== plan.expectedBranch)) fail('blocked-recovery-inventory-drift', 'dirty recovery inventory changed or is unbound');
   const admin = adminFor(plan.targetPath, common, plan.sharedStateEntryCeiling);
-  const projectionManifest = observeQuarantineManifest(plan.targetPath, { byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling, retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery' });
-  const registrationManifest = observeRegistrationManifest(admin.adminPath, { byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling });
+  const projectionManifest = observeQuarantineManifest(plan.targetPath, { byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling, retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery' }), registrationManifest = observeRegistrationManifest(admin.adminPath, { byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling });
   const shared = sharedState(common, entries, admin.id, plan);
-  const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries: recoveryInventory.inventoryEntries.content, projectionManifest, registrationManifest, ...shared };
+  const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries, projectionManifest, registrationManifest, ...shared };
   return frozen({ ...base, observationDigest: governanceDigest(base) });
 }
 function privateDirectory(path, label) {
@@ -248,8 +249,7 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
   }
   return null;
 }
-export const observeRetainedWorktreeQuarantine = (root, ref, head) =>
-  observeRetainedQuarantineEvidence(root, ref, head) !== null;
+export const observeRetainedWorktreeQuarantine = (root, ref, head) => observeRetainedQuarantineEvidence(root, ref, head) !== null;
 export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   cwd = process.cwd(), observePolicy = trustedState,
 } = {}) {

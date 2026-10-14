@@ -204,20 +204,21 @@ const AUTHORITATIVE_PLACEHOLDERS = Object.freeze(new Set(REQUIRED_PLACEHOLDERS.f
   'cleanup.plan.recoveryInventoryContentEntries',
   'cleanup.plan.expiresAt',
 ].includes(key))));
-export function deriveLocallyAvailableFields(scaffold, status, canonicalRoot) {
-  const issuedAt = Date.now();
-  const derived = {
-    'cleanup.plan.expiresAt': new Date(issuedAt + DERIVE_TTL_MS).toISOString(),
-  };
+export function deriveLocallyAvailableFields(scaffold, status, canonicalRoot, { now = Date.now } = {}) {
+  const issuedAt = now(); if (!Number.isSafeInteger(issuedAt) || issuedAt < 0) fail('blocked-completion-clock', 'cleanup scaffold requires a valid clock');
+  const derived = { 'cleanup.plan.expiresAt': new Date(issuedAt + DERIVE_TTL_MS).toISOString() };
   const lanePath = status.lane?.path;
   if (lanePath) {
-    try {
-      const inventory = collectRecoveryInventory({ cwd: lanePath, canonicalRef: 'refs/heads/main' });
-      if (inventory && typeof inventory === 'object') {
-        derived['cleanup.plan.recoveryInventoryDigest'] = governanceDigest(inventory);
-        derived['cleanup.plan.recoveryInventoryContentEntries'] = inventory.inventoryEntries?.content ?? null;
-      }
-    } catch { /* lane worktree not available for inventory observation */ }
+    const plan = scaffold.bundleTemplate.cleanup.plan;
+    if ([plan.targetPath !== lanePath, plan.repository !== status.repository, plan.expectedBranch !== status.ref,
+      plan.expectedHeadRevision !== status.lane.head, plan.expectedCanonicalRef !== scaffold.canonicalRef,
+      plan.expectedCanonicalRevision !== status.canonicalRevision, plan.profileDigest !== scaffold.profileDigest].some(Boolean))
+      fail('blocked-completion-inventory-drift', 'recovery inventory scaffold identity no longer matches the lane observation');
+    const inventory = collectRecoveryInventory({ cwd: lanePath, canonicalRef: scaffold.canonicalRef, maxContentEntries: plan.projectionEntryCeiling });
+    if (inventory.branch !== status.ref || inventory.headRevision !== status.lane.head || inventory.canonicalRevision !== status.canonicalRevision)
+      fail('blocked-completion-inventory-drift', 'recovery inventory no longer matches the lane observation');
+    derived['cleanup.plan.recoveryInventoryDigest'] = governanceDigest(inventory);
+    derived['cleanup.plan.recoveryInventoryContentEntries'] = inventory.inventoryEntries.content;
   }
   const remaining = scaffold.requiredPlaceholders.filter((key) => !Object.hasOwn(derived, key));
   const isPlaceholder = (value) => typeof value === 'string' && value.startsWith('REPLACE_WITH_');
