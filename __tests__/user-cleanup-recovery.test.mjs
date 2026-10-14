@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonicalJson, createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
-import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
@@ -16,6 +16,7 @@ import { inferMergedReviewWorkflow } from '../bin/agentic-os-cleanup-review.mjs'
 import { put } from '../src/lane-records.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const staleSocket = path => { const source = join(tmpdir(), `agentic-os-${process.pid}-${Date.now()}.ipc`), signal = spawnSync(process.execPath, ['-e', 'const net = require("node:net"); net.createServer().listen(process.argv[1], () => process.kill(process.pid, "SIGKILL"));', source], { stdio: ['ignore', 'ignore', 'pipe'] }).signal; if (signal === 'SIGKILL') renameSync(source, path); return signal; };
 function fixture(t, concurrentBase = false, detached = false, mergedProjection = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-consent-recovery-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
@@ -426,4 +427,26 @@ test('completion binds a trailing zero-object verification entry to its exact pr
     assert.equal(status.closeout.missionState === 'source_complete', exact);
     assert.equal(status.providerVerified, false);
   }
+});
+
+test('exact retirement retains a stale fsmonitor socket in registration', t => {
+  const s = fixture(t), admin = git(s.target, 'rev-parse', '--absolute-git-dir');
+  const socketPath = join(admin, 'fsmonitor--daemon.ipc');
+  assert.equal(staleSocket(socketPath), 'SIGKILL'); assert.equal(lstatSync(socketPath).isSocket(), true);
+  const quarantine = s.apply(s.plan()), retainedSocket = join(quarantine.projectionPath, '..', 'registration', 'fsmonitor--daemon.ipc');
+  assert.equal(lstatSync(retainedSocket).isSocket(), true);
+  const plan = planQuarantineRetirement({ cwd: s.root, coordinate: quarantine.planDigest, now: () => NOW + 1_000 });
+  const projectionSocket = join(quarantine.projectionPath, 'unsupported.ipc');
+  assert.equal(staleSocket(projectionSocket), 'SIGKILL');
+  assert.throws(() => applyQuarantineRetirement(plan, { cwd: s.root,
+    authorization: `agentic-os:quarantine-retirement:${plan.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 2_000, probe: () => {} }),
+  error => error.message === 'blocked-user-cleanup-retirement-evidence');
+  unlinkSync(projectionSocket);
+  const probed = [], receipt = applyQuarantineRetirement(plan, { cwd: s.root,
+    authorization: `agentic-os:quarantine-retirement:${plan.planDigest}`, stopped: true,
+    discardRecovery: true, now: () => NOW + 2_000, probe: path => probed.push(path) });
+  assert.equal(receipt.registrationRetained, true); assert.equal(existsSync(quarantine.projectionPath), false);
+  assert.equal(lstatSync(retainedSocket).isSocket(), true); assert.equal(receipt.branchRefsMutated, false);
+  assert.deepEqual(probed, [quarantine.projectionPath, join(quarantine.projectionPath, '..', 'registration')]);
 });

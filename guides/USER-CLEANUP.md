@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.2"
-date: "2026-10-07"
+version: "1.4.3"
+date: "2026-10-14"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.2"
-tad_revision: "1.4.2"
-adr_revision: "1.4.2"
+prd_revision: "1.4.3"
+tad_revision: "1.4.3"
+adr_revision: "1.4.3"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.4.2"
-gtm_revision: "1.4.2"
+mvp_revision: "1.4.3"
+gtm_revision: "1.4.3"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -321,11 +321,11 @@ agentic-os cleanup-user retire apply --plan=<saved-plan.json> \
   --authorize=agentic-os:quarantine-retirement:<plan-digest> --stopped --discard-recovery
 ```
 
-The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, the registration directory identity and mode, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, and requires `lsof` to find no open readers under either the projection or registration. It tightens any legacy `0755` projection or registration root to `0700`, rechecks both exact trees and the registration directory identity, then removes only that projection tree. The registration and its branch evidence remain in place. If interrupted, the intent is retained for manual review; the projection bytes remain unless unlinking had begun, and either root may already have been tightened to `0700`. The operation also preserves metadata, branch refs, the Git object database, and any existing preservation receipt. Its v2 receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
+The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, the registration directory identity and mode, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, and requires `lsof` to find no open readers under either the projection or registration. Tree checks identity-bind a current-user-owned Unix-domain socket only inside the retained registration; sockets and other unsupported special entries in the projection still fail closed. It tightens any legacy `0755` projection or registration root to `0700`, rechecks both exact trees and the registration directory identity, then removes only that projection tree. The registration and its branch evidence remain in place. If interrupted, the intent is retained for manual review; the projection bytes remain unless unlinking had begun, and either root may already have been tightened to `0700`. The operation also preserves metadata, branch refs, the Git object database, and any existing preservation receipt. Its v2 receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
 
 The durable receipt reports logical bytes unlinked and explicitly leaves `physicalFreeSpaceIncreaseProven:false`. Filesystem snapshots, APFS local snapshots, concurrent system activity, and storage-provider behavior can keep blocks allocated after unlinking; the receipt does not claim a volume-level free-space delta. If open-file inspection is unavailable or uncertain, apply refuses. If interrupted after its durable intent is written, the coordinate is retained for manual review rather than automatically replayed.
 
-These receipts are tested against temporary repository fixtures only. A real coordinate still requires its own plan, loss acknowledgment, apply result, and receipt. This operation does not retire lane claims or prove provider authority.
+These receipts are tested against temporary repository fixtures, including retention of a stale Unix-domain socket in the registration. A real coordinate still requires its own plan, loss acknowledgment, apply result, and receipt. This operation does not retire lane claims or prove provider authority.
 
 For validation, bind every check to the exact candidate and its inputs. Reuse a passing receipt only when those inputs are unchanged; **do not rerun the full smoke suite on unchanged source**. Run focused checks for documentation or isolated behavior changes, then one affected validation for the final changed candidate. Quarantine itself does not justify repeating source validation. A changed source revision or check input requires fresh evidence.
 
