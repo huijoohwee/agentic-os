@@ -29,10 +29,9 @@ const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projecti
   sharedStateByteCeiling: 256 * 1024 * 1024, sharedStateEntryCeiling: 100000 });
 const read = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options });
 const same = (a, b) => canonicalJson(a) === canonicalJson(b);
-function refuseUnknownLaneBytes(targetPath, root) {
-  const branch = currentBranch(targetPath), record = branch && isLaneRef(branch) ? get(branch, root) : null;
-  if (record?.recovery?.dirtyState === 'unobservable-at-missing-path')
-    refuse('lane-dirty-state-unknown', 'reconstructed lane bytes remain unresolved; preserve and disposition them before cleanup');
+function refuseUnknownLaneBytes(targetPath, root, { recovery = false } = {}) {
+  const branch = currentBranch(targetPath), record = branch && isLaneRef(branch) ? get(branch, root) : null, d = record?.recovery?.disposition;
+  if (record?.recovery?.dirtyState === 'unobservable-at-missing-path' && !(recovery && record.ref === branch && record.worktree === targetPath && record.head === d?.head && d?.schema === 'agentic-os/lane-recovery-disposition/v1' && d.outcome === 'unrecoverable-accepted' && d.ref === branch && d.worktree === targetPath && d.preserveCheckout === true && d.preserveRef === true && d.cleanupAuthorized === false && d.deploymentAuthorized === false)) refuse('lane-dirty-state-unknown', 'reconstructed lane bytes remain unresolved; preserve and disposition them before cleanup');
 }
 export const readUserCleanupJson = (path, label, parent = null) => JSON.parse(new TextDecoder('utf-8', { fatal: true })
   .decode(parent ? readPrivateFile(path, 64000, label, parent) : readBoundedStableFile(path, 64000, label)));
@@ -231,7 +230,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
   reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
   return locked(root, () => {
     const current = resolvePolicy(root, mode, policyResolver, { changeClass }), targetPath = realpathSync(target);
-    refuseUnknownLaneBytes(targetPath, root);
+    refuseUnknownLaneBytes(targetPath, root, { recovery });
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
     const review = observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
@@ -286,7 +285,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
   if (root !== plan.root || authorization !== `agentic-os:user-cleanup:${plan.planDigest}` || stopped !== true)
     refuse('explicit-authorization-required');
   return locked(root, () => {
-    refuseUnknownLaneBytes(plan.targetPath, root);
+    refuseUnknownLaneBytes(plan.targetPath, root, { recovery: plan.mode === RECOVERY_MODE });
     const m = mechanics(plan), eligible = eligibility(plan);
     observePolicy(m, root, policyResolver); mergedState(plan, options);
     if (plan.mode === RECOVERY_MODE && (!same(resolvePolicy(root, plan.mode, policyResolver), plan.recoveryPolicy)
