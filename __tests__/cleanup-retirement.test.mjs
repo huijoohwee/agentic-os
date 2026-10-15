@@ -25,7 +25,8 @@ function registrationManifest(path) {
   entries: names.length + items.reduce((sum, item) => sum + item.manifest.entries, 0) };
 }
 function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionHardlink = false,
-  eligibilitySchema = 'agentic-os/user-cleanup-eligibility/v1', detached = false } = {}) {
+  eligibilitySchema = 'agentic-os/user-cleanup-eligibility/v1', detached = false,
+  legacyRegistrationManifest = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retirement-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'); mkdirSync(root);
@@ -50,7 +51,9 @@ function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionH
   const projectionManifest = observeQuarantineManifest(projection, {
     byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: projectionHardlink,
   });
-  const retainedRegistration = registrationManifest(registration);
+  const retainedRegistration = legacyRegistrationManifest
+    ? observeQuarantineManifest(registration, { byteCeiling: 16 * 1024 ** 2,
+      entryCeiling: 10_000, retainedHardlinks: true }) : registrationManifest(registration);
   const eligibility = { schema: eligibilitySchema, ...(eligibilitySchema === 'agentic-os/worktree-cleanup-eligibility/v1'
     ? { cleanupPlanDigest: coordinate } : { planDigest: coordinate }),
     profileDigest: hash('b'), canonicalRevision: head,
@@ -126,6 +129,16 @@ test('legacy quarantine eligibility schemas retire only their exact retained pro
     assert.equal(existsSync(state.projection), false, eligibilitySchema);
     assert.equal(existsSync(state.registration), true, eligibilitySchema);
   }
+});
+
+test('legacy full-tree registration manifests remain exactly bound during retirement', t => {
+  const state = fixture(t, { eligibilitySchema: 'agentic-os/worktree-cleanup-eligibility/v1',
+    legacyRegistrationManifest: true });
+  const receipt = apply(state);
+  assert.equal(receipt.bytesDeleted, true);
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(state.registration), true);
+  assert.equal(g(state.root, 'show-ref').includes(state.branch), true);
 });
 
 test('detached retained HEAD retires only while its exact lane ref remains reachable', t => {

@@ -148,6 +148,10 @@ function detachedReceiptMatches(receipt, detachedHead, reviewedHead) {
   return exact||i?.kind==='reviewed-equivalent-superseded-transition'&&i.detachedHead===detachedHead&&i.reviewedCommit===reviewedHead&&i.sourceIntegrated===false&&i.reviewedSource?.kind==='equal-tree'&&i.reviewedSource.headTree===i.reviewedSource.mergeTree&&receipt.historicalDraft==='superseded';
 }
 function exactManifest(value, expected) { return value?.digest === expected.digest && value?.bytes === expected.bytes && value?.entries === expected.entries; }
+function observeBoundRegistrationManifest(root, expected) {
+  const limits = { byteCeiling: expected.bytes, entryCeiling: expected.entries, retainedHardlinks: true };
+  for (const observe of [observeQuarantineManifest, observeRegistrationManifest]) { try { const manifest = observe(root, limits); if (exactManifest(manifest, expected)) return manifest; } catch { /* Exact fallback only. */ } } return null;
+}
 function retainedTargetPath(registration) {
   const backlink = UTF8.decode(readBoundedStableFile(join(registration, 'gitdir'), 8192, 'retained-worktree-backlink'));
   if (!backlink.endsWith('/.git\n')) fail('blocked-cleanup-retained-artifact', 'retained worktree backlink does not identify a direct checkout');
@@ -220,10 +224,10 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
         const candidate = reconciliation !== null ? reconciliationCandidate(reconciliation,
           { originalReceipt, originalRegistrationManifest, ref, head, coordinate: entry.name }) : null;
         const projection = observeQuarantineManifest(join(operation, 'projection'), { byteCeiling: binding.projection.bytes, entryCeiling: binding.projection.entries, retainedHardlinks: true }),
-          retained = observeRegistrationManifest(registration, {
-            byteCeiling: candidate?.currentRegistrationManifest.bytes ?? binding.registration.bytes,
-            entryCeiling: candidate?.currentRegistrationManifest.entries ?? binding.registration.entries,
-          });
+          retained = retirementTarget ? observeBoundRegistrationManifest(registration, candidate?.currentRegistrationManifest ?? originalRegistrationManifest)
+            : observeRegistrationManifest(registration, { byteCeiling: candidate?.currentRegistrationManifest.bytes ?? binding.registration.bytes,
+              entryCeiling: candidate?.currentRegistrationManifest.entries ?? binding.registration.entries });
+        if (!retained) continue;
         const registrationMatches = exactManifest(retained, originalRegistrationManifest);
         const basis = !registrationMatches && candidate !== null
           ? reconciliationMatches(candidate, retained) : null;
