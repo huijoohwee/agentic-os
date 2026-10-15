@@ -328,3 +328,23 @@ each later effect retains its own exact plan, grant, and receipt.
 Budget: one exact v1 enrollment, one existing transition-workflow test and this owner record; zero
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this PR enrollment; source history and prior enrollments stay intact.
+
+## Current recovery enrollment — agentic-os PR #455 — 2026-10-15
+
+The policy owner accepted the exact current-recovery basis for PR #455. This enrollment binds
+repository `github.com/huijoohwee/agentic-os`, base
+`c3839e3f14f356a26e36d0211834cee4236c72cc`, reviewed head
+`a2a348e89c9085f6f466486d77f07c0df6823eb3`, merge
+`79bd9d2b22948976dd702bf92f58872e41091322`, and equal source/merge tree
+`d1ad2fe74ffc4363aa04316d637d380a67d4a1f7`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/455>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-455`. The record accepts only current
+observations. Historical protection, required-check policy, Ruleset Suite, and merge-method authority
+remain unproven. It creates no merge, retirement, cleanup, deployment, or canonical-sync authority;
+each later effect retains its own exact plan, grant, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow test and this owner record; zero
+runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
+remove this PR enrollment; source history and prior enrollments stay intact.

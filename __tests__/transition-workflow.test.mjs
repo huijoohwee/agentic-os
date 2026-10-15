@@ -31,6 +31,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/448',
     'https://github.com/huijoohwee/agentic-os/pull/453',
     'https://github.com/huijoohwee/agentic-os/pull/454',
+    'https://github.com/huijoohwee/agentic-os/pull/455',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-graph/pull/1492', ['Integration Gate']],
@@ -42,6 +43,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/448', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/453', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/454', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/455', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -66,6 +68,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['448', '37948deff5d22b77425c543cc06b5ba716e88776', '4d7b3f6d2a5b05bfc7a02a7658f9ad8b27898953', 'b2fba11a6fec90ac7c9b2a5b1b8d9f395645532a', '276b30a5c485708fbc0a414a4e4a582b11c52a47'],
     ['453', 'a5be4e06925c6e25f176e83673283828029ce1b2', '9a366a1b98a81df2d9307091fadb1f3a55b4e791', 'aef072fbc887942055555e856ad8044d4b19d2e3', 'd58746d0eef789ec76780477b86dc9adf289f24b'],
     ['454', 'aef072fbc887942055555e856ad8044d4b19d2e3', '6076e762de5b5cc92fb53b2cb7856d6fd6aaeb5d', 'c3839e3f14f356a26e36d0211834cee4236c72cc', '17908d04eb3212a2ddd7e074f95183e0d8cb4d48'],
+    ['455', 'c3839e3f14f356a26e36d0211834cee4236c72cc', 'a2a348e89c9085f6f466486d77f07c0df6823eb3', '79bd9d2b22948976dd702bf92f58872e41091322', 'd1ad2fe74ffc4363aa04316d637d380a67d4a1f7'],
   ]) {
     const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
     assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
