@@ -348,8 +348,9 @@ provider authority. Independent provider issuance, integration, and record-only 
 still require their own exact plans, grants, and receipts. This enrollment authorizes no additional
 discard, branch mutation, canonical sync, or deployment.
 
-Budget: one exact v1 retention enrollment and this owner record; two existing files changed, under
-2.2 kB added total, zero runtime modules, dependencies, or always-load bytes. Revert the protected policy
+Budget: one exact v1 retention enrollment, its exact existing workflow-test expectation, and this owner
+record; three existing files changed, under 3 kB added total, zero runtime modules, dependencies, or
+always-load bytes. Revert the protected policy
 update to remove this enrollment; retain the original receipt and branch/object evidence.
 
 ## Current recovery enrollment — agentic-os PR #454 — 2026-10-15
