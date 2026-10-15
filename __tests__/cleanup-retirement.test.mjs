@@ -24,7 +24,8 @@ function registrationManifest(path) {
   bytes: items.reduce((sum, item) => sum + item.manifest.bytes, 0),
   entries: names.length + items.reduce((sum, item) => sum + item.manifest.entries, 0) };
 }
-function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionHardlink = false } = {}) {
+function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionHardlink = false,
+  eligibilitySchema = 'agentic-os/user-cleanup-eligibility/v1', detached = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-retirement-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'); mkdirSync(root);
@@ -43,19 +44,23 @@ function fixture(t, { registrationMode = 0o700, projectionFiles = 0, projectionH
     writeFileSync(join(projection, `entry-${String(index).padStart(4, '0')}`), 'x', { mode: 0o600 });
   mkdirSync(registration, { mode: registrationMode }); chmodSync(registration, registrationMode);
   mkdirSync(join(registration, 'logs'), { mode: 0o700 });
-  writeFileSync(join(registration, 'HEAD'), `ref: refs/heads/${branch}\n`, { mode: 0o600 });
-  writeFileSync(join(registration, 'logs', 'HEAD'), `${'0'.repeat(40)} ${head} Fixture <fixture@example.invalid> 1791676800 +0000\tcheckout: moving from main to ${branch}\n`, { mode: 0o600 });
+  writeFileSync(join(registration, 'HEAD'), detached ? `${head}\n` : `ref: refs/heads/${branch}\n`, { mode: 0o600 });
+  const checkout = detached ? `checkout: moving from ${branch} to ${head}` : `checkout: moving from main to ${branch}`;
+  writeFileSync(join(registration, 'logs', 'HEAD'), `${'0'.repeat(40)} ${head} Fixture <fixture@example.invalid> 1791676800 +0000\t${checkout}\n`, { mode: 0o600 });
   const projectionManifest = observeQuarantineManifest(projection, {
     byteCeiling: 16 * 1024 ** 2, entryCeiling: 10_000, retainedHardlinks: projectionHardlink,
   });
   const retainedRegistration = registrationManifest(registration);
-  const eligibility = { schema: 'agentic-os/user-cleanup-eligibility/v1', planDigest: coordinate,
+  const eligibility = { schema: eligibilitySchema, ...(eligibilitySchema === 'agentic-os/worktree-cleanup-eligibility/v1'
+    ? { cleanupPlanDigest: coordinate } : { planDigest: coordinate }),
     profileDigest: hash('b'), canonicalRevision: head,
     evaluatedAt: '2026-10-11T00:00:00.000Z', expiresAt: '2026-10-11T00:15:00.000Z',
     objectInventoryDigest: hash('c'), peerRegistrationDigest: hash('d'),
-    projectionManifestDigest: projectionManifest.digest, projectionBytes: projectionManifest.bytes,
-    projectionEntries: projectionManifest.entries, registrationManifestDigest: retainedRegistration.digest,
-    registrationBytes: retainedRegistration.bytes, registrationEntries: retainedRegistration.entries,
+    ...(eligibilitySchema === 'local-owner-authorized-quarantine-eligibility/v1' ? {
+      projectionManifest, registrationManifest: retainedRegistration,
+    } : { projectionManifestDigest: projectionManifest.digest, projectionBytes: projectionManifest.bytes,
+      projectionEntries: projectionManifest.entries, registrationManifestDigest: retainedRegistration.digest,
+      registrationBytes: retainedRegistration.bytes, registrationEntries: retainedRegistration.entries }),
     sharedRefDigest: hash('e'), sharedStateBytes: 0, sharedStateEntries: 0 };
   writeFileSync(join(operationPath, 'operation.json'), canonicalJson({
     schema: 'agentic-os/worktree-quarantine-operation/v1', eligibility,
@@ -100,7 +105,7 @@ test('exact local-consent retirement removes only the projection and leaves bran
 
 test('legacy registration roots are bound, probed, and tightened before projection deletion', t => {
   const state = fixture(t, { registrationMode: 0o755 }), probed = [];
-  assert.equal(state.plan.schema, 'agentic-os/quarantine-retirement-plan/v2');
+  assert.equal(state.plan.schema, 'agentic-os/quarantine-retirement-plan/v3');
   assert.equal(state.plan.registrationRoot[3], 0o755);
   assert.equal(statSync(state.registration).mode & 0o777, 0o755);
   const receipt = apply(state, { probe: path => probed.push(path) });
@@ -110,6 +115,32 @@ test('legacy registration roots are bound, probed, and tightened before projecti
   assert.equal(statSync(state.registration).mode & 0o777, 0o700);
   assert.equal(existsSync(state.projection), false);
   assert.equal(existsSync(join(state.registration, 'HEAD')), true);
+});
+
+test('legacy quarantine eligibility schemas retire only their exact retained projection', t => {
+  for (const eligibilitySchema of ['agentic-os/worktree-cleanup-eligibility/v1',
+    'agentic-os/empty-active-lane-retirement-eligibility/v1',
+    'local-owner-authorized-quarantine-eligibility/v1']) {
+    const state = fixture(t, { eligibilitySchema }), receipt = apply(state);
+    assert.equal(receipt.bytesDeleted, true, eligibilitySchema);
+    assert.equal(existsSync(state.projection), false, eligibilitySchema);
+    assert.equal(existsSync(state.registration), true, eligibilitySchema);
+  }
+});
+
+test('detached retained HEAD retires only while its exact lane ref remains reachable', t => {
+  const state = fixture(t, { detached: true }), receipt = apply(state);
+  assert.equal(receipt.retainedHead, state.head);
+  assert.equal(receipt.branch, state.branch);
+  assert.equal(existsSync(state.projection), false);
+  assert.equal(existsSync(state.registration), true);
+});
+
+test('detached retained HEAD without its source lane ref is ineligible', t => {
+  const state = fixture(t, { detached: true });
+  g(state.root, 'branch', '-D', state.branch);
+  assert.throws(() => planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW }), /retirement-evidence/u);
+  assert.equal(existsSync(join(state.projection, 'recovery.txt')), true);
 });
 
 test('large retirement trees use bounded row comparisons and complete without partial intents', t => {
@@ -177,7 +208,7 @@ test('stale plans and interrupted intents fail closed', t => {
 test('an exact fresh resume plan finishes a partially unlinked projection and retains prior consent evidence', t => {
   const state = fixture(t), intent = interrupt(state);
   const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
-  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v3');
+  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v4');
   assert.equal(resume.resumeIntentDigest, intent.intentDigest);
   assert.equal(resume.projection.bytes, 0);
   const receipt = applyQuarantineRetirement(resume, { cwd: state.root,
@@ -194,7 +225,7 @@ test('an exact fresh resume plan finishes a partially unlinked projection and re
 test('resume hashes and retires a residual tree larger than the governance node budget', t => {
   const state = fixture(t, { projectionFiles: 1100 }), intent = interrupt(state);
   const resume = planQuarantineRetirement({ cwd: state.root, coordinate: state.coordinate, now: () => NOW + 2_000 });
-  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v3');
+  assert.equal(resume.schema, 'agentic-os/quarantine-retirement-plan/v4');
   assert.equal(resume.resumeIntentDigest, intent.intentDigest);
   assert.ok(resume.projection.entries > 1000);
   const receipt = applyQuarantineRetirement(resume, { cwd: state.root,

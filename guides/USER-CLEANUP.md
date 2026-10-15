@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.3"
-date: "2026-10-14"
+version: "1.4.4"
+date: "2026-10-15"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.3"
-tad_revision: "1.4.3"
-adr_revision: "1.4.3"
+prd_revision: "1.4.4"
+tad_revision: "1.4.4"
+adr_revision: "1.4.4"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.4.3"
-gtm_revision: "1.4.3"
+mvp_revision: "1.4.4"
+gtm_revision: "1.4.4"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -318,7 +318,7 @@ The stale-ref sweep now reads the bounded 256-branch inventory with two batched 
 
 ### Owner-controlled quarantine retirement
 
-Quarantine creation remains recoverable. Reclaiming a local-consent quarantine projection is a separate destructive operation; it never runs from age, sweep, cache pressure, or a general cleanup command. It accepts one exact SHA-256 coordinate at a time and only the `agentic-os/user-cleanup-eligibility/v1` record. Unknown and protected cleanup schemas fail closed.
+Quarantine creation remains recoverable. Reclaiming a local-consent quarantine projection is a separate destructive operation; it never runs from age, sweep, cache pressure, or a general cleanup command. It accepts one exact SHA-256 coordinate at a time and supports retained user-cleanup, worktree-cleanup, empty-active-lane-retirement, and local-owner-authorized-quarantine eligibility records. Unknown and protected cleanup schemas fail closed. A detached registration is eligible only when its HEAD log identifies an exact lane ref and that retained commit remains an ancestor of the local ref.
 
 Run from a clean canonical `main` worktree after reviewing the exact coordinate and recovery loss:
 
@@ -328,9 +328,9 @@ agentic-os cleanup-user retire apply --plan=<saved-plan.json> \
   --authorize=agentic-os:quarantine-retirement:<plan-digest> --stopped --discard-recovery
 ```
 
-The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, the registration directory identity and mode, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, and requires `lsof` to find no open readers under either the projection or registration. Tree checks identity-bind a current-user-owned Unix-domain socket only inside the retained registration; sockets and other unsupported special entries in the projection still fail closed. It tightens any legacy `0755` projection or registration root to `0700`, rechecks both exact trees and the registration directory identity, then removes only that projection tree. The registration and its branch evidence remain in place. If interrupted, the intent is retained for manual review; the projection bytes remain unless unlinking had begun, and either root may already have been tightened to `0700`. The operation also preserves metadata, branch refs, the Git object database, and any existing preservation receipt. Its v2 receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
+The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, registration HEAD mode, registration directory identity and mode, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, and requires `lsof` to find no open readers under either the projection or registration. Tree checks identity-bind a current-user-owned Unix-domain socket only inside the retained registration; sockets and other unsupported special entries in the projection still fail closed. It tightens any legacy `0755` projection or registration root to `0700`, rechecks both exact trees and the registration directory identity, then removes only that projection tree. The registration and its branch evidence remain in place. An interrupted operation requires a new exact resume plan bound to its original intent and remaining trees; it never replays automatically. The operation preserves metadata, branch refs, the Git object database, and any existing preservation receipt. Its v2 receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
 
-The durable receipt reports logical bytes unlinked and explicitly leaves `physicalFreeSpaceIncreaseProven:false`. Filesystem snapshots, APFS local snapshots, concurrent system activity, and storage-provider behavior can keep blocks allocated after unlinking; the receipt does not claim a volume-level free-space delta. If open-file inspection is unavailable or uncertain, apply refuses. If interrupted after its durable intent is written, the coordinate is retained for manual review rather than automatically replayed.
+The durable receipt reports logical bytes unlinked and explicitly leaves `physicalFreeSpaceIncreaseProven:false`. Filesystem snapshots, APFS local snapshots, concurrent system activity, and storage-provider behavior can keep blocks allocated after unlinking; the receipt does not claim a volume-level free-space delta. If open-file inspection is unavailable or uncertain, apply refuses. If interrupted after its durable intent is written, recovery requires a fresh exact resume plan and preserves the original intent until successful closeout.
 
 These receipts are tested against temporary repository fixtures, including retention of a stale Unix-domain socket in the registration. A real coordinate still requires its own plan, loss acknowledgment, apply result, and receipt. This operation does not retire lane claims or prove provider authority.
 

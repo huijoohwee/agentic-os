@@ -7,7 +7,8 @@ import { canonicalJson, governanceDigest, RETAIN_ALL_CLEANUP } from './governanc
 import { loadRepositoryTrust, observeRepositoryProfileAtRef, resolveRepositoryRoot } from './git-repository.mjs';
 import { validateAuthenticatedTransitionOperationReceipt } from './completion.mjs';
 import { collectRecoveryInventory } from './recovery-inventory.mjs';
-import { commonDir, observeGit, worktreeInventory } from './git.mjs';
+import { commonDir, isAncestor, observeGit, worktreeInventory } from './git.mjs';
+import { isLaneRef } from './lane-id.mjs';
 import { boundedDirectoryEntries, observeQuarantineManifest, readBoundedStableFile, sameCleanupNode as sameNode, strictCleanupStat as strictStat } from './cleanup-manifest.mjs';
 import { freezeCleanupRecord as frozen, validateCurrentQuarantineReconciliation,
   validateWorktreeCleanupEligibility } from './cleanup-records.mjs';
@@ -133,6 +134,11 @@ function readOperation(path, eligibility = null) {
     || Date.parse(value.executedAt) >= Date.parse(eligibility.expiresAt))
     fail('blocked-cleanup-retained-artifact', 'quarantine operation metadata does not match'); return value;
 }
+export const retirementEligibility = e => {
+  const schema = e?.schema, local = schema === 'local-owner-authorized-quarantine-eligibility/v1', coordinate = schema === 'agentic-os/worktree-cleanup-eligibility/v1' ? e.cleanupPlanDigest : e?.planDigest, manifest = key => local ? e?.[`${key}Manifest`] : { digest: e?.[`${key}ManifestDigest`], bytes: e?.[`${key}Bytes`], entries: e?.[`${key}Entries`] }, projection = manifest('projection'), registration = manifest('registration');
+  if (!['agentic-os/worktree-cleanup-eligibility/v1', 'agentic-os/user-cleanup-eligibility/v1', 'agentic-os/empty-active-lane-retirement-eligibility/v1', 'local-owner-authorized-quarantine-eligibility/v1'].includes(schema) || !/^[a-f0-9]{64}$/u.test(coordinate ?? '') || ![projection?.bytes, projection?.entries, registration?.bytes, registration?.entries].every(value => Number.isSafeInteger(value) && value >= 0) || projection.bytes > 4 * 1024 ** 3 || projection.entries > 250000 || registration.bytes > 16 * 1024 ** 2 || registration.entries > 20000) return null;
+  return { coordinate, projection, registration };
+};
 function detachedReviewedHead(root, registered, receipt, head) {
   const oid = receipt?.detachedHead; if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid ?? '') || registered !== `${oid}\n`) return null;
   const trees = [oid, head].map(revision => observeGit(['rev-parse', '--verify', `${revision}^{tree}`], { cwd: root, allowFail: true })); return trees[0] && trees[0] === trees[1] ? oid : null;
@@ -174,12 +180,9 @@ function retainedInventorySnapshot(root, operation, registration, canonicalRef, 
     return inventory;
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
-export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, {
-  originalReceipt = null, canonicalRef, reconciliation = null, diagnostic = false,
-} = {}) {
+export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef, reconciliation = null, diagnostic = false, retirementTarget = false } = {}) {
   try {
-    const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT);
-    privateDirectory(base, 'cleanup-quarantine-root');
+    const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT); privateDirectory(base, 'cleanup-quarantine-root');
     const entries = boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root');
     for (const entry of entries) {
       if (coordinate !== null && entry.name !== coordinate) continue;
@@ -187,13 +190,17 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
       try {
         const operation = join(base, entry.name), registration = join(operation, 'registration'); privateDirectory(operation, 'cleanup-operation-directory');
         const registrationHead = UTF8.decode(readBoundedStableFile(join(registration, 'HEAD'), 256, 'retained-head')),
-          detachedHead = detachedReviewedHead(root, registrationHead, originalReceipt, head), detachedRegistration = detachedHead !== null;
+          log = UTF8.decode(readBoundedStableFile(join(registration, 'logs', 'HEAD'), 16 * 1024 ** 2, 'retained-head-log')).trimEnd().split('\n'),
+          [prior, next] = log.at(-1)?.split(' ') ?? [], retainedHead = /^0{40}(?:0{24})?$/u.test(next ?? '') ? prior : next;
+        let branchTip = null;
+        if (retirementTarget) {
+          const attached = /^ref: refs\/heads\/(.+)\n$/u.exec(registrationHead), headEntry = !attached && [...log].reverse().map(line => /\tcheckout: moving from (.+) to ([a-f0-9]{40}(?:[a-f0-9]{24})?)$/u.exec(line)).find(match => match?.[2] === retainedHead); head = retainedHead; ref = attached?.[1] ?? headEntry?.[1];
+          if (!isLaneRef(ref) || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(head ?? '') || !attached && registrationHead !== `${head}\n`) continue;
+          branchTip = observeGit(['rev-parse', '--verify', `refs/heads/${ref}^{commit}`], { cwd: root, allowFail: true }); if (!branchTip || !isAncestor(head, branchTip, root)) continue;
+        }
+        const detachedHead = detachedReviewedHead(root, registrationHead, originalReceipt, head) ?? (retirementTarget && branchTip && registrationHead === `${head}\n` ? head : null), detachedRegistration = detachedHead !== null;
         if (registrationHead !== `ref: refs/heads/${ref}\n` && !detachedRegistration) continue;
-        const record = readOperation(operation), e = record.eligibility;
-        if ((e.schema === 'agentic-os/worktree-cleanup-eligibility/v1' ? e.cleanupPlanDigest : ['agentic-os/user-cleanup-eligibility/v1', 'agentic-os/empty-active-lane-retirement-eligibility/v1'].includes(e.schema) ? e.planDigest : null) !== entry.name || !['projectionBytes', 'projectionEntries', 'registrationBytes', 'registrationEntries']
-          .every(key => Number.isSafeInteger(e[key]) && e[key] >= 0)
-          || e.projectionBytes > 4 * 1024 ** 3 || e.projectionEntries > 250000
-          || e.registrationBytes > 16 * 1024 ** 2 || e.registrationEntries > 20000) continue;
+        const record = readOperation(operation), e = record.eligibility, binding = retirementEligibility(e); if (binding?.coordinate !== entry.name) continue;
         const protectedReceipt = originalReceipt?.schema === 'agentic-os/authenticated-transition-operation-receipt/v1';
         if (protectedReceipt) protectedRetirementReceipt(originalReceipt, e, entry.name);
         const targetPath = protectedReceipt ? retainedTargetPath(registration) : originalReceipt?.targetPath;
@@ -209,31 +216,26 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
           || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
           )) continue;
         if (originalReceipt && (!targetPath || !absent(targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === targetPath || row.branch === ref))) continue;
-        const originalRegistrationManifest = { digest: e.registrationManifestDigest,
-          bytes: e.registrationBytes, entries: e.registrationEntries };
+        const originalRegistrationManifest = binding.registration;
         const candidate = reconciliation !== null ? reconciliationCandidate(reconciliation,
           { originalReceipt, originalRegistrationManifest, ref, head, coordinate: entry.name }) : null;
-        const projection = observeQuarantineManifest(join(operation, 'projection'), { byteCeiling: e.projectionBytes, entryCeiling: e.projectionEntries, retainedHardlinks: true }),
+        const projection = observeQuarantineManifest(join(operation, 'projection'), { byteCeiling: binding.projection.bytes, entryCeiling: binding.projection.entries, retainedHardlinks: true }),
           retained = observeRegistrationManifest(registration, {
-            byteCeiling: candidate?.currentRegistrationManifest.bytes ?? e.registrationBytes,
-            entryCeiling: candidate?.currentRegistrationManifest.entries ?? e.registrationEntries,
+            byteCeiling: candidate?.currentRegistrationManifest.bytes ?? binding.registration.bytes,
+            entryCeiling: candidate?.currentRegistrationManifest.entries ?? binding.registration.entries,
           });
-        const log = UTF8.decode(readBoundedStableFile(join(registration, 'logs', 'HEAD'), 16 * 1024 ** 2, 'retained-head-log')).trimEnd().split('\n').at(-1);
-        // Git ref verification can append an old-head -> zero entry without moving HEAD.
-        const [prior, next] = log?.split(' ') ?? [];
-        const retainedHead = /^0{40}(?:0{24})?$/u.test(next ?? '') ? prior : next;
         const registrationMatches = exactManifest(retained, originalRegistrationManifest);
         const basis = !registrationMatches && candidate !== null
           ? reconciliationMatches(candidate, retained) : null;
-        if (projection.digest === e.projectionManifestDigest && projection.bytes === e.projectionBytes
-          && projection.entries === e.projectionEntries && (registrationMatches || basis !== null)
+        if (projection.digest === binding.projection.digest && projection.bytes === binding.projection.bytes
+          && projection.entries === binding.projection.entries && (registrationMatches || basis !== null)
           && retainedHead === (detachedRegistration ? detachedHead : head)) {
           const inventory = originalReceipt ? retainedInventorySnapshot(root, operation, registration,
-            canonicalRef, detachedRegistration, detachedHead, e.projectionEntries) : null;
+            canonicalRef, detachedRegistration, detachedHead, binding.projection.entries) : null;
           if (inventory && (inventory.branch !== (detachedRegistration ? null : ref) || inventory.headRevision !== (detachedRegistration ? detachedHead : head) || !same(record, readOperation(operation)) || !absent(targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === targetPath || row.branch === ref))) continue;
           for (const path of [base, operation]) privateDirectory(path, 'cleanup-operation-directory');
           return frozen({ coordinate: entry.name, operationDigest: governanceDigest(record), registrationRef: ref,
-            retainedHead, projectionManifest: projection, registrationManifest: retained,
+            retainedHead, projectionManifest: projection, registrationManifest: retained, ...(retirementTarget ? { branchTip, registrationHead } : {}),
             ...(basis ? { reconciliationDigest: basis.basisDigest,
               originalRegistrationManifest: basis.originalRegistrationManifest,
               registrationReconciled: true } : {}),
