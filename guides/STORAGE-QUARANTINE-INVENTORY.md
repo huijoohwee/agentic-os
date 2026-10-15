@@ -43,7 +43,8 @@ Run this bounded read-only recipe with Node.js and Git from the `agentic-os` che
 repository path; it resolves linked worktrees to their shared Git common directory.
 
 ```sh
-node --input-type=module - /absolute/repository <<'NODE'
+inventory_file=$(mktemp "${TMPDIR:-/tmp}/quarantine-inventory.XXXXXX")
+node --input-type=module - /absolute/repository > "$inventory_file" <<'NODE'
 import { execFileSync } from 'node:child_process';
 import { constants, fstatSync, lstatSync, openSync, opendirSync, readFileSync, closeSync,
   realpathSync } from 'node:fs';
@@ -173,6 +174,16 @@ two-second cooperative limit. It writes no repository state. Marker presence doe
 the report grants no authority and sets `reclaimableBytes` to `null`. A chosen coordinate still requires a
 fresh exact `cleanup-user retire plan` that revalidates current recovery loss. Existing storage CLI
 behavior remains unchanged.
+
+For a smaller cross-repository review, filter the saved JSON to projections that are still present:
+
+```sh
+node -e 'const x=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); const rows=x.rows.filter(r=>r.projectionPresent); console.log(JSON.stringify({status:x.status,discoveryComplete:x.discoveryComplete,projectionPresent:rows.length,rows:rows.map(({coordinate,eligibilitySchema,recordedProjectionBytes,recordedProjectionEntries,status,retirementIntentPresent})=>({coordinate,eligibilitySchema,recordedProjectionBytes,recordedProjectionEntries,status,retirementIntentPresent}))},null,2))' "$inventory_file"
+```
+
+The filtered rows are candidates for a fresh owner plan, not deletion recommendations. An incomplete
+inventory, an intent marker, an unknown schema or a missing receipt requires preservation and owner
+review. The filter reads only the saved metadata report and avoids rescanning the large projections.
 
 ## ADR
 
