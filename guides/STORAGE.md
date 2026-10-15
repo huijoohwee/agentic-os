@@ -3,31 +3,31 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.5.0"
-tad_revision: "1.5.0"
-adr_revision: "1.5.0"
+prd_revision: "1.6.0"
+tad_revision: "1.6.0"
+adr_revision: "1.6.0"
 load_policy: on-demand
-version: "1.5.0"
-date: "2026-10-04"
+version: "1.6.0"
+date: "2026-10-14"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--storage-quarantine-economy"
-agent_id: "codex-storage-quarantine-economy"
+worktree_id: "device-0232231d4a19--quarantine-inventory"
+agent_id: "codex-quarantine-inventory"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "07ea7d989152214c0409ace72e1922e16a7d7963"
-mvp_revision: "1.5.0"
-gtm_revision: "1.5.0"
+reviewed_source_revision: "0a62aae2c1d6dd60a1ac75164fad415dde4f809f"
+mvp_revision: "1.6.0"
+gtm_revision: "1.6.0"
 ---
 
 # Storage compaction
 
 [Shared cache policy](CACHE.md) owns cross-mechanism lifecycle declarations; this guide owns
-disk diagnosis, compaction and recoverable effects.
+disk diagnosis, compaction and recoverable effects; see [triage](STORAGE-QUARANTINE-INVENTORY.md).
 
 Large collaboration-ledger revisions left as loose Git objects and quarantined dependency installations
 can consume GiB in a small product repository. Reduce allocated storage while preserving source, recovery

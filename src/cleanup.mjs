@@ -214,7 +214,7 @@ export async function assessWorktreeCleanupEligibility(input, options) {
   assertLaneBytesResolved(joined.plan.expectedBranch ?? joined.plan.branch, options.cwd); const evaluated = trustedClock(options, 'cleanup eligibility');
   if (evaluated >= Date.parse(joined.expiresAt))
     fail('blocked-cleanup-expired', 'cleanup plan is not current');
-  const observation = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd });
+  const observation = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd, reuseRecoveryInventory: true, now: () => evaluated });
   return createWorktreeCleanupEligibility({ cleanupPlanDigest: joined.plan.planDigest,
     cleanupPlanByteDigest: worktreeCleanupPlanByteDigest(joined.plan),
     integrationReceiptDigest: joined.integration.receiptDigest,
@@ -280,7 +280,7 @@ export async function executeWorktreeCleanup(input, options) {
     assertLaneBytesResolved(joined.plan.expectedBranch ?? joined.plan.branch, options.cwd); let applied = classifyExistingWorktreeQuarantine(joined.plan, eligibility,
       { cwd: options.cwd });
     if (applied === null) {
-      const before = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd });
+      const before = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd, forceFreshRecoveryInventory: true });
       if (before.observationDigest !== eligibility.targetObservationDigest)
         fail('blocked-cleanup-observation-drift', 'cleanup target changed after eligibility');
       applied = quarantineWorktreeTarget(joined.plan, before, { cwd: options.cwd, eligibility,

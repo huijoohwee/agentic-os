@@ -297,10 +297,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   const source = snap(value), checksum = receipt ? 'receiptDigest' : 'planDigest';
   const current = allowCurrent && source.disposition === 'current-quarantine-retained';
   const history = current ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven';
-  const keys = ['schema', 'disposition', 'adoption', 'adoptionDigest', 'repository',
-    'canonicalRevision', 'profileDigest', 'policyDigest', 'review', 'integration', 'retention',
-    'state', 'issuedAt', 'expiresAt', 'physicalCleanupPerformed', 'providerAuthority',
-    'claimRetired', history, checksum];
+  const keys = ['schema', 'disposition', 'adoption', 'adoptionDigest', 'repository', 'canonicalRevision', 'profileDigest', 'policyDigest', 'review', 'integration', 'retention', 'state', 'issuedAt', 'expiresAt', 'physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history, checksum];
   exact(source, keys, 'successor preservation record');
   if (Buffer.byteLength(canonicalJson(source)) > 64000
     || source.schema !== (current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA
@@ -309,19 +306,9 @@ function preservationRecord(value, receipt, allowCurrent = false) {
     || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false))
     fail('successor preservation claims are invalid');
   const adoption = source.adoption;
-  exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', 'quarantineCoordinate', history,
-    ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest']
-      : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])], 'successor preservation adoption');
-  const coordinates = current ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef,
-    predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
-  if (adoption.schema !== (current ? 'agentic-os/current-quarantine-adoption/v1' : 'agentic-os/successor-preservation-adoption/v1')
-    || adoption[history] !== false
-    || adoption.repository !== source.repository
-    || !Array.isArray(coordinates.replacedPaths) || !current && !coordinates.replacedPaths.length
-    || coordinates.replacedPaths.length > 512 || new Set(coordinates.replacedPaths).size !== coordinates.replacedPaths.length
-    || coordinates.replacedPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/')
-      || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..')))
-    fail('successor preservation adoption is invalid');
+  exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', 'quarantineCoordinate', history, ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest'] : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])], 'successor preservation adoption');
+  const coordinates = current ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef, predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
+  if (adoption.schema !== (current ? 'agentic-os/current-quarantine-adoption/v1' : 'agentic-os/successor-preservation-adoption/v1') || adoption[history] !== false || adoption.repository !== source.repository || !Array.isArray(coordinates.replacedPaths) || !current && !coordinates.replacedPaths.length || coordinates.replacedPaths.length > 512 || new Set(coordinates.replacedPaths).size !== coordinates.replacedPaths.length || coordinates.replacedPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..'))) fail('successor preservation adoption is invalid');
   typedFields(coordinates, 'predecessorRef successorRef', text); text(adoption.reviewLocator, 'reviewLocator');
   typedFields(coordinates, 'predecessorHead successorHead', revision); revision(adoption.merge, 'merge');
   digest(adoption.quarantineCoordinate, 'quarantineCoordinate');
@@ -338,8 +325,13 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   exact(retention, ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead',
     'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest',
       'retainedIndexInventoryDigest', 'recoveryInventoryDigest'] : [])], 'preservation retention');
-  if (current && (digest(adoption.originalReceiptDigest, 'originalReceiptDigest') !== governanceDigest(retention.originalReceipt)
-    || retention.originalReceiptDigest !== adoption.originalReceiptDigest)) fail('current quarantine receipt is not enrolled');
+  if (current) {
+    const original = retention.originalReceipt, protectedReceipt = original?.schema === 'agentic-os/authenticated-transition-operation-receipt/v1',
+      originalDigest = protectedReceipt ? digest(original.receiptDigest, 'authenticated originalReceiptDigest') : governanceDigest(original);
+    if (digest(adoption.originalReceiptDigest, 'originalReceiptDigest') !== originalDigest || retention.originalReceiptDigest !== adoption.originalReceiptDigest) fail('current quarantine receipt is not enrolled');
+    const transition = protectedReceipt && original.transitionReceipt;
+    if (protectedReceipt && (transition?.repository !== `github.com/${review.repository}` || transition.reviewLocator !== review.url || transition.immutableRevision !== review.merge)) fail('protected retirement receipt does not join the selected review');
+  }
   if (current) typedFields(retention, 'retainedIndexInventoryDigest recoveryInventoryDigest', digest);
   exact(state, ['root', 'policyRoot', 'policyRevision', 'policyRepository', 'workflow', 'predecessorHead',
     'successorHead', 'peerRegistrationDigest', 'cacheDigest', ...(receipt ? ['planDigest', 'planIssuedAt'] : [])], 'preservation state');
