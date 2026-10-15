@@ -329,6 +329,30 @@ Budget: one exact v1 enrollment, one existing transition-workflow test and this 
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this enrollment; source history and prior enrollments stay intact.
 
+## Current-quarantine retention adoption — agentic-os PR #459 — 2026-10-16
+
+The policy owner authorized current-recovery provider issuance and record-only retirement for the
+exact target above. This additional enrollment binds branch
+`agent/device-0232231d4a19/cleanup-retirement-manifest-compat`, head
+`bc223be5e0e94eb18c1dbaeb24743ec21c087b50`, PR #459 merge
+`1529120d50ec3f068a93273ec244eaebc5065d08`, quarantine coordinate
+`bfefef5d014ffd25c4385692763ed7c5877268b59bd50015f2638d4bb9aa4407`, and retained local receipt
+digest `ac747f8ce44ff8d112dd06f140390ec120e27df412c8716c1a09c3b5c93bbea4`. It records
+`historicalQuarantineAuthorityProven: false`.
+
+The original local receipt reports `providerAuthority: false`, `claimRetired: false`,
+`bytesDeleted: true`, `registrationRetained: true`, and
+`physicalFreeSpaceIncreaseProven: false`. This adoption preserves that receipt's meaning and
+records current retained evidence; it does not recreate the discarded projection or assert prior
+provider authority. Independent provider issuance, integration, and record-only retirement each
+still require their own exact plans, grants, and receipts. This enrollment authorizes no additional
+discard, branch mutation, canonical sync, or deployment.
+
+Budget: one exact v1 retention enrollment, its exact existing workflow-test expectation, and this owner
+record; three existing files changed, under 3 kB added total, zero runtime modules, dependencies, or
+always-load bytes. Revert the protected policy
+update to remove this enrollment; retain the original receipt and branch/object evidence.
+
 ## Current recovery enrollment — agentic-os PR #454 — 2026-10-15
 
 The policy owner accepted the current-recovery basis for PR #454. This enrollment binds repository
