@@ -33,7 +33,7 @@ import {
   trustedRepositoryProfile,
 } from './agentic-os-auxiliary.mjs';
 import { runHookSetup } from './agentic-os-hooks.mjs';
-import { validateCommandArguments, cmdHelp, flag, option, positional } from './agentic-os-argv.mjs';
+import { validateCommandArguments, cmdHelp, flag, option, positional, parseReapRefBatch } from './agentic-os-argv.mjs';
 import { createWorkflowEffectGuard, rebindWorkflowCandidate, releaseWorkflowAllocation } from './agentic-os-workflow.mjs';
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
@@ -244,29 +244,16 @@ function cmdStatus(root, argv, profile, policy) {
 }
 function cmdReap(root, argv, policy, profile) {
   requireCanonical(root, policy);
-  if (flag(argv, 'apply')) {
-    err('blocked-authenticated-cleanup-required: reap is classification-only');
-    return 1;
-  }
-  const branches = reapLaneBranches(option(argv, 'ref'), root);
+  if (flag(argv, 'apply')) { err('blocked-authenticated-cleanup-required: reap is classification-only'); return 1; }
+  const refs = option(argv, 'refs'), branches = refs === null ? reapLaneBranches(option(argv, 'ref'), root) : parseReapRefBatch(refs, root);
   effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
   const baseSha = assertProfileCurrent(root, policy, profile);
-  if (!baseSha) {
-    err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`);
-    return 1;
-  }
+  if (!baseSha) { err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`); return 1; }
   const survey = surveyLanes(baseSha, branches, { cwd: root });
   const stale = staleWorktrees(root).map((entry) => entry.path);
   out(report.formatSurvey(survey));
-  if (stale.length > 0) {
-    out('');
-    out(`${stale.length} stale worktree registration(s), preserved:`);
-    for (const path of stale) out(`  ${path}`);
-  }
-  if (survey.integrated.length > 0 || stale.length > 0) {
-    out('');
-    out('classification only; authenticated retire(claim) and cleanup receipts remain required.');
-  }
+  if (stale.length > 0) { out(''); out(`${stale.length} stale worktree registration(s), preserved:`); for (const path of stale) out(`  ${path}`); }
+  if (survey.integrated.length > 0 || stale.length > 0) { out(''); out('classification only; authenticated retire(claim) and cleanup receipts remain required.'); }
   return 0;
 }
 function cmdFinish(root, argv, policy, profile) {

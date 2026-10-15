@@ -1,6 +1,16 @@
-import { assertScope } from '../src/lane-id.mjs';
+import { assertScope, isLaneRef } from '../src/lane-id.mjs';
+import { git } from '../src/git.mjs';
 import { MAX_TASK_CHECKOUTS } from '../src/canonical-resources.mjs';
-import { parseWritePaths } from '../src/worktree.mjs';
+import { LANE_BRANCH_LIMIT, parseWritePaths } from '../src/worktree.mjs';
+export function parseReapRefBatch(value, cwd = process.cwd()) {
+  const refs = typeof value === 'string' ? value.split(',') : [];
+  if (refs.length === 0 || refs.length > LANE_BRANCH_LIMIT) throw Object.assign(new Error('reap ref batch exceeds its item budget'), { reason: 'blocked-lane-batch-over-budget' });
+  if (refs.some(ref => !isLaneRef(ref))) throw Object.assign(new TypeError('reap ref batch contains an invalid lane ref'), { reason: 'blocked-invalid-lane-ref' });
+  if (new Set(refs).size !== refs.length) throw Object.assign(new TypeError('reap ref batch contains duplicate lane refs'), { reason: 'blocked-duplicate-lane-ref' });
+  const found = new Set(git(['for-each-ref', '--format=%(refname:short)', ...refs.map(ref => `refs/heads/${ref}`)], { cwd }).split(/\r?\n/u).filter(Boolean));
+  for (const ref of refs) if (!found.has(ref)) throw Object.assign(new Error(`lane branch does not exist: ${ref}`), { reason: 'blocked-lane-ref-missing' });
+  return refs;
+}
 function exact(argv, {
   min = 0, max = min, options = [], flags = [], requiredOptions = [], requiredFlags = [], allowEmptyOptions = [],
 }) {
@@ -169,7 +179,7 @@ export function validateCommandArguments(command, argv) {
     case 'land': return exact(argv, { options: ['message', 'body-file', 'title'] });
     case 'successor': return exact(argv, { min: 1, max: 1, options: ['expected-head', 'write', 'message'], flags: ['reconcile-committed'] });
     case 'status': return exact(argv, { options: ['device'] });
-    case 'reap': return exact(argv, { options: ['ref'], flags: ['apply'] });
+    case 'reap': return (option(argv, 'refs')?.length ?? 0) > 65536 ? '--refs exceeds the 64 KiB argument budget' : option(argv, 'ref') !== null && option(argv, 'refs') !== null ? 'use either --ref or --refs' : exact(argv, { options: ['ref', 'refs'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
     case 'completion': return argv[0] === 'status'
       ? exact(argv, { min: 1, options: ['ref', 'preservation', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] })
@@ -236,7 +246,7 @@ export function cmdHelp() {
       '    npm run lane -- <scope> --write=<paths> [--mission=<manifest>]   use native START admission',
       '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
       '    npm run finish -- --ref=<lane>  record exact integration from the retained lane ref; retain cleanup separately',
-      '    npm run reap [-- --ref=<lane>]  classify exact integration; never clean or retire authority',
+      '    npm run reap [-- --ref=<lane> | --refs=<comma-separated-exact-lanes>]  classify exact integration in batches of at most 256; never clean or retire authority',
       '',
       '  Other commands:',
       '  agentic-os capabilities [--query=<text>] [--kind=<kind>] [--limit=10]  discover owner references; see FLEET.md',
