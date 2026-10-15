@@ -7,6 +7,7 @@ import { git } from '../src/git.mjs';
 import {
   LANE_BRANCH_LIMIT, laneBranches, laneBranchSummary, lanePath, reapLaneBranches, worktreeRoot, assertProvisionable, provision,
 } from '../src/worktree.mjs';
+import { parseReapRefBatch } from '../bin/agentic-os-argv.mjs';
 
 function fixture(t) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-lane-inventory-'));
@@ -47,7 +48,7 @@ test('one registry parent isolates every repository and lane', (t) => {
     join(registry, basename(root), 'device--focused-change'));
 });
 
-test('lane inventory is bounded before reap can classify an unbounded legacy branch set', (t) => {
+test('lane inventory stays bounded while exact ref batches partition classification', (t) => {
   const { root, run } = fixture(t);
   const head = run(['rev-parse', 'HEAD']);
   for (let index = 0; index < LANE_BRANCH_LIMIT; index += 1) {
@@ -64,6 +65,14 @@ test('lane inventory is bounded before reap can classify an unbounded legacy bra
   });
   assert.deepEqual(reapLaneBranches(`agent/device/${String(LANE_BRANCH_LIMIT).padStart(3, '0')}`,
     root), [`agent/device/${String(LANE_BRANCH_LIMIT).padStart(3, '0')}`]);
+  assert.deepEqual(parseReapRefBatch('agent/device/000,agent/device/001', root),
+    ['agent/device/000', 'agent/device/001']);
+  assert.throws(() => parseReapRefBatch(Array.from({ length: LANE_BRANCH_LIMIT + 1 }, () => 'agent/device/000').join(','), root),
+    { reason: 'blocked-lane-batch-over-budget' });
+  assert.throws(() => parseReapRefBatch('agent/device/000,agent/device/000', root),
+    { reason: 'blocked-duplicate-lane-ref' });
+  assert.throws(() => parseReapRefBatch('agent/device/missing', root),
+    { reason: 'blocked-lane-ref-missing' });
   assert.throws(() => laneBranches(root), (error) => {
     assert.equal(error.reason, 'blocked-lane-inventory-over-budget');
     return true;
