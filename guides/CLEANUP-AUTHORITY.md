@@ -348,6 +348,13 @@ provider authority. Independent provider issuance, integration, and record-only 
 still require their own exact plans, grants, and receipts. This enrollment authorizes no additional
 discard, branch mutation, canonical sync, or deployment.
 
+Because the enrolled original local receipt already records the user-authorized projection discard,
+the current retention owner may produce a separate `current-quarantine-discard-acknowledged` receipt
+from that exact receipt, operation manifest, and surviving registration/index. It marks preservation
+false and historical quarantine authority false; it performs no filesystem effect. The live provider
+may retire only the fresh current claim, with a separate exact plan and receipt. No original receipt
+or projection is recreated, and refs, registration, and Git objects stay retained.
+
 Budget: one exact v1 retention enrollment, its exact existing workflow-test expectation, and this owner
 record; three existing files changed, under 3 kB added total, zero runtime modules, dependencies, or
 always-load bytes. Revert the protected policy

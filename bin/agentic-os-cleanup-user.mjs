@@ -6,7 +6,7 @@ import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { currentBranch, observeGit, repoRoot, remoteTransport, acquireOperationLock, finishOperationLock, observeGitLines, worktrees, commonDir, isAncestor } from '../src/git.mjs';
 import { loadRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
-import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget, observeRetainedQuarantineEvidence, observeQuarantineManifest, retirementEligibility } from '../src/cleanup-quarantine.mjs';
+import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget, observeRetainedQuarantineEvidence, observeDiscardedQuarantineEvidence, observeQuarantineManifest, retirementEligibility } from '../src/cleanup-quarantine.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { privateDirectoryIdentity, legacyPrivateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateFileExclusive,
   readPrivateFile, captureExactTree, pathIdentity, removeExactTree, unlinkExactPath,
@@ -18,9 +18,7 @@ import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegration
 import { get } from '../src/lane-records.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
 import { validateGitHubTransitionPolicy, selectPreservationAdoption } from '../src/github-transition-policy.mjs';
-import { SUCCESSOR_PRESERVATION_SCHEMA, SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
-  CURRENT_QUARANTINE_SCHEMA, CURRENT_QUARANTINE_PLAN_SCHEMA,
-  validateRetentionDispositionPlan, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
+import { SUCCESSOR_PRESERVATION_SCHEMA, SUCCESSOR_PRESERVATION_PLAN_SCHEMA, CURRENT_QUARANTINE_SCHEMA, CURRENT_QUARANTINE_PLAN_SCHEMA, CURRENT_QUARANTINE_DISCARD_SCHEMA, CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA, validateRetentionDispositionPlan, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
 const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent';
 const NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 const KEY = 'agentic-os.userCleanup';
@@ -491,8 +489,9 @@ function preservationObservation(root, adoption, policyRoot, workflow, options =
     workflow, mode: RECOVERY_MODE }, { cwd: root, ...options });
   if (review.url !== adoption.reviewLocator || review.head !== heads[1]
     || review.branch !== refs[1] || review.merge !== adoption.merge) refuse('preservation-review');
-  const observed = observeRetainedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate,
-    retained ? { originalReceipt: options.originalReceipt, canonicalRef: current.localRef } : {});
+  const discarded = retained && options.originalReceipt?.schema === 'agentic-os/quarantine-retirement-receipt/v2' && options.originalReceipt.bytesDeleted === true && options.originalReceipt.recoveryBytesDiscarded === true;
+  const observed = discarded ? observeDiscardedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate, { originalReceipt: options.originalReceipt })
+    : observeRetainedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate, retained ? { originalReceipt: options.originalReceipt, canonicalRef: current.localRef } : {});
   const retention = observed && retained ? { ...observed, originalReceipt: options.originalReceipt } : observed;
   if (!retention) refuse('preservation-retention');
   if (retained && retention.originalReceiptDigest !== adoption.originalReceiptDigest) refuse('preservation-original-receipt');
@@ -511,8 +510,9 @@ export function planSuccessorPreservation({ cwd = process.cwd(), adoption, origi
   const root = realpathSync(repoRoot(cwd)), issued = (options.now ?? Date.now)();
   const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1';
   const facts = preservationObservation(root, adoption, policyRoot, workflow, { ...options, originalReceipt });
-  const payload = { schema: retained ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
-    disposition: retained ? 'current-quarantine-retained' : 'successor-preserved',
+  const discarded = retained && facts.retention.projectionRetained === false;
+  const payload = { schema: discarded ? CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : retained ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
+    disposition: discarded ? 'current-quarantine-discard-acknowledged' : retained ? 'current-quarantine-retained' : 'successor-preserved',
     adoption, adoptionDigest: governanceDigest(adoption), ...facts,
     issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 900000).toISOString(),
     physicalCleanupPerformed: false, providerAuthority: false, claimRetired: false,
@@ -534,9 +534,8 @@ export function verifySuccessorPreservation(root, input, options = {}) {
   const receipt = validateRetentionDispositionReceipt(input);
   const { planDigest, planIssuedAt, ...planState } = receipt.state;
   const { receiptDigest, ...content } = receipt;
-  validateRetentionDispositionPlan({ ...content, schema: receipt.disposition === 'current-quarantine-retained'
-    ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
-    state: planState, issuedAt: planIssuedAt, planDigest });
+  validateRetentionDispositionPlan({ ...content, schema: receipt.disposition === 'current-quarantine-discard-acknowledged' ? CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA
+    : receipt.disposition === 'current-quarantine-retained' ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA, state: planState, issuedAt: planIssuedAt, planDigest });
   if (!/^[a-f0-9]{64}$/u.test(planDigest ?? '')) refuse('preservation-carrier');
   const stored = readPreservationCarrier(preservationCarrier(root, planDigest));
   if (!same(receipt, stored)) refuse('preservation-carrier');
@@ -576,7 +575,8 @@ export function applySuccessorPreservation(input, { cwd = process.cwd(), authori
     if (!Number.isSafeInteger(issued) || issued < now || issued >= Date.parse(plan.expiresAt))
       refuse('preservation-expired');
     const { planDigest, ...content } = plan;
-    const payload = { ...content, schema: plan.disposition === 'current-quarantine-retained' ? CURRENT_QUARANTINE_SCHEMA : SUCCESSOR_PRESERVATION_SCHEMA,
+    const payload = { ...content, schema: plan.disposition === 'current-quarantine-discard-acknowledged' ? CURRENT_QUARANTINE_DISCARD_SCHEMA
+      : plan.disposition === 'current-quarantine-retained' ? CURRENT_QUARANTINE_SCHEMA : SUCCESSOR_PRESERVATION_SCHEMA,
       state: { ...plan.state, planDigest, planIssuedAt: plan.issuedAt }, issuedAt: new Date(issued).toISOString() };
     const receipt = validateRetentionDispositionReceipt({ ...payload, receiptDigest: governanceDigest(payload) });
     assertPrivateDirectoryIdentity(base, 'preservation base');
