@@ -243,6 +243,16 @@ tree, ref, or registration evidence fails closed. This local retention dispositi
 `providerAuthority:false` and `claimRetired:false`; it does not replace the independent provider
 retirement receipt.
 
+When an exact retained `quarantine-retirement-receipt/v2` already records `bytesDeleted:true` and
+`recoveryBytesDiscarded:true`, the current adoption may issue a distinct
+`current-quarantine-discard-acknowledged` record. It binds that unmodified receipt, the operation's
+original projection manifest, the surviving registration manifest and index bytes, the retained
+branch/head, and the freshly observed review/source/policy. It reports the earlier local loss without
+claiming preservation or historical authority. The target projection must remain absent and the
+branch, registration, and Git objects must remain intact. This path issues no cleanup effect and never
+reconstructs a receipt or checkout; record-only provider retirement still requires its own live
+integration and retirement receipts.
+
 An authenticated retirement receipt can also serve as `originalReceipt` when its digest and plan byte
 digest match the quarantined `worktree-cleanup-eligibility/v1`, whose cleanup plan digest is the exact
 quarantine coordinate. The observer validates the retirement receipt, joins its review URL and merge to

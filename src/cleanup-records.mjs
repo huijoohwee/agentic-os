@@ -12,6 +12,7 @@ export const SUCCESSOR_PRESERVATION_SCHEMA = 'agentic-os/successor-preservation-
 export const SUCCESSOR_PRESERVATION_PLAN_SCHEMA = 'agentic-os/successor-preservation-plan/v1';
 export const CURRENT_QUARANTINE_SCHEMA = 'agentic-os/current-quarantine-retention-receipt/v1';
 export const CURRENT_QUARANTINE_PLAN_SCHEMA = 'agentic-os/current-quarantine-retention-plan/v1';
+export const CURRENT_QUARANTINE_DISCARD_SCHEMA = 'agentic-os/current-quarantine-discard-receipt/v1'; export const CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA = 'agentic-os/current-quarantine-discard-plan/v1';
 export const CURRENT_QUARANTINE_RECONCILIATION_SCHEMA = 'agentic-os/current-quarantine-reconciliation/v1';
 export const RECORD_ONLY_RETIREMENT_EFFECTS = Object.freeze(['record-retirement', 'retire-claim']);
 export const CLEANUP_EFFECTS = Object.freeze(['quarantine-worktree-projection', 'quarantine-worktree-registration']);
@@ -295,16 +296,11 @@ export function createCurrentQuarantineReconciliation(input) {
 export const validateCurrentQuarantineReconciliation = value => canonicalRecord(value, createCurrentQuarantineReconciliation, 'current quarantine reconciliation', 'current quarantine reconciliation is not canonical');
 function preservationRecord(value, receipt, allowCurrent = false) {
   const source = snap(value), checksum = receipt ? 'receiptDigest' : 'planDigest';
-  const current = allowCurrent && source.disposition === 'current-quarantine-retained';
+  const current = allowCurrent && ['current-quarantine-retained', 'current-quarantine-discard-acknowledged'].includes(source.disposition), discarded = current && source.disposition === 'current-quarantine-discard-acknowledged';
   const history = current ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven';
   const keys = ['schema', 'disposition', 'adoption', 'adoptionDigest', 'repository', 'canonicalRevision', 'profileDigest', 'policyDigest', 'review', 'integration', 'retention', 'state', 'issuedAt', 'expiresAt', 'physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history, checksum];
   exact(source, keys, 'successor preservation record');
-  if (Buffer.byteLength(canonicalJson(source)) > 64000
-    || source.schema !== (current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA
-      : receipt ? SUCCESSOR_PRESERVATION_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA)
-    || source.disposition !== (current ? 'current-quarantine-retained' : 'successor-preserved')
-    || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false))
-    fail('successor preservation claims are invalid');
+  if (Buffer.byteLength(canonicalJson(source)) > 64000 || source.schema !== (discarded ? receipt ? CURRENT_QUARANTINE_DISCARD_SCHEMA : CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA : receipt ? SUCCESSOR_PRESERVATION_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA) || source.disposition !== (current ? discarded ? 'current-quarantine-discard-acknowledged' : 'current-quarantine-retained' : 'successor-preserved') || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false)) fail('successor preservation claims are invalid');
   const adoption = source.adoption;
   exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', 'quarantineCoordinate', history, ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest'] : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])], 'successor preservation adoption');
   const coordinates = current ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef, predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
@@ -319,22 +315,18 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   instant(source.issuedAt, 'issuedAt'); instant(source.expiresAt, 'expiresAt');
   if (Date.parse(source.issuedAt) >= Date.parse(source.expiresAt)) fail('successor preservation window is invalid');
   const { review, integration, retention, state } = source, retainedHead = retention.originalReceipt?.detachedHead ?? coordinates.successorHead;
-  exact(review, ['repository', 'pr', 'url', 'branch', 'head', 'merge', 'mergedAt', 'checks',
-    'protectionProven', 'authority'], 'preservation review');
+  exact(review, ['repository', 'pr', 'url', 'branch', 'head', 'merge', 'mergedAt', 'checks', 'protectionProven', 'authority'], 'preservation review');
   exact(integration, ['kind', 'predecessorHead', 'reviewedHead', 'merge', 'pathCount', 'replacements'], 'preservation integration');
-  exact(retention, ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead',
-    'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest',
-      'retainedIndexInventoryDigest', 'recoveryInventoryDigest'] : [])], 'preservation retention');
+  exact(retention, ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead', 'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest', ...(discarded ? ['retainedIndexBytesDigest', 'retainedHeadBytesDigest', 'projectionRetained', 'recoveryBytesDiscarded'] : ['retainedIndexInventoryDigest', 'recoveryInventoryDigest'])] : [])], 'preservation retention');
   if (current) {
-    const original = retention.originalReceipt, protectedReceipt = original?.schema === 'agentic-os/authenticated-transition-operation-receipt/v1',
-      originalDigest = protectedReceipt ? digest(original.receiptDigest, 'authenticated originalReceiptDigest') : governanceDigest(original);
+    const original = retention.originalReceipt, protectedReceipt = original?.schema === 'agentic-os/authenticated-transition-operation-receipt/v1', discardedReceipt = discarded && original?.schema === 'agentic-os/quarantine-retirement-receipt/v2', originalPayload = original && Object.fromEntries(Object.entries(original).filter(([key]) => key !== 'receiptDigest')), originalDigest = protectedReceipt || discardedReceipt ? digest(original.receiptDigest, 'originalReceiptDigest') : governanceDigest(original);
     if (digest(adoption.originalReceiptDigest, 'originalReceiptDigest') !== originalDigest || retention.originalReceiptDigest !== adoption.originalReceiptDigest) fail('current quarantine receipt is not enrolled');
+    if (discarded && (!discardedReceipt || governanceDigest(originalPayload) !== originalDigest || original.coordinate !== adoption.quarantineCoordinate || !/^[a-f0-9]{64}$/u.test(original.planDigest) || original.branch !== adoption.targetRef || original.retainedHead !== adoption.targetHead || original.branchTip !== adoption.targetHead || original.bytesDeleted !== true || original.recoveryBytesDiscarded !== true || original.registrationRetained !== true || original.physicalFreeSpaceIncreaseProven !== false || original.branchRefsMutated !== false || original.objectDatabaseMutated !== false || original.providerAuthority !== false || original.claimRetired !== false || retention.projectionRetained !== false || retention.recoveryBytesDiscarded !== true)) fail('discarded quarantine receipt is invalid');
     const transition = protectedReceipt && original.transitionReceipt;
     if (protectedReceipt && (transition?.repository !== `github.com/${review.repository}` || transition.reviewLocator !== review.url || transition.immutableRevision !== review.merge)) fail('protected retirement receipt does not join the selected review');
   }
-  if (current) typedFields(retention, 'retainedIndexInventoryDigest recoveryInventoryDigest', digest);
-  exact(state, ['root', 'policyRoot', 'policyRevision', 'policyRepository', 'workflow', 'predecessorHead',
-    'successorHead', 'peerRegistrationDigest', 'cacheDigest', ...(receipt ? ['planDigest', 'planIssuedAt'] : [])], 'preservation state');
+  if (current) typedFields(retention, discarded ? 'retainedIndexBytesDigest retainedHeadBytesDigest' : 'retainedIndexInventoryDigest recoveryInventoryDigest', digest);
+  exact(state, ['root', 'policyRoot', 'policyRevision', 'policyRepository', 'workflow', 'predecessorHead', 'successorHead', 'peerRegistrationDigest', 'cacheDigest', ...(receipt ? ['planDigest', 'planIssuedAt'] : [])], 'preservation state');
   typedFields(state, 'root policyRoot', absolute);
   typedFields(state, 'policyRevision predecessorHead successorHead', revision);
   typedFields(state, 'peerRegistrationDigest cacheDigest', digest);
