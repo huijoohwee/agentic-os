@@ -543,3 +543,38 @@ each later effect requires its own exact plan, authorization, and receipt.
 Budget: one exact v1 enrollment, one existing transition-workflow test, and this owner record; zero
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this PR enrollment; source history and prior enrollments stay intact.
+
+## Current recovery enrollment — agentic-base PR #4 — 2026-10-16
+
+This enrollment binds repository `github.com/huijoohwee/agentic-base`, base
+`815a57e89e5eb96139ccef8d6d2c74974c57c934`, reviewed head
+`12547c4ee0eec90e5ddb628f4f20fa84f97919c2`, merge
+`56f73a9cbb6c8498830d0195b35f35876e70f77e`, and equal source/merge tree
+`07380949e39efff4523baa67916c6e14b0580524`. The exact review is
+<https://github.com/huijoohwee/agentic-base/pull/4>; its successful pre-merge checks are
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-4`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The enrollment grants no merge, retirement, cleanup, deletion, deployment, or
+canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
+
+## Current recovery enrollment — agentic-commerce-os PR #133 — 2026-10-16
+
+This enrollment binds repository `github.com/huijoohwee/agentic-commerce-os`, base
+`89c48c3bc9b6f094609f96c0ea1693c6f16b7e4a`, reviewed head
+`f351ec6dba29596f46738831b76f69c931b686f8`, merge
+`0006d363eaba69bdab2680d19c6445d2537e9ec6`, and equal source/merge tree
+`0f6122ded4e1ac907c9457683c5229be9fee8d41`. The exact review is
+<https://github.com/huijoohwee/agentic-commerce-os/pull/133>; its successful pre-merge check is
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-133`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The enrollment grants no merge, retirement, cleanup, deletion, deployment, or
+canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
+
+Budget: two exact v1 enrollments, their existing transition-workflow expectations, this owner
+record, and the as-built plan update; four existing files, at most 6 KiB added, zero runtime
+modules, dependencies, or always-load bytes. Revert these policy entries to remove both
+enrollments; source history and retained evidence remain intact.
