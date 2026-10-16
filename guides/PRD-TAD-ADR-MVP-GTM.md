@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.33"
-date: "2026-10-15"
+version: "1.4.34"
+date: "2026-10-16"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.33"
-tad_revision: "1.4.33"
-adr_revision: "1.4.33"
+prd_revision: "1.4.34"
+tad_revision: "1.4.34"
+adr_revision: "1.4.34"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--reap-inventory-scale"
-agent_id: "codex-reap-inventory-scale"
+worktree_id: "device-0232231d4a19--cross-repo-closeout-authority"
+agent_id: "codex-cross-repo-closeout-authority"
 load_policy: "on-demand"
-verification_scope: "keep global reap capped at 256 refs; partition larger inventories into unique validated --refs batches of 1–256 exact lane refs; no cleanup authority"
+verification_scope: "select exact repositories and current PR facts for cross-repository closeout; keep historical authority and each later effect separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "aafb2fef4dcc74a7ba23fc2e182a61814c1e475e"
-mvp_revision: "1.4.33"
-gtm_revision: "1.4.33"
+mvp_revision: "1.4.34"
+gtm_revision: "1.4.34"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
@@ -596,3 +596,10 @@ TAD/ADR: The existing SQLite transaction invokes its admission owner's bounded r
 MVP acceptance: real SQLite churn across 100 principals, ten further expired retention horizons and restart; independent-connection fences/replay; held usage and eight-project quota; legacy retention; delayed closed-window reserve. `node --test __tests__/agent-resource-retirement.test.mjs` plus existing economics/durable-store tests and native `npm run check` own proof. Same-window capacity still refuses; retirement removes closed-window replay evidence only after all usage settles and the full overlap-prevention horizon expires.
 Budget/handoff: Initial 25-minute slice expanded by 25 active minutes for required owner reuse: six files, <75 kB patch, no added runtime module/dependency/always-load instruction or paid resource. Publish through RELEASE, protect exact checks/merge, then let Commerce adopt the merged pin and qualify its host separately. Roll back source before adoption; never resurrect retired accounting or infer consumer recovery from source tests.
 GTM: This removes a deterministic pilot-host outage path; buyer demand, payment, shared host-wide budgets, lost-device recovery and unattended availability remain separate unvalidated outcomes.
+
+### Cross-repository closeout authority — ADLC-PIPELINE-001@1.4.34
+PRD: Clean, merged lanes in Agentic Base could not complete authenticated retirement because the central transition policy selected only GameXR, Graph, and Agentic OS. Add explicit Base and Commerce targets and record exact current facts for Base PR #4 and Commerce PR #133. Current merge facts do not prove historical protection, required-check policy, rulesets, or merge-method authority.
+TAD/ADR: Reuse the committed transition policy and its historical-content enrollment schema; keep the target set explicit and each PR bound to exact base, head, merge, equal tree, review URL, and successful check context. Reuse the existing workflow test. Do not add wildcard repositories, runtime modules, dependencies, or always-load instructions. Every provider integration, retirement, cleanup, deletion, and canonical sync still requires its own exact authorization and receipt.
+MVP acceptance: the policy validator selects only the five named repositories; source and merge trees match for both enrollments; the existing transition-workflow contract asserts both full records and check contexts; after protected integration, Base closeout resolves its authority repository and continues only through the native per-effect workflow. Commerce already has no linked task worktree, so this records support without claiming new cleanup.
+GTM/evidence: record actual closeout latency and allocated bytes only from receipts; no time or storage savings are claimed for these enrollments alone. Historical authority remains explicitly unproven.
+Budget/rollback: four existing files, at most 6 KiB added, zero runtime modules, dependencies, paid resources, or always-load bytes. Revert the two exact target and enrollment entries plus this record to restore the prior allowlist; retain source and provider evidence.
