@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.1
-prd_revision: 1.2.1
-tad_revision: 1.2.1
-adr_revision: 1.2.1
-mvp_revision: 1.2.1
-gtm_revision: 1.2.1
+version: 1.2.2
+prd_revision: 1.2.2
+tad_revision: 1.2.2
+adr_revision: 1.2.2
+mvp_revision: 1.2.2
+gtm_revision: 1.2.2
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.1`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.2`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -30,6 +30,20 @@ The retained-reader repair is protected-integrated through OS PR322. `collectRec
 accepts explicit real repository context and retained index. The Git owner disables ambient
 redirection, optional writes, lazy fetch, replacement objects and executable hooks. Observation
 neither restores a checkout nor rewrites pointers. Reader validation is not provider retirement.
+
+Cross-repository completion may read this policy from one explicit
+`AGENTIC_OS_AUTHORITY_ROOT=<absolute-path>` environment value for `completion status` and
+`completion:scaffold`. The root must have a trusted repository profile,
+be checked out on its configured protected branch, have no tracked or untracked changes, and have
+local protected and remote-tracking refs at the same revision. The committed transition policy must
+select the target, and its authority repository must match the trusted root profile. Policy and
+workflow files are read from that exact committed revision under the existing 64 KiB per-file and
+128 KiB aggregate cache limits. The observer does not fetch, write, or copy policy into the target.
+An absent, ref-mismatched, dirty, mismatched, or untrusted root fails closed. Provider changes after
+the last fetch are not observed by this read-only command; refresh the trusted root separately when
+upstream freshness is required. This lookup helps classify closeout and prepare a scaffold; it grants
+no cleanup, provider, integration, retirement, deletion, deployment, or synchronization authority.
+Effect planners still enforce their own target policy and exact receipt requirements.
 
 The [lifecycle owner](../docs/LIFECYCLE-COMPLETION.md) owns command and closed-bundle schemas;
 [integration methods](INTEGRATION-METHODS.md) own source/method proof; [user cleanup](USER-CLEANUP.md)
