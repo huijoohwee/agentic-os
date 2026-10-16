@@ -191,6 +191,24 @@ test('checkout package manifest, lockfile and HEAD changes invalidate idle depen
     const plan = installed.plan(); git(s.root, ['commit', '--allow-empty', '-qm', 'new head']);
     assert.throws(() => s.apply(plan), /plan-drift/);
   });
+test('checkout dependency plans bind local alternates while Git compaction rejects them',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), installed = installation(s), alternate = fixture(t);
+    const alternates = join(s.root, '.git/objects/info/alternates');
+    const source = `${join(alternate.root, '.git/objects')}\n`;
+    writeFileSync(alternates, source);
+    const plan = installed.plan();
+    assert.equal(plan.before.objectAlternates.bytes, Buffer.byteLength(source));
+    assert.match(plan.before.objectAlternates.digest, /^[a-f0-9]{64}$/u);
+    writeFileSync(alternates, `${join(s.root, '.git/objects')}\n`);
+    assert.throws(() => s.apply(plan), /object-alternates-drift/);
+    assert.ok(!existsSync(join(s.root, '.git/agentic-os-storage', plan.planDigest)));
+  });
+test('Git object compaction remains fail-closed when local alternates exist', t => {
+  const s = fixture(t), alternate = fixture(t);
+  writeFileSync(join(s.root, '.git/objects/info/alternates'), `${join(alternate.root, '.git/objects')}\n`);
+  assert.throws(() => s.plan('git'), /object-alternates/);
+});
 test('a checkout process blocks compression even when it holds no dependency file open',
   { skip: process.platform !== 'darwin' }, async t => {
     const s = fixture(t), installed = installation(s), plan = installed.plan();
