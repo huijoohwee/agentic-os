@@ -310,6 +310,79 @@ Budget: one exact v1 enrollment, one existing transition-workflow test and this 
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this PR enrollment; source history and prior enrollments stay intact.
 
+## Current-quarantine retention adoption — agentic-os PR #457 — 2026-10-16
+
+The policy owner accepted this exact current-retention basis. The enrollment binds repository
+`github.com/huijoohwee/agentic-os`, branch
+`agent/device-0232231d4a19/pr456-current-recovery-v2`, head
+`442fa6d80a98ef41154ffd270e0d04e77c1b4470`, PR #457 merge
+`e3aa53001da0f6f50573b5fe2227735d4b7446e3`, quarantine coordinate
+`ea74a43255305cb85122e4faad4309430f875ef4fdfeb8df1a69887c3a3df7ce`, and original receipt digest
+`0622a4e7c8a8d0d9f3bc7174f7f711eaa0a0f4360bad26da700db3e7d7390e5e`. Its exact review is
+<https://github.com/huijoohwee/agentic-os/pull/457>.
+
+The retained local receipt reports 8,183,336 logical bytes discarded while retaining the branch,
+registration, and Git objects; physical free-space increase is unproven. It records
+`providerAuthority: false` and `claimRetired: false`. The enrollment keeps historical quarantine
+authority and actor identity unproven. It records retained evidence only: it does not recreate the
+projection, modify filesystem data, issue a fresh provider claim, retire a claim, or authorize branch
+deletion. Provider integration, retirement, and branch deletion remain separately governed.
+
+Budget: one exact v1 retention enrollment, its existing transition-workflow expectation, and this owner
+record; three existing files changed, under 3 kB added total, zero runtime modules, dependencies, or
+always-load bytes. Revert the protected policy update to remove this enrollment; retain the original
+receipt and branch/object evidence.
+
+## Current recovery enrollment — agentic-os PR #459 — 2026-10-15
+
+This current-recovery enrollment binds repository `github.com/huijoohwee/agentic-os`, base
+`8a5c638208a81ca19cc85ed2bae3b728a2f62bb4`, reviewed head
+`bc223be5e0e94eb18c1dbaeb24743ec21c087b50`, merge
+`1529120d50ec3f068a93273ec244eaebc5065d08`, and equal source/merge tree
+`a736c11f9afa7505b3ec59955326f74068a5b43a`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/459>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-459`. This record captures current
+facts only. Historical protection, required-check policy, Ruleset Suite, and merge-method authority
+remain unproven. It creates no merge, retirement, cleanup, deployment, or canonical-sync authority;
+each later effect retains its own exact plan, grant, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow test and this owner record; zero
+runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
+remove this enrollment; source history and prior enrollments stay intact.
+
+## Current-quarantine retention adoption — agentic-os PR #459 — 2026-10-16
+
+The policy owner authorized current-recovery provider issuance and record-only retirement for the
+exact target above. This additional enrollment binds branch
+`agent/device-0232231d4a19/cleanup-retirement-manifest-compat`, head
+`bc223be5e0e94eb18c1dbaeb24743ec21c087b50`, PR #459 merge
+`1529120d50ec3f068a93273ec244eaebc5065d08`, quarantine coordinate
+`bfefef5d014ffd25c4385692763ed7c5877268b59bd50015f2638d4bb9aa4407`, and retained local receipt
+digest `ac747f8ce44ff8d112dd06f140390ec120e27df412c8716c1a09c3b5c93bbea4`. It records
+`historicalQuarantineAuthorityProven: false`.
+
+The original local receipt reports `providerAuthority: false`, `claimRetired: false`,
+`bytesDeleted: true`, `registrationRetained: true`, and
+`physicalFreeSpaceIncreaseProven: false`. This adoption preserves that receipt's meaning and
+records current retained evidence; it does not recreate the discarded projection or assert prior
+provider authority. Independent provider issuance, integration, and record-only retirement each
+still require their own exact plans, grants, and receipts. This enrollment authorizes no additional
+discard, branch mutation, canonical sync, or deployment.
+
+Because the enrolled original local receipt already records the user-authorized projection discard,
+the current retention owner may produce a separate `current-quarantine-discard-acknowledged` receipt
+from that exact receipt, operation manifest, and surviving registration/index. It marks preservation
+false and historical quarantine authority false; it performs no filesystem effect. The live provider
+may retire only the fresh current claim, with a separate exact plan and receipt. No original receipt
+or projection is recreated, and refs, registration, and Git objects stay retained.
+
+Budget: one exact v1 retention enrollment, its exact existing workflow-test expectation, and this owner
+record; three existing files changed, under 3 kB added total, zero runtime modules, dependencies, or
+always-load bytes. Revert the protected policy
+update to remove this enrollment; retain the original receipt and branch/object evidence.
+
 ## Current recovery enrollment — agentic-os PR #454 — 2026-10-15
 
 The policy owner accepted the current-recovery basis for PR #454. This enrollment binds repository
@@ -386,5 +459,45 @@ remain unproven. It creates no merge, retirement, cleanup, deployment, or canoni
 each later effect retains its own exact plan, grant, and receipt.
 
 Budget: one exact v1 enrollment, one existing transition-workflow test and this owner record; zero
+runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
+remove this PR enrollment; source history and prior enrollments stay intact.
+
+## Current recovery enrollment — agentic-os PR #465 — 2026-10-16
+
+The policy owner accepted the exact current-recovery basis for PR #465. This enrollment binds
+repository `github.com/huijoohwee/agentic-os`, base
+`9c50837c86d06851e7694b9cb0dc4d730fd2254e`, reviewed head
+`584e29b9ee6524d0934b2be5a4a96422d431a057`, merge
+`8b3a7b27b01dc119596b46e6b2de902c0910d6b3`, and equal source/merge tree
+`53e26804ff66110abb095ddbac0347113ef93129`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/465>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-465`. This record accepts only current
+observations. Historical protection, required-check policy, Ruleset Suite, and merge-method authority
+remain unproven. It creates no merge, retirement, cleanup, deployment, or canonical-sync authority;
+each later effect retains its own exact plan, grant, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow test and this owner record; three
+existing files, under 3 kB added, zero runtime modules, dependencies, or always-load bytes. Revert the
+checked protected policy update to remove this PR enrollment; source history and prior enrollments
+stay intact.
+
+## Current recovery enrollment — agentic-os PR #467 — 2026-10-16
+
+This enrollment binds repository `github.com/huijoohwee/agentic-os`, base
+`ec378a9c98ec4d50d11afdee635d232ad65a3eb4`, reviewed head
+`a93eb94658a7ddce3417678bf2dfc8beae195a68`, merge
+`9b178f7125b4651f87f5625763eefc826a785859`, and equal source/merge tree
+`eacb6991cdbd502000d2905996000c035534f3c7`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/467>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-467`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The enrollment grants no merge, retirement, cleanup, deployment, or canonical-sync effect;
+each later effect requires its own exact plan, authorization, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow test, and this owner record; zero
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this PR enrollment; source history and prior enrollments stay intact.

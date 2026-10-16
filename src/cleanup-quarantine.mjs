@@ -1,5 +1,6 @@
 /** Exact-path, quarantine-only Git worktree observation and mutation mechanics. */
 import { lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
@@ -20,7 +21,7 @@ function same(left, right) { return canonicalJson(left) === canonicalJson(right)
 function absent(path, label) {
   try { lstatSync(path); return false; } catch (error) { if (error.code === 'ENOENT') return true; fail(`blocked-${label}`, `${label} absence is not proven`); }
 }
-function selectedManifest(root, names, limits, { allowMissing = false, label, retainedHardlinks = false, observe = observeQuarantineManifest } = {}) {
+function selectedManifest(root, names, limits, { allowMissing = false, label, retainedHardlinks = false, observe = observeQuarantineManifest, modeOverride = null } = {}) {
   const rootBefore = strictStat(root, `${label}-root`);
   if (!rootBefore.isDirectory() || rootBefore.isSymbolicLink() || new Set(names).size !== names.length || names.some((name) => !name || name === '.' || name === '..' || name.includes('/'))) fail('blocked-cleanup-manifest', `${label} selection is unsafe`);
   let bytes = 0, entries = names.length;
@@ -36,12 +37,12 @@ function selectedManifest(root, names, limits, { allowMissing = false, label, re
     return { name, manifest };
   });
   const rootAfter = lstatSync(root, { bigint: true, throwIfNoEntry: false }); if (!sameNode(rootBefore, rootAfter)) fail('blocked-cleanup-manifest', `${label} root changed during observation`);
-  return frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1', label, mode: (rootBefore.mode & 0o7777n).toString(8), items }), bytes, entries });
+  return frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1', label, mode: modeOverride ?? (rootBefore.mode & 0o7777n).toString(8), items }), bytes, entries });
 }
-function observeRegistrationManifest(root, limits) {
+function observeRegistrationManifest(root, limits, modeOverride = null) {
   const ignored = new Set(['fsmonitor--daemon', 'fsmonitor--daemon.ipc']);
   const names = boundedDirectoryEntries(root, limits.entryCeiling, 'worktree registration').map((entry) => entry.name).filter((name) => !ignored.has(name));
-  return selectedManifest(root, names, limits, { label: 'worktree-registration' });
+  return selectedManifest(root, names, limits, { label: 'worktree-registration', modeOverride });
 }
 function sharedState(common, worktrees, excludedAdminId, plan) {
   if (process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES)
@@ -148,6 +149,10 @@ function detachedReceiptMatches(receipt, detachedHead, reviewedHead) {
   return exact||i?.kind==='reviewed-equivalent-superseded-transition'&&i.detachedHead===detachedHead&&i.reviewedCommit===reviewedHead&&i.sourceIntegrated===false&&i.reviewedSource?.kind==='equal-tree'&&i.reviewedSource.headTree===i.reviewedSource.mergeTree&&receipt.historicalDraft==='superseded';
 }
 function exactManifest(value, expected) { return value?.digest === expected.digest && value?.bytes === expected.bytes && value?.entries === expected.entries; }
+function observeBoundRegistrationManifest(root, expected) {
+  const limits = { byteCeiling: expected.bytes, entryCeiling: expected.entries, retainedHardlinks: true };
+  for (const observe of [observeQuarantineManifest, observeRegistrationManifest]) { try { const manifest = observe(root, limits); if (exactManifest(manifest, expected)) return manifest; } catch { /* Exact fallback only. */ } } return null;
+}
 function retainedTargetPath(registration) {
   const backlink = UTF8.decode(readBoundedStableFile(join(registration, 'gitdir'), 8192, 'retained-worktree-backlink'));
   if (!backlink.endsWith('/.git\n')) fail('blocked-cleanup-retained-artifact', 'retained worktree backlink does not identify a direct checkout');
@@ -220,10 +225,10 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
         const candidate = reconciliation !== null ? reconciliationCandidate(reconciliation,
           { originalReceipt, originalRegistrationManifest, ref, head, coordinate: entry.name }) : null;
         const projection = observeQuarantineManifest(join(operation, 'projection'), { byteCeiling: binding.projection.bytes, entryCeiling: binding.projection.entries, retainedHardlinks: true }),
-          retained = observeRegistrationManifest(registration, {
-            byteCeiling: candidate?.currentRegistrationManifest.bytes ?? binding.registration.bytes,
-            entryCeiling: candidate?.currentRegistrationManifest.entries ?? binding.registration.entries,
-          });
+          retained = retirementTarget ? observeBoundRegistrationManifest(registration, candidate?.currentRegistrationManifest ?? originalRegistrationManifest)
+            : observeRegistrationManifest(registration, { byteCeiling: candidate?.currentRegistrationManifest.bytes ?? binding.registration.bytes,
+              entryCeiling: candidate?.currentRegistrationManifest.entries ?? binding.registration.entries });
+        if (!retained) continue;
         const registrationMatches = exactManifest(retained, originalRegistrationManifest);
         const basis = !registrationMatches && candidate !== null
           ? reconciliationMatches(candidate, retained) : null;
@@ -254,6 +259,13 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
   return null;
 }
 export const observeRetainedWorktreeQuarantine = (root, ref, head) => observeRetainedQuarantineEvidence(root, ref, head) !== null;
+/** Verify prior discard evidence without treating the deleted projection as preserved. */ export function observeDiscardedQuarantineEvidence(root, ref, head, coordinate, { originalReceipt } = {}) { try {
+  const common = realpathSync(commonDir(root)), operation = join(common, QUARANTINE_ROOT, coordinate), registration = join(operation, 'registration'), receiptPath = join(operation, 'retirement.json'); privateDirectory(join(common, QUARANTINE_ROOT), 'cleanup-quarantine-root'); privateDirectory(operation, 'cleanup-operation-directory'); const names = boundedDirectoryEntries(operation, 8, 'discarded-quarantine-operation').map(entry => entry.name).sort(), record = readOperation(operation), binding = retirementEligibility(record.eligibility);
+  if (!same(names, ['operation.json', 'registration', 'retirement.json']) || !absent(join(operation, 'projection'), 'discarded-quarantine-projection')) return null; const receiptBytes = readBoundedStableFile(receiptPath, 64_000, 'discarded-quarantine-receipt'), receipt = JSON.parse(UTF8.decode(receiptBytes)), { receiptDigest, ...payload } = receipt, worktrees = worktreeInventory(root);
+  if (!binding || binding.coordinate !== coordinate || record.eligibility.schema !== 'agentic-os/user-cleanup-eligibility/v1' || !receiptBytes.equals(Buffer.from(canonicalJson(receipt), 'utf8')) || receipt.schema !== 'agentic-os/quarantine-retirement-receipt/v2' || governanceDigest(payload) !== receiptDigest || !same(receipt, originalReceipt) || receipt.coordinate !== coordinate || !/^[a-f0-9]{64}$/u.test(receipt.planDigest) || receipt.receiptPath !== receiptPath || receipt.operationDigest !== governanceDigest(record) || receipt.eligibilityDigest !== governanceDigest(record.eligibility) || receipt.branch !== ref || receipt.retainedHead !== head || receipt.branchTip !== head || !Number.isSafeInteger(receipt.executedAt) || receipt.executedAt < Date.parse(record.executedAt) || receipt.logicalBytesUnlinked !== binding.projection.bytes || receipt.recoveryBytesDiscarded !== true || receipt.bytesDeleted !== true || receipt.registrationRetained !== true || receipt.physicalFreeSpaceIncreaseProven !== false || receipt.branchRefsMutated !== false || receipt.objectDatabaseMutated !== false || receipt.providerAuthority !== false || receipt.claimRetired !== false || ![0o700, 0o755].includes(receipt.registrationRootModeBefore) || receipt.registrationRootPermissionsTightened !== (receipt.registrationRootModeBefore === 0o755) || observeGit(['rev-parse', '--verify', `refs/heads/${ref}^{commit}`], { cwd: root, allowFail: true }) !== head || worktrees.some(row => row.path === retainedTargetPath(registration) || row.branch === ref)) return null;
+  privateDirectory(registration, 'discarded-quarantine-registration'); const registrationMode = Number(lstatSync(registration, { bigint: true }).mode & 0o7777n); if (registrationMode !== 0o700) return null; const retained = observeRegistrationManifest(registration, { byteCeiling: binding.registration.bytes, entryCeiling: binding.registration.entries }, receipt.registrationRootModeBefore.toString(8)); if (!exactManifest(retained, binding.registration)) return null; const targetPath = retainedTargetPath(registration), headBytes = readBoundedStableFile(join(registration, 'HEAD'), 256, 'discarded-quarantine-head'), indexBytes = readBoundedStableFile(join(registration, 'index'), 16 * 1024 ** 2, 'discarded-quarantine-index');
+  if (UTF8.decode(headBytes) !== `ref: refs/heads/${ref}\n` || Number(lstatSync(registration, { bigint: true }).mode & 0o7777n) !== registrationMode || !absent(targetPath, 'discarded-quarantine-target') || !same(worktrees, worktreeInventory(root)) || !exactManifest(observeRegistrationManifest(registration, { byteCeiling: binding.registration.bytes, entryCeiling: binding.registration.entries }, receipt.registrationRootModeBefore.toString(8)), retained) || !readBoundedStableFile(receiptPath, 64_000, 'discarded-quarantine-receipt-after').equals(receiptBytes) || observeGit(['rev-parse', '--verify', `refs/heads/${ref}^{commit}`], { cwd: root, allowFail: true }) !== head || !absent(join(operation, 'projection'), 'discarded-quarantine-projection-after') || !absent(targetPath, 'discarded-quarantine-target-after')) return null; return frozen({ coordinate, operationDigest: governanceDigest(record), registrationRef: ref, retainedHead: head, projectionManifest: binding.projection, registrationManifest: retained, originalReceiptDigest: receiptDigest, retainedIndexBytesDigest: createHash('sha256').update(indexBytes).digest('hex'), retainedHeadBytesDigest: createHash('sha256').update(headBytes).digest('hex'), projectionRetained: false, recoveryBytesDiscarded: true });
+} catch { return null; } }
 export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   cwd = process.cwd(), observePolicy = trustedState,
 } = {}) {

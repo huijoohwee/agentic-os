@@ -5,7 +5,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, writeFileS
   openSync, fsyncSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { commonDir, repoRoot } from '../src/git.mjs';
-import { observeQuarantineManifest } from '../src/cleanup-manifest.mjs';
+import { observeQuarantineManifest, readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 
 const MAX_OUTPUT = 64 * 1024 * 1024;
 const LIMITS = { byteCeiling: 4 * 1024 * 1024 * 1024, entryCeiling: 100000 };
@@ -25,7 +25,7 @@ function command(file, args, cwd, options = {}) {
       COPYFILE_DISABLE: '0', DITTOABORT: '1' }, ...options });
 }
 const git = (root, args, options) => command('git', ['--no-replace-objects', ...args], root, options);
-function location(cwd) {
+function location(cwd, { allowObjectAlternates = false } = {}) {
   for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY',
     'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_INDEX_FILE', 'GIT_SHALLOW_FILE'])
     if (process.env[name]) fail('git-environment');
@@ -33,9 +33,9 @@ function location(cwd) {
   direct(join(common, 'objects'));
   for (const name of ['pack', 'info'])
     if (existsSync(join(common, 'objects', name))) direct(join(common, 'objects', name));
-  for (const name of ['alternates', 'http-alternates'])
-    if (existsSync(join(common, 'objects/info', name))) fail('object-alternates');
-  return { root, common };
+  const path = join(common, 'objects/info/alternates'), stat = lstatSync(path, { bigint: true, throwIfNoEntry: false }), http = lstatSync(join(common, 'objects/info/http-alternates'), { bigint: true, throwIfNoEntry: false });
+  if (http || stat && !allowObjectAlternates) fail('object-alternates');
+  const bytes = stat ? readBoundedStableFile(path, 64 * 1024, 'object-alternates') : null; return allowObjectAlternates ? { root, common, objectAlternates: bytes && { bytes: bytes.length, digest: hash(bytes) } } : { root, common };
 }
 function allocated(path) {
   let entries = 0, bytes = 0; const seen = new Set();

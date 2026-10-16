@@ -9,7 +9,7 @@ import { validateSuccessorPreservationReceipt, validateRetentionDispositionRecei
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { successorIntegrationProof } from '../src/patch-identity.mjs';
 import { planSuccessorPreservation, applySuccessorPreservation, verifySuccessorPreservation,
-  planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+  planUserCleanup, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 
@@ -273,18 +273,26 @@ test('preservation preparation rejects provider-induced ref and peer races', t =
     policyRoot: s.root, workflow: '.github/workflows/ci.yml' }, options), /preservation-observation-race|preservation-integration/);
 });
 
-function currentQuarantineFixture(t) {
+function currentQuarantineFixture(t, { discardProjection = false } = {}) {
   const s = preservedFixture(t), adoption = { schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: s.adoption.repository, targetRef: s.nextRef, targetHead: s.reviewedHead,
     merge: s.merge, reviewLocator: s.adoption.reviewLocator, quarantineCoordinate: s.physical.planDigest,
     originalReceiptDigest: governanceDigest(s.physical), historicalQuarantineAuthorityProven: false };
+  let originalReceipt = s.physical;
+  if (discardProjection) {
+    const plan = planQuarantineRetirement({ cwd: s.root, coordinate: s.physical.planDigest, now: () => NOW + 1000 });
+    originalReceipt = applyQuarantineRetirement(plan, { cwd: s.root,
+      authorization: `agentic-os:quarantine-retirement:${plan.planDigest}`, stopped: true,
+      discardRecovery: true, now: () => NOW + 1001, probe: () => {} });
+    adoption.originalReceiptDigest = originalReceipt.receiptDigest;
+  }
   const path = join(s.root, '.agentic-os/github-transition-policy.json');
   const policy = { ...JSON.parse(readFileSync(path, 'utf8')), schema: 'agentic-os/github-transition-policy/v3', retentionAdoptions: [adoption] };
   writeFileSync(path, canonicalJson(policy)); git(s.root, 'add', '.agentic-os');
   git(s.root, 'commit', '--quiet', '-m', 'review current retained quarantine adoption');
   const canonical = git(s.root, 'rev-parse', 'HEAD'); git(s.root, 'update-ref', 'refs/remotes/origin/main', canonical);
   const options = { ...s.options, observeRemote: () => `${canonical}\trefs/heads/main` };
-  const input = { cwd: s.root, adoption, originalReceipt: s.physical, policyRoot: s.root, workflow: '.github/workflows/ci.yml' };
+  const input = { cwd: s.root, adoption, originalReceipt, policyRoot: s.root, workflow: '.github/workflows/ci.yml' };
   const plan = planSuccessorPreservation(input, options);
   const apply = overrides => applySuccessorPreservation(plan, { cwd: s.root, ...options, stopped: true,
     authorization: `agentic-os:successor-preservation:${plan.planDigest}`, ...overrides });
@@ -329,4 +337,28 @@ test('current quarantine replay fails on altered retained index and provider-ind
   const index = join(s.physical.registrationQuarantinePath, 'index');
   writeFileSync(index, Buffer.concat([readFileSync(index), Buffer.from('tampered')]));
   assert.throws(() => verifySuccessorPreservation(s.root, receipt, s.options), /preservation-retention/);
+});
+
+test('current adoption acknowledges an exact prior projection discard without claiming preservation', t => {
+  const s = currentQuarantineFixture(t, { discardProjection: true }), receipt = s.apply();
+  assert.equal(receipt.schema, 'agentic-os/current-quarantine-discard-receipt/v1');
+  assert.equal(receipt.disposition, 'current-quarantine-discard-acknowledged');
+  assert.equal(receipt.retention.originalReceiptDigest, s.adoption.originalReceiptDigest);
+  assert.equal(receipt.retention.projectionRetained, false);
+  assert.equal(receipt.retention.recoveryBytesDiscarded, true);
+  assert.equal(existsSync(s.physical.projectionQuarantinePath), false);
+  assert.equal(existsSync(join(s.physical.projectionQuarantinePath, '..', 'registration')), true);
+  assert.equal(git(s.root, 'rev-parse', s.nextRef), s.reviewedHead);
+  for (const key of ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', 'historicalQuarantineAuthorityProven'])
+    assert.equal(receipt[key], false);
+  assert.deepEqual(validateRetentionDispositionReceipt(receipt), receipt);
+  const status = inspectCompletionStatus(s.root, s.nextRef, { protectedBranch: 'main' }, s.profile,
+    { preservationReceipt: receipt });
+  assert.equal(status.lossDispositionVerified, true);
+  assert.equal(status.preservationDispositionVerified, false);
+  assert.equal(status.preservationSatisfied, false);
+  assert.equal(status.closeout.laneDisposition, 'current-quarantine-discard-acknowledged');
+  assert.equal(status.closeout.lossDispositionVerified, true);
+  assert.equal(status.closeout.adlcState, 'retirement_pending');
+  assert.deepEqual(s.apply({ now: () => NOW + 900001 }), receipt);
 });

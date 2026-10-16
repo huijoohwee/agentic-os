@@ -34,6 +34,9 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/455',
     'https://github.com/huijoohwee/agentic-os/pull/456',
     'https://github.com/huijoohwee/agentic-os/pull/457',
+    'https://github.com/huijoohwee/agentic-os/pull/459',
+    'https://github.com/huijoohwee/agentic-os/pull/465',
+    'https://github.com/huijoohwee/agentic-os/pull/467',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-graph/pull/1492', ['Integration Gate']],
@@ -48,6 +51,9 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/455', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/456', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/457', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/459', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/465', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/467', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -75,6 +81,9 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['455', 'c3839e3f14f356a26e36d0211834cee4236c72cc', 'a2a348e89c9085f6f466486d77f07c0df6823eb3', '79bd9d2b22948976dd702bf92f58872e41091322', 'd1ad2fe74ffc4363aa04316d637d380a67d4a1f7'],
     ['456', '79bd9d2b22948976dd702bf92f58872e41091322', 'ac7969984197b912838d6aa98747a1b3ddcfa5e0', '49af645200c943d694185f2c935b32e82a778efb', '602d328be6bda127afc03dc98454288fa61f1247'],
     ['457', '49af645200c943d694185f2c935b32e82a778efb', '442fa6d80a98ef41154ffd270e0d04e77c1b4470', 'e3aa53001da0f6f50573b5fe2227735d4b7446e3', 'caaf60686590b8ca37bb5b994fb651fb8ae9ed76'],
+    ['459', '8a5c638208a81ca19cc85ed2bae3b728a2f62bb4', 'bc223be5e0e94eb18c1dbaeb24743ec21c087b50', '1529120d50ec3f068a93273ec244eaebc5065d08', 'a736c11f9afa7505b3ec59955326f74068a5b43a'],
+    ['465', '9c50837c86d06851e7694b9cb0dc4d730fd2254e', '584e29b9ee6524d0934b2be5a4a96422d431a057', '8b3a7b27b01dc119596b46e6b2de902c0910d6b3', '53e26804ff66110abb095ddbac0347113ef93129'],
+    ['467', 'ec378a9c98ec4d50d11afdee635d232ad65a3eb4', 'a93eb94658a7ddce3417678bf2dfc8beae195a68', '9b178f7125b4651f87f5625763eefc826a785859', 'eacb6991cdbd502000d2905996000c035534f3c7'],
   ]) {
     const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
     assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
@@ -94,6 +103,16 @@ test('committed transition workflow is bound to the canonical authority policy',
   assert.deepEqual(policy.retentionAdoptions, [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-os',
+    targetRef: 'agent/device-0232231d4a19/cleanup-retirement-manifest-compat',
+    targetHead: 'bc223be5e0e94eb18c1dbaeb24743ec21c087b50',
+    merge: '1529120d50ec3f068a93273ec244eaebc5065d08',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/459',
+    quarantineCoordinate: 'bfefef5d014ffd25c4385692763ed7c5877268b59bd50015f2638d4bb9aa4407',
+    originalReceiptDigest: 'ac747f8ce44ff8d112dd06f140390ec120e27df412c8716c1a09c3b5c93bbea4',
+    historicalQuarantineAuthorityProven: false,
+  }, {
+    schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
     targetRef: 'agent/device-cba000d3779d/software-forensics-preset',
     targetHead: 'e17b54e4a574a8086ecb53fd9b7d242dc79fbc82',
     merge: '3846c48dba4b40702451640e3e78e6bcc91408f4',
@@ -110,6 +129,16 @@ test('committed transition workflow is bound to the canonical authority policy',
     reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/448',
     quarantineCoordinate: '242cb16bb2e2034465f883c1aa9612de6b060bc2eccee67d9955d2926b8e3dfe',
     originalReceiptDigest: '90c04dd8a9e33e945d2df291258e7b6cd29726e6bd6b7269f4d723e476117425',
+    historicalQuarantineAuthorityProven: false,
+  }, {
+    schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
+    targetRef: 'agent/device-0232231d4a19/pr456-current-recovery-v2',
+    targetHead: '442fa6d80a98ef41154ffd270e0d04e77c1b4470',
+    merge: 'e3aa53001da0f6f50573b5fe2227735d4b7446e3',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/457',
+    quarantineCoordinate: 'ea74a43255305cb85122e4faad4309430f875ef4fdfeb8df1a69887c3a3df7ce',
+    originalReceiptDigest: '0622a4e7c8a8d0d9f3bc7174f7f711eaa0a0f4360bad26da700db3e7d7390e5e',
     historicalQuarantineAuthorityProven: false,
   }, {
     schema: 'agentic-os/current-quarantine-adoption/v1',

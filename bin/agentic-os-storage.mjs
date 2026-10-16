@@ -55,7 +55,7 @@ function dependencyState(common, quarantine) {
     registrationManifest: storageManifest(registration),
     dependencies: storageManifest(target) } };
 }
-function worktreeDependencyState(root) {
+function worktreeDependencyState(root, objectAlternates = undefined) {
   const target = direct(join(root, 'node_modules')), packageFiles = {};
   for (const name of ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml',
     'yarn.lock', 'bun.lock', 'bun.lockb', '.npmrc', '.yarnrc.yml']) {
@@ -65,7 +65,7 @@ function worktreeDependencyState(root) {
   if (packageFiles['package.json'] === null) fail('package-source');
   if (git(root, ['ls-files', '-z', '--', 'node_modules']).length) fail('tracked-dependencies');
   return { target, state: { checkoutHead: git(root, ['rev-parse', 'HEAD']).trim(), packageFiles,
-    dependencies: storageManifest(target) } };
+    dependencies: storageManifest(target), ...(objectAlternates === undefined ? {} : { objectAlternates }) } };
 }
 function artifactState(root, artifact) {
   if (typeof artifact !== 'string' || artifact.split('/').some(p => !p || ['.', '..', '.git', '.wrangler'].includes(p)))
@@ -86,9 +86,9 @@ function canonicalQuarantineState(common, quarantine) {
     fail('quarantine-manifest');
   return { target, state: { receiptDigest: hash(bytes), dependencies: storageManifest(target) } };
 }
-function dependencySelection(plan) {
+function dependencySelection(plan, objectAlternates = undefined) {
   if (plan.kind === 'canonical-quarantine') return canonicalQuarantineState(plan.common, plan.quarantine);
-  return plan.kind === 'worktree-dependencies' ? worktreeDependencyState(plan.root)
+  return plan.kind === 'worktree-dependencies' ? worktreeDependencyState(plan.root, objectAlternates)
     : dependencyState(plan.common, plan.quarantine);
 }
 function idleWorktree(plan, original = null) {
@@ -114,10 +114,10 @@ function idleWorktree(plan, original = null) {
     inspect(['+D', target], () => true);
 }
 function observed(plan) {
-  const where = location(plan.root);
+  const where = location(plan.root, { allowObjectAlternates: plan.kind === 'worktree-dependencies' });
   if (where.root !== plan.root || where.common !== plan.common) fail('repository-drift');
   return plan.kind === 'git' ? inventory(plan.root, plan.common).state
-    : ['artifact-archive', 'artifact-compression'].includes(plan.kind) ? artifactState(plan.root, plan.artifact).state : dependencySelection(plan).state;
+    : ['artifact-archive', 'artifact-compression'].includes(plan.kind) ? artifactState(plan.root, plan.artifact).state : dependencySelection(plan, Object.hasOwn(plan.before, 'objectAlternates') ? where.objectAlternates : undefined).state;
 }
 export function planStorage({ cwd = process.cwd(), kind, quarantine = null, artifact = null,
   operation, store, destination }, now = Date.now()) {
@@ -129,14 +129,14 @@ export function planStorage({ cwd = process.cwd(), kind, quarantine = null, arti
   if (!KINDS.includes(kind) || !['dependencies', 'canonical-quarantine'].includes(kind) && quarantine !== null
     || !['artifact-archive', 'artifact-compression'].includes(kind) && artifact !== null) fail('kind');
   if (kind !== 'git' && process.platform !== 'darwin') fail('compression-platform');
-  const { root, common } = location(cwd);
+  const { root, common, objectAlternates } = location(cwd, { allowObjectAlternates: kind === 'worktree-dependencies' });
   const selection = kind === 'git' ? { target: direct(join(common, 'objects')), state: inventory(root, common).state }
     : ['artifact-archive', 'artifact-compression'].includes(kind) ? artifactState(root, artifact)
-      : dependencySelection({ root, common, kind, quarantine });
+      : dependencySelection({ root, common, kind, quarantine }, kind === 'worktree-dependencies' ? objectAlternates : undefined);
   const draft = { schema: SCHEMA, root, common, kind, quarantine, target: selection.target, issuedAt: now,
     expiresAt: now + 3600000, ...(['artifact-archive', 'artifact-compression'].includes(kind) ? { artifact } : {}),
     before: selection.state, beforeAllocatedBytes: allocated(selection.target) };
-  return { ...draft, planDigest: digest(draft) };
+  if (kind === 'worktree-dependencies' && !same(objectAlternates, location(root, { allowObjectAlternates: true }).objectAlternates)) fail('object-alternates-drift'); return { ...draft, planDigest: digest(draft) };
 }
 function validate(plan) {
   const { planDigest, ...draft } = plan;
@@ -146,8 +146,8 @@ function validate(plan) {
     || digest(draft) !== planDigest || !/^[a-f0-9]{64}$/u.test(planDigest)
     || !Number.isSafeInteger(plan.issuedAt) || plan.expiresAt !== plan.issuedAt + 3600000)
     fail('plan-binding');
-  const where = location(plan.root);
-  if (where.root !== plan.root || where.common !== plan.common) fail('repository-drift');
+  const where = location(plan.root, { allowObjectAlternates: plan.kind === 'worktree-dependencies' }), alternatesDrift = plan.kind === 'worktree-dependencies' && !same(plan.before.objectAlternates ?? null, where.objectAlternates);
+  if (where.root !== plan.root || where.common !== plan.common || alternatesDrift) fail(alternatesDrift ? 'object-alternates-drift' : 'repository-drift');
   const target = plan.kind === 'git' ? join(plan.common, 'objects')
     : plan.kind === 'worktree-dependencies' ? join(plan.root, 'node_modules')
       : plan.kind === 'dependencies' ? join(plan.common, 'agentic-os-cleanup-quarantine', plan.quarantine, 'projection/node_modules')

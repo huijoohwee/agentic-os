@@ -158,6 +158,35 @@ function retainedDisposition() {
       retainedIndexInventoryDigest: hex('a'), recoveryInventoryDigest: hex('b') } });
 }
 
+const ORIGINAL_DISCARD_RECEIPT = signed({ schema: 'agentic-os/quarantine-retirement-receipt/v2',
+  planDigest: ADOPTION.quarantineCoordinate, coordinate: ADOPTION.quarantineCoordinate,
+  receiptPath: '/exact/cleanup-quarantine/retirement.json', authorizationDigest: hex('1'),
+  branch: ADOPTION.successorRef, retainedHead: CANDIDATE, branchTip: CANDIDATE,
+  operationDigest: hex('2'), eligibilityDigest: hex('3'), logicalBytesUnlinked: 1024,
+  recoveryBytesDiscarded: true, stoppedAcknowledged: true, bytesDeleted: true,
+  projectionRootModeBefore: 0o755, projectionRootPermissionsTightened: true,
+  registrationRootModeBefore: 0o755, registrationRootPermissionsTightened: true,
+  physicalFreeSpaceIncreaseProven: false, registrationRetained: true, branchRefsMutated: false,
+  objectDatabaseMutated: false, providerAuthority: false, claimRetired: false,
+  operatingSystemExclusivityProven: false, executedAt: Date.parse('2026-09-02T00:20:00.000Z') });
+const DISCARD_ADOPTION = { ...RETENTION_ADOPTION, originalReceiptDigest: ORIGINAL_DISCARD_RECEIPT.receiptDigest };
+const DISCARD_POLICY = { ...RETENTION_POLICY, retentionAdoptions: [DISCARD_ADOPTION] };
+function discardedDisposition() {
+  const { receiptDigest: omitted, historicalSuccessionAuthorityProven: history, ...source } = disposition();
+  assert.ok(omitted); assert.equal(history, false);
+  const retention = source.retention;
+  return signed({ ...source, schema: 'agentic-os/current-quarantine-discard-receipt/v1',
+    disposition: 'current-quarantine-discard-acknowledged', adoption: DISCARD_ADOPTION,
+    adoptionDigest: governanceDigest(DISCARD_ADOPTION), policyDigest: governanceDigest(DISCARD_POLICY),
+    historicalQuarantineAuthorityProven: false,
+    integration: { ...source.integration, kind: 'current-quarantined', predecessorHead: CANDIDATE, replacements: [] },
+    state: { ...source.state, predecessorHead: CANDIDATE },
+    retention: { ...retention, originalReceipt: ORIGINAL_DISCARD_RECEIPT,
+      originalReceiptDigest: DISCARD_ADOPTION.originalReceiptDigest,
+      retainedIndexBytesDigest: hex('a'), retainedHeadBytesDigest: hex('b'),
+      projectionRetained: false, recoveryBytesDiscarded: true } });
+}
+
 test('current original record-only retirement binds fresh H01 winner and exact retained enrollment', async () => {
   const fx = await retainedFixture(), { receipt } = await publish(fx), retired = retirement(fx, receipt, retainedDisposition());
   const winner = await publishGitHubTransitionAuthority(retired.common), proof = winner.stored.providerProof;
@@ -171,6 +200,17 @@ test('current original record-only retirement binds fresh H01 winner and exact r
   const before = fx.api.calls.length;
   await publishGitHubTransitionAuthority({ ...retired.common, now: () => Date.parse('2026-09-03T00:00:00Z') });
   assert.ok(!fx.api.calls.slice(before).some(route => route.startsWith('POST ')));
+});
+
+test('current record-only retirement binds an exact prior discard without claiming preservation', async () => {
+  const fx = await fixture(state => { state.transitionPolicy = DISCARD_POLICY; }),
+    { receipt } = await publish(fx), retired = retirement(fx, receipt, discardedDisposition());
+  const winner = await publishGitHubTransitionAuthority(retired.common), proof = winner.stored.providerProof;
+  assert.equal(proof.effectClass, 'claim-retirement-record-only');
+  assert.equal(proof.preservationReceiptDigest, retired.operationInput.preservationDisposition.receiptDigest);
+  assert.equal(proof.physicalCleanupPerformed, false);
+  assert.equal(proof.historicalQuarantineAuthorityProven, false);
+  assert.equal(fx.api.publications.size, 2);
 });
 
 test('current original record-only retirement accepts exact retrospective content proof', async () => {
