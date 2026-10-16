@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.34"
+version: "1.4.35"
 date: "2026-10-16"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.34"
-tad_revision: "1.4.34"
-adr_revision: "1.4.34"
+prd_revision: "1.4.35"
+tad_revision: "1.4.35"
+adr_revision: "1.4.35"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--cross-repo-closeout-authority"
-agent_id: "codex-cross-repo-closeout-authority"
+worktree_id: "device-0232231d4a19--external-authority-root"
+agent_id: "codex-external-authority-root"
 load_policy: "on-demand"
-verification_scope: "select exact repositories and current PR facts for cross-repository closeout; keep historical authority and each later effect separate"
+verification_scope: "read the central committed authority policy from a trusted clean canonical root for cross-repository completion status and scaffolding; keep every effect separate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "aafb2fef4dcc74a7ba23fc2e182a61814c1e475e"
-mvp_revision: "1.4.34"
-gtm_revision: "1.4.34"
+reviewed_source_revision: "86b57e5d618c5f3fd5a8d2841badb29ba2f363ed"
+mvp_revision: "1.4.35"
+gtm_revision: "1.4.35"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
@@ -30,11 +30,11 @@ This document owns source-to-completion governance; acceptance grants no deploym
 [TECH-STACK.md](TECH-STACK.md) owns technology selection, product composition and deployment topology. [FEATURES.md](FEATURES.md) owns the derived feature index; [catalog/features.json](../catalog/features.json) owns commercial ranking input. The website [guidelines][guideline], [templates][templates], [continuity module][continuity] and [CID contract][cid] own authoring semantics. The website [ADLC Guidelines][adlc-universal] own universal execution rules; `docs/adlc-guidelines.md` is this repository's always-load runtime profile of them, and the website [lifecycle process][process] joins lean learning, venture projections and receipts. This guide adds pipeline requirements and traceability, without copying those contracts or product requirements.
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming] load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
 ## Identity and opening directive
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.33`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.35`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.33`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.35`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
@@ -64,7 +64,7 @@ This successor adds no runtime dependency; the handover routing delta is recorde
 600-line guidance; future companions follow placement rules and keep one joined artifact. Restart time, TCO, ROI and willingness to pay
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 ## TAD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.33` consumes PRD `1.4.33`, decisions ADR `1.4.33`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.35` consumes PRD `1.4.35`, decisions ADR `1.4.35`.
 ### Journey-to-system and RAO steps
 T01–T09 are independently closable task references within DIR-PIPELINE-01, not new lifecycle states. In each row, Role is Subject; the first verb and remaining target in Action give SVO. Outcome is the referenced acceptance condition, not the object of a different instruction. Context is the source binding and prerequisites; all inherit the opening intent. Re-run only changed joins and dependent evidence.
 
@@ -332,7 +332,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Runtime acceptance | Delivery → verified evidence | T09 exact release identity, trusted evaluator and provider/replay readback | Preserve failed evidence; owner correction and re-evaluation; closed here |
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.33` binds PRD/TAD `1.4.33`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.35` binds PRD/TAD `1.4.35`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -572,23 +572,9 @@ E19 / VALIDATION-STOP-001@0.1.0. PRD: forbid a completed full smoke rerun on unc
 
 [release-readiness]: https://github.com/huijoohwee/huijoohwee.github.io/blob/a925ec5ac6de189930d253b8b052970bad711923/guidelines/adlc-production-release-lifecycle.md#readiness-and-next-steps
 ### Programmatic Drone Flight catalog owner — DRONE-CATALOG-001
-PRD: Home Catalog and Chat Prompt Presets must expose the local drone learning
-workspace through the existing `/python.learning @canvas #learning` inspection
-route. Demo opens an editable nine-second takeoff, hover, flight and landing
-example. Selection and Demo make no provider call and never run code.
-TAD/ADR: `runtime/agents/docs/PROMPT-PRESETS.md` is the current packaged catalog
-owner. ACOS PR951 predates this ownership transition; publishing only that older
-repository cannot update the active OS package. Retain its review history and
-move the reviewed entry into this owner, with no second registry or dependency.
-Graph's consumer must integrate first, then its exact OS pin must admit this
-catalog before public release. MCP/WebMCP inspection, explicit Run, simulated
-GameXR receiver control and recorded Canvas sharing keep their existing owners.
-MVP/GTM: two files, <4 KiB source delta, no always-load instruction delta, zero
-paid services or new dependencies. Use native docs/check gates and Graph's
-source-backed catalog/browser proof; source integration, deployed catalog
-readback, phone/cloud sessions and buyer demand remain separate claims. Remove
-this row before reverting the Graph consumer. Release uses protected PRs and
-DEPLOY; END ADLC requires its exact source and runtime receipts.
+PRD: Home Catalog and Chat Prompt Presets must expose the local drone learning workspace through the existing `/python.learning @canvas #learning` inspection route. Demo opens an editable nine-second takeoff, hover, flight and landing example. Selection and Demo make no provider call and never run code.
+TAD/ADR: `runtime/agents/docs/PROMPT-PRESETS.md` is the current packaged catalog owner. ACOS PR951 predates this ownership transition; publishing only that older repository cannot update the active OS package. Retain its review history and move the reviewed entry into this owner, with no second registry or dependency. Graph's consumer must integrate first, then its exact OS pin must admit this catalog before public release. MCP/WebMCP inspection, explicit Run, simulated GameXR receiver control and recorded Canvas sharing keep their existing owners.
+MVP/GTM: two files, <4 KiB source delta, no always-load instruction delta, zero paid services or new dependencies. Use native docs/check gates and Graph's source-backed catalog/browser proof; source integration, deployed catalog readback, phone/cloud sessions and buyer demand remain separate claims. Remove this row before reverting the Graph consumer. Release uses protected PRs and DEPLOY; END ADLC requires its exact source and runtime receipts.
 
 ### Settled allocation retirement — TOOLKIT-RETIRE-001@1.0.0
 PRD: Given SQLite's finite queue, completed allocation windows must not permanently exhaust admission after principal churn; pending, unknown, overrun and actively fenced accounting remain held. This closes Commerce audit F3 before consumer host adoption; it does not increase capacity or authorize production.
@@ -603,3 +589,10 @@ TAD/ADR: Reuse the committed transition policy and its historical-content enroll
 MVP acceptance: the policy validator selects only the five named repositories; source and merge trees match for both enrollments; the existing transition-workflow contract asserts both full records and check contexts; after protected integration, Base closeout resolves its authority repository and continues only through the native per-effect workflow. Commerce already has no linked task worktree, so this records support without claiming new cleanup.
 GTM/evidence: record actual closeout latency and allocated bytes only from receipts; no time or storage savings are claimed for these enrollments alone. Historical authority remains explicitly unproven.
 Budget/rollback: four existing files, at most 6 KiB added, zero runtime modules, dependencies, paid resources, or always-load bytes. Revert the two exact target and enrollment entries plus this record to restore the prior allowlist; retain source and provider evidence.
+
+### Cross-repository authority-root lookup — ADLC-PIPELINE-001@1.4.35
+PRD: A selected target can be unable to classify completion when its central authority policy is intentionally not copied into that repository. Let the operator name the existing trusted source root for read-only completion and scaffolding.
+TAD/ADR: Reuse `completion status`, its bounded four-file policy reader, `trustedRepositoryProfile`, and the existing scaffold. Accept one absolute root through `AGENTIC_OS_AUTHORITY_ROOT`; require its trusted profile, checked-out configured protected branch, clean tracked/untracked state, and local protected ref equal to its remote-tracking ref. Read all four authority/transition files from that exact revision, require the policy authority identity to match the source profile, and require the explicit target allowlist to include the target. No fetch, copy, new cache, provider call, or effect authority is added. If the root is absent, ref-mismatched, dirty, mismatched, or untrusted, report a blocker. Provider changes after the last fetch are outside this read-only observation. Scaffold consumes the same validated source revision; effect planners retain their target-specific policies and grants.
+MVP acceptance: Agentic OS keeps its no-option behavior; Base and Commerce can use the same central root without committed policy copies; wrong identity, branch, revision, dirty state, or target selection fails closed. Existing `test` and `budgets` CI gates remain mandatory; do not infer authenticated retirement or cleanup from this observer.
+Budget: three existing files, under 10 KiB changed, zero modules, dependencies, new cache bytes, always-load bytes, paid resources, or production effects. Existing policy reads remain capped at four files, 64 KiB each and 128 KiB total. Target: 25 active minutes before required CI; actual elapsed-time and storage savings remain unmeasured. Rollback is a scoped protected revert; preserve the central source and all target evidence.
+GTM/evidence: the change removes duplicated per-repository policy setup from the closeout path, but does not claim time, storage, or buyer-value savings without a measured pilot. Each target's later integration, retirement, cleanup, sync, and delivery still needs its own exact authority and receipt.
