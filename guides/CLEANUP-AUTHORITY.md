@@ -501,3 +501,26 @@ each later effect requires its own exact plan, authorization, and receipt.
 Budget: one exact v1 enrollment, one existing transition-workflow test, and this owner record; zero
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this PR enrollment; source history and prior enrollments stay intact.
+
+## Current-quarantine discard acknowledgement adoption — agentic-os PR #468 — 2026-10-16
+
+This exact current-retention adoption binds repository `github.com/huijoohwee/agentic-os`,
+branch `agent/device-0232231d4a19/current-recovery-pr467`, head
+`1fda0959ccf5ff657e973e87c83cfa45b818b6ff`, PR #468 merge
+`458590ef91dfebd262b374bd38ce135ba1da1a53`, quarantine coordinate
+`f35014d2482ab40b815622a1a11e9cfffbd9e98e026309d81f50206c9ca4ca0a`, and original local
+receipt digest `3fd9f58e4fc5729681fe848a8535abae9622a698a08cd5518450edafc3269f35`.
+It records `historicalQuarantineAuthorityProven: false`.
+
+The unmodified local receipt records that 8,216,305 logical projection bytes were discarded,
+the registration and branch refs remain, Git objects were not mutated, and physical free-space
+increase is unproven. The accepted disposition can only acknowledge that prior discard; it cannot
+recreate the projection or receipt, claim preservation, prove historical quarantine authority, or
+authorize another cleanup. Follow the native `cleanup-user preservation-plan` and
+`preservation-apply` flow for the record-only disposition. Provider integration and retirement
+remain bound to their separate existing receipts.
+
+Budget: one exact v1 retention enrollment, its existing transition-workflow expectation, and this
+owner record; three existing files changed, under 3 kB added, zero runtime modules, dependencies,
+or always-load bytes. Revert this policy enrollment to remove the adoption; retain the original
+receipt and branch/object evidence.
