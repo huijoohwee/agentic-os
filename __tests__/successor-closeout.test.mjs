@@ -273,13 +273,31 @@ test('preservation preparation rejects provider-induced ref and peer races', t =
     policyRoot: s.root, workflow: '.github/workflows/ci.yml' }, options), /preservation-observation-race|preservation-integration/);
 });
 
-function currentQuarantineFixture(t, { discardProjection = false } = {}) {
+function currentQuarantineFixture(t, { discardProjection = false, legacyEligibility = false } = {}) {
   const s = preservedFixture(t), adoption = { schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: s.adoption.repository, targetRef: s.nextRef, targetHead: s.reviewedHead,
     merge: s.merge, reviewLocator: s.adoption.reviewLocator, quarantineCoordinate: s.physical.planDigest,
     originalReceiptDigest: governanceDigest(s.physical), historicalQuarantineAuthorityProven: false };
   let originalReceipt = s.physical;
   if (discardProjection) {
+    if (legacyEligibility) {
+      const operationPath = join(s.root, '.git/agentic-os-cleanup-quarantine', s.physical.planDigest, 'operation.json');
+      const operation = JSON.parse(readFileSync(operationPath, 'utf8'));
+      const source = operation.eligibility;
+      operation.eligibility = {
+        schema: 'agentic-os/worktree-cleanup-eligibility/v1',
+        cleanupPlanDigest: source.planDigest,
+        projectionManifestDigest: source.projectionManifestDigest,
+        projectionBytes: source.projectionBytes,
+        projectionEntries: source.projectionEntries,
+        registrationManifestDigest: source.registrationManifestDigest,
+        registrationBytes: source.registrationBytes,
+        registrationEntries: source.registrationEntries,
+        evaluatedAt: source.evaluatedAt,
+        expiresAt: source.expiresAt,
+      };
+      writeFileSync(operationPath, canonicalJson(operation));
+    }
     const plan = planQuarantineRetirement({ cwd: s.root, coordinate: s.physical.planDigest, now: () => NOW + 1000 });
     originalReceipt = applyQuarantineRetirement(plan, { cwd: s.root,
       authorization: `agentic-os:quarantine-retirement:${plan.planDigest}`, stopped: true,
@@ -361,4 +379,13 @@ test('current adoption acknowledges an exact prior projection discard without cl
   assert.equal(status.closeout.lossDispositionVerified, true);
   assert.equal(status.closeout.adlcState, 'retirement_pending');
   assert.deepEqual(s.apply({ now: () => NOW + 900001 }), receipt);
+});
+
+test('current discard acknowledgement accepts a retained worktree-cleanup eligibility record', t => {
+  const s = currentQuarantineFixture(t, { discardProjection: true, legacyEligibility: true }), receipt = s.apply();
+  assert.equal(receipt.schema, 'agentic-os/current-quarantine-discard-receipt/v1');
+  assert.equal(receipt.disposition, 'current-quarantine-discard-acknowledged');
+  assert.equal(receipt.retention.projectionRetained, false);
+  assert.equal(receipt.retention.recoveryBytesDiscarded, true);
+  assert.deepEqual(validateRetentionDispositionReceipt(receipt), receipt);
 });
