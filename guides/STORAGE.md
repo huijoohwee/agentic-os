@@ -3,12 +3,12 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.6.0"
-tad_revision: "1.6.0"
-adr_revision: "1.6.0"
+prd_revision: "1.7.0"
+tad_revision: "1.7.0"
+adr_revision: "1.7.0"
 load_policy: on-demand
-version: "1.6.0"
-date: "2026-10-14"
+version: "1.7.0"
+date: "2026-10-16"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
@@ -339,7 +339,7 @@ revalidated archive hash, restore proof, source and journal; an incomplete copy 
 MVP acceptance: **AC-S11** reconcile accepted native requests with registry/payload absence and protected
 versions/data; **AC-S12** verify detached-payload recovery/locators while preserving path-dependent native
 receipts; **AC-S13** check tool capabilities and peak space before copying, then reconcile net allocation
-including evidence/staging and exclude previously counted cleanup. Review these cases against private
+including evidence/staging and exclude prior cleanup; **AC-S14** bind checkout alternates in dependency plans, reject drift and keep Git compaction fail-closed. Review these cases against private
 artifacts `macintosh-hd-reclaim-20261003` (14.84 GiB selected allocation removed) and
 `quarantine-reclaim-20261004` (1.23 GiB net after recovery); keep their final verification receipts.
 Archive bytes/modes/links passed; application/provenance restoration remains untested. Local observations
@@ -403,17 +403,17 @@ node bin/agentic-os-storage.mjs apply --plan=/private/checkout-dependency-plan.j
   --authorize=agentic-os:storage:<planDigest> --stopped
 ```
 
-This target is always the selected checkout's direct `node_modules` directory. Tracked installations,
-directory aliases, and symlinked package sources are refused. The plan binds HEAD, dependency content,
-and package manifest/lockfile hashes (including absent files); source or installation drift blocks the
-swap. It reuses the same compression, manifest comparison and recovery journal as quarantine storage.
-No packages, optional platform dependencies or authored patches are removed. macOS `lsof` observations
-before copying, before swapping and before discarding the verified original block visible processes
-whose working directory is in the checkout or which hold dependency files open, including from another
-checkout. Observations are bounded to 30 seconds each and do not prove OS-wide exclusivity; the operator
-must keep consumers stopped through completion. Run the application's executable/package checks after
-the receipt is returned, then resume development. Run again only after a material dependency reinstall;
-an already compressed copy with no saving is discarded without replacing the installation.
+This target is always the selected checkout's direct `node_modules` directory. Tracked installations, directory aliases
+and symlinked package sources are refused. Checkout dependency plans accept one local common-directory
+`objects/info/alternates` file, read no-follow with a 64 KiB cap; its digest is rechecked at apply. Changed or missing
+bytes block apply. HTTP alternates and `GIT_ALTERNATE_OBJECT_DIRECTORIES` remain unsupported; `kind=git` compaction
+rejects alternates. The plan binds HEAD, dependencies and package manifests/lockfiles (including absent files);
+source/install drift blocks the swap. It reuses quarantine compression, manifest comparison and recovery journaling.
+It removes no packages, optional platform dependencies or authored patches. macOS `lsof` observations before copying,
+swapping and discarding the verified original block visible checkout processes and open dependency files, including
+from another checkout. Each observation is bounded to 30 seconds and does not prove OS-wide exclusivity; the operator
+must keep consumers stopped through completion. Run application executable/package checks after the receipt, then
+resume. Re-run only after a material dependency reinstall; a no-saving compression is discarded without replacement.
 
 Generated-output cleanup is distinct from compression. Remove only exact, idle outputs verified against
 their owning generator. An old filename, matching file contents, or an ignored directory alone does not
