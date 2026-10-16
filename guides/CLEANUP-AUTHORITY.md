@@ -310,6 +310,29 @@ Budget: one exact v1 enrollment, one existing transition-workflow test and this 
 runtime modules, dependencies, or always-load bytes. Revert the checked protected policy update to
 remove this PR enrollment; source history and prior enrollments stay intact.
 
+## Current-quarantine retention adoption — agentic-os PR #457 — 2026-10-16
+
+The policy owner accepted this exact current-retention basis. The enrollment binds repository
+`github.com/huijoohwee/agentic-os`, branch
+`agent/device-0232231d4a19/pr456-current-recovery-v2`, head
+`442fa6d80a98ef41154ffd270e0d04e77c1b4470`, PR #457 merge
+`e3aa53001da0f6f50573b5fe2227735d4b7446e3`, quarantine coordinate
+`ea74a43255305cb85122e4faad4309430f875ef4fdfeb8df1a69887c3a3df7ce`, and original receipt digest
+`0622a4e7c8a8d0d9f3bc7174f7f711eaa0a0f4360bad26da700db3e7d7390e5e`. Its exact review is
+<https://github.com/huijoohwee/agentic-os/pull/457>.
+
+The retained local receipt reports 8,183,336 logical bytes discarded while retaining the branch,
+registration, and Git objects; physical free-space increase is unproven. It records
+`providerAuthority: false` and `claimRetired: false`. The enrollment keeps historical quarantine
+authority and actor identity unproven. It records retained evidence only: it does not recreate the
+projection, modify filesystem data, issue a fresh provider claim, retire a claim, or authorize branch
+deletion. Provider integration, retirement, and branch deletion remain separately governed.
+
+Budget: one exact v1 retention enrollment, its existing transition-workflow expectation, and this owner
+record; three existing files changed, under 3 kB added total, zero runtime modules, dependencies, or
+always-load bytes. Revert the protected policy update to remove this enrollment; retain the original
+receipt and branch/object evidence.
+
 ## Current recovery enrollment — agentic-os PR #459 — 2026-10-15
 
 This current-recovery enrollment binds repository `github.com/huijoohwee/agentic-os`, base
