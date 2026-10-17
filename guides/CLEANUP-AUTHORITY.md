@@ -588,7 +588,11 @@ Historical protection, required-check policy, Ruleset Suite, and merge-method au
 unproven. The enrollment grants no merge, retirement, cleanup, deletion, deployment, or
 canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
 
-Budget: two exact v1 enrollments, their existing transition-workflow expectations, this owner
-record, and the as-built plan update; four existing files, at most 6 KiB added, zero runtime
-modules, dependencies, or always-load bytes. Revert these policy entries to remove both
-enrollments; source history and retained evidence remain intact.
+Budget: exact v1 enrollments and existing workflow expectations; four files, at most 6 KiB,
+zero runtime modules, dependencies, or always-load bytes. Revert entries; preserve history/evidence.
+
+### Current recovery enrollment — agentic-os PR #476 — 2026-10-17
+Repository `github.com/huijoohwee/agentic-os`; review https://github.com/huijoohwee/agentic-os/pull/476.
+Base `27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6`; head `a5a70b40275b4e43b77c7e3033cb737729d27feb`.
+Merge `cb4149dc7581e48923de851b424e39bc339afb5a`; equal tree `bc6aadd2331db05d41480488b3b26f014207fcb6`; `budgets` and `test` passed.
+Current facts only. Historical protection, check policy, Ruleset Suite, merge method and all later-effect authority remain unproven.

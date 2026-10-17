@@ -162,7 +162,7 @@ test('alignment input rejects unknown keys instead of silently accepting a forge
 });
 
 test('dedicated CLI reuses the native successor allocation and completes workflow binding; overlap has no effects', async t => {
-  for (const mode of ['native completion', 'overlap refusal', 'interrupted START resume', 'squash completion', 'squash interrupted START resume']) await t.test(mode, async sub => {
+  for (const mode of ['native completion', 'overlap refusal', 'interrupted START resume', 'owner-updated cache completion', 'squash completion', 'squash interrupted START resume']) await t.test(mode, async sub => {
     const overlapping = mode === 'overlap refusal', squash = mode.startsWith('squash');
     const f = fixture(sub), policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
     const profile = createRepositoryProfile({ repository: 'github.com/example/alignment', canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef }, adapters: { repository: { id: 'git', version: '1' }, provider: null } });
@@ -210,6 +210,14 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
         assert.equal(pending.manifest.allocations[0].headRevision, receipt.head);
         const candidate = receipt.head; rmSync(lock); owner.applyLaneAlignment = applyLaneAlignment;
         assert.equal(await start(pending.path), 0); assert.equal(git(lane, 'rev-parse', 'HEAD'), candidate);
+      } else if (mode === 'owner-updated cache completion') {
+        const owner = { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment(value) {
+          const receipt = applyLaneAlignment(value), current = get('agent/test-device/native-next', f.root);
+          putExact({ ...current, head: receipt.head, handoff: { schema: 'test-owner-handoff/v1', receipt: 'owner-applied' } }, current, f.root);
+          return receipt;
+        } };
+        assert.equal(await cmdStart(f.root, ['native-next', '--device=test-device', `--mission=${before.path}`, `--expected-head=${head}`, '--readmit'], policy, profile,
+          { ...services, refresh: { expectedTarget: target, stopped: true, owner } }), 0);
       } else invoke();
       const after = readSelectedWorkflow(f.root, profile.repository, { required: true });
       assert.equal(after.manifest.allocations.length, 1); assert.equal(after.manifest.allocations[0].path, lane);
@@ -219,6 +227,10 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
       assert.equal(after.members[0].child.source.revision, git(lane, 'rev-parse', 'HEAD'));
       assert.notEqual(after.manifest.allocations[0].headRevision, head);
       assert.equal(get('agent/test-device/native-next', f.root).head, git(lane, 'rev-parse', 'HEAD'));
+      if (mode === 'owner-updated cache completion') {
+        const handoff = get('agent/test-device/native-next', f.root).handoff;
+        assert.equal(handoff.schema, 'test-owner-handoff/v1'); assert.equal(handoff.receipt, 'owner-applied');
+      }
       assert.deepEqual(git(lane, 'show', '-s', '--format=%P', 'HEAD').split(' '), [head, target]);
       if (squash) assert.equal(git(lane, 'rev-parse', 'HEAD^{tree}'), git(lane, 'rev-parse', `${head}^{tree}`));
       else assert.equal(readFileSync(join(lane, 'incoming/native-advance.txt'), 'utf8'), 'protected advance\n');
