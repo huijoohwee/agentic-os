@@ -72,8 +72,8 @@ function pins(plan) {
 function exactRecord(plan, candidate = false) {
   const record = store.get(plan.ref, plan.cwd);
   if (!record || record.worktree !== plan.cwd || record.base !== plan.targetRef) fail('record');
-  const digest = hash(json(record));
-  if (!candidate && digest !== plan.recordDigest) fail('record');
+  const digest = hash(json(record)), prior = { ...record, head: plan.expectedBase };
+  if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && hash(json(prior)) === plan.recordDigest)) fail('record');
   if (candidate && (record.head !== plan.candidateHead || record.handoff?.schema !== 'agentic-os-lane-selected-source-transplant/v1'
     || record.handoff?.preservedRef !== plan.oldRef || record.handoff?.preservedHead !== plan.expectedHead)) fail('record');
   return record;

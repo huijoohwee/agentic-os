@@ -69,6 +69,27 @@ test('selected source transplant applies an exact source delta when its parent p
   assert.equal(run(f.lane, 'diff', '--name-only', f.target, receipt.head), 'source.txt');
 });
 
+test('selected source transplant accepts only an exact readmit advance of the recorded lane head', t => {
+  const f = fixture(t), original = get(f.ref, f.root);
+  put({ ...original, head: f.base }, f.root);
+  const prepared = prepareSelectedSourceTransplant(planSelectedSourceTransplant(input(f)));
+  put({ ...get(f.ref, f.root), head: f.source }, f.root);
+  const receipt = applySelectedSourceTransplant(prepared);
+  assert.equal(receipt.head, run(f.lane, 'rev-parse', 'HEAD'));
+  assert.equal(get(f.ref, f.root).head, receipt.head);
+  assert.equal(run(f.lane, 'status', '--porcelain'), '');
+});
+
+test('selected source transplant rejects a readmit advance with any other lane-record drift', t => {
+  const f = fixture(t), original = get(f.ref, f.root);
+  put({ ...original, head: f.base }, f.root);
+  const prepared = prepareSelectedSourceTransplant(planSelectedSourceTransplant(input(f)));
+  put({ ...get(f.ref, f.root), head: f.source, writePaths: ['other.txt'] }, f.root);
+  assert.throws(() => applySelectedSourceTransplant(prepared), { reason: 'blocked-lane-selected-source-transplant-record' });
+  assert.equal(run(f.lane, 'rev-parse', 'HEAD'), f.source);
+  assert.equal(run(f.lane, 'status', '--porcelain'), '');
+});
+
 test('selected source transplant refuses an overlapping target change without moving the lane', t => {
   const f = fixture(t);
   writeFileSync(join(f.root, 'source.txt'), 'target first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntarget tenth\n');
