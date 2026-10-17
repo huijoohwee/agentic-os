@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.3
-prd_revision: 1.2.3
-tad_revision: 1.2.3
-adr_revision: 1.2.3
-mvp_revision: 1.2.3
-gtm_revision: 1.2.3
+version: 1.2.4
+prd_revision: 1.2.4
+tad_revision: 1.2.4
+adr_revision: 1.2.4
+mvp_revision: 1.2.4
+gtm_revision: 1.2.4
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.3`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.4`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -80,6 +80,24 @@ recovery transition. A narrower proof never silently inherits stronger historica
   plan, grant and real receipt. No adoption backdates a claim or creates historical evidence.
 - A02: Full completion requires every applicable owner receipt and handover. Passing tests, local
   observations or this specification alone do not establish END ADLC.
+
+### Current recovery enrollment — agentic-os PR #487 — 2026-10-17
+
+The owner delegated autonomous completion of this END ADLC mission. This exact enrollment records
+PR #487 as current merge content: base `7ba0649e97f9c550c5e4d333d768b1cb7464397e`, reviewed head
+`c9a88dc1bb69528c104b8e49b69ab58dcab0e45b`, merged commit
+`26a98d41c43bc8eefa5b9374b38951ce2ef755a3`, and equal head/merge tree
+`c08eda8f49bf377cd6a5916d9268a7b755eb0f83`. The selected `budgets` and `test` checks passed.
+
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The committed policy enrollment enables only the current-facts recovery workflow; it does
+not itself issue provider evidence or authorize integration, retirement, cleanup, synchronization,
+deployment, or rollback. Each effect continues through its existing owner and receipt.
+
+Budget: one existing policy, one guide, and one focused policy test; zero runtime modules,
+dependencies, or always-load bytes. No time or storage savings are attributed to this enrollment.
+Rollback removes this exact entry, guide record, and test while retaining any already issued provider
+evidence and its original meaning.
 
 ## TAD: explicit versioned bases
 
