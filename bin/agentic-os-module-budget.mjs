@@ -20,8 +20,10 @@ export const BUDGET = Object.freeze({
   // The source-evidence CLI and contract add one CLI and one runtime module; both remain lazy and provider-neutral.
   // 2026-10-12: T06 receipts (+29 src/+37 bin) and bounded ancestry (+40 src, zero modules; 25/page ×16; ≤256 KiB/page).
   // 2026-10-13: exact PR/ref/merge-tree refresh adds 236 lines to the existing owner; no module, dependency or always-load delta.
-  modules: 49,
-  totalLines: 15602,
+  // 2026-10-17 ADLC-START-LOCK-001: one lazy recovery owner (233 counted source lines); justified in the PRD
+  // because putting its filesystem recovery path in the always-loaded CLI adds parse work to every command.
+  modules: 50,
+  totalLines: 15835,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -35,7 +37,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24453,
+  binLines: 24469,
   runtimeModules: 97,
   runtimeLines: 23023,
 });

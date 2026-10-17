@@ -112,7 +112,7 @@ export function validateCommandArguments(command, argv) {
       : 'source-evidence requires bundle';
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'publish', 'finish', 'close', 'complete', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
+      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'complete', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
         return 'release-common requires start, publish, finish, close, complete, or successor; retire-empty-active, allocation-release, scope-release, rebind and promote are also supported';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
@@ -120,6 +120,18 @@ export function validateCommandArguments(command, argv) {
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
       if (action === 'close') return exact(argv.slice(1), {
         options: ['ref', 'preservation', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] });
+      if (action === 'start-lock-recovery') return argv[1] === 'plan'
+        ? exact(argv.slice(1), { min: 1, max: 1 })
+        : argv[1] === 'apply' ? (() => {
+          const error = exact(argv.slice(1), { min: 1, max: 1,
+            options: ['plan-digest', 'authorize'], flags: ['stopped'],
+            requiredOptions: ['plan-digest', 'authorize'], requiredFlags: ['stopped'] });
+          const digest = option(argv, 'plan-digest');
+          return error ?? (!/^[a-f0-9]{64}$/u.test(digest)
+            || option(argv, 'authorize') !== `agentic-os:start-lock-recovery:${digest}`
+            ? 'apply requires a matching exact plan digest authorization' : null);
+        })()
+          : 'start-lock-recovery requires plan or apply';
       const owner = { start: 'start', publish: 'land', finish: 'finish', successor: 'successor' }[action];
       if (owner) return validateCommandArguments(owner, argv.slice(1));
       if (action === 'rebind') return argv[1] === 'plan'

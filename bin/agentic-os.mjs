@@ -169,6 +169,9 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     case 'retire-empty-active':
       return (await import('./agentic-os-completion-close.mjs'))
         .runEmptyActiveLaneRetirement({ root, argv: rest, profile, out, err });
+    case 'start-lock-recovery':
+      requireCanonical(root, policy);
+      return (await import('../src/start-lock-recovery.mjs')).runStartLockRecovery(root, rest, out);
     case 'allocation-release': {
       const completionModule = await import('./agentic-os-completion-status.mjs');
       const ref = option(rest, 'ref'), status = completionModule.inspectCompletionStatus(root, ref, policy, profile);
