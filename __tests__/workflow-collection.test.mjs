@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { collectWorkflow, WORKFLOW_PHASES, readWorkflowManifestPage, startWorkflow } from '../bin/agentic-os-workflow.mjs';
+import { collectWorkflow, collectWorkflowValue, WORKFLOW_PHASES, readSelectedWorkflow, readWorkflowManifestPage, startWorkflow } from '../bin/agentic-os-workflow.mjs';
 
 test('collection stores native lifecycle routes and measurement coverage in one immutable root',t=>{
  const base=mkdtempSync(join(realpathSync(tmpdir()),'workflow-metadata-')),root=join(base,'repo');
@@ -55,4 +55,50 @@ test('planning-bound startup captures one reusable root with no invented phase o
  writeFileSync(join(root,plan),'uncommitted change');assert.equal(startWorkflow(root,repository,args).manifest,first.manifest);
  for(const planningPath of ['../adlc-economy.md','missing-prd-tad-adr-mvp-gtm.md',notPlan,'README.md'])
   assert.throws(()=>startWorkflow(root,repository,{...args,planningPath}),/blocked-workflow-planning/);
+});
+
+test('workflow lineage admits only a descendant head for pending readmit recovery', t => {
+ const parent=realpathSync(mkdtempSync(join(tmpdir(),'workflow-readmit-recovery-'))),root=join(parent,'repo');mkdirSync(root);
+ t.after(()=>rmSync(parent,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8'}).trim();
+ git('init','--quiet','--initial-branch=main');git('config','user.name','Test');git('config','user.email','test@example.invalid');
+ const plan='adlc-plan.md';writeFileSync(join(root,plan),'---\ndoc_type: "PRD-TAD-ADR-MVP-GTM"\n---\n# Native plan\n');
+ git('add','.');git('-c','commit.gpgsign=false','commit','--quiet','-m','base');
+ const repository='github.com/example/readmit',worktreeId='device--lane',ref='agent/device/lane';
+ const baseHead=git('rev-parse','HEAD'),started=startWorkflow(root,repository,{revision:baseHead,planningPath:plan,worktreeId,
+  execution:{version:1,checkoutLimit:1,dependencies:{version:1,edges:[]}}});
+ const initial=readSelectedWorkflow(root,repository,{input:started.manifest,required:true}),writeDigest=createHash('sha256').update(JSON.stringify(['owned.txt'])).digest('hex');
+ const pending=collectWorkflowValue(root,repository,{...initial.manifest,
+  members:initial.members.map(row=>({...row.ref,file:row.path})),previous:{file:initial.path,digest:initial.digest},
+  allocations:[{worktreeId,ref,path:join(parent,'lane'),baseRevision:baseHead,headRevision:baseHead,writeDigest,
+   state:'pending',operation:'readmit',previousWriteDigest:writeDigest}]},join(root,'workflow-input.json'));
+ const waiting=readSelectedWorkflow(root,repository,{input:pending.manifest,required:true});
+ writeFileSync(join(root,'owned.txt'),'candidate');git('add','owned.txt');git('-c','commit.gpgsign=false','commit','--quiet','-m','candidate');
+ const head=git('rev-parse','HEAD'),tree=git('rev-parse','HEAD^{tree}'),member=waiting.members[0];
+ const child=revision=>collectWorkflowValue(root,repository,{schema:'agentic-os/workflow-observation-input/v1',id:member.child.id,
+  source:{repository,revision,tree:git('rev-parse',`${revision}^{tree}`)},context:member.child.context,expected:WORKFLOW_PHASES,phases:[]},join(root,'workflow-input.json'));
+ const orphan=git('commit-tree',tree,'-m','unrelated head'),orphanChild=child(orphan),active={...waiting.manifest.allocations[0],headRevision:orphan,state:'active',recoveredFromHead:baseHead};
+ delete active.previousWriteDigest;
+ const candidate={...waiting.manifest,members:[{...member.ref,file:orphanChild.manifest,digest:orphanChild.digest}],
+  allocations:[active],previous:{file:waiting.path,digest:waiting.digest}};
+ assert.throws(()=>collectWorkflowValue(root,repository,candidate,join(root,'workflow-input.json')),/allocation-recovery-source/);
+ const currentChild=child(head),recovered={...active,headRevision:head};
+ const result=collectWorkflowValue(root,repository,{...candidate,members:[{...member.ref,file:currentChild.manifest,digest:currentChild.digest}],allocations:[recovered]},join(root,'workflow-input.json'));
+ const current=readSelectedWorkflow(root,repository,{input:result.manifest,required:true});
+ assert.equal(current.manifest.allocations[0].state,'active');
+ assert.equal(current.manifest.allocations[0].recoveredFromHead,baseHead);
+ assert.equal(current.members[0].child.source.revision,head);
+ const previousAllocation=current.manifest.allocations[0],nextPending=collectWorkflowValue(root,repository,{...current.manifest,
+  members:current.members.map(row=>({...row.ref,file:row.path})),allocations:[{...previousAllocation,state:'pending',
+   previousWriteDigest:previousAllocation.writeDigest}],previous:{file:current.path,digest:current.digest}},join(root,'workflow-input.json'));
+ const nextWaiting=readSelectedWorkflow(root,repository,{input:nextPending.manifest,required:true});
+ writeFileSync(join(root,'next.txt'),'next candidate');git('add','next.txt');git('-c','commit.gpgsign=false','commit','--quiet','-m','next candidate');
+ const nextHead=git('rev-parse','HEAD'),nextMember=child(nextHead),nextRow={...nextWaiting.manifest.allocations[0],
+  headRevision:nextHead,state:'active',recoveredFromHead:head};delete nextRow.previousWriteDigest;
+ const nextRoot=collectWorkflowValue(root,repository,{...nextWaiting.manifest,members:[{...nextWaiting.manifest.members[0],
+  file:nextMember.manifest,digest:nextMember.digest}],allocations:[nextRow],
+  previous:{file:nextWaiting.path,digest:nextWaiting.digest}},join(root,'workflow-input.json'));
+ const repeated=readSelectedWorkflow(root,repository,{input:nextRoot.manifest,required:true});
+ assert.equal(repeated.manifest.allocations[0].recoveredFromHead,head);
+ assert.equal(repeated.members[0].child.source.revision,nextHead);
 });

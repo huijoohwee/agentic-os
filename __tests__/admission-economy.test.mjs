@@ -368,6 +368,34 @@ for (const publishedCache of [false, true]) test(`interrupted readmission recove
   assert.equal(f.selected().manifest.allocations[0].state, 'active');
   assert.equal(f.effects.length, effects); assert.equal(worktrees(f.root).length, 2);
 });
+for (const publishedCache of [false, true]) test(`pending readmit recovers an exact descendant head ${publishedCache ? 'after' : 'before'} cache CAS`, async t => {
+  const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const ref = 'agent/test-device/one', target = lanePath('one', 'test-device', f.root);
+  const before = f.selected(), prior = records.get(ref, f.root), old = before.manifest.allocations[0];
+  const writePaths = ['additional.txt', 'owned.txt'];
+  const pending = changeRoot(f, { allocations: [{ ...old, operation: 'readmit', state: 'pending',
+    previousWriteDigest: old.writeDigest, writeDigest: hash(JSON.stringify(writePaths)) }] });
+  writeFileSync(join(target, 'additional.txt'), 'candidate preserved after interrupted readmit\n');
+  git(['add', 'additional.txt'], { cwd: target });
+  git(['-c', 'commit.gpgsign=false', 'commit', '-m', 'candidate after interrupted readmit'], { cwd: target });
+  const head = headSha('HEAD', target), args = paths => ['one', '--device=test-device', `--write=${paths}`,
+    `--mission=${pending.path}`, '--readmit', `--expected-head=${head}`];
+  if (publishedCache) records.putExact({ ...prior, head, writePaths }, prior, f.root);
+  await assert.rejects(cmdStart(f.root, args('different.txt'), f.policy, f.profile, f.services), /outside the current reservation|exact retained-head reconciliation/);
+  assert.equal(f.selected().digest, pending.digest);
+  assert.equal(await cmdStart(f.root, args('additional.txt'), f.policy, f.profile, f.services), 0);
+  const after = f.selected(), allocation = after.manifest.allocations[0];
+  assert.equal(allocation.state, 'active'); assert.equal(allocation.headRevision, head);
+  assert.equal(allocation.recoveredFromHead, old.headRevision);
+  assert.equal(allocation.previousWriteDigest, undefined);
+  assert.equal(after.members[0].child.source.revision, head);
+  assert.deepEqual(records.get(ref, f.root).writePaths, writePaths);
+  assert.equal(records.get(ref, f.root).head, head);
+  assert.equal(f.run('ls-remote', '--refs', 'origin', `refs/heads/${ref}`), '');
+  assert.equal(headSha('HEAD', target), head);
+  assert.equal(readFileSync(join(target, 'additional.txt'), 'utf8'), 'candidate preserved after interrupted readmit\n');
+  assert.deepEqual(prior.writePaths, ['owned.txt']);
+});
 for (const publishedCache of [false, true]) test(`interrupted expanded successor readmit recovers ${publishedCache ? 'after' : 'before'} cache CAS`, async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const predecessorRef = 'agent/test-device/one', ref = 'agent/test-device/next';
