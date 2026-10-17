@@ -40,7 +40,7 @@ remains the reusable policy and native OS test-runner guide.
 | V01 | The selected repository identity matches its Git origin and supplies one closed check contract. Malformed inputs fail before commands. |
 | V02 | Changed, added, deleted, staged and unstaged files select owner checks. A changed prerequisite selects its dependents; selected dependents bring required prerequisites exactly once. |
 | V03 | Unmapped paths select declared conservative fallback. Policy, package, workflow and hook changes select the declared complete broad fallback. Missing baseline is an error. |
-| V04 | Local success is reusable for one hour only with matching command, declared dependency inputs, policy, runner, environment, platform and log bytes. A matching deterministic failure blocks another attempt unless explicitly refreshed. |
+| V04 | Local success is reusable for one hour only with matching command, declared dependency inputs, policy, runner, environment, platform and log bytes. Full-source `local-plan` reuse may cross a commit when the exact source tree, base revision and selected plan still match. A matching deterministic failure blocks another attempt unless explicitly refreshed. |
 | V05 | CI validates its actual event/checkout baseline, uses fresh execution, and rejects dirty sources. Local receipts never substitute for protected checks. |
 | V06 | Source drift, recursive invocation, timeout, process failure and output bounds cannot produce passing evidence. Logs retain a bounded tail without skipping command execution. |
 | V07 | Consumers invoke the pinned common executor through default validation and protected CI; owner commands remain in their source repositories. Unenrolled consumers are not claimed enforced. |
@@ -73,7 +73,7 @@ proof requirements; `__tests__/readiness-proof.test.mjs` checks the single inven
 The consumer policy has schema `agentic-os/repository-validation-policy/v1` and
 exact fields `repository`, `broadInputs`, `always`, `fallback`, and `checks`.
 Each check has `id`, `command` (an argv array), `inputs` (literal file/directory
-boundaries), `requires` (other check IDs), `reuse` (`local` or `never`), and
+boundaries), `requires` (other check IDs), `reuse` (`local`, `local-plan`, or `never`), and
 `timeoutMs`. `*` means the entire repository; directory boundaries end in `/`.
 Fallback is nonempty and must cover all required validation for a broad change. It replaces overlapping narrow checks when selected; mandatory checks and prerequisites remain. Check IDs and
 command arrays are unique; missing prerequisites and cycles fail validation.
@@ -83,6 +83,13 @@ has no other dependencies. Include file reads, generated inputs and cross-module
 contracts in the boundaries. Use `reuse: never` for browser/provider checks,
 external files, ignored generated inputs and dependencies whose actual bytes are
 not bound. Installed dependencies are not fingerprinted by their lockfile alone.
+`local-plan` requires `inputs: ["*"]` and binds the complete source content and
+modes, exact requested/base revisions, changed-path selection, policy, runner and
+environment. It does not bind the candidate commit SHA or Git index state: those
+are provenance, while the receipt's source digest binds the bytes the check read.
+Use `never` for commands whose result depends on commit metadata, history, staging,
+or any other input outside that contract. CI remains fresh. See the
+[source-equivalent reuse decision](prd-tad-adr-mvp-gtm-source-equivalent-validation-reuse.md).
 The native OS source runner retains its existing static-import and contract graph.
 Its `deferred` impact entries are an exact edge contract for source-literal dynamic
 imports: changed deferred modules select the listed route suites, and those suites
