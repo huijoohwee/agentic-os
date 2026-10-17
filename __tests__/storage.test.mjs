@@ -21,7 +21,7 @@ function fixture(t) {
   git(root, ['config', 'user.name', 'Fixture']); git(root, ['config', 'user.email', 'fixture@example.invalid']);
   git(root, ['config', 'gc.auto', '0']);
   writeFileSync(join(root, 'file'), 'source\n'); git(root, ['add', '.']); git(root, ['commit', '-qm', 'base']);
-  const plan = kind => planStorage({ cwd: root, kind }, NOW);
+  const plan = (kind, options = {}) => planStorage({ cwd: root, kind, ...options }, NOW);
   const apply = (p, options = {}) => applyStorage(p, { authorization: `agentic-os:storage:${p.planDigest}`,
     stopped: true, now: NOW, ...options });
   return { root, plan, apply };
@@ -257,6 +257,42 @@ test('verified pre-swap compression resumes after package source drift clears',
     assert.ok(!existsSync(join(operation, 'compressed'))); assert.ok(!existsSync(join(operation, 'original')));
     assert.deepEqual(observeQuarantineManifest(installed.target, LIMITS), plan.before.dependencies);
     assert.equal(execFileSync(join(installed.target, '.bin/run'), { encoding: 'utf8' }), 'installed-ok\n');
+  });
+test('fresh dependency plan resumes verified staging after HEAD-only drift',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), installed = installation(s), original = installed.plan();
+    assert.throws(() => s.apply(original, { progress() {
+      git(s.root, ['commit', '--allow-empty', '-qm', 'unrelated source update']);
+    } }), /drift-before-swap/);
+    const operation = join(s.root, '.git/agentic-os-storage', original.planDigest);
+    const originalPlanBytes = readFileSync(join(operation, 'plan.json'));
+    const resumed = s.plan('worktree-dependencies', { resumeFrom: original.planDigest });
+    assert.notEqual(resumed.before.checkoutHead, original.before.checkoutHead);
+    assert.throws(() => s.apply(resumed, { resume: true, now: resumed.issuedAt,
+      progress(message) { if (message.startsWith('Dependency swap complete;')) throw Error('simulated resumed interruption'); },
+    }), /simulated resumed interruption/);
+    assert.ok(existsSync(join(operation, 'swap.json')));
+    const receipt = s.apply(resumed, { resume: true, now: resumed.issuedAt });
+    assert.equal(receipt.resumed, true); assert.equal(receipt.planDigest, resumed.planDigest);
+    assert.equal(receipt.contentPreserved, true); assert.equal(receipt.packageSourcesPreserved, true);
+    assert.deepEqual(readFileSync(join(operation, 'plan.json')), originalPlanBytes);
+    assert.deepEqual(JSON.parse(readFileSync(join(operation, 'swap.json'))).resumePlan, resumed);
+    assert.ok(!existsSync(join(operation, 'compressed'))); assert.ok(!existsSync(join(operation, 'original')));
+    assert.deepEqual(observeQuarantineManifest(installed.target, LIMITS), resumed.before.dependencies);
+    assert.equal(execFileSync(join(installed.target, '.bin/run'), { encoding: 'utf8' }), 'installed-ok\n');
+    assert.equal(s.apply(resumed, { resume: true, now: resumed.issuedAt + 3600001 }).replayed, true);
+  });
+test('fresh dependency resume rejects changed package inputs and preserves staged data',
+  { skip: process.platform !== 'darwin' }, t => {
+    const s = fixture(t), installed = installation(s), original = installed.plan();
+    assert.throws(() => s.apply(original, { progress() {
+      git(s.root, ['commit', '--allow-empty', '-qm', 'unrelated source update']);
+    } }), /drift-before-swap/);
+    const operation = join(s.root, '.git/agentic-os-storage', original.planDigest);
+    writeFileSync(join(s.root, 'package-lock.json'), '{"changed":true}\n');
+    assert.throws(() => s.plan('worktree-dependencies', { resumeFrom: original.planDigest }), /resume-source-drift/);
+    assert.ok(existsSync(join(operation, 'compressed')));
+    assert.deepEqual(observeQuarantineManifest(installed.target, LIMITS), original.before.dependencies);
   });
 function interruptedSwap(s) {
   const installed = installation(s), plan = installed.plan();
