@@ -309,7 +309,7 @@ test('legacy adoption counts mounted member lanes and zero allows exact reuse on
   await assert.rejects(f.start('two', `--mission=${adopted.path}`), /allows no checkout/);
   assert.equal(worktrees(f.root).length, 2);
 });
-test('private committed revision refresh is explicit and committed unreserved bytes fail closed', async t => {
+test('private committed revision refresh is explicit and readmit adopts only declared unreserved bytes', async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const target = lanePath('one', 'test-device', f.root), before = f.selected();
   writeFileSync(join(target, 'owned.txt'), 'committed edit\n');
@@ -324,6 +324,11 @@ test('private committed revision refresh is explicit and committed unreserved by
   head = headSha('HEAD', target);
   await assert.rejects(f.start('one', `--mission=${after.path}`, `--expected-head=${head}`, '--readmit'), /outside the current reservation/);
   assert.equal(readFileSync(join(target, 'unreserved.txt'), 'utf8'), 'retain\n');
+  assert.equal(await cmdStart(f.root, ['one', '--device=test-device', '--write=unreserved.txt',
+    `--mission=${after.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), 0);
+  assert.deepEqual(records.get('agent/test-device/one', f.root).writePaths, ['owned.txt', 'unreserved.txt']);
+  assert.equal(readFileSync(join(target, 'unreserved.txt'), 'utf8'), 'retain\n');
+  assert.equal(headSha('HEAD', target), head);
 });
 
 test('explicit recertification retains an unpublished lane after its reservation outgrows the active allocation', async t => {
