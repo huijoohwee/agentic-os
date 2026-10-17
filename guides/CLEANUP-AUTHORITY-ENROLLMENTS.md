@@ -28,4 +28,10 @@ Repository `github.com/huijoohwee/agentic-os`; review [PR #477](https://github.c
 
 This records current merge facts only. Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain unproven. The enrollment grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
 
-Budget: one current-quarantine adoption and one current-recovery enrollment, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
+## Current recovery enrollment — agentic-os PR #478 — 2026-10-17
+
+Repository `github.com/huijoohwee/agentic-os`; review [PR #478](https://github.com/huijoohwee/agentic-os/pull/478). Base `e5c14e5c0236cba859ee8996f8b7b3660a256e20`; reviewed head `aadcd19641d9ef2273b4bb7ea89227f501375dce`; merge `91e39eac8758573ce8e1103d8617ecfd53ce3259`; equal tree `43f023e4f84411f58d904836071c2710169125f3`; `budgets` and `test` passed.
+
+This records current merge facts only. Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain unproven. The enrollment grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
+
+Budget: one current-quarantine adoption and two current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
