@@ -61,7 +61,7 @@ export function checkoutCapacity(selected, repository, inventory, explicitLimit 
   for (const row of inventory) if (own.has(basename(row.path))) consumed.add(basename(row.path));
   return { limit: Math.min(selected.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS), consumed: consumed.size, worktreeIds: [...consumed].sort() };
 }
-function observeExisting(root, ref, path, record, expectedHead, requested, policy, allocation) {
+function observeExisting(root, ref, path, record, expectedHead, requested, policy, allocation, readmit = false) {
   const registered = worktrees(root).find(row => row.branch === ref && row.path === path);
   if (!registered || !record || record.state !== 'active' || record.worktree !== path || !isBoundLane(ref, path)
     || currentBranch(path) !== ref || record.pr !== null) fail('existing-identity', 'Reuse requires one live bound active unpublished lane');
@@ -70,11 +70,11 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   if (registered.head && registered.head !== head) fail('head-drift', 'Registered head changed');
   if (!record.baseSha || observeGit(['merge-base', '--is-ancestor', record.baseSha, head], { cwd: root, allowFail: true }) === null)
     fail('base-binding', 'The existing lane must retain its admitted source ancestry');
-  const reserved = parseWritePaths((record.writePaths ?? []).join(','));
+  const reserved = parseWritePaths((record.writePaths ?? []).join(',')), authoredScope = readmit ? [...new Set([...reserved, ...requested])] : reserved;
   const authored = [...committedLanePaths(head, headSha(policy.protectedRef, root), root),
     ...gitLines(['diff', '--name-only', 'HEAD'], { cwd: path }),
     ...gitLines(['ls-files', '--others', '--exclude-standard'], { cwd: path })];
-  if (authored.some(file => !covered(file, reserved))) fail('unreserved-bytes', 'Preserve authored bytes outside the current reservation; do not adopt them');
+  if (authored.some(file => !covered(file, authoredScope))) fail('unreserved-bytes', 'Preserve authored bytes outside the current reservation; do not adopt them');
   const remote = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   if (!remote) fail('remote', 'Protected remote binding is missing');
   const transport = remoteTransport(remote, root);
@@ -140,7 +140,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (alignment?.candidateHead) Object.assign(artifacts, { effectsRetained: true, worktree: path, alignmentReceipt: { phase: 'observed-preparation', journalPath: alignment.journalPath,
           oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         const reusePaths = refresh ? parseWritePaths((record?.writePaths ?? []).join(',')) : requested;
-        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead, reusePaths, policy, row);
+        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead, reusePaths, policy, row, readmit);
         if (!selected) fail('mission-required', 'Existing lanes need their exact workflow identity; no new root is created for reuse');
         if (!selected.members.some(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)) fail('member-binding', 'The existing lane is not a member of the selected mission');
         const liveDigest = scopeDigest(identity.reserved), recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit';
@@ -179,7 +179,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (alignment) artifacts.workflow = selected.path;
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
-          observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row);
+          observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true);
           if (liveDigest !== nextDigest) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
           if (alignment) {
             const receipt = refreshMethods.apply(alignment);
