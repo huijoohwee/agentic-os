@@ -153,12 +153,14 @@ export async function cmdStart(root, argv, policy, profile, services) {
           ? parseWritePaths(records[row.predecessorRef].writePaths.join(',')) : [];
         const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref && identity.lineage.some(link => link.predecessorRef === row.predecessorRef)
           && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
+        const recoveringHeadAdvance = recoveringReadmit && readmit && !alignment && row.worktreeId === worktreeId
+          && row.ref === ref && row.path === path && row.baseRevision === record.baseSha && row.predecessorRef === undefined
+          && row.headRevision !== identity.head && nextDigest === row.writeDigest && (row.previousWriteDigest === liveDigest || row.writeDigest === liveDigest && record.head === identity.head)
+          && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
         if (successorReadmit && !readmit) fail('successor-readmit', 'Explicit readmit must bind the retained successor to its existing mission slot');
-        if (row && (row.path !== path || (row.ref !== ref && !successorReadmit) ||
-          (row.writeDigest !== liveDigest && !successorReadmit && !recertification && !recoveringSuccessor && !(recoveringReadmit && row.previousWriteDigest === liveDigest)))) fail('reservation-drift', 'Native scope evidence no longer matches the live lane projection');
+        if (row && (row.path !== path || row.ref !== ref && !successorReadmit || row.writeDigest !== liveDigest && !successorReadmit && !recertification && !recoveringSuccessor && !(recoveringReadmit && row.previousWriteDigest === liveDigest))) fail('reservation-drift', 'Native scope evidence no longer matches the live lane projection');
         if (!readmit && requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Use explicit active readmit for additional paths');
-        if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head
-          && !(alignment && row.headRevision === alignment.candidateHead) || (recoveringReadmit && !readmit))) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
+        if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head && !(alignment && row.headRevision === alignment.candidateHead) && !recoveringHeadAdvance || recoveringReadmit && !readmit)) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
@@ -170,17 +172,17 @@ export async function cmdStart(root, argv, policy, profile, services) {
             alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
               oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         }
-        allocation = { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
+        allocation = recoveringHeadAdvance ? row : { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
           writeDigest: nextDigest, state: readmit ? 'pending' : 'active', operation: readmit ? 'readmit' : row?.operation ?? 'create',
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit || recertification ? row.writeDigest : liveDigest } : {}),
-          ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
+          ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}), ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
         if (JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) artifacts.workflow = selected.path;
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
           observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true);
-          if (liveDigest !== nextDigest) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
+          if (liveDigest !== nextDigest || record.head !== identity.head) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
           if (alignment) {
             const receipt = refreshMethods.apply(alignment);
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
@@ -191,7 +193,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
             out(JSON.stringify(receipt));
           }
           const { previousWriteDigest, ...completed } = allocation;
-          allocation = { ...completed, state: 'active' };
+          allocation = { ...completed, ...(recoveringHeadAdvance ? { headRevision: identity.head, recoveredFromHead: row.headRevision } : {}), state: 'active' };
           selected = recordAllocation(root, profile.repository, selected, allocation);
         }
         out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: readmit ? 'readmitted' : 'reused',
