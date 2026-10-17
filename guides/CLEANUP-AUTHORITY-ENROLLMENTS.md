@@ -3,12 +3,12 @@ schema: agentic-os/cleanup-authority-enrollments/v1
 title: Exact current-recovery enrollments
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.3
-prd_revision: 1.2.3
-tad_revision: 1.2.3
-adr_revision: 1.2.3
-mvp_revision: 1.2.3
-gtm_revision: 1.2.3
+version: 1.2.4
+prd_revision: 1.2.4
+tad_revision: 1.2.4
+adr_revision: 1.2.4
+mvp_revision: 1.2.4
+gtm_revision: 1.2.4
 load_policy: on-demand
 lifecycle_status: active
 ---
@@ -79,4 +79,19 @@ Historical protection, required-check policy, Ruleset Suite, and merge-method au
 unproven. It grants no retirement, cleanup, deployment, or canonical-sync effect; each later effect
 requires its own exact plan, authorization, and receipt.
 
-Budget: one current-quarantine adoption and five current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
+## Current recovery enrollment — agentic-os PR #484 — 2026-10-17
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`6623ce5958ba8c9752d1b7fa81b9acd9281ae1ac`, reviewed head
+`065eef81e25ca9f77475d8e20f7f01d9cf2127e1`, merge
+`b89ba6865c276112de1657514d418439ad5011a4`, and equal source/merge tree
+`7b1054df990c7d58b93b5fa68189ec75dc7ac26d`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/484>; `budgets` and `test` passed.
+
+The distinct scope is `recovery/current-historical-content/pr-484`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no retirement, cleanup, deployment, or canonical-sync effect; each later effect
+requires its own exact plan, authorization, and receipt.
+
+Budget: one current-quarantine adoption and six current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
