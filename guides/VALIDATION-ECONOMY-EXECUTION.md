@@ -32,7 +32,10 @@ Record the actual stop, elapsed time and retained bytes; retain measured partial
 their coverage, and mark unavailable accounting unknown.
 Preserve the original gate deadline and every required check. Diagnostic results grant no gate parity.
 Charge sequel runs cumulatively against the sprint's time and artifact allowances; per-run limits do
-not reset them. Verify owned process teardown and lock release before retry; crashed locks stay blocked.
+not reset them. Verify owned process teardown and lock release before retry. A crashed START lock
+may be recovered only through the exact, operator-attested procedure in `docs/START-WORKFLOW.md`;
+the command reports process ownership as unverified. No age-based, PID-inferred, or generic lock
+deletion is allowed.
 
 Choose the cheapest observation that answers the question: retained log and receipt first, existing
 phase/progress metadata next, then a bounded targeted diagnostic. Escalate a partial trace only when
@@ -136,7 +139,31 @@ selected revisions, authored bytes, execution environment and provenance. Fail o
 drift. The existing accounting supervisor catches group termination while waiting for its child;
 exec children retain normal signal behavior. Keep repeated parent interrupts handled through teardown.
 The existing 250 ms force timer still bounds uncooperative children; no deadline or memory cap increases.
-Hard-killed/crashed owners remain blocked; no stale-lock deletion or foreign-process recovery is added.
+Hard-killed/crashed owners remain blocked until the clone operator stops all START writers and uses
+the exact START-lock plan/apply procedure below. It does not infer process ownership or recover
+other locks.
+
+## Crashed START lock recovery
+
+An empty `.git/agentic-os-start.lock` has no owner metadata, so age and process scans cannot prove
+that its writer stopped. First stop all START writers for the clone and preserve their logs. From
+canonical `main`, inspect one exact lock:
+
+```sh
+npm run release:common -- start-lock-recovery plan
+npm run release:common -- start-lock-recovery apply \
+  --plan-digest=<digest-from-plan> \
+  --authorize=agentic-os:start-lock-recovery:<digest-from-plan> --stopped
+```
+
+The plan binds the canonical checkout, Git common directory, branch, HEAD and lock inode/metadata.
+Apply requires the exact digest and explicit stopped-writer acknowledgement. It atomically replaces
+only the empty lock with a recovery marker, then moves that marker to a digest-named archive under
+the Git common directory. An interrupted marker is recognized and can be finalized with a new plan.
+Nonempty, changed, missing, or unrecognized locks refuse. The receipt states
+`processOwnershipVerified:false`; this is operator-attested recovery, not proof from a PID or lock
+age, and grants no lane, integration, release, or deployment authority. Retain the emitted receipt
+with the task evidence.
 
 MVP: reproduce the two invalidation failures and SIGINT/SIGTERM nested-stage lock leaks before repair.
 Verify fresh cancellation receipts, no surviving owned leaf, preserved live foreign command/lock,

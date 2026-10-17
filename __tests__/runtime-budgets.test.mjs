@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40920, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40943, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -82,11 +82,12 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'One checkout/task; resume its bound mission.',
       'Without plan/mission, use clone.',
       'Readmit/published continuation: see guides/LANE-RECERTIFICATION.md.',
-      "Valid START locks and fetches the profile's protected ref (normally origin/main)",
-      'before canonical/mission checks, including reuse/refusal.',
+      "Valid START locks and fetches the profile's protected ref before canonical/mission checks,",
+      'checks, including reuse/refusal. Failure stops before lane mutation;',
       'fetch updates tracking only, not local main or release authority.',
-      'Browser: run npm run dev; open/recheck URL.',
-      'Unsupported: report blocker, not live proof. Headless: N/A.',
+      '[recovery](../guides/VALIDATION-ECONOMY-EXECUTION.md).',
+      'Browser: run npm run dev; recheck URL.',
+      'Unsupported: report blocker, not proof. Headless: N/A.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'complete --ref=<lane>',
@@ -249,10 +250,10 @@ test('this repository is inside its own module budget', () => {
   const { found, entries, total, surfaces } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
-    modules: 49, totalLines: 15_602, perModuleLines: 400,
-    binModules: 113, binLines: 24_453, runtimeModules: 97, runtimeLines: 23_023,
+    modules: 50, totalLines: 15_835, perModuleLines: 400,
+    binModules: 113, binLines: 24_469, runtimeModules: 97, runtimeLines: 23_023,
   });
-  assert.equal(entries.length, 49);
+  assert.equal(entries.length, 50);
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
   assert.ok(surfaces.bin.entries.length <= MODULE_BUDGET.binModules);
