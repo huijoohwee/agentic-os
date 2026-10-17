@@ -158,8 +158,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           (row.writeDigest !== liveDigest && !successorReadmit && !recertification && !recoveringSuccessor && !(recoveringReadmit && row.previousWriteDigest === liveDigest)))) fail('reservation-drift', 'Native scope evidence no longer matches the live lane projection');
         if (!readmit && requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Use explicit active readmit for additional paths');
         if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head
-          && !(alignment && row.headRevision === alignment.candidateHead) || (recoveringReadmit && !readmit)))
-          fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
+          && !(alignment && row.headRevision === alignment.candidateHead) || (recoveringReadmit && !readmit))) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
@@ -187,7 +186,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
             selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
-            store.putExact({ ...record, head: identity.head, writePaths }, record, root);
+            const currentRecord = store.get(ref, root); if (!currentRecord || currentRecord.state !== 'active' || ['ref', 'device', 'scope', 'base', 'baseSha', 'worktree', 'pr'].some(field => currentRecord[field] !== record[field]) || JSON.stringify(currentRecord.writePaths ?? []) !== JSON.stringify(writePaths) || ![record.head, alignment.candidateHead, identity.head].includes(currentRecord.head)) fail('alignment-record-drift', 'Lane identity changed while refresh was applying; preserve the owner record and reconcile from its current head');
+            if (currentRecord.head !== identity.head) store.putExact({ ...currentRecord, head: identity.head }, currentRecord, root);
             out(JSON.stringify(receipt));
           }
           const { previousWriteDigest, ...completed } = allocation;
