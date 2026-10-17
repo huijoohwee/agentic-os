@@ -3,11 +3,11 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.8.0"
-tad_revision: "1.8.0"
-adr_revision: "1.8.0"
+prd_revision: "1.9.0"
+tad_revision: "1.9.0"
+adr_revision: "1.9.0"
 load_policy: on-demand
-version: "1.8.0"
+version: "1.9.0"
 date: "2026-10-17"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--quarantine-inventory"
-agent_id: "codex-quarantine-inventory"
+worktree_id: "device-0232231d4a19--storage-head-drift-resume"
+agent_id: "codex-storage-head-drift-resume"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "0a62aae2c1d6dd60a1ac75164fad415dde4f809f"
-mvp_revision: "1.8.0"
-gtm_revision: "1.8.0"
+reviewed_source_revision: "7ba0649e97f9c550c5e4d333d768b1cb7464397e"
+mvp_revision: "1.9.0"
+gtm_revision: "1.9.0"
 ---
 
 # Storage compaction
@@ -323,7 +323,7 @@ GTM: reuse the free local workflow for the next authorized cleanup, measuring ne
 active/machine time, including recovery and rebuild. Prefer the smallest eligible target whose benefit
 justifies that cost. Demand, willingness to pay, support cost and monetary savings remain unmeasured.
 
-### Native retirement and quarantine economy — STORAGE-001@1.8.0
+### Native retirement and quarantine economy — STORAGE-001@1.9.0
 
 PRD: reduce repeated scans, failed copies and cleanup that merely moves disk cost. TAD/ADR: prioritize
 net allocation reduction against total verification/rebuild effort; reuse owners and still-valid receipts.
@@ -334,16 +334,20 @@ and publish a separate durable recovery locator before removing an authorized fo
 does not establish native receipt compatibility. Verify required metadata separately: a content/mode/link
 manifest alone does not cover ownership, timestamps, xattrs, ACLs or flags; disclose unverified surfaces.
 After interruption, follow the owner's resume contract. Manual recovery needs exact authorization and
-revalidated archive hash, restore proof, source and journal; an incomplete copy is not reusable.
+revalidated archive hash, restore proof, source and journal; an incomplete copy is not reusable. For a
+verified pre-swap dependency stage after HEAD movement, a fresh exact plan may continue only when package
+source hashes, object alternates, live target and staged manifests still match; it preserves the original
+plan and binds the new head/plan in the existing operation. Any partial swap or other drift stays blocked.
 
 MVP acceptance: **AC-S11** reconcile accepted native requests with registry/payload absence and protected
 versions/data; **AC-S12** verify detached-payload recovery/locators while preserving path-dependent native
 receipts; **AC-S13** check tool capabilities and peak space before copying, then reconcile net allocation
-including evidence/staging and exclude prior cleanup; **AC-S14** bind dependency alternates, reject drift and keep Git compaction fail-closed; **AC-S15** resume a verified pre-swap dependency copy only when its plan, source, target, manifest and idle checks match. Review these cases against private
+including evidence/staging and exclude prior cleanup; **AC-S14** bind dependency alternates, reject drift and keep Git compaction fail-closed; **AC-S15** resume a verified pre-swap copy after HEAD-only movement under fresh plan, identical lock inputs/manifests, and idle checks; reject other drift. Review these cases against private
 artifacts `macintosh-hd-reclaim-20261003` (14.84 GiB selected allocation removed) and
 `quarantine-reclaim-20261004` (1.23 GiB net after recovery); keep their final verification receipts.
 Archive bytes/modes/links passed; application/provenance restoration remains untested. Local observations
-establish no cross-device benchmark or promised saving.
+establish no cross-device benchmark or promised saving. Budget: four existing files, under 20 KiB changed,
+45 active minutes, zero new modules, dependencies or always-load bytes; measure actual net reclaim separately.
 GTM: measure phase/restore costs before another pass; retain eligible warm caches when eviction costs more.
 Money/performance gains remain unmeasured. One on-demand guide, under 6 KiB added, zero new modules,
 dependencies or always-load bytes. Run `npm run check` and prose/evidence review; publish via RELEASE.

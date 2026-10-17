@@ -120,9 +120,9 @@ function observed(plan) {
     : ['artifact-archive', 'artifact-compression'].includes(plan.kind) ? artifactState(plan.root, plan.artifact).state : dependencySelection(plan, Object.hasOwn(plan.before, 'objectAlternates') ? where.objectAlternates : undefined).state;
 }
 export function planStorage({ cwd = process.cwd(), kind, quarantine = null, artifact = null,
-  operation, store, destination }, now = Date.now()) {
+  operation, store, destination, resumeFrom = null }, now = Date.now()) {
   if (RECOVERY_KINDS.includes(kind)) {
-    if (quarantine !== null || artifact !== null) fail('arguments');
+    if (quarantine !== null || artifact !== null || resumeFrom !== null) fail('arguments');
     return planRecovery({ cwd, kind, operation, store, destination }, now);
   }
   if (operation !== undefined || store !== undefined || destination !== undefined) fail('arguments');
@@ -135,14 +135,23 @@ export function planStorage({ cwd = process.cwd(), kind, quarantine = null, arti
       : dependencySelection({ root, common, kind, quarantine }, kind === 'worktree-dependencies' ? objectAlternates : undefined);
   const draft = { schema: SCHEMA, root, common, kind, quarantine, target: selection.target, issuedAt: now,
     expiresAt: now + 3600000, ...(['artifact-archive', 'artifact-compression'].includes(kind) ? { artifact } : {}),
-    before: selection.state, beforeAllocatedBytes: allocated(selection.target) };
-  if (kind === 'worktree-dependencies' && !same(objectAlternates, location(root, { allowObjectAlternates: true }).objectAlternates)) fail('object-alternates-drift'); return { ...draft, planDigest: digest(draft) };
+    before: selection.state, beforeAllocatedBytes: allocated(selection.target),
+    ...(resumeFrom === null ? {} : { resumeFrom }) };
+  if (kind === 'worktree-dependencies' && !same(objectAlternates, location(root, { allowObjectAlternates: true }).objectAlternates)) fail('object-alternates-drift');
+  const plan = { ...draft, planDigest: digest(draft) };
+  if (resumeFrom !== null) verifyPreparedResume(plan, preparedDependencyOperation(plan));
+  return plan;
 }
 function validate(plan) {
   const { planDigest, ...draft } = plan;
-  if (Object.keys(plan).sort().join(',') !== `${['artifact-archive', 'artifact-compression'].includes(plan.kind) ? 'artifact,' : ''}before,beforeAllocatedBytes,common,expiresAt,issuedAt,kind,planDigest,quarantine,root,schema,target`
+  const expectedKeys = [...(['artifact-archive', 'artifact-compression'].includes(plan.kind) ? ['artifact'] : []),
+    'before', 'beforeAllocatedBytes', 'common', 'expiresAt', 'issuedAt', 'kind', 'planDigest', 'quarantine',
+    ...(Object.hasOwn(plan, 'resumeFrom') ? ['resumeFrom'] : []), 'root', 'schema', 'target'].join(',');
+  if (Object.keys(plan).sort().join(',') !== expectedKeys
     || plan.schema !== SCHEMA || !KINDS.includes(plan.kind)
     || !['dependencies', 'canonical-quarantine'].includes(plan.kind) && plan.quarantine !== null
+    || Object.hasOwn(plan, 'resumeFrom') && (plan.kind !== 'worktree-dependencies'
+      || !/^[a-f0-9]{64}$/u.test(plan.resumeFrom ?? '') || plan.resumeFrom === plan.planDigest)
     || digest(draft) !== planDigest || !/^[a-f0-9]{64}$/u.test(planDigest)
     || !Number.isSafeInteger(plan.issuedAt) || plan.expiresAt !== plan.issuedAt + 3600000)
     fail('plan-binding');
@@ -153,6 +162,33 @@ function validate(plan) {
       : plan.kind === 'dependencies' ? join(plan.common, 'agentic-os-cleanup-quarantine', plan.quarantine, 'projection/node_modules')
         : plan.kind === 'canonical-quarantine' ? join(plan.common, plan.quarantine) : resolve(plan.root, plan.artifact);
   if (plan.target !== target) fail('target-binding');
+}
+function originalDependencyPlan(plan, operation) {
+  const original = JSON.parse(readBoundedStableFile(join(operation, 'plan.json'), 64000, 'storage-plan'));
+  validate(original);
+  if (original.kind !== 'worktree-dependencies' || original.resumeFrom !== undefined
+    || original.planDigest !== plan.resumeFrom || original.root !== plan.root
+    || original.common !== plan.common || original.target !== plan.target) fail('resume-source');
+  return original;
+}
+function preparedDependencyOperation(plan) {
+  if (plan.kind !== 'worktree-dependencies' || !/^[a-f0-9]{64}$/u.test(plan.resumeFrom ?? '')) fail('resume-source');
+  const parent = direct(join(plan.common, 'agentic-os-storage'));
+  const operation = direct(join(parent, plan.resumeFrom));
+  if (lstatSync(operation).mode & 0o077) fail('resume-permissions');
+  const original = originalDependencyPlan(plan, operation);
+  if (existsSync(join(operation, 'receipt.json')) || existsSync(join(operation, 'swap.json'))
+    || existsSync(join(operation, 'original')) || !existsSync(join(operation, 'compressed'))
+    || !same(readdirSync(operation).sort(), ['compressed', 'plan.json'])) fail('resume-phase');
+  return { operation, original };
+}
+function verifyPreparedResume(plan, { operation, original }) {
+  if (original.before.checkoutHead === plan.before.checkoutHead
+    || !same(original.before.packageFiles, plan.before.packageFiles)
+    || !same(original.before.dependencies, plan.before.dependencies)
+    || !same(original.before.objectAlternates ?? null, plan.before.objectAlternates ?? null)) fail('resume-source-drift');
+  if (!same(observed(plan), plan.before)
+    || !same(storageManifest(join(operation, 'compressed')), plan.before.dependencies)) fail('resume-staged-content');
 }
 function locksAbsent(common) {
   for (const name of ['gc.pid', 'index.lock', 'packed-refs.lock', 'shallow.lock', 'config.lock'])
@@ -233,7 +269,11 @@ function finishDependencySwap(plan, operation) {
   if (existsSync(prepared)) fail('resume-phase');
   const manifest = (plan.before.dependencies ?? plan.before.artifactManifest), compressedBytes = allocated(plan.target);
   const journal = JSON.parse(readBoundedStableFile(join(operation, 'swap.json'), 64000, 'storage-swap'));
-  if (!same(journal, { target: plan.target, prepared, original, manifest, recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' })) fail('resume-journal');
+  const expectedJournal = { target: plan.target, prepared, original, manifest,
+    recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.',
+    ...(plan.resumeFrom === undefined ? {} : { planDigest: plan.planDigest, resumedFrom: plan.resumeFrom, resumePlan: plan }) };
+  if (plan.resumeFrom !== undefined) originalDependencyPlan(plan, operation);
+  if (!same(journal, expectedJournal)) fail('resume-journal');
   if (!same(observed(plan), plan.before) || !same(storageManifest(original), manifest)) fail('drift-after-swap');
   idleWorktree(plan, original);
   const verifiedPath = join(operation, 'verified.json'), verified = { manifest, compressedBytes, originalVerified: true };
@@ -246,15 +286,25 @@ function finishDependencySwap(plan, operation) {
       : { ...(plan.kind === 'worktree-dependencies' ? { packageSourcesPreserved: true } : { trackedSourcePreserved: true }),
         idleProcessObservation: true }), dependenciesRemoved: false };
 }
-function resumePreparedDependencySwap(plan, operation) {
+function resumePreparedDependencySwap(plan, operation, progress = () => {}) {
   const prepared = join(operation, 'compressed'), original = join(operation, 'original'), manifest = plan.before.dependencies ?? plan.before.artifactManifest;
-  if (!same(readdirSync(operation).sort(), ['compressed', 'plan.json']) || !existsSync(plan.target) || !existsSync(prepared) || existsSync(original)) fail('resume-phase');
-  direct(prepared); if (!same(observed(plan), plan.before) || !same(storageManifest(prepared), manifest)) fail('resume-staged-content');
+  if (!same(readdirSync(operation).sort(), ['compressed', 'plan.json'])
+    || !existsSync(plan.target) || !existsSync(prepared) || existsSync(original)) fail('resume-phase');
+  direct(prepared);
+  if (plan.resumeFrom !== undefined) {
+    if (existsSync(join(operation, 'swap.json'))) fail('resume-phase');
+    verifyPreparedResume(plan, preparedDependencyOperation(plan));
+  }
+  if (plan.resumeFrom === undefined
+    && (!same(observed(plan), plan.before) || !same(storageManifest(prepared), manifest))) fail('resume-staged-content');
   flushTree(prepared); idleWorktree(plan, null, prepared);
   if (lstatSync(plan.target).dev !== lstatSync(operation).dev) fail('cross-device-swap');
-  durableJson(join(operation, 'swap.json'), { target: plan.target, prepared, original, manifest, recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' });
+  durableJson(join(operation, 'swap.json'), { target: plan.target, prepared, original, manifest,
+    recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.',
+    ...(plan.resumeFrom === undefined ? {} : { planDigest: plan.planDigest, resumedFrom: plan.resumeFrom, resumePlan: plan }) });
   renameSync(plan.target, original); flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
   renameSync(prepared, plan.target); flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
+  progress('Dependency swap complete; verifying the retained original before removal.');
   return finishDependencySwap(plan, operation);
 }
 function archiveArtifact(plan, operation, progress) {
@@ -298,17 +348,18 @@ export function applyStorage(plan, { authorization, stopped = false, resume = fa
   try {
     locksAbsent(plan.common);
     const parent = privateDirectory(join(plan.common, 'agentic-os-storage'));
-    const operation = join(parent, plan.planDigest), receiptPath = join(operation, 'receipt.json');
+    const operation = join(parent, plan.resumeFrom ?? plan.planDigest), receiptPath = join(operation, 'receipt.json');
     if (existsSync(operation)) {
       direct(operation);
       if (!existsSync(receiptPath)) {
         if (!resume || ['git', 'artifact-archive'].includes(plan.kind)) fail('partial-operation-retained');
         if (now < plan.issuedAt || now >= plan.expiresAt) fail('expired');
-        if (!same(JSON.parse(readBoundedStableFile(join(operation, 'plan.json'), 64000, 'storage-plan')), plan))
-          fail('resume-plan');
+        if (plan.resumeFrom === undefined
+          ? !same(JSON.parse(readBoundedStableFile(join(operation, 'plan.json'), 64000, 'storage-plan')), plan)
+          : existsSync(join(operation, 'swap.json')) && !same(JSON.parse(readBoundedStableFile(join(operation, 'swap.json'), 64000, 'storage-swap')).resumePlan, plan)) fail('resume-plan');
         progress('Revalidating the retained dependency copy and exact recovery state.');
         const swapped = existsSync(join(operation, 'swap.json'))
-          ? finishDependencySwap(plan, operation) : resumePreparedDependencySwap(plan, operation);
+          ? finishDependencySwap(plan, operation) : resumePreparedDependencySwap(plan, operation, progress);
         result = storageReceipt(plan, operation, { ...swapped, resumed: true });
       } else {
         const receipt = JSON.parse(readBoundedStableFile(receiptPath, 64000, 'storage-receipt'));
@@ -347,7 +398,7 @@ export function runStorage(argv) {
     args[match[1]] = match[2] ?? true;
   }
   const allowed = action === 'report' ? ['repository', 'directory', 'name', 'deep', 'category', 'max-entries', 'max-ms']
-    : action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination']
+    : action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination', 'resume-from']
     : action === 'apply' ? ['plan', 'authorize', 'stopped', 'resume'] : ['repository', 'store'];
   if (Object.keys(args).some(k => !allowed.includes(k))) fail('arguments');
   let result;
@@ -375,7 +426,8 @@ export function runStorage(argv) {
       || ['artifact', 'operation', 'store', 'destination'].some(key => args[key] !== undefined && typeof args[key] !== 'string'))
       fail('arguments');
     result = planStorage({ cwd: args.repository, kind: args.kind, quarantine: args.quarantine ?? null,
-      artifact: args.artifact ?? null, operation: args.operation, store: args.store, destination: args.destination });
+      artifact: args.artifact ?? null, operation: args.operation, store: args.store, destination: args.destination,
+      resumeFrom: args['resume-from'] ?? null });
   } else {
     if (typeof args.plan !== 'string' || typeof args.authorize !== 'string' || args.stopped !== true
       || args.resume !== undefined && args.resume !== true) fail('arguments');
