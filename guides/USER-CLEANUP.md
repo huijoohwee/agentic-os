@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.4"
-date: "2026-10-15"
+version: "1.4.5"
+date: "2026-10-17"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.4"
-tad_revision: "1.4.4"
-adr_revision: "1.4.4"
+prd_revision: "1.4.5"
+tad_revision: "1.4.5"
+adr_revision: "1.4.5"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--progressive-completion-priority"
+worktree_id: "device-0232231d4a19--cleanup-cwd-guard"
 agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "a0a8818bfdf4581f5382e85345b176227f41040a"
-mvp_revision: "1.4.4"
-gtm_revision: "1.4.4"
+reviewed_source_revision: "397ce86dbcf9606cace473f0e1f1e8beabb20197"
+mvp_revision: "1.4.5"
+gtm_revision: "1.4.5"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -35,7 +35,9 @@ plan, publishing private content or fabricating provider-issued integration/reti
 Acceptance: local opt-in plus one exact plan authorization and stop acknowledgement; freshly observed
 same-repository merged PR and selected successful GitHub Actions checks; equal candidate/merge trees;
 merge ancestry in clean, current main; exact target, inventory, peers, refs and object preservation;
-recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay.
+recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay. Before
+projection retirement, detect open descriptors and process current working directories under both retained
+trees; fail closed if the reader scan is incomplete.
 
 ## TAD: separate admission, shared preservation machinery
 
@@ -43,6 +45,10 @@ recoverable projection/registration quarantine; distinct local-consent receipt a
 `bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. The existing quarantine
 mechanics take an internal policy observer; protected cleanup never forwards caller-supplied policy
 overrides and still requires its authenticated integration/retirement joins. This is not a fallback.
+The cleanup command's reader guard uses recursive descriptor scans for files and one process-CWD snapshot
+for directories, including a working directory whose tree has already been unlinked. Missing caller
+evidence or scan errors block removal; canonical path resolution prevents symlink aliases from evading
+containment checks. The existing cleanup owner remains the only CLI/runtime module.
 
 The progressive closeout pass uses cached lane state to try integrated, queued, then published lanes,
 with path order as the stable tie-breaker. It shares the pass deadline across eligible candidates;
@@ -294,7 +300,9 @@ provide distributed/OS exclusion. No active governance claim is retired by this 
 
 Choose explicit local consent with separate profileless and enrolled recovery admission rather than weaken protected cleanup, require
 a paid feature, publish the source or silently prune by merge status. Keep enrollment local so essential
-shared source remains minimal. Protected release of this implementation remains a separate workflow.
+shared source remains minimal. Protected release of this implementation remains a separate workflow. The
+reader guard combines recursive open-descriptor checks with a bounded process-CWD scan and fails closed on
+an incomplete scan; source rollback uses the protected reviewed revert path and preserves remaining recovery data.
 
 `__tests__/user-cleanup.test.mjs` uses real local Git worktrees and mocked bounded provider observations;
 it does not claim live GitHub authority. Run it and `__tests__/user-cleanup-recovery.test.mjs` with the existing cleanup tests, then affected validation.
@@ -303,11 +311,16 @@ Retain separate live merged/check, plan, consent, quarantine and final synchroni
 ## MVP — reference implementation
 
 `USER-CLEANUP-001@1.2.1` selects one stopped, clean reviewed or historically equivalent worktree quarantined through its explicitly selected local-consent mode. Historical equivalence is a local retirement decision, not source integration. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
-Verify that acceptance with `node --test __tests__/user-cleanup.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+The 1.4.5 correction blocks projection removal when a process keeps the target as its working directory,
+even if no file descriptor below that directory is open. Verify it with `node --test __tests__/cleanup-retirement.test.mjs`
+and affected repository checks, preserving their exact source, result and authoring surface. The named command
+is a check plan; existing observations above retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
+
+The 1.4.5 reader-guard correction is a safety fix, not evidence of lower cleanup cost or willingness to pay. Measure active time and actual reclaimed space in a timed pilot; this change alone claims neither.
 
 Experience assessment for `USER-CLEANUP-001@1.2.0` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
 
@@ -338,9 +351,9 @@ agentic-os cleanup-user retire apply --plan=<saved-plan.json> \
   --authorize=agentic-os:quarantine-retirement:<plan-digest> --stopped --discard-recovery
 ```
 
-The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, registration HEAD mode, registration directory identity and mode, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, and requires `lsof` to find no open readers under either the projection or registration. Tree checks identity-bind a current-user-owned Unix-domain socket only inside the retained registration; sockets and other unsupported special entries in the projection still fail closed. It tightens any legacy `0755` projection or registration root to `0700`, rechecks both exact trees and the registration directory identity, then removes only that projection tree. The registration and its branch evidence remain in place. An interrupted operation requires a new exact resume plan bound to its original intent and remaining trees; it never replays automatically. The operation preserves metadata, branch refs, the Git object database, and any existing preservation receipt. Its v2 receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
+The 15-minute plan binds the original operation record, projection and registration manifests, retained branch/head, current branch tip, registration HEAD mode, registration directory identity and mode, and any existing preservation receipt. Apply takes the clone cleanup lock, rechecks those facts, and uses `lsof` to find open descriptors plus process current working directories under either the projection or registration. It caches one CWD snapshot per apply and requires the caller's CWD record; incomplete or failed inspection blocks removal. Tree checks identity-bind a current-user-owned Unix-domain socket only inside the retained registration; sockets and other unsupported special entries in the projection still fail closed. It tightens any legacy `0755` projection or registration root to `0700`, rechecks both exact trees and the registration directory identity, then removes only that projection tree. The registration and its branch evidence remain in place. An interrupted operation requires a new exact resume plan bound to its original intent and remaining trees; it never replays automatically. The operation preserves metadata, branch refs, the Git object database, and any existing preservation receipt. Its v2 receipt is stored as `retirement.json` beside the retained operation record. There is no age-based expiry policy; the operator decides each coordinate.
 
-The durable receipt reports logical bytes unlinked and explicitly leaves `physicalFreeSpaceIncreaseProven:false`. Filesystem snapshots, APFS local snapshots, concurrent system activity, and storage-provider behavior can keep blocks allocated after unlinking; the receipt does not claim a volume-level free-space delta. If open-file inspection is unavailable or uncertain, apply refuses. If interrupted after its durable intent is written, recovery requires a fresh exact resume plan and preserves the original intent until successful closeout.
+The durable receipt reports logical bytes unlinked and explicitly leaves `physicalFreeSpaceIncreaseProven:false`. Filesystem snapshots, APFS local snapshots, concurrent system activity, and storage-provider behavior can keep blocks allocated after unlinking; the receipt does not claim a volume-level free-space delta. If open-descriptor or CWD inspection is unavailable or uncertain, apply refuses. If interrupted after its durable intent is written, recovery requires a fresh exact resume plan and preserves the original intent until successful closeout.
 
 These receipts are tested against temporary repository fixtures, including retention of a stale Unix-domain socket in the registration. A real coordinate still requires its own plan, loss acknowledgment, apply result, and receipt. This operation does not retire lane claims or prove provider authority.
 

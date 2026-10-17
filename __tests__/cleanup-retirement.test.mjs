@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { commonDir } from '../src/git.mjs';
 import { observeQuarantineManifest } from '../src/cleanup-manifest.mjs';
-import { applyQuarantineRetirement, planQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
+import { applyQuarantineRetirement, createRetirementOpenReaderProbe, planQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 
 const NOW = Date.parse('2026-10-11T00:05:00Z');
 const g = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -86,6 +86,33 @@ function interrupt(state) {
   chmodSync(state.projection, 0o700); rmSync(join(state.projection, 'recovery.txt'));
   return intent;
 }
+
+test('retirement reader probe catches process working directories and fails closed on incomplete lsof output', () => {
+  const target = '/tmp/repo/.git/quarantine/projection';
+  const output = ['p41', 'cnode', 'fcwd', 'n/tmp/repo/.git/quarantine/projection/canvas',
+    'p42', 'cnode', 'fcwd', 'n/tmp/repo-other/canvas'].join('\n');
+  const calls = [], probe = createRetirementOpenReaderProbe({ pid: 42, execute: args => {
+    calls.push(args); return args[0] === '-t' ? '' : output;
+  } });
+  assert.throws(() => probe(target), error => error.reason === 'retirement-open-files');
+  assert.deepEqual(calls, [['-t', '+D', target], ['-nP', '-Fpcfn', '-d', 'cwd']]);
+  assert.doesNotThrow(() => createRetirementOpenReaderProbe({ pid: 42, execute: args => args[0] === '-t'
+    ? '' : 'p42\ncnode\nfcwd\nn/tmp/repo-other/canvas' })(target));
+  assert.throws(() => createRetirementOpenReaderProbe({ pid: 42, execute: args => args[0] === '-t'
+    ? '' : 'p99\ncnode\nfcwd\nn/tmp/other' })(target),
+    error => error.reason === 'retirement-open-scan');
+  assert.throws(() => createRetirementOpenReaderProbe({ pid: 42, execute: args => args[0] === '-t'
+    ? { status: 1, stdout: '', stderr: '' } : { status: 0, stdout: output, stderr: 'warning: incomplete process list' } })(target),
+    error => error.reason === 'retirement-open-scan');
+  assert.throws(() => createRetirementOpenReaderProbe({ pid: 42, execute: args => args[0] === '-t'
+    ? { status: 1, stdout: '41\n', stderr: '' } : { status: 0, stdout: output, stderr: '' } })(target),
+    error => error.reason === 'retirement-open-files');
+  const root = mkdtempSync(join(tmpdir(), 'agentic-os-reader-alias-')), actual = join(root, 'actual'), alias = join(root, 'alias');
+  mkdirSync(join(actual, 'canvas'), { recursive: true }); symlinkSync(actual, alias, 'dir');
+  try { assert.throws(() => createRetirementOpenReaderProbe({ pid: 42, execute: args => args[0] === '-t'
+    ? '' : `p42\ncnode\nfcwd\nn${alias}/canvas` })(actual), error => error.reason === 'retirement-open-files'); }
+  finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test('exact local-consent retirement removes only the projection and leaves branch evidence', t => {
   const state = fixture(t), refs = g(state.root, 'show-ref');
