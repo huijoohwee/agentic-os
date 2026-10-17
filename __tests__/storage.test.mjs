@@ -236,15 +236,27 @@ test('checkout compression rejects aliases, tracked installations and ambiguous 
     rmSync(installed.target, { recursive: true }); symlinkSync('.git', installed.target);
     assert.throws(installed.plan, /directory-alias/);
   });
-test('package source drift during compression retains the original installation and partial journal',
+test('verified pre-swap compression resumes after package source drift clears',
   { skip: process.platform !== 'darwin' }, t => {
     const s = fixture(t), installed = installation(s), plan = installed.plan();
+    const lockPath = join(s.root, 'package-lock.json'), lockBytes = readFileSync(lockPath);
     assert.throws(() => s.apply(plan, { progress() {
-      writeFileSync(join(s.root, 'package-lock.json'), '{"changed":true}');
+      writeFileSync(lockPath, '{"changed":true}');
     } }), /drift-before-swap/);
     assert.deepEqual(observeQuarantineManifest(installed.target, LIMITS), plan.before.dependencies);
     const operation = join(s.root, '.git/agentic-os-storage', plan.planDigest);
     assert.ok(existsSync(join(operation, 'compressed'))); assert.ok(!existsSync(join(operation, 'original')));
+    writeFileSync(lockPath, lockBytes);
+    const stagedRun = join(operation, 'compressed/run'), stagedBytes = readFileSync(stagedRun);
+    writeFileSync(stagedRun, 'changed prepared bytes');
+    assert.throws(() => s.apply(plan, { resume: true }), /resume-staged-content/);
+    assert.deepEqual(observeQuarantineManifest(installed.target, LIMITS), plan.before.dependencies);
+    writeFileSync(stagedRun, stagedBytes);
+    const receipt = s.apply(plan, { resume: true });
+    assert.equal(receipt.resumed, true); assert.equal(receipt.contentPreserved, true);
+    assert.ok(!existsSync(join(operation, 'compressed'))); assert.ok(!existsSync(join(operation, 'original')));
+    assert.deepEqual(observeQuarantineManifest(installed.target, LIMITS), plan.before.dependencies);
+    assert.equal(execFileSync(join(installed.target, '.bin/run'), { encoding: 'utf8' }), 'installed-ok\n');
   });
 function interruptedSwap(s) {
   const installed = installation(s), plan = installed.plan();
