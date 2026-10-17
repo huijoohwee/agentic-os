@@ -99,6 +99,26 @@ dependencies, or always-load bytes. No time or storage savings are attributed to
 Rollback removes this exact entry, guide record, and test while retaining any already issued provider
 evidence and its original meaning.
 
+### Current-quarantine retention adoption — agentic-os PR #487 — 2026-10-17
+
+The owner delegated autonomous END ADLC completion. This exact current-retention adoption binds
+branch `agent/device-0232231d4a19/storage-head-drift-resume`, reviewed head
+`c9a88dc1bb69528c104b8e49b69ab58dcab0e45b`, PR #487 merge
+`26a98d41c43bc8eefa5b9374b38951ce2ef755a3`, quarantine coordinate
+`30f5e2b1b7896321d09993cee4696f8e421a73daf87b24e31dfe1f7b71ab57f4`, and original local
+receipt digest `0dcf4893ba1871c2b256f78b4d94129f69fe1e25ae2d279f69eebeb1024498a3`.
+The receipt records 8,294,491 logical bytes discarded, the registration retained, and no proven
+physical free-space increase. Historical quarantine authority and actor remain unknown.
+
+This enrollment permits the native create-only `current-quarantine-discard-acknowledged` carrier
+to verify the existing receipt, manifest, registration, index, branch, and current merged review.
+It neither recreates deleted bytes nor issues or retires provider authority. Current integration,
+record-only retirement, allocation release, and any later deployment remain separate effects.
+
+Budget: one exact v1 retention row, its existing transition-workflow expectation, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Rollback removes this exact row,
+test entry, and guide record while keeping the original local receipt and issued evidence.
+
 ## TAD: explicit versioned bases
 
 Historical recovery adds opt-in `historical-content-facts/v1`, with a distinct operation mode and
