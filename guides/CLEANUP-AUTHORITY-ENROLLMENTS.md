@@ -34,4 +34,34 @@ Repository `github.com/huijoohwee/agentic-os`; review [PR #478](https://github.c
 
 This records current merge facts only. Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain unproven. The enrollment grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
 
-Budget: one current-quarantine adoption and two current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
+## Current recovery enrollment — agentic-os PR #480 — 2026-10-17
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`1eb168782a4d9b2d519d9b9207ffc816fe70db95`, reviewed head
+`11364995b4a1834d431e89d78c16a44e4ae51340`, merge
+`82c3ba7b1b4178e7c7b230e2cb0794aad3a9b5e0`, and equal source/merge tree
+`ab85ae1211f50ad60267f76e0ec86b19fa92d737`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/480>; `budgets` and `test` passed.
+
+The distinct scope is `recovery/current-historical-content/pr-480`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later
+effect requires its own exact plan, authorization, and receipt.
+
+## Current recovery enrollment — agentic-os PR #481 — 2026-10-17
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`82c3ba7b1b4178e7c7b230e2cb0794aad3a9b5e0`, reviewed head
+`556b5220b4c31172dd726f0113f9cf43b384702c`, merge
+`96af1d3fab0dc2ecfa7cfb2ac570a19c927bfee8`, and equal source/merge tree
+`66543f07adf995149641460c00964f7cad91fce0`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/481>; `budgets` and `test` passed.
+
+The distinct scope is `recovery/current-historical-content/pr-481`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later
+effect requires its own exact plan, authorization, and receipt.
+
+Budget: one current-quarantine adoption and four current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.

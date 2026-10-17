@@ -47,6 +47,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/476',
     'https://github.com/huijoohwee/agentic-os/pull/477',
     'https://github.com/huijoohwee/agentic-os/pull/478',
+    'https://github.com/huijoohwee/agentic-os/pull/480',
+    'https://github.com/huijoohwee/agentic-os/pull/481',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
@@ -72,6 +74,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/476', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/477', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/478', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/480', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/481', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -132,6 +136,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['476', '27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6', 'a5a70b40275b4e43b77c7e3033cb737729d27feb', 'cb4149dc7581e48923de851b424e39bc339afb5a', 'bc6aadd2331db05d41480488b3b26f014207fcb6'],
     ['477', 'cb4149dc7581e48923de851b424e39bc339afb5a', 'fe7f493fc51702438fe6b14d07a001260ba25f7f', 'e5c14e5c0236cba859ee8996f8b7b3660a256e20', '6c5e0fb2aab95cd3ee3ef70f7a570b84d985458e'],
     ['478', 'e5c14e5c0236cba859ee8996f8b7b3660a256e20', 'aadcd19641d9ef2273b4bb7ea89227f501375dce', '91e39eac8758573ce8e1103d8617ecfd53ce3259', '43f023e4f84411f58d904836071c2710169125f3'],
+    ['480', '1eb168782a4d9b2d519d9b9207ffc816fe70db95', '11364995b4a1834d431e89d78c16a44e4ae51340', '82c3ba7b1b4178e7c7b230e2cb0794aad3a9b5e0', 'ab85ae1211f50ad60267f76e0ec86b19fa92d737'],
+    ['481', '82c3ba7b1b4178e7c7b230e2cb0794aad3a9b5e0', '556b5220b4c31172dd726f0113f9cf43b384702c', '96af1d3fab0dc2ecfa7cfb2ac570a19c927bfee8', '66543f07adf995149641460c00964f7cad91fce0'],
   ]) {
     const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
     assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
