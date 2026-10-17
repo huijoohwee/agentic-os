@@ -91,7 +91,7 @@ function dependencySelection(plan, objectAlternates = undefined) {
   return plan.kind === 'worktree-dependencies' ? worktreeDependencyState(plan.root, objectAlternates)
     : dependencyState(plan.common, plan.quarantine);
 }
-function idleWorktree(plan, original = null) {
+function idleWorktree(plan, original = null, prepared = null) {
   if (!['worktree-dependencies', 'artifact-archive', 'artifact-compression'].includes(plan.kind)) return;
   const within = (path, root) => path === root || path.startsWith(`${root}/`);
   const inspect = (args, relevant) => {
@@ -110,7 +110,7 @@ function idleWorktree(plan, original = null) {
   // This is a bounded observation, not an OS-wide exclusion lock. --stopped remains required.
   inspect(['-d', 'cwd'], path => within(path, plan.kind === 'worktree-dependencies' ? plan.root : plan.target)
     && !within(path, plan.common));
-  for (const target of [plan.target, original].filter(Boolean))
+  for (const target of [plan.target, original, prepared].filter(path => path && existsSync(path)))
     inspect(['+D', target], () => true);
 }
 function observed(plan) {
@@ -214,25 +214,17 @@ function compressDependencies(plan, operation, progress) {
   if (process.platform !== 'darwin') fail('compression-platform');
   const prepared = join(operation, 'compressed'), original = join(operation, 'original');
   progress('Compressing the exact dependency directory using native filesystem compression.');
-  command('/usr/bin/ditto', ['--hfsCompression', '--noclone', '--rsrc', '--extattr', '--acl',
-    plan.target, prepared], plan.root);
-  const manifest = storageManifest(prepared);
+  command('/usr/bin/ditto', ['--hfsCompression', '--noclone', '--rsrc', '--extattr', '--acl', plan.target, prepared], plan.root);
+  const manifest = storageManifest(prepared), compressedBytes = allocated(prepared);
   if (!same(manifest, (plan.before.dependencies ?? plan.before.artifactManifest))) fail('compressed-content-mismatch');
-  const compressedBytes = allocated(prepared);
-  if (compressedBytes >= plan.beforeAllocatedBytes) {
-    rmSync(prepared, { recursive: true });
-    return { skipped: 'no-space-saving', contentPreserved: true };
-  }
-  if (!same(observed(plan), plan.before)) fail('drift-before-swap');
-  flushTree(prepared);
-  idleWorktree(plan);
+  if (compressedBytes >= plan.beforeAllocatedBytes) { rmSync(prepared, { recursive: true }); return { skipped: 'no-space-saving', contentPreserved: true }; }
+  if (!same(observed(plan), plan.before)) fail('drift-before-swap'); flushTree(prepared);
+  idleWorktree(plan, null, prepared);
   if (lstatSync(plan.target).dev !== lstatSync(operation).dev) fail('cross-device-swap');
-  durableJson(join(operation, 'swap.json'), { target: plan.target, prepared, original, manifest,
-    recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' });
+  durableJson(join(operation, 'swap.json'), { target: plan.target, prepared, original, manifest, recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' });
   // Both renames stay on the same filesystem. A partial swap retains the original and the journal.
-  renameSync(plan.target, original);
-  renameSync(prepared, plan.target);
-  flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
+  renameSync(plan.target, original); flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
+  renameSync(prepared, plan.target); flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
   progress('Dependency swap complete; verifying the retained original before removal.');
   return finishDependencySwap(plan, operation);
 }
@@ -241,23 +233,29 @@ function finishDependencySwap(plan, operation) {
   if (existsSync(prepared)) fail('resume-phase');
   const manifest = (plan.before.dependencies ?? plan.before.artifactManifest), compressedBytes = allocated(plan.target);
   const journal = JSON.parse(readBoundedStableFile(join(operation, 'swap.json'), 64000, 'storage-swap'));
-  if (!same(journal, { target: plan.target, prepared, original, manifest,
-    recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' }))
-    fail('resume-journal');
-  if (!same(observed(plan), plan.before)
-    || !same(storageManifest(original), manifest)) fail('drift-after-swap');
+  if (!same(journal, { target: plan.target, prepared, original, manifest, recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' })) fail('resume-journal');
+  if (!same(observed(plan), plan.before) || !same(storageManifest(original), manifest)) fail('drift-after-swap');
   idleWorktree(plan, original);
-  const verifiedPath = join(operation, 'verified.json');
-  const verified = { manifest, compressedBytes, originalVerified: true };
+  const verifiedPath = join(operation, 'verified.json'), verified = { manifest, compressedBytes, originalVerified: true };
   if (existsSync(verifiedPath)) {
     if (!same(JSON.parse(readBoundedStableFile(verifiedPath, 64000, 'storage-verified')), verified)) fail('resume-verified');
   } else durableJson(verifiedPath, verified);
-  rmSync(original, { recursive: true });
-  flushDirectory(operation);
+  rmSync(original, { recursive: true }); flushDirectory(operation);
   return { contentPreserved: true,
     ...(['dependencies', 'canonical-quarantine'].includes(plan.kind) ? { quarantineReceiptPreserved: true }
       : { ...(plan.kind === 'worktree-dependencies' ? { packageSourcesPreserved: true } : { trackedSourcePreserved: true }),
         idleProcessObservation: true }), dependenciesRemoved: false };
+}
+function resumePreparedDependencySwap(plan, operation) {
+  const prepared = join(operation, 'compressed'), original = join(operation, 'original'), manifest = plan.before.dependencies ?? plan.before.artifactManifest;
+  if (!same(readdirSync(operation).sort(), ['compressed', 'plan.json']) || !existsSync(plan.target) || !existsSync(prepared) || existsSync(original)) fail('resume-phase');
+  direct(prepared); if (!same(observed(plan), plan.before) || !same(storageManifest(prepared), manifest)) fail('resume-staged-content');
+  flushTree(prepared); idleWorktree(plan, null, prepared);
+  if (lstatSync(plan.target).dev !== lstatSync(operation).dev) fail('cross-device-swap');
+  durableJson(join(operation, 'swap.json'), { target: plan.target, prepared, original, manifest, recovery: 'Restore original to target only if target is absent; otherwise verify both manifests first.' });
+  renameSync(plan.target, original); flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
+  renameSync(prepared, plan.target); flushDirectory(resolve(plan.target, '..')); flushDirectory(operation);
+  return finishDependencySwap(plan, operation);
 }
 function archiveArtifact(plan, operation, progress) {
   const archive = join(operation, 'artifact.tar.gz'), verification = privateDirectory(join(operation, 'verification'));
@@ -308,8 +306,10 @@ export function applyStorage(plan, { authorization, stopped = false, resume = fa
         if (now < plan.issuedAt || now >= plan.expiresAt) fail('expired');
         if (!same(JSON.parse(readBoundedStableFile(join(operation, 'plan.json'), 64000, 'storage-plan')), plan))
           fail('resume-plan');
-        progress('Revalidating the completed dependency swap and retained original.');
-        result = storageReceipt(plan, operation, { ...finishDependencySwap(plan, operation), resumed: true });
+        progress('Revalidating the retained dependency copy and exact recovery state.');
+        const swapped = existsSync(join(operation, 'swap.json'))
+          ? finishDependencySwap(plan, operation) : resumePreparedDependencySwap(plan, operation);
+        result = storageReceipt(plan, operation, { ...swapped, resumed: true });
       } else {
         const receipt = JSON.parse(readBoundedStableFile(receiptPath, 64000, 'storage-receipt'));
         const unchanged = plan.kind === 'artifact-archive'

@@ -3,12 +3,12 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.7.0"
-tad_revision: "1.7.0"
-adr_revision: "1.7.0"
+prd_revision: "1.8.0"
+tad_revision: "1.8.0"
+adr_revision: "1.8.0"
 load_policy: on-demand
-version: "1.7.0"
-date: "2026-10-16"
+version: "1.8.0"
+date: "2026-10-17"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
@@ -20,8 +20,8 @@ agent_id: "codex-quarantine-inventory"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "0a62aae2c1d6dd60a1ac75164fad415dde4f809f"
-mvp_revision: "1.6.0"
-gtm_revision: "1.6.0"
+mvp_revision: "1.8.0"
+gtm_revision: "1.8.0"
 ---
 
 # Storage compaction
@@ -323,7 +323,7 @@ GTM: reuse the free local workflow for the next authorized cleanup, measuring ne
 active/machine time, including recovery and rebuild. Prefer the smallest eligible target whose benefit
 justifies that cost. Demand, willingness to pay, support cost and monetary savings remain unmeasured.
 
-### Native retirement and quarantine economy — STORAGE-001@1.5.0
+### Native retirement and quarantine economy — STORAGE-001@1.8.0
 
 PRD: reduce repeated scans, failed copies and cleanup that merely moves disk cost. TAD/ADR: prioritize
 net allocation reduction against total verification/rebuild effort; reuse owners and still-valid receipts.
@@ -339,7 +339,7 @@ revalidated archive hash, restore proof, source and journal; an incomplete copy 
 MVP acceptance: **AC-S11** reconcile accepted native requests with registry/payload absence and protected
 versions/data; **AC-S12** verify detached-payload recovery/locators while preserving path-dependent native
 receipts; **AC-S13** check tool capabilities and peak space before copying, then reconcile net allocation
-including evidence/staging and exclude prior cleanup; **AC-S14** bind checkout alternates in dependency plans, reject drift and keep Git compaction fail-closed. Review these cases against private
+including evidence/staging and exclude prior cleanup; **AC-S14** bind dependency alternates, reject drift and keep Git compaction fail-closed; **AC-S15** resume a verified pre-swap dependency copy only when its plan, source, target, manifest and idle checks match. Review these cases against private
 artifacts `macintosh-hd-reclaim-20261003` (14.84 GiB selected allocation removed) and
 `quarantine-reclaim-20261004` (1.23 GiB net after recovery); keep their final verification receipts.
 Archive bytes/modes/links passed; application/provenance restoration remains untested. Local observations
@@ -472,24 +472,17 @@ dependency/projection manifests cap at 4 GiB and 100,000 entries and stream file
 Git pack verification is quiet; bounded `show-index` output supplies the exact verified object IDs.
 These limits belong to storage compaction and do not raise lifecycle cleanup admission ceilings.
 
-Receipts, plans, recovery packs and swap journals are under `.git/agentic-os-storage/<planDigest>/`.
-Original lifecycle receipts are immutable. A completed replay checks the preserved inventory; a partial
-operation is retained and refused by default. Inspect its journal before recovery. If a dependency swap stopped
-with the target absent, the journal's `original` directory retains the exact original bytes. If both
-exist, verify both manifests before restoring or removing anything. The original is removed only after
-the replacement and full projection have been verified. Do not delete a partial operation blindly.
-
-For a fully swapped dependency operation with both the target and retained original still intact,
-`apply --plan=<same-plan> --authorize=agentic-os:storage:<same-digest> --stopped --resume` explicitly
-resumes finalization. It revalidates the stored plan, exact swap journal, both manifests, package sources
-or quarantine receipt, and idle-process observations before removing the verified original. A transient
-Spotlight reader can therefore be allowed to exit before resuming, without another copy or directory swap.
-The original one-hour authorization window still applies. Missing/changed copies, partial deletion and
-Git recovery remain manual; resume never reconstructs or guesses missing data.
-
-For Git recovery, the retained `backup.json` names a verified pack/index containing every original object;
-restore those files to the repository object pack directory with writers stopped. Saved refs/logs and
-metadata are historical recovery evidence, not instructions to overwrite newer work.
+Plans, recovery packs and swap journals live under `.git/agentic-os-storage/<planDigest>/`; original lifecycle
+receipts are immutable. Completed replay checks inventory. Unknown partial operations stay retained; inspect
+their exact journal and never delete blindly. If a swap left the target absent, `original` retains its bytes;
+verify both manifests before restoring or removing either copy. `--resume` with the same unexpired plan
+finalizes a fully swapped operation after rechecking its journal, both manifests, package sources/receipt and
+idle readers. It may also resume a pre-swap stage only when the directory contains exactly `plan.json` and
+`compressed`, the target and sources still match, the staged manifest is exact, and no original or swap journal
+exists. It repeats idle and same-volume checks, journals, swaps and runs the existing finalizer without recopying
+or discarding the stage. Altered, incomplete, expired or unfamiliar states remain preserved and blocked; missing
+copies and partial deletion remain manual recovery. For Git, restore the verified pack/index named in `backup.json`
+with writers stopped; saved refs/logs are evidence, never overwrite instructions.
 
 Use fresh plans when loose-object storage grows materially; do not create a timer or compact on every
 agent invocation. Keep retired ledger writers retired, reuse the existing coordination store, and
@@ -500,8 +493,8 @@ Validation: `node --test __tests__/storage.test.mjs`, then `npm run check`. Real
 unreachable object retention, recovery packs, stale plans, concurrent locks, partial operations and
 replay. macOS fixtures cover compression, original receipt parity, executable modes and symlinks.
 Checkout fixtures additionally cover executable invocation, manifest/lockfile/HEAD drift, tracked targets,
-aliases, active processes in and outside the checkout, preservation after a refused copy, and explicit
-resume with changed-journal/copy and active-reader refusals.
+aliases, active processes in and outside the checkout, preservation after a refused copy, verified
+pre-swap resume, and changed-journal/copy plus active-reader refusals.
 
 Additional validation covers no-op growth thresholds, uneconomic candidate disposal, complete archive
 restoration, tracked/state/alias/traversal refusals, active readers and changed-source preservation.
