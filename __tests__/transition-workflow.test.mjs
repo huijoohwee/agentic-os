@@ -51,6 +51,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/481',
     'https://github.com/huijoohwee/agentic-os/pull/482',
     'https://github.com/huijoohwee/agentic-os/pull/484',
+    'https://github.com/huijoohwee/agentic-os/pull/487',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
@@ -80,6 +81,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/481', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/482', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/484', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/487', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
