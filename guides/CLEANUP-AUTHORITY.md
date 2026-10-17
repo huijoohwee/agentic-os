@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.2
-prd_revision: 1.2.2
-tad_revision: 1.2.2
-adr_revision: 1.2.2
-mvp_revision: 1.2.2
-gtm_revision: 1.2.2
+version: 1.2.3
+prd_revision: 1.2.3
+tad_revision: 1.2.3
+adr_revision: 1.2.3
+mvp_revision: 1.2.3
+gtm_revision: 1.2.3
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.2`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.3`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -595,4 +595,4 @@ zero runtime modules, dependencies, or always-load bytes. Revert entries; preser
 Repository `github.com/huijoohwee/agentic-os`; review https://github.com/huijoohwee/agentic-os/pull/476.
 Base `27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6`; head `a5a70b40275b4e43b77c7e3033cb737729d27feb`.
 Merge `cb4149dc7581e48923de851b424e39bc339afb5a`; equal tree `bc6aadd2331db05d41480488b3b26f014207fcb6`; `budgets` and `test` passed.
-Current facts only. Historical protection, check policy, Ruleset Suite, merge method and all later-effect authority remain unproven.
+Current facts only. Historical protection, check policy, Ruleset Suite, merge method and all later-effect authority remain unproven. Additional exact enrollments are recorded in [CLEANUP-AUTHORITY-ENROLLMENTS.md](CLEANUP-AUTHORITY-ENROLLMENTS.md).

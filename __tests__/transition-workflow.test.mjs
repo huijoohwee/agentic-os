@@ -44,6 +44,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/471',
     'https://github.com/huijoohwee/agentic-os/pull/474',
     'https://github.com/huijoohwee/agentic-os/pull/476',
+    'https://github.com/huijoohwee/agentic-os/pull/477',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
@@ -66,6 +67,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/471', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/474', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/476', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/477', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -123,6 +125,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['471', '3e9c51c76c5f50b1283ff5c61597c307513809a5', '9072e34ea01a9f4a72a81705ca92d3f59bbb0752', '05f5b312ce2a43a1f8aeca33ff63d9c294bd7172', '0e3834d73cd5bb4ebffbafcc0fa76c09a84cfdb7'],
     ['474', '86b57e5d618c5f3fd5a8d2841badb29ba2f363ed', 'bf9f919a79223bd8087d2bc0d478a009214b0741', '883519ecbca3690a5c5c785efba383227e1a5977', '0ca32acaedc3a5f67844c2b015a094f492efd4bb'],
     ['476', '27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6', 'a5a70b40275b4e43b77c7e3033cb737729d27feb', 'cb4149dc7581e48923de851b424e39bc339afb5a', 'bc6aadd2331db05d41480488b3b26f014207fcb6'],
+    ['477', 'cb4149dc7581e48923de851b424e39bc339afb5a', 'fe7f493fc51702438fe6b14d07a001260ba25f7f', 'e5c14e5c0236cba859ee8996f8b7b3660a256e20', '6c5e0fb2aab95cd3ee3ef70f7a570b84d985458e'],
   ]) {
     const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
     assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
@@ -148,6 +151,16 @@ test('committed transition workflow is bound to the canonical authority policy',
     reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/459',
     quarantineCoordinate: 'bfefef5d014ffd25c4385692763ed7c5877268b59bd50015f2638d4bb9aa4407',
     originalReceiptDigest: 'ac747f8ce44ff8d112dd06f140390ec120e27df412c8716c1a09c3b5c93bbea4',
+    historicalQuarantineAuthorityProven: false,
+  }, {
+    schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
+    targetRef: 'agent/device-0232231d4a19/current-retention-pr474',
+    targetHead: 'b8fb84454cc560012bf88d9fa678c97c4a43217d',
+    merge: '27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/475',
+    quarantineCoordinate: '2fec5fe9ee4e5c046357e2033c5414077fe5f27db452c1c755b04878f5fe4de0',
+    originalReceiptDigest: '9a9a6da8be402615a8599b63280f3937a410b031e80e7a83ff0b16385a4d8af6',
     historicalQuarantineAuthorityProven: false,
   }, {
     schema: 'agentic-os/current-quarantine-adoption/v1',
