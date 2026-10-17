@@ -60,9 +60,9 @@ function readJournal(path) {
   privateDirectory(dirname(path)); privateDirectory(dirname(dirname(path)));
   const stat = lstatSync(path); if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o600) fail('journal');
   let value; try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedFile(path, MAX, 'selected source transplant journal'))); } catch { fail('journal'); }
-  const keys = ['candidateHead', 'candidateRef', 'cwd', 'deltaHead', 'deltaRef', 'expectedBase', 'expectedHead', 'expectedTarget', 'journalPath', 'oldRef', 'recordDigest', 'ref', 'schema', 'selectedPaths', 'stopped', 'targetRef'];
+  const keys = ['candidateHead', 'candidateRef', 'cwd', 'deltaHead', 'deltaRef', 'expectedBase', 'expectedHead', 'expectedTarget', 'journalPath', 'oldRef', 'recordDigest', 'recordHead', 'ref', 'schema', 'selectedPaths', 'stopped', 'targetRef'];
   if (!value || Object.keys(value).sort().join(',') !== [...keys, 'digest'].sort().join(',') || value.schema !== SCHEMA || value.digest !== hash(json(body(value)) || '')
-    || ![value.expectedBase, value.expectedHead, value.expectedTarget, value.deltaHead, value.candidateHead].every(value => SHA.test(value ?? ''))) fail('journal');
+    || ![value.expectedBase, value.expectedHead, value.expectedTarget, value.deltaHead, value.candidateHead].every(value => SHA.test(value ?? '')) || (value.recordHead !== null && !SHA.test(value.recordHead ?? ''))) fail('journal');
   return value;
 }
 function pins(plan) {
@@ -72,7 +72,7 @@ function pins(plan) {
 function exactRecord(plan, candidate = false) {
   const record = store.get(plan.ref, plan.cwd);
   if (!record || record.worktree !== plan.cwd || record.base !== plan.targetRef) fail('record');
-  const digest = hash(json(record)), prior = { ...record, head: plan.expectedBase };
+  const digest = hash(json(record)), prior = { ...record, head: plan.recordHead };
   if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && hash(json(prior)) === plan.recordDigest)) fail('record');
   if (candidate && (record.head !== plan.candidateHead || record.handoff?.schema !== 'agentic-os-lane-selected-source-transplant/v1'
     || record.handoff?.preservedRef !== plan.oldRef || record.handoff?.preservedHead !== plan.expectedHead)) fail('record');
@@ -136,7 +136,7 @@ export function planSelectedSourceTransplant(input) {
   for (const path of input.selectedPaths) for (const entry of [sourceTree.get(path), baseTree.get(path), targetTree.get(path)].filter(Boolean)) {
     if (!['100644', '100755'].includes(entry.mode) || entry.size > ENTRY_MAX || entry.size > AGGREGATE - total) fail('path', { path }); total += entry.size;
   }
-  return { schema: SCHEMA, ...input, ...found, recordDigest: hash(json(record)), deltaHead: null, candidateHead: null, resume: false, liveHead: input.expectedHead };
+  return { schema: SCHEMA, ...input, ...found, recordDigest: hash(json(record)), recordHead: record.head ?? null, deltaHead: null, candidateHead: null, resume: false, liveHead: input.expectedHead };
 }
 export function prepareSelectedSourceTransplant(value) {
   let plan = value; if (!plan || plan.schema !== SCHEMA) fail('plan');
