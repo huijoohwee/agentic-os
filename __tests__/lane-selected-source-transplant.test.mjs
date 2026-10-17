@@ -80,6 +80,18 @@ test('selected source transplant accepts only an exact readmit advance of the re
   assert.equal(run(f.lane, 'status', '--porcelain'), '');
 });
 
+test('selected source transplant restores the bound pre-readmit head when it differs from the delta parent', t => {
+  const f = fixture(t, { divergent: true }), original = get(f.ref, f.root), recordHead = run(f.lane, 'rev-parse', `${f.base}^`);
+  put({ ...original, head: recordHead }, f.root);
+  const prepared = prepareSelectedSourceTransplant(planSelectedSourceTransplant(input(f)));
+  assert.notEqual(prepared.recordHead, prepared.expectedBase);
+  put({ ...get(f.ref, f.root), head: f.source }, f.root);
+  const receipt = applySelectedSourceTransplant(prepared);
+  assert.equal(receipt.head, run(f.lane, 'rev-parse', 'HEAD'));
+  assert.equal(get(f.ref, f.root).head, receipt.head);
+  assert.equal(run(f.lane, 'status', '--porcelain'), '');
+});
+
 test('selected source transplant rejects a readmit advance with any other lane-record drift', t => {
   const f = fixture(t), original = get(f.ref, f.root);
   put({ ...original, head: f.base }, f.root);
