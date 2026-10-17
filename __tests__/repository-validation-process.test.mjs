@@ -85,7 +85,7 @@ test('explicit failure retry reuses valid mandatory and prerequisite results wit
   assert.equal(f.receipt().authority,false);
 });
 
-test('failure retry preserves whole-plan identity and reruns invalidated success', async t => {
+test('failure retry preserves whole-plan identity and reuses same-source success after commit', async t => {
   const f=fixture(t), path=join(f.root,'.agentic-os-validation.json');
   const policy=JSON.parse(readFileSync(path,'utf8'));
   for (const check of policy.checks) { check.reuse='local-plan'; check.inputs=['*']; }
@@ -96,7 +96,7 @@ test('failure retry preserves whole-plan identity and reruns invalidated success
   assert.equal(await f.run('--retry-failed'),1);assert.deepEqual(f.calls().slice(before),['a']);
   f.git('add','.');f.git('commit','-m','changed exact candidate');
   const changed=f.calls().length;assert.equal(await f.run('--retry-failed'),1);
-  assert.deepEqual(new Set(f.calls().slice(changed)),new Set(['contract','prepare','a']));
+  assert.deepEqual(f.calls().slice(changed),['a'],'commit metadata does not invalidate same-source successes');
 });
 
 test('failure retry cannot request fresh execution simultaneously or override CI', async t => {
@@ -108,7 +108,7 @@ test('failure retry cannot request fresh execution simultaneously or override CI
   assert.throws(f.calls,/ENOENT/);
 });
 
-test('whole-plan partitions join without rerunning passed commands, and explicit fresh still executes', async t => {
+test('whole-plan partitions reuse an unchanged source tree across commits; fresh and changed source execute', async t => {
   const f=fixture(t), path=join(f.root,'.agentic-os-validation.json');
   const policy=JSON.parse(readFileSync(path,'utf8'));
   for (const check of policy.checks) { check.reuse='local-plan'; check.inputs=['*']; }
@@ -119,8 +119,16 @@ test('whole-plan partitions join without rerunning passed commands, and explicit
   const reused=f.receipt().results.find(result=>result.id==='fallback');
   assert.equal(reused.reused,true); assert.equal(reused.validatedAt,validationTime);
   assert.equal(await f.run('--fresh'),0); assert.equal(f.calls().length,4);
-  f.git('commit','--allow-empty','-m','different candidate');
-  assert.equal(await f.run(),0); assert.equal(f.calls().length,6,'HEAD change invalidates whole-plan reuse');
+  const beforeCommit=f.calls().length, sameSourceCalls=f.calls();
+  f.git('commit','--allow-empty','-m','same source, new commit');
+  assert.equal(await f.run(),0); assert.deepEqual(f.calls(),sameSourceCalls,'same source tree reuses whole-plan results across HEAD');
+  assert.ok(f.receipt().results.every(result=>result.reused));
+  assert.ok(f.receipt().results.every(result=>result.validatedAt<=f.receipt().finishedAt));
+  assert.equal(f.calls().length,beforeCommit,'commit metadata alone does not execute checks');
+  writeFileSync(join(f.root,'source/a.txt'),'new source');
+  f.git('add','source/a.txt'); f.git('commit','-qm','changed source');
+  const changedSourceCalls=f.calls().length;
+  assert.equal(await f.run(),0); assert.ok(f.calls().length>changedSourceCalls,'source tree change invalidates plan reuse');
 });
 
 test('source mutation during a passing command cannot publish a passing receipt', async t => {

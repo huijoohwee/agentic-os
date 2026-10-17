@@ -146,7 +146,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
       .readCiObservation(root, ciRun);
     coverage = boundCiCoverage(observed.identity, observation);
   }
-  const canReuse = !options.fresh && options.mode !== 'all' && !options.committed
+  const canReuse = !options.fresh && options.mode !== 'all'
     && !process.env.CI && !process.env.GITHUB_ACTIONS && coverage === null;
   const decorate = check => {
     const prior = previousCheck(directory, check);
