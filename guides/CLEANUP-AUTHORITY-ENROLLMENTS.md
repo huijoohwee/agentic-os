@@ -64,4 +64,19 @@ Historical protection, required-check policy, Ruleset Suite, and merge-method au
 unproven. It grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later
 effect requires its own exact plan, authorization, and receipt.
 
-Budget: one current-quarantine adoption and four current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
+## Current recovery enrollment — agentic-os PR #482 — 2026-10-17
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`96af1d3fab0dc2ecfa7cfb2ac570a19c927bfee8`, reviewed head
+`20efbe575decdbb9de73f21fa0f6d8aa1a56c967`, merge
+`255114403e0910f240081d37d2a6e97267fcba36`, and equal source/merge tree
+`8a280cf086e9ccf295116f1aee1083ff84a37faf`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/482>; `budgets` and `test` passed.
+
+The distinct scope is `recovery/current-historical-content/pr-482`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no retirement, cleanup, deployment, or canonical-sync effect; each later effect
+requires its own exact plan, authorization, and receipt.
+
+Budget: one current-quarantine adoption and five current-recovery enrollments, one existing transition-workflow test owner, one guidance companion, zero runtime modules, dependencies, or always-load bytes. Revert the policy entries and companion through a protected commit; preserve receipts and Git history.
