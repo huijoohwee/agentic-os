@@ -251,8 +251,7 @@ export function surveyLanes(base, branches, { cwd } = {}) {
   return { integrated, open };
 }
 
-const RELEASE_PLAN = 'agentic-os/reservation-scope-release-plan/v1';
-const RELEASE_RECEIPT = 'agentic-os/reservation-scope-release-receipt/v1';
+const RELEASE_PLAN = 'agentic-os/reservation-scope-release-plan/v1', RELEASE_RECEIPT = 'agentic-os/reservation-scope-release-receipt/v1';
 const SCOPE_RELEASE_PLAN_BYTES = 128 * 1024;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const REMOTE_HEAD = Symbol('reservation-scope-release-remote-head');
