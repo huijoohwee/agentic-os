@@ -307,7 +307,10 @@ test('selected-source recovery proves a non-ancestral pending allocation with it
     'later dirty edits do not invalidate committed recovery evidence');
   collect({});
   git(lane, 'add', 'source.txt'); git(lane, 'commit', '-m', 'continue recovered lane');
-  const descendant = git(lane, 'rev-parse', 'HEAD'); put({ ...get(ref, root), head: descendant }, root);
+  const descendant = git(lane, 'rev-parse', 'HEAD');
+  assert.equal(verifySelectedSourceTransplantRecovery(root, transplantRecovery), true,
+    'the branch may advance before its workflow cache is refreshed');
+  put({ ...get(ref, root), head: descendant }, root);
   assert.equal(verifySelectedSourceTransplantRecovery(root, transplantRecovery), true,
     'a recorded descendant preserves the exact transplant proof');
   collect({});

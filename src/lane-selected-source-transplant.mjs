@@ -175,7 +175,7 @@ export function verifySelectedSourceTransplantRecovery(root, input) {
     || !/^[a-f0-9]{64}$/u.test(input.planDigest ?? '') || !isLaneRef(input.ref) || input.schema !== 'agentic-os/workflow-selected-source-recovery/v1') fail('recovery-input-identity');
   if (!Array.isArray(input.selectedPaths) || !input.selectedPaths.length || input.selectedPaths.length > 32 || !same(input.selectedPaths, [...new Set(input.selectedPaths)].sort())) fail('recovery-input-paths');
   const record = store.get(input.ref, root), branchHead = headSha(input.ref, root);
-  if (!record?.worktree || !record.head || branchHead !== record.head || !isAncestor(input.candidateHead, branchHead, root)
+  if (!record?.worktree || !record.head || !isAncestor(input.candidateHead, record.head, root) || !isAncestor(record.head, branchHead, root)
     || record.handoff?.planDigest !== input.planDigest || record.handoff?.preservedHead !== input.sourceHead || record.handoff?.sourceBase !== input.sourceBase
     || record.handoff?.targetHead !== input.targetHead || !same(record.handoff?.selectedPaths, input.selectedPaths)) fail('recovery-record');
   const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase, targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
