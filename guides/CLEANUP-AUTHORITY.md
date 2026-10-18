@@ -651,6 +651,25 @@ canonical-sync effect; each later effect requires its own exact plan, authorizat
 Budget: exact v1 enrollments and existing workflow expectations; four files, at most 6 KiB,
 zero runtime modules, dependencies, or always-load bytes. Revert entries; preserve history/evidence.
 
+### Current recovery enrollment — agentic-os PR #499 — 2026-10-18
+
+This enrollment binds repository `github.com/huijoohwee/agentic-os`, base
+`f25e2b5301291d7f0f168ae452475b4a12021004`, reviewed head
+`d4a5747c993fb4c1faa9eeab6d34c461ad10e1cd`, merge
+`11ba83b140a7ad3413269740f16e6039d631a8d9`, and equal head/merge tree
+`39f8557099d0dcbaf443cac1737672d78658036f`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/499>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-499`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later
+effect requires its own exact plan, authorization, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow test, and this owner record; three
+existing files changed, zero runtime modules, dependencies, or always-load bytes. Revert the checked
+protected policy update to remove this PR enrollment; source history and prior enrollments stay intact.
+
 ### Current recovery enrollment — agentic-os PR #476 — 2026-10-17
 Repository `github.com/huijoohwee/agentic-os`; review https://github.com/huijoohwee/agentic-os/pull/476.
 Base `27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6`; head `a5a70b40275b4e43b77c7e3033cb737729d27feb`.
