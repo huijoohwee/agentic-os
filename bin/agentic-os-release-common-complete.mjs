@@ -205,10 +205,10 @@ export async function runSourcePromotion({ root, argv, profile,
     if (JSON.stringify(ordering) !== JSON.stringify(plan.ordering))
       promotionFail('auto-merge-policy-changed', 'repository merge protection changed since planning');
   }
-  try {
-    provider(['pr', 'merge', String(plan.pr), '--repo', repository,
-      ...(plan.mode === 'auto' ? ['--auto'] : []), '--squash', '--match-head-commit', plan.head], false);
-  } catch {
+  let mergeResult;
+  try { mergeResult = provider(['pr', 'merge', String(plan.pr), '--repo', repository,
+    ...(plan.mode === 'auto' ? ['--auto'] : []), '--squash', '--match-head-commit', plan.head], false); } catch { mergeResult = null; }
+  if (mergeResult === null) {
     const observed = api(`repos/${repository}/pulls/${plan.pr}`);
     if (observed?.merged === true && observed?.head?.sha === plan.head) {
       out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'merged-after-uncertain-result', head: plan.head, authority: false }));
@@ -216,7 +216,7 @@ export async function runSourcePromotion({ root, argv, profile,
     }
     if (plan.mode === 'auto' && observed?.state === 'open' && observed?.auto_merge?.enabled_by)
       { out(JSON.stringify({ schema: SOURCE_PROMOTION_SCHEMA, state: 'auto-merge-armed-after-uncertain-result', head: plan.head, authority: false })); return 0; }
-    promotionFail('effect-unknown', 'merge result is uncertain; exact PR was reobserved and must not be retried blindly');
+    promotionFail('provider-rejected', 'provider rejected the protected merge; exact PR remains open');
   }
   const merged = api(`repos/${repository}/pulls/${plan.pr}`);
   if (plan.mode === 'auto' && merged?.state === 'open' && merged?.head?.sha === plan.head
