@@ -8,6 +8,8 @@ export const GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA = 'agentic-os/github-trans
 export const GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA = 'agentic-os/github-transition-policy/v3';
 export const GITHUB_HISTORICAL_CONTENT_MODE = 'historical-content-facts/v1';
 export const GITHUB_TRANSITION_POLICY_PATH = '.agentic-os/github-transition-policy.json';
+export const GITHUB_TRANSITION_POLICY_MAX_BYTES = 64 * 1024;
+export const GITHUB_TRANSITION_MAX_RECOVERY_ENROLLMENTS = 64;
 export const GITHUB_ANCESTRY_PAGE_SIZE = 25;
 export const GITHUB_ANCESTRY_MAX_PAGES = 16;
 export const GITHUB_ANCESTRY_RESPONSE_BYTES = 256 * 1024;
@@ -111,6 +113,8 @@ export function validateGitHubTransitionPolicy(value) {
     if (retention) policy.retentionAdoptions = enrollments(source.retentionAdoptions, preservationAdoption);
     if ([...policy.historicalIntegrations, ...policy.preservationAdoptions, ...(policy.retentionAdoptions ?? [])].some((entry) =>
       !policy.targetRepositories.includes(entry.repository))) fail('recovery enrollment target is not authorized');
+    if (Buffer.byteLength(canonicalJson(policy), 'utf8') > GITHUB_TRANSITION_POLICY_MAX_BYTES)
+      fail('GitHub transition policy exceeds the bounded source-control cache');
   }
   return freeze(policy);
 }
@@ -153,7 +157,8 @@ function review(value, target) {
   return result;
 }
 function enrollments(value, mapper) {
-  if (!Array.isArray(value) || value.length > 32) fail('recovery enrollments must be bounded');
+  if (!Array.isArray(value) || value.length > GITHUB_TRANSITION_MAX_RECOVERY_ENROLLMENTS)
+    fail('recovery enrollments must be bounded');
   const entries = value.map(mapper).sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
   if (new Set(entries.map((entry) => entry.reviewLocator)).size !== entries.length)
     fail('recovery enrollments must be unique');

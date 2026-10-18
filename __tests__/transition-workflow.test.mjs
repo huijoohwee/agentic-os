@@ -56,6 +56,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/493',
     'https://github.com/huijoohwee/agentic-os/pull/499',
     'https://github.com/huijoohwee/agentic-os/pull/501',
+    'https://github.com/huijoohwee/agentic-os/pull/508',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
@@ -90,6 +91,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/493', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/499', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/501', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/508', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -130,6 +132,18 @@ test('committed transition workflow is bound to the canonical authority policy',
     checkContexts: ['budgets', 'test'],
     adoptionScope: ['recovery/current-historical-content/pr-425'],
     rationale: 'Current recording of PR #425 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
+  });
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/508')), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/508',
+    baseRevision: '3e7be1144301bebc0878fc25762f59a54f9f516d',
+    headRevision: 'af62584b53bdac786ea40998a6a4746361061020',
+    mergeRevision: '7c7964e75c2a7f2055d74bfc2cc920a6283c9089',
+    treeRevision: '17279f49f7921383e6df79611af7e9c05988ff71',
+    checkContexts: ['budgets', 'test'],
+    adoptionScope: ['recovery/current-historical-content/pr-508'],
+    rationale: 'Owner-delegated current recovery recording of PR #508 merge content; historical protection, required-check policy, Ruleset Suite and merge-method authority remain unproven.',
   });
   for (const [number, baseRevision, headRevision, mergeRevision, treeRevision] of [
     ['438', 'df4f6f3c922e81f74c201946d183347430b376ac', '8cd0e1d4872fe8633f1470c6654ba219ad5d0c84', 'e1a08ce7467daeddd7d02bf37b5d81258137e5b8', 'ab4271f21113f65e9b4dc6be58ac4f6735ee6bee'],

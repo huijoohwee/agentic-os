@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.4
-prd_revision: 1.2.4
-tad_revision: 1.2.4
-adr_revision: 1.2.4
-mvp_revision: 1.2.4
-gtm_revision: 1.2.4
+version: 1.2.5
+prd_revision: 1.2.5
+tad_revision: 1.2.5
+adr_revision: 1.2.5
+mvp_revision: 1.2.5
+gtm_revision: 1.2.5
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.4`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.5`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -144,6 +144,15 @@ provider-proof schema. A versioned committed policy enrolls exact target/review/
 and approved check selection. Preparation, dispatch, publication and replay bind the provider-read
 policy at the exact workflow revision. There is no automatic fallback or authority from a mode string.
 Only fresh, in-window initial retrospective issuance may use this basis.
+
+### Bounded source-control recovery index
+
+The committed policy is the canonical source; linked checkouts and local caches are materialized only
+for the work being performed. Each recovery enrollment list is bounded to 64 entries and the canonical
+encoded policy to 64 KiB, matching the policy-cache limit. An admission that would exceed either bound
+fails before a source mutation. It must be resolved through a separately reviewed policy evolution that
+preserves the existing receipts and entries; deletion, rewriting history, or creating an unbounded local
+projection is not a recovery path.
 
 The provider authenticates the unique merge event, exact tree/source and successful historical
 check identities. Reviewed check selection does not establish which checks were mandatory then;
