@@ -9,8 +9,9 @@ import { collectWorkflow, startWorkflow, readWorkflowManifestPage, WORKFLOW_PHAS
   collectWorkflowValue, readSelectedWorkflow, assertWorkflowEffect, validateWorkflowPlanning,
   rebindWorkflowCandidate, createWorkflowEffectGuard, releaseWorkflowAllocation } from '../bin/agentic-os-workflow.mjs';
 import { checkoutCapacity } from '../bin/agentic-os-admission.mjs';
-import { put } from '../src/lane-records.mjs';
-import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSelectedSourceTransplant } from '../src/lane-selected-source-transplant.mjs';
+import { get, put } from '../src/lane-records.mjs';
+import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSelectedSourceTransplant,
+  verifySelectedSourceTransplantRecovery } from '../src/lane-selected-source-transplant.mjs';
 
 test('one selected workflow retains multiple worktrees through idempotent start/end boundaries', t => {
   const base=realpathSync(mkdtempSync(join(tmpdir(),'workflow-boundaries-'))),root=join(base,'repo');mkdirSync(root);
@@ -299,6 +300,21 @@ test('selected-source recovery proves a non-ancestral pending allocation with it
   assert.equal(selected().manifest.allocations[0].selectedSourceRecovery.planDigest, plan.digest);
   assert.notEqual(git(root, 'merge-base', staleHead, receipt.head), staleHead, 'the prior allocation is not an ancestor of the recovered candidate');
   collect({}); assert.deepEqual(selected().manifest.allocations[0].selectedSourceRecovery, recovery);
+  const transplantRecovery = { schema: 'agentic-os/workflow-selected-source-recovery/v1', candidateHead: receipt.head,
+    planDigest: plan.digest, priorAllocationHead: staleHead, ref, selectedPaths: paths, sourceBase, sourceHead, targetHead };
+  writeFileSync(join(lane, 'source.txt'), 'continued after readmission\n');
+  assert.equal(verifySelectedSourceTransplantRecovery(root, transplantRecovery), true,
+    'later dirty edits do not invalidate committed recovery evidence');
+  collect({});
+  git(lane, 'add', 'source.txt'); git(lane, 'commit', '-m', 'continue recovered lane');
+  const descendant = git(lane, 'rev-parse', 'HEAD'); put({ ...get(ref, root), head: descendant }, root);
+  assert.equal(verifySelectedSourceTransplantRecovery(root, transplantRecovery), true,
+    'a recorded descendant preserves the exact transplant proof');
+  collect({});
+  const record = get(ref, root); put({ ...record, head: targetHead }, root);
+  assert.throws(() => verifySelectedSourceTransplantRecovery(root, transplantRecovery), /blocked-lane-selected-source-transplant-recovery/,
+    'a lane ref that no longer descends from the candidate cannot reuse the proof');
+  put({ ...record, head: descendant }, root);
   assert.equal(started.selected, true);
 });
 

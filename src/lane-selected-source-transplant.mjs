@@ -40,7 +40,7 @@ function privateDirectory(path) {
 }
 function location(input) {
   const id = hash(json([input.cwd, input.ref, input.expectedHead, input.expectedBase, input.targetRef, input.expectedTarget, input.selectedPaths]));
-  const root = join(commonDir(input.cwd), 'agentic-os-lane-selected-source-transplant', id);
+  const root = join(commonDir(input.gitRoot ?? input.cwd), 'agentic-os-lane-selected-source-transplant', id);
   return { journalPath: join(root, 'plan.json'), oldRef: `refs/agentic-os/lane-selected-source-transplant/${id}/old`, deltaRef: `refs/agentic-os/lane-selected-source-transplant/${id}/delta`, candidateRef: `refs/agentic-os/lane-selected-source-transplant/${id}/candidate` };
 }
 function direct(ref, cwd) { return observeGit(['symbolic-ref', '--quiet', ref], { cwd, allowFail: true }) === null; }
@@ -172,19 +172,19 @@ export function verifySelectedSourceTransplantRecovery(root, input) {
   const keys = ['candidateHead', 'planDigest', 'priorAllocationHead', 'ref', 'schema', 'selectedPaths', 'sourceBase', 'sourceHead', 'targetHead'];
   if (!input || Object.keys(input).sort().join(',') !== keys.join(',')) fail('recovery-input-shape');
   if (![input.candidateHead, input.priorAllocationHead, input.sourceBase, input.sourceHead, input.targetHead].every(value => SHA.test(value ?? ''))
-    || !/^[a-f0-9]{64}$/u.test(input.planDigest ?? '') || !isLaneRef(input.ref)
-    || input.schema !== 'agentic-os/workflow-selected-source-recovery/v1') fail('recovery-input-identity');
-  if (!Array.isArray(input.selectedPaths) || !input.selectedPaths.length || input.selectedPaths.length > 32
-    || !same(input.selectedPaths, [...new Set(input.selectedPaths)].sort())) fail('recovery-input-paths');
-  const record = store.get(input.ref, root);
-  if (!record?.worktree || record.head !== input.candidateHead || record.handoff?.planDigest !== input.planDigest
-    || record.handoff?.preservedHead !== input.sourceHead || record.handoff?.sourceBase !== input.sourceBase
+    || !/^[a-f0-9]{64}$/u.test(input.planDigest ?? '') || !isLaneRef(input.ref) || input.schema !== 'agentic-os/workflow-selected-source-recovery/v1') fail('recovery-input-identity');
+  if (!Array.isArray(input.selectedPaths) || !input.selectedPaths.length || input.selectedPaths.length > 32 || !same(input.selectedPaths, [...new Set(input.selectedPaths)].sort())) fail('recovery-input-paths');
+  const record = store.get(input.ref, root), branchHead = headSha(input.ref, root);
+  if (!record?.worktree || !record.head || branchHead !== record.head || !isAncestor(input.candidateHead, branchHead, root)
+    || record.handoff?.planDigest !== input.planDigest || record.handoff?.preservedHead !== input.sourceHead || record.handoff?.sourceBase !== input.sourceBase
     || record.handoff?.targetHead !== input.targetHead || !same(record.handoff?.selectedPaths, input.selectedPaths)) fail('recovery-record');
-  const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase,
-    targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
-  const plan = readJournal(location(planInput).journalPath);
-  if (plan.digest !== input.planDigest || plan.candidateHead !== input.candidateHead) fail('recovery-plan');
-  identity(plan, input.candidateHead); pins(plan); clean(plan.cwd, input.candidateHead); verifyCandidate(plan); exactRecord(plan, true);
+  const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase, targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
+  const journal = readJournal(location({ ...planInput, gitRoot: root }).journalPath);
+  if (journal.cwd !== record.worktree || journal.ref !== input.ref || journal.expectedHead !== input.sourceHead || journal.expectedBase !== input.sourceBase
+    || journal.targetRef !== record.base || journal.expectedTarget !== input.targetHead
+    || !same(journal.selectedPaths, input.selectedPaths) || journal.digest !== input.planDigest || journal.candidateHead !== input.candidateHead) fail('recovery-plan');
+  const proof = { ...journal, cwd: root };
+  pins(proof); verifyCandidate(proof);
   return true;
 }
 function receipt(plan, resumed) { return { schema: 'agentic-os/lane-selected-source-transplant-receipt/v1', previousHead: plan.expectedHead, baseHead: plan.expectedBase, targetHead: plan.expectedTarget, head: plan.candidateHead, selectedPaths: plan.selectedPaths, oldRef: plan.oldRef, deltaRef: plan.deltaRef, candidateRef: plan.candidateRef, resumed, providerAuthority: false, cleanupAuthority: false }; }
