@@ -6,12 +6,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { load, put, get, putExact } from '../src/lane-records.mjs';
 import { fileURLToPath } from 'node:url';
-import { cmdStart } from '../bin/agentic-os-admission.mjs';
+import { cmdStart, matchesSelectedSourcePendingReadmit } from '../bin/agentic-os-admission.mjs';
 import { readSelectedWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { worktrees } from '../src/git.mjs';
+import { hash } from '../bin/agentic-os-test-inputs.mjs';
 import { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment, validateLaneAlignmentInput } from '../bin/agentic-os-lane-alignment.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 }).trim();
@@ -64,6 +65,24 @@ function unchanged(f, head = f.head) {
   assert.equal(existsSync(join(f.lane, 'owned/delete.txt')), false);
   assert.equal(git(f.lane, 'diff', '--cached', '--name-only'), '');
 }
+
+test('selected-source pending readmit requires the exact successor plan, target, head and path digest', () => {
+  const paths = ['package-lock.json', 'package.json', 'runtime/agentic-os.mjs'];
+  const row = { state: 'pending', operation: 'readmit', headRevision: 'a'.repeat(40), writeDigest: hash(JSON.stringify(paths)) };
+  const alignment = { schema: 'agentic-os/lane-selected-source-transplant-plan/v1', ref: 'agent/device/task/scope',
+    cwd: '/repo/lane', expectedHead: 'b'.repeat(40), expectedTarget: 'c'.repeat(40), stopped: true,
+    selectedPaths: paths, candidateHead: null };
+  const input = { row, alignment, ref: alignment.ref, path: alignment.cwd, head: alignment.expectedHead,
+    expectedTarget: alignment.expectedTarget, recoveringSuccessor: true };
+  assert.equal(matchesSelectedSourcePendingReadmit(input), true);
+  for (const change of [
+    { recoveringSuccessor: false }, { ref: 'agent/device/task/other' }, { path: '/repo/other' },
+    { head: 'd'.repeat(40) }, { expectedTarget: 'e'.repeat(40) },
+    { alignment: { ...alignment, schema: 'agentic-os/lane-alignment-plan/v1' } },
+    { alignment: { ...alignment, stopped: false } }, { alignment: { ...alignment, selectedPaths: ['package.json'] } },
+    { alignment: { ...alignment, candidateHead: 'f'.repeat(40) } }, { row: { ...row, operation: 'create' } },
+  ]) assert.equal(matchesSelectedSourcePendingReadmit({ ...input, ...change }), false);
+});
 
 test('alignment joins both histories and preserves exact dirty bytes, modes and published predecessor', t => {
   const f = fixture(t), beforeStatus = git(f.lane, 'status', '--porcelain'), beforeCache = load(f.root);
