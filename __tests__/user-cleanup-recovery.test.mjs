@@ -65,12 +65,13 @@ function fixture(t, concurrentBase = false, detached = false, mergedProjection =
   const run = { id: 456, head_sha: head, head_branch: reviewBranch, repository: { full_name: repository },
     head_repository: { full_name: repository }, event: 'pull_request', path: workflow,
     run_attempt: 1, status: 'completed', conclusion: 'success' };
-  const checks = { total_count: 1, check_runs: [check] }, calls = [];
+  const checks = { total_count: 1, check_runs: [check] }, calls = [], runsById = new Map([[456, run]]);
   const api = path => {
     calls.push(path);
     if (path.endsWith(`/pulls/${pr}`)) return structuredClone(pull);
     if (path.includes('/check-runs?')) return structuredClone(checks);
-    if (path.endsWith('/actions/runs/456')) return structuredClone(run);
+    const runMatch = path.match(/\/actions\/runs\/(\d+)$/u);
+    if (runMatch && runsById.has(Number(runMatch[1]))) return structuredClone(runsById.get(Number(runMatch[1])));
     assert.fail(`unexpected provider effect or read: ${path}`);
   };
   const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true, detached, mergedProjection };
@@ -79,7 +80,7 @@ function fixture(t, concurrentBase = false, detached = false, mergedProjection =
   const plan = () => planUserCleanup(input, options);
   const apply = (p, overrides = {}) => applyUserCleanup(p, { cwd: root, ...options,
     authorization: `agentic-os:user-cleanup:${p.planDigest}`, stopped: true, ...overrides });
-  return { root, target, profile, head, originalHead, merge, branch, input, options, plan, apply, pull, check, checks, run, calls };
+  return { root, target, profile, head, originalHead, merge, branch, input, options, plan, apply, pull, check, checks, run, runsById, calls };
 }
 async function protectedRetirementReceipt(s, reviewLocator = s.pull.html_url) {
   const hash = character => character.repeat(64), authority = { requestedTransition: 'retire',
@@ -220,6 +221,19 @@ test('workflow inference shares the pre-merge recovery boundary and ignores post
   s.pull.merged_at = 'invalid'; assert.throws(infer, /merged-review/);
   s.pull.merged_at = '2026-09-13T00:00:00Z'; s.check.app.id = 999;
   assert.throws(infer, /check-ambiguous-or-missing/);
+});
+test('recovery ignores same-head push runs but still requires the selected pull-request run', t => {
+  const s = fixture(t), pushCheck = { ...s.check, id: 124, completed_at: '2026-09-12T23:59:30Z',
+    details_url: s.check.details_url.replace('/456/job/123', '/455/job/124') };
+  s.runsById.set(455, { ...s.run, id: 455, event: 'push' });
+  s.checks.check_runs.push(pushCheck); s.checks.total_count = 2;
+  const plan = s.plan();
+  assert.equal(plan.review.checks[0].checkId, 123);
+  assert.equal(plan.review.checks[0].runId, 456);
+
+  s.checks.check_runs = [pushCheck]; s.checks.total_count = 1;
+  assert.throws(s.plan, /check-not-successful/);
+  assert.equal(existsSync(s.target), true);
 });
 test('plan tampering, stale consent, changed ignored data and hidden edits never produce cleanup', t => {
   const s = fixture(t), p = s.plan();

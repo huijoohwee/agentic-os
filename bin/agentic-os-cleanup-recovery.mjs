@@ -59,7 +59,7 @@ export function reviewedCheckRun(value, pull, c, read, skipOtherWorkflow = false
   if (!Number.isSafeInteger(c.id) || c.id < 1 || !match || Number(match[2]) !== c.id
     || !Number.isSafeInteger(Number(match[1]))) refuse('check-locator');
   const run = read(`repos/${value.repository}/actions/runs/${match[1]}`);
-  if (skipOtherWorkflow && run?.path !== value.workflow) return null;
+  if (skipOtherWorkflow && (run?.path !== value.workflow || run.event !== 'pull_request')) return null;
   if (run?.id !== Number(match[1]) || run.head_sha !== pull.head.sha || run.head_branch !== pull.head.ref
     || run.repository?.full_name !== value.repository || run.head_repository?.full_name !== value.repository
     || run.event !== 'pull_request' || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(run.path ?? '')
