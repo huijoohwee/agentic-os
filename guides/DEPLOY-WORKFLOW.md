@@ -65,10 +65,26 @@ state, and existing manifest/lock pin. It emits `agentic-os/source-control-prefl
 source revisions and trees used to build the candidate. It does not fetch, write a ref, create a checkout,
 authorize an integration, or authorize Dev, Production, rollback, storage, or data effects.
 
-Treat a nonzero result as source drift: repair the named pin, canonical source revision, or tracked bytes,
-then run the preflight again before spending build or deployment capacity. A consumer controller may retain
-the successful JSON record as candidate evidence, but it must still enforce its own build, Dev readback,
-same-candidate promotion, Production readback, rollback, and receipt gates.
+Treat a nonzero result as blocked readiness, never as a pass. If a complete report names source drift,
+repair the named pin, canonical revision, or tracked bytes and rerun. If no complete report is emitted,
+keep the cause unknown until the local/provider observation is available. Retain the successful JSON record
+as candidate evidence; the controller must still enforce its own build, Dev readback, same-candidate
+promotion, Production readback, rollback, and receipt gates.
+
+Keep the exact successful JSON bytes in the release's existing access-controlled candidate-evidence bundle
+and bind their SHA-256 there alongside the upstream and consumer revisions/trees and exact package pin. Do
+not create a second source ledger or copy the raw report into a public product artifact. Public provenance
+views redact local checkout paths while preserving repository, revision, tree, and pin identity. Reuse
+provider metadata already observed for the same candidate; do not fetch full history or repeat source scans
+solely to restate an unchanged head, PR, check, tree, or pin. If required bytes are absent locally, hydrate
+only the exact shallow source needed for that check. Offline local evidence remains usable for local
+decisions, while provider freshness and remote effects remain unknown until their owner observes them.
+
+The Dev deployment/readback and Production promotion/readback receipts must point to the same immutable
+candidate digest and source-control report digest. Build once and promote the verified artifact. A rebuild,
+pin change, tree change, or missing/mismatched provenance report is a new candidate: stop, rerun the required
+source/build checks, and obtain any new effect-specific authorization. Do not carry deployment authority
+across candidates.
 
 After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `deploy-workflow`
 only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
