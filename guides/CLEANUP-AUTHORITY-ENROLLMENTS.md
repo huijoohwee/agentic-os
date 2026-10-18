@@ -125,3 +125,18 @@ The distinct scope is `recovery/current-historical-content/pr-493`. This records
 Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
 unproven. It grants no integration, retirement, cleanup, deployment, or canonical-sync effect; each
 later effect requires its own exact plan, authorization, and receipt.
+
+## Current recovery enrollment — agentic-os PR #501 — 2026-10-18
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`aef6b0adc464351d13eb4cbc8d22e5441317b170`, reviewed head
+`39acf1cc2ba0dc4bac631da9dc78c6fb919d6388`, merge
+`07e21b4862c6426bcd06dd420979925e7cc83f94`, and equal source/merge tree
+`fd04d51c6acd147738d50936ca76caf22cab63a0`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/501>; `budgets` and `test` passed.
+
+The distinct scope is `recovery/current-historical-content/pr-501`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no integration, retirement, cleanup, deployment, or canonical-sync effect; each
+later effect requires its own exact plan, authorization, and receipt.
