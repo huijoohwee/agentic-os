@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createReservationScopeReleasePlan, applyReservationScopeRelease } from '../src/patch-identity.mjs';
+import { createReservationScopeReleasePlan, applyReservationScopeRelease, runReservationScopeRelease } from '../src/patch-identity.mjs';
 import * as laneRecords from '../src/lane-records.mjs';
 import { assertDisjointReservation } from '../src/worktree.mjs';
 
@@ -213,4 +213,29 @@ test('arguments require digest authorization, exact path, and stopped state', as
   const { validateCommandArguments } = await import('../bin/agentic-os-argv.mjs');
   assert.equal(validateCommandArguments('release-common', ['scope-release', 'plan', '--ref=agent/device-0232231d4a19/commerce-data-view-embed', '--path=canvas/src/App.tsx']), null);
   assert.match(validateCommandArguments('release-common', ['scope-release', 'apply', '--plan=x', '--authorize=x']), /missing --stopped/);
+});
+
+test('scope-release CLI accepts a bounded claim inventory larger than the former reader limit', (t) => {
+  const s = fixture(t, { state: 'active', pr: null });
+  for (let index = 0; index < 28; index += 1) {
+    laneRecords.put({
+      ref: `agent/device-0232231d4a19/claim-inventory-${index}`,
+      device: 'device-0232231d4a19', scope: `claim-inventory-${index}`,
+      state: 'published', base: 'refs/remotes/origin/main', baseSha: s.run(['rev-parse', 'main']),
+      worktree: `/retained/claim-inventory-${index}`, pr: index + 100,
+      createdAt: new Date(0).toISOString(), head: s.run(['rev-parse', 'main']),
+      writePaths: ['canvas/src/App.tsx', `docs/${'x'.repeat(2_400)}-${index}.md`],
+    }, s.root);
+  }
+  const plan = createReservationScopeReleasePlan(request(s));
+  const bytes = Buffer.byteLength(JSON.stringify(plan));
+  assert.ok(bytes > 65_536);
+  assert.ok(bytes <= 128 * 1024);
+  const planPath = join(s.root, 'scope-release-plan.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  const lines = [];
+  assert.equal(runReservationScopeRelease(s.root, [
+    'apply', `--plan=${planPath}`, `--authorize=agentic-os:scope-release:${plan.planDigest}`, '--stopped',
+  ], { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' }, line => lines.push(line)), 0);
+  assert.equal(JSON.parse(lines[0]).pathReleased, 'canvas/src/App.tsx');
 });
