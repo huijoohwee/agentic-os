@@ -137,3 +137,33 @@ test('consumer pin check binds repository, revision, form, and lock without writ
   writeFileSync(join(root, 'package-lock.json'), JSON.stringify(lock));
   assert.equal(check(), 1); assert.deepEqual(report.findings, ['consumer_lock_pin_invalid']);
 });
+
+test('source-control pin preflight binds exact upstream and canonical consumer source without effects', t => {
+  const consumer = mkdtempSync(join(tmpdir(), 'aos-source-control-'));
+  t.after(() => rmSync(consumer, { recursive: true, force: true }));
+  const upstreamProfile = JSON.parse(readFileSync(join(ROOT, '.agentic-os.json')));
+  const revision = git(ROOT, 'rev-parse', 'HEAD');
+  const repository = upstreamProfile.repository.slice(11);
+  const manifest = { devDependencies: { 'agentic-os': `github:${repository}#${revision}` } };
+  const lock = { lockfileVersion: 3, requires: true, packages: { '': manifest,
+    'node_modules/agentic-os': { resolved: `git+ssh://git@github.com/${repository}.git#${revision}`,
+      integrity: `sha512-${Buffer.alloc(64).toString('base64')}` } } };
+  writeFileSync(join(consumer, '.agentic-os.json'), `${JSON.stringify(upstreamProfile, null, 2)}\n`);
+  writeFileSync(join(consumer, 'package.json'), JSON.stringify(manifest));
+  writeFileSync(join(consumer, 'package-lock.json'), JSON.stringify(lock));
+  git(consumer, 'init', '--quiet', '--initial-branch=main');
+  git(consumer, 'config', 'user.name', 'Source Control'); git(consumer, 'config', 'user.email', 'source@example.invalid');
+  git(consumer, 'add', '.'); git(consumer, 'commit', '-qm', 'consumer source');
+  git(consumer, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  let report;
+  const check = () => runPinCheck(ROOT, [`--consumer=${consumer}`, `--revision=${revision}`, '--source-control'], value => { report = JSON.parse(value); });
+  assert.equal(check(), 0); assert.equal(report.schema, 'agentic-os/source-control-preflight/v1');
+  assert.equal(report.observationOnly, true); assert.equal(report.authorizesEffects, false);
+  assert.equal(report.ready, true); assert.deepEqual(report.findings, []);
+  writeFileSync(join(consumer, 'package.json'), JSON.stringify({ ...manifest, name: 'dirty-consumer' }));
+  assert.equal(check(), 1); assert.deepEqual(report.findings, ['consumer_dirty_tracked']);
+  writeFileSync(join(consumer, 'package.json'), JSON.stringify(manifest)); git(consumer, 'switch', '-qc', 'release');
+  const drift = git(consumer, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'canonical drift');
+  git(consumer, 'update-ref', 'refs/heads/main', drift);
+  assert.equal(check(), 1); assert.deepEqual(report.findings, ['consumer_canonical_local_drift']);
+});

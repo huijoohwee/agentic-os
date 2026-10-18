@@ -52,6 +52,24 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
   different rollback rules; follow the product owner that controls that effect.
 - If backward compatibility is unproven, block rollback until the owner supplies a verified recovery path.
 
+## Source-control preflight
+
+Before a consumer builds a Dev-to-Prod candidate, run its exact upstream source checkout:
+
+```sh
+node bin/agentic-os-pin.mjs --consumer=/absolute/consumer/root --revision=<full-40-hex-upstream-revision> --source-control
+```
+
+The preflight reads only the upstream commit identity, consumer canonical ref, compact tracked-worktree
+state, and existing manifest/lock pin. It emits `agentic-os/source-control-preflight/v1`, which binds the
+source revisions and trees used to build the candidate. It does not fetch, write a ref, create a checkout,
+authorize an integration, or authorize Dev, Production, rollback, storage, or data effects.
+
+Treat a nonzero result as source drift: repair the named pin, canonical source revision, or tracked bytes,
+then run the preflight again before spending build or deployment capacity. A consumer controller may retain
+the successful JSON record as candidate evidence, but it must still enforce its own build, Dev readback,
+same-candidate promotion, Production readback, rollback, and receipt gates.
+
 After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `deploy-workflow`
 only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
 OS stop is `source_complete`; do not invent a generic deploy command.
