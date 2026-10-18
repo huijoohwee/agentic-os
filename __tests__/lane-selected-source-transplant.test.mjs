@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { put, get } from '../src/lane-records.mjs';
-import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSelectedSourceTransplant } from '../src/lane-selected-source-transplant.mjs';
+import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSelectedSourceTransplant,
+  verifySelectedSourceTransplantRecovery } from '../src/lane-selected-source-transplant.mjs';
 
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 }).trim();
 const commit = (cwd, message) => { run(cwd, 'add', '--all'); run(cwd, 'commit', '--quiet', '-m', message); return run(cwd, 'rev-parse', 'HEAD'); };
@@ -51,7 +52,15 @@ test('selected source transplant retains the original lane and applies only the 
   const record = get(f.ref, f.root); assert.equal(record.head, receipt.head);
   assert.deepEqual(JSON.parse(JSON.stringify(record.handoff)), {
     schema: 'agentic-os-lane-selected-source-transplant/v1', preservedRef: prepared.oldRef, preservedHead: f.source,
+    sourceBase: f.base, targetHead: f.target, selectedPaths: ['source.txt'], planDigest: prepared.digest,
   });
+  const recovery = { schema: 'agentic-os/workflow-selected-source-recovery/v1', candidateHead: receipt.head,
+    planDigest: prepared.digest, priorAllocationHead: f.base,
+    ref: f.ref, selectedPaths: ['source.txt'], sourceBase: f.base, sourceHead: f.source, targetHead: f.target };
+  assert.equal(verifySelectedSourceTransplantRecovery(f.root, recovery), true);
+  for (const change of [{ candidateHead: f.source }, { planDigest: '0'.repeat(64) }, { sourceHead: f.base },
+    { selectedPaths: ['base.txt'] }, { targetHead: f.base }])
+    assert.throws(() => verifySelectedSourceTransplantRecovery(f.root, { ...recovery, ...change }), /blocked-lane-selected-source-transplant-recovery/);
   assert.equal(applySelectedSourceTransplant(planSelectedSourceTransplant(input(f))).resumed, true);
 });
 

@@ -18,7 +18,35 @@ import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkfl
 const fail = (reason, message, facts = {}) => { throw Object.assign(new Error(message), { reason: `blocked-admission-${reason}`, ...facts }); };
 const scopeDigest = paths => hash(JSON.stringify([...paths].sort())); const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
 export const matchesSelectedSourcePendingReadmit = ({ row, alignment, ref, path, head, expectedTarget, recoveringSuccessor }) =>
-  recoveringSuccessor === true && row?.state === 'pending' && row.operation === 'readmit' && alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && alignment.ref === ref && alignment.cwd === path && alignment.expectedHead === head && alignment.expectedTarget === expectedTarget && alignment.stopped === true && Array.isArray(alignment.selectedPaths) && alignment.selectedPaths.length > 0 && scopeDigest(alignment.selectedPaths) === row.writeDigest && (alignment.candidateHead === null || alignment.candidateHead === row.headRevision);
+  recoveringSuccessor === true && row?.state === 'pending' && row.operation === 'readmit'
+  && alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && alignment.ref === ref
+  && alignment.cwd === path && alignment.expectedTarget === expectedTarget && alignment.stopped === true
+  && /^[a-f0-9]{40}$/u.test(alignment.expectedHead ?? '') && alignment.liveHead === head
+  && Array.isArray(alignment.selectedPaths) && alignment.selectedPaths.length > 0
+  && scopeDigest(alignment.selectedPaths) === row.writeDigest
+  && (alignment.candidateHead === null || /^[a-f0-9]{40}$/u.test(alignment.candidateHead)
+    && [alignment.expectedHead, alignment.candidateHead].includes(alignment.liveHead));
+export const matchesSelectedSourceTransplantSuccessor = ({ row, record, predecessor, alignment, ref, path,
+  worktreeId, expectedTarget, predecessorCurrent, predecessorAncestor }) => {
+  const handoff = record?.handoff, paths = predecessor?.writePaths;
+  return row?.state === 'pending' && row.operation === 'readmit' && row.ref === ref && row.path === path
+    && row.worktreeId === worktreeId && row.baseRevision === record.baseSha && row.predecessorRef === predecessor?.ref
+    && predecessorCurrent === true && predecessorAncestor === true
+    && ['published', 'queued', 'integrated'].includes(predecessor.state)
+    && predecessor.worktree === path && predecessor.base === record.base && predecessor.baseSha === record.baseSha
+    && Array.isArray(paths) && scopeDigest(paths) === row.previousWriteDigest
+    && paths.every(file => covered(file, record.writePaths ?? []))
+    && record.state === 'active' && record.ref === ref && record.worktree === path
+    && handoff?.schema === 'agentic-os-lane-selected-source-transplant/v1'
+    && handoff.preservedHead === alignment?.expectedHead && handoff.sourceBase === alignment?.expectedBase
+    && handoff.targetHead === expectedTarget && handoff.planDigest === alignment?.digest
+    && Array.isArray(handoff.selectedPaths) && Array.isArray(alignment?.selectedPaths)
+    && JSON.stringify(handoff.selectedPaths) === JSON.stringify(alignment.selectedPaths)
+    && alignment.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && alignment.ref === ref
+    && alignment.cwd === path && alignment.expectedTarget === expectedTarget && alignment.stopped === true
+    && record.head === alignment.liveHead && scopeDigest(record.writePaths ?? []) === row.writeDigest
+    && scopeDigest(alignment.selectedPaths) === row.writeDigest;
+};
 const limitValue = text => text === null ? null : !/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > MAX_TASK_CHECKOUTS ? fail('allowance', `checkout-limit must be an explicit integer from 0 to ${MAX_TASK_CHECKOUTS}`) : Number(text);
 const selectedAgain = (root, repository, prior) => {
   const fresh = readSelectedWorkflow(root, repository, { input: prior.path, required: true });
@@ -149,7 +177,20 @@ export async function cmdStart(root, argv, policy, profile, services) {
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
         const predecessorPaths = row?.predecessorRef && records[row.predecessorRef]
           ? parseWritePaths(records[row.predecessorRef].writePaths.join(',')) : [];
-        const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref && identity.lineage.some(link => link.predecessorRef === row.predecessorRef)
+        const predecessor = row?.predecessorRef ? records[row.predecessorRef] : null;
+        const remoteName = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
+        const selectedSourceAttempt = recoveringReadmit && readmit
+          && alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1';
+        const predecessorCurrent = Boolean(selectedSourceAttempt && predecessor && remoteName
+          && remoteRefSha(remoteName, row.predecessorRef, root, remoteTransport(remoteName, root).fetchUrl) === predecessor.head);
+        const predecessorAncestor = Boolean(selectedSourceAttempt && predecessor?.head && alignment?.expectedHead
+          && observeGit(['merge-base', '--is-ancestor', predecessor.head, alignment.expectedHead], { cwd: root, allowFail: true }) !== null);
+        const selectedSourceSuccessor = recoveringReadmit && readmit && matchesSelectedSourceTransplantSuccessor({
+          row, record, predecessor, alignment, ref, path, worktreeId, expectedTarget: refresh?.expectedTarget,
+          predecessorCurrent, predecessorAncestor,
+        });
+        const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref
+          && (identity.lineage.some(link => link.predecessorRef === row.predecessorRef) || selectedSourceSuccessor)
           && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
         const recoveringHeadAdvance = recoveringReadmit && readmit && !alignment && row.worktreeId === worktreeId
           && row.ref === ref && row.path === path && row.baseRevision === record.baseSha && row.predecessorRef === undefined
@@ -171,10 +212,12 @@ export async function cmdStart(root, argv, policy, profile, services) {
             alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
               oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         }
-        allocation = recoveringHeadAdvance ? row : { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
+        allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
           writeDigest: nextDigest, state: readmit ? 'pending' : 'active', operation: readmit ? 'readmit' : row?.operation ?? 'create',
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit || recertification ? row.writeDigest : liveDigest } : {}),
-          ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}), ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
+          ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}),
+          ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
+          ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
         if (JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) artifacts.workflow = selected.path;
@@ -192,7 +235,13 @@ export async function cmdStart(root, argv, policy, profile, services) {
             out(JSON.stringify(receipt));
           }
           const { previousWriteDigest, ...completed } = allocation;
-          allocation = { ...completed, ...(recoveringHeadAdvance ? { headRevision: identity.head, recoveredFromHead: row.headRevision } : {}), state: 'active' };
+          const selectedSourceRecovery = recoveringSelectedSource && alignment ? {
+            schema: 'agentic-os/workflow-selected-source-recovery/v1', priorAllocationHead: row.headRevision,
+            sourceHead: alignment.expectedHead, sourceBase: alignment.expectedBase, targetHead: alignment.expectedTarget,
+            selectedPaths: alignment.selectedPaths, planDigest: alignment.digest,
+          } : null;
+          allocation = { ...completed, ...(recoveringHeadAdvance ? { headRevision: identity.head, recoveredFromHead: row.headRevision } : {}),
+            ...(selectedSourceRecovery ? { headRevision: identity.head, selectedSourceRecovery } : {}), state: 'active' };
           selected = recordAllocation(root, profile.repository, selected, allocation);
         }
         out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: readmit ? 'readmitted' : 'reused',

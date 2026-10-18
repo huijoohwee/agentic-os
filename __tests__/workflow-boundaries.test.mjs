@@ -9,6 +9,8 @@ import { collectWorkflow, startWorkflow, readWorkflowManifestPage, WORKFLOW_PHAS
   collectWorkflowValue, readSelectedWorkflow, assertWorkflowEffect, validateWorkflowPlanning,
   rebindWorkflowCandidate, createWorkflowEffectGuard, releaseWorkflowAllocation } from '../bin/agentic-os-workflow.mjs';
 import { checkoutCapacity } from '../bin/agentic-os-admission.mjs';
+import { put } from '../src/lane-records.mjs';
+import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSelectedSourceTransplant } from '../src/lane-selected-source-transplant.mjs';
 
 test('one selected workflow retains multiple worktrees through idempotent start/end boundaries', t => {
   const base=realpathSync(mkdtempSync(join(tmpdir(),'workflow-boundaries-'))),root=join(base,'repo');mkdirSync(root);
@@ -250,6 +252,54 @@ test('immutable successors retain execution constraints and partial allocation i
     { id: nextId, file: nextMember.manifest, digest: nextMember.digest }], allocations: [...current.manifest.allocations, next] });
   assert.equal(checkoutCapacity(s.selected(), s.repository, []).consumed, 1);
   assert.throws(() => s.collect({ allocations: [row, row] }), /allocation-duplicate/);
+});
+
+test('selected-source recovery proves a non-ancestral pending allocation with its exact native journal', t => {
+  const baseDir = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-selected-source-recovery-'))), root = join(baseDir, 'repo'); mkdirSync(root);
+  t.after(() => rmSync(baseDir, { recursive: true, force: true }));
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  git(root, 'init', '-b', 'main'); git(root, 'config', 'user.name', 'Test'); git(root, 'config', 'user.email', 'test@example.invalid');
+  git(root, 'config', 'commit.gpgsign', 'false');
+  const planningPath = 'native-prd-tad-adr-mvp-gtm.md'; writeFileSync(join(root, planningPath), '# Recovery plan\n');
+  writeFileSync(join(root, 'source.txt'), 'source base\n'); writeFileSync(join(root, 'target.txt'), 'target base\n');
+  git(root, 'add', '.'); git(root, 'commit', '-m', 'base'); const workflowBase = git(root, 'rev-parse', 'HEAD');
+  writeFileSync(join(root, 'source-base.txt'), 'selected source base\n'); git(root, 'add', 'source-base.txt'); git(root, 'commit', '-m', 'selected source base');
+  const sourceBase = git(root, 'rev-parse', 'HEAD');
+  const remote = join(baseDir, 'remote.git'); git(root, 'init', '--bare', remote); git(root, 'remote', 'add', 'origin', remote); git(root, 'push', '-u', 'origin', 'main'); git(root, 'fetch', 'origin');
+  git(root, 'switch', '-c', 'stale-allocation'); writeFileSync(join(root, 'stale.txt'), 'unrelated allocation head\n');
+  git(root, 'add', 'stale.txt'); git(root, 'commit', '-m', 'unrelated prior allocation'); const staleHead = git(root, 'rev-parse', 'HEAD');
+  git(root, 'switch', 'main');
+  const lane = join(baseDir, 'lane'), ref = 'agent/device/transplant'; git(root, 'worktree', 'add', '-b', ref, lane, sourceBase);
+  writeFileSync(join(lane, 'source.txt'), 'selected source change\n'); git(lane, 'add', 'source.txt'); git(lane, 'commit', '-m', 'selected source');
+  const sourceHead = git(lane, 'rev-parse', 'HEAD'); writeFileSync(join(root, 'target.txt'), 'protected target change\n');
+  git(root, 'add', 'target.txt'); git(root, 'commit', '-m', 'protected target'); git(root, 'push', 'origin', 'main'); git(root, 'fetch', 'origin');
+  const targetHead = git(root, 'rev-parse', 'HEAD'), worktreeId = 'device--transplant', repository = 'github.com/example/recovery';
+  put({ ref, device: 'device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: sourceBase,
+    worktree: realpathSync(lane), pr: null, createdAt: new Date(0).toISOString(), head: sourceHead, writePaths: ['source.txt'] }, root);
+  const started = startWorkflow(root, repository, { revision: targetHead, planningPath, worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } });
+  const selected = () => readSelectedWorkflow(root, repository, { required: true });
+  const collect = patch => { const current = selected(); return collectWorkflowValue(root, repository,
+    { ...current.manifest, ...patch, previous: { file: current.path, digest: current.digest } }, join(baseDir, '.workspace', 'workflow-input.json')); };
+  const paths = ['source.txt'], writeDigest = createHash('sha256').update(JSON.stringify(paths)).digest('hex');
+  const pending = { worktreeId, ref, path: realpathSync(lane), baseRevision: workflowBase, headRevision: staleHead,
+    writeDigest, previousWriteDigest: 'a'.repeat(64), state: 'pending', operation: 'readmit' };
+  collect({ allocations: [pending] });
+  const plan = prepareSelectedSourceTransplant(planSelectedSourceTransplant({ cwd: realpathSync(lane), ref, expectedHead: sourceHead, expectedBase: sourceBase,
+    targetRef: 'refs/remotes/origin/main', expectedTarget: targetHead, selectedPaths: paths, stopped: true }));
+  const receipt = applySelectedSourceTransplant(plan);
+  const current = selected(), priorMember = current.members[0].child;
+  const member = collectWorkflowValue(root, repository, { ...priorMember,
+    source: { ...priorMember.source, revision: receipt.head, tree: git(lane, 'rev-parse', `${receipt.head}^{tree}`) } }, join(baseDir, 'candidate-member.json'));
+  const completed = { ...pending }; delete completed.previousWriteDigest;
+  const recovery = { schema: 'agentic-os/workflow-selected-source-recovery/v1', priorAllocationHead: staleHead,
+    sourceHead, sourceBase, targetHead, selectedPaths: paths, planDigest: plan.digest };
+  collect({ members: [{ id: worktreeId, file: member.manifest, digest: member.digest }],
+    allocations: [{ ...completed, headRevision: receipt.head, state: 'active', selectedSourceRecovery: recovery }] });
+  assert.equal(selected().manifest.allocations[0].selectedSourceRecovery.planDigest, plan.digest);
+  assert.notEqual(git(root, 'merge-base', staleHead, receipt.head), staleHead, 'the prior allocation is not an ancestor of the recovered candidate');
+  collect({}); assert.deepEqual(selected().manifest.allocations[0].selectedSourceRecovery, recovery);
+  assert.equal(started.selected, true);
 });
 
 test('native candidate rebinding preserves historical receipts and never grants current prerequisite proof', t => {

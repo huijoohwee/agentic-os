@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { load, put, get, putExact } from '../src/lane-records.mjs';
 import { fileURLToPath } from 'node:url';
-import { cmdStart, matchesSelectedSourcePendingReadmit } from '../bin/agentic-os-admission.mjs';
+import { cmdStart, matchesSelectedSourcePendingReadmit, matchesSelectedSourceTransplantSuccessor } from '../bin/agentic-os-admission.mjs';
 import { readSelectedWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
@@ -70,7 +70,7 @@ test('selected-source pending readmit requires the exact successor plan, target,
   const paths = ['package-lock.json', 'package.json', 'runtime/agentic-os.mjs'];
   const row = { state: 'pending', operation: 'readmit', headRevision: 'a'.repeat(40), writeDigest: hash(JSON.stringify(paths)) };
   const alignment = { schema: 'agentic-os/lane-selected-source-transplant-plan/v1', ref: 'agent/device/task/scope',
-    cwd: '/repo/lane', expectedHead: 'b'.repeat(40), expectedTarget: 'c'.repeat(40), stopped: true,
+    cwd: '/repo/lane', expectedHead: 'b'.repeat(40), liveHead: 'b'.repeat(40), expectedTarget: 'c'.repeat(40), stopped: true,
     selectedPaths: paths, candidateHead: null };
   const input = { row, alignment, ref: alignment.ref, path: alignment.cwd, head: alignment.expectedHead,
     expectedTarget: alignment.expectedTarget, recoveringSuccessor: true };
@@ -80,8 +80,39 @@ test('selected-source pending readmit requires the exact successor plan, target,
     { head: 'd'.repeat(40) }, { expectedTarget: 'e'.repeat(40) },
     { alignment: { ...alignment, schema: 'agentic-os/lane-alignment-plan/v1' } },
     { alignment: { ...alignment, stopped: false } }, { alignment: { ...alignment, selectedPaths: ['package.json'] } },
-    { alignment: { ...alignment, candidateHead: 'f'.repeat(40) } }, { row: { ...row, operation: 'create' } },
+    { alignment: { ...alignment, candidateHead: 'invalid' } }, { row: { ...row, operation: 'create' } },
   ]) assert.equal(matchesSelectedSourcePendingReadmit({ ...input, ...change }), false);
+  const prepared = { ...alignment, liveHead: 'b'.repeat(40), candidateHead: 'd'.repeat(40) };
+  assert.equal(matchesSelectedSourcePendingReadmit({ ...input, alignment: prepared }), true,
+    'a prepared candidate is independent of the stale allocation head');
+  assert.equal(matchesSelectedSourcePendingReadmit({ ...input, alignment: { ...prepared, liveHead: 'e'.repeat(40) }, head: 'e'.repeat(40) }), false);
+  assert.equal(matchesSelectedSourcePendingReadmit({ ...input, alignment: { ...prepared, liveHead: 'd'.repeat(40) }, head: 'd'.repeat(40) }), true,
+    'an already applied candidate can resume from its exact journal');
+});
+
+test('selected-source pending readmit recognizes an exact transplant after its successor handoff is replaced', () => {
+  const paths = ['docs/runtime-readiness-contract.md', 'package-lock.json', 'package.json'], digest = hash(JSON.stringify(paths));
+  const ref = 'agent/device/task/successor', path = '/repo/lane', predecessorRef = 'agent/device/task/predecessor';
+  const alignment = { schema: 'agentic-os/lane-selected-source-transplant-plan/v1', ref, cwd: path,
+    expectedHead: 'b'.repeat(40), expectedBase: 'c'.repeat(40), liveHead: 'd'.repeat(40), expectedTarget: 'e'.repeat(40),
+    digest: 'f'.repeat(64), selectedPaths: paths, candidateHead: 'd'.repeat(40), stopped: true };
+  const record = { ref, state: 'active', worktree: path, head: alignment.liveHead, base: 'refs/remotes/origin/main',
+    baseSha: '1'.repeat(40), writePaths: paths, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1',
+      preservedHead: alignment.expectedHead, sourceBase: alignment.expectedBase, targetHead: alignment.expectedTarget,
+      selectedPaths: paths, planDigest: alignment.digest } };
+  const predecessor = { ref: predecessorRef, state: 'published', worktree: path, base: record.base, baseSha: record.baseSha,
+    head: 'a'.repeat(40), writePaths: paths };
+  const row = { worktreeId: 'device--successor', ref, path, baseRevision: record.baseSha, headRevision: '9'.repeat(40),
+    writeDigest: digest, previousWriteDigest: digest, predecessorRef, state: 'pending', operation: 'readmit' };
+  const input = { row, record, predecessor, alignment, ref, path, worktreeId: row.worktreeId,
+    expectedTarget: alignment.expectedTarget, predecessorCurrent: true, predecessorAncestor: true };
+  assert.equal(matchesSelectedSourceTransplantSuccessor(input), true);
+  for (const change of [
+    { predecessorCurrent: false }, { predecessorAncestor: false }, { expectedTarget: '8'.repeat(40) },
+    { predecessor: { ...predecessor, head: '8'.repeat(40) }, predecessorAncestor: false }, { predecessor: { ...predecessor, state: 'active' } },
+    { row: { ...row, previousWriteDigest: '8'.repeat(64) } }, { row: { ...row, predecessorRef: 'agent/device/task/other' } },
+    { record: { ...record, head: '8'.repeat(40) } }, { record: { ...record, handoff: { ...record.handoff, planDigest: '8'.repeat(64) } } },
+  ]) assert.equal(matchesSelectedSourceTransplantSuccessor({ ...input, ...change }), false);
 });
 
 test('alignment joins both histories and preserves exact dirty bytes, modes and published predecessor', t => {
