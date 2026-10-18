@@ -517,6 +517,13 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
   const allocation = { ref: 'agent/device/lane-0', path: common.worktree,
     baseRevision: common.baseSha, headRevision: common.head };
   assert.equal(readmissionPredecessors(record, published, allocation).length, 2);
+  const replacedAnchor = { ...published, 'agent/device/lane-0': {
+    ...published['agent/device/lane-0'], head: 'c'.repeat(40),
+  } };
+  assert.equal(readmissionPredecessors(record, replacedAnchor, allocation).length, 1);
+  assert.equal(readmissionPredecessors(record, replacedAnchor, {
+    ...allocation, headRevision: 'b'.repeat(40),
+  }), false);
   for (const patch of [{ path: '/other' }, { headRevision: 'b'.repeat(40) }, { baseRevision: 'b'.repeat(40) }, { ref: 'agent/device/missing' }]) {
     assert.equal(readmissionPredecessors(record, published, { ...allocation, ...patch }), false);
   }
