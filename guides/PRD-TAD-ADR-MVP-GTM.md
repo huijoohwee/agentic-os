@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.36"
+version: "1.4.37"
 date: "2026-10-18"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.36"
-tad_revision: "1.4.36"
-adr_revision: "1.4.36"
+prd_revision: "1.4.37"
+tad_revision: "1.4.37"
+adr_revision: "1.4.37"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--lane-selected-source-transplant-record-head"
-agent_id: "codex-current-recovery-pr493"
+worktree_id: "device-0232231d4a19--successor-allocation-reconciliation"
+agent_id: "codex-successor-allocation-reconciliation"
 load_policy: "on-demand"
-verification_scope: "recover a pending selected-source successor only from its exact stopped plan, current source and protected target, retained reservation digest, and candidate binding"
+verification_scope: "reconcile an allocated source revision through its exact published successor handoff while retaining worktree, base, scope, and remote re-observation bindings"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "93183ba8748e8168bf2ed1fe29a95c7a89ff1e46"
-mvp_revision: "1.4.36"
-gtm_revision: "1.4.36"
+mvp_revision: "1.4.37"
+gtm_revision: "1.4.37"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
@@ -549,7 +549,7 @@ Five is a ceiling, not a measured optimum or parallel build target; use existing
 Count completed work and sprint lead time, plus disk/RSS/CPU, before raising active concurrency.
 Flat paths prevent nested ownership; raw Git/other clones/devices remain outside this cooperative local gate.
 ADR-EXEC-03 / E06 (2026-10-05): `node bin/agentic-os-lane-alignment.mjs --input=<json>` binds stopped writer/mission/exact SHAs through START. Disjoint refresh remains unchanged; overlapping refresh requires the retained native successor’s exact local/published predecessor, preserved ancestry and protected tree equality including modes. Join both parents with the current tree and dirty bytes unchanged; journal/recovery/CAS revalidate bindings. Reject other overlap or drift. Acceptance: positive later edits/dirty bytes and replay; missing/wrong lineage, changed trees/refs refuse. Bound five existing files, 10 active minutes plus focused/native checks, +51 measured CLI lines (aggregate 23,541), unchanged module/dependency and individual file/chunk caps; protected publication, consumer recovery and GTM evidence remain separate.
-E06 recovery / ADR-EXEC-04 (2026-10-05): START may reconcile a pending successor whose native scope already expanded: require the retained published predecessor/ancestry, unchanged predecessor scope digest, inherited path coverage and exact pending target union. Preserve immutable allocation history; never edit recovery evidence or widen the target. MVP: three existing owners, 15 active minutes/10 kB, no runtime/dependency/always-load delta; admission regressions cover both sides of cache publication and refuse wrong head, target or foreign scope. Native source checks and protected integration remain required; consumer recovery and revenue need their own evidence.
+E06 recovery / ADR-EXEC-04 (2026-10-05; allocation refinement 2026-10-18): START may reconcile a pending successor whose native scope already expanded: require the retained published predecessor/ancestry, unchanged predecessor scope digest, inherited path coverage and exact pending target union. When publication replaced an older allocation ref's cached head, reconciliation may use only a direct published successor handoff whose pinned predecessor head exactly equals the allocated revision; worktree/base identity and later remote re-observation remain mandatory. Preserve immutable allocation history; never edit recovery evidence or widen the target. MVP: three existing owners, 15 active minutes/10 kB, no runtime/dependency/always-load delta; admission regressions cover both sides of cache publication and refuse wrong head, target or foreign scope. Native source checks and protected integration remain required; consumer recovery and revenue need their own evidence.
 
 Completion projection recovery / AC-P06 (2026-10-13): an alignment merge may keep the candidate tree as first parent while its other parent differs. A bounded direct-parent tree delta only opens the existing exact current path-projection check; parent ancestry alone proves nothing. Regression coverage retains pending content and accepts only an exact protected squash projection. Zero modules, dependencies, provider requests, or always-load bytes are added; provider receipts and cleanup effects remain independently bound.
 ADR-EXEC-05 (2026-10-09; recovery refinement 2026-10-18): A stopped, clean unpublished lane may retain its full source at exact recovery refs and transplant only an explicit, immediate-parent source delta onto the current protected target. The bounded native operation rejects a changed selection, source/target drift, filters, dirty bytes, publication, nonregular entries and three-way conflicts; it journals pins before moving the local lane. A pending selected-source readmit may adopt a prepared or applied candidate only when its journal binds the exact source, base, target, ref, worktree, stopped state, sorted reserved paths and candidate refs; completion records the plan digest and prior allocation head as distinct workflow evidence, never as ancestry, and later successors retain that proof unchanged. All other allocation fields stay fixed; the applied lane handoff binds the exact plan. Historical verification replays its immutable journal, pinned Git objects and candidate ancestry from the shared object database, so later dirty edits or quarantine do not invalidate proof; divergence, journal changes or missing pins fail closed. This recovers pending readmission without rerunning a broad provider gate. MVP: existing admission, workflow and transplant owners plus three regression modules and this plan; under 10 KiB added, 30 active minutes plus focused and full source checks; zero new modules, dependencies, services, spend or deployment delta. The measured module budgets increase by 23 src and 77 bin lines over the protected source baseline, including 34 bin lines for successor-handoff revalidation. Provider integration, cleanup, deployment and revenue remain separately evidenced.
