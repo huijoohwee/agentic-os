@@ -99,6 +99,24 @@ dependencies, or always-load bytes. No time or storage savings are attributed to
 Rollback removes this exact entry, guide record, and test while retaining any already issued provider
 evidence and its original meaning.
 
+### Current recovery enrollment — agentic-os PR #508 — 2026-10-18
+
+The owner delegated autonomous END ADLC completion. This exact enrollment records PR #508 as current
+merge content: base `3e7be1144301bebc0878fc25762f59a54f9f516d`, reviewed head
+`af62584b53bdac786ea40998a6a4746361061020`, merged commit
+`7c7964e75c2a7f2055d74bfc2cc920a6283c9089`, and equal head/merge tree
+`17279f49f7921383e6df79611af7e9c05988ff71`. The selected `budgets` and `test` checks passed.
+
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The committed policy enrollment enables only the current-facts recovery workflow for the
+retained START-lock fix. It does not issue provider evidence or authorize integration, retirement,
+cleanup, synchronization, deployment, or rollback. Each effect continues through its existing owner
+and receipt.
+
+Budget: one policy row and this guide record; zero runtime modules, dependencies, or always-load
+bytes. The entry creates no direct time, storage, or cost saving. Rollback removes this exact record
+while preserving all issued evidence and its original meaning.
+
 ### Current-quarantine retention adoption — agentic-os PR #487 — 2026-10-17
 
 The owner delegated autonomous END ADLC completion. This exact current-retention adoption binds
