@@ -133,6 +133,13 @@ test('consumer pin check binds repository, revision, form, and lock without writ
   let report;
   const check = () => runPinCheck(ROOT, [`--consumer=${root}`, `--revision=${revision}`], s => { report = JSON.parse(s); });
   assert.equal(check(), 0); assert.equal(report.observationOnly, true);
+  const tarball = `https://codeload.github.com/${repository}/tar.gz/${revision}`;
+  manifest.devDependencies['agentic-os'] = tarball;
+  lock.packages['node_modules/agentic-os'].resolved = tarball;
+  writeFileSync(join(root, 'package.json'), JSON.stringify(manifest));
+  writeFileSync(join(root, 'package-lock.json'), JSON.stringify(lock));
+  assert.equal(check(), 0); assert.equal(report.format, 'tarball');
+  assert.equal(report.recommendedPin, tarball);
   lock.packages['node_modules/agentic-os'].resolved = `git+ssh://git@github.com/wrong/repo.git#${revision}`;
   writeFileSync(join(root, 'package-lock.json'), JSON.stringify(lock));
   assert.equal(check(), 1); assert.deepEqual(report.findings, ['consumer_lock_pin_invalid']);
