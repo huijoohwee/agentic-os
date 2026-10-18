@@ -229,8 +229,9 @@ test('scope-release CLI accepts a bounded claim inventory larger than the former
   }
   const plan = createReservationScopeReleasePlan(request(s));
   const bytes = Buffer.byteLength(JSON.stringify(plan));
-  assert.ok(bytes > 65_536);
-  assert.ok(bytes <= 128 * 1024);
+  assert.equal(plan.exactClaims.count, 29);
+  assert.match(plan.exactClaims.digest, /^[a-f0-9]{64}$/u);
+  assert.ok(bytes <= 65_536);
   const planPath = join(s.root, 'scope-release-plan.json');
   writeFileSync(planPath, JSON.stringify(plan));
   const lines = [];

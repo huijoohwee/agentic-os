@@ -329,7 +329,7 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
     laneState: record.state, laneRecordHead: record.head ?? null, laneWorktree: record.worktree,
     laneProjection: remoteExactRefDrift ? 'unmounted-published-ref-drift' : stalePublishedProjection ? 'unmounted-published' : 'mounted', path, pathEntry,
     protectedPathEntry, retainedPathEvidence,
-    exactClaims: claims, resultingWritePaths: record.writePaths.filter(item => item !== path) };
+    exactClaims: { count: claims.length, digest: scopeDigest(claims) }, resultingWritePaths: record.writePaths.filter(item => item !== path) };
   if (!plan.resultingWritePaths.length) throw scopeFailure('blocked-empty-successor-scope', 'reservation release cannot empty the lane scope');
   return Object.freeze({ ...plan, planDigest: scopeDigest(plan) });
 }
