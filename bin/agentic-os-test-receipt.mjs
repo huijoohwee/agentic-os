@@ -43,13 +43,13 @@ export function writeReceipt(directory, name, value) {
     plan.suiteDefaults = suiteDefaults;
     plan.suites = plan.suites.map(suite => Object.fromEntries(Object.entries(suite)
       .filter(([key, field]) => JSON.stringify(field) !== JSON.stringify(suiteDefaults[key]))));
-    const resourceDefaults = { method: 'wait4', scope: 'waited-process-tree', memoryScope: 'maximum-single-process-rss' };
-    const results = value.results.map(({ outputDigest, ...result }) => { if (result.stage === suiteDefaults.stage) delete result.stage;
+    const resourceDefaults = { method: 'wait4', scope: 'waited-process-tree', memoryScope: 'maximum-single-process-rss' }, resultDefaults = { stage: suiteDefaults.stage, exitCode: 0, reason: null, reused: false };
+    const results = value.results.map(({ outputDigest, ...result }) => { for (const [key, field] of Object.entries(resultDefaults)) if (JSON.stringify(result[key]) === JSON.stringify(field)) delete result[key];
       if (result.resources?.status !== 'measured' || Object.entries(resourceDefaults).some(([key, v]) => result.resources[key] !== v)) return result;
       const { method, scope, memoryScope, ...resources } = result.resources;
       return { ...result, resources };
     });
-    bytes = JSON.stringify({ ...value, plan, results, resourceDefaults, diagnostics: 'per-check-receipts' }) + '\n';
+    bytes = JSON.stringify({ ...value, plan, results, resultDefaults, resourceDefaults, diagnostics: 'per-check-receipts' }) + '\n';
   }
   if (Buffer.byteLength(bytes) > limit)
     throw new Error('blocked-test-receipt-byte-budget');

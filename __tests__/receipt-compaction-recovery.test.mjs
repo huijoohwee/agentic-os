@@ -33,7 +33,7 @@ function save(path, receipt) {
 }
 
 test('affected reasons share exact defaults while differing suite metadata survives rehydration', t => {
-  const path = directory(t), rows = results(145);
+  const path = directory(t), rows = results(256);
   const reasons = Array.from({ length: 15 }, (_, i) =>
     `dependency:src/accepted-successor-preservation-and-historical-transition-owner-${i}.mjs`);
   const suites = rows.slice(1).map(row => ({ path: row.name, stage: 'behavior', reasons }));
@@ -46,7 +46,7 @@ test('affected reasons share exact defaults while differing suite metadata survi
   assert.deepEqual(saved.plan.suiteDefaults.reasons, reasons);
   assert.deepEqual(saved.plan.suites.map(suite => ({ ...saved.plan.suiteDefaults, ...suite })), suites);
   assert.equal(saved.diagnostics, 'per-check-receipts');
-  assert.deepEqual(saved.results.map(row => ({ stage: saved.plan.suiteDefaults.stage, ...row, outputDigest: 'a'.repeat(64),
+  assert.deepEqual(saved.results.map(row => ({ ...saved.resultDefaults, ...row, outputDigest: 'a'.repeat(64),
     resources: { ...saved.resourceDefaults, ...row.resources } })), rows);
   assert.deepEqual(receipt, original, 'compaction must not mutate the caller or per-check evidence');
 });
@@ -61,7 +61,7 @@ test('empty suite plans retain the existing default without losing result rows',
   assert.deepEqual(saved.plan.suiteDefaults, { stage: 'behavior', reasons: ['broad-impact'] });
   assert.deepEqual(saved.plan.suites, []);
   assert.equal(saved.results.length, rows.length);
-  assert.deepEqual(saved.results.map(row => ({ stage: saved.plan.suiteDefaults.stage, ...row,
+  assert.deepEqual(saved.results.map(row => ({ ...saved.resultDefaults, ...row,
     outputDigest: 'a'.repeat(64), resources: { ...saved.resourceDefaults, ...row.resources } })), rows);
 });
 

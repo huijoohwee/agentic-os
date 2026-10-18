@@ -311,15 +311,15 @@ export function readmissionPredecessors(record, records, allocation = null) {
       || previous.baseSha !== record.baseSha) return false;
     chain.push(link); seen.add(link.predecessorRef); current = previous;
   }
-  // Publication replaces the last handoff event. Bind an older mission's explicit
-  // source checkpoint, rather than invent the overwritten intermediate lineage.
+  // Bind an older mission's checkpoint after publication replaced the last handoff.
   if (allocation && allocation.ref !== record.ref && !seen.has(allocation.ref)) {
     const anchor = records[allocation.ref];
     if (!chain.length || chain.length === 32 || allocation.path !== record.worktree
       || allocation.baseRevision !== record.baseSha || !/^[a-f0-9]{40}$/u.test(allocation.headRevision ?? '')
       || !anchor || anchor.ref !== allocation.ref || anchor.worktree !== record.worktree
-      || anchor.base !== record.base || anchor.baseSha !== record.baseSha
-      || anchor.head != null && anchor.head !== allocation.headRevision) return false;
+      || anchor.base !== record.base || anchor.baseSha !== record.baseSha) return false;
+    if (anchor.head !== allocation.headRevision && anchor.head != null && !chain.some(link => link.predecessorHead === allocation.headRevision)) return false;
+    if (anchor.head !== allocation.headRevision && anchor.head != null) return chain;
     chain.push({ predecessorRef: allocation.ref, predecessorHead: allocation.headRevision });
   }
   return chain;
