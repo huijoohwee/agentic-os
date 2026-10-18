@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.38"
-date: "2026-10-18"
+version: "1.4.39"
+date: "2026-10-19"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.38"
-tad_revision: "1.4.38"
-adr_revision: "1.4.38"
+prd_revision: "1.4.39"
+tad_revision: "1.4.39"
+adr_revision: "1.4.39"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--successor-allocation-reconciliation"
-agent_id: "codex-receipt-aggregate-compaction"
+worktree_id: "device-0232231d4a19--source-control-e2e"
+agent_id: "codex-source-provenance-baton"
 load_policy: "on-demand"
-verification_scope: "compact repeated CI aggregate result fields under the existing receipt cap while retaining full per-check evidence and the exact published-successor allocation binding"
+verification_scope: "bind exact source-control preflight evidence through Dev-to-Production promotion of one immutable candidate"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "93183ba8748e8168bf2ed1fe29a95c7a89ff1e46"
-mvp_revision: "1.4.38"
-gtm_revision: "1.4.38"
+mvp_revision: "1.4.39"
+gtm_revision: "1.4.39"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
@@ -30,11 +30,11 @@ This document owns source-to-completion governance; acceptance grants no deploym
 [TECH-STACK.md](TECH-STACK.md) owns technology selection, product composition and deployment topology. [FEATURES.md](FEATURES.md) owns the derived feature index; [catalog/features.json](../catalog/features.json) owns commercial ranking input. The website [guidelines][guideline], [templates][templates], [continuity module][continuity] and [CID contract][cid] own authoring semantics. The website [ADLC Guidelines][adlc-universal] own universal execution rules; `docs/adlc-guidelines.md` is this repository's always-load runtime profile of them, and the website [lifecycle process][process] joins lean learning, venture projections and receipts. This guide adds pipeline requirements and traceability, without copying those contracts or product requirements.
 The [maturity rubric][maturity], [source assessment][maturity-grounding] and [naming][document-naming] load on demand; readiness, experience and demand remain distinct. Historical evidence retains its subject.
 ## Identity and opening directive
-[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.36`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
+[PRD](#prd), [TAD](#tad), [ADR](#adr), [MVP](#mvp) and [GTM](#gtm) join `PRD-TAD-ADR-ADLC-PIPELINE-001@1.4.39`. TAD consumes that PRD; ADR binds that TAD. Resolve companions through [source bindings](#codebase-grounding-record). Requirement changes re-derive affected design, decisions, RAO and evidence before execution.
 **SSOT and precedence.** This joined PRD/TAD/ADR is the single source of truth for the from-0-to-1 pipeline: every T01–T09 transition consumes one criterion, design row and decision from it by continuity ID and exact revision. On conflict, precedence is this document → [TECH-STACK.md](TECH-STACK.md) (composition, topology, stack decisions) → [FEATURES.md](FEATURES.md) (derived index) → README, workflow and runtime documents (navigation and commands only). Consumers reference this document and never restate, widen or contradict it; `docs/adlc-guidelines.md` binds them to that rule, and a competing statement is a `duplicate-owner` finding under the shared authoring set. A missing or stale join blocks only the affected transition.
 **DIR-PIPELINE-01** — Context: the source bindings expose independently owned authoring, lifecycle and product release controls, with Commerce integration gaps G08–G10 below. Intent: a solo operator can complete the smallest authorized outcome without losing work or mistaking source checks for delivery. Directive: document the existing source-to-production path, bind each acceptance condition to its owner and check, and expose missing production evidence. Role/Subject: ADLC pipeline architect. Action: specify the implemented pipeline and its owner handoffs. Outcome: one reviewable specification with criterion-to-design-to-check joins. Verb/Object: specify / the implemented pipeline and its owner handoffs. This prose consumes the shared CID/RAO/SVO fields, not a new serialization.
 ## PRD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.36`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · PRD `1.4.39`.
 ### Problem, personas and minimum outcome
 A solo operator loses time locating source owners, repeating validation and recovering stale worktrees. A successful source merge can also be mistaken for a successful product release. Existing scoped lanes, exact integration observations and source-bound check discovery address these engineering problems; customer willingness to pay remains unvalidated.
 As a **builder**, I want requirements, source owners and checks joined before editing so I can implement one bounded change. As an **operator**, I want exact candidates and separate release receipts so I can promote and recover the intended version. As a **reviewer**, I want acceptance evidence tied to its actual scope so I can reject a false completion. The downstream buyer journey is discovery → deliberate confirmation → settlement → receipt/readback; F01–F05 own that product behavior.
@@ -64,7 +64,7 @@ This successor adds no runtime dependency; the handover routing delta is recorde
 600-line guidance; future companions follow placement rules and keep one joined artifact. Restart time, TCO, ROI and willingness to pay
 remain unmeasured. Selection uses existing bounded admissibility and evidence, never invented demand.
 ## TAD
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.36` consumes PRD `1.4.36`, decisions ADR `1.4.36`.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · TAD `1.4.39` consumes PRD `1.4.39`, decisions ADR `1.4.39`.
 ### Journey-to-system and RAO steps
 T01–T09 are independently closable task references within DIR-PIPELINE-01, not new lifecycle states. In each row, Role is Subject; the first verb and remaining target in Action give SVO. Outcome is the referenced acceptance condition, not the object of a different instruction. Context is the source binding and prerequisites; all inherit the opening intent. Re-run only changed joins and dependent evidence.
 
@@ -332,7 +332,7 @@ The document grants no effects. Existing user authorization continues to apply t
 | Runtime acceptance | Delivery → verified evidence | T09 exact release identity, trusted evaluator and provider/replay readback | Preserve failed evidence; owner correction and re-evaluation; closed here |
 | Completion | Integrated lane → exact cleanup → canonical sync | T06 integration observation plus each separately authorized effect | Recovery ref/private preservation receipt; closed until target and authority revalidate |
 ## ADR
-**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.36` binds PRD/TAD `1.4.36`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
+**Continuity:** `PRD-TAD-ADR-ADLC-PIPELINE-001` · ADR `1.4.39` binds PRD/TAD `1.4.39`. These records document current architecture and this documentation placement. They do not adopt a new runtime or reopen existing stack decisions.
 
 | Decision | Context and decision / alternatives | Rationale, consequences and recovery |
 |---|---|---|
@@ -601,3 +601,9 @@ Budget/rollback: one 233-line lazy source owner moves the source budget from 49 
 ### Cleanup recovery check-run selection — ADLC-CLEANUP-CHECK-001
 PRD/TAD: An exact green pull-request workflow check must remain usable when GitHub also reports a same-head push run with the same required-check name. Ignore only the unrelated event/workflow candidate; continue requiring the selected PR-event run to bind exact repository, head, branch, workflow, completion time, and successful conclusion. A push-only result must still block quarantine.
 Acceptance: `__tests__/user-cleanup-recovery.test.mjs` covers same-head green PR plus push runs and push-only refusal. Three existing files, no new module/dependency or always-load bytes; bounded recovery scan and provider reads remain unchanged. This removes a false cleanup blocker without weakening historical check evidence. Measure no storage or elapsed-time savings from this selector correction.
+
+### End-to-end source provenance — ADLC-SOURCE-001@0.1.0
+PRD: The bounded source-control preflight already runs before candidate build, but consumers may discard its successful report. Source revision alone does not retain the exact upstream pin, consumer tree, and lock match used to build and promote one artifact. Preserve one compact provenance baton through Dev and Production without adding another source store or source-control service.
+TAD/ADR: Apply the transferable online-metadata and bounded-checkout ideas in the supplied `source-control.md` while retaining Git as the portable source of truth and the existing GitHub provider adapter. Reuse current provider metadata for read-only ref/PR/check questions; hydrate only the exact shallow source needed for local byte/tree evidence. Run `agentic-os/source-control-preflight/v1` once before build, retain its exact JSON bytes and SHA-256 in the existing access-controlled candidate-evidence bundle, and bind that digest with the candidate. Public provenance views redact local checkout paths. Dev and Production receipts name the same source-report and immutable artifact digests. A rebuild or source/pin/tree drift creates a new candidate and needs its own checks and effect authority. Offline local evidence never implies fresh provider state. Do not add a VCS replacement, mirror, cache, daemon, service, dependency, or always-load instruction.
+MVP acceptance: incomplete or mismatched preflight evidence blocks before build or promotion; unchanged evidence is carried by digest without repeating source scans; both environment readbacks bind the same candidate and provenance digests; external/provider unavailability remains unknown and cannot produce a pass. Use the existing source-preflight and consumer release-contract checks; no independent controller or receipt store is introduced.
+Budget/economics: two existing guides, under 4 KiB added, 20 active minutes, zero runtime modules, dependencies, paid resources, or always-load bytes. Graph run `39146415576` measured source-control preflight under one second against a 9m23s verify stage; the subsequent deploy job failed while fetching an optional ONNX CUDA package, before any deployment. This source-control change does not claim to remove that dependency-network blocker or claim elapsed-time savings. Measure avoided source fetches and compatible end-to-end stage durations only after a consumer adopts the contract. Rollback is a protected revert of this section and the deploy-workflow refinement; retain all source and release receipts.
