@@ -253,6 +253,7 @@ export function surveyLanes(base, branches, { cwd } = {}) {
 
 const RELEASE_PLAN = 'agentic-os/reservation-scope-release-plan/v1';
 const RELEASE_RECEIPT = 'agentic-os/reservation-scope-release-receipt/v1';
+const SCOPE_RELEASE_PLAN_BYTES = 128 * 1024;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const REMOTE_HEAD = Symbol('reservation-scope-release-remote-head');
 const scopeFailure = (reason, message) => Object.assign(new Error(message), { reason });
@@ -383,7 +384,7 @@ export function runReservationScopeRelease(root, argv, policy, out) {
       path: value('path'), protectedBranch: policy.protectedBranch, protectedRef: policy.protectedRef })));
     return 0;
   }
-  const plan = JSON.parse(UTF8.decode(readBoundedFile(resolve(value('plan')), 65_536, 'scope release plan')));
+  const plan = JSON.parse(UTF8.decode(readBoundedFile(resolve(value('plan')), SCOPE_RELEASE_PLAN_BYTES, 'scope release plan')));
   out(JSON.stringify(applyReservationScopeRelease({ cwd: root, plan, authorization: value('authorize'),
     stopped: argv.includes('--stopped'), protectedBranch: policy.protectedBranch,
     protectedRef: policy.protectedRef })));
