@@ -17,11 +17,9 @@ import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
 const fail = (reason, message, facts = {}) => { throw Object.assign(new Error(message), { reason: `blocked-admission-${reason}`, ...facts }); };
 const scopeDigest = paths => hash(JSON.stringify([...paths].sort())); const covered = (path, paths) => paths.some(parent => path === parent || path.startsWith(`${parent}/`));
-const limitValue = text => {
-  if (text === null) return null;
-  if (!/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > MAX_TASK_CHECKOUTS) fail('allowance', `checkout-limit must be an explicit integer from 0 to ${MAX_TASK_CHECKOUTS}`);
-  return Number(text);
-};
+export const matchesSelectedSourcePendingReadmit = ({ row, alignment, ref, path, head, expectedTarget, recoveringSuccessor }) =>
+  recoveringSuccessor === true && row?.state === 'pending' && row.operation === 'readmit' && alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && alignment.ref === ref && alignment.cwd === path && alignment.expectedHead === head && alignment.expectedTarget === expectedTarget && alignment.stopped === true && Array.isArray(alignment.selectedPaths) && alignment.selectedPaths.length > 0 && scopeDigest(alignment.selectedPaths) === row.writeDigest && (alignment.candidateHead === null || alignment.candidateHead === row.headRevision);
+const limitValue = text => text === null ? null : !/^(0|[1-9][0-9]?)$/u.test(text) || Number(text) > MAX_TASK_CHECKOUTS ? fail('allowance', `checkout-limit must be an explicit integer from 0 to ${MAX_TASK_CHECKOUTS}`) : Number(text);
 const selectedAgain = (root, repository, prior) => {
   const fresh = readSelectedWorkflow(root, repository, { input: prior.path, required: true });
   if (fresh.digest !== prior.digest) fail('workflow-drift', 'Selected immutable workflow changed; retain the allocation and re-read its successor');
@@ -157,10 +155,11 @@ export async function cmdStart(root, argv, policy, profile, services) {
           && row.ref === ref && row.path === path && row.baseRevision === record.baseSha && row.predecessorRef === undefined
           && row.headRevision !== identity.head && nextDigest === row.writeDigest && (row.previousWriteDigest === liveDigest || row.writeDigest === liveDigest && record.head === identity.head)
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
+        const recoveringSelectedSource = matchesSelectedSourcePendingReadmit({ row, alignment, ref, path, head: identity.head, expectedTarget: refresh?.expectedTarget, recoveringSuccessor });
         if (successorReadmit && !readmit) fail('successor-readmit', 'Explicit readmit must bind the retained successor to its existing mission slot');
         if (row && (row.path !== path || row.ref !== ref && !successorReadmit || row.writeDigest !== liveDigest && !successorReadmit && !recertification && !recoveringSuccessor && !(recoveringReadmit && row.previousWriteDigest === liveDigest))) fail('reservation-drift', 'Native scope evidence no longer matches the live lane projection');
         if (!readmit && requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Use explicit active readmit for additional paths');
-        if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head && !(alignment && row.headRevision === alignment.candidateHead) && !recoveringHeadAdvance || recoveringReadmit && !readmit)) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
+        if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head && !(alignment && row.headRevision === alignment.candidateHead) && !recoveringHeadAdvance && !recoveringSelectedSource || recoveringReadmit && !readmit)) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
