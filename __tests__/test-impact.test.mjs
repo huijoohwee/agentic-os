@@ -177,6 +177,13 @@ test('reviewed lazy entrypoints select their route owners and bind deferred byte
   assert.throws(() => validateContracts({ ...contract, deferred: [{
     importer: 'bin/agentic-os.mjs', dependency: 'bin/agentic-os-argv.mjs', tests: ['admission-economy.test.mjs'],
   }] }, source.after), /contracts/);
+  const deferred = { ...contract, deferred: [...(contract.deferred ?? []), {
+    importer: 'bin/agentic-os.mjs', dependency: 'bin/agentic-os-pin.mjs', tests: ['clonability.test.mjs'],
+  }] };
+  const after = new Map(source.after); after.set('test/impact-contracts.json', file(JSON.stringify(deferred)));
+  const pin = selectTests({ before: after, after, changed: ['bin/agentic-os-pin.mjs'] });
+  assert.ok(paths(pin).includes('__tests__/clonability.test.mjs'));
+  assert.ok(!paths(pin).includes('__tests__/lane-rebind.test.mjs'));
 });
 
 test('150 mapped planning edits select document checks without path-count escalation', () => {

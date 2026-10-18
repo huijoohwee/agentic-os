@@ -56,6 +56,13 @@
       ]
     },
     {
+      "importer": "bin/agentic-os.mjs",
+      "dependency": "bin/agentic-os-pin.mjs",
+      "tests": [
+        "clonability.test.mjs"
+      ]
+    },
+    {
       "importer": "bin/agentic-os-checks.mjs",
       "dependency": "bin/composition-runtime-check.mjs",
       "tests": [
