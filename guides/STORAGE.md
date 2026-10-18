@@ -3,25 +3,25 @@ title: Storage compaction
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.9.0"
-tad_revision: "1.9.0"
-adr_revision: "1.9.0"
+prd_revision: "1.10.0"
+tad_revision: "1.10.0"
+adr_revision: "1.10.0"
 load_policy: on-demand
-version: "1.9.0"
-date: "2026-10-17"
+version: "1.10.0"
+date: "2026-10-18"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--storage-head-drift-resume"
-agent_id: "codex-storage-head-drift-resume"
+worktree_id: "device-0232231d4a19--storage-inventory-summary"
+agent_id: "codex-storage-inventory-summary"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "7ba0649e97f9c550c5e4d333d768b1cb7464397e"
-mvp_revision: "1.9.0"
-gtm_revision: "1.9.0"
+reviewed_source_revision: "f25e2b5301291d7f0f168ae452475b4a12021004"
+mvp_revision: "1.10.0"
+gtm_revision: "1.10.0"
 ---
 
 # Storage compaction
@@ -559,6 +559,44 @@ not create another copy. Unknown, incomplete or corrupt operation records are re
 unclassified. Inventory is read-only and metadata-based; it does not claim a fresh deep verification.
 It bounds discovery to 2,000 operation entries and records to 512,000 bytes. Existing payload, command,
 entry and one-hour plan bounds apply. No daemon, startup import, network call or dependency is added.
+
+## Compact recovery inventory — STORAGE-001@1.10.0
+
+PRD: a full read-only recovery inventory can print hundreds of per-operation records even when the
+operator needs only the counts and the few records needing follow-up. Reduce terminal, log and agent
+context volume while retaining the detailed default for exact inspection. Inventory time and payload
+verification remain unchanged; compact output is not a storage-saving claim.
+
+TAD: add `--summary` only to `storage inventory`. Return a separate summary schema with sorted counts
+by state, known retained allocation, and at most 32 exact operation details for states other than
+`completed-no-payload`. Include the total detail count and a truncation flag. Omit absolute payload
+paths and the full operation array. Keep the existing detailed output as the default; `configure`,
+plans and applies reject this option. Summary reads the same bounded metadata inventory and opens no
+payload content.
+
+```sh
+node bin/agentic-os-storage.mjs inventory --repository=/absolute/repository --summary
+```
+
+ADR: keep one inventory owner and the existing 2,000-operation bound. Summary results state
+`operationsOmitted:true`, `grantsAuthority:false`, and use `knownRetainedAllocatedBytes`; unclassified
+records remain explicit details and do not become reclaimable. Operators needing a specific record or
+full inventory use the default output. No persistence, automatic cleanup, new module, dependency or
+always-load guidance is added.
+
+MVP: **AC-S16** empty and populated inventories produce deterministic compact summaries; exact retained
+operation identifiers, states, reasons and known allocation remain visible; output omits the full
+operation array; invalid action/flag combinations fail closed. Compare output bytes and elapsed time on
+the same current inventory, without claiming scan-time or disk savings. Sprint budget: three existing
+files, under 20 KiB changed, zero new modules/dependencies/always-load bytes, one focused check and one
+affected repository check.
+
+Observed Graph read-only sample on 2026-10-18 (280 operations, 3 follow-ups): output fell from 57,112
+to 1,181 bytes (97.9%). One process run measured 283 ms versus 146 ms; this includes startup and does
+not establish scan-time or disk savings.
+
+GTM: use compact output for summaries and handoffs; retain the detailed inventory when a native plan or
+restore requires exact record evidence. No storage effect or cleanup decision follows from this flag.
 
 Restore an independent payload copy into a new directory without overwriting live repository files:
 

@@ -199,8 +199,30 @@ test('CLI validates new argument combinations and emits usable configuration and
   const run = args => JSON.parse(execFileSync(process.execPath, [cli, ...args], { encoding: 'utf8' }));
   assert.equal(run(['configure', `--repository=${s.root}`, `--store=${s.store}`]).store, s.store);
   assert.deepEqual(run(['inventory', `--repository=${s.root}`]).operations, []);
+  const summary = run(['inventory', `--repository=${s.root}`, '--summary']);
+  assert.equal(summary.schema, 'agentic-os/storage-inventory-summary/v1');
+  assert.equal(summary.operationsOmitted, true);
+  assert.deepEqual(summary.summary.countsByState, {});
+  assert.equal(summary.summary.operationCount, 0);
   for (const args of [['configure', `--repository=${s.root}`], ['inventory', '--repository'],
     ['plan', `--repository=${s.root}`, '--kind=git', `--store=${s.store}`],
     ['plan', `--repository=${s.root}`, '--kind=recovery-relocation', '--operation=../escape'],
-    ['inventory', `--repository=${s.root}`, '--delete']]) assert.throws(() => runStorage(args));
+    ['inventory', `--repository=${s.root}`, '--delete'],
+    ['configure', `--repository=${s.root}`, `--store=${s.store}`, '--summary'],
+    ['inventory', `--repository=${s.root}`, '--summary=false']]) assert.throws(() => runStorage(args));
+});
+
+test('summary keeps exact retained-operation details and allocated metadata', t => {
+  const s = fixture(t), a = archive(s), cli = realpathSync(new URL('../bin/agentic-os-storage.mjs', import.meta.url));
+  const summary = JSON.parse(execFileSync(process.execPath,
+    [cli, 'inventory', `--repository=${s.root}`, '--summary'], { encoding: 'utf8' }));
+  assert.equal(summary.schema, 'agentic-os/storage-inventory-summary/v1');
+  assert.equal(summary.summary.detailCount, 1);
+  assert.equal(summary.summary.detailsTruncated, false);
+  assert.equal(summary.summary.details[0].operation, a.operation);
+  assert.equal(summary.summary.details[0].state, 'retained-local');
+  assert.ok(summary.summary.details[0].allocatedBytes > 0);
+  assert.equal(summary.summary.knownRetainedAllocatedBytes, summary.summary.details[0].allocatedBytes);
+  assert.equal(Object.hasOwn(summary, 'operations'), false);
+  assert.equal(summary.grantsAuthority, false);
 });

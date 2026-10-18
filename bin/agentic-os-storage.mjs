@@ -95,9 +95,8 @@ function idleWorktree(plan, original = null, prepared = null) {
   if (!['worktree-dependencies', 'artifact-archive', 'artifact-compression'].includes(plan.kind)) return;
   const within = (path, root) => path === root || path.startsWith(`${root}/`);
   const inspect = (args, relevant) => {
-    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-Fpn', ...args], {
-      cwd: plan.common, encoding: 'utf8', timeout: 30000, maxBuffer: MAX_OUTPUT,
-      stdio: ['ignore', 'pipe', 'pipe'] });
+    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-Fpn', ...args], { cwd: plan.common,
+      encoding: 'utf8', timeout: 30000, maxBuffer: MAX_OUTPUT, stdio: ['ignore', 'pipe', 'pipe'] });
     // lsof may return 1 for unmatched entries even while reporting other open files.
     if (result.error || ![0, 1].includes(result.status) || result.stderr) fail('process-observation');
     let pid = null;
@@ -108,8 +107,7 @@ function idleWorktree(plan, original = null, prepared = null) {
     }
   };
   // This is a bounded observation, not an OS-wide exclusion lock. --stopped remains required.
-  inspect(['-d', 'cwd'], path => within(path, plan.kind === 'worktree-dependencies' ? plan.root : plan.target)
-    && !within(path, plan.common));
+  inspect(['-d', 'cwd'], path => within(path, plan.kind === 'worktree-dependencies' ? plan.root : plan.target) && !within(path, plan.common));
   for (const target of [plan.target, original, prepared].filter(path => path && existsSync(path)))
     inspect(['+D', target], () => true);
 }
@@ -135,8 +133,7 @@ export function planStorage({ cwd = process.cwd(), kind, quarantine = null, arti
       : dependencySelection({ root, common, kind, quarantine }, kind === 'worktree-dependencies' ? objectAlternates : undefined);
   const draft = { schema: SCHEMA, root, common, kind, quarantine, target: selection.target, issuedAt: now,
     expiresAt: now + 3600000, ...(['artifact-archive', 'artifact-compression'].includes(kind) ? { artifact } : {}),
-    before: selection.state, beforeAllocatedBytes: allocated(selection.target),
-    ...(resumeFrom === null ? {} : { resumeFrom }) };
+    before: selection.state, beforeAllocatedBytes: allocated(selection.target), ...(resumeFrom === null ? {} : { resumeFrom }) };
   if (kind === 'worktree-dependencies' && !same(objectAlternates, location(root, { allowObjectAlternates: true }).objectAlternates)) fail('object-alternates-drift');
   const plan = { ...draft, planDigest: digest(draft) };
   if (resumeFrom !== null) verifyPreparedResume(plan, preparedDependencyOperation(plan));
@@ -184,8 +181,7 @@ function preparedDependencyOperation(plan) {
 }
 function verifyPreparedResume(plan, { operation, original }) {
   if (original.before.checkoutHead === plan.before.checkoutHead
-    || !same(original.before.packageFiles, plan.before.packageFiles)
-    || !same(original.before.dependencies, plan.before.dependencies)
+    || !same(original.before.packageFiles, plan.before.packageFiles) || !same(original.before.dependencies, plan.before.dependencies)
     || !same(original.before.objectAlternates ?? null, plan.before.objectAlternates ?? null)) fail('resume-source-drift');
   if (!same(observed(plan), plan.before)
     || !same(storageManifest(join(operation, 'compressed')), plan.before.dependencies)) fail('resume-staged-content');
@@ -288,8 +284,8 @@ function finishDependencySwap(plan, operation) {
 }
 function resumePreparedDependencySwap(plan, operation, progress = () => {}) {
   const prepared = join(operation, 'compressed'), original = join(operation, 'original'), manifest = plan.before.dependencies ?? plan.before.artifactManifest;
-  if (!same(readdirSync(operation).sort(), ['compressed', 'plan.json'])
-    || !existsSync(plan.target) || !existsSync(prepared) || existsSync(original)) fail('resume-phase');
+  if (!same(readdirSync(operation).sort(), ['compressed', 'plan.json']) || !existsSync(plan.target)
+    || !existsSync(prepared) || existsSync(original)) fail('resume-phase');
   direct(prepared);
   if (plan.resumeFrom !== undefined) {
     if (existsSync(join(operation, 'swap.json'))) fail('resume-phase');
@@ -312,8 +308,7 @@ function archiveArtifact(plan, operation, progress) {
   progress('Archiving the exact untracked artifact and verifying a full extraction before removal.');
   command('tar', ['-czpf', archive, '-C', dirname(plan.target), '--', basename(plan.target)], plan.common);
   command('tar', ['-xzpf', archive, '-C', verification], plan.common);
-  if (!same(storageManifest(join(verification, basename(plan.target))), plan.before.artifactManifest))
-    fail('archive-content-mismatch');
+  if (!same(storageManifest(join(verification, basename(plan.target))), plan.before.artifactManifest)) fail('archive-content-mismatch');
   flushTree(archive);
   if (!same(observed(plan), plan.before)) fail('drift-before-archive-removal');
   idleWorktree(plan);
@@ -327,17 +322,16 @@ function archiveArtifact(plan, operation, progress) {
 }
 function storageReceipt(plan, operation, detail) {
   const afterAllocatedBytes = detail.archived ? 0 : allocated(plan.target);
-  const result = { schema: 'agentic-os/storage-receipt/v1', planDigest: plan.planDigest,
-    kind: plan.kind, target: plan.target, beforeAllocatedBytes: plan.beforeAllocatedBytes,
-    afterAllocatedBytes, targetBytesReclaimed: plan.beforeAllocatedBytes - afterAllocatedBytes,
-    ...detail, netBytesReclaimed: plan.beforeAllocatedBytes - afterAllocatedBytes - (detail.backupAllocatedBytes ?? 0),
+  const result = { schema: 'agentic-os/storage-receipt/v1', planDigest: plan.planDigest, kind: plan.kind,
+    target: plan.target, beforeAllocatedBytes: plan.beforeAllocatedBytes, afterAllocatedBytes,
+    targetBytesReclaimed: plan.beforeAllocatedBytes - afterAllocatedBytes, ...detail,
+    netBytesReclaimed: plan.beforeAllocatedBytes - afterAllocatedBytes - (detail.backupAllocatedBytes ?? 0),
     completedAt: new Date().toISOString(), authority: 'explicit-user-consent',
     providerAuthority: false, operatingSystemExclusivityProven: false };
   const receiptPath = join(operation, 'receipt.json'); durableJson(receiptPath, result);
   return { ...result, receiptPath };
 }
-export function applyStorage(plan, { authorization, stopped = false, resume = false, now = Date.now(),
-  progress = () => {} } = {}) {
+export function applyStorage(plan, { authorization, stopped = false, resume = false, now = Date.now(), progress = () => {} } = {}) {
   if (RECOVERY_KINDS.includes(plan.kind)) return applyRecovery(plan, { authorization, stopped, resume, now, progress });
   validate(plan);
   if (authorization !== `agentic-os:storage:${plan.planDigest}` || stopped !== true
@@ -399,44 +393,50 @@ export function runStorage(argv) {
   }
   const allowed = action === 'report' ? ['repository', 'directory', 'name', 'deep', 'category', 'max-entries', 'max-ms']
     : action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination', 'resume-from']
-    : action === 'apply' ? ['plan', 'authorize', 'stopped', 'resume'] : ['repository', 'store'];
+      : action === 'apply' ? ['plan', 'authorize', 'stopped', 'resume'] : action === 'inventory' ? ['repository', 'store', 'summary'] : ['repository', 'store'];
   if (Object.keys(args).some(k => !allowed.includes(k))) fail('arguments');
   let result;
   if (action === 'report') {
     if ((typeof args.repository === 'string') === (typeof args.directory === 'string')
-      || args.repository !== undefined && typeof args.repository !== 'string'
-      || args.directory !== undefined && typeof args.directory !== 'string'
-      || args.name !== undefined && typeof args.name !== 'string'
-      || args.deep !== undefined && args.deep !== true
+      || args.repository !== undefined && typeof args.repository !== 'string' || args.directory !== undefined && typeof args.directory !== 'string'
+      || args.name !== undefined && typeof args.name !== 'string' || args.deep !== undefined && args.deep !== true
       || args.category !== undefined && typeof args.category !== 'string'
-      || ['max-entries', 'max-ms'].some(key => args[key] !== undefined && !/^[1-9][0-9]*$/u.test(args[key])))
-      fail('arguments');
-    result = reportStorage({ cwd: args.repository, directory: args.directory ?? null,
-      name: args.name ?? null,
+      || ['max-entries', 'max-ms'].some(key => args[key] !== undefined && !/^[1-9][0-9]*$/u.test(args[key]))) fail('arguments');
+    result = reportStorage({ cwd: args.repository, directory: args.directory ?? null, name: args.name ?? null,
       deep: args.deep ?? false, category: args.category ?? null,
       ...(args['max-entries'] === undefined ? {} : { maxEntries: Number(args['max-entries']) }),
       ...(args['max-ms'] === undefined ? {} : { maxMs: Number(args['max-ms']) }) });
   } else if (action === 'configure' || action === 'inventory') {
     if (typeof args.repository !== 'string' || action === 'configure' && typeof args.store !== 'string'
-      || args.store !== undefined && typeof args.store !== 'string') fail('arguments');
-    result = (action === 'configure' ? configureRecovery : inventoryRecovery)({ cwd: args.repository, store: args.store });
+      || args.store !== undefined && typeof args.store !== 'string'
+      || action === 'inventory' && args.summary !== undefined && args.summary !== true) fail('arguments');
+    result = args.summary === true ? summarizeRecoveryInventory(inventoryRecovery({ cwd: args.repository, store: args.store })) : (action === 'configure' ? configureRecovery : inventoryRecovery)({ cwd: args.repository, store: args.store });
   } else if (action === 'plan') {
-    if (typeof args.repository !== 'string' || typeof args.kind !== 'string'
-      || args.quarantine !== undefined && typeof args.quarantine !== 'string'
-      || ['artifact', 'operation', 'store', 'destination'].some(key => args[key] !== undefined && typeof args[key] !== 'string'))
-      fail('arguments');
+    if (typeof args.repository !== 'string' || typeof args.kind !== 'string' || args.quarantine !== undefined && typeof args.quarantine !== 'string'
+      || ['artifact', 'operation', 'store', 'destination'].some(key => args[key] !== undefined && typeof args[key] !== 'string')) fail('arguments');
     result = planStorage({ cwd: args.repository, kind: args.kind, quarantine: args.quarantine ?? null,
       artifact: args.artifact ?? null, operation: args.operation, store: args.store, destination: args.destination,
       resumeFrom: args['resume-from'] ?? null });
   } else {
-    if (typeof args.plan !== 'string' || typeof args.authorize !== 'string' || args.stopped !== true
-      || args.resume !== undefined && args.resume !== true) fail('arguments');
+    if (typeof args.plan !== 'string' || typeof args.authorize !== 'string' || args.stopped !== true || args.resume !== undefined && args.resume !== true) fail('arguments');
     const plan = JSON.parse(readBoundedStableFile(resolve(args.plan), 64000, 'storage-plan'));
     result = applyStorage(plan, { authorization: args.authorize, stopped: args.stopped, resume: args.resume ?? false,
       progress: message => process.stderr.write(`${message}\n`) });
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return 0;
 }
+
+function summarizeRecoveryInventory(inventory) {
+  const operations = inventory.operations ?? [], counts = {};
+  for (const row of operations) counts[row.state] = (counts[row.state] ?? 0) + 1;
+  const exceptions = operations.filter(row => row.state !== 'completed-no-payload').sort((a, b) => a.operation.localeCompare(b.operation));
+  const details = exceptions.slice(0, 32).map(row => Object.fromEntries(['operation', 'state', 'reason', 'kind', 'retention', 'allocatedBytes', 'verifiedAt'].filter(key => row[key] !== undefined).map(key => [key, row[key]])));
+  return { schema: 'agentic-os/storage-inventory-summary/v1', repository: inventory.repository, store: inventory.store,
+    automaticDeletion: false, verification: inventory.verification, summary: { operationCount: operations.length,
+      countsByState: Object.fromEntries(Object.entries(counts).sort()), knownRetainedAllocatedBytes: inventory.retainedAllocatedBytes,
+      detailCount: exceptions.length, details, detailsTruncated: exceptions.length > details.length }, operationsOmitted: true, grantsAuthority: false };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try { process.exitCode = runStorage(process.argv.slice(2)); }
   catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
