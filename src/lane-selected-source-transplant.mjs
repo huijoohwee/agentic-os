@@ -75,7 +75,9 @@ function exactRecord(plan, candidate = false) {
   const digest = hash(json(record)), prior = { ...record, head: plan.recordHead };
   if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && hash(json(prior)) === plan.recordDigest)) fail('record');
   if (candidate && (record.head !== plan.candidateHead || record.handoff?.schema !== 'agentic-os-lane-selected-source-transplant/v1'
-    || record.handoff?.preservedRef !== plan.oldRef || record.handoff?.preservedHead !== plan.expectedHead)) fail('record');
+    || record.handoff?.preservedRef !== plan.oldRef || record.handoff?.preservedHead !== plan.expectedHead
+    || record.handoff?.sourceBase !== plan.expectedBase || record.handoff?.targetHead !== plan.expectedTarget
+    || record.handoff?.planDigest !== plan.digest || !same(record.handoff?.selectedPaths, plan.selectedPaths))) fail('record');
   return record;
 }
 function candidateTree(cwd, base, source, target, selected) {
@@ -161,8 +163,29 @@ export function applySelectedSourceTransplant(value) {
   identity(plan); clean(plan.cwd, plan.expectedHead); pins(plan); verifyCandidate(plan); const record = exactRecord(plan);
   atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.candidateHead, plan.expectedHead, [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead], [plan.deltaRef, plan.deltaHead], [plan.candidateRef, plan.candidateHead]], plan.cwd);
   git(['read-tree', '--reset', '-u', plan.candidateHead], { cwd: plan.cwd }); clean(plan.cwd, plan.candidateHead);
-  store.putExact({ ...record, head: plan.candidateHead, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1', preservedRef: plan.oldRef, preservedHead: plan.expectedHead } }, record, plan.cwd);
+  store.putExact({ ...record, head: plan.candidateHead, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1',
+    preservedRef: plan.oldRef, preservedHead: plan.expectedHead, sourceBase: plan.expectedBase,
+    targetHead: plan.expectedTarget, selectedPaths: plan.selectedPaths, planDigest: plan.digest } }, record, plan.cwd);
   return receipt(plan, false);
+}
+export function verifySelectedSourceTransplantRecovery(root, input) {
+  const keys = ['candidateHead', 'planDigest', 'priorAllocationHead', 'ref', 'schema', 'selectedPaths', 'sourceBase', 'sourceHead', 'targetHead'];
+  if (!input || Object.keys(input).sort().join(',') !== keys.join(',')) fail('recovery-input-shape');
+  if (![input.candidateHead, input.priorAllocationHead, input.sourceBase, input.sourceHead, input.targetHead].every(value => SHA.test(value ?? ''))
+    || !/^[a-f0-9]{64}$/u.test(input.planDigest ?? '') || !isLaneRef(input.ref)
+    || input.schema !== 'agentic-os/workflow-selected-source-recovery/v1') fail('recovery-input-identity');
+  if (!Array.isArray(input.selectedPaths) || !input.selectedPaths.length || input.selectedPaths.length > 32
+    || !same(input.selectedPaths, [...new Set(input.selectedPaths)].sort())) fail('recovery-input-paths');
+  const record = store.get(input.ref, root);
+  if (!record?.worktree || record.head !== input.candidateHead || record.handoff?.planDigest !== input.planDigest
+    || record.handoff?.preservedHead !== input.sourceHead || record.handoff?.sourceBase !== input.sourceBase
+    || record.handoff?.targetHead !== input.targetHead || !same(record.handoff?.selectedPaths, input.selectedPaths)) fail('recovery-record');
+  const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase,
+    targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
+  const plan = readJournal(location(planInput).journalPath);
+  if (plan.digest !== input.planDigest || plan.candidateHead !== input.candidateHead) fail('recovery-plan');
+  identity(plan, input.candidateHead); pins(plan); clean(plan.cwd, input.candidateHead); verifyCandidate(plan); exactRecord(plan, true);
+  return true;
 }
 function receipt(plan, resumed) { return { schema: 'agentic-os/lane-selected-source-transplant-receipt/v1', previousHead: plan.expectedHead, baseHead: plan.expectedBase, targetHead: plan.expectedTarget, head: plan.candidateHead, selectedPaths: plan.selectedPaths, oldRef: plan.oldRef, deltaRef: plan.deltaRef, candidateRef: plan.candidateRef, resumed, providerAuthority: false, cleanupAuthority: false }; }
 export function validateSelectedSourceTransplantInput(value) {

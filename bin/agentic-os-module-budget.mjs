@@ -21,9 +21,10 @@ export const BUDGET = Object.freeze({
   // 2026-10-12: T06 receipts (+29 src/+37 bin) and bounded ancestry (+40 src, zero modules; 25/page ×16; ≤256 KiB/page).
   // 2026-10-13: exact PR/ref/merge-tree refresh adds 236 lines to the existing owner; no module, dependency or always-load delta.
   // 2026-10-17 ADLC-START-LOCK-001: one lazy recovery owner; keep filesystem recovery off every CLI invocation.
-  // 2026-10-17 STORAGE-001: +52 existing-owner lines revalidate lock inputs and a staged dependency copy after HEAD-only movement; no duplicate copy, module or dependency.
+  // 2026-10-17 STORAGE-001: +52 existing-owner lines revalidate lock inputs and a staged dependency copy after HEAD-only movement; 2026-10-18 selected-source proof adds 23 src/43 bin lines to bind non-ancestral recovery to exact journals and refs, with no new module, dependency or runtime delta.
+  // 2026-10-18: +34 existing-owner lines bind a replaced successor handoff to its exact retained predecessor, remote ref, transplant journal and source ancestry; no new module or dependency.
   modules: 50,
-  totalLines: 15835,
+  totalLines: 15858,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -37,7 +38,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24521,
+  binLines: 24598,
   runtimeModules: 97,
   runtimeLines: 23023,
 });
