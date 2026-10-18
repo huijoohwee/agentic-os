@@ -58,9 +58,8 @@ function remoteName(policy, root) {
 function requireCanonical(root, policy) {
   const branch = currentBranch(root);
   if (branch === policy.protectedBranch) return;
-  err(`this command runs in the canonical ${policy.protectedBranch} worktree, not in a lane.\n` +
-    `current branch: ${branch ?? 'detached'}`);
-  process.exit(1);
+  throw Object.assign(new Error(`this command runs in the canonical ${policy.protectedBranch} worktree, not in a lane.\n` +
+    `current branch: ${branch ?? 'detached'}`), { reason: 'blocked-canonical-worktree' });
 }
 async function cmdStart(root, argv, policy, profile) {
   return (await import('./agentic-os-admission.mjs')).cmdStart(root, argv, policy, profile,
