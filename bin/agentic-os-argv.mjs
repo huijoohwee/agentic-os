@@ -194,7 +194,7 @@ export function validateCommandArguments(command, argv) {
     case 'reap': return (option(argv, 'refs')?.length ?? 0) > 65536 ? '--refs exceeds the 64 KiB argument budget' : option(argv, 'ref') !== null && option(argv, 'refs') !== null ? 'use either --ref or --refs' : exact(argv, { options: ['ref', 'refs'], flags: ['apply'] });
     case 'finish': return exact(argv, { options: ['ref'], requiredOptions: ['ref'] });
     case 'completion': return argv[0] === 'status'
-      ? exact(argv, { min: 1, options: ['ref', 'preservation', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] })
+      ? exact(argv, { min: 1, options: ['ref', 'preservation', 'cleanup-receipt', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] })
       : 'completion requires status --ref=<lane>';
     case 'autonomy-class':
       return exact(argv, { options: ['base', 'head'], flags: ['json'] });
@@ -280,7 +280,7 @@ export function cmdHelp() {
       '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
       '  Follow-up and diagnostics:',
-      '  agentic-os completion status --ref=<lane> [--preservation=<json>] [--integration-receipt=<json> --retirement-receipt=<json>]  receipt pair requires preservation; read-only',
+      '  agentic-os completion status --ref=<lane> [--preservation=<json>] [--cleanup-receipt=<json>] [--integration-receipt=<json> --retirement-receipt=<json>]  receipt pair requires preservation; read-only',
       '  npm run completion:scaffold -- --ref=<lane>  print a cleanup bundle scaffold with exact lane facts, committed policy, default limits, and remaining placeholders',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',

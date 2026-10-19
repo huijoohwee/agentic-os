@@ -393,9 +393,8 @@ async function main() {
     case 'finish': return cmdFinish(root, argv, policy, profile);
     case 'completion': return (await import('./agentic-os-completion-status.mjs'))
       .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out, {
-        preservationPath: option(argv, 'preservation'),
-        integrationReceiptPath: option(argv, 'integration-receipt'),
-        retirementReceiptPath: option(argv, 'retirement-receipt'),
+        preservationPath: option(argv, 'preservation'), cleanupReceiptPath: option(argv, 'cleanup-receipt'),
+        integrationReceiptPath: option(argv, 'integration-receipt'), retirementReceiptPath: option(argv, 'retirement-receipt'),
       });
     case 'canonical-sync': return runCanonicalSync(root, argv, policy);
     case 'reconcile': requireCanonical(root, policy); return runReconcile(root, argv, policy);
