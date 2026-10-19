@@ -1,3 +1,5 @@
+import { verifyProviderCostBeforeCall } from "./autonomous-runtime-config.js";
+
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
 const DEFAULT_MAX_OUTPUT_TOKENS = 512;
@@ -244,6 +246,8 @@ export function createOpenAiResponsesFunctionAdapter({
   reasoningEffort = "low",
   maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   fetchImpl = defaultTransport,
+  verifyProviderCostEvidence,
+  now = () => Date.now(),
 } = {}) {
   if (!cleanText(apiKey)) throw new TypeError("OpenAI API key is required.");
   if (!cleanText(model)) throw new TypeError("OpenAI function-calling model is required.");
@@ -252,6 +256,7 @@ export function createOpenAiResponsesFunctionAdapter({
     throw new TypeError("OpenAI input, cached-input, cache-write, and output pricing is required.");
   }
   if (!REASONING_EFFORTS.has(reasoningEffort)) throw new TypeError("Unsupported OpenAI reasoning effort.");
+  if (typeof verifyProviderCostEvidence !== "function") throw new TypeError("A trusted provider cost evidence verifier is required.");
   let attemptedTurns = 0;
   let completedTurns = 0;
 
@@ -270,6 +275,8 @@ export function createOpenAiResponsesFunctionAdapter({
       store: true,
       ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
     };
+    await verifyProviderCostBeforeCall({ provider: "openai", effect: "model-inference",
+      resource: `${safeEndpoint(endpoint)}#${model}`, request: body, verifyProviderCostEvidence, now });
     const response = await fetchImpl({
       url: endpoint,
       method: "POST",

@@ -6,12 +6,122 @@ import {
   createOpenAiResponsesAgentAdapter,
   resolveOpenAiResponsesAgentConfig,
 } from "../runtime/adapters/openai-responses-agent-adapter.js";
+import { createOpenAiResponsesFunctionAdapter } from "../runtime/adapters/openai-responses-function-adapter.js";
+import {
+  providerCostScopeDigest,
+  verifyProviderCostBeforeCall,
+} from "../runtime/adapters/autonomous-runtime-config.js";
 
 const MODEL = "gpt-live-test";
 const PRICING = Object.freeze({
   inputUsdPerMillion: 5,
   cachedInputUsdPerMillion: 0.5,
   outputUsdPerMillion: 30,
+});
+const verifyProviderCostEvidence = async (scope) => ({
+  schema: "agentic-os/verified-effect-cost-evidence/v1",
+  status: "verified-zero-cost",
+  provider: scope.provider,
+  mode: "provider-hard-cap",
+  billingPlan: "free",
+  providerHardCapUsd: 0,
+  quotaExhaustion: "not-applicable",
+  paidPlanActive: false,
+  addOnsActive: false,
+  overagesEnabled: false,
+  autoUpgradeEnabled: false,
+  evidenceDigest: "b".repeat(64),
+  scopeDigest: scope.scopeDigest,
+  verifiedAt: scope.observedAt,
+  expiresAt: new Date(Date.parse(scope.observedAt) + 60_000).toISOString(),
+});
+
+function makeCostProof(scope, overrides = {}) {
+  return {
+    schema: "agentic-os/verified-effect-cost-evidence/v1",
+    status: "verified-zero-cost",
+    provider: scope.provider,
+    mode: "provider-hard-cap",
+    billingPlan: "free",
+    providerHardCapUsd: 0,
+    quotaExhaustion: "not-applicable",
+    paidPlanActive: false,
+    addOnsActive: false,
+    overagesEnabled: false,
+    autoUpgradeEnabled: false,
+    evidenceDigest: "b".repeat(64),
+    scopeDigest: scope.scopeDigest,
+    verifiedAt: scope.observedAt,
+    expiresAt: new Date(Date.parse(scope.observedAt) + 60_000).toISOString(),
+    ...overrides,
+  };
+}
+
+test("provider evidence binds the exact call digest and expires before external effects", async () => {
+  const scopeDigests = [];
+  const input = {
+    provider: "openai",
+    effect: "model-inference",
+    resource: "https://api.openai.com/v1/responses#gpt-test",
+    request: { model: "gpt-test", prompt: "private input" },
+    now: () => 1_000,
+    verifyProviderCostEvidence: async (scope) => {
+      scopeDigests.push(scope.scopeDigest);
+      assert.equal(scope.scopeDigest, providerCostScopeDigest(scope));
+      assert.equal(Object.hasOwn(scope, "request"), false);
+      return makeCostProof(scope);
+    },
+  };
+  const proof = await verifyProviderCostBeforeCall(input);
+  assert.equal(proof.status, "verified-zero-cost");
+  assert.equal(proof.providerHardCapUsd, 0);
+  await verifyProviderCostBeforeCall({
+    ...input,
+    request: { ...input.request, prompt: "different input" },
+  });
+  assert.notEqual(scopeDigests[0], scopeDigests[1]);
+});
+
+test("blocks absent, stale, mismatched, and non-zero cost evidence", async () => {
+  const input = {
+    provider: "openai",
+    effect: "model-inference",
+    resource: "https://api.openai.com/v1/responses#gpt-test",
+    request: { prompt: "bounded" },
+    now: () => 1_000,
+  };
+  await assert.rejects(verifyProviderCostBeforeCall(input), /trusted provider cost evidence verifier/u);
+  await assert.rejects(verifyProviderCostBeforeCall({
+    ...input,
+    verifyProviderCostEvidence: async (scope) => makeCostProof(scope, { providerHardCapUsd: 1 }),
+  }), /not verified zero cost/u);
+  await assert.rejects(verifyProviderCostBeforeCall({
+    ...input,
+    verifyProviderCostEvidence: async (scope) => makeCostProof(scope, { scopeDigest: "c".repeat(64) }),
+  }), /exact call/u);
+  await assert.rejects(verifyProviderCostBeforeCall({
+    ...input,
+    verifyProviderCostEvidence: async (scope) => makeCostProof(scope, { verifiedAt: "1970-01-01T00:00:00.500Z" }),
+  }), /exact call/u);
+  await assert.rejects(verifyProviderCostBeforeCall({
+    ...input,
+    verifyProviderCostEvidence: async (scope) => makeCostProof(scope, { expiresAt: "1970-01-01T00:00:01.500Z" }),
+    now: (() => { let call = 0; return () => [1_000, 2_000][call++]; })(),
+  }), /exact call/u);
+});
+
+test("built-in OpenAI adapters cannot be constructed without a trusted verifier", () => {
+  const pricing = { inputUsdPerMillion: 0, cachedInputUsdPerMillion: 0,
+    cacheWriteUsdPerMillion: 0, outputUsdPerMillion: 0 };
+  assert.throws(() => createOpenAiResponsesAgentAdapter({ apiKey: "key", model: MODEL, pricing }), /verifier/u);
+  assert.throws(() => createOpenAiResponsesFunctionAdapter({ apiKey: "key", model: MODEL, pricing }), /verifier/u);
+});
+
+test("provider call scope digest changes with the request digest", () => {
+  const scope = { provider: "openai", effect: "model-inference", resource: MODEL,
+    requestDigest: "1".repeat(64) };
+  assert.notEqual(providerCostScopeDigest(scope),
+    providerCostScopeDigest({ ...scope, requestDigest: "2".repeat(64) }));
 });
 
 function config(overrides = {}) {
@@ -106,6 +216,7 @@ test("sends stable instructions before dynamic input and confirms stored continu
   ];
   const adapter = createOpenAiResponsesAgentAdapter({
     ...config(),
+    verifyProviderCostEvidence,
     fetchImpl: async (request) => {
       requests.push(request);
       return response(replies.shift());
@@ -139,7 +250,7 @@ test("runs one delegation then one handoff with exactly three provider calls", a
     payload({ id: "resp-specialist-2", output: "SPECIALIST_FINAL: handoff owned", context: "all_turns" }),
   ];
   const proof = await runLiveAgentProviderProof({
-    config: config(),
+    config: config({ verifyProviderCostEvidence }),
     approvalId: "offline-test-approval",
     fetchImpl: async (request) => {
       requests.push(request);
@@ -163,6 +274,7 @@ test("runs one delegation then one handoff with exactly three provider calls", a
 test("fails closed when the provider omits effective reasoning context or usage", async () => {
   const missingContext = createOpenAiResponsesAgentAdapter({
     ...config(),
+    verifyProviderCostEvidence,
     fetchImpl: async () => response({
       ...payload({ id: "resp-1", output: "SPECIALIST_NOTE: result", context: "current_turn" }),
       reasoning: { effort: "low" },
@@ -171,6 +283,7 @@ test("fails closed when the provider omits effective reasoning context or usage"
   await assert.rejects(() => missingContext.advanceAgent(adapterCall()), /did not confirm/);
   const missingUsage = createOpenAiResponsesAgentAdapter({
     ...config(),
+    verifyProviderCostEvidence,
     fetchImpl: async () => response({
       ...payload({ id: "resp-1", output: "SPECIALIST_NOTE: result", context: "current_turn" }),
       usage: undefined,
@@ -182,6 +295,7 @@ test("fails closed when the provider omits effective reasoning context or usage"
 test("enforces the provider turn ceiling and exposes only redacted partial evidence", async () => {
   const adapter = createOpenAiResponsesAgentAdapter({
     ...config(),
+    verifyProviderCostEvidence,
     maxTurns: 1,
     fetchImpl: async () => response(payload({
       id: "resp-sensitive",

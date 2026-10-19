@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { verifyProviderCostBeforeCall } from "./autonomous-runtime-config.js";
 
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
@@ -181,6 +182,8 @@ export function createOpenAiResponsesAgentAdapter({
   maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   maxTurns = DEFAULT_MAX_TURNS,
   fetchImpl = defaultTransport,
+  verifyProviderCostEvidence,
+  now = () => Date.now(),
 } = {}) {
   if (!cleanText(apiKey)) throw new TypeError("OpenAI API key is required.");
   if (!cleanText(model)) throw new TypeError("OpenAI agent model is required.");
@@ -190,6 +193,7 @@ export function createOpenAiResponsesAgentAdapter({
   }
   if (!REASONING_EFFORTS.has(reasoningEffort)) throw new TypeError("Unsupported OpenAI reasoning effort.");
   if (!Number.isInteger(maxTurns) || maxTurns <= 0) throw new TypeError("OpenAI agent max turns must be a positive integer.");
+  if (typeof verifyProviderCostEvidence !== "function") throw new TypeError("A trusted provider cost evidence verifier is required.");
   const evidence = [];
   let attemptedTurns = 0;
   let completedTurns = 0;
@@ -219,6 +223,8 @@ export function createOpenAiResponsesAgentAdapter({
       store: true,
       ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
     };
+    await verifyProviderCostBeforeCall({ provider: "openai", effect: "model-inference",
+      resource: `${safeEndpoint(endpoint)}#${model}`, request: body, verifyProviderCostEvidence, now });
     const response = await fetchImpl({
       url: safeEndpoint(endpoint),
       method: "POST",
