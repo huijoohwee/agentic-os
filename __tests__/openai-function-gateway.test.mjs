@@ -21,6 +21,23 @@ const PRICING = Object.freeze({
   cacheWriteUsdPerMillion: 1.25,
   outputUsdPerMillion: 2,
 });
+const verifyProviderCostEvidence = async (scope) => ({
+  schema: "agentic-os/verified-effect-cost-evidence/v1",
+  status: "verified-zero-cost",
+  provider: scope.provider,
+  mode: "provider-hard-cap",
+  billingPlan: "free",
+  providerHardCapUsd: 0,
+  quotaExhaustion: "not-applicable",
+  paidPlanActive: false,
+  addOnsActive: false,
+  overagesEnabled: false,
+  autoUpgradeEnabled: false,
+  evidenceDigest: "b".repeat(64),
+  scopeDigest: scope.scopeDigest,
+  verifiedAt: scope.observedAt,
+  expiresAt: new Date(Date.parse(scope.observedAt) + 60_000).toISOString(),
+});
 
 function reply(body, status = 200, headers = {}) {
   return {
@@ -63,6 +80,7 @@ test("OpenAI adapter preserves strict selection, reasoning replay, response iden
     apiKey: "server-secret",
     model: "gpt-test",
     pricing: PRICING,
+    verifyProviderCostEvidence,
     fetchImpl: async (request) => {
       requests.push(request);
       return reply(responses.shift());
@@ -118,6 +136,7 @@ test("OpenAI adapter redacts provider bodies and configuration fails closed with
     apiKey: "server-secret",
     model: "gpt-test",
     pricing: PRICING,
+    verifyProviderCostEvidence,
     fetchImpl: async () => reply({ error: { message: "provider-secret-detail" } }, 429),
   });
   await assert.rejects(
@@ -134,6 +153,7 @@ test("OpenAI adapter redacts provider bodies and configuration fails closed with
     apiKey: "server-secret",
     model: "gpt-test",
     pricing: PRICING,
+    verifyProviderCostEvidence,
     fetchImpl: async () => reply(openAiTurn("resp-usage", [
       { type: "message", content: [{ type: "output_text", text: "Done." }] },
     ], { input_tokens: 5, output_tokens: 1, input_tokens_details: { cached_tokens: 0 } })),
@@ -413,6 +433,7 @@ test("Agent API completes one authenticated OpenAI and agentic-graph function lo
   };
   const app = createAgentApiApp({
     env,
+    verifyProviderCostEvidence,
     fetchImpl: async (request) => {
       const requestUrl = new URL(request.url);
       if (requestUrl.origin === "https://api.openai.com" && requestUrl.pathname === "/v1/responses") {

@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
-import { createAgentApiApp } from "../runtime/adapters/app.js";
+import { createAgentApiApp as createBaseAgentApiApp } from "../runtime/adapters/app.js";
 import { createAgentSwarmRuntime } from "../runtime/agents/agent-swarm.js";
 
 const ENV = Object.freeze({
@@ -69,6 +69,27 @@ const UPSTREAM_RUNTIME_ENV = Object.freeze({
   AGENT_RUNTIME_AGENT_SOURCE_SHA256: UPSTREAM_RUNTIME_SOURCE_DIGEST,
   AGENT_RUNTIME_AGENT_SOURCE: UPSTREAM_RUNTIME_SOURCE,
   AGENT_RUNTIME_MAX_PROVIDER_CALLS: "4",
+});
+
+const createAgentApiApp = (options = {}) => createBaseAgentApiApp({
+  ...options,
+  verifyProviderCostEvidence: async (scope) => ({
+    schema: "agentic-os/verified-effect-cost-evidence/v1",
+    status: "verified-zero-cost",
+    provider: scope.provider,
+    mode: "provider-hard-cap",
+    billingPlan: "free",
+    providerHardCapUsd: 0,
+    quotaExhaustion: "not-applicable",
+    paidPlanActive: false,
+    addOnsActive: false,
+    overagesEnabled: false,
+    autoUpgradeEnabled: false,
+    evidenceDigest: "b".repeat(64),
+    scopeDigest: scope.scopeDigest,
+    verifiedAt: scope.observedAt,
+    expiresAt: new Date(Date.parse(scope.observedAt) + 60_000).toISOString(),
+  }),
 });
 
 function mcpStub(structuredContent) {
@@ -294,11 +315,23 @@ test("createAgentApiApp wires auth + a forwarding run handler", async () => {
 
   const run = await app.run({
     headers: { authorization: `Bearer ${token}` },
-    body: { referenceUrl: "https://youtu.be/x", brief: "promo", budgetUsd: 25 },
+    body: { referenceUrl: "https://youtu.be/x", brief: "promo", budgetUsd: 0 },
   });
   assert.equal(run.statusCode, 200);
   assert.equal(run.body.state, "blocked");
   assert.ok(run.body.approvalGates.length >= 5);
+});
+
+test("blocks remote MCP effects when provider cost evidence is absent", async () => {
+  let calls = 0;
+  const app = createBaseAgentApiApp({ env: ENV, fetchImpl: async () => { calls += 1; } });
+  const session = await app.authSession({ body: {} });
+  const result = await app.run({
+    headers: { authorization: `Bearer ${session.body.token}` },
+    body: { referenceUrl: "https://youtu.be/x", brief: "promo", budgetUsd: 0 },
+  });
+  assert.equal(result.statusCode, 501);
+  assert.equal(calls, 0);
 });
 
 test("retired runtime endpoint names do not configure the application", () => {

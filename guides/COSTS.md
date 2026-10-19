@@ -74,6 +74,13 @@ expiry. Its trusted provider adapter must verify that evidence immediately befor
 runs and return a current zero-cost verification receipt that covers the complete authorization
 window. A below-quota usage view, budget alert, or owner-entered claim is not that receipt.
 
+Built-in runtime model and remote MCP calls use the same rule per request: the adapter obtains a
+current provider verification bound to the exact provider, resource, operation and request digest
+before sending the request. Missing, stale, mismatched or non-zero evidence blocks the call. A
+caller-supplied spend flag, token estimate, or input budget does not replace provider verification.
+The Agent API accepts only a USD 0 downstream request budget; consumers must enforce their own
+provider-side cap before executing it.
+
 ## Financial projection readiness
 
 | Scope | Assumptions | Base / Downside / Upside | Linked monthly statements | Audience-ready |

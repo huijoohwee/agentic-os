@@ -20,7 +20,7 @@ import {
 } from "../runtime/adapters/handler.js";
 
 const SECRET = "server-side-only-secret";
-const VALID_RUN = { referenceUrl: "https://youtu.be/abc", brief: "Make a promo.", budgetUsd: 25 };
+const VALID_RUN = { referenceUrl: "https://youtu.be/abc", brief: "Make a promo.", budgetUsd: 0 };
 
 // --- auth -------------------------------------------------------------------
 
@@ -82,7 +82,7 @@ test("validateRunRequest accepts a well-formed body", () => {
 });
 
 test("validateRunRequest names each invalid field", () => {
-  const { valid, errors } = validateRunRequest({ referenceUrl: "ftp://x", brief: "", budgetUsd: 0 });
+  const { valid, errors } = validateRunRequest({ referenceUrl: "ftp://x", brief: "", budgetUsd: 1 });
   assert.equal(valid, false);
   const fields = errors.map((e) => e.field);
   assert.ok(fields.includes("referenceUrl"));
@@ -161,7 +161,7 @@ test("fail-closed 501 when no agentic-graph MCP client is configured", async () 
 test("auth never substitutes for approval: the forward carries empty approvals through", async () => {
   // A valid Auth_Token authorizes ACCESS only; the manifest comes back gated
   // (state blocked, >=5 gates) because no Approval_Token was supplied — the
-  // control plane, not this tier, enforces spend.
+  // The forwarder admits only USD 0; the control plane still enforces its own provider cap.
   const handler = createRunHandler({ secret: SECRET, mcpClient: stubMcpClient() });
   const token = await tokenFor();
   const res = await handler({ headers: { authorization: `Bearer ${token}` }, body: { ...VALID_RUN, approvals: [] } });

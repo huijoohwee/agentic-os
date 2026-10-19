@@ -19,8 +19,8 @@ import { isSecureRoomCapability, mintSessionToken, verifySessionToken } from "./
 const REFERENCE_URL_MAX = 2048;
 const BRIEF_MIN = 1;
 const BRIEF_MAX = 10000;
-const BUDGET_MIN = 0.01;
-const BUDGET_MAX = 999999999.99;
+const BUDGET_MIN = 0;
+const BUDGET_MAX = 0;
 const APPROVALS_MAX = 100;
 
 function fieldError(field, reason) {

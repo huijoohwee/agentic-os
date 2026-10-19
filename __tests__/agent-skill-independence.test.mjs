@@ -8,6 +8,23 @@ import { createSkillRegistryGate } from "../runtime/adapters/skill-registry-gate
 import { createInMemoryDraftStore, createOperatorInstructionResolver, createScriptedCandidateAdapter } from "./lib/native-skill-harness-fakes.mjs";
 const ownerText = moduleName => readFile(fileURLToPath(import.meta.resolve(`agentic-os/agents/${moduleName}`)), "utf8");
 const PROPERTY_SEED = 20260817;
+const testCostVerifier = async (scope) => ({
+  schema: "agentic-os/verified-effect-cost-evidence/v1",
+  status: "verified-zero-cost",
+  provider: scope.provider,
+  mode: "provider-hard-cap",
+  billingPlan: "free",
+  providerHardCapUsd: 0,
+  quotaExhaustion: "not-applicable",
+  paidPlanActive: false,
+  addOnsActive: false,
+  overagesEnabled: false,
+  autoUpgradeEnabled: false,
+  evidenceDigest: "b".repeat(64),
+  scopeDigest: scope.scopeDigest,
+  verifiedAt: scope.observedAt,
+  expiresAt: new Date(Date.parse(scope.observedAt) + 60_000).toISOString(),
+});
 function parseLocalImports(text) {
   return [...text.matchAll(/from\s+["'](\.\/[^"']+)["']/g)].map(match => match[1]);
 }
@@ -62,6 +79,8 @@ test("Property 14: Evaluator independence as a structural invariant", async () =
         const proposerRuntime = createSkillProposerRuntime({
           draftStore: createInMemoryDraftStore(),
           proposeCandidate: createScriptedCandidateAdapter(["valid"]).proposeCandidate,
+          providerId: "test-provider",
+          verifyProviderCostEvidence: testCostVerifier,
         });
         assert.deepEqual(Object.keys(proposerRuntime).sort(), ["propose", "stats"]);
 

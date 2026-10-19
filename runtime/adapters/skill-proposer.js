@@ -9,6 +9,7 @@
 // outside this module.
 
 import { normalizeJson } from "../json-contract.mjs";
+import { verifyProviderCostBeforeCall } from "./autonomous-runtime-config.js";
 
 export class SkillProposalBlock extends Error {
   constructor(reasonCode, message, details = {}) {
@@ -38,7 +39,7 @@ export const SKILL_PROPOSER_TRACE_SCHEMA = "acos-skill-proposer-trace/v1";
 // Literal because the proposer holds no approval capability: the unapproved
 // terminal outcome is the normal one, so the value cannot read otherwise.
 export const SKILL_PROPOSAL_APPROVAL_STATUS = "skill-creation: unapproved";
-export const PER_CALL_COST_BUDGET_USD = 0.004;
+export const PER_CALL_COST_BUDGET_USD = 0;
 
 const GAP_SIGNAL_KEYS = ["schema", "signal_id", "adapter_id", "capability", "missing_tool_names", "denial_reason_code", "observed_at_ms", "evidence_reference"];
 
@@ -141,6 +142,7 @@ export function normalizeCostEntry(usage) {
 
 // Pure p95 sampler and breach boolean against the declared per-call budget.
 export function p95CostDecision(entries, budgetUsd = PER_CALL_COST_BUDGET_USD) {
+  if (budgetUsd !== 0) throw new TypeError("Skill proposer cost budget must remain USD 0.");
   const costs = entries
     .map((entry) => entry?.estimated_cost_usd)
     .filter((value) => Number.isFinite(value))
@@ -161,6 +163,8 @@ function estimatePromptTokens(promptContext) {
 export function createSkillProposerRuntime({
   draftStore,
   proposeCandidate,
+  providerId,
+  verifyProviderCostEvidence,
   emitCostLog,
   emitTrace,
   now = () => Date.now(),
@@ -182,6 +186,13 @@ export function createSkillProposerRuntime({
     throw new SkillProposalBlock(
       "budget_ceiling_exceeded",
       "The declared per-call token budget cannot exceed the harness ceiling of 800 prompt and 400 completion tokens.",
+    );
+  }
+  if (typeof proposeCandidate === "function"
+    && (typeof providerId !== "string" || !providerId.trim() || typeof verifyProviderCostEvidence !== "function")) {
+    throw new SkillProposalBlock(
+      "provider_cost_evidence_verifier_missing",
+      "A provider identity and trusted zero-cost verifier are required before model calls.",
     );
   }
 
@@ -266,6 +277,8 @@ export function createSkillProposerRuntime({
       iterations += 1;
       let rawCandidate;
       try {
+        await verifyProviderCostBeforeCall({ provider: providerId, effect: "skill-proposal",
+          resource: gapSignal.adapter_id, request: promptContext, verifyProviderCostEvidence, now });
         rawCandidate = await proposeCandidate(promptContext);
       } catch {
         await emitTraceSafe(traceEntry("provider_unreachable", "not_tripped", null));
