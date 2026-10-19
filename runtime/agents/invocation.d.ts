@@ -20,5 +20,7 @@ export function createAgentRunClient(options: {
   endpoint: string | URL;
   fetchImpl?: typeof fetch;
   getHeaders?: () => HeadersInit | Promise<HeadersInit>;
+  /** Required for HTTPS endpoints; verifies exact zero-cost scope before each request. */
+  verifyProviderCostEvidence?: (scope: Readonly<Record<string, unknown>>) => Promise<Record<string, unknown>>;
   timeoutMs?: number;
 }): AgentRunClient;

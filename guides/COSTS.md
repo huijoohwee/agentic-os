@@ -76,8 +76,14 @@ window. A below-quota usage view, budget alert, or owner-entered claim is not th
 
 Built-in runtime model and remote MCP calls use the same rule per request: the adapter obtains a
 current provider verification bound to the exact provider, resource, operation and request digest
-before sending the request. Missing, stale, mismatched or non-zero evidence blocks the call. A
-caller-supplied spend flag, token estimate, or input budget does not replace provider verification.
+before sending the request. The exported Graph MCP client applies this gate to initialization and
+every tool request, including when called outside the Agent API; missing verifier configuration
+prevents client creation. The remote Agent Run client requires the same evidence for each HTTPS
+operation; its loopback-only transport remains available for local/offline execution. Default MCP
+fetch rejects redirects, and Agent Run uses manual redirect handling, so a verified endpoint cannot
+replay an unverified request elsewhere. Missing, stale, mismatched or non-zero evidence blocks the
+call. A caller-supplied spend flag, token estimate, or input budget does not replace provider
+verification.
 The Agent API accepts only a USD 0 downstream request budget; consumers must enforce their own
 provider-side cap before executing it.
 

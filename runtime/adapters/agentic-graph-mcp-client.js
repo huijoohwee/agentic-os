@@ -8,6 +8,7 @@ import {
   AGENTIC_GRAPH_MCP_TOOLS,
   AgenticGraphMcpError,
 } from "./agentic-graph-mcp-contract.js";
+import { verifyProviderCostBeforeCall } from "./autonomous-runtime-config.js";
 
 export {
   createAgenticGraphClient,
@@ -20,9 +21,8 @@ export {
   validateAgenticGraphRequest,
 } from "./agentic-graph-mcp-contract.js";
 
-// Keyless MCP Streamable HTTP client for the agentic-canvas-os product tier.
-// Transport is injectable for deterministic tests and fails closed on non-2xx,
-// invalid JSON-RPC, incomplete session identity, or unverified tool results.
+// MCP Streamable HTTP client. Every request, including initialization, requires
+// fresh provider-owned zero-cost evidence before the transport can send it.
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -131,8 +131,9 @@ export function extractToolResult(rpc) {
  * @param {string} opts.endpoint agentic-graph MCP Streamable HTTP endpoint
  * @param {(req: { url, method, headers, body }) => Promise<{ status, headers, text }>} [opts.fetchImpl]
  * @param {string} [opts.authToken] opaque caller bearer; never a model key
+ * @param {Function} opts.verifyProviderCostEvidence trusted provider-side zero-cost verifier
  */
-export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken } = {}) {
+export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken, verifyProviderCostEvidence } = {}) {
   if (typeof endpoint !== "string" || !endpoint.trim()) {
     throw new AgenticGraphMcpError(
       "agentic-graph MCP endpoint is required",
@@ -140,7 +141,20 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken } =
     );
   }
   const url = endpoint.trim();
-  const doFetch = fetchImpl || (typeof fetch === "function" ? fetch : null);
+  if (typeof verifyProviderCostEvidence !== "function") {
+    throw new AgenticGraphMcpError(
+      "trusted provider cost evidence verifier is required",
+      { code: "mcp_cost_evidence_verifier_missing" },
+    );
+  }
+  const doFetch = fetchImpl || (typeof globalThis.fetch === "function"
+    ? (request) => globalThis.fetch(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      redirect: "error",
+    })
+    : null);
   if (!doFetch) {
     throw new AgenticGraphMcpError(
       "no fetch transport available",
@@ -150,6 +164,18 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken } =
 
   let nextId = 1;
   let mcpSessionId = null;
+
+  async function fetchWithCostEvidence(request) {
+    const requestUrl = new URL(request.url);
+    await verifyProviderCostBeforeCall({
+      provider: "remote-mcp",
+      effect: "mcp-request",
+      resource: requestUrl.origin,
+      request: { url: requestUrl.toString(), method: request.method, body: request.body },
+      verifyProviderCostEvidence,
+    });
+    return doFetch(request);
+  }
 
   async function ensureSession({ bearer } = {}) {
     if (mcpSessionId) return mcpSessionId;
@@ -169,7 +195,7 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken } =
         clientInfo: { name: "agentic-canvas-os", version: "0.1.0" },
       },
     };
-    const response = await doFetch({
+    const response = await fetchWithCostEvidence({
       url,
       method: "POST",
       headers,
@@ -223,7 +249,7 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken } =
           : {}),
       },
     };
-    const response = await doFetch({
+    const response = await fetchWithCostEvidence({
       url,
       method: "POST",
       headers,

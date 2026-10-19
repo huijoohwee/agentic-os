@@ -65,7 +65,6 @@ import { createSkillRegistryGate } from "./skill-registry-gate.js";
 import { createConfiguredToolSearchRuntime } from "./tool-search-config.js";
 import { createUpstreamDependencyAdmissionHandler } from "./upstream-dependency-admission-handler.js";
 import { createAgenticGraphMcpClient } from "./agentic-graph-mcp-client.js";
-import { verifyProviderCostBeforeCall } from "./autonomous-runtime-config.js";
 
 /**
  * Build the configured Agent-API handlers from an env bag (defaults to
@@ -248,15 +247,10 @@ export function createAgentApiApp({
 
   let mcpClient = null;
   if (endpoint && typeof verifyProviderCostEvidence === "function") {
-    const costCheckedFetch = async (request) => {
-      const requestUrl = new URL(request.url);
-      await verifyProviderCostBeforeCall({ provider: "remote-mcp", effect: "mcp-request", resource: requestUrl.origin, request: { url: requestUrl.toString(), method: request.method, body: request.body }, verifyProviderCostEvidence });
-      if (!fetchImpl && typeof globalThis.fetch !== "function") throw new TypeError("MCP fetch transport is unavailable.");
-      return fetchImpl ? fetchImpl(request) : globalThis.fetch(request.url, { method: request.method, headers: request.headers, body: JSON.stringify(request.body) });
-    };
     mcpClient = createAgenticGraphMcpClient({
       endpoint,
-      fetchImpl: costCheckedFetch,
+      fetchImpl,
+      verifyProviderCostEvidence,
       authToken: typeof e.AGENTIC_OS_MCP_FUNCTION_BEARER_TOKEN === "string"
         ? e.AGENTIC_OS_MCP_FUNCTION_BEARER_TOKEN.trim()
         : "",

@@ -5,6 +5,18 @@ import test from 'node:test';
 import {createAgentRunClient} from '../runtime/agents/invocation.js';
 import {request} from './agents/workflow-fixture.mjs';
 
+async function verifyTestZeroCost(scope) {
+  const observedAt = Date.parse(scope.observedAt);
+  return { schema: 'agentic-os/verified-effect-cost-evidence/v1', status: 'verified-zero-cost',
+    mode: 'free-fail-closed', provider: scope.provider, scopeDigest: scope.scopeDigest,
+    billingPlan: 'free', providerHardCapUsd: null, quotaExhaustion: 'deny',
+    paidPlanActive: false, addOnsActive: false, overagesEnabled: false, autoUpgradeEnabled: false,
+    verifiedAt: scope.observedAt, expiresAt: new Date(observedAt + 60_000).toISOString() };
+}
+function createTestAgentRunClient(options) {
+  return createAgentRunClient({ ...options, verifyProviderCostEvidence: verifyTestZeroCost });
+}
+
 test('authenticated run redirects never forward a body or credential, and retain uncertain writes', async t => {
   const observed=[];
   const server=createServer((req,res)=>{
@@ -17,7 +29,7 @@ test('authenticated run redirects never forward a body or credential, and retain
   t.after(()=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);}));
   const origin=`http://127.0.0.1:${server.address().port}`;
   for(const status of [301,302,303,307,308]){
-    const client=createAgentRunClient({endpoint:`${origin}/${status}/`,getHeaders:()=>({authorization:'Bearer fixture-private'})});
+    const client=createTestAgentRunClient({endpoint:`${origin}/${status}/`,getHeaders:()=>({authorization:'Bearer fixture-private'})});
     await assert.rejects(client.invoke('start',request),{reasonCode:'run_transport_failed',writeResultUnknown:true});
     await assert.rejects(client.invoke('status',{runId:request.runId}),{writeResultUnknown:false});
   }
@@ -26,6 +38,6 @@ test('authenticated run redirects never forward a body or credential, and retain
 });
 
 test('an opaque browser redirect cannot masquerade as a completed operation',async()=>{
-  const client=createAgentRunClient({endpoint:'https://runtime.example/',fetchImpl:async()=>({type:'opaqueredirect',status:0})});
+  const client=createTestAgentRunClient({endpoint:'https://runtime.example/',fetchImpl:async()=>({type:'opaqueredirect',status:0})});
   await assert.rejects(client.invoke('start',request),{reasonCode:'run_transport_failed',writeResultUnknown:true});
 });

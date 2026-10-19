@@ -1,4 +1,5 @@
 import { normalizeJson } from '../json-contract.mjs';
+import { verifyProviderCostBeforeCall } from '../adapters/autonomous-runtime-config.js';
 import { AGENT_SWARM_DEFAULTS, assertExactKeys, assertIdentifier, normalizeRunOperation,
   normalizeStartRequest } from './agent-swarm-contract.js';
 import { normalizeTraceQuery, normalizeEvaluateRequest, normalizeCompareRequest, AGENT_TOOLKIT_DEFAULTS } from './agent-toolkit-contract.js';
@@ -43,9 +44,13 @@ function trustedUrl(value) {
 }
 
 /** Optional browser/CLI transport. Construction performs no I/O, discovery or polling. */
-export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, getHeaders = () => ({}), timeoutMs = 55_000 } = {}) {
+export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, getHeaders = () => ({}),
+  verifyProviderCostEvidence, timeoutMs = 55_000 } = {}) {
   const base = trustedUrl(endpoint);
+  const local = ['localhost', '::1', '[::1]'].includes(base.hostname.toLowerCase())
+    || /^127(?:\.[0-9]{1,3}){3}$/u.test(base.hostname);
   if (typeof fetchImpl !== 'function' || typeof getHeaders !== 'function'
+    || (!local && typeof verifyProviderCostEvidence !== 'function')
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 55_000) throw new TypeError('Invalid bounded run transport.');
   return Object.freeze({ async invoke(operation, input, { signal } = {}) {
     const value = validateRunInput(operation, input), controller = new AbortController();
@@ -57,9 +62,21 @@ export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, g
     try {
       const headers = new Headers(await getHeaders()); headers.set('content-type', 'application/json');
       if (controller.signal.aborted) throw new Error('request aborted');
+      const requestUrl = new URL(operation, base);
+      const requestBody = JSON.stringify(value);
+      if (!local) {
+        try {
+          await verifyProviderCostBeforeCall({ provider: 'remote-agent-run', effect: 'agent-run-operation',
+            resource: requestUrl.origin, request: { url: requestUrl.href, method: 'POST', body: value },
+            verifyProviderCostEvidence });
+        } catch {
+          throw Object.assign(new Error('Run request blocked by zero-cost provider policy.'), {
+            reasonCode: 'provider_cost_evidence_unverified', writeResultUnknown: false });
+        }
+      }
       dispatched = true;
-      const response = await fetchImpl(new URL(operation, base).href, { method: 'POST', headers,
-        body: JSON.stringify(value), signal: controller.signal, redirect: 'manual', credentials: 'same-origin', cache: 'no-store' });
+      const response = await fetchImpl(requestUrl.href, { method: 'POST', headers,
+        body: requestBody, signal: controller.signal, redirect: 'manual', credentials: 'same-origin', cache: 'no-store' });
       // Edge runtimes support manual redirects; browsers may expose an opaque redirect.
       // Neither form may replay an authenticated operation at a different location.
       if (response.redirected || response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400) {
@@ -89,7 +106,8 @@ export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, g
         || !['planning', 'running', 'completed', 'blocked', 'canceled', 'pending', 'idle', 'reconciling', 'synthesizing', 'failed', 'insufficient-evidence'].includes(result.status))
         throw new TypeError('Run response identity or status is invalid.');
       return normalizeJson(result, 'run response');
-    } catch {
+    } catch (error) {
+      if (error?.reasonCode === 'provider_cost_evidence_unverified') throw error;
       throw Object.assign(new Error('Run transport failed; inspect the same run before retrying.'), {
         reasonCode: 'run_transport_failed', writeResultUnknown: dispatched && !readOnly(operation) });
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
