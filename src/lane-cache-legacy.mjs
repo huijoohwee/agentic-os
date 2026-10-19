@@ -18,25 +18,18 @@ function enumerableValue(object, key) {
   return descriptor?.enumerable && Object.hasOwn(descriptor, 'value') ? descriptor.value : INVALID;
 }
 
-/**
- * Project the former non-authoritative `ejections` count only when the complete
- * legacy shape is otherwise an exact current-cache candidate. The caller still
- * validates the result with the current schema and never writes legacy bytes.
- */
+/** Project only an exact legacy cache shape; callers validate the current schema and never write legacy bytes. */
 export function projectLegacyLaneCache(value, schema) {
-  if (!plainObject(value)) return null;
-  const rootKeys = Reflect.ownKeys(value);
+  if (!plainObject(value)) return null; const rootKeys = Reflect.ownKeys(value);
   if (rootKeys.length !== ROOT_KEYS.size || rootKeys.some((key) => !ROOT_KEYS.has(key))
     || enumerableValue(value, 'schema') !== schema) return null;
   const lanes = enumerableValue(value, 'lanes');
-  if (!plainObject(lanes)) return null;
-  const projected = { schema, lanes: Object.create(null) };
+  if (!plainObject(lanes)) return null; const projected = { schema, lanes: Object.create(null) };
   let legacy = false;
   for (const ref of Reflect.ownKeys(lanes)) {
     if (typeof ref !== 'string' || !isLaneRef(ref)) return null;
     const record = enumerableValue(lanes, ref);
-    if (!plainObject(record)) return null;
-    const keys = Reflect.ownKeys(record);
+    if (!plainObject(record)) return null; const keys = Reflect.ownKeys(record);
     if (keys.some((key) => typeof key !== 'string' || !RECORD_KEYS.has(key))) return null;
     const ejections = enumerableValue(record, 'ejections');
     if (Object.hasOwn(record, 'ejections')) {
@@ -59,7 +52,7 @@ export function projectLegacyLaneCache(value, schema) {
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
-import { commonDir, git, assertDirectoryAncestors } from './git.mjs';
+import { commonDir, git, assertDirectoryAncestors, currentBranch, headSha, observeGit } from './git.mjs';
 import { readBoundedFile } from './catalog-input.mjs';
 import { writePrivateFileExclusive } from './file-integrity.mjs';
 
@@ -67,42 +60,50 @@ export const WORKSPACE_CACHE_SCHEMA = 'agentic-os/lane-cache-workspace/v1';
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = message => { throw Object.assign(new Error(`lane cache workspace ${message}`), { reason: 'blocked-lane-cache-invalid' }); };
 const TOTAL_BYTES = 8_000_000;
+export function recoverLaneRecordFromMission(input, makeRecord) {
+  const { ref, path, expectedHead, policy, allocation, selected, repository, writePaths, root } = input;
+  const [, device, scope] = (ref ?? '').split('/');
+  const member = selected?.members?.some(item => item.child.context.worktreeId === allocation?.worktreeId
+    && item.child.source.repository === repository && item.child.source.revision === expectedHead);
+  const protectedHead = headSha(policy.protectedRef, root);
+  if (!isLaneRef(ref) || !/^[a-f0-9]{40}$/u.test(expectedHead ?? '') || !/^[a-f0-9]{64}$/u.test(selected?.digest ?? '') || !member
+    || allocation?.state !== 'active' || allocation.operation !== 'create' || allocation.ref !== ref || allocation.path !== path
+    || allocation.worktreeId !== basename(path) || allocation.baseRevision !== expectedHead || allocation.headRevision !== expectedHead
+    || !Array.isArray(writePaths) || JSON.stringify(writePaths) !== JSON.stringify([...new Set(writePaths)].sort())
+    || allocation.writeDigest !== digest(JSON.stringify(writePaths)) || currentBranch(root) !== policy.protectedBranch
+    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root }) !== '' || currentBranch(path) !== ref
+    || headSha(`refs/heads/${ref}`, root) !== expectedHead || headSha('HEAD', path) !== expectedHead
+    || observeGit(['merge-base', '--is-ancestor', expectedHead, protectedHead], { cwd: root, allowFail: true }) === null)
+    throw Object.assign(new Error('mission does not bind the clean active lane and protected source state'), { reason: 'blocked-lane-mission-recovery-binding' });
+  const record = { ...makeRecord({ ref, device, scope, base: policy.protectedRef, baseSha: expectedHead, worktree: path, writePaths }), state: 'active' };
+  const receipt = { schema: 'agentic-os/lane-mission-recovery/v1', authority: false, ref, worktree: path,
+    head: expectedHead, missionDigest: selected.digest, writeDigest: allocation.writeDigest, authoredBytesPreserved: true,
+    providerAuthority: false, integrationProof: false, cleanupAuthority: false, deploymentAuthority: false };
+  return { record, receipt };
+}
 export function workspaceLaneCache(cwd) {
-  const storage = git(['config', '--local', '--get-all', 'agentic-os.laneCacheStorage'], { cwd, allowFail: true });
-  if (storage === null) return null;
-  if (storage !== 'workspace-v1') fail('storage selection is invalid');
-  const configured = git(['config', '--local', '--get-all', 'agentic-os.workspaceRoot'], { cwd, allowFail: true });
-  if (configured !== null && (!configured || /[\r\n\x00]/u.test(configured))) fail('root is invalid');
-  const common = commonDir(cwd);
-  if (basename(common) !== '.git') fail('canonical layout required');
-  const root = resolve(dirname(common), configured ?? '../.workspace'), clone = digest(common);
-  const directory = join(root, '.local', 'lane-cache', clone);
-  assertDirectoryAncestors(join(directory, 'entry'), sep, { allowMissing: true });
-  return { directory, clone, root: digest(root) };
+  const storage = git(['config', '--local', '--get-all', 'agentic-os.laneCacheStorage'], { cwd, allowFail: true }); if (storage === null) return null;
+  if (storage !== 'workspace-v1') fail('storage selection is invalid'); const configured = git(['config', '--local', '--get-all', 'agentic-os.workspaceRoot'], { cwd, allowFail: true });
+  if (configured !== null && (!configured || /[\r\n\x00]/u.test(configured))) fail('root is invalid'); const common = commonDir(cwd);
+  if (basename(common) !== '.git') fail('canonical layout required'); const root = resolve(dirname(common), configured ?? '../.workspace'), clone = digest(common), directory = join(root, '.local', 'lane-cache', clone);
+  assertDirectoryAncestors(join(directory, 'entry'), sep, { allowMissing: true }); return { directory, clone, root: digest(root) };
 }
 function readRecord(path, limit) {
-  assertDirectoryAncestors(path, sep);
-  const stat = lstatSync(path, { bigint: true });
-  if (!stat.isFile() || stat.nlink !== 1n || typeof process.getuid === 'function' && stat.uid !== BigInt(process.getuid()))
-    fail('record must be an owned single-link file');
+  assertDirectoryAncestors(path, sep); const stat = lstatSync(path, { bigint: true });
+  if (!stat.isFile() || stat.nlink !== 1n || typeof process.getuid === 'function' && stat.uid !== BigInt(process.getuid())) fail('record must be an owned single-link file');
   return readBoundedFile(path, limit, 'workspace lane record', { expectedIdentity: stat });
 }
 export function encodeWorkspaceLaneCache(store, cwd, limits) {
-  const location = workspaceLaneCache(cwd);
-  if (!location) return store;
-  mkdirSync(location.directory, { recursive: true, mode: 0o700 });
-  assertDirectoryAncestors(join(location.directory, 'entry'), sep);
+  const location = workspaceLaneCache(cwd); if (!location) return store;
+  mkdirSync(location.directory, { recursive: true, mode: 0o700 }); assertDirectoryAncestors(join(location.directory, 'entry'), sep);
   const owner = lstatSync(location.directory);
-  if (typeof process.getuid === 'function' && owner.uid !== process.getuid() || (owner.mode & 0o022)) fail('directory must be private to its owner');
-  const records = Object.create(null); let total = 0;
+  if (typeof process.getuid === 'function' && owner.uid !== process.getuid() || (owner.mode & 0o022)) fail('directory must be private to its owner'); const records = Object.create(null); let total = 0;
   for (const [ref, record] of Object.entries(store.lanes)) {
     const bytes = Buffer.from(JSON.stringify(record)); total += bytes.length;
-    if (total > TOTAL_BYTES || bytes.length > limits.bytes) fail('record byte budget exceeded');
-    const hash = digest(bytes), path = join(location.directory, `${hash}.json`);
+    if (total > TOTAL_BYTES || bytes.length > limits.bytes) fail('record byte budget exceeded'); const hash = digest(bytes), path = join(location.directory, `${hash}.json`);
     try { writePrivateFileExclusive(path, bytes, { maxBytes: limits.bytes, label: 'workspace lane record' }); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
-    if (!readRecord(path, limits.bytes).equals(bytes)) fail('immutable record differs');
-    records[ref] = { digest: hash, bytes: bytes.length };
+    if (!readRecord(path, limits.bytes).equals(bytes)) fail('immutable record differs'); records[ref] = { digest: hash, bytes: bytes.length };
   }
   return { schema: WORKSPACE_CACHE_SCHEMA, clone: location.clone, root: location.root, records };
 }
