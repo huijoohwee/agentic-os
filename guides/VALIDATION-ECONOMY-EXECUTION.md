@@ -3,6 +3,38 @@
 On-demand companion to [Validation economy](VALIDATION-ECONOMY.md). These existing
 contracts retain their identities and scope; source scanning is documented in the parent.
 
+## Event-bound shallow CI snapshots (ADLC-SC-001@0.1.0)
+
+PRD: required CI needs the candidate source plus the exact event baseline to select and validate
+changed paths. Fetching all Git history for that comparison adds repeated transfer and object storage
+without changing the check result. The useful source-control idea is demand-based object hydration;
+this repository keeps ordinary Git because the measured history is small and existing CI already needs
+the complete working source.
+
+TAD/ADR: the required `test` workflow and full test canary check out with depth one. For the required
+test job, `check:ci` first binds the checked-out revision and exact event `base`/`head` revisions. Its
+PR event still verifies that the merge commit's parents equal the event base and head. It checks for
+the exact base commit locally, fetching that single commit at depth one from the checkout's `origin`
+only when absent; tags and recursive submodules are excluded. A missing or unfetchable baseline blocks
+instead of falling back to a full-history download. CI compares the exact provider-supplied baseline
+tree directly with the committed checkout tree; the input identity labels this `provider-event` mode,
+separate from local `merge-base` plans. Direct mode is unavailable to non-CI or uncommitted runs.
+The canary uses `HEAD` as its baseline and therefore needs no additional commit. Both jobs retain the
+full working source, required check names, fresh execution, selectors and safety sentinels.
+
+MVP acceptance: a shallow Git fixture with sibling event-base and head commits hydrates only the exact
+baseline, produces the exact event delta without ancestry history, skips a redundant second fetch, and
+fails closed for invalid or unavailable identity. Local plans continue to use `merge-base`. Confirm
+both required CI checks and the canary are green; compare provider-reported checkout duration and
+download bytes only when the workflow exposes compatible measurements. This change adds no module,
+dependency, service, persistent cache or always-load bytes. The local repository has 438 commits and
+about 5.86 MiB of packed Git objects; that is context, not a measured CI saving. Net transfer, latency,
+CPU and cash savings remain unmeasured.
+
+Budget: seven existing workflow, runner, test and planning files; under 20 KiB changed; one 20-active-
+minute implementation slice; zero dependencies or runtime modules. Rollback restores full-depth CI
+checkout and the merge-base-only snapshot path while retaining existing receipts.
+
 ## Diagnostic escalation economy
 
 The [repository validation owner](REPOSITORY-VALIDATION.md) binds V09. Before another expensive

@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { executionEnvironment, readRegular, safePath, snapshot, snapshotReader } from '../bin/agentic-os-test-inputs.mjs';
+import { pathToFileURL } from 'node:url';
+import { executionEnvironment, readGit, readRegular, safePath, snapshot, snapshotReader } from '../bin/agentic-os-test-inputs.mjs';
 import { runtimeDigest } from '../bin/agentic-os-validation.mjs';
 import { ciEvaluatorAllocation } from '../bin/agentic-os-tests.mjs';
 import { ciArguments } from '../bin/agentic-os-test-ci.mjs';
@@ -49,6 +50,35 @@ test('Git baseline is the merge base and a missing baseline fails', t => {
   assert.equal(observed.identity.baseRevision, f.base); assert.deepEqual(observed.changed, ['lane.txt']);
   assert.throws(() => f.observe({ base: 'missing' }), /blocked-test-git/);
   assert.throws(() => f.observe({ head: 'main' }), /checkout-head/);
+});
+test('CI uses the exact event baseline and hydrates only its shallow commit when absent', t => {
+  const f = fixture(t), temporary = mkdtempSync(join(tmpdir(), 'aos-shallow-ci-'));
+  t.after(() => rmSync(temporary, { recursive: true, force: true }));
+  f.git('switch', '-qc', 'event-base'); writeFileSync(join(f.root, 'event-base-only.txt'), 'base\n');
+  f.git('add', '.'); f.git('commit', '-qm', 'event baseline');
+  const baseline = f.git('rev-parse', 'HEAD');
+  f.git('switch', '-q', 'main'); writeFileSync(join(f.root, 'head-only.txt'), 'head\n');
+  f.git('add', '.'); f.git('commit', '-qm', 'event head');
+  const remote = join(temporary, 'source.git'), clone = join(temporary, 'clone');
+  execFileSync('git', ['init', '--quiet', '--bare', remote]);
+  f.git('remote', 'add', 'origin', pathToFileURL(remote).href);
+  f.git('push', '--quiet', 'origin', 'event-base:refs/heads/event-base', 'main:refs/heads/main');
+  execFileSync('git', ['clone', '--quiet', '--depth=1', '--branch=main',
+    pathToFileURL(remote).href, clone], { cwd: temporary });
+
+  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /fetch-depth: 1/u);
+  assert.match(workflow, /fetch --no-tags --no-recurse-submodules --depth=1 origin "\$base"/u);
+  assert.equal(readGit(clone, ['rev-parse', '--is-shallow-repository']).trim(), 'true');
+  assert.throws(() => readGit(clone, ['cat-file', '-e', `${baseline}^{commit}`]), /blocked-test-git/u);
+  execFileSync('git', ['fetch', '--no-tags', '--no-recurse-submodules', '--depth=1', 'origin', baseline], { cwd: clone });
+  assert.doesNotThrow(() => readGit(clone, ['cat-file', '-e', `${baseline}^{commit}`]));
+  assert.throws(() => snapshot({ root: clone, base: baseline, committed: true }), /blocked-test-git:merge-base/);
+  const exact = snapshot({ root: clone, base: baseline, committed: true, directBase: true });
+  assert.equal(exact.identity.baseRevision, baseline);
+  assert.equal(exact.identity.baseStrategy, 'provider-event');
+  assert.deepEqual(exact.changed, ['event-base-only.txt', 'head-only.txt']);
+  assert.throws(() => snapshot({ root: clone, base: baseline, directBase: true }), /blocked-test-direct-base-mode/);
 });
 test('test identity ignores unrelated shared refs but binds requested refs', t => {
   const f = fixture(t); f.git('switch', '-qc', 'lane');
