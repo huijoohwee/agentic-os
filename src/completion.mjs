@@ -10,7 +10,7 @@ import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupReco
 import { EFFECT_COST_POLICY, effectCostScopeDigest, normalizeEffectCostEvidence,
   validateEffectCostEvidenceVerification, validateStoredEffectCostEvidence,
   verifyEffectCostEvidence } from './effect-cost.mjs';
-export { EFFECT_COST_POLICY, effectCostScopeDigest } from './effect-cost.mjs';
+export { EFFECT_COST_POLICY, effectCostScopeDigest, validateEffectCostEvidenceVerification, verifyEffectCostEvidence } from './effect-cost.mjs';
 export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v4';
 export { VERIFIED_EFFECT_COST_EVIDENCE_SCHEMA } from './effect-cost.mjs';
 export const AUTHENTICATED_TRANSITION_SCHEMA =
