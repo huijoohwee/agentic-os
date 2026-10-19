@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Portfolio Cost Index"
 doc_type: "Cost Index"
-version: "1.1.1"
-date: "2026-10-01"
+version: "1.1.2"
+date: "2026-10-19"
 lang: "en-US"
 owner: "agentic-os"
 load_policy: "on-demand"
@@ -43,6 +43,13 @@ are outside this index's zero incremental paid-spend constraint. A free path is 
 when it has no billable usage or the provider enforces a hard USD 0 spend cap. A free allowance or
 below-quota usage snapshot alone does not prove zero cost. No row proves a payment, enforceable
 spend cap, free-quota headroom or a complete financial model.
+
+This rule applies to storage, compute, telemetry, CI and deployment effects across every repository
+and worktree. Usage-billed services such as Cloudflare R2 remain blocked unless the provider can
+enforce a USD 0 cap or deny the operation when free quota is exhausted. Included usage, current
+usage or billing snapshots, and budget alerts do not cap later requests. See Cloudflare's
+[usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/)
+and [R2 pricing](https://developers.cloudflare.com/r2/pricing/) for the provider's current terms.
 
 ## Cost continuity and budget view
 

@@ -21,11 +21,20 @@ export {
   validateAgenticGraphRequest,
 } from "./agentic-graph-mcp-contract.js";
 
-// MCP Streamable HTTP client. Every request, including initialization, requires
-// fresh provider-owned zero-cost evidence before the transport can send it.
+// Every MCP request requires fresh provider-owned zero-cost evidence.
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+const MONEY_BUDGET_FIELD = /(?:budget|spend|cost).*(?:usd|dollar)|(?:usd|dollar).*(?:budget|spend|cost)/u;
+function snapshotZeroCostArguments(value) {
+  return JSON.parse(JSON.stringify(value, (key, entry) => {
+    const normalizedKey = key.toLowerCase().replace(/[-_]/gu, "");
+    if (key && MONEY_BUDGET_FIELD.test(normalizedKey) && entry !== 0)
+      throw new AgenticGraphMcpError("MCP budget must be numeric USD 0", { code: "mcp_nonzero_budget" });
+    return entry;
+  }));
 }
 
 /** Fail closed when a Skill Evolution MCP reply is incomplete or unsafe. */
@@ -55,9 +64,7 @@ function normalizeExecutionMetadata(value) {
   return Object.freeze(Object.fromEntries(keys.map((key) => [key, value[key].trim()])));
 }
 
-/**
- * Parse a JSON or SSE MCP Streamable HTTP reply.
- */
+/** Parse a JSON or SSE MCP Streamable HTTP reply. */
 export function parseMcpReply(bodyText, contentType = "") {
   const text = typeof bodyText === "string" ? bodyText : "";
   const ct = String(contentType).toLowerCase();
@@ -93,9 +100,7 @@ export function parseMcpReply(bodyText, contentType = "") {
   }
 }
 
-/**
- * Extract structured tool content from a JSON-RPC response.
- */
+/** Extract structured tool content from a JSON-RPC response. */
 export function extractToolResult(rpc) {
   if (!isPlainObject(rpc)) {
     throw new AgenticGraphMcpError("empty MCP response", { code: "mcp_empty" });
@@ -124,15 +129,7 @@ export function extractToolResult(rpc) {
   return result;
 }
 
-/**
- * Create a agentic-graph MCP client bound to an endpoint.
- *
- * @param {object} opts
- * @param {string} opts.endpoint agentic-graph MCP Streamable HTTP endpoint
- * @param {(req: { url, method, headers, body }) => Promise<{ status, headers, text }>} [opts.fetchImpl]
- * @param {string} [opts.authToken] opaque caller bearer; never a model key
- * @param {Function} opts.verifyProviderCostEvidence trusted provider-side zero-cost verifier
- */
+/** Create an endpoint-bound MCP client with a provider-side zero-cost verifier. */
 export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken, verifyProviderCostEvidence } = {}) {
   if (typeof endpoint !== "string" || !endpoint.trim()) {
     throw new AgenticGraphMcpError(
@@ -208,6 +205,7 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken, ve
   }
 
   async function callTool(toolName, args = {}, { bearer, execution } = {}) {
+    const safeArgs = snapshotZeroCostArguments(args);
     const sessionId = await ensureSession({ bearer });
     const executionMetadata = normalizeExecutionMetadata(execution);
     const headers = {
@@ -224,7 +222,7 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken, ve
       method: "tools/call",
       params: {
         name: toolName,
-        arguments: args,
+        arguments: safeArgs,
         ...(executionMetadata
           ? { _meta: { "io.agentic-canvas-os/execution": executionMetadata } }
           : {}),

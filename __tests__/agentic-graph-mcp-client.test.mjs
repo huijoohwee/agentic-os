@@ -216,38 +216,17 @@ test("requires an endpoint", () => {
   assert.throws(() => createAgenticGraphMcpClient({}), AgenticGraphMcpError);
 });
 
-test("forwards tools/call and returns the structured Run_Manifest", async () => {
-  const seen = {};
-  const fetchImpl = async (req) => {
-    seen.req = req;
-    
-    // Handle initialization
-    if (req.body && req.body.method === "initialize") {
-      return {
-        status: 200,
-        headers: {
-          get: (n) => {
-            const lower = n.toLowerCase();
-            if (lower === "content-type") return "text/event-stream";
-            if (lower === "mcp-session-id") return "test-session-id";
-            return "";
-          }
-        },
-        text: async () => "",
-      };
-    }
-
-    return jsonResponse(200, rpcOk(req.body.id, { state: "blocked", approvalGates: [1, 2, 3, 4, 5] }));
-  };
-  const client = createTestClient({ endpoint: ENDPOINT, fetchImpl });
-  const manifest = await client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 25 });
-
-  assert.equal(seen.req.url, ENDPOINT);
-  assert.equal(seen.req.method, "POST");
-  assert.equal(seen.req.body.method, "tools/call");
-  assert.equal(seen.req.body.params.name, "agentic-graph.video_remix.run");
-  assert.equal(manifest.state, "blocked");
-  assert.equal(manifest.approvalGates.length, 5);
+test("blocks positive provider budgets before MCP initialization", async () => {
+  let fetchCalls = 0;
+  const client = createTestClient({ endpoint: ENDPOINT, fetchImpl: async () => {
+    fetchCalls += 1;
+    return jsonResponse(200, {});
+  } });
+  await assert.rejects(
+    () => client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 25 }),
+    (error) => error.code === "mcp_nonzero_budget",
+  );
+  assert.equal(fetchCalls, 0);
 });
 
 test("forwards the caller bearer (Auth_Token) but never a model key", async () => {
@@ -260,7 +239,7 @@ test("forwards the caller bearer (Auth_Token) but never a model key", async () =
     return jsonResponse(200, rpcOk(req.body.id, { state: "complete" }));
   };
   const client = createTestClient({ endpoint: ENDPOINT, fetchImpl, authToken: "tok-123" });
-  await client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 1 });
+  await client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 0 });
   assert.equal(authHeader, "Bearer tok-123");
 });
 
@@ -531,7 +510,7 @@ test("fail-closed on a non-2xx response", async () => {
     if (req.body && req.body.method === "initialize") return { status: 200, headers: { get: (n) => n.toLowerCase() === "mcp-session-id" ? "test-session-id" : "" }, text: async () => "" };
     return jsonResponse(503, "busy", "text/plain");
   } });
-  await assert.rejects(() => client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 1 }), (e) => {
+  await assert.rejects(() => client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 0 }), (e) => {
     assert.equal(e.code, "mcp_http_error");
     assert.equal(e.status, 503);
     return true;
@@ -546,7 +525,7 @@ test("fail-closed on a JSON-RPC error frame", async () => {
       return jsonResponse(200, { jsonrpc: "2.0", id: req.body.id, error: { code: -32000, message: "nope" } });
     }
   });
-  await assert.rejects(() => client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 1 }), (e) => {
+  await assert.rejects(() => client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 0 }), (e) => {
     assert.equal(e.code, "mcp_rpc_error");
     return true;
   });
