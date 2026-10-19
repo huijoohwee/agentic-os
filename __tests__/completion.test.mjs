@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { governanceDigest, integrate, retire } from '../src/governance.mjs';
 import {
+  EFFECT_COST_POLICY,
   createAuthenticatedTransitionOperationReceipt,
   createEffectPlan,
   effectPlanByteDigest,
@@ -87,6 +88,9 @@ test('effect plans have distinct semantic and exact-byte identities', () => {
   const bound = plan(), bytes = encodeEffectPlan(bound);
   assert.deepEqual(validateEffectPlan(bound), bound);
   assert.deepEqual(validateEffectPlanBytes(bytes), bound);
+  assert.deepEqual(bound.costPolicy, EFFECT_COST_POLICY);
+  assert.equal(bound.costPolicy.maxIncrementalSpendUsd, 0);
+  assert.equal(bound.costPolicy.unknownQuotaHeadroomDisposition, 'block');
   assert.match(bound.planDigest, /^[0-9a-f]{64}$/u);
   assert.match(effectPlanByteDigest(bytes), /^[0-9a-f]{64}$/u);
   assert.notEqual(bound.planDigest, effectPlanByteDigest(bytes));
@@ -100,6 +104,9 @@ test('effect plans have distinct semantic and exact-byte identities', () => {
     ...bound,
     allowedEffects: ['cleanup'],
   }), /disjoint/u);
+  assert.throws(() => createEffectPlan({ ...bound,
+    costPolicy: { ...EFFECT_COST_POLICY, maxIncrementalSpendUsd: 1 },
+  }), /zero-cost policy/u);
 });
 
 for (const operation of ['integrate', 'retire']) {

@@ -7,13 +7,13 @@ import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupReco
   createWorktreeCleanupContinuation, deriveCleanupOwnerStateDigest,
   validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan,
   worktreeCleanupPlanByteDigest } from './cleanup-records.mjs';
-export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v1';
+export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v2';
+export const EFFECT_COST_POLICY = Object.freeze({ schema: 'agentic-os/effect-cost-policy/v1', currency: 'USD', maxIncrementalSpendUsd: 0, paidPlansAllowed: false, addOnsAllowed: false, overagesAllowed: false, unknownCostDisposition: 'block', unknownQuotaHeadroomDisposition: 'block' });
 export const AUTHENTICATED_TRANSITION_SCHEMA =
   'agentic-os/authenticated-transition-operation-receipt/v1';
 const EFFECT = /^[a-z][a-z0-9-]{0,127}$/u;
 const PLAN_REFERENCE = /^effect-plan:sha256:([0-9a-f]{64})$/u;
-const PLAN_KEYS = Object.freeze(['schema', 'target', 'authority', 'candidateDigest', 'snapshotDigest', 'effectClass',
-  'allowedEffects', 'forbiddenEffects', 'parametersDigest', 'planDigest']);
+const PLAN_KEYS = Object.freeze(['schema', 'target', 'authority', 'candidateDigest', 'snapshotDigest', 'effectClass', 'allowedEffects', 'forbiddenEffects', 'parametersDigest', 'costPolicy', 'planDigest']);
 const TARGET_KEYS = Object.freeze(['repository', 'resource', 'immutableRevision']);
 const GRANT_KEYS = Object.freeze(['adapter', 'authenticatedSubject', 'providerRecordLocator', 'providerRecordDigest',
   'requestDigest', 'requestedTransition', 'planDigest', 'planByteDigest', 'sourceClaimId', 'sourceLeaseEpoch',
@@ -68,8 +68,8 @@ function authority(value) {
 export function createEffectPlan(input) {
   const source = snapshot(input);
   exact(source, PLAN_KEYS, 'effect plan input', false);
-  if (source.schema !== undefined && source.schema !== EFFECT_PLAN_SCHEMA)
-    fail('effect plan schema is invalid');
+  if (source.schema !== undefined && source.schema !== EFFECT_PLAN_SCHEMA
+    || source.costPolicy !== undefined && canonicalJson(source.costPolicy) !== canonicalJson(EFFECT_COST_POLICY)) fail('effect plan schema or zero-cost policy is invalid');
   const allowedEffects = strings(source.allowedEffects, 'allowedEffects', { nonempty: true });
   const forbiddenEffects = strings(source.forbiddenEffects, 'forbiddenEffects');
   if (allowedEffects.some((entry) => forbiddenEffects.includes(entry))) fail('allowedEffects and forbiddenEffects must be disjoint');
@@ -78,7 +78,7 @@ export function createEffectPlan(input) {
     target: target(source.target),
     authority: authority(source.authority),
     ...typedFields(source, 'candidateDigest snapshotDigest parametersDigest', digest),
-    effectClass: text(source.effectClass, 'effectClass'),
+    effectClass: text(source.effectClass, 'effectClass'), costPolicy: EFFECT_COST_POLICY,
     allowedEffects,
     forbiddenEffects,
   };
