@@ -67,7 +67,7 @@ test('CI uses the exact event baseline and hydrates only its shallow commit when
     pathToFileURL(remote).href, clone], { cwd: temporary });
 
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /fetch-depth: 1/u);
+  assert.match(workflow, /fetch-depth: 2/u);
   assert.match(workflow, /fetch --no-tags --no-recurse-submodules --depth=1 origin "\$base"/u);
   assert.equal(readGit(clone, ['rev-parse', '--is-shallow-repository']).trim(), 'true');
   assert.throws(() => readGit(clone, ['cat-file', '-e', `${baseline}^{commit}`]), /blocked-test-git/u);
