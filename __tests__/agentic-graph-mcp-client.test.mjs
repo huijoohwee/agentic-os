@@ -44,6 +44,33 @@ const DIGEST = Object.freeze({
   working: "7".repeat(64),
 });
 
+async function verifyTestZeroCost(scope) {
+  const observedAt = Date.parse(scope.observedAt);
+  return {
+    schema: "agentic-os/verified-effect-cost-evidence/v1",
+    status: "verified-zero-cost",
+    mode: "free-fail-closed",
+    provider: scope.provider,
+    scopeDigest: scope.scopeDigest,
+    billingPlan: "free",
+    providerHardCapUsd: null,
+    quotaExhaustion: "deny",
+    paidPlanActive: false,
+    addOnsActive: false,
+    overagesEnabled: false,
+    autoUpgradeEnabled: false,
+    verifiedAt: scope.observedAt,
+    expiresAt: new Date(observedAt + 60_000).toISOString(),
+  };
+}
+
+function createTestClient(options) {
+  return createAgenticGraphMcpClient({
+    ...options,
+    verifyProviderCostEvidence: verifyTestZeroCost,
+  });
+}
+
 function skillEvolutionSnapshot(overrides = {}) {
   return {
     schema: "agentic-graph-skill-evolution-result/v1",
@@ -212,7 +239,7 @@ test("forwards tools/call and returns the structured Run_Manifest", async () => 
 
     return jsonResponse(200, rpcOk(req.body.id, { state: "blocked", approvalGates: [1, 2, 3, 4, 5] }));
   };
-  const client = createAgenticGraphMcpClient({ endpoint: ENDPOINT, fetchImpl });
+  const client = createTestClient({ endpoint: ENDPOINT, fetchImpl });
   const manifest = await client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 25 });
 
   assert.equal(seen.req.url, ENDPOINT);
@@ -232,14 +259,14 @@ test("forwards the caller bearer (Auth_Token) but never a model key", async () =
     }
     return jsonResponse(200, rpcOk(req.body.id, { state: "complete" }));
   };
-  const client = createAgenticGraphMcpClient({ endpoint: ENDPOINT, fetchImpl, authToken: "tok-123" });
+  const client = createTestClient({ endpoint: ENDPOINT, fetchImpl, authToken: "tok-123" });
   await client.runVideoRemix({ referenceUrl: "https://x", brief: "b", budgetUsd: 1 });
   assert.equal(authHeader, "Bearer tok-123");
 });
 
 test("forwards gateway-owned execution identity in the idempotency header and MCP metadata", async () => {
   let toolRequest;
-  const client = createAgenticGraphMcpClient({
+  const client = createTestClient({
     endpoint: ENDPOINT,
     fetchImpl: async (req) => {
       if (req.body?.method === "initialize") {
@@ -269,7 +296,7 @@ test("forwards gateway-owned execution identity in the idempotency header and MC
 
 test("evolveSkill forwards the canonical resumable Skill Evolution tool", async () => {
   let toolRequest;
-  const client = createAgenticGraphMcpClient({
+  const client = createTestClient({
     endpoint: ENDPOINT,
     fetchImpl: async (req) => {
       if (req.body?.method === "initialize") {
@@ -467,7 +494,7 @@ test("Skill Evolution result validation enforces held-out identities and zero-wo
 });
 
 test("evolveSkill rejects an unsafe structured MCP result", async () => {
-  const client = createAgenticGraphMcpClient({
+  const client = createTestClient({
     endpoint: ENDPOINT,
     fetchImpl: async (req) => {
       if (req.body?.method === "initialize") {
@@ -500,7 +527,7 @@ test("extractToolResult reads a JSON text content block", () => {
 });
 
 test("fail-closed on a non-2xx response", async () => {
-  const client = createAgenticGraphMcpClient({ endpoint: ENDPOINT, fetchImpl: async (req) => {
+  const client = createTestClient({ endpoint: ENDPOINT, fetchImpl: async (req) => {
     if (req.body && req.body.method === "initialize") return { status: 200, headers: { get: (n) => n.toLowerCase() === "mcp-session-id" ? "test-session-id" : "" }, text: async () => "" };
     return jsonResponse(503, "busy", "text/plain");
   } });
@@ -512,7 +539,7 @@ test("fail-closed on a non-2xx response", async () => {
 });
 
 test("fail-closed on a JSON-RPC error frame", async () => {
-  const client = createAgenticGraphMcpClient({
+  const client = createTestClient({
     endpoint: ENDPOINT,
     fetchImpl: async (req) => {
       if (req.body && req.body.method === "initialize") return { status: 200, headers: { get: (n) => n.toLowerCase() === "mcp-session-id" ? "test-session-id" : "" }, text: async () => "" };
