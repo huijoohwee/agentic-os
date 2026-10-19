@@ -19,15 +19,15 @@ lifecycle_status: active
 ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 
 - Exact PRD/TAD/ADR ID/revision owns scope/acceptance/design/decision; stale joins block its transition.
-- Zero spend/FOSS; no paid tiers/overages. Free hosting is not FOSS; unknown cost/license blocks.
+- USD 0/effect; FOSS/free-tier; no paid plans/add-ons/overages; unknown cost/headroom/license blocks; free host != FOSS
 - START/resume Mission: link current codebase/workflow manifests; reuse evidence.
 - Universal START -> RELEASE -> DEPLOY; global cleanup, local mechanics.
 - Minimize time-to-production: smallest useful diff; fix owner/remove replacements.
-- Reuse covered authority; preflight first; never infer grants.
+- Reuse covered authority; preflight; never infer grants.
 - Sprint: TTP ETA, time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
 - One owner/candidate/effect; disjoint decision-changing work; reuse proof/event waits.
   Bounded stale rechecks: `../guides/VALIDATION-ECONOMY-EXECUTION.md` on demand.
-- Batch material changes/handoffs in implemented PRD/TAD/ADR/MVP/GTM; unchanged turns need no records.
+- Batch material changes/handoffs in PRD/TAD/ADR/MVP/GTM; no per-turn records.
 - Prompt: LF UTF-8 <=1,000 bytes; code points secondary; tokens advisory.
 - Declare always-load deltas; replace/lazy-load/reject.
 - Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.

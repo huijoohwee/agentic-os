@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40943, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40935, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -55,7 +55,7 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '37509b96918c423ce2e19a9b524798229dcd675fcc17a2677d2aa996a0a97c4e');
+    '4ef32bc0e928935808ef6fc8f2a75b6ecd5cef86d742cade19d1b318f1e0b3c6');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -63,6 +63,8 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
   const requirements = new Map([
     ['docs/adlc-guidelines.md', [
+      'USD 0/effect; FOSS/free-tier; no paid plans/add-ons/overages;',
+      'unknown cost/headroom/license blocks;',
       'START/resume Mission: link current codebase/workflow manifests; reuse evidence.',
       'Minimize time-to-production: smallest useful diff',
       'Sprint: TTP ETA, time/byte/module caps',
@@ -99,13 +101,13 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
-      'Free-tier/FOSS; no paid/addons/overages;',
+      'USD 0; FOSS/free-tier; no paid/add-ons/overages; unknown cost/headroom blocks; plans bind $0.',
       'No guesses/detours/duplicate checks;',
-      'Fix owner/reuse/remove replacements; contract-only shims.',
+      'Fix owners; reuse/remove; contract-only shims.',
       'Sprint: ETA+time/byte/module caps;',
       'lazy-load; refresh on drift.',
-      'One owner/candidate/effect; event waits; bounded stale recheck.',
-      'Update PRD-TAD-ADR-MVP-GTM on material change/handoff; no per-turn records.',
+      'One owner/candidate/effect; event waits; bounded recheck.',
+      'Update PRD-TAD-ADR-MVP-GTM for material changes; no per-turn.',
       'cleanup global/local; authority+green proof/effect/receipt.',
     ]],
     ['AGENTS.md', [
