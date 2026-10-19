@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.39"
+version: "1.4.40"
 date: "2026-10-19"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.39"
-tad_revision: "1.4.39"
-adr_revision: "1.4.39"
+prd_revision: "1.4.40"
+tad_revision: "1.4.40"
+adr_revision: "1.4.40"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--source-control-e2e"
-agent_id: "codex-source-provenance-baton"
+worktree_id: "device-0232231d4a19--source-control-orphan-recovery"
+agent_id: "codex-source-control-recovery"
 load_policy: "on-demand"
-verification_scope: "bind exact source-control preflight evidence through Dev-to-Production promotion of one immutable candidate"
+verification_scope: "bind exact source provenance through Dev-to-Production and safely recover a lost active-lane cache projection"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "93183ba8748e8168bf2ed1fe29a95c7a89ff1e46"
-mvp_revision: "1.4.39"
-gtm_revision: "1.4.39"
+mvp_revision: "1.4.40"
+gtm_revision: "1.4.40"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json);
@@ -604,6 +604,6 @@ Acceptance: `__tests__/user-cleanup-recovery.test.mjs` covers same-head green PR
 
 ### End-to-end source provenance — ADLC-SOURCE-001@0.1.0
 PRD: The bounded source-control preflight already runs before candidate build, but consumers may discard its successful report. Source revision alone does not retain the exact upstream pin, consumer tree, and lock match used to build and promote one artifact. Preserve one compact provenance baton through Dev and Production without adding another source store or source-control service.
-TAD/ADR: Apply the transferable online-metadata and bounded-checkout ideas in the supplied `source-control.md` while retaining Git as the portable source of truth and the existing GitHub provider adapter. Reuse current provider metadata for read-only ref/PR/check questions; hydrate only the exact shallow source needed for local byte/tree evidence. Run `agentic-os/source-control-preflight/v1` once before build, retain its exact JSON bytes and SHA-256 in the existing access-controlled candidate-evidence bundle, and bind that digest with the candidate. Public provenance views redact local checkout paths. Dev and Production receipts name the same source-report and immutable artifact digests. A rebuild or source/pin/tree drift creates a new candidate and needs its own checks and effect authority. Offline local evidence never implies fresh provider state. Do not add a VCS replacement, mirror, cache, daemon, service, dependency, or always-load instruction.
-MVP acceptance: incomplete or mismatched preflight evidence blocks before build or promotion; unchanged evidence is carried by digest without repeating source scans; both environment readbacks bind the same candidate and provenance digests; external/provider unavailability remains unknown and cannot produce a pass. Use the existing source-preflight and consumer release-contract checks; no independent controller or receipt store is introduced.
-Budget/economics: two existing guides, under 4 KiB added, 20 active minutes, zero runtime modules, dependencies, paid resources, or always-load bytes. Graph run `39146415576` measured source-control preflight under one second against a 9m23s verify stage; the subsequent deploy job failed while fetching an optional ONNX CUDA package, before any deployment. This source-control change does not claim to remove that dependency-network blocker or claim elapsed-time savings. Measure avoided source fetches and compatible end-to-end stage durations only after a consumer adopts the contract. Rollback is a protected revert of this section and the deploy-workflow refinement; retain all source and release receipts.
+TAD/ADR: Apply the bounded metadata and checkout ideas in the supplied `source-control.md` while retaining Git as the portable source of truth and the existing provider adapter. Reuse current provider metadata for read-only ref/PR/check questions; hydrate only exact shallow source needed for local byte/tree evidence. Run `agentic-os/source-control-preflight/v1` once before build, retain its exact JSON bytes and SHA-256 in the existing access-controlled candidate-evidence bundle, and bind that digest with the candidate. Public provenance views redact local checkout paths. Dev and Production receipts name the same source-report and immutable artifact digests. A rebuild or source/pin/tree drift creates a new candidate with new checks and effect authority; offline local evidence never implies fresh provider state. When START retained a valid mission/worktree but lost its best-effort lane-cache projection, `--readmit` may reconstruct only that cache row from the exact active initial allocation, clean canonical identity, unchanged base/head, unpublished lane, matching reservation digest, and in-scope dirty-byte inventory. The recovery receipt preserves authored bytes and grants no provider, integration, cleanup, or deployment authority. Do not add a VCS replacement, mirror, persistent cache, daemon, service, dependency, or always-load instruction.
+MVP acceptance: mismatched preflight blocks before build/promotion; unchanged evidence carries by digest; Dev and Prod readbacks bind the same candidate and provenance digests; provider unavailability cannot pass. A missing cache row recovers only from the exact mission allocation while wrong head, published refs, path/scope drift, dirty bytes outside scope, and missing source evidence fail closed. Tests verify bytes and refs remain unchanged. Reuse the source-preflight and consumer release-contract checks; add no receipt store or controller.
+Budget/economics: reuse the existing START observer and admission regression suite; add no source modules, dependency, test inventory entry, persistent cache, paid resource, or always-load bytes. Keep the change within existing aggregate module and line caps. Graph run `39146415576` measured source-control preflight under one second against a 9m23s verify stage; the subsequent deploy failed while fetching an optional CUDA package before deployment. This work does not remove that network blocker or claim end-to-end savings. Measure avoided fetches and matched stage durations after adoption. Rollback is a protected revert; retain source, dirty worktree, and release receipts.
