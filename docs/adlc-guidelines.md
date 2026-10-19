@@ -2,7 +2,7 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.4.3
+version: 1.4.4
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
@@ -19,8 +19,9 @@ lifecycle_status: active
 ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 
 - Exact PRD/TAD/ADR ID+revision binds scope, acceptance, design and decision; stale joins block.
-- USD 0/effect; FOSS/free-tier; no paid/add-ons/overages; unknown cost/headroom/license blocks; free host≠FOSS
-- Effects: scoped provider evidence verified before authority; quota snapshots fail; billable use needs hard $0 cap.
+- Global repo/worktree: USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.
+- Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
+  Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
 - START/resume Mission binds current code/workflow; reuse evidence.
 - START -> RELEASE -> DEPLOY; global cleanup, local mechanics.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
