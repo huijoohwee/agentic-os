@@ -74,16 +74,16 @@ expiry. Its trusted provider adapter must verify that evidence immediately befor
 runs and return a current zero-cost verification receipt that covers the complete authorization
 window. A below-quota usage view, budget alert, or owner-entered claim is not that receipt.
 
-Built-in runtime model and remote MCP calls use the same rule per request: the adapter obtains a
-current provider verification bound to the exact provider, resource, operation and request digest
-before sending the request. The exported Graph MCP client applies this gate to initialization and
-every tool request, including when called outside the Agent API; missing verifier configuration
-prevents client creation. The remote Agent Run client requires the same evidence for each HTTPS
-operation; its loopback-only transport remains available for local/offline execution. Default MCP
-fetch rejects redirects, and Agent Run uses manual redirect handling, so a verified endpoint cannot
-replay an unverified request elsewhere. Missing, stale, mismatched or non-zero evidence blocks the
-call. A caller-supplied spend flag, token estimate, or input budget does not replace provider
-verification.
+Built-in runtime model, skill-proposal and remote MCP calls use this rule per provider request: the
+adapter obtains current evidence bound to the exact provider, resource, operation and request digest
+before sending it. The exported Graph MCP client applies this gate to initialization and every tool
+request, including when called outside the Agent API. Missing verifier configuration blocks the
+request before transport. Default MCP fetch rejects redirects so a verified endpoint cannot replay
+an unverified request elsewhere. Missing, stale, mismatched or non-zero evidence blocks the call.
+The Agent Run client only transports requests to its selected runtime endpoint; it is not a provider
+cost authority. That executing runtime must verify provider evidence before each billable call.
+A caller-supplied spend flag, token estimate, HTTPS endpoint or input budget does not replace
+provider verification.
 The Agent API accepts only a USD 0 downstream request budget; consumers must enforce their own
 provider-side cap before executing it.
 

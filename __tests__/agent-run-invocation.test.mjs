@@ -19,17 +19,6 @@ const meta = { 'io.modelcontextprotocol/protocolVersion': MODERN_VERSION,
   'io.modelcontextprotocol/clientCapabilities': {} };
 const call = (name, args) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call',
   params: { name, arguments: args, _meta: meta } });
-async function verifyTestZeroCost(scope) {
-  const observedAt = Date.parse(scope.observedAt);
-  return { schema: 'agentic-os/verified-effect-cost-evidence/v1', status: 'verified-zero-cost',
-    mode: 'free-fail-closed', provider: scope.provider, scopeDigest: scope.scopeDigest,
-    billingPlan: 'free', providerHardCapUsd: null, quotaExhaustion: 'deny',
-    paidPlanActive: false, addOnsActive: false, overagesEnabled: false, autoUpgradeEnabled: false,
-    verifiedAt: scope.observedAt, expiresAt: new Date(observedAt + 60_000).toISOString() };
-}
-function createTestAgentRunClient(options) {
-  return createAgentRunClient({ ...options, verifyProviderCostEvidence: verifyTestZeroCost });
-}
 function directory(t) {
   const path = mkdtempSync(join(tmpdir(), 'run-invocation-'));
   t.after(() => rmSync(path, { recursive: true, force: true })); return path;
@@ -64,7 +53,7 @@ test('slash, MCP and portable browser client share all four bounded operation co
   assert.deepEqual(start.argv, ['start', `--input=${file}`]);
   const result = await runCli([start.command, ...start.argv], { cwd: path, env: environment, effectful: true });
   assert.equal(result.exitCode, 0); assert.equal(JSON.parse(result.stdout).status, 'running');
-  const client = createTestAgentRunClient({ endpoint: host.endpoint, getHeaders: () => ({ authorization: 'Bearer fixture-session' }) });
+  const client = createAgentRunClient({ endpoint: host.endpoint, getHeaders: () => ({ authorization: 'Bearer fixture-session' }) });
   assert.equal((await client.invoke('status', { runId: request.runId })).status, 'running');
   assert.equal((await work(runtime)).status, 'reconciling');
   let effectful = 0, observedOptions;
@@ -103,26 +92,26 @@ test('untrusted tools cannot choose endpoint, principal, credentials, shell, sig
   }
   assert.equal(resolveInvocation(['/run.start', '@input:request.json', '#read-only']).code, 'semantic-mismatch');
   for (const endpoint of ['http://example.com/api/', 'https://user:secret@example.com/', 'https://example.com/?secret=1'])
-    assert.throws(() => createTestAgentRunClient({ endpoint }));
+    assert.throws(() => createAgentRunClient({ endpoint }));
   await assert.rejects(runCli(['help'], { stdin: 'x'.repeat(200_001) }), /bounded/);
 });
 
 test('transport failure and server uncertainty retain unknown mutation outcome without automatic retry', async () => {
   let calls = 0;
-  const client = createTestAgentRunClient({ endpoint: 'https://runtime.example/api/agent-swarm/',
+  const client = createAgentRunClient({ endpoint: 'https://runtime.example/api/agent-swarm/',
     fetchImpl: async (_url, options) => { calls++; assert.equal(options.redirect, 'manual'); throw Error('private bearer details'); } });
   await assert.rejects(client.invoke('start', request), error => {
     assert.equal(error.writeResultUnknown, true); assert.equal(error.message.includes('private'), false); return true;
   });
   assert.equal(calls, 1);
   await assert.rejects(client.invoke('status', { runId: request.runId }), { writeResultUnknown: false });
-  const unavailable = createTestAgentRunClient({ endpoint: 'https://runtime.example/api/', fetchImpl: async () => Response.json({}, { status: 503 }) });
+  const unavailable = createAgentRunClient({ endpoint: 'https://runtime.example/api/', fetchImpl: async () => Response.json({}, { status: 503 }) });
   assert.equal((await unavailable.invoke('start', request)).writeResultUnknown, true);
   const mcp = await handleRequest(call('run.start', request), {
     runCli: async () => ({ exitCode: 1, stdout: JSON.stringify({ writeResultUnknown: true }), stderr: '' }),
   });
   assert.equal(mcp.result.structuredContent.writeResultUnknown, true);
-  const anonymous = createTestAgentRunClient({ endpoint: 'https://runtime.example/api/', fetchImpl: async () => Response.json({}, { status: 401 }) });
+  const anonymous = createAgentRunClient({ endpoint: 'https://runtime.example/api/', fetchImpl: async () => Response.json({}, { status: 401 }) });
   assert.equal((await anonymous.invoke('status', { runId: request.runId })).reasonCode, 'principal_expired');
 });
 
@@ -148,7 +137,7 @@ test('query, trace, evaluation and comparison share CLI, MCP and browser authori
     assert.equal(access.principalId, context.principalId);
     return { status: 'completed', ...(value.runId ? { runId: value.runId } : {}), operation };
   }]));
-  const host = await server(t, runtime), client = createTestAgentRunClient({ endpoint: host.endpoint,
+  const host = await server(t, runtime), client = createAgentRunClient({ endpoint: host.endpoint,
     getHeaders: () => ({ authorization: 'Bearer fixture-session' }) });
   for (const [operation, input] of Object.entries(inputs)) {
     const mutation = operation === 'evaluate';

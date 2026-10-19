@@ -141,20 +141,8 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken, ve
     );
   }
   const url = endpoint.trim();
-  if (typeof verifyProviderCostEvidence !== "function") {
-    throw new AgenticGraphMcpError(
-      "trusted provider cost evidence verifier is required",
-      { code: "mcp_cost_evidence_verifier_missing" },
-    );
-  }
-  const doFetch = fetchImpl || (typeof globalThis.fetch === "function"
-    ? (request) => globalThis.fetch(request.url, {
-      method: request.method,
-      headers: request.headers,
-      body: JSON.stringify(request.body),
-      redirect: "error",
-    })
-    : null);
+  const doFetch = fetchImpl || (typeof globalThis.fetch === "function" ? (request) => globalThis.fetch(request.url,
+    { method: request.method, headers: request.headers, body: JSON.stringify(request.body), redirect: "error" }) : null);
   if (!doFetch) {
     throw new AgenticGraphMcpError(
       "no fetch transport available",
@@ -165,17 +153,10 @@ export function createAgenticGraphMcpClient({ endpoint, fetchImpl, authToken, ve
   let nextId = 1;
   let mcpSessionId = null;
 
-  async function fetchWithCostEvidence(request) {
-    const requestUrl = new URL(request.url);
-    await verifyProviderCostBeforeCall({
-      provider: "remote-mcp",
-      effect: "mcp-request",
-      resource: requestUrl.origin,
-      request: { url: requestUrl.toString(), method: request.method, body: request.body },
-      verifyProviderCostEvidence,
-    });
-    return doFetch(request);
-  }
+  const resource = new URL(url).origin;
+  const fetchWithCostEvidence = (request) => verifyProviderCostBeforeCall({ provider: "remote-mcp",
+    effect: "mcp-request", resource, request: { url, method: request.method, body: request.body },
+    verifyProviderCostEvidence }).then(() => doFetch(request));
 
   async function ensureSession({ bearer } = {}) {
     if (mcpSessionId) return mcpSessionId;
