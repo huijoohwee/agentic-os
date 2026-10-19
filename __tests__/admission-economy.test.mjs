@@ -6,7 +6,7 @@ import { join, basename, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { checkoutCapacity, cmdStart } from '../bin/agentic-os-admission.mjs';
+import { applyLaneRebind, checkoutCapacity, cmdStart, planLaneRebind } from '../bin/agentic-os-admission.mjs';
 import { collectWorkflowValue, readSelectedWorkflow, startWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
@@ -537,4 +537,47 @@ test('historical larger allowances remain readable but effective admission is ca
   assert.equal(selected.manifest.execution.checkoutLimit, 32);
   assert.equal(checkoutCapacity(selected, f.profile.repository, worktrees(f.root)).limit, 5);
   assert.equal(readFileSync(selected.path, 'utf8'), bytes);
+});
+
+test('START readmit restores only a missing cache row bound by its exact mission and preserves authored bytes', async t => {
+  for (const outside of [false, true]) {
+    const f = fixture(t);
+    assert.equal(await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
+    const mission = f.selected(), row = mission.manifest.allocations[0];
+    records.remove(row.ref, f.root);
+    const owned = join(row.path, outside ? 'outside.txt' : 'owned.txt');
+    writeFileSync(owned, 'keep this local edit\n');
+    const attempt = f.start('one', `--mission=${mission.path}`, '--readmit', `--expected-head=${row.baseRevision}`);
+    if (outside) {
+      await assert.rejects(attempt, /Preserve authored bytes outside the current reservation/); assert.equal(records.get(row.ref, f.root), null);
+      assert.equal(readFileSync(owned, 'utf8'), 'keep this local edit\n');
+    } else {
+      assert.equal(await attempt, 0); assert.equal(records.get(row.ref, f.root).state, 'active');
+      assert.equal(readFileSync(owned, 'utf8'), 'keep this local edit\n');
+      assert.equal(f.events.some(line => line.includes('lane-mission-recovery/v1')
+        && line.includes('"deploymentAuthority":false')), true);
+    }
+  }
+});
+
+test('mounted lane rebind restores one missing cache row from exact authored bytes at the protected base', async t => {
+  const f = fixture(t);
+  assert.equal(await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
+  const row = f.selected().manifest.allocations[0], bytes = 'authored recovery bytes\n';
+  records.remove(row.ref, f.root); writeFileSync(join(row.path, 'owned.txt'), bytes);
+  const plan = planLaneRebind({ cwd: f.root, ref: row.ref, mode: 'recertify',
+    base: f.policy.protectedRef, baseSha: row.baseRevision, targetPath: row.path,
+    expectedHead: row.baseRevision, createdAt: '2026-10-19T00:00:00.000Z' });
+  assert.equal(plan.previousRecordSha256, hash('null'));
+  assert.deepEqual(plan.writePathsAfter, ['owned.txt']);
+  assert.equal(plan.restoredDirtyState, 'exact-local-inventory');
+  assert.equal(records.get(row.ref, f.root), null);
+  const planPath = join(f.parent, 'mounted-rebind-plan.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  const receipt = applyLaneRebind({ cwd: f.root, planPath,
+    authorization: `agentic-os:lane-rebind:${plan.digest}`, stopped: true });
+  assert.equal(receipt.authoredBytesPreserved, true);
+  assert.equal(records.get(row.ref, f.root).state, 'active');
+  assert.deepEqual(records.get(row.ref, f.root).writePaths, ['owned.txt']);
+  assert.equal(readFileSync(join(row.path, 'owned.txt'), 'utf8'), bytes);
 });
