@@ -34,18 +34,20 @@ import {
   workflowMergeGroupChecks,
 } from '../src/queue.mjs';
 
-function queueProfile(repository = 'github.com/owner/repo') {
+function queueProfile(repository = 'github.com/owner/repo', { includeMergeQueue = true } = {}) {
   return createRepositoryProfile({
     repository,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' },
       provider: { id: 'github', version: '1' } },
     requiredChecks: ['test', 'budgets'],
-    capabilities: [PROVIDER_CAPABILITIES.PULL_REQUEST, PROVIDER_CAPABILITIES.MERGE_QUEUE,
+    capabilities: [PROVIDER_CAPABILITIES.PULL_REQUEST,
+      ...(includeMergeQueue ? [PROVIDER_CAPABILITIES.MERGE_QUEUE] : []),
       PROVIDER_CAPABILITIES.SQUASH, PROVIDER_CAPABILITIES.LINEAR_HISTORY],
   });
 }
 const TEST_PROFILE = queueProfile();
+const PROVIDER_IDENTITY_PROFILE = queueProfile('github.com/owner/repo', { includeMergeQueue: false });
 const TEST_POLICY = providerPolicy(TEST_PROFILE);
 
 test('pre-push rejects a lane update targeting profile canonical trunk', (t) => {
@@ -349,7 +351,7 @@ test('provider observation pins every call to the Git origin despite GH_REPO and
       if (args[1] === 'repos/owner/repo/branches/main/protection') return {};
       return assert.fail(`unbound provider target: ${args.join(' ')}`);
     };
-    const state = observe({ cwd, profile: TEST_PROFILE, provider, providerAvailable: () => true });
+    const state = observe({ cwd, profile: PROVIDER_IDENTITY_PROFILE, provider, providerAvailable: () => true });
     assert.equal(state.repo, 'github.com/owner/repo');
     assert.deepEqual(state.observationErrors, []);
     const repoView = calls.find((args) => args[0] === 'repo');

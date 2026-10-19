@@ -139,14 +139,14 @@ export function snapshotReader(options) {
   const cache = { committed: new Map(), working: new Map() };
   return () => snapshot(options, cache);
 }
-export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed = false }, cache = null) {
+export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed = false, directBase = false }, cache = null) {
   root = realpathSync(root);
-  if (resolve(readGit(root, ['rev-parse', '--show-toplevel']).trim()) !== root)
-    throw new Error('blocked-test-repository-root');
+  if (resolve(readGit(root, ['rev-parse', '--show-toplevel']).trim()) !== root) throw new Error('blocked-test-repository-root');
+  if (directBase && !committed) throw new Error('blocked-test-direct-base-mode');
   const headRevision = oid(root, head), requestedBase = oid(root, base);
   const actualHead = oid(root, 'HEAD');
   if (actualHead !== headRevision) throw new Error('blocked-test-checkout-head');
-  const bases = readGit(root, ['merge-base', '--all', requestedBase, headRevision]).trim().split('\n');
+  const bases = directBase ? [requestedBase] : readGit(root, ['merge-base', '--all', requestedBase, headRevision]).trim().split('\n');
   if (bases.length !== 1 || !sha(bases[0])) throw new Error('blocked-test-merge-base');
   const baseRevision = bases[0], before = committedFiles(root, baseRevision, cache?.committed);
   const headFiles = committedFiles(root, headRevision, cache?.committed), after = worktreeFiles(root, cache?.working);
@@ -160,7 +160,7 @@ export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed 
   // invalidate an otherwise stable check running on this worktree.
   const refsDigest = hash(JSON.stringify({ base: { selector: base, revision: requestedBase },
     head: { selector: head, revision: headRevision }, checkout: actualHead }));
-  const identity = { root, requestedBase, baseRevision, headRevision,
+  const identity = { root, requestedBase, baseRevision, baseStrategy: directBase ? 'provider-event' : 'merge-base', headRevision,
     baseTree: readGit(root, ['rev-parse', `${baseRevision}^{tree}`]).trim(),
     headTree: readGit(root, ['rev-parse', `${headRevision}^{tree}`]).trim(),
     sourceDigest: manifestDigest(after),

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensurePinnedCommit } from './helpers/exact-pinned-source.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const index = JSON.parse(readFileSync(join(root, 'catalog/costs.json')));
@@ -27,6 +28,7 @@ function observe(repo, ref, roots) {
   const origin = git(checkout, 'config', '--get', 'remote.origin.url')
     .replace(/\.git$/u, '').replace(/^git@github\.com:/u, 'github.com/').replace(/^https:\/\//u, '');
   assert.equal(origin, repo);
+  ensurePinnedCommit(checkout, ref.revision);
   return git(checkout, 'show', `${ref.revision}:${ref.path}`);
 }
 
