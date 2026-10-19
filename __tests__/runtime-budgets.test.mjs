@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40914, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40955, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -55,7 +55,7 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '170463003e95eef2ec5d4045f088f1c17398d320820d0436e36a9f2cb10c43de');
+    'c244e81743133adf44cd831f77bdfabf8e9487b2c043a66f45afd474c8bf421d');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -63,9 +63,9 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
   const requirements = new Map([
     ['docs/adlc-guidelines.md', [
-      'USD 0/effect; FOSS/free-tier; no paid/add-ons/overages;',
-      'unknown cost/headroom/license blocks;',
-      'Effects: scoped provider evidence verified before authority; quota snapshots fail; billable use needs hard $0 cap.',
+      'USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.',
+      'Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.',
+      'Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.',
       'START/resume Mission binds current code/workflow; reuse evidence.',
       'Minimize time-to-production: smallest useful diff; fix owners, remove replacements.',
       'Sprint: TTP ETA+time/byte/module caps; refresh on drift.',
@@ -155,7 +155,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.4.3', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.4.4', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',

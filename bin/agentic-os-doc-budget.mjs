@@ -48,7 +48,7 @@ const RUNTIME_FRONTMATTER_CONTRACT = Object.freeze({
   schema: 'agentic-os/adlc-guidelines/v1',
   title: 'ADLC Guidelines',
   doc_type: 'guidelines',
-  version: '1.4.3',
+  version: '1.4.4',
   owner: 'agentic-os',
   universal_scope: 'true',
   supersedes: 'agentic-sdlc',
