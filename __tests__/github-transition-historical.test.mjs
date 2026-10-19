@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { canonicalJson, governanceDigest, integrate, retire } from '../src/governance.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { createGitHubTransitionInput, createGitHubStoredTransition, deriveGitHubTransitionInputDigest, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA, validateGitHubTransitionPolicy, validateTransitionProviderProof } from '../src/github-transition-policy.mjs';
@@ -31,8 +32,8 @@ const fixture = (change = () => {}) => integrationFixture(state => { configure(s
 
 async function publish(fx) {
   const winner = await publishGitHubTransitionAuthority(fx.common);
-  const receipt = await createAuthenticatedTransitionOperationReceipt({ request: fx.final.request,
-    planBytes: fx.final.planBytes }, createGitHubTransitionAuthorityVerifier(fx.common), { now: () => NOW });
+  const receipt = await replayAuthenticatedTransitionOperationReceipt({ request: fx.final.request,
+    planBytes: fx.final.planBytes }, createGitHubTransitionAuthorityVerifier(fx.common));
   return { winner, receipt };
 }
 test('historical facts authenticate content with a distinct proof and no invented suite', async () => {

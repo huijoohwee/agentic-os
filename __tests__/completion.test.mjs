@@ -3,14 +3,17 @@ import assert from 'node:assert/strict';
 import { governanceDigest, integrate, retire } from '../src/governance.mjs';
 import {
   EFFECT_COST_POLICY,
-  createAuthenticatedTransitionOperationReceipt,
-  createEffectPlan,
+  createAuthenticatedTransitionOperationReceipt as createRawTransitionReceipt,
+  effectCostScopeDigest,
   effectPlanByteDigest,
   encodeEffectPlan,
   validateAuthenticatedTransitionOperationReceipt,
   validateEffectPlan,
   validateEffectPlanBytes,
 } from '../src/completion.mjs';
+import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
+  createTestEffectPlan as createEffectPlan, verifyTestEffectCost } from './lib/effect-cost-fixtures.mjs';
+import { createEffectPlan as createRawEffectPlan } from '../src/completion.mjs';
 
 const hash = (character) => character.repeat(64);
 const NOW = Date.parse('2026-09-02T00:40:00.000Z');
@@ -78,8 +81,9 @@ const grant = (input, overrides = {}) => ({
   resultFenceRevision: hash('3'),
   resultState: input.request.requestedTransition === 'integrate' ? 'integrated' : 'retired',
   operationReceiptDigest: hash('5'),
-  transitionedAt: '2026-09-02T00:25:00.000Z',
-  verifiedAt: '2026-09-02T00:30:00.000Z',
+  costEvidenceVerification: input.costEvidenceVerification,
+  transitionedAt: '2026-09-02T00:40:00.000Z',
+  verifiedAt: '2026-09-02T00:40:00.000Z',
   expiresAt: '2026-09-02T00:50:00.000Z',
   ...overrides,
 });
@@ -89,7 +93,13 @@ test('effect plans have distinct semantic and exact-byte identities', () => {
   assert.deepEqual(validateEffectPlan(bound), bound);
   assert.deepEqual(validateEffectPlanBytes(bytes), bound);
   assert.deepEqual(bound.costPolicy, EFFECT_COST_POLICY);
+  assert.equal(bound.schema, 'agentic-os/effect-plan/v4');
+  assert.equal(bound.costPolicy.schema, 'agentic-os/effect-cost-policy/v2');
   assert.equal(bound.costPolicy.maxIncrementalSpendUsd, 0);
+  assert.equal(bound.costPolicy.billableUsageRequiresProviderHardCap, true);
+  assert.equal(bound.costPolicy.providerHardCapUsd, 0);
+  assert.equal(bound.costPolicy.freeQuotaOnlyEvidenceSufficient, false);
+  assert.equal(bound.costEvidence.scopeDigest, effectCostScopeDigest(bound));
   assert.equal(bound.costPolicy.unknownQuotaHeadroomDisposition, 'block');
   assert.match(bound.planDigest, /^[0-9a-f]{64}$/u);
   assert.match(effectPlanByteDigest(bytes), /^[0-9a-f]{64}$/u);
@@ -107,6 +117,19 @@ test('effect plans have distinct semantic and exact-byte identities', () => {
   assert.throws(() => createEffectPlan({ ...bound,
     costPolicy: { ...EFFECT_COST_POLICY, maxIncrementalSpendUsd: 1 },
   }), /zero-cost policy/u);
+  assert.throws(() => createEffectPlan({ ...bound,
+    costPolicy: { ...EFFECT_COST_POLICY, freeQuotaOnlyEvidenceSufficient: true },
+  }), /zero-cost policy/u);
+  assert.throws(() => validateEffectPlan({ ...bound, schema: 'agentic-os/effect-plan/v2' }),
+    /schema or zero-cost policy/u);
+  const { costEvidence: _omittedCostEvidence, ...withoutCostEvidence } = bound;
+  assert.throws(() => createRawEffectPlan(withoutCostEvidence), /effect cost evidence is required/u);
+  assert.throws(() => createRawEffectPlan({ ...bound, costEvidence: {
+    ...bound.costEvidence, mode: 'provider-hard-cap', providerHardCapUsd: null,
+  } }), /zero-cost, no-overage disposition/u);
+  assert.throws(() => createRawEffectPlan({ ...bound, costEvidence: {
+    ...bound.costEvidence, scopeDigest: hash('9'),
+  } }), /exact effect scope/u);
 });
 
 for (const operation of ['integrate', 'retire']) {
@@ -143,7 +166,7 @@ test('authenticated transitions fail closed on authority, time, plan, and outcom
     { now: () => NOW }), /request, plan, source, or window/u);
   await assert.rejects(createAuthenticatedTransitionOperationReceipt(
     input, async (observed) => grant(observed, { expiresAt: '2026-09-02T00:40:00.000Z' }),
-    { now: () => NOW }), /request, plan, source, or window/u);
+    { now: () => NOW }), /times are invalid|request, plan, source, or window/u);
   await assert.rejects(createAuthenticatedTransitionOperationReceipt({
     ...input, planBytes: Buffer.concat([input.planBytes, Buffer.from('\n')]),
   }, async (observed) => grant(observed), { now: () => NOW }), /canonical bytes/u);
@@ -155,6 +178,20 @@ test('authenticated transitions fail closed on authority, time, plan, and outcom
     { now: () => NOW }), /request, plan, source, or window/u);
   await assert.rejects(createAuthenticatedTransitionOperationReceipt(
     input, null, { now: () => NOW }), /verifier is required/u);
+  await assert.rejects(createRawTransitionReceipt(input, async (observed) => grant(observed),
+    { now: () => NOW }), /provider cost evidence verifier/u);
+  await assert.rejects(createRawTransitionReceipt(input, async (observed) => {
+    const { costEvidenceVerification: _missing, ...unbound } = grant(observed);
+    return unbound;
+  }, { now: () => NOW, verifyCostEvidence: verifyTestEffectCost }), /fields are invalid/u);
+  let authorityCalls = 0;
+  await assert.rejects(createAuthenticatedTransitionOperationReceipt(input,
+    async (observed) => { authorityCalls += 1; return grant(observed); }, {
+      now: () => NOW,
+      verifyCostEvidence: async ({ evidence }) => ({ ...verifyTestEffectCost({ evidence }),
+        status: 'unverified' }),
+    }), /cost evidence/u);
+  assert.equal(authorityCalls, 0, 'authority operation must not run before cost evidence verifies');
   let calls = 0;
   await assert.rejects(createAuthenticatedTransitionOperationReceipt(
     input, async (observed) => grant(observed),
@@ -162,6 +199,8 @@ test('authenticated transitions fail closed on authority, time, plan, and outcom
   /moved backwards/u);
   const valid = await createAuthenticatedTransitionOperationReceipt(input,
     async (observed) => grant(observed), { now: () => NOW });
+  assert.equal(valid.authorityOperation.costEvidenceVerification.verifiedAt,
+    '2026-09-02T00:40:00.000Z');
   const forged = JSON.parse(JSON.stringify(valid));
   forged.authorityOperation.resultLeaseEpoch += 1;
   forged.transitionReceipt.resultLeaseEpoch += 1;

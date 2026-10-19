@@ -26,7 +26,7 @@ export const RUNTIME_PROMPT_CONTRACT = Object.freeze({
   path: 'guides/SYSTEM-PROMPT-RUNTIME.md',
   exactBytes: 999,
   maxBytes: 1_000,
-  sha256: '4ef32bc0e928935808ef6fc8f2a75b6ecd5cef86d742cade19d1b318f1e0b3c6',
+  sha256: '170463003e95eef2ec5d4045f088f1c17398d320820d0436e36a9f2cb10c43de',
 });
 
 const EXPECTED_CI_BUDGETS_JOB = Object.freeze([
@@ -48,7 +48,7 @@ const RUNTIME_FRONTMATTER_CONTRACT = Object.freeze({
   schema: 'agentic-os/adlc-guidelines/v1',
   title: 'ADLC Guidelines',
   doc_type: 'guidelines',
-  version: '1.4.1',
+  version: '1.4.3',
   owner: 'agentic-os',
   universal_scope: 'true',
   supersedes: 'agentic-sdlc',
@@ -171,7 +171,7 @@ export function runtimeContractViolations(root = ROOT) {
       'bind the real unique YAML field to the reviewed upstream runtime contract',
     ));
   }
-  const evalRule = '- Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.';
+  const evalRule = '- Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.';
   if (!guideline.split('\n').includes(evalRule)) found.push(contractFailure(
     'runtime-evaluator-rule', 'docs/adlc-guidelines.md', 'missing active rule', evalRule,
     'keep one exact active routing rule outside comments',

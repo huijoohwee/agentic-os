@@ -16,6 +16,8 @@ Guides: [authority](../guides/CLEANUP-AUTHORITY.md), [local](../guides/USER-CLEA
 Effect plans bind target, candidate, snapshot, predecessor, authority, closed effects and parameters.
 Requests cite `effect-plan:sha256:<planByteDigest>` once. Only live adapters authenticate GitHub with bound policy.
 
+Effect plan v4 requires current provider-verified cost evidence; details: [COSTS](../guides/COSTS.md).
+
 ## Read-only authority dispatch
 
 The ACOS Actions workflows validate authority inputs only. They have no publication token, network result,

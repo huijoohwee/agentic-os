@@ -77,6 +77,7 @@ test('package exports stable public, adapter, and explicit migration-contract su
   assert.equal(typeof githubAuthorityIssuer.verifyGitHubAuthorityIssuanceLive, 'function');
   assert.equal(Object.keys(githubAuthorityIssuer).some((name) => /publish|write/iu.test(name)), false);
   assert.equal(typeof completion.createEffectPlan, 'function');
+  assert.equal(typeof completion.effectCostScopeDigest, 'function');
   assert.equal(typeof completion.createAuthenticatedTransitionOperationReceipt, 'function');
   assert.equal(typeof authorityClient.createGitHubAuthorityReadProvider, 'function');
   assert.equal(typeof authorityClient.deriveGitHubAuthorityRunName, 'function');

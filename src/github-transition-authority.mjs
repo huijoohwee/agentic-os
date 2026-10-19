@@ -4,6 +4,7 @@ import { canonicalJson } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt }
   from './completion.mjs';
+import { validateStoredEffectCostEvidence, verifyEffectCostEvidence } from './effect-cost.mjs';
 import {
   GITHUB_TRANSITION_READ_ADAPTER, createGitHubStoredTransition,
   deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest,
@@ -20,12 +21,12 @@ function same(left, right) { return canonicalJson(left) === canonicalJson(right)
 function repository(value) {
   return parseGitHubRepositoryIdentity(value, 'GitHub transition authority repository').repository;
 }
-function clock(value) {
+function clock(value, request) {
   const now = value ?? Date.now;
   if (typeof now !== 'function') fail('GitHub transition authority requires a trusted clock');
   let prior = null;
   return () => {
-    const result = now();
+    const result = now(request);
     if (!Number.isSafeInteger(result) || result < 0 || prior !== null && result < prior)
       fail('GitHub transition authority clock is invalid or moved backwards');
     prior = result; return result;
@@ -143,6 +144,7 @@ function grant(state) {
     resultClaimId: request.claimId, resultLeaseEpoch: request.leaseEpoch + 1,
     resultFenceRevision: state.stored.coordinate,
     resultState: request.requestedTransition === 'integrate' ? 'integrated' : 'retired',
+    costEvidenceVerification: state.stored.costEvidenceVerification,
     operationReceiptDigest: state.publicationDigest, transitionedAt: state.committedAt,
     verifiedAt: state.committedAt, expiresAt: request.expiresAt });
 }
@@ -176,6 +178,8 @@ async function bindRetirement(input, observation, policy) {
 }
 async function verifyWinner(provider, expected, state, terminal) {
   exactState(state, expected);
+  validateStoredEffectCostEvidence(state.stored.operationInput.plan, state.stored.operationInput.request,
+    state.stored.costEvidenceVerification, state.committedAt);
   await provider.readPolicy(state.stored.policy, state.stored.workflowRun.workflowRevision);
   const workflow = await provider.observeWorkflow(state.stored.workflowRun,
     state.stored.operationInputDigest,
@@ -204,10 +208,13 @@ export async function prepareGitHubIntegrationProviderProof(value) {
 
 /** Publish one source-coordinate winner. Exact replays return the same publication. */
 export async function publishGitHubTransitionAuthority(value) {
-  const expected = configured(value), provider = providerFor(value, expected), now = clock(value.now);
+  const expected = configured(value), provider = providerFor(value, expected),
+    now = clock(value.now, expected.operationInput.request);
   await provider.readPolicy(expected.policy, expected.workflowRun.workflowRevision);
   let state = await provider.readPublication(expected.coordinate);
   if (state !== null) return verifyWinner(provider, expected, state, true);
+  if (typeof value.verifyCostEvidence !== 'function')
+    fail('GitHub transition publication requires a trusted provider cost evidence verifier');
   current(now, expected.operationInput);
   const operationInputDigest = deriveGitHubTransitionInputDigest(expected.operationInput);
   const workflow = await provider.observeWorkflow(expected.workflowRun, operationInputDigest,
@@ -217,12 +224,14 @@ export async function publishGitHubTransitionAuthority(value) {
   await bindRetirement(expected.operationInput, observation, expected.policy);
   sourceWindow(expected.operationInput, workflow.startedAt, observation.proof,
     observation.predecessor);
+  const costEvidenceVerification = await verifyEffectCostEvidence(expected.operationInput.plan,
+    expected.operationInput.request, { now, verifyCostEvidence: value.verifyCostEvidence });
   const stored = createGitHubStoredTransition({
     authorityRepository: expected.authorityRepository,
     targetRepository: expected.targetRepository, operationInput: expected.operationInput,
     workflowRun: expected.workflowRun, workflowStartedAt: workflow.startedAt,
     workflowCompletedAt: workflow.completedAt, policy: expected.policy,
-    providerProof: observation.proof,
+    providerProof: observation.proof, costEvidenceVerification,
   });
   current(now, expected.operationInput);
   state = await provider.publishStored(stored);

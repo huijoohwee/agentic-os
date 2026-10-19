@@ -23,8 +23,9 @@ export const BUDGET = Object.freeze({
   // 2026-10-17 ADLC-START-LOCK-001: one lazy recovery owner; keep filesystem recovery off every CLI invocation.
   // 2026-10-17 STORAGE-001: +52 existing-owner lines revalidate lock inputs and a staged dependency copy after HEAD-only movement; 2026-10-18 selected-source proof adds 23 src/43 bin lines to bind non-ancestral recovery to exact journals and refs, with no new module, dependency or runtime delta.
   // 2026-10-18: +34 existing-owner lines bind a replaced successor handoff to its exact retained predecessor, remote ref, transplant journal and source ancestry; 2026-10-19 cross-base readmission adds +9 src/+9 bin lines for exact old-base/head ancestry and immutable allocation pins; no new module or dependency.
-  modules: 50,
-  totalLines: 15867,
+  // 2026-10-19: one effect-cost owner validates scoped provider evidence before authority (+174 src lines).
+  modules: 51,
+  totalLines: 16041,
   perModuleLines: 400,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the

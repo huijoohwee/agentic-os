@@ -19,10 +19,10 @@ import {
 import { issueGitHubAuthority, verifyGitHubAuthorityIssuanceLive } from
   '../src/github-authority-operation.mjs';
 import {
-  createEffectPlan,
   effectPlanByteDigest,
   encodeEffectPlan,
 } from '../src/completion.mjs';
+import { createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import {
   createGitHubAuthorityLiveVerificationReceipt,
   validateGitHubAuthorityLiveVerificationReceipt,

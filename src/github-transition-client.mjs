@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest, validateCoordinationRequest } from './governance.mjs';
 import { validateEffectPlan } from './completion.mjs';
+import { validateEffectCostEvidenceVerification } from './effect-cost.mjs';
 import { GITHUB_RETROSPECTIVE_RECOVERY_MODE, parseGitHubRepositoryIdentity } from './github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from './github-authority-issuer.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS, RECORD_ONLY_RETIREMENT_EFFECTS, RECORD_ONLY_RETIREMENT_RETAINED_EFFECTS, validateRetentionDispositionReceipt, freezeCleanupRecord as freeze, cleanupRecordDigest as digest, cleanupRecordExact as exact, cleanupRecordFields as typedFields } from './cleanup-records.mjs';
@@ -16,7 +17,7 @@ export const GITHUB_RETROSPECTIVE_CONTENT_MODE = 'retrospective-content-inclusio
 export const GITHUB_TRANSITION_INPUT_SCHEMA = 'agentic-os/transition-operation-input/v1';
 export const GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA = 'agentic-os/github-successor-predecessor/v1';
 export const GITHUB_TRANSITION_COORDINATE_SCHEMA = 'agentic-os/github-transition-coordinate/v1';
-export const GITHUB_STORED_TRANSITION_SCHEMA = 'agentic-os/github-stored-transition/v1';
+export const GITHUB_STORED_TRANSITION_SCHEMA = 'agentic-os/github-stored-transition/v2';
 const API_ORIGIN = 'https://api.github.com';
 const MAX_WORKFLOW_INPUT_BYTES = 65_535;
 const MAX_OPERATION_PAYLOAD_BYTES = MAX_WORKFLOW_INPUT_BYTES - 64;
@@ -29,7 +30,7 @@ const OPERATION_INPUT_KEYS = ['schema', 'request', 'plan', 'planByteDigest', 'pr
 const RECOVERY_OPERATION_INPUT_KEYS = [...OPERATION_INPUT_KEYS, 'integrationMode'];
 const EVENT_INPUT_KEYS = ['operation_payload', 'operation_input_digest'];
 const RUN_KEYS = ['id', 'url', 'ref', 'revision', 'workflowRef', 'workflowPath', 'workflowRevision', 'authoritySubject'];
-const STORED_KEYS = ['schema', 'authorityRepository', 'targetRepository', 'coordinate', 'evidenceRef', 'evidencePath', 'operationInput', 'operationInputDigest', 'workflowRun', 'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof', 'providerProofDigest', 'storedDigest'];
+const STORED_KEYS = ['schema', 'authorityRepository', 'targetRepository', 'coordinate', 'evidenceRef', 'evidencePath', 'operationInput', 'operationInputDigest', 'workflowRun', 'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof', 'providerProofDigest', 'costEvidenceVerification', 'storedDigest'];
 const SUCCESSOR_PREDECESSOR_KEYS = ['schema', 'authorityKind', 'authorityRef', 'reviewLocator', 'sourceBranch', 'immutableRevision', 'reviewedSourceHead', 'reviewedSourceTree', 'protectedBase', 'predecessorIssuanceDigest', 'predecessorTransitionReceiptDigest', 'adoptedTerminalClaimId', 'adoptedLineageDigest', 'integrationReceiptDigest', 'reviewRequestId', 'retirementReason', 'adoptionDisposition', 'cloudMutation', 'issuedAt', 'expiresAt'];
 function fail(message) { throw new TypeError(message); }
 function text(value, label) { if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 4096
@@ -327,7 +328,7 @@ export function createGitHubStoredTransition(value) {
   const source = snap(value);
   exact(source, STORED_KEYS, 'GitHub stored transition input', false);
   for (const key of ['authorityRepository', 'targetRepository', 'operationInput', 'workflowRun',
-    'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof'])
+    'workflowStartedAt', 'workflowCompletedAt', 'policy', 'providerProof', 'costEvidenceVerification'])
     if (!Object.hasOwn(source, key)) fail(`GitHub stored transition ${key} is required`);
   const authorityRepository = repository(source.authorityRepository).repository;
   const targetRepository = repository(source.targetRepository).repository;
@@ -347,6 +348,7 @@ export function createGitHubStoredTransition(value) {
   const location = transitionLocation(coordinate);
   const operationInputDigest = deriveGitHubTransitionInputDigest(operationInput);
   const providerProof = validateTransitionProviderProof(source.providerProof, operationInput);
+  const costEvidenceVerification = validateEffectCostEvidenceVerification(source.costEvidenceVerification);
   const providerProofDigest = providerProof.proofDigest;
   if (workflowRun.authoritySubject !== operationInput.request.authoritySubject)
     fail('GitHub stored transition workflow authority does not match the operation');
@@ -361,7 +363,7 @@ export function createGitHubStoredTransition(value) {
     fail('GitHub stored transition successor predecessor policy anchor changed');
   const payload = { schema: GITHUB_STORED_TRANSITION_SCHEMA, authorityRepository, targetRepository,
     coordinate, ...location, operationInput, operationInputDigest, workflowRun, workflowStartedAt,
-    workflowCompletedAt, policy, providerProof, providerProofDigest };
+    workflowCompletedAt, policy, providerProof, providerProofDigest, costEvidenceVerification };
   const storedDigest = governanceDigest(payload), result = freeze({ ...payload, storedDigest });
   for (const key of ['schema', 'coordinate', 'evidenceRef', 'evidencePath',
     'operationInputDigest', 'storedDigest']) {

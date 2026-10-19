@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { canonicalJson, governanceDigest, retire } from '../src/governance.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { GITHUB_RETROSPECTIVE_CONTENT_MODE, createGitHubTransitionInput, createGitHubStoredTransition, deriveGitHubTransitionInputDigest, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA, GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA, validateGitHubTransitionPolicy, validateTransitionProviderProof } from '../src/github-transition-policy.mjs';
@@ -31,8 +32,8 @@ const fixture = (change = () => {}) => integrationFixture(state => { configure(s
 
 async function publish(fx) {
   const winner = await publishGitHubTransitionAuthority(fx.common);
-  const receipt = await createAuthenticatedTransitionOperationReceipt({ request: fx.final.request,
-    planBytes: fx.final.planBytes }, createGitHubTransitionAuthorityVerifier(fx.common), { now: () => NOW });
+  const receipt = await replayAuthenticatedTransitionOperationReceipt({ request: fx.final.request,
+    planBytes: fx.final.planBytes }, createGitHubTransitionAuthorityVerifier(fx.common));
   return { winner, receipt };
 }
 function signed(payload) { return { ...payload, receiptDigest: governanceDigest(payload) }; }
@@ -86,8 +87,8 @@ test('record-only retirement binds adoption and real integration without physica
   assert.equal(proof.preservationReceiptDigest, retired.operationInput.preservationDisposition.receiptDigest);
   assert.equal(proof.physicalCleanupPerformed, false);
   assert.equal(proof.historicalSuccessionAuthorityProven, false);
-  const result = await createAuthenticatedTransitionOperationReceipt({ request: retired.request, planBytes: retired.planBytes },
-    createGitHubTransitionAuthorityVerifier(retired.common), { now: () => NOW });
+  const result = await replayAuthenticatedTransitionOperationReceipt({ request: retired.request, planBytes: retired.planBytes },
+    createGitHubTransitionAuthorityVerifier(retired.common));
   assert.equal(result.transitionReceipt.resultState, 'retired');
   assert.equal(fx.api.publications.size, 2);
   const before = fx.api.calls.length;
@@ -194,8 +195,8 @@ test('current original record-only retirement binds fresh H01 winner and exact r
   assert.equal(proof.historicalQuarantineAuthorityProven, false);
   assert.equal(proof.adoptionDigest, governanceDigest(RETENTION_ADOPTION));
   assert.ok(!Object.hasOwn(proof, 'historicalSuccessionAuthorityProven'));
-  const result = await createAuthenticatedTransitionOperationReceipt({ request: retired.request, planBytes: retired.planBytes },
-    createGitHubTransitionAuthorityVerifier(retired.common), { now: () => NOW });
+  const result = await replayAuthenticatedTransitionOperationReceipt({ request: retired.request, planBytes: retired.planBytes },
+    createGitHubTransitionAuthorityVerifier(retired.common));
   assert.equal(result.transitionReceipt.resultState, 'retired');
   const before = fx.api.calls.length;
   await publishGitHubTransitionAuthority({ ...retired.common, now: () => Date.parse('2026-09-03T00:00:00Z') });
@@ -229,9 +230,9 @@ test('current original record-only retirement accepts exact retrospective conten
   assert.equal(winner.stored.providerProof.historicalQuarantineAuthorityProven, false);
   assert.equal(winner.stored.providerProof.integrationProofDigest,
     fx.final.plan.parametersDigest);
-  const result = await createAuthenticatedTransitionOperationReceipt({
+  const result = await replayAuthenticatedTransitionOperationReceipt({
     request: retired.request, planBytes: retired.planBytes,
-  }, createGitHubTransitionAuthorityVerifier(retired.common), { now: () => NOW });
+  }, createGitHubTransitionAuthorityVerifier(retired.common));
   assert.equal(result.transitionReceipt.resultState, 'retired');
   assert.equal(fx.api.publications.size, 2);
 });

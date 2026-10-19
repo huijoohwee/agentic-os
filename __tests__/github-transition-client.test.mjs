@@ -9,7 +9,8 @@ import { canonicalJson, claim, governanceDigest, integrate, retire } from '../sr
 import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from '../src/recovery-candidate.mjs';
 import { createFencedClaimBundle, createGitHubAuthorityChallenge, deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
 import { GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA, createGitHubAuthorityIssuance, createGitHubProtectionProjection, createGitHubProtectionSnapshot, createGitHubPublicationReceipt, createGitHubStoredAuthorityBundle, createGitHubTargetRepositoryProjection } from '../src/github-authority-issuer.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, prepareGitHubIntegrationProviderProof, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_TRANSITION_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
@@ -96,9 +97,9 @@ test('explicit retrospective recovery records an already-merged exact squash wit
     assert.ok(Date.parse(winner.committedAt)
       > Date.parse(winner.stored.providerProof.mergedAt));
     const verifier = createGitHubTransitionAuthorityVerifier(fixture.common);
-    const receipt = await createAuthenticatedTransitionOperationReceipt({
+    const receipt = await replayAuthenticatedTransitionOperationReceipt({
       request: fixture.final.request, planBytes: fixture.final.planBytes,
-    }, verifier, { now: () => NOW });
+    }, verifier);
     assert.deepEqual(await replayAuthenticatedTransitionOperationReceipt({
       request: fixture.final.request, planBytes: fixture.final.planBytes,
     }, verifier), receipt);
@@ -118,9 +119,9 @@ test('historical content inclusion authenticates an ambiguous linear merge witho
   assert.equal(winner.stored.providerProof.candidateTreeRevision,
     winner.stored.providerProof.mergeTreeRevision);
   const verifier = createGitHubTransitionAuthorityVerifier(fixture.common);
-  await createAuthenticatedTransitionOperationReceipt({
+  await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
-  }, verifier, { now: () => NOW });
+  }, verifier);
   await assert.rejects(integrationFixture((state) => {
     configure(state); state.mergeTree = hex('f', 40);
   }, options), /historical content differs|retrospective integration/u);
@@ -150,9 +151,9 @@ test('successor predecessor authority records an already-merged exact squash', a
   assert.equal(winner.stored.providerProof.predecessorTransitionReceiptDigest,
     fixture.issuance.transitionReceipt.receiptDigest);
   const verifier = createGitHubTransitionAuthorityVerifier(fixture.common);
-  const receipt = await createAuthenticatedTransitionOperationReceipt({
+  const receipt = await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
-  }, verifier, { now: () => NOW });
+  }, verifier);
   assert.deepEqual(await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
   }, verifier), receipt);

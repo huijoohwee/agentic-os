@@ -13,10 +13,9 @@ import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
-import {
-  createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest,
-  encodeEffectPlan,
-} from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
+  createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import {
   CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS,
   RETAINED_EFFECTS, assessWorktreeCleanupEligibility,
@@ -92,8 +91,11 @@ function request(plan) {
     observedAt: '2026-09-02T00:00:00.000Z', expiresAt: '2026-09-02T01:00:00.000Z' });
 }
 function transitionVerifier(resultFenceRevision) {
-  return async ({ request: source, plan: bound,
-      planByteDigest }) => ({ adapter: { id: 'fixture-provider', version: '1' },
+  let storedCostEvidenceVerification;
+  return async (input) => {
+    const { request: source, plan: bound, planByteDigest } = input;
+    storedCostEvidenceVerification = input.costEvidenceVerification ?? storedCostEvidenceVerification;
+    return { adapter: { id: 'fixture-provider', version: '1' },
     authenticatedSubject: 'github-user:42', providerRecordLocator: 'provider://operation/1',
     providerRecordDigest: hash('4'), requestDigest: source.requestDigest,
     requestedTransition: source.requestedTransition, planDigest: bound.planDigest,
@@ -102,13 +104,14 @@ function transitionVerifier(resultFenceRevision) {
     resultLeaseEpoch: source.leaseEpoch + 1, resultFenceRevision,
     resultState: source.requestedTransition === 'integrate' ? 'integrated' : 'retired',
     operationReceiptDigest: hash(source.requestedTransition === 'integrate' ? '5' : '8'),
-    transitionedAt: '2026-09-02T00:25:00.000Z',
-    verifiedAt: '2026-09-02T00:30:00.000Z', expiresAt: '2026-09-02T00:55:00.000Z' });
+    costEvidenceVerification: storedCostEvidenceVerification,
+    transitionedAt: new Date(NOW).toISOString(),
+    verifiedAt: new Date(NOW).toISOString(), expiresAt: '2026-09-02T00:55:00.000Z' };
+  };
 }
 async function transitionReceipt(plan, resultFenceRevision) {
   return createAuthenticatedTransitionOperationReceipt({ request: request(plan),
-    planBytes: encodeEffectPlan(plan) }, transitionVerifier(resultFenceRevision),
-  { now: () => NOW });
+    planBytes: encodeEffectPlan(plan) }, transitionVerifier(resultFenceRevision), { now: () => NOW });
 }
 async function lifecycle(t, { quarantine = true, projectionByteCeiling = 8 * 1024 * 1024,
   canonicalTarget = false, repositoryAdapter } = {}) {
@@ -163,11 +166,14 @@ async function lifecycle(t, { quarantine = true, projectionByteCeiling = 8 * 102
     predecessorDigest: integrationReceipt.receiptDigest, candidateDigest, snapshotDigest,
     parametersDigest: worktreeCleanupPlanByteDigest(plan),
     immutableRevision: integratedImmutableRevision, cleanup: true });
-  const retirementReceipt = await transitionReceipt(retirementPlan, hash('7'));
-  const retirementRequest = request(retirementPlan);
   const verifyRetirementAuthority = transitionVerifier(hash('7'));
+  const retirementRequest = request(retirementPlan);
+  const retirementPlanBytes = encodeEffectPlan(retirementPlan);
+  const retirementReceipt = await createAuthenticatedTransitionOperationReceipt({
+    request: retirementRequest, planBytes: retirementPlanBytes }, verifyRetirementAuthority,
+  { now: () => NOW });
   return { repo, input: { plan, integrationReceipt, integrationPlanBytes, integrationRequest,
-    retirementReceipt, retirementRequest, retirementPlanBytes: encodeEffectPlan(retirementPlan),
+    retirementReceipt, retirementRequest, retirementPlanBytes,
     preservationReceipt, noRemainingValueReceipt }, verification: {
     verifyIntegrationAuthority, verifyRetirementAuthority } };
 }

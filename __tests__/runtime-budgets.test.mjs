@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40935, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40914, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -49,13 +49,13 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 993);
+  assert.equal([...prompt].length, 991);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    '4ef32bc0e928935808ef6fc8f2a75b6ecd5cef86d742cade19d1b318f1e0b3c6');
+    '170463003e95eef2ec5d4045f088f1c17398d320820d0436e36a9f2cb10c43de');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -63,20 +63,27 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   const compact = (path) => readFileSync(join(root, path), 'utf8').replace(/\s+/gu, ' ').trim();
   const requirements = new Map([
     ['docs/adlc-guidelines.md', [
-      'USD 0/effect; FOSS/free-tier; no paid plans/add-ons/overages;',
+      'USD 0/effect; FOSS/free-tier; no paid/add-ons/overages;',
       'unknown cost/headroom/license blocks;',
-      'START/resume Mission: link current codebase/workflow manifests; reuse evidence.',
-      'Minimize time-to-production: smallest useful diff',
-      'Sprint: TTP ETA, time/byte/module caps',
+      'Effects: scoped provider evidence verified before authority; quota snapshots fail; billable use needs hard $0 cap.',
+      'START/resume Mission binds current code/workflow; reuse evidence.',
+      'Minimize time-to-production: smallest useful diff; fix owners, remove replacements.',
+      'Sprint: TTP ETA+time/byte/module caps; refresh on drift.',
       'refresh on drift. External: blocker/condition/recheck, no ETA.',
-      'Prompt: LF UTF-8 <=1,000 bytes; code points secondary; tokens advisory.',
+      'Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.',
       'Declare always-load deltas; replace/lazy-load/reject.',
-      'Run root/upstream `npm run evals` continuously in CI; consumers reference, never copy, it.',
+      'Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.',
       'On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md`',
-      'Canonical read-only; disjoint owner paths; overlaps wait.',
-      'Land stages/commits/publishes reserved paths;',
-      'integrate the exact committed diff by protected merge.',
-      'proof/retirement/cleanup target/sync/deploy/rollback each need an authorized receipt',
+      'Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.',
+      'separate receipt per proof, retire, cleanup, sync, deploy and rollback.',
+    ]],
+    ['docs/LIFECYCLE-COMPLETION.md', [
+      'Effect plan v4 requires current provider-verified cost evidence; details: [COSTS](../guides/COSTS.md).',
+    ]],
+    ['guides/COSTS.md', [
+      'An effect plan binds the provider, billing mode, evidence digest, exact effect scope and evidence expiry.',
+      'Its trusted provider adapter must verify that evidence immediately before effect authority runs and return a current zero-cost verification receipt that covers the complete authorization window.',
+      'A below-quota usage view, budget alert, or owner-entered claim is not that receipt.',
     ]],
     ['docs/START-WORKFLOW.md', [
       'Use release:common start <scope> --write=<paths>. New task: committed --plan.',
@@ -101,14 +108,16 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
-      'USD 0; FOSS/free-tier; no paid/add-ons/overages; unknown cost/headroom blocks; plans bind $0.',
+      '$0; FOSS/free; no paid/add-ons/overages;',
+      'provider hard cap $0 for billing;',
+      'quota≠proof; unknown cost/headroom blocks.',
       'No guesses/detours/duplicate checks;',
-      'Fix owners; reuse/remove; contract-only shims.',
+      'Fix owner; reuse/remove; contract-only shims.',
       'Sprint: ETA+time/byte/module caps;',
-      'lazy-load; refresh on drift.',
-      'One owner/candidate/effect; event waits; bounded recheck.',
-      'Update PRD-TAD-ADR-MVP-GTM for material changes; no per-turn.',
-      'cleanup global/local; authority+green proof/effect/receipt.',
+      'lazy-load; drift refresh.',
+      '1 owner/candidate/effect; event wait; bounded recheck.',
+      'PRD-TAD-ADR-MVP-GTM: batch material changes; no per-turn.',
+      'cleanup global/local; green proof+authority/effect/receipt.',
     ]],
     ['AGENTS.md', [
       'Continuously obey the global `guides/SYSTEM-PROMPT-RUNTIME.md`',
@@ -146,7 +155,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.4.1', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.4.3', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',
@@ -252,10 +261,10 @@ test('this repository is inside its own module budget', () => {
   const { found, entries, total, surfaces } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
-    modules: 50, totalLines: 15_867, perModuleLines: 400,
+    modules: 51, totalLines: 16_041, perModuleLines: 400,
     binModules: 113, binLines: 24_607, runtimeModules: 97, runtimeLines: 23_023,
   });
-  assert.equal(entries.length, 50);
+  assert.equal(entries.length, 51);
   assert.ok(entries.length <= MODULE_BUDGET.modules);
   assert.ok(total <= MODULE_BUDGET.totalLines);
   assert.ok(surfaces.bin.entries.length <= MODULE_BUDGET.binModules);
