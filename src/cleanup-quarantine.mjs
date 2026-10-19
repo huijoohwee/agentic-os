@@ -188,12 +188,7 @@ function retainedInventorySnapshot(root, operation, registration, canonicalRef, 
 export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef, reconciliation = null, diagnostic = false, retirementTarget = false } = {}) {
   try {
     const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT); privateDirectory(base, 'cleanup-quarantine-root');
-    const exactCoordinate = typeof coordinate === 'string' && /^[a-f0-9]{64}$/u.test(coordinate);
-    const exactPath = exactCoordinate ? join(base, coordinate) : null;
-    const exactStat = exactPath ? lstatSync(exactPath, { throwIfNoEntry: false }) : null;
-    const entries = coordinate === null ? boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root')
-      : exactStat?.isDirectory() ? [{ name: coordinate, isDirectory: () => exactStat.isDirectory(),
-        isSymbolicLink: () => exactStat.isSymbolicLink() }] : [];
+    const exactStat = typeof coordinate === 'string' && /^[a-f0-9]{64}$/u.test(coordinate) ? lstatSync(join(base, coordinate), { throwIfNoEntry: false }) : null, entries = coordinate === null ? boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root') : exactStat?.isDirectory() ? [{ name: coordinate, isDirectory: () => true, isSymbolicLink: () => false }] : [];
     for (const entry of entries) {
       if (coordinate !== null && entry.name !== coordinate) continue;
       if (!/^[a-f0-9]{64}$/u.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
@@ -263,9 +258,7 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
   }
   return null;
 }
-export const observeRetainedWorktreeQuarantine = (root, ref, head, originalReceipt = null, canonicalRef = null) =>
-  observeRetainedQuarantineEvidence(root, ref, head, originalReceipt?.planDigest ?? null,
-    { originalReceipt, ...(canonicalRef ? { canonicalRef } : {}) }) !== null;
+export const observeRetainedWorktreeQuarantine = (root, ref, head, originalReceipt = null, canonicalRef = null) => observeRetainedQuarantineEvidence(root, ref, head, originalReceipt?.planDigest ?? null, { originalReceipt, ...(canonicalRef ? { canonicalRef } : {}) }) !== null;
 /** Verify prior discard evidence without treating the deleted projection as preserved. */ export function observeDiscardedQuarantineEvidence(root, ref, head, coordinate, { originalReceipt } = {}) { try {
   const common = realpathSync(commonDir(root)), operation = join(common, QUARANTINE_ROOT, coordinate), registration = join(operation, 'registration'), receiptPath = join(operation, 'retirement.json'); privateDirectory(join(common, QUARANTINE_ROOT), 'cleanup-quarantine-root'); privateDirectory(operation, 'cleanup-operation-directory'); const names = boundedDirectoryEntries(operation, 8, 'discarded-quarantine-operation').map(entry => entry.name).sort(), record = readOperation(operation), binding = retirementEligibility(record.eligibility);
   if (!same(names, ['operation.json', 'registration', 'retirement.json']) || !absent(join(operation, 'projection'), 'discarded-quarantine-projection')) return null; const receiptBytes = readBoundedStableFile(receiptPath, 64_000, 'discarded-quarantine-receipt'), receipt = JSON.parse(UTF8.decode(receiptBytes)), { receiptDigest, ...payload } = receipt, worktrees = worktreeInventory(root);
