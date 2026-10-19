@@ -132,7 +132,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
       out(result.output); return result.reason ? 1 : result.exitCode ?? 1;
     } finally { release(); }
   }
-  const observe = snapshotReader({ root, base: options.base, head: options.head, committed: options.committed });
+  const observe = snapshotReader({ root, base: options.base, head: options.head, committed: options.committed, directBase: ci });
   const observed = observe(), plan = selectTests({ ...observed, forceAll: options.mode === 'all' });
   const externalRequiredChecks = ci ? [ciEvaluatorAllocation(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'),
     process.env, observed.identity.headRevision)] : [];

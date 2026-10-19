@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensurePinnedCommit } from './helpers/exact-pinned-source.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ownId = 'github.com/huijoohwee/agentic-os';
@@ -62,6 +63,7 @@ function observe(entry, checkout, roots) {
   assert.equal(git(canonical, 'rev-parse', '--show-toplevel'), canonical);
   const origin = git(canonical, 'config', '--get', 'remote.origin.url').replace(/\.git$/u, '').replace(/^git@github\.com:/u, 'github.com/').replace(/^https:\/\//u, '');
   assert.equal(origin, entry.owner, `${entry.id} owner origin`);
+  ensurePinnedCommit(canonical, entry.plan.revision);
   const source = git(canonical, 'show', `${entry.plan.revision}:${entry.plan.path}`);
   const document = source.startsWith('---\n') ? source.split('\n---\n')[0] : '';
   assert.equal(field(document, 'doc_type'), 'PRD-TAD-ADR-MVP-GTM');
@@ -70,9 +72,13 @@ function observe(entry, checkout, roots) {
   for (const role of ['prd', 'tad', 'adr', 'mvp', 'gtm']) assert.equal(field(document, `${role}_revision`), entry.plan.version, `${entry.id} ${role} join`);
   assert.equal(field(document, 'guideline_revision'), entry.guideline.version, `${entry.id} guideline version join`);
   assert.equal(field(document, 'guideline_source'), `https://${entry.guideline.repository}/blob/${entry.guideline.revision}/${entry.guideline.path}`, `${entry.id} guideline source join`);
-  for (const item of [entry.implementation, entry.check].filter(Boolean)) assert.equal(git(canonical, 'cat-file', '-t', `${item.revision}:${item.path}`), 'blob');
+  for (const item of [entry.implementation, entry.check].filter(Boolean)) {
+    ensurePinnedCommit(canonical, item.revision);
+    assert.equal(git(canonical, 'cat-file', '-t', `${item.revision}:${item.path}`), 'blob');
+  }
   if (roots[entry.guideline.repository]) {
     const guidelineRoot = realpathSync(roots[entry.guideline.repository]);
+    ensurePinnedCommit(guidelineRoot, entry.guideline.revision);
     const guideline = git(guidelineRoot, 'show', `${entry.guideline.revision}:${entry.guideline.path}`);
     assert.equal(field(guideline.startsWith('---\n') ? guideline.split('\n---\n')[0] : '', 'version'), entry.guideline.version);
   }
