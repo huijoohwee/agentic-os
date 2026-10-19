@@ -39,9 +39,10 @@ The Python plan labels its B1–B8 assumptions and Base/Downside/Upside outputs 
 its authoring ledger records source reads and checks but leaves active minutes, tokens and cash
 unmetered. The OS workflow adapter can carry resource observations, including explicit nulls; its
 presence is not an actual-cost receipt. The storage TCO source compares optional paid variants; they
-are outside this index's zero incremental paid-spend constraint. The Graph owner must select a
-free path and measure its quota before delivery admission. No row proves a
-payment, free-quota headroom or a complete financial model.
+are outside this index's zero incremental paid-spend constraint. A free path is admissible only
+when it has no billable usage or the provider enforces a hard USD 0 spend cap. A free allowance or
+below-quota usage snapshot alone does not prove zero cost. No row proves a payment, enforceable
+spend cap, free-quota headroom or a complete financial model.
 
 ## Cost continuity and budget view
 
@@ -63,9 +64,15 @@ records to this public catalog.
 
 The paid-spend ceiling is **USD 0 incremental** under the [ADLC policy][adlc]. It is a constraint,
 not an observed expense. Track free-quota limit, usage, reset and remaining headroom by owner and
-period. If any are unknown, remaining headroom is unknown. The owner stops, reduces scope or uses
-its local/offline fallback before exhausting free capacity. Budget reporting never authorizes a
-paid plan, add-on or overage.
+period, but do not treat them as a spend cap: every billable path needs a provider-enforced hard
+USD 0 cap. Unknown cost or headroom blocks; without an enforceable cap, stop, reduce scope, or use
+a nonbillable local/offline fallback before the effect. Budget reporting never authorizes a paid
+plan, add-on or overage.
+
+An effect plan binds the provider, billing mode, evidence digest, exact effect scope and evidence
+expiry. Its trusted provider adapter must verify that evidence immediately before effect authority
+runs and return a current zero-cost verification receipt that covers the complete authorization
+window. A below-quota usage view, budget alert, or owner-entered claim is not that receipt.
 
 ## Financial projection readiness
 

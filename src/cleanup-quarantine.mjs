@@ -206,7 +206,7 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
         const detachedHead = detachedReviewedHead(root, registrationHead, originalReceipt, head) ?? (retirementTarget && branchTip && registrationHead === `${head}\n` ? head : null), detachedRegistration = detachedHead !== null;
         if (registrationHead !== `ref: refs/heads/${ref}\n` && !detachedRegistration) continue;
         const record = readOperation(operation), e = record.eligibility, binding = retirementEligibility(e); if (binding?.coordinate !== entry.name) continue;
-        const protectedReceipt = originalReceipt?.schema === 'agentic-os/authenticated-transition-operation-receipt/v1';
+        const protectedReceipt = ['agentic-os/authenticated-transition-operation-receipt/v1', 'agentic-os/authenticated-transition-operation-receipt/v2'].includes(originalReceipt?.schema);
         if (protectedReceipt) protectedRetirementReceipt(originalReceipt, e, entry.name);
         const targetPath = protectedReceipt ? retainedTargetPath(registration) : originalReceipt?.targetPath;
         if (originalReceipt && !protectedReceipt && (originalReceipt.schema !== 'agentic-os/user-cleanup-receipt/v1'

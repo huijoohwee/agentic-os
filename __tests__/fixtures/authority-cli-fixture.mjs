@@ -10,10 +10,10 @@ import { deriveGitHubAuthorityInputDigest, GITHUB_RETROSPECTIVE_RECOVERY_MODE }
   from '../../src/github-authority.mjs';
 import { validateGitHubAuthorityIssuance } from '../../src/github-authority-issuer.mjs';
 import {
-  createEffectPlan,
   effectPlanByteDigest,
   encodeEffectPlan,
 } from '../../src/completion.mjs';
+import { createTestEffectPlan as createEffectPlan } from '../lib/effect-cost-fixtures.mjs';
 import {
   createGitHubAuthorityLiveVerificationReceipt,
   createGitHubAuthorityReadProvider,

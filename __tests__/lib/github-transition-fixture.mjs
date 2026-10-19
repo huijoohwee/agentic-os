@@ -4,7 +4,9 @@ import { canonicalJson, claim, governanceDigest, integrate, retire } from '../..
 import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from '../../src/recovery-candidate.mjs';
 import { createFencedClaimBundle, createGitHubAuthorityChallenge, deriveGitHubAuthorityInputDigest } from '../../src/github-authority.mjs';
 import { GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA, createGitHubAuthorityIssuance, createGitHubProtectionProjection, createGitHubProtectionSnapshot, createGitHubPublicationReceipt, createGitHubStoredAuthorityBundle, createGitHubTargetRepositoryProjection } from '../../src/github-authority-issuer.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../../src/completion.mjs';
+import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
+  createTestEffectPlan as createEffectPlan, verifyTestEffectCost } from './effect-cost-fixtures.mjs';
 import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, prepareGitHubIntegrationProviderProof, publishGitHubTransitionAuthority } from '../../src/github-transition-authority.mjs';
 import { GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_POLICY_SCHEMA, GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../../src/github-transition-policy.mjs';
@@ -483,7 +485,10 @@ async function integrationFixture(configure = () => {}, {
   const common = { repository: 'github.com/example/evidence',
     targetRepository: 'github.com/example/target', workflowRun: workflowRun(),
     operationInput: draftInput, policy: api.state.transitionPolicy,
-    token: 'secret', fetchImpl: api.fetchImpl, now: () => NOW };
+    token: 'secret', fetchImpl: api.fetchImpl,
+    now: request => Date.parse(request.requestedTransition === 'retire'
+      ? api.state.retirePublicationCommittedAt : COMMITTED) - 30_000,
+    verifyCostEvidence: verifyTestEffectCost };
   const { workflowRun: unusedWorkflowRun, ...preparation } = common;
   assert.equal(unusedWorkflowRun.id, '201');
   let proof;
@@ -514,7 +519,10 @@ async function successorFixture(configure = () => {}, authorityOverrides = {}) {
   const common = { repository: 'github.com/example/evidence',
     targetRepository: 'github.com/example/target', workflowRun: workflowRun(),
     operationInput: draftInput, policy: api.state.transitionPolicy,
-    token: 'secret', fetchImpl: api.fetchImpl, now: () => NOW };
+    token: 'secret', fetchImpl: api.fetchImpl,
+    now: request => Date.parse(request.requestedTransition === 'retire'
+      ? api.state.retirePublicationCommittedAt : COMMITTED) - 30_000,
+    verifyCostEvidence: verifyTestEffectCost };
   const { workflowRun: unusedWorkflowRun, ...preparation } = common;
   assert.equal(unusedWorkflowRun.id, '201');
   const proof = await prepareGitHubIntegrationProviderProof({ ...preparation,

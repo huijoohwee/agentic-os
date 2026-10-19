@@ -60,7 +60,7 @@
       "actuals": { "status": "unreported", "receiptRefs": [] },
       "forecast": { "status": "unknown", "scenarioRefs": [] },
       "finding": "owner-tco-includes-paid-variant",
-      "nextAction": "Owner must exclude paid variants from admitted delivery and measure free-quota headroom."
+      "nextAction": "Exclude paid variants. Admit billable usage only with a provider-enforced hard $0 cap; free quota or below-quota snapshots alone are insufficient."
     }
   ]
 }

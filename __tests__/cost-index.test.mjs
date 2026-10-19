@@ -35,6 +35,9 @@ function observe(repo, ref, roots) {
 test('every roadmap feature joins one owner cost scope without duplicate attribution', () => {
   assert.equal(index.schema, 'agentic-os/cost-index/v1');
   assert.equal(index.incrementalPaidSpendCapUsd, 0);
+  const storageScope = index.scopes.find(scope => scope.id === 'graph-storage-sync');
+  assert.match(storageScope.nextAction, /provider-enforced hard \$0 cap/u);
+  assert.match(storageScope.nextAction, /free quota or below-quota snapshots alone are insufficient/u);
   assert.ok(index.scopes.length > 0 && index.scopes.length <= 256);
   for (const ref of [index.guideline, index.financialContract]) {
     safeRef(ref);
@@ -102,6 +105,8 @@ test('pinned cost sources and financial contract resolve to their owners', t => 
 test('portfolio view links the registry, pinned guideline and all distinct scopes', () => {
   const source = readFileSync(join(root, 'guides/COSTS.md'), 'utf8');
   assert.match(source, /\.\.\/catalog\/costs\.json/u);
+  assert.match(source, /provider enforces a hard USD 0 spend cap/u);
+  assert.match(source, /below-quota usage snapshot alone does not prove zero cost/u);
   for (const ref of [index.guideline, index.financialContract]) {
     assert.ok(source.includes(`https://${ref.repository}/blob/${ref.revision}/${ref.path}`));
   }

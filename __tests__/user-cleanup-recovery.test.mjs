@@ -5,8 +5,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonicalJson, createRepositoryProfile, governanceDigest, retire } from '../src/governance.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan,
-  effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
+  createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
@@ -105,7 +106,7 @@ async function protectedRetirementReceipt(s, reviewLocator = s.pull.html_url) {
     planByteDigest: input.planByteDigest, sourceClaimId: authority.claimId, sourceLeaseEpoch: 2,
     sourceFenceRevision: hash('2'), resultClaimId: authority.claimId, resultLeaseEpoch: 3,
     resultFenceRevision: hash('8'), resultState: 'retired', operationReceiptDigest: hash('9'),
-    transitionedAt: new Date(NOW - 30_000).toISOString(), verifiedAt: new Date(NOW - 20_000).toISOString(),
+    transitionedAt: new Date(NOW).toISOString(), verifiedAt: new Date(NOW).toISOString(),
     expiresAt: new Date(NOW + 600_000).toISOString(),
   }), { now: () => NOW });
 }

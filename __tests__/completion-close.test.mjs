@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { integrate, retire, governanceDigest } from '../src/governance.mjs';
-import { createEffectPlan, createAuthenticatedTransitionOperationReceipt,
-  effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
+import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
+  createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS,
   RETAINED_EFFECTS, createWorktreeCleanupContinuation, createWorktreeCleanupPlan,
   deriveCleanupOwnerStateDigest, worktreeCleanupPlanByteDigest } from '../src/cleanup.mjs';
@@ -50,7 +51,7 @@ async function closeBundleFixture() {
       resultFenceRevision: hash(request.requestedTransition === 'integrate' ? '3' : '7'),
       resultState: request.requestedTransition === 'integrate' ? 'integrated' : 'retired',
       operationReceiptDigest: hash(request.requestedTransition === 'integrate' ? '5' : '8'),
-      transitionedAt: '2026-09-02T00:25:00.000Z', verifiedAt: '2026-09-02T00:30:00.000Z',
+      transitionedAt: new Date(now).toISOString(), verifiedAt: new Date(now).toISOString(),
       expiresAt: '2026-09-02T01:00:00.000Z' });
     return { request, planBytes, receipt: await createAuthenticatedTransitionOperationReceipt(
       { request, planBytes }, verify, { now: () => now }) };

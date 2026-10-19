@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { deriveCloseoutVerdict, retirementReviewLocator } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { bindRetirementOperationReceipts, createAuthenticatedTransitionOperationReceipt,
-  createEffectPlan, encodeEffectPlan } from '../src/completion.mjs';
+import { bindRetirementOperationReceipts, encodeEffectPlan } from '../src/completion.mjs';
+import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
+  createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { createCoordinationRequest, governanceDigest } from '../src/governance.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -42,7 +43,7 @@ async function operationReceipt(operation, { leaseEpoch, fenceRevision, resultFe
     sourceClaimId: CLAIM, sourceLeaseEpoch: leaseEpoch, sourceFenceRevision: fenceRevision,
     resultClaimId: CLAIM, resultLeaseEpoch: leaseEpoch + 1, resultFenceRevision,
     resultState: operation === 'integrate' ? 'integrated' : 'retired',
-    transitionedAt: '2026-10-01T00:01:00.000Z', verifiedAt,
+    transitionedAt: verifiedAt, verifiedAt,
   };
   return createAuthenticatedTransitionOperationReceipt({ request, planBytes }, () => grant,
     { now: () => Date.parse(verifiedAt) });

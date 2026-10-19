@@ -7,18 +7,22 @@ import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupReco
   createWorktreeCleanupContinuation, deriveCleanupOwnerStateDigest,
   validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan,
   worktreeCleanupPlanByteDigest } from './cleanup-records.mjs';
-export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v2';
-export const EFFECT_COST_POLICY = Object.freeze({ schema: 'agentic-os/effect-cost-policy/v1', currency: 'USD', maxIncrementalSpendUsd: 0, paidPlansAllowed: false, addOnsAllowed: false, overagesAllowed: false, unknownCostDisposition: 'block', unknownQuotaHeadroomDisposition: 'block' });
+import { EFFECT_COST_POLICY, effectCostScopeDigest, normalizeEffectCostEvidence,
+  validateEffectCostEvidenceVerification, validateStoredEffectCostEvidence,
+  verifyEffectCostEvidence } from './effect-cost.mjs';
+export { EFFECT_COST_POLICY, effectCostScopeDigest } from './effect-cost.mjs';
+export const EFFECT_PLAN_SCHEMA = 'agentic-os/effect-plan/v4';
+export { VERIFIED_EFFECT_COST_EVIDENCE_SCHEMA } from './effect-cost.mjs';
 export const AUTHENTICATED_TRANSITION_SCHEMA =
-  'agentic-os/authenticated-transition-operation-receipt/v1';
+  'agentic-os/authenticated-transition-operation-receipt/v2';
 const EFFECT = /^[a-z][a-z0-9-]{0,127}$/u;
 const PLAN_REFERENCE = /^effect-plan:sha256:([0-9a-f]{64})$/u;
-const PLAN_KEYS = Object.freeze(['schema', 'target', 'authority', 'candidateDigest', 'snapshotDigest', 'effectClass', 'allowedEffects', 'forbiddenEffects', 'parametersDigest', 'costPolicy', 'planDigest']);
+const PLAN_KEYS = Object.freeze(['schema', 'target', 'authority', 'candidateDigest', 'snapshotDigest', 'effectClass', 'allowedEffects', 'forbiddenEffects', 'parametersDigest', 'costEvidence', 'costPolicy', 'planDigest']);
 const TARGET_KEYS = Object.freeze(['repository', 'resource', 'immutableRevision']);
 const GRANT_KEYS = Object.freeze(['adapter', 'authenticatedSubject', 'providerRecordLocator', 'providerRecordDigest',
   'requestDigest', 'requestedTransition', 'planDigest', 'planByteDigest', 'sourceClaimId', 'sourceLeaseEpoch',
   'sourceFenceRevision', 'resultClaimId', 'resultLeaseEpoch', 'resultFenceRevision', 'resultState',
-  'operationReceiptDigest', 'transitionedAt', 'verifiedAt', 'expiresAt']);
+  'operationReceiptDigest', 'costEvidenceVerification', 'transitionedAt', 'verifiedAt', 'expiresAt']);
 const AUTHORITY_KEYS = Object.freeze(['requestedTransition', 'authoritySubject', 'ownerSubject', 'claimId',
   'leaseEpoch', 'fenceRevision', 'writeSetDigest', 'reviewLocator', 'predecessorDigest']);
 function fail(message) { throw new TypeError(message); }
@@ -77,12 +81,15 @@ export function createEffectPlan(input) {
     schema: EFFECT_PLAN_SCHEMA,
     target: target(source.target),
     authority: authority(source.authority),
-    ...typedFields(source, 'candidateDigest snapshotDigest parametersDigest', digest),
-    effectClass: text(source.effectClass, 'effectClass'), costPolicy: EFFECT_COST_POLICY,
+    ...typedFields(source, 'candidateDigest snapshotDigest', digest),
+    effectClass: text(source.effectClass, 'effectClass'),
     allowedEffects,
     forbiddenEffects,
+    parametersDigest: digest(source.parametersDigest, 'parametersDigest'),
   };
   if (!EFFECT.test(payload.effectClass)) fail('effectClass must be a canonical effect name');
+  payload.costEvidence = normalizeEffectCostEvidence(source.costEvidence, effectCostScopeDigest(payload));
+  payload.costPolicy = EFFECT_COST_POLICY;
   const planDigest = governanceDigest(payload);
   if (source.planDigest !== undefined && digest(source.planDigest, 'planDigest') !== planDigest) fail('planDigest does not match effect plan');
   return freeze({ ...payload, planDigest });
@@ -114,9 +121,6 @@ function currentClock(now, label) {
     return value;
   };
 }
-function trustedClock(options, label) {
-  const source = options ?? {}; exact(source, ['now'], `${label} options`); return currentClock(source.now, label);
-}
 function inWindow(value, start, end, label) { if (value < Date.parse(start) || value >= Date.parse(end)) fail(`${label} is outside its validity window`); }
 function exactPlanReference(request, byteDigest) {
   const references = request.dependentWork.map((entry) => entry.match(PLAN_REFERENCE)).filter(Boolean);
@@ -129,7 +133,7 @@ function planMatchesRequest(plan, request) {
   return fieldsMatch(plan.target, request, 'repository immutableRevision')
     && fieldsMatch(plan.authority, request, 'requestedTransition authoritySubject ownerSubject claimId leaseEpoch fenceRevision writeSetDigest reviewLocator');
 }
-function authorityGrant(value) {
+function authorityGrant(value, expectedCostEvidence = null) {
   const source = snapshot(value);
   exact(source, GRANT_KEYS, 'authenticated transition grant');
   if (!['integrate', 'retire'].includes(source.requestedTransition)) fail('authenticated transition grant operation is invalid');
@@ -140,6 +144,9 @@ function authorityGrant(value) {
   const verifiedAt = instant(source.verifiedAt, 'grant.verifiedAt');
   const expiresAt = instant(source.expiresAt, 'grant.expiresAt');
   if (Date.parse(transitionedAt) > Date.parse(verifiedAt) || Date.parse(expiresAt) <= Date.parse(verifiedAt)) fail('grant operation, verification, and expiry times are invalid');
+  const verifiedCost = validateEffectCostEvidenceVerification(source.costEvidenceVerification);
+  if (expectedCostEvidence !== null && canonicalJson(verifiedCost) !== canonicalJson(expectedCostEvidence))
+    fail('provider authority grant omitted or changed the zero-cost verification receipt');
   return freeze({ ...source, adapter: adapter(source.adapter),
     ...typedFields(source, 'authenticatedSubject providerRecordLocator', text),
     providerRecordDigest: digest(source.providerRecordDigest, 'providerRecordDigest'),
@@ -147,6 +154,7 @@ function authorityGrant(value) {
       'sourceFenceRevision resultClaimId resultFenceRevision', digest, 'grant.'),
     resultState: text(source.resultState, 'grant.resultState'),
     operationReceiptDigest: digest(source.operationReceiptDigest, 'operationReceiptDigest'),
+    costEvidenceVerification: verifiedCost,
     transitionedAt, verifiedAt, expiresAt });
 }
 /** Create integrate/retire receipts only through an injected provider-authenticating verifier. */
@@ -162,13 +170,15 @@ async function authenticatedTransitionReceipt(input, verifyAuthority, options, h
   if (!planMatchesRequest(planned.plan, request)) {
     fail('transition request does not match the exact effect plan target');
   }
-  const now = historicalReplay ? null : trustedClock(options, 'authenticated transition');
+  const now = historicalReplay ? null : currentClock(options?.now, 'authenticated transition');
   const before = historicalReplay ? null : now();
-  if (!historicalReplay)
-    inWindow(before, request.observedAt, request.expiresAt, 'authenticated transition');
-  const grant = authorityGrant(await verifyAuthority(freeze({
-    request, plan: planned.plan, planByteDigest: planned.byteDigest,
-  })));
+  if (!historicalReplay) inWindow(before, request.observedAt, request.expiresAt, 'authenticated transition');
+  const costVerification = historicalReplay ? null
+    : await verifyEffectCostEvidence(planned.plan, request, options);
+  const grant = authorityGrant(await verifyAuthority(freeze({ request, plan: planned.plan,
+    planByteDigest: planned.byteDigest, ...(costVerification === null ? {} : { costEvidenceVerification: costVerification }) })), costVerification);
+  validateStoredEffectCostEvidence(planned.plan, request, grant.costEvidenceVerification,
+    grant.transitionedAt);
   const after = historicalReplay ? null : now();
   if (!historicalReplay)
     inWindow(after, request.observedAt, request.expiresAt, 'authenticated transition');

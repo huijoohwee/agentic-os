@@ -9,7 +9,8 @@ import { canonicalJson, claim, governanceDigest, integrate, retire } from '../sr
 import { RECOVERY_CANDIDATE_INVENTORY_ALGORITHM, createRecoveryCandidate } from '../src/recovery-candidate.mjs';
 import { createFencedClaimBundle, createGitHubAuthorityChallenge, deriveGitHubAuthorityInputDigest } from '../src/github-authority.mjs';
 import { GITHUB_RETROSPECTIVE_TARGET_PROOF_SCHEMA, createGitHubAuthorityIssuance, createGitHubProtectionProjection, createGitHubProtectionSnapshot, createGitHubPublicationReceipt, createGitHubStoredAuthorityBundle, createGitHubTargetRepositoryProjection } from '../src/github-authority-issuer.mjs';
-import { createAuthenticatedTransitionOperationReceipt, createEffectPlan, effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, prepareGitHubIntegrationProviderProof, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
 import { GITHUB_TRANSITION_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
@@ -57,9 +58,9 @@ test('create-only transition CAS publishes, verifies, replays, and permits later
   assert.deepEqual(replay, first);
   fixture.api.state.transitionStatus = 'completed';
   const verify = createGitHubTransitionAuthorityVerifier(fixture.common);
-  const receipt = await createAuthenticatedTransitionOperationReceipt({
+  const receipt = await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
-  }, verify, { now: () => NOW });
+  }, verify);
   const historical = await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes }, verify);
   assert.deepEqual(historical, receipt);
@@ -83,6 +84,20 @@ test('create-only transition CAS publishes, verifies, replays, and permits later
   fixture.api.state.compareStatus = 'diverged';
   await assert.rejects(verify({ request: fixture.final.request, plan: fixture.final.plan,
     planByteDigest: fixture.final.planByteDigest }), /not contained|live provider proof/u);
+});
+
+test('transition CAS requires and retains a current zero-cost verification before publication', async () => {
+  const fixture = await integrationFixture();
+  const { verifyCostEvidence: omitted, ...unverified } = fixture.common;
+  assert.equal(typeof omitted, 'function');
+  await assert.rejects(publishGitHubTransitionAuthority(unverified), /provider cost evidence verifier/u);
+  assert.equal(fixture.api.publications.size, 0);
+  const winner = await publishGitHubTransitionAuthority(fixture.common);
+  assert.equal(winner.stored.costEvidenceVerification.status, 'verified-zero-cost');
+  assert.equal(winner.stored.costEvidenceVerification.verifiedAt,
+    '2026-09-02T00:20:30.000Z');
+  assert.ok(Date.parse(winner.stored.costEvidenceVerification.verifiedAt)
+    < Date.parse(winner.committedAt));
 });
 
 test('source coordinate admits one exact winner and rejects another run or target before effects', async () => {
@@ -191,9 +206,9 @@ test('retire sources and replays the exact authenticated integration winner', as
   await publishGitHubTransitionAuthority(fixture.common);
   fixture.api.state.transitionStatus = 'completed';
   const integrationVerifier = createGitHubTransitionAuthorityVerifier(fixture.common);
-  const integrated = await createAuthenticatedTransitionOperationReceipt({
+  const integrated = await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
-  }, integrationVerifier, { now: () => NOW });
+  }, integrationVerifier);
   const prior = integrated.transitionReceipt;
   const plan = createEffectPlan({ target: { repository: 'github.com/example/target',
     resource: '/exact/dirty/worktree', immutableRevision: MERGE }, authority: {
@@ -239,8 +254,7 @@ test('retire sources and replays the exact authenticated integration winner', as
   delete fixture.api.state.runDigests['202'];
   await publishGitHubTransitionAuthority(common);
   const verify = createGitHubTransitionAuthorityVerifier(common);
-  const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,
-    { now: () => NOW });
+  const retired = await replayAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify);
   assert.equal(retired.transitionReceipt.resultState, 'retired');
   assert.equal(fixture.api.publications.size, 2);
 });
@@ -250,9 +264,9 @@ test('retire accepts a fresh successor predecessor authority window', async () =
   await publishGitHubTransitionAuthority(fixture.common);
   fixture.api.state.transitionStatus = 'completed';
   const integrationVerifier = createGitHubTransitionAuthorityVerifier(fixture.common);
-  const integrated = await createAuthenticatedTransitionOperationReceipt({
+  const integrated = await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
-  }, integrationVerifier, { now: () => NOW });
+  }, integrationVerifier);
   const prior = integrated.transitionReceipt;
   const plan = createEffectPlan({ target: { repository: 'github.com/example/target',
     resource: '/exact/dirty/worktree', immutableRevision: MERGE }, authority: {
@@ -299,11 +313,10 @@ test('retire accepts a fresh successor predecessor authority window', async () =
   fixture.api.state.retirePublicationCommittedAt = '2026-09-02T00:55:40Z';
   fixture.api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
   const common = { ...fixture.common, workflowRun: workflowRun('202'), operationInput,
-    now: () => Date.parse('2026-09-02T00:56:00.000Z') };
+    now: () => Date.parse('2026-09-02T00:55:35.000Z') };
   await publishGitHubTransitionAuthority(common);
   const verify = createGitHubTransitionAuthorityVerifier(common);
-  const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,
-    { now: () => Date.parse('2026-09-02T00:56:00.000Z') });
+  const retired = await replayAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify);
   assert.equal(retired.transitionReceipt.resultState, 'retired');
   assert.equal(fixture.api.publications.size, 2);
 });
@@ -313,9 +326,9 @@ test('retire accepts successor-bound policy drift limited to authorityRef', asyn
   await publishGitHubTransitionAuthority(fixture.common);
   fixture.api.state.transitionStatus = 'completed';
   const integrationVerifier = createGitHubTransitionAuthorityVerifier(fixture.common);
-  const integrated = await createAuthenticatedTransitionOperationReceipt({
+  const integrated = await replayAuthenticatedTransitionOperationReceipt({
     request: fixture.final.request, planBytes: fixture.final.planBytes,
-  }, integrationVerifier, { now: () => NOW });
+  }, integrationVerifier);
   const prior = integrated.transitionReceipt;
   const plan = createEffectPlan({ target: { repository: 'github.com/example/target',
     resource: '/exact/dirty/worktree', immutableRevision: MERGE }, authority: {
@@ -367,11 +380,10 @@ test('retire accepts successor-bound policy drift limited to authorityRef', asyn
   const common = { ...fixture.common, policy: fixture.api.state.transitionPolicy,
     workflowRun: { ...workflowRun('202'), ref: 'refs/heads/feature',
       workflowRef: 'refs/heads/feature' },
-    operationInput, now: () => Date.parse('2026-09-02T00:56:00.000Z') };
+    operationInput, now: () => Date.parse('2026-09-02T00:55:35.000Z') };
   await publishGitHubTransitionAuthority(common);
   const verify = createGitHubTransitionAuthorityVerifier(common);
-  const retired = await createAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify,
-    { now: () => Date.parse('2026-09-02T00:56:00.000Z') });
+  const retired = await replayAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify);
   assert.equal(retired.transitionReceipt.resultState, 'retired');
   assert.equal(fixture.api.publications.size, 2);
 });
