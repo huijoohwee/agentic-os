@@ -3,12 +3,12 @@ schema: agentic-os/cleanup-authority-enrollments/v1
 title: Exact current-recovery enrollments
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.4
-prd_revision: 1.2.4
-tad_revision: 1.2.4
-adr_revision: 1.2.4
-mvp_revision: 1.2.4
-gtm_revision: 1.2.4
+version: 1.2.5
+prd_revision: 1.2.5
+tad_revision: 1.2.5
+adr_revision: 1.2.5
+mvp_revision: 1.2.5
+gtm_revision: 1.2.5
 load_policy: on-demand
 lifecycle_status: active
 ---
@@ -160,3 +160,39 @@ later effect requires its own exact plan, authorization, and receipt.
 Budget: one exact v1 enrollment, one existing transition-workflow test and this owner record; zero
 runtime modules, dependencies, or always-load bytes. Revert the protected policy update to remove this
 enrollment; source history and prior enrollments stay intact.
+
+## Current recovery enrollment — agentic-os PR #523 — 2026-10-19
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`7ecf27659480ed408ea1e28686b2fd28853c18d8`, reviewed head
+`a3af01bb3e73d1f89aaa15a9d5c0279b3520bfba`, merge
+`dfae80dc05d2df8610e44c231fb3dffba1e1bf02`, and equal source/merge tree
+`f6ac0bbbf34c8a674274a239141af4fdeb64645b`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/523>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-523`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no integration, retirement, cleanup, deployment, or canonical-sync effect; each
+later effect requires its own exact plan, authorization, and receipt.
+
+## Current recovery enrollment — agentic-os PR #527 — 2026-10-19
+
+Under the policy owner's standing authorization to complete END ADLC, this record binds the verified
+current facts for repository `github.com/huijoohwee/agentic-os`: base
+`a5b7bff20f95efb35a4c7d0abf793351a10313b8`, reviewed head
+`7dc00445bb5fe7949e1bb5be95c6e59a311f28e5`, merge
+`dc4cf2f1679e839ab3fc27d366970ee0c1155e94`, and equal source/merge tree
+`5f2701c5037b0c90bcf767b9c0f466deea7d595a`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/527>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-527`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no integration, retirement, cleanup, deployment, or canonical-sync effect; each
+later effect requires its own exact plan, authorization, and receipt.
+
+Budget: two exact v1 enrollments, updates to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact entries and test
+expectations while preserving source history and all prior enrollments.
