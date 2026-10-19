@@ -1,9 +1,7 @@
 # Lifecycle completion
 
 Completion separates observation, authority, integration, retirement and cleanup.
-`agentic-os completion status --ref=<lane>` is read-only; grants no new receipts. Bind a completed local
-recovery quarantine with `--cleanup-receipt=<user-cleanup-receipt.json>`; status rechecks the exact
-retained operation and reports local cleanup evidence without upgrading it to provider authority.
+`agentic-os completion status --ref=<lane>` is read-only; grants no new receipts.
 Guides: [authority](../guides/CLEANUP-AUTHORITY.md), [local](../guides/USER-CLEANUP.md).
 
 ## Stable package surfaces
