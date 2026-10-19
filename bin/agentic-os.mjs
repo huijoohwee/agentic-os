@@ -394,6 +394,8 @@ async function main() {
     case 'completion': return (await import('./agentic-os-completion-status.mjs'))
       .runCompletionStatus(root, option(argv, 'ref'), policy, profile, out, {
         preservationPath: option(argv, 'preservation'),
+        cleanupReceiptPath: option(argv, 'cleanup-receipt'),
+        cleanupReceiptPath: option(argv, 'cleanup-receipt'),
         integrationReceiptPath: option(argv, 'integration-receipt'),
         retirementReceiptPath: option(argv, 'retirement-receipt'),
       });
