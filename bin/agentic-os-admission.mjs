@@ -28,13 +28,15 @@ export const matchesSelectedSourcePendingReadmit = ({ row, alignment, ref, path,
   && (alignment.candidateHead === null || /^[a-f0-9]{40}$/u.test(alignment.candidateHead)
     && [alignment.expectedHead, alignment.candidateHead].includes(alignment.liveHead));
 export const matchesSelectedSourceTransplantSuccessor = ({ row, record, predecessor, alignment, ref, path,
-  worktreeId, expectedTarget, predecessorCurrent, predecessorAncestor }) => {
+  worktreeId, expectedTarget, predecessorCurrent, predecessorAncestor, baseLineageCompatible = false }) => {
   const handoff = record?.handoff, paths = predecessor?.writePaths;
   return row?.state === 'pending' && row.operation === 'readmit' && row.ref === ref && row.path === path
-    && row.worktreeId === worktreeId && row.baseRevision === record.baseSha && row.predecessorRef === predecessor?.ref
+    && row.worktreeId === worktreeId && (baseLineageCompatible === true || row.baseRevision === record.baseSha)
+    && row.predecessorRef === predecessor?.ref
     && predecessorCurrent === true && predecessorAncestor === true
     && ['published', 'queued', 'integrated'].includes(predecessor.state)
-    && predecessor.worktree === path && predecessor.base === record.base && predecessor.baseSha === record.baseSha
+    && predecessor.worktree === path && predecessor.base === record.base
+    && (baseLineageCompatible === true || predecessor.baseSha === record.baseSha)
     && Array.isArray(paths) && scopeDigest(paths) === row.previousWriteDigest
     && paths.every(file => covered(file, record.writePaths ?? []))
     && record.state === 'active' && record.ref === ref && record.worktree === path
@@ -108,7 +110,8 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   const remote = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   if (!remote) fail('remote', 'Protected remote binding is missing'); const transport = remoteTransport(remote, root);
   if (remoteRefSha(remote, ref, root, transport.fetchUrl) !== null) fail('published', 'Published candidates are immutable; use the native successor operation'); assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
-  const lineage = readmissionPredecessors(record, store.load(root).lanes, allocation);
+  const lineage = readmissionPredecessors(record, store.load(root).lanes, allocation,
+    (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null);
   if (lineage === false) fail('successor-lineage', 'Invalid retained successor identity'); if (lineage.some(link => remoteRefSha(remote, link.predecessorRef, root, transport.fetchUrl) !== link.predecessorHead
     || observeGit(['merge-base', '--is-ancestor', link.predecessorHead, head], { cwd: root, allowFail: true }) === null))
     fail('successor-lineage', 'Retained successor needs exact published predecessor and preserved ancestry');
@@ -178,6 +181,12 @@ export async function cmdStart(root, argv, policy, profile, services) {
         const predecessorPaths = row?.predecessorRef && records[row.predecessorRef]
           ? parseWritePaths(records[row.predecessorRef].writePaths.join(',')) : [];
         const predecessor = row?.predecessorRef ? records[row.predecessorRef] : null;
+        const baseRevisionCompatible = Boolean(row?.baseRevision && record.baseSha
+          && observeGit(['merge-base', '--is-ancestor', row.baseRevision, record.baseSha], { cwd: root, allowFail: true }) !== null);
+        const baseLineageCompatible = Boolean(predecessor && predecessor.base === record.base
+          && row?.baseRevision && predecessor.baseSha
+          && observeGit(['merge-base', '--is-ancestor', row.baseRevision, predecessor.baseSha], { cwd: root, allowFail: true }) !== null
+          && observeGit(['merge-base', '--is-ancestor', predecessor.baseSha, record.baseSha], { cwd: root, allowFail: true }) !== null);
         const remoteName = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
         const selectedSourceAttempt = recoveringReadmit && readmit
           && alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1';
@@ -187,13 +196,13 @@ export async function cmdStart(root, argv, policy, profile, services) {
           && observeGit(['merge-base', '--is-ancestor', predecessor.head, alignment.expectedHead], { cwd: root, allowFail: true }) !== null);
         const selectedSourceSuccessor = recoveringReadmit && readmit && matchesSelectedSourceTransplantSuccessor({
           row, record, predecessor, alignment, ref, path, worktreeId, expectedTarget: refresh?.expectedTarget,
-          predecessorCurrent, predecessorAncestor,
+          predecessorCurrent, predecessorAncestor, baseLineageCompatible,
         });
         const recoveringSuccessor = recoveringReadmit && readmit && row.ref === ref
           && (identity.lineage.some(link => link.predecessorRef === row.predecessorRef) || selectedSourceSuccessor)
           && scopeDigest(predecessorPaths) === row.previousWriteDigest && predecessorPaths.every(file => covered(file, identity.reserved)) && nextDigest === row.writeDigest;
         const recoveringHeadAdvance = recoveringReadmit && readmit && !alignment && row.worktreeId === worktreeId
-          && row.ref === ref && row.path === path && row.baseRevision === record.baseSha && row.predecessorRef === undefined
+          && row.ref === ref && row.path === path && baseRevisionCompatible && row.predecessorRef === undefined
           && row.headRevision !== identity.head && nextDigest === row.writeDigest && (row.previousWriteDigest === liveDigest || row.writeDigest === liveDigest && record.head === identity.head)
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
         const recoveringSelectedSource = matchesSelectedSourcePendingReadmit({ row, alignment, ref, path, head: identity.head, expectedTarget: refresh?.expectedTarget, recoveringSuccessor });
@@ -212,7 +221,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
             alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
               oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         }
-        allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
+        allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: row?.baseRevision ?? record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
           writeDigest: nextDigest, state: readmit ? 'pending' : 'active', operation: readmit ? 'readmit' : row?.operation ?? 'create',
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit || recertification ? row.writeDigest : liveDigest } : {}),
           ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}),

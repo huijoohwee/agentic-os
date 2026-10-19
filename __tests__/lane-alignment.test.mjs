@@ -107,6 +107,13 @@ test('selected-source pending readmit recognizes an exact transplant after its s
   const input = { row, record, predecessor, alignment, ref, path, worktreeId: row.worktreeId,
     expectedTarget: alignment.expectedTarget, predecessorCurrent: true, predecessorAncestor: true };
   assert.equal(matchesSelectedSourceTransplantSuccessor(input), true);
+  const oldBase = '6'.repeat(40), newerBase = '7'.repeat(40);
+  assert.equal(matchesSelectedSourceTransplantSuccessor({ ...input,
+    row: { ...row, baseRevision: oldBase }, record: { ...record, baseSha: newerBase },
+    predecessor: { ...predecessor, baseSha: oldBase }, baseLineageCompatible: true }), true);
+  assert.equal(matchesSelectedSourceTransplantSuccessor({ ...input,
+    row: { ...row, baseRevision: oldBase }, record: { ...record, baseSha: newerBase },
+    predecessor: { ...predecessor, baseSha: oldBase } }), false);
   for (const change of [
     { predecessorCurrent: false }, { predecessorAncestor: false }, { expectedTarget: '8'.repeat(40) },
     { predecessor: { ...predecessor, head: '8'.repeat(40) }, predecessorAncestor: false }, { predecessor: { ...predecessor, state: 'active' } },
