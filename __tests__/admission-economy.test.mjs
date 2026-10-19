@@ -529,6 +529,19 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
   }
 });
 
+test('older allocation re-admission requires exact base and head ancestry', () => {
+  const path = '/repo/lane', base = 'refs/remotes/origin/main', oldBase = 'a'.repeat(40), anchorBase = 'b'.repeat(40), newBase = 'c'.repeat(40);
+  const oldHead = 'd'.repeat(40), anchorHead = 'e'.repeat(40), currentHead = 'f'.repeat(40), ref = 'agent/device/current', predecessorRef = 'agent/device/previous';
+  const current = { ref, worktree: path, base, baseSha: newBase, head: currentHead, handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef, predecessorHead: anchorHead } };
+  const anchor = { ref: predecessorRef, worktree: path, base, baseSha: anchorBase, head: anchorHead };
+  const allocation = { ref: predecessorRef, path, baseRevision: oldBase, headRevision: oldHead }, records = { [ref]: current, [predecessorRef]: anchor };
+  const proves = (older, newer) => new Set([`${oldBase}:${anchorBase}`, `${anchorBase}:${newBase}`, `${oldHead}:${anchorHead}`]).has(`${older}:${newer}`);
+  assert.equal(readmissionPredecessors(current, records, allocation), false);
+  assert.deepEqual(readmissionPredecessors(current, records, allocation, proves), [current.handoff]);
+  assert.equal(readmissionPredecessors(current, records, { ...allocation, baseRevision: '9'.repeat(40) }, proves), false);
+  assert.equal(readmissionPredecessors(current, { ...records, [predecessorRef]: { ...anchor, head: '8'.repeat(40) } }, allocation, proves), false);
+});
+
 test('historical larger allowances remain readable but effective admission is capped at five', t => {
   const f = fixture(t), revision = headSha('HEAD', f.root);
   startWorkflow(f.root, f.profile.repository, { revision, planningPath: f.plan, worktreeId: 'test-device--legacy',
