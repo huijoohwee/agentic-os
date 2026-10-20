@@ -336,6 +336,16 @@ test('retire-empty-active quarantines one clean zero-candidate lane with a nativ
   assert.equal(observed.closeout.missionState, 'source_complete');
 });
 
+test('retire-empty-active accepts a recorded head that exactly equals its admitted base', (t) => {
+  const subject = emptyActiveFixture(t);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active',
+    base: 'refs/remotes/origin/main', baseSha: subject.base, worktree: subject.lane, pr: null,
+    createdAt: new Date(0).toISOString(), writePaths: ['docs/example.md'], head: subject.base }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(subject.lane), false);
+});
+
 for (const mutation of ['candidate', 'dirty']) test(`retire-empty-active refuses a ${mutation} lane without cleanup`, (t) => {
   const subject = emptyActiveFixture(t);
   if (mutation === 'candidate') {
