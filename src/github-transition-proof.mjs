@@ -73,13 +73,45 @@ function checkRecord(entry, context, revision, mergedAt) {
   return { context, checkRunId: id(entry.id, 'check run id'), appId: String(GITHUB_ACTIONS_INTEGRATION_ID),
     status: 'completed', conclusion: 'success', completedAt, revision };
 }
+function historicalCheckGapRecord(value, contexts) {
+  const requiredChecks = Array.isArray(value?.requiredChecks)
+    ? value.requiredChecks.map((entry, index) => text(entry, `historical check gap requiredChecks[${index}]`))
+    : null;
+  if (requiredChecks === null || value?.checkRunsObserved !== 0
+    || !same(requiredChecks, contexts))
+    fail('stored historical check gap is invalid');
+  return { requiredChecks, checkRunsObserved: 0 };
+}
+function requiredChecksDigest(target, revision, required) {
+  return governanceDigest({
+    schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
+    revision, required,
+  });
+}
 async function classicBranchProtection(api, target, branch) {
   const response = await api.call('GET', `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
   if (response.status === 404) return null;
   const value = api.exact(response, [200], 'GitHub branch protection'), strict = value?.required_status_checks?.strict;
   if (typeof strict !== 'boolean') fail('GitHub branch protection required checks are invalid'); return parseClassicBranchProtection({ ...value, required_status_checks: { ...value.required_status_checks, strict: false } }, GITHUB_ACTIONS_INTEGRATION_ID);
 }
-async function checks(api, target, revision, contexts, mergedAt, expected = null) {
+async function checks(api, target, revision, contexts, mergedAt, {
+  expected = null,
+  allowHistoricalCheckGap = false,
+  storedHistoricalCheckGap = null,
+} = {}) {
+  if (storedHistoricalCheckGap !== null) {
+    const gap = historicalCheckGapRecord(storedHistoricalCheckGap, contexts);
+    const response = await api.call('GET',
+      `${target.path}/commits/${revision}/check-runs?per_page=100&filter=latest`);
+    const value = object(api.exact(response, [200], 'GitHub integration checks'),
+      'GitHub integration checks');
+    if (response.headers?.get?.('link')?.includes('rel="next"')
+      || !Number.isSafeInteger(value.total_count) || value.total_count !== value.check_runs?.length
+      || value.total_count !== 0)
+      fail('GitHub integration required checks are not exactly successful');
+    return { required: [], checksDigest: requiredChecksDigest(target, revision, []),
+      historicalCheckGap: gap };
+  }
   if (expected !== null) {
     if (!Array.isArray(expected) || expected.length !== contexts.length
       || expected.some((entry, index) => entry.context !== contexts[index]))
@@ -93,9 +125,7 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
       if (!same(record, stored)) fail('stored required check run changed');
       required.push(record);
     }
-    return { required, checksDigest: governanceDigest({
-      schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
-      revision, required }) };
+    return { required, checksDigest: requiredChecksDigest(target, revision, required) };
   }
   const response = await api.call('GET',
     `${target.path}/commits/${revision}/check-runs?per_page=100&filter=latest`);
@@ -104,6 +134,9 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
   if (response.headers?.get?.('link')?.includes('rel="next"')
     || !Number.isSafeInteger(value.total_count) || value.total_count !== value.check_runs?.length)
     fail('GitHub integration checks are incomplete');
+  if (allowHistoricalCheckGap && value.total_count === 0)
+    return { required: [], checksDigest: requiredChecksDigest(target, revision, []),
+      historicalCheckGap: { requiredChecks: [...contexts], checkRunsObserved: 0 } };
   const required = contexts.map((context) => {
     const record = latestSuccessfulRequiredCheck(value.check_runs.filter((entry) =>
       entry?.name === context && String(entry?.app?.id) === String(GITHUB_ACTIONS_INTEGRATION_ID)),
@@ -111,9 +144,7 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
     if (record === null) fail('GitHub integration required checks are not exactly successful');
     return record;
   });
-  return { required, checksDigest: governanceDigest({
-    schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
-    revision, required }) };
+  return { required, checksDigest: requiredChecksDigest(target, revision, required) };
 }
 async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
   activeRuleTypes, rulesetVersions, retrospective, expected = null, beforeRevision = mergedCommit.parents[0]) {
@@ -271,8 +302,11 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
       activeRuleTypes: expectedProtection.targetActiveRuleTypes,
       bypassActorsObserved: expectedProtection.targetBypassActorsObserved };
   const requiredChecksDigest = await checks(api, target, candidate.headRevision,
-    enrollment?.checkContexts ?? protectedTarget.requiredContexts, mergedAt,
-    (historical ? expectedProof?.successfulChecks : expectedProof?.requiredChecks) ?? null);
+    enrollment?.checkContexts ?? protectedTarget.requiredContexts, mergedAt, {
+      expected: (historical ? expectedProof?.successfulChecks : expectedProof?.requiredChecks) ?? null,
+      allowHistoricalCheckGap: historical && expectedProof === null,
+      storedHistoricalCheckGap: historical ? expectedProof?.historicalCheckGap ?? null : null,
+    });
   const { observeIntegrationMethod } = await import('../bin/agentic-os-integration-proof.mjs');
   const methodProof = await observeIntegrationMethod({ api, target, input, candidate, mergedCommit,
     allowedMethods: protectedTarget.allowedMethods, activeRuleTypes: protectedTarget.activeRuleTypes,
@@ -334,6 +368,9 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     targetRulesetVersions: protectedTarget.versions,
     requiredChecks: requiredChecksDigest.required,
     requiredChecksDigest: requiredChecksDigest.checksDigest,
+    ...(requiredChecksDigest.historicalCheckGap
+      ? { historicalCheckGap: requiredChecksDigest.historicalCheckGap }
+      : {}),
     ...(suite === null ? {} : { ruleSuiteDigest: suite.ruleSuiteDigest,
       ruleSuiteId: suite.suiteId, ruleSuiteResult: suite.result, ruleSuitePushedAt: suite.pushedAt }),
     ...(retrospective ? { integrationMode: input.integrationMode,
