@@ -268,6 +268,12 @@ function apiFixture(issuance) {
         '2026-09-02T00:06:00Z'));
     if (route === `GET /repos/example/evidence/git/commits/${EVIDENCE_BASE}`)
       return response(commit(EVIDENCE_BASE, [], INITIAL_BASE_TREE, '2026-09-02T00:00:00Z'));
+    if (route === `GET /repos/example/evidence/compare/${EVIDENCE_BASE}...${INITIAL_PUBLICATION}`)
+      return response({
+        status: 'ahead', ahead_by: 1, behind_by: 0, total_commits: 1,
+        merge_base_commit: { sha: EVIDENCE_BASE }, commits: [{ sha: INITIAL_PUBLICATION }],
+        files: [{ filename: bundle.evidencePath, status: 'added', sha: INITIAL_BLOB }],
+      });
     if (route === `GET /repos/example/evidence/git/trees/${INITIAL_BASE_TREE}`)
       return response({ sha: INITIAL_BASE_TREE, truncated: false, tree: [] });
     if (route === `GET /repos/example/evidence/git/trees/${INITIAL_TREE}`)
@@ -413,6 +419,14 @@ function apiFixture(issuance) {
       [TRANSITION_BASE], publishedCommit.tree,
       publishedCommit.stored.operationInput.request.requestedTransition === 'retire'
         ? state.retirePublicationCommittedAt : COMMITTED));
+      const publishedCompare = [...publications.values()].find((entry) =>
+        route === `GET /repos/example/evidence/compare/${TRANSITION_BASE}...${entry.publication}`);
+      if (publishedCompare) return response({
+        status: 'ahead', ahead_by: 1, behind_by: 0, total_commits: 1,
+        merge_base_commit: { sha: TRANSITION_BASE }, commits: [{ sha: publishedCompare.publication }],
+        files: [{ filename: publishedCompare.stored.evidencePath, status: 'added',
+          sha: publishedCompare.blob }],
+      });
     if (route === `GET /repos/example/evidence/git/trees/${TRANSITION_BASE_TREE}`)
       return response({ sha: TRANSITION_BASE_TREE, truncated: false, tree: [] });
     const publishedTree = [...publications.values()].find((entry) =>

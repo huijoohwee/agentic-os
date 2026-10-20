@@ -266,19 +266,49 @@ function fixture(t, options = {}, root = sandbox(t)) {
     }
     if (route.startsWith('GET /repos/example/evidence/contents/authority-evidence/')) return published ? content(stored, BLOB) : new Response('', { status: 404 });
     if (route === 'GET /repos/example/evidence/git/ref/heads/release/2026') return response({ ref: 'refs/heads/release/2026', object: { type: 'commit', sha: HEAD } });
+    if (route === `GET /repos/example/evidence/compare/${HEAD}...${PUBLICATION}`) {
+      return response({
+        status: options.publicationCompareStatus ?? 'ahead',
+        ahead_by: options.publicationCompareAheadBy ?? 1,
+        behind_by: options.publicationCompareBehindBy ?? 0,
+        total_commits: options.publicationCompareTotalCommits ?? 1,
+        merge_base_commit: { sha: options.publicationCompareMergeBase ?? HEAD },
+        commits: options.emptyPublicationCompareCommits ? [] : [{
+          sha: options.publicationCompareCommit ?? PUBLICATION,
+        }],
+        files: [{
+          filename: evidencePath,
+          status: options.publicationFileStatus ?? 'added',
+          sha: options.wrongPublicationBlobSha ? hash('0', 40) : BLOB,
+          ...(options.publicationPreviousFilename ? {
+            previous_filename: options.publicationPreviousFilename,
+          } : {}),
+        }, ...(options.extraPublicationFile ? [{
+          filename: 'surprise.md',
+          status: 'added',
+          sha: hash('7', 40),
+        }] : [])],
+      });
+    }
     if (route === `GET /repos/example/evidence/git/commits/${HEAD}`) return commit(HEAD, [PARENT], BASE_TREE, STARTED);
     if (route === `GET /repos/example/evidence/git/commits/${PUBLICATION}`) return commit(PUBLICATION, [HEAD], EVIDENCE_TREE);
     if (route === `GET /repos/example/evidence/git/trees/${BASE_TREE}`) return response({
       sha: options.wrongTreeSha ? hash('0', 40) : BASE_TREE,
       truncated: options.truncatedTree ? null : false,
       tree: [{ path: 'README.md', mode: '100644', type: 'blob', sha: hash('6', 40) }],
+      ...(options.oversizedEvidenceTree ? { padding: 'x'.repeat(MAX_AUTHORITY_RESPONSE_BYTES) } : {}),
     });
     if (route === `GET /repos/example/evidence/git/trees/${EVIDENCE_TREE}`) {
       const tree = [{ path: 'README.md', mode: '100644', type: 'blob', sha: hash('6', 40) },
         { path: 'authority-evidence', mode: '040000', type: 'tree', sha: hash('8', 40) },
         { path: evidencePath, mode: '100644', type: 'blob', sha: BLOB }];
       if (options.extraTree) tree.push({ path: 'surprise.md', mode: '100644', type: 'blob', sha: hash('7', 40) });
-      return response({ sha: EVIDENCE_TREE, truncated: false, tree });
+      return response({
+        sha: EVIDENCE_TREE,
+        truncated: false,
+        tree,
+        ...(options.oversizedEvidenceTree ? { padding: 'x'.repeat(MAX_AUTHORITY_RESPONSE_BYTES) } : {}),
+      });
     }
     if (route === 'POST /repos/example/evidence/git/blobs') {
       const body = JSON.parse(init.body); stored = JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')); return response({ sha: BLOB }, 201);

@@ -220,13 +220,14 @@ test('explicit retrospective issuance binds an exact historical squash and curre
       assert.deepEqual(pageNumbers.slice(offset, offset + 3), [1, 2, 3],
         'each exact ancestry read stops when its merge ancestor appears on page three');
     assert.ok(ancestryPages.every((call) => call.parsed.searchParams.get('per_page') === '25'));
-    assert.ok(!api.calls.some((call) => call.route.includes('/compare/')));
+    assert.ok(!api.calls.some((call) => call.route === `GET /repos/example/evidence/compare/${HEAD}...${PUBLICATION}`));
     assert.ok(api.calls.every((call) => call.init.headers['x-github-api-version']
       === '2026-03-10'));
     const reader = createGitHubAuthorityReadProvider({ issuance,
       token: 'environment-secret', fetchImpl: api.fetchImpl });
     assert.deepEqual(await verifyGitHubAuthorityIssuanceLive(issuance, reader,
       { now: () => NOW }), issuance);
+    assert.ok(api.calls.some((call) => call.route === `GET /repos/example/evidence/compare/${HEAD}...${PUBLICATION}`));
     const reads = api.calls.length;
     await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
       reader, { now: () => NOW }), /record-only/u);
@@ -353,13 +354,48 @@ test('fails closed for forged input, weak or inexact rules, target drift, and in
     { evidenceDeletionParameters: true },
     { targetHead: hash('9', 40) }, { ownerId: 43, ambientTargetRepositoryMetadata: true },
     { deepOwnerLogin: true, ambientTargetRepositoryMetadata: true },
-    { extraTree: true }, { wrongTreeSha: true }, { truncatedTree: true },
   ]) {
     const api = fixture(t, options, root), result = await api.run();
     assert.equal(result.code, 1, JSON.stringify(options));
     assert.match(result.stderr.values.join(''), /authority issuance failed:/u);
     assert.doesNotMatch(result.stderr.values.join(''), /environment-secret/u);
   }
+});
+
+test('later REST verification fails closed on inexact publication compare', async (t) => {
+  const { source, planBytes } = laterVerificationInput();
+  const options = { source };
+  const api = fixture(t, options);
+  const result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  options.extraPublicationFile = true;
+  const issuance = JSON.parse(result.stdout.values.join(''));
+  const provider = createGitHubAuthorityReadProvider({
+    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
+  });
+  await assert.rejects(createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+    provider, { now: () => NOW }), /authority publication changed another path/u);
+});
+
+test('later REST verification avoids oversized evidence trees by using bounded publication compare', async (t) => {
+  const { source, planBytes } = laterVerificationInput();
+  const options = { source };
+  const api = fixture(t, options);
+  const result = await api.run();
+  assert.equal(result.code, 0, result.stderr.values.join(''));
+  options.oversizedEvidenceTree = true;
+  const issuance = JSON.parse(result.stdout.values.join(''));
+  const provider = createGitHubAuthorityReadProvider({
+    issuance, token: 'environment-secret', fetchImpl: api.fetchImpl,
+  });
+  const readsBefore = api.calls.length;
+  const receipt = await createGitHubAuthorityLiveVerificationReceipt({ issuance, planBytes },
+    provider, { now: () => NOW });
+  assert.deepEqual(validateGitHubAuthorityLiveVerificationReceipt(receipt), receipt);
+  const laterCalls = api.calls.slice(readsBefore);
+  assert.ok(laterCalls.some((call) => call.route === `GET /repos/example/evidence/compare/${HEAD}...${PUBLICATION}`));
+  assert.ok(!laterCalls.some((call) => call.route === `GET /repos/example/evidence/git/trees/${BASE_TREE}`));
+  assert.ok(!laterCalls.some((call) => call.route === `GET /repos/example/evidence/git/trees/${EVIDENCE_TREE}`));
 });
 
 function laterVerificationInput() {
