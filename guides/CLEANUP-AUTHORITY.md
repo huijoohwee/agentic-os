@@ -117,6 +117,40 @@ Budget: one policy row and this guide record; zero runtime modules, dependencies
 bytes. The entry creates no direct time, storage, or cost saving. Rollback removes this exact record
 while preserving all issued evidence and its original meaning.
 
+### Current recovery enrollment — agentic-os PR #542 — 2026-10-20
+
+The current request directs END ADLC completion for the exact `base-authority-recovery` worktree.
+This enrollment records PR #542's current merge facts: base
+`0a23d51617e477c3543d88f97ff8a3f1224ff9eb`, reviewed head
+`c66be7714a2e80f5bb232d8fccb3624c57bbb313`, merged commit
+`d3eb945b5f60cefdd8193e318f27c7afbdadd5fa`, and equal head/merge tree
+`976360af3efe0d3759710f5e42212de8cf2e9e1c`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/542>; the selected `budgets` and `test` checks passed.
+
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This current-facts enrollment does not issue provider evidence or authorize integration,
+retirement, cleanup, synchronization, deployment, or rollback. Each later effect keeps its own exact
+plan, authorization, and receipt.
+
+### Current recovery enrollment — agentic-os PR #543 — 2026-10-20
+
+The current request directs END ADLC completion for the exact `base-authority-policy-correct`
+worktree. This enrollment records PR #543's current merge facts: base
+`d3eb945b5f60cefdd8193e318f27c7afbdadd5fa`, reviewed head
+`e945bb8ff4450a5b9fc647fc8f444e3bd554e23a`, merged commit
+`e489e5f7f4fb2e046c92f5fea35887d97fa17e65`, and equal head/merge tree
+`3f6e6b1650601d29762fee93e1c1fc8f0104d989`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/543>; the selected `budgets` and `test` checks passed.
+
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This current-facts enrollment does not issue provider evidence or authorize integration,
+retirement, cleanup, synchronization, deployment, or rollback. Each later effect keeps its own exact
+plan, authorization, and receipt.
+
+Budget: two exact v1 enrollments, updates to the existing transition-workflow test, and this owner
+record; three existing files changed, zero runtime modules, dependencies, or always-load bytes. Revert
+these exact entries and test expectations while preserving source history and prior enrollments.
+
 ### Current-quarantine retention adoption — agentic-os PR #487 — 2026-10-17
 
 The owner delegated autonomous END ADLC completion. This exact current-retention adoption binds
