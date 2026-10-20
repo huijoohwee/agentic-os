@@ -87,7 +87,7 @@ test('Base enrollment binds Base checks and stays read-only', () => {
   const workflow = readFileSync('.github/workflows/adlc-authority-base.yml', 'utf8');
   const basePolicy = loadCommittedAuthorityPolicy('.github/adlc-authority-base-policy.json');
   assert.equal(basePolicy.workflowPath, '.github/workflows/adlc-authority-base.yml');
-  assert.deepEqual(basePolicy.requiredStatusChecks, ['Integration Gate']);
+  assert.deepEqual(basePolicy.requiredStatusChecks, ['budgets', 'test']);
   assert.match(workflow, /const target = "github.com\/huijoohwee\/agentic-base"/u);
   assert.match(workflow, /contents: read/u);
   assert.match(workflow, /persist-credentials: false/u);
