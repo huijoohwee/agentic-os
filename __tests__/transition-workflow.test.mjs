@@ -63,6 +63,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/542',
     'https://github.com/huijoohwee/agentic-os/pull/543',
     'https://github.com/huijoohwee/agentic-base/pull/8',
+    'https://github.com/huijoohwee/agentic-os/pull/542',
+    'https://github.com/huijoohwee/agentic-os/pull/543',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
