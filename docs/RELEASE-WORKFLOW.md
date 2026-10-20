@@ -7,6 +7,6 @@ Cleanup preserves recovery bytes and requires exact eligible-target evidence; `-
 Integration, retirement, cleanup, sync and production grants remain separate.
 [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.
 
-`npm run release:common -- retire-empty-active --ref=<lane>` quarantines a clean, active no candidate lane at its
-admitted base. It retains refs, objects, projection, registration; no provider, merge or deployment
+`npm run release:common -- retire-empty-active --ref=<lane>` quarantines a clean active lane only when a recorded
+head equals base. It retains refs, objects, projection, registration; no provider, merge or deployment
 authority follows.
