@@ -59,7 +59,6 @@ export function normalizeJson(value, path = "value") {
 export function serializedJsonLength(value) {
   return JSON.stringify(value).length;
 }
-
 export async function sha256JsonDigest(value) {
   const subtle = globalThis.crypto?.subtle; if (!subtle) throw new TypeError('WebCrypto SHA-256 is unavailable.');
   return Array.from(new Uint8Array(await subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(canonicalizeJson(value))))), b => b.toString(16).padStart(2, '0')).join('');
