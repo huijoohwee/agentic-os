@@ -62,6 +62,26 @@ test('historical facts require exact v2 enrollment and a distinct reviewed curre
     { ...ENROLLMENT, adoptionScope: ['src/feature.mjs'] }] }), /current-adoption scope/u);
 });
 
+test('historical facts can bind an exact retained check gap when GitHub exposes zero runs', async () => {
+  const fx = await fixture(state => { state.checkRuns = []; }), { winner } = await publish(fx);
+  const proof = winner.stored.providerProof;
+  assert.deepEqual(proof.successfulChecks, []);
+  assert.deepEqual(proof.historicalCheckGap, {
+    requiredChecks: ['Integration Gate'],
+    checkRunsObserved: 0,
+  });
+  const replay = await publishGitHubTransitionAuthority({
+    ...fx.common,
+    now: () => Date.parse('2026-09-03T00:00:00Z'),
+  });
+  assert.equal(replay.publicationDigest, winner.publicationDigest);
+  fx.api.state.checkRuns = [checkRun(999, '2026-09-02T00:04:20Z')];
+  await assert.rejects(publishGitHubTransitionAuthority({
+    ...fx.common,
+    now: () => Date.parse('2026-09-03T00:00:01Z'),
+  }), /required checks/u);
+});
+
 test('historical dispatch rejects missing enrollment and legacy proof-schema substitution', async () => {
   const fx = await fixture(), bytes = encodeGitHubTransitionInput(fx.operationInput);
   const event = { inputs: { operation_payload: bytes.toString('utf8'), operation_input_digest: deriveGitHubTransitionInputDigest(bytes) } };

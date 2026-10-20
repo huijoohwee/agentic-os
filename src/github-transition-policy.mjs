@@ -216,11 +216,13 @@ export function assertGitHubTransitionPolicyOperation(policyValue, input) {
 }
 export function historicalContentProjection(projection, enrollment) {
   const { targetProtectionDigest, targetBypassActorsObserved, targetRequiredContexts, targetAllowedMergeMethods,
-    targetActiveRuleTypes, targetRulesetVersions, requiredChecks, requiredChecksDigest, ...facts } = projection;
+    targetActiveRuleTypes, targetRulesetVersions, requiredChecks, requiredChecksDigest,
+    historicalCheckGap, ...facts } = projection;
   return { ...facts, schema: 'agentic-os/github-integrate-provider-proof/v2', proofBasis: GITHUB_HISTORICAL_CONTENT_MODE,
     enrollmentDigest: governanceDigest(enrollment), historicalProtectionProven: false,
     historicalRequiredCheckPolicyProven: false, historicalRuleSuiteProven: false, methodProven: false,
     successfulChecks: requiredChecks, successfulChecksDigest: requiredChecksDigest,
+    ...(historicalCheckGap ? { historicalCheckGap } : {}),
     currentTargetProtection: { targetProtectionDigest, targetBypassActorsObserved, targetRequiredContexts,
       targetAllowedMergeMethods, targetActiveRuleTypes, targetRulesetVersions } };
 }
@@ -235,6 +237,15 @@ export function validateTransitionProviderProof(value, input) {
     || source.mergeMethod !== 'unproven'
     || ['historicalProtectionProven', 'historicalRequiredCheckPolicyProven', 'historicalRuleSuiteProven', 'methodProven'].some((key) => source[key] !== false)
     || Object.keys(source).some((key) => key.startsWith('ruleSuite')))) fail('historical content proof upgrades unproven history');
+  if (historical && Object.hasOwn(source, 'historicalCheckGap')) {
+    const gap = source.historicalCheckGap;
+    if (!gap || typeof gap !== 'object' || Array.isArray(gap)
+      || !Array.isArray(gap.requiredChecks) || gap.requiredChecks.length === 0
+      || gap.requiredChecks.some((entry) => typeof entry !== 'string' || !entry)
+      || gap.checkRunsObserved !== 0
+      || !Array.isArray(source.successfulChecks) || source.successfulChecks.length !== 0)
+      fail('historical content proof check gap is invalid');
+  }
   const disposition = input.preservationDisposition;
   if (disposition && (source.effectClass !== 'claim-retirement-record-only'
     || source.preservationReceiptDigest !== disposition.receiptDigest

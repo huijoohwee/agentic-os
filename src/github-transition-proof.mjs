@@ -1,4 +1,3 @@
-/** Provider-observed integration proof joined to one live predecessor issuance. */
 import { freezeCleanupRecord as freeze } from './cleanup-records.mjs';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { GITHUB_ACTIONS_INTEGRATION_ID } from './github-authority.mjs';
@@ -21,8 +20,7 @@ function same(left, right) { return canonicalJson(left) === canonicalJson(right)
 async function initialAuthorityProof(provider, input) {
   const issuance = input.predecessorIssuance, stored = issuance.storedBundle;
   const bundle = stored.authorityBundle, publication = issuance.publicationReceipt;
-  const query = { repository: bundle.policy.evidenceRepository, ref: bundle.evidenceRef,
-    path: bundle.evidencePath };
+  const query = { repository: bundle.policy.evidenceRepository, ref: bundle.evidenceRef, path: bundle.evidencePath };
   const [run, actorValue, foundPublication, foundBundle, evidenceRules,
     canonicalRules] = await Promise.all([
     provider.readRun({ repository: bundle.policy.evidenceRepository,
@@ -36,33 +34,28 @@ async function initialAuthorityProof(provider, input) {
   ]);
   const rules = createGitHubProtectionProjection(evidenceRules);
   const canonical = createGitHubProtectionProjection(canonicalRules);
-  const expectedPublication = { repository: publication.evidenceRepository, ref: publication.evidenceRef,
-    path: publication.evidencePath, revision: publication.publicationRevision,
-    parentRevision: publication.parentRevision, committedAt: publication.committedAt,
-    storedDigest: publication.storedDigest };
+  const expectedPublication = { repository: publication.evidenceRepository, ref: publication.evidenceRef, path: publication.evidencePath,
+    revision: publication.publicationRevision, parentRevision: publication.parentRevision,
+    committedAt: publication.committedAt, storedDigest: publication.storedDigest };
   if (!same(run, bundle.workflowRun) || actorValue.subject !== input.request.authoritySubject
     || !same(foundBundle, stored) || foundPublication === null
     || !same(foundPublication, expectedPublication)
     || !same(rules, stored.preProtection.evidence)
     || !same(canonical, stored.preProtection.canonical))
     fail('initial GitHub authority issuance is no longer live and exact');
-  return { predecessorIssuanceDigest: issuance.issuanceDigest,
-    predecessorTransitionReceiptDigest: issuance.transitionReceipt.receiptDigest,
-    predecessorStoredDigest: stored.storedDigest,
-    predecessorPublicationReceiptDigest: publication.receiptDigest,
-    predecessorPublicationRevision: publication.publicationRevision,
-    predecessorEvidenceRef: bundle.evidenceRef,
-    predecessorEvidencePath: bundle.evidencePath,
-    predecessorEvidenceProtectionDigest: rules.projectionDigest,
+  return { predecessorIssuanceDigest: issuance.issuanceDigest, predecessorTransitionReceiptDigest: issuance.transitionReceipt.receiptDigest,
+    predecessorStoredDigest: stored.storedDigest, predecessorPublicationReceiptDigest: publication.receiptDigest,
+    predecessorPublicationRevision: publication.publicationRevision, predecessorEvidenceRef: bundle.evidenceRef,
+    predecessorEvidencePath: bundle.evidencePath, predecessorEvidenceProtectionDigest: rules.projectionDigest,
     predecessorCanonicalProtectionDigest: canonical.projectionDigest };
 }
 function successorAuthorityProof(input) {
   const authority = input.predecessorAuthority;
   return { predecessorIssuanceDigest: authority.predecessorIssuanceDigest, predecessorTransitionReceiptDigest: authority.predecessorTransitionReceiptDigest,
-    successorAuthorityKind: authority.authorityKind, successorAuthorityRef: authority.authorityRef, adoptedTerminalClaimId: authority.adoptedTerminalClaimId,
-    adoptedLineageDigest: authority.adoptedLineageDigest, adoptedIntegrationReceiptDigest: authority.integrationReceiptDigest, successorReviewRequestId: authority.reviewRequestId,
-    successorRetirementReason: authority.retirementReason,
-    successorAdoptionDisposition: authority.adoptionDisposition };
+    successorAuthorityKind: authority.authorityKind, successorAuthorityRef: authority.authorityRef,
+    adoptedTerminalClaimId: authority.adoptedTerminalClaimId, adoptedLineageDigest: authority.adoptedLineageDigest,
+    adoptedIntegrationReceiptDigest: authority.integrationReceiptDigest, successorReviewRequestId: authority.reviewRequestId,
+    successorRetirementReason: authority.retirementReason, successorAdoptionDisposition: authority.adoptionDisposition };
 }
 function checkRecord(entry, context, revision, mergedAt) {
   const completedAt = instant(entry?.completed_at, 'check completion time');
@@ -73,14 +66,22 @@ function checkRecord(entry, context, revision, mergedAt) {
   return { context, checkRunId: id(entry.id, 'check run id'), appId: String(GITHUB_ACTIONS_INTEGRATION_ID),
     status: 'completed', conclusion: 'success', completedAt, revision };
 }
+function historicalCheckGapRecord(value, contexts) {
+  const requiredChecks = Array.isArray(value?.requiredChecks) ? value.requiredChecks.map((entry, index) =>
+    text(entry, `historical check gap requiredChecks[${index}]`)) : null;
+  if (requiredChecks === null || value?.checkRunsObserved !== 0 || !same(requiredChecks, contexts))
+    fail('stored historical check gap is invalid');
+  return { requiredChecks, checkRunsObserved: 0 };
+}
+const requiredChecksDigest = (target, revision, required) => governanceDigest({ schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository, revision, required });
 async function classicBranchProtection(api, target, branch) {
   const response = await api.call('GET', `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
   if (response.status === 404) return null;
   const value = api.exact(response, [200], 'GitHub branch protection'), strict = value?.required_status_checks?.strict;
   if (typeof strict !== 'boolean') fail('GitHub branch protection required checks are invalid'); return parseClassicBranchProtection({ ...value, required_status_checks: { ...value.required_status_checks, strict: false } }, GITHUB_ACTIONS_INTEGRATION_ID);
 }
-async function checks(api, target, revision, contexts, mergedAt, expected = null) {
-  if (expected !== null) {
+async function checks(api, target, revision, contexts, mergedAt, { expected = null, allowHistoricalCheckGap = false, storedHistoricalCheckGap = null } = {}) {
+  if (expected !== null && storedHistoricalCheckGap === null) {
     if (!Array.isArray(expected) || expected.length !== contexts.length
       || expected.some((entry, index) => entry.context !== contexts[index]))
       fail('stored required check identities are invalid');
@@ -93,17 +94,20 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
       if (!same(record, stored)) fail('stored required check run changed');
       required.push(record);
     }
-    return { required, checksDigest: governanceDigest({
-      schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
-      revision, required }) };
+    return { required, checksDigest: requiredChecksDigest(target, revision, required) };
   }
-  const response = await api.call('GET',
-    `${target.path}/commits/${revision}/check-runs?per_page=100&filter=latest`);
-  const value = object(api.exact(response, [200], 'GitHub integration checks'),
-    'GitHub integration checks');
+  const response = await api.call('GET', `${target.path}/commits/${revision}/check-runs?per_page=100&filter=latest`);
+  const value = object(api.exact(response, [200], 'GitHub integration checks'), 'GitHub integration checks');
   if (response.headers?.get?.('link')?.includes('rel="next"')
-    || !Number.isSafeInteger(value.total_count) || value.total_count !== value.check_runs?.length)
-    fail('GitHub integration checks are incomplete');
+    || !Number.isSafeInteger(value.total_count) || value.total_count !== value.check_runs?.length
+    || storedHistoricalCheckGap !== null && value.total_count !== 0)
+    fail(storedHistoricalCheckGap !== null ? 'GitHub integration required checks are not exactly successful' : 'GitHub integration checks are incomplete');
+  if (storedHistoricalCheckGap !== null)
+    return { required: [], checksDigest: requiredChecksDigest(target, revision, []),
+      historicalCheckGap: historicalCheckGapRecord(storedHistoricalCheckGap, contexts) };
+  if (allowHistoricalCheckGap && value.total_count === 0)
+    return { required: [], checksDigest: requiredChecksDigest(target, revision, []),
+      historicalCheckGap: { requiredChecks: [...contexts], checkRunsObserved: 0 } };
   const required = contexts.map((context) => {
     const record = latestSuccessfulRequiredCheck(value.check_runs.filter((entry) =>
       entry?.name === context && String(entry?.app?.id) === String(GITHUB_ACTIONS_INTEGRATION_ID)),
@@ -111,9 +115,7 @@ async function checks(api, target, revision, contexts, mergedAt, expected = null
     if (record === null) fail('GitHub integration required checks are not exactly successful');
     return record;
   });
-  return { required, checksDigest: governanceDigest({
-    schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository,
-    revision, required }) };
+  return { required, checksDigest: requiredChecksDigest(target, revision, required) };
 }
 async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedAt,
   activeRuleTypes, rulesetVersions, retrospective, expected = null, beforeRevision = mergedCommit.parents[0]) {
@@ -235,8 +237,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const enrollment = historical ? assertGitHubTransitionPolicyOperation(policy, input) : null;
   const contentOnly = historical || input.integrationMode === GITHUB_RETROSPECTIVE_CONTENT_MODE;
   const retrospective = contentOnly || input.integrationMode === GITHUB_RETROSPECTIVE_INTEGRATION_MODE;
-  const [pullResponse, targetResponse] = await Promise.all([api.call('GET',
-    `${target.path}/pulls/${number}`), api.call('GET', target.path)]);
+  const [pullResponse, targetResponse] = await Promise.all([api.call('GET', `${target.path}/pulls/${number}`), api.call('GET', target.path)]);
   const pull = object(api.exact(pullResponse, [200], 'GitHub integration review'),
     'GitHub integration review');
   const canonicalBranch = text(pull.base?.ref, 'review base branch');
@@ -271,8 +272,11 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
       activeRuleTypes: expectedProtection.targetActiveRuleTypes,
       bypassActorsObserved: expectedProtection.targetBypassActorsObserved };
   const requiredChecksDigest = await checks(api, target, candidate.headRevision,
-    enrollment?.checkContexts ?? protectedTarget.requiredContexts, mergedAt,
-    (historical ? expectedProof?.successfulChecks : expectedProof?.requiredChecks) ?? null);
+    enrollment?.checkContexts ?? protectedTarget.requiredContexts, mergedAt, {
+      expected: (historical ? expectedProof?.successfulChecks : expectedProof?.requiredChecks) ?? null,
+      allowHistoricalCheckGap: historical && expectedProof === null,
+      storedHistoricalCheckGap: historical ? expectedProof?.historicalCheckGap ?? null : null,
+    });
   const { observeIntegrationMethod } = await import('../bin/agentic-os-integration-proof.mjs');
   const methodProof = await observeIntegrationMethod({ api, target, input, candidate, mergedCommit,
     allowedMethods: protectedTarget.allowedMethods, activeRuleTypes: protectedTarget.activeRuleTypes,
@@ -285,19 +289,17 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
     : retrospective ? bundle.challenge.issuedAt : issuance.publicationReceipt.committedAt;
   const predecessorExpiresAt = issuance === null ? successorAuthority.expiresAt : bundle.challenge.expiresAt;
   if (retrospective) {
-    const retrospectiveMismatch = issuance === null
-      ? successorAuthority.reviewLocator !== locator
-        || successorAuthority.immutableRevision !== input.plan.target.immutableRevision
-        || successorAuthority.protectedBase !== mergedCommit.parents[0]
-        || successorAuthority.reviewedSourceTree !== candidateCommit?.tree
-        || successorAuthority.reviewedSourceTree !== mergedCommit.tree
-      : initialReview?.state !== 'merged'
-        || initialRecovery?.mergeRevision !== input.plan.target.immutableRevision
-        || initialRecovery.mergeEventId !== mergeEventId
-        || initialRecovery.historicalBaseRevision !== candidate.canonicalRevision
-        || initialRecovery.candidateTreeRevision !== candidateCommit?.tree
-        || initialRecovery.mergeTreeRevision !== mergedCommit.tree
-        || initialRecovery.mergedAt !== mergedAt;
+    const retrospectiveMismatch = issuance === null ? successorAuthority.reviewLocator !== locator
+      || successorAuthority.immutableRevision !== input.plan.target.immutableRevision
+      || successorAuthority.protectedBase !== mergedCommit.parents[0]
+      || successorAuthority.reviewedSourceTree !== candidateCommit?.tree
+      || successorAuthority.reviewedSourceTree !== mergedCommit.tree : initialReview?.state !== 'merged'
+      || initialRecovery?.mergeRevision !== input.plan.target.immutableRevision
+      || initialRecovery.mergeEventId !== mergeEventId
+      || initialRecovery.historicalBaseRevision !== candidate.canonicalRevision
+      || initialRecovery.candidateTreeRevision !== candidateCommit?.tree
+      || initialRecovery.mergeTreeRevision !== mergedCommit.tree
+      || initialRecovery.mergedAt !== mergedAt;
     if (retrospectiveMismatch
       || Date.parse(mergedAt) >= Date.parse(predecessorStartedAt)
       || suite !== null && Date.parse(suite.pushedAt) >= Date.parse(predecessorStartedAt)
@@ -317,28 +319,18 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   if (retrospective && issuance !== null) await descendant(api, target,
     initialRecovery.liveCanonicalRevision, currentCanonicalHead);
   const reviewBaseRevision = retrospective ? api.sha(pull.base?.sha, 'review base revision') : null;
-  const projection = { ...predecessor, targetRepository: target.repository,
-    targetRepositoryIdentity: targetIdentity,
-    reviewLocator: locator, reviewNumber: number, state: 'merged',
-    candidateBranch: candidate.branch, candidateHeadRevision: candidate.headRevision,
-    canonicalBranch, canonicalRef,
-    observedCanonicalHead: storedCanonicalHead,
-    mergeRevision: input.plan.target.immutableRevision, mergeMethod: method,
-    mergeEventId, mergedAt,
+  const projection = { ...predecessor, targetRepository: target.repository, targetRepositoryIdentity: targetIdentity,
+    reviewLocator: locator, reviewNumber: number, state: 'merged', candidateBranch: candidate.branch,
+    candidateHeadRevision: candidate.headRevision, canonicalBranch, canonicalRef, observedCanonicalHead: storedCanonicalHead,
+    mergeRevision: input.plan.target.immutableRevision, mergeMethod: method, mergeEventId, mergedAt,
     ...(methodProof.integrationMethodEvidence ? { integrationMethodEvidence: methodProof.integrationMethodEvidence } : {}),
-    targetProtectionDigest: protectedTarget.projection.projectionDigest,
-    targetBypassActorsObserved: protectedTarget.bypassActorsObserved,
-    targetRequiredContexts: protectedTarget.requiredContexts,
-    targetAllowedMergeMethods: protectedTarget.allowedMethods,
-    targetActiveRuleTypes: protectedTarget.activeRuleTypes,
-    targetRulesetVersions: protectedTarget.versions,
-    requiredChecks: requiredChecksDigest.required,
-    requiredChecksDigest: requiredChecksDigest.checksDigest,
-    ...(suite === null ? {} : { ruleSuiteDigest: suite.ruleSuiteDigest,
-      ruleSuiteId: suite.suiteId, ruleSuiteResult: suite.result, ruleSuitePushedAt: suite.pushedAt }),
-    ...(retrospective ? { integrationMode: input.integrationMode,
-      candidateTreeRevision: candidateCommit.tree, mergeTreeRevision: mergedCommit.tree,
-      baseRevision: reviewBaseRevision } : {}),
+    targetProtectionDigest: protectedTarget.projection.projectionDigest, targetBypassActorsObserved: protectedTarget.bypassActorsObserved,
+    targetRequiredContexts: protectedTarget.requiredContexts, targetAllowedMergeMethods: protectedTarget.allowedMethods,
+    targetActiveRuleTypes: protectedTarget.activeRuleTypes, targetRulesetVersions: protectedTarget.versions,
+    requiredChecks: requiredChecksDigest.required, requiredChecksDigest: requiredChecksDigest.checksDigest,
+    ...(requiredChecksDigest.historicalCheckGap ? { historicalCheckGap: requiredChecksDigest.historicalCheckGap } : {}),
+    ...(suite === null ? {} : { ruleSuiteDigest: suite.ruleSuiteDigest, ruleSuiteId: suite.suiteId, ruleSuiteResult: suite.result, ruleSuitePushedAt: suite.pushedAt }),
+    ...(retrospective ? { integrationMode: input.integrationMode, candidateTreeRevision: candidateCommit.tree, mergeTreeRevision: mergedCommit.tree, baseRevision: reviewBaseRevision } : {}),
     headRepository: `github.com/${text(pull.head?.repo?.full_name, 'review head repository')}`,
     headBranch: text(pull.head?.ref, 'review head branch'),
     headRevision: api.sha(pull.head?.sha, 'review head revision') };
@@ -364,8 +356,7 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const payload = historical ? historicalContentProjection(projection, enrollment)
     : { schema: 'agentic-os/github-integrate-provider-proof/v1', ...projection };
   const proof = freeze({ ...payload, proofDigest: governanceDigest(payload) });
-  if (requirePlanBinding && input.plan.parametersDigest !== proof.proofDigest
-    || expectedProof && !same(proof, expectedProof))
+  if (requirePlanBinding && input.plan.parametersDigest !== proof.proofDigest || expectedProof && !same(proof, expectedProof))
     fail('integration effect plan or stored winner does not bind the live provider proof');
   return proof;
 }
