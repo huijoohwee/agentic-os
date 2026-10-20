@@ -60,12 +60,14 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/514',
     'https://github.com/huijoohwee/agentic-os/pull/523',
     'https://github.com/huijoohwee/agentic-os/pull/527',
+    'https://github.com/huijoohwee/agentic-base/pull/8',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-graph/pull/1492', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-graph/pull/1504', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-base/pull/4', ['Integration Gate']],
+    ['https://github.com/huijoohwee/agentic-base/pull/8', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-os/pull/425', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/438', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/441', ['budgets', 'test']],
@@ -114,6 +116,18 @@ test('committed transition workflow is bound to the canonical authority policy',
     checkContexts: ['Integration Gate'],
     adoptionScope: ['recovery/current-historical-content/pr-4'],
     rationale: 'Current recording of PR #4 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
+  });
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/8')), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/agentic-base',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-base/pull/8',
+    baseRevision: '093d2592449d19892170eac928606cd5d5da58b8',
+    headRevision: 'b1edc6a46d389022f76f3596b32f0b463b9fa4d7',
+    mergeRevision: 'aec0bae0669ae438501772ebc92c28d0941f6ed5',
+    treeRevision: '1d1c49927608ec4d40d2cedbe21a32e123819073',
+    checkContexts: ['Integration Gate'],
+    adoptionScope: ['recovery/current-historical-content/pr-8'],
+    rationale: 'Current recording of PR #8 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
   });
   assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/133')), {
     schema: 'agentic-os/historical-content-enrollment/v1',

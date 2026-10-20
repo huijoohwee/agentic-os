@@ -660,6 +660,25 @@ Historical protection, required-check policy, Ruleset Suite, and merge-method au
 unproven. The enrollment grants no merge, retirement, cleanup, deletion, deployment, or
 canonical-sync effect; each later effect requires its own exact plan, authorization, and receipt.
 
+## Current recovery enrollment — agentic-base PR #8 — 2026-10-20
+
+The policy owner accepted these exact current facts for repository `github.com/huijoohwee/agentic-base`:
+base `093d2592449d19892170eac928606cd5d5da58b8`, reviewed head
+`b1edc6a46d389022f76f3596b32f0b463b9fa4d7`, merge
+`aec0bae0669ae438501772ebc92c28d0941f6ed5`, and equal head/merge tree
+`1d1c49927608ec4d40d2cedbe21a32e123819073`. The exact review is
+<https://github.com/huijoohwee/agentic-base/pull/8>; its successful pre-merge check context is
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-8`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It grants no merge, retirement, cleanup, deployment, or canonical-sync effect; each later
+effect requires its own exact plan, authorization, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow test, and this owner record; three
+existing files changed, zero runtime modules, dependencies, or always-load bytes. Revert the protected
+policy update to remove this PR enrollment; source history and prior enrollments stay intact.
+
 ## Current recovery enrollment — agentic-commerce-os PR #133 — 2026-10-16
 
 This enrollment binds repository `github.com/huijoohwee/agentic-commerce-os`, base
