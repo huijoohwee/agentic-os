@@ -12,7 +12,7 @@ const sha = value => typeof value === 'string' && /^[a-f0-9]{40}(?:[a-f0-9]{24})
 export function executionEnvironment(environment = process.env) {
   // npm nesting changes these transport labels; remove them from both execution and the digest.
   return Object.fromEntries(Object.entries(environment).filter(([key]) =>
-    !['npm_lifecycle_event', 'npm_lifecycle_script', 'npm_command', '_', 'NODE_TEST_CONTEXT'].includes(key))
+    !['npm_lifecycle_event', 'npm_lifecycle_script', 'npm_command', '_', 'NODE_TEST_CONTEXT', 'CODEX_TOOL_CALL_ID'].includes(key))
     .sort(([a], [b]) => a.localeCompare(b)));
 }
 export function readGit(root, args, { input, binary = false } = {}) {

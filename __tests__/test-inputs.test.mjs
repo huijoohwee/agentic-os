@@ -132,6 +132,8 @@ test('ignored npm inputs bind receipts, while symlinks and escaping paths fail',
 test('environment transport labels are removed from execution as well as fingerprints', () => {
   assert.deepEqual(executionEnvironment({ NODE_OPTIONS: '--trace-warnings', npm_lifecycle_event: 'land', _: 'npm' }),
     { NODE_OPTIONS: '--trace-warnings' });
+  assert.deepEqual(executionEnvironment({ CODEX_TOOL_CALL_ID: 'one', NODE_ENV: 'test' }),
+    executionEnvironment({ CODEX_TOOL_CALL_ID: 'two', NODE_ENV: 'test' }));
 });
 test('CI binds PR merge parents, merge groups and push-before to the actual checkout', () => {
   const base = 'a'.repeat(40), head = 'b'.repeat(40), merge = 'c'.repeat(40);
