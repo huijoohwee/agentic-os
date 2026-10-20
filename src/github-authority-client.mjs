@@ -142,21 +142,32 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     const parents = value.parents.map((entry) => sha(entry?.sha, 'GitHub parent SHA'));
     return { revision, parents, tree: sha(value.tree?.sha, 'GitHub tree SHA'),
       committedAt: instant(value.committer?.date, 'GitHub commit time') }; };
-  const tree = async (repo, revision) => {
-    const value = object(await request(`${repo.path}/git/trees/${sha(revision,
-      'GitHub tree revision')}?recursive=1`), 'GitHub tree');
-    if (value.sha !== revision || value.truncated !== false || !Array.isArray(value.tree))
-      fail('GitHub tree is not exact and complete');
-    const entries = new Map();
-    for (const item of value.tree) {
-      const path = relative(item?.path, 'GitHub tree path');
-      const descriptor = { mode: text(item.mode, 'GitHub tree mode'),
-        type: text(item.type, 'GitHub tree type'), sha: sha(item.sha, 'GitHub tree entry SHA') };
-      if (!['blob', 'commit', 'tree'].includes(descriptor.type) || entries.has(path))
-        fail('GitHub tree has invalid or duplicate entries');
-      entries.set(path, descriptor);
-    }
-    return entries; };
+  const compare = async (repo, baseRevision, headRevision) => {
+    const base = sha(baseRevision, 'GitHub compare base revision');
+    const head = sha(headRevision, 'GitHub compare head revision');
+    const value = object(await request(`${repo.path}/compare/${base}...${head}`),
+      'GitHub compare');
+    if (!Number.isSafeInteger(value.ahead_by)
+      || !Number.isSafeInteger(value.behind_by)
+      || !Number.isSafeInteger(value.total_commits)
+      || !Array.isArray(value.commits)
+      || !Array.isArray(value.files)) fail('GitHub compare is invalid');
+    return {
+      mergeBaseRevision: sha(value.merge_base_commit?.sha, 'GitHub compare merge base revision'),
+      status: text(value.status, 'GitHub compare status'),
+      aheadBy: value.ahead_by,
+      behindBy: value.behind_by,
+      totalCommits: value.total_commits,
+      commits: value.commits.map((entry) => sha(entry?.sha, 'GitHub compare commit SHA')),
+      files: value.files.map((entry) => ({
+        filename: relative(entry?.filename, 'GitHub compare filename'),
+        status: text(entry?.status, 'GitHub compare file status'),
+        sha: entry?.sha === null || entry?.sha === undefined ? null : sha(entry.sha, 'GitHub compare file SHA'),
+        previousFilename: entry?.previous_filename === null || entry?.previous_filename === undefined
+          ? null : relative(entry.previous_filename, 'GitHub compare previous filename'),
+      })),
+    };
+  };
   const requireEvidence = (value) => {
     const repo = repository(value);
     if (repo.repository !== bundle.policy.evidenceRepository) fail('evidence repository changed');
@@ -197,16 +208,21 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     const published = await commit(repo, revision, true);
     if (published.parents[0] !== bundle.policy.canonicalRevision)
       fail('authority publication is not a canonical child');
-    const base = await commit(repo, bundle.policy.canonicalRevision);
-    const [before, after] = await Promise.all([tree(repo, base.tree), tree(repo, published.tree)]);
-    const target = after.get(path);
-    if (!target || target.type !== 'blob' || target.mode !== '100644'
+    const comparison = await compare(repo, bundle.policy.canonicalRevision, published.revision);
+    if (comparison.mergeBaseRevision !== bundle.policy.canonicalRevision
+      || comparison.status !== 'ahead'
+      || comparison.aheadBy !== 1
+      || comparison.behindBy !== 0
+      || comparison.totalCommits !== 1
+      || comparison.commits.length !== 1
+      || comparison.commits[0] !== published.revision)
+      fail('authority publication is not a canonical child');
+    if (comparison.files.length !== 1) fail('authority publication changed another path');
+    const [target] = comparison.files;
+    if (target.filename !== path
+      || target.status !== 'added'
+      || target.previousFilename !== null
       || target.sha !== expectedBlob) fail('authority publication blob changed');
-    const allowed = new Set(path.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')));
-    for (const key of new Set([...before.keys(), ...after.keys()])) {
-      if (!allowed.has(key) && canonicalJson(before.get(key) ?? null)
-        !== canonicalJson(after.get(key) ?? null)) fail('authority publication changed another path');
-    }
     return published;
   };
   const review = async (repo, locator) => {
