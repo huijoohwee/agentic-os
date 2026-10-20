@@ -138,6 +138,10 @@ test('stale, failed, tampered, incomplete and mismatched check receipts are reje
   const reuse = value => { writeReceipt(directory, `${check.id}.json`, value); return previousCheck(directory, check); };
   assert.equal(reuse({ ...valid, finishedAt: Date.now() - 3_600_001 }), null);
   assert.equal(reuse({ ...valid, outcome: 'failed' }), null);
+  const interrupted = { ...valid, outcome: 'failed', result: { ...valid.result, reason: 'timeout' } };
+  writeReceipt(directory, `${check.id}.json`, interrupted);
+  assert.equal(previousCheck(directory, check), null);
+  assert.equal(previousCheck(directory, check, Date.now(), { allowFailure: true })?.result.reason, 'timeout');
   assert.equal(reuse({ ...valid, command: ['different'] }), null);
   assert.equal(reuse({ ...valid, result: { ...valid.result, counts: {} } }), null);
   assert.equal(reuse({ ...valid, authority: true }), null);

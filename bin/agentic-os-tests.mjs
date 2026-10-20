@@ -149,8 +149,8 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
   const canReuse = !options.fresh && options.mode !== 'all' && !options.committed
     && !process.env.CI && !process.env.GITHUB_ACTIONS && coverage === null;
   const decorate = check => {
-    const prior = previousCheck(directory, check);
-    return { ...check, prior, reuse: Boolean(canReuse && prior?.fingerprint === check.fingerprint),
+    const prior = previousCheck(directory, check, Date.now(), { allowFailure: true });
+    return { ...check, prior, reuse: Boolean(canReuse && prior?.outcome === 'passed' && prior.fingerprint === check.fingerprint),
       estimatedMs: prior?.result.elapsedMs ?? (check.stage === 'evaluators' ? 10_000 : check.stage === 'packaging' ? 30_000 : 3_000),
       estimateSource: prior ? 'previous-check' : 'default-budget-estimate' };
   };
