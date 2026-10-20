@@ -9,6 +9,16 @@ export const request = { runId: 'durable-job', conversationId: 'seller-draft',
   agent: { agentId: 'listing', revision: 'fixture-v1' }, goal: 'Prepare a listing', input: { a: 1, b: 2 }, maxParallel: 1 };
 export const context = { principalId: 'seller' };
 export const output = { status: 'completed', output: 'listing fixture', effect: 'read-only', costLog: cost };
+export const agentRunCostEvidence = (scope, overrides = {}) => ({
+  schema: 'agentic-os/verified-effect-cost-evidence/v1', status: 'verified-zero-cost',
+  provider: scope.provider, mode: 'non-billable', billingPlan: 'none',
+  providerHardCapUsd: null, quotaExhaustion: 'not-applicable', paidPlanActive: false,
+  addOnsActive: false, overagesEnabled: false, autoUpgradeEnabled: false,
+  evidenceDigest: 'a'.repeat(64), scopeDigest: scope.scopeDigest,
+  verifiedAt: scope.observedAt, expiresAt: new Date(Date.parse(scope.observedAt) + 60_000).toISOString(),
+  ...overrides,
+});
+export const agentRunCostVerifier = overrides => async scope => agentRunCostEvidence(scope, overrides);
 export function fixture(options = {}) {
   return createAgentSwarmRuntime({ now: () => 1_000, taskTimeoutMs: 50, taskLeaseMs: 100,
     storeClaimTtlMs: 10, runTtlMs: 10_000, retentionMs: 20_000, retryBaseMs: 20, retryMaxMs: 100,

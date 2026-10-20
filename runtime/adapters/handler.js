@@ -121,14 +121,13 @@ export function createAuthSessionHandler({ secret, now, defaultExpirySeconds } =
 export function createRunHandler({ secret, mcpClient, now } = {}) {
   return async function run(request = {}) {
     if (!secret) return json(501, { error: "auth not configured" });
-    if (!mcpClient || typeof mcpClient.runVideoRemix !== "function") {
-      return json(501, { error: "agentic-graph MCP control plane not configured" });
-    }
-
     // 1. Auth: verify the session token (access gate; never authorizes spend).
     const token = readBearer(request.headers);
     const verdict = verifySessionToken(token, secret, { now });
     if (!verdict.valid) return json(401, { error: "unauthorized" });
+    if (!mcpClient || typeof mcpClient.runVideoRemix !== "function") {
+      return json(501, { error: "agentic-graph MCP control plane not configured" });
+    }
 
     // 2. Validate the request body (4xx naming each invalid field; no forward).
     const { valid, errors, value } = validateRunRequest(request.body);
@@ -156,13 +155,12 @@ export function createRunHandler({ secret, mcpClient, now } = {}) {
 export function createInvokeHandler({ secret, mcpClient, now } = {}) {
   return async function invoke(request = {}) {
     if (!secret) return json(501, { error: "auth not configured" });
-    if (!mcpClient || typeof mcpClient.invokeDocsGrammar !== "function") {
-      return json(501, { error: "agentic-graph MCP control plane not configured" });
-    }
-
     const token = readBearer(request.headers);
     const verdict = verifySessionToken(token, secret, { now });
     if (!verdict.valid) return json(401, { error: "unauthorized" });
+    if (!mcpClient || typeof mcpClient.invokeDocsGrammar !== "function") {
+      return json(501, { error: "agentic-graph MCP control plane not configured" });
+    }
 
     const body = request.body || {};
     if (!body.query || typeof body.query !== "string") {

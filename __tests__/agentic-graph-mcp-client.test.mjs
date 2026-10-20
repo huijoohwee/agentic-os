@@ -59,6 +59,7 @@ async function verifyTestZeroCost(scope) {
     addOnsActive: false,
     overagesEnabled: false,
     autoUpgradeEnabled: false,
+    evidenceDigest: "c".repeat(64),
     verifiedAt: scope.observedAt,
     expiresAt: new Date(observedAt + 60_000).toISOString(),
   };

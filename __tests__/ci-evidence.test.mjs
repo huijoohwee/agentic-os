@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -172,6 +172,19 @@ test('the real CLI falls back without leaking input or contacting a provider out
   assert.equal(result.reused, false); assert.equal(result.authority, false);
   assert.equal(result.reason, 'blocked-ci-evidence:runner-context');
   assert.equal(stdout.includes('do-not-print'), false);
+});
+
+test('repository workflows avoid billable artifact storage, caches and nonstandard runners', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const workflows = readdirSync(join(root, '.github/workflows')).filter(path => path.endsWith('.yml'));
+  assert.ok(workflows.length > 0);
+  for (const path of workflows) {
+    const source = readFileSync(join(root, '.github/workflows', path), 'utf8');
+    assert.doesNotMatch(source, /\buses:\s*actions\/(?:upload|download)-artifact@/u, path);
+    assert.doesNotMatch(source, /\buses:\s*actions\/cache@|\bcache:\s*(?:npm|yarn|pnpm)\b/u, path);
+    for (const [, runner] of source.matchAll(/^\s*runs-on:\s*(.+)$/gmu))
+      assert.equal(runner.trim(), 'ubuntu-latest', path);
+  }
 });
 
 function treeFixture(t) {

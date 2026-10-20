@@ -1,4 +1,4 @@
-import { normalizeJson } from '../json-contract.mjs';
+import { normalizeJson, readBoundedJsonResponse, verifyProviderCostEvidenceBeforeCall } from '../json-contract.mjs';
 import { AGENT_SWARM_DEFAULTS, assertExactKeys, assertIdentifier, normalizeRunOperation,
   normalizeStartRequest } from './agent-swarm-contract.js';
 import { normalizeTraceQuery, normalizeEvaluateRequest, normalizeCompareRequest, AGENT_TOOLKIT_DEFAULTS } from './agent-toolkit-contract.js';
@@ -43,10 +43,13 @@ function trustedUrl(value) {
 }
 
 /** Optional browser/CLI transport. Construction performs no I/O, discovery or polling. */
-export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, getHeaders = () => ({}), timeoutMs = 55_000 } = {}) {
+export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, getHeaders = () => ({}),
+  timeoutMs = 55_000, verifyProviderCostEvidence, now = () => Date.now() } = {}) {
   const base = trustedUrl(endpoint);
   if (typeof fetchImpl !== 'function' || typeof getHeaders !== 'function'
-    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 55_000) throw new TypeError('Invalid bounded run transport.');
+    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 55_000
+    || base.protocol === 'https:' && (typeof verifyProviderCostEvidence !== 'function' || typeof now !== 'function'))
+    throw new TypeError('Invalid bounded run transport or missing HTTPS cost verifier.');
   return Object.freeze({ async invoke(operation, input, { signal } = {}) {
     const value = validateRunInput(operation, input), controller = new AbortController();
     let dispatched = false;
@@ -55,6 +58,7 @@ export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, g
     if (signal?.aborted) abort();
     const timer = setTimeout(abort, timeoutMs);
     try {
+      if (base.protocol === 'https:') await verifyProviderCostEvidenceBeforeCall({ provider: base.origin, effect: `agent-run-${operation}`, resource: base.pathname, request: value, verifyProviderCostEvidence, now });
       const headers = new Headers(await getHeaders()); headers.set('content-type', 'application/json');
       if (controller.signal.aborted) throw new Error('request aborted');
       dispatched = true;
@@ -65,22 +69,7 @@ export function createAgentRunClient({ endpoint, fetchImpl = globalThis.fetch, g
       if (response.redirected || response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400) {
         await response.body?.cancel(); throw new TypeError('Run endpoint redirected.');
       }
-      if (!response.headers.get('content-type')?.includes('application/json')) throw new TypeError('Run endpoint returned a non-JSON response.');
-      const reader = response.body?.getReader();
-      if (!reader) throw new TypeError('Run response body is missing.');
-      const chunks = []; let size = 0;
-      try {
-        while (true) {
-          const { done, value: chunk } = await reader.read(); if (done) break;
-          size += chunk.byteLength;
-          if (size > 256 * 1024) throw new RangeError('Run response exceeds its byte bound.');
-          chunks.push(chunk);
-        }
-      } finally { await reader.cancel().catch(() => {}); }
-      const bytes = new Uint8Array(size); let offset = 0;
-      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-      const result = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-      if (!result || typeof result !== 'object' || Array.isArray(result)) throw new TypeError('Run response must be an object.');
+      const result = await readBoundedJsonResponse(response);
       if (!response.ok) return Object.freeze({ status: 'blocked', stage: 'agent-swarm', runId: value.runId,
         reasonCode: response.status === 401 ? 'principal_expired' : response.status === 403 ? 'run_forbidden'
           : typeof result.reasonCode === 'string' ? result.reasonCode : typeof result.code === 'string' ? result.code : 'run_request_rejected',

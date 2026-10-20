@@ -7,7 +7,9 @@ import assert from "node:assert/strict";
 import { mintSessionToken, verifySessionToken } from "../runtime/adapters/auth.js";
 import { createAgentToolkitHandlers } from "../runtime/adapters/agent-toolkit-handler.js";
 import { createWorkerFetch, createCloudflareWorker } from "../runtime/adapters/cloudflare-worker.js";
+import { agentRunCostVerifier } from "./agents/workflow-fixture.mjs";
 const { handleCloudflareRequest } = createCloudflareWorker();
+const verifiedWorker = createCloudflareWorker({ verifyProviderCostEvidence: agentRunCostVerifier() });
 
 import {
   ENV, UPSTREAM_RUNTIME_SOURCE, UPSTREAM_RUNTIME_ENV, DURABLE_ENV,
@@ -268,7 +270,7 @@ test("GET /api/ready reports provider-neutral runtime readiness without leaking 
 });
 
 test("GET /api/ready reports configured upstream runtime surfaces when the full env is present", async () => {
-  const res = await handleCloudflareRequest(request("/api/ready"), UPSTREAM_RUNTIME_ENV);
+  const res = await verifiedWorker.handleCloudflareRequest(request("/api/ready"), UPSTREAM_RUNTIME_ENV);
   assert.equal(res.status, 200);
   const body = await json(res);
   assert.equal(body.configured, true);
@@ -496,9 +498,9 @@ test("POST /api/invoke forwards an authed grammar query through the worker", asy
       { status: 200, headers: { "content-type": "application/json" } },
     );
   }, async () => {
-    const session = await handleCloudflareRequest(request("/api/auth/session", { method: "POST", body: {} }), ENV);
+    const session = await verifiedWorker.handleCloudflareRequest(request("/api/auth/session", { method: "POST", body: {} }), ENV);
     const token = (await json(session)).token;
-    const res = await handleCloudflareRequest(
+    const res = await verifiedWorker.handleCloudflareRequest(
       request("/api/invoke", {
         method: "POST",
         headers: { authorization: `Bearer ${token}` },
