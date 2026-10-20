@@ -142,32 +142,6 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     const parents = value.parents.map((entry) => sha(entry?.sha, 'GitHub parent SHA'));
     return { revision, parents, tree: sha(value.tree?.sha, 'GitHub tree SHA'),
       committedAt: instant(value.committer?.date, 'GitHub commit time') }; };
-  const compare = async (repo, baseRevision, headRevision) => {
-    const base = sha(baseRevision, 'GitHub compare base revision');
-    const head = sha(headRevision, 'GitHub compare head revision');
-    const value = object(await request(`${repo.path}/compare/${base}...${head}`),
-      'GitHub compare');
-    if (!Number.isSafeInteger(value.ahead_by)
-      || !Number.isSafeInteger(value.behind_by)
-      || !Number.isSafeInteger(value.total_commits)
-      || !Array.isArray(value.commits)
-      || !Array.isArray(value.files)) fail('GitHub compare is invalid');
-    return {
-      mergeBaseRevision: sha(value.merge_base_commit?.sha, 'GitHub compare merge base revision'),
-      status: text(value.status, 'GitHub compare status'),
-      aheadBy: value.ahead_by,
-      behindBy: value.behind_by,
-      totalCommits: value.total_commits,
-      commits: value.commits.map((entry) => sha(entry?.sha, 'GitHub compare commit SHA')),
-      files: value.files.map((entry) => ({
-        filename: relative(entry?.filename, 'GitHub compare filename'),
-        status: text(entry?.status, 'GitHub compare file status'),
-        sha: entry?.sha === null || entry?.sha === undefined ? null : sha(entry.sha, 'GitHub compare file SHA'),
-        previousFilename: entry?.previous_filename === null || entry?.previous_filename === undefined
-          ? null : relative(entry.previous_filename, 'GitHub compare previous filename'),
-      })),
-    };
-  };
   const requireEvidence = (value) => {
     const repo = repository(value);
     if (repo.repository !== bundle.policy.evidenceRepository) fail('evidence repository changed');
@@ -208,21 +182,28 @@ export function createGitHubAuthorityReadProvider({ issuance: issuanceValue, tok
     const published = await commit(repo, revision, true);
     if (published.parents[0] !== bundle.policy.canonicalRevision)
       fail('authority publication is not a canonical child');
-    const comparison = await compare(repo, bundle.policy.canonicalRevision, published.revision);
-    if (comparison.mergeBaseRevision !== bundle.policy.canonicalRevision
-      || comparison.status !== 'ahead'
-      || comparison.aheadBy !== 1
-      || comparison.behindBy !== 0
-      || comparison.totalCommits !== 1
+    const base = sha(bundle.policy.canonicalRevision, 'GitHub compare base revision');
+    const head = sha(published.revision, 'GitHub compare head revision');
+    const comparison = object(await request(`${repo.path}/compare/${base}...${head}`),
+      'GitHub compare');
+    if (sha(comparison.merge_base_commit?.sha, 'GitHub compare merge base revision') !== bundle.policy.canonicalRevision
+      || text(comparison.status, 'GitHub compare status') !== 'ahead'
+      || comparison.ahead_by !== 1
+      || comparison.behind_by !== 0
+      || comparison.total_commits !== 1
+      || !Array.isArray(comparison.commits)
       || comparison.commits.length !== 1
-      || comparison.commits[0] !== published.revision)
+      || sha(comparison.commits[0]?.sha, 'GitHub compare commit SHA') !== published.revision)
       fail('authority publication is not a canonical child');
-    if (comparison.files.length !== 1) fail('authority publication changed another path');
-    const [target] = comparison.files;
-    if (target.filename !== path
-      || target.status !== 'added'
-      || target.previousFilename !== null
-      || target.sha !== expectedBlob) fail('authority publication blob changed');
+    const files = comparison.files;
+    if (!Array.isArray(files)) fail('GitHub compare is invalid');
+    if (files.length !== 1) fail('authority publication changed another path');
+    const [target] = files;
+    if (relative(target?.filename, 'GitHub compare filename') !== path
+      || text(target?.status, 'GitHub compare file status') !== 'added'
+      || (target?.previous_filename ?? null) !== null
+      || sha(target?.sha, 'GitHub compare file SHA') !== expectedBlob)
+      fail('authority publication blob changed');
     return published;
   };
   const review = async (repo, locator) => {
