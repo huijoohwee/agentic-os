@@ -286,20 +286,6 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
     const parentRevisions = source.parents.map((entry) => sha(entry?.sha, 'GitHub commit parent SHA'));
     return { revision, parentRevisions, parentRevision: parentRevisions.length === 1 ? parentRevisions[0] : null,
       tree: sha(source.tree?.sha, 'GitHub commit tree SHA'), committedAt: apiInstant(source.committer?.date, 'GitHub commit time') }; };
-  const gitTree = async (repository, revision) => {
-    const source = jsonObject(await request('GET', `${repository.path}/git/trees/${sha(revision, 'Git tree revision')}?recursive=1`), 'GitHub tree');
-    if (source.truncated !== false || sha(source.sha, 'GitHub tree SHA') !== revision
-      || !Array.isArray(source.tree)) fail('GitHub tree must be exact, complete, and recursive');
-    const entries = new Map();
-    for (const entry of source.tree) {
-      const item = jsonObject(entry, 'GitHub tree entry'), path = relativePath(item.path, 'GitHub tree path');
-      const descriptor = { mode: text(item.mode, 'GitHub tree mode'), type: text(item.type, 'GitHub tree type'),
-        sha: sha(item.sha, 'GitHub tree entry SHA') };
-      if (!['blob', 'commit', 'tree'].includes(descriptor.type) || entries.has(path))
-        fail('GitHub tree entries must be distinct Git objects');
-      entries.set(path, descriptor);
-    }
-    return entries; };
   const readRunRecord = async () => {
     if (!prepared) fail('GitHub authority provider is not prepared');
     const source = jsonObject(await request('GET', `${context.repository.path}/actions/runs/${context.runId}`), 'GitHub workflow run');
@@ -370,23 +356,26 @@ function createGitHubOwnerWriter({ context, fetchImpl = globalThis.fetch, now = 
   const proveEvidenceCommit = async ({ evidence, checked, rawPath, canonicalRevision, revision, expectedBlob }) => {
     const commit = await gitCommit(evidence, revision, { oneParent: true });
     if (commit.parentRevision !== canonicalRevision) fail('GitHub evidence commit is not a one-parent canonical child');
-    const base = await gitCommit(evidence, canonicalRevision);
-    const baseEntries = await gitTree(evidence, base.tree), evidenceEntries = await gitTree(evidence, commit.tree);
-    const target = evidenceEntries.get(rawPath);
-    if (!target || target.type !== 'blob' || target.mode !== '100644'
-      || expectedBlob !== undefined && target.sha !== expectedBlob) {
+    const comparison = jsonObject(await request('GET', `${evidence.path}/compare/${canonicalRevision}...${revision}`),
+      'GitHub compare');
+    if (sha(comparison.merge_base_commit?.sha, 'GitHub compare merge base revision') !== canonicalRevision
+      || text(comparison.status, 'GitHub compare status') !== 'ahead'
+      || comparison.ahead_by !== 1
+      || comparison.behind_by !== 0
+      || comparison.total_commits !== 1
+      || !Array.isArray(comparison.commits)
+      || comparison.commits.length !== 1
+      || sha(comparison.commits[0]?.sha, 'GitHub compare commit SHA') !== revision)
+      fail('GitHub evidence commit is not a one-parent canonical child');
+    const files = comparison.files;
+    if (!Array.isArray(files)) fail('GitHub compare is invalid');
+    if (files.length !== 1) fail('GitHub evidence tree contains changes outside the exact evidence path');
+    const [target] = files;
+    if (relativePath(target?.filename, 'GitHub compare filename') !== rawPath
+      || text(target?.status, 'GitHub compare file status') !== 'added'
+      || (target?.previous_filename ?? null) !== null
+      || expectedBlob !== undefined && sha(target?.sha, 'GitHub compare file SHA') !== expectedBlob)
       fail('GitHub evidence tree does not contain the exact evidence blob');
-    }
-    const paths = new Set([...baseEntries.keys(), ...evidenceEntries.keys()]),
-      allowed = new Set(rawPath.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')));
-    for (const path of paths) {
-      const prior = baseEntries.get(path), current = evidenceEntries.get(path);
-      if (allowed.has(path) && path !== rawPath && (current?.type !== 'tree' || current.mode !== '040000'
-        || prior && (prior.type !== 'tree' || prior.mode !== '040000')))
-        fail('GitHub evidence path ancestors must remain trees');
-      if (!allowed.has(path) && canonicalJson(prior ?? null) !== canonicalJson(current ?? null))
-        fail('GitHub evidence tree contains changes outside the exact evidence path');
-    }
     return commit; };
   const targetReview = async (target, locator) => {
     const number = pullNumber(locator, target);

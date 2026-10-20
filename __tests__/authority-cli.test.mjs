@@ -220,7 +220,7 @@ test('explicit retrospective issuance binds an exact historical squash and curre
       assert.deepEqual(pageNumbers.slice(offset, offset + 3), [1, 2, 3],
         'each exact ancestry read stops when its merge ancestor appears on page three');
     assert.ok(ancestryPages.every((call) => call.parsed.searchParams.get('per_page') === '25'));
-    assert.ok(!api.calls.some((call) => call.route === `GET /repos/example/evidence/compare/${HEAD}...${PUBLICATION}`));
+    assert.ok(api.calls.some((call) => call.route === `GET /repos/example/evidence/compare/${HEAD}...${PUBLICATION}`));
     assert.ok(api.calls.every((call) => call.init.headers['x-github-api-version']
       === '2026-03-10'));
     const reader = createGitHubAuthorityReadProvider({ issuance,
