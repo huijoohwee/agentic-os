@@ -52,7 +52,12 @@ export function createWorkerFetch(env = {}, publicFetch) {
 const JSON_HEADERS = Object.freeze({ "content-type": "application/json", "cache-control": "no-store" });
 const MAX_JSON_BODY_BYTES = 512 * 1024;
 export function createCloudflareWorker({ createExtension, verifyProviderCostEvidence } = {}) {
-  if (createExtension !== undefined && typeof createExtension !== 'function' || verifyProviderCostEvidence !== undefined && typeof verifyProviderCostEvidence !== 'function') throw new TypeError('Worker integrations must be trusted functions.');
+  if (createExtension !== undefined && typeof createExtension !== 'function') {
+    throw new TypeError('An explicit factory function is required for Worker extensions.');
+  }
+  if (verifyProviderCostEvidence !== undefined && typeof verifyProviderCostEvidence !== 'function') {
+    throw new TypeError('Worker integrations must be trusted functions.');
+  }
   const APP_BY_ENV = new WeakMap();
   const AGENT_DEFINITIONS_BY_ENV = new WeakMap();
   const CACHE_CONTEXT_BY_ENV = new WeakMap();
