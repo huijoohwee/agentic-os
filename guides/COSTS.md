@@ -51,6 +51,8 @@ usage or billing snapshots, and budget alerts do not cap later requests. See Clo
 [usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/)
 and [R2 pricing](https://developers.cloudflare.com/r2/pricing/) for the provider's current terms.
 
+This public repository uses GitHub-hosted standard runners, which GitHub currently provides at no charge for public repositories. Workflow artifacts and caches can incur storage charges beyond included limits, so repository workflows do not upload, download or cache artifacts. CI and canary evidence remains in the run log and local receipts; preserve existing provider artifacts through their configured expiry. Recheck repository visibility and GitHub billing terms before relying on this runner path.
+
 ## Cost continuity and budget view
 
 For each cost scope, follow `feature ID → owner plan + continuity ID + exact revision → cost source →
@@ -87,8 +89,10 @@ before sending it. The exported Graph MCP client applies this gate to initializa
 request, including when called outside the Agent API. Missing verifier configuration blocks the
 request before transport. Default MCP fetch rejects redirects so a verified endpoint cannot replay
 an unverified request elsewhere. Missing, stale, mismatched or non-zero evidence blocks the call.
-The Agent Run client only transports requests to its selected runtime endpoint; it is not a provider
-cost authority. That executing runtime must verify provider evidence before each billable call.
+HTTPS Agent Run clients require a trusted verifier and current provider evidence bound to the
+endpoint, operation and request digest before dispatch. Loopback HTTP remains the local/offline path.
+The executing runtime still verifies provider evidence before each billable call; transport evidence
+does not replace runtime verification.
 A caller-supplied spend flag, token estimate, HTTPS endpoint or input budget does not replace
 provider verification.
 The Agent API accepts only a USD 0 downstream request budget; consumers must enforce their own

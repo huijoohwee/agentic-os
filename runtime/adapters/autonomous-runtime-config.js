@@ -18,13 +18,6 @@ function sha256(value) {
 function governanceDigest(value) { return sha256(JSON.stringify(canonicalizeJson(value))); }
 function boundedText(value, label) { if (typeof value !== "string" || !value.trim() || value.length > 4096) throw new TypeError(`${label} must be bounded text.`); return value.trim(); }
 
-function verifiedZeroCost(p) {
-  return p?.schema === "agentic-os/verified-effect-cost-evidence/v1" && p.status === "verified-zero-cost"
-    && ((p.mode === "provider-hard-cap" && p.providerHardCapUsd === 0 && ["free", "none"].includes(p.billingPlan) && p.quotaExhaustion === "not-applicable")
-      || (p.mode === "free-fail-closed" && p.providerHardCapUsd === null && p.billingPlan === "free" && p.quotaExhaustion === "deny")
-      || (p.mode === "non-billable" && p.providerHardCapUsd === null && p.billingPlan === "none" && p.quotaExhaustion === "not-applicable"))
-    && ["paidPlanActive", "addOnsActive", "overagesEnabled", "autoUpgradeEnabled"].every((key) => p[key] === false); }
-
 export function providerCostScopeDigest({ provider, effect, resource, requestDigest } = {}) {
   const safeEffect = boundedText(effect, "effect");
   const safeRequestDigest = boundedText(requestDigest, "requestDigest");
@@ -35,21 +28,7 @@ export function providerCostScopeDigest({ provider, effect, resource, requestDig
 }
 
 /** Recheck zero-cost provider evidence immediately before one external call. */
-export async function verifyProviderCostBeforeCall({ provider, effect, resource, request, verifyProviderCostEvidence, now = () => Date.now() } = {}) {
-  const scope = { provider: boundedText(provider, "provider"), effect: boundedText(effect, "effect"), resource: boundedText(resource, "resource"), requestDigest: governanceDigest(request) };
-  if (typeof verifyProviderCostEvidence !== "function") throw new TypeError("A trusted provider cost evidence verifier is required.");
-  const scopeDigest = providerCostScopeDigest(scope), before = now();
-  if (!Number.isSafeInteger(before) || before < 0) throw new TypeError("Provider cost verification clock is invalid.");
-  const supplied = await verifyProviderCostEvidence(Object.freeze({ schema: "agentic-os/provider-cost-verification-request/v1", ...scope, scopeDigest, observedAt: new Date(before).toISOString() }));
-  const after = now();
-  if (!Number.isSafeInteger(after) || after < before) throw new TypeError("Provider cost verification clock moved backwards.");
-  const verifiedAt = Date.parse(supplied?.verifiedAt), expiresAt = Date.parse(supplied?.expiresAt);
-  if (!verifiedZeroCost(supplied)) throw new TypeError("Provider cost evidence is not verified zero cost.");
-  if (supplied.provider !== scope.provider || supplied.scopeDigest !== scopeDigest || !Number.isFinite(verifiedAt)
-    || verifiedAt < before || verifiedAt > after || !Number.isFinite(expiresAt) || expiresAt <= after)
-    throw new TypeError("Provider cost evidence does not cover this exact call.");
-  return Object.freeze(supplied);
-}
+export { verifyProviderCostEvidenceBeforeCall as verifyProviderCostBeforeCall } from "../json-contract.mjs";
 
 function exactKeys(value, expected) {
   return value && typeof value === "object" && !Array.isArray(value)

@@ -3,7 +3,7 @@ import {once} from 'node:events';
 import {createServer} from 'node:http';
 import test from 'node:test';
 import {createAgentRunClient} from '../runtime/agents/invocation.js';
-import {request} from './agents/workflow-fixture.mjs';
+import {agentRunCostVerifier, request} from './agents/workflow-fixture.mjs';
 
 test('authenticated run redirects never forward a body or credential, and retain uncertain writes', async t => {
   const observed=[];
@@ -26,6 +26,7 @@ test('authenticated run redirects never forward a body or credential, and retain
 });
 
 test('an opaque browser redirect cannot masquerade as a completed operation',async()=>{
-  const client=createAgentRunClient({endpoint:'https://runtime.example/',fetchImpl:async()=>({type:'opaqueredirect',status:0})});
+  const client=createAgentRunClient({endpoint:'https://runtime.example/',verifyProviderCostEvidence:agentRunCostVerifier(),
+    fetchImpl:async()=>({type:'opaqueredirect',status:0})});
   await assert.rejects(client.invoke('start',request),{reasonCode:'run_transport_failed',writeResultUnknown:true});
 });

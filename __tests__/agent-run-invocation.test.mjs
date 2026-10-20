@@ -12,7 +12,7 @@ import { createAgentSwarmMemoryStore } from '../runtime/agents/agent-swarm.js';
 import { resolveInvocation, dispatchInvocation, loadCatalog } from '../bin/agentic-os-invocation.mjs';
 import { handleRequest, MODERN_VERSION, TOOLS } from '../src/mcp-server.mjs';
 import { runCli } from '../src/mcp-stdio.mjs';
-import { fixture, request, context, output, work } from './agents/workflow-fixture.mjs';
+import { agentRunCostEvidence, agentRunCostVerifier, fixture, request, context, output, work } from './agents/workflow-fixture.mjs';
 
 const meta = { 'io.modelcontextprotocol/protocolVersion': MODERN_VERSION,
   'io.modelcontextprotocol/clientInfo': { name: 'fixture', version: '1' },
@@ -99,20 +99,51 @@ test('untrusted tools cannot choose endpoint, principal, credentials, shell, sig
 test('transport failure and server uncertainty retain unknown mutation outcome without automatic retry', async () => {
   let calls = 0;
   const client = createAgentRunClient({ endpoint: 'https://runtime.example/api/agent-swarm/',
+    verifyProviderCostEvidence: agentRunCostVerifier(),
     fetchImpl: async (_url, options) => { calls++; assert.equal(options.redirect, 'manual'); throw Error('private bearer details'); } });
   await assert.rejects(client.invoke('start', request), error => {
     assert.equal(error.writeResultUnknown, true); assert.equal(error.message.includes('private'), false); return true;
   });
   assert.equal(calls, 1);
   await assert.rejects(client.invoke('status', { runId: request.runId }), { writeResultUnknown: false });
-  const unavailable = createAgentRunClient({ endpoint: 'https://runtime.example/api/', fetchImpl: async () => Response.json({}, { status: 503 }) });
+  const unavailable = createAgentRunClient({ endpoint: 'https://runtime.example/api/', verifyProviderCostEvidence: agentRunCostVerifier(),
+    fetchImpl: async () => Response.json({}, { status: 503 }) });
   assert.equal((await unavailable.invoke('start', request)).writeResultUnknown, true);
   const mcp = await handleRequest(call('run.start', request), {
     runCli: async () => ({ exitCode: 1, stdout: JSON.stringify({ writeResultUnknown: true }), stderr: '' }),
   });
   assert.equal(mcp.result.structuredContent.writeResultUnknown, true);
-  const anonymous = createAgentRunClient({ endpoint: 'https://runtime.example/api/', fetchImpl: async () => Response.json({}, { status: 401 }) });
+  const anonymous = createAgentRunClient({ endpoint: 'https://runtime.example/api/', verifyProviderCostEvidence: agentRunCostVerifier(),
+    fetchImpl: async () => Response.json({}, { status: 401 }) });
   assert.equal((await anonymous.invoke('status', { runId: request.runId })).reasonCode, 'principal_expired');
+});
+
+test('HTTPS Agent Run requires exact current zero-cost evidence before dispatch', async () => {
+  let fetches = 0;
+  assert.throws(() => createAgentRunClient({ endpoint: 'https://runtime.example/api/',
+    fetchImpl: async () => { fetches++; } }), /HTTPS cost verifier/);
+  for (const overrides of [
+    { provider: 'https://other.example' }, { scopeDigest: '0'.repeat(64) },
+    { verifiedAt: '2000-01-01T00:00:00.000Z' }, { overagesEnabled: true },
+    { expiresAt: '2000-01-01T00:00:00.000Z' },
+  ]) {
+    const client = createAgentRunClient({ endpoint: 'https://runtime.example/api/',
+      verifyProviderCostEvidence: async scope => agentRunCostEvidence(scope, overrides),
+      fetchImpl: async () => { fetches++; return Response.json({ status: 'completed', runId: request.runId }); } });
+    await assert.rejects(client.invoke('start', request), { writeResultUnknown: false });
+  }
+  assert.equal(fetches, 0);
+  let observed;
+  const client = createAgentRunClient({ endpoint: 'https://runtime.example/api/',
+    verifyProviderCostEvidence: async scope => { observed = scope; return agentRunCostEvidence(scope); },
+    fetchImpl: async () => { fetches++; return Response.json({ status: 'completed', runId: request.runId }); } });
+  assert.equal((await client.invoke('start', request)).status, 'completed');
+  assert.equal(observed.provider, 'https://runtime.example');
+  assert.equal(observed.effect, 'agent-run-start');
+  assert.equal(observed.resource, '/api/');
+  assert.match(observed.requestDigest, /^[a-f0-9]{64}$/u);
+  assert.match(observed.scopeDigest, /^[a-f0-9]{64}$/u);
+  assert.equal(fetches, 1);
 });
 
 test('MCP discovery loads metadata without loading any agent module or connecting a store', t => {
