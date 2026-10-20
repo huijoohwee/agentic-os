@@ -1,12 +1,12 @@
 # Release workflow
 
-Run checks then `npm run release:common -- publish`; it stops at provider handoff.
-Green checks precede an authorized merge. Use `complete --ref=<lane>`; `close` is diagnostic.
+Publish after checks: `npm run release:common -- publish`. Publication stops at provider handoff.
+Authorized merges require green checks. Complete: `complete --ref=<lane>`; `close`: diagnostics only.
 Cleanup preserves recovery bytes and requires exact eligible-target evidence; `--bundle --stopped` proves it.
 
-Each effect needs a separate grant.
-[DEPLOY](../guides/DEPLOY-WORKFLOW.md) needs its own authority.
+Integration, retirement, cleanup, sync and production grants remain separate.
+[DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.
 
-`npm run release:common -- retire-empty-active --ref=<lane>` quarantines a clean active lane at its admitted base.
-A recorded head is permitted only when it equals that base. It retains refs, objects, projection, and registration;
-it grants no provider, merge, or deployment authority.
+`npm run release:common -- retire-empty-active --ref=<lane>` quarantines a clean active lane only when a recorded
+head equals base. It retains refs, objects, projection, registration; no provider, merge or deployment
+authority follows.
