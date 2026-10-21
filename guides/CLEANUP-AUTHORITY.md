@@ -151,6 +151,28 @@ Budget: two exact v1 enrollments, updates to the existing transition-workflow te
 record; three existing files changed, zero runtime modules, dependencies, or always-load bytes. Revert
 these exact entries and test expectations while preserving source history and prior enrollments.
 
+### Successor preservation adoption — agentic-os PR #545 — 2026-10-21
+
+The current request still includes END ADLC completion for the exact
+`agent/device-0232231d4a19/current-recovery-pr542-543` lane after PR #545 merged as its accepted
+successor. This adoption binds predecessor head `f708d8bc7c34dee88c8f845002b2745d4001bebf`, successor
+branch `agent/device-0232231d4a19/current-recovery-pr542-543-ci-fix`, successor head
+`e71fc61b75af5d48e94fba2bd8eda74b6f4b5f80`, merge `400453da851523b93890264f0c1f2b2fad708ed3`, review
+<https://github.com/huijoohwee/agentic-os/pull/545>, retained quarantine coordinate
+`3d894d9330adaf918fbd05911eaa1579850bdf415eb0f3f3e8e42e761a8d64b1`, and exact replaced path
+`__tests__/transition-workflow.test.mjs`.
+
+Historical succession authority remains unproven. This current preservation adoption only authorizes a
+create-only `successor-preserved` carrier to verify the retained successor registration, reviewed merge,
+and exact replacement proof without reconstructing historical receipts or changing prior cleanup meaning.
+Integration, record-only retirement, cleanup, synchronization, deployment, and rollback remain separate
+effects with their own receipts.
+
+Budget: one exact v1 preservation adoption row, one focused transition-workflow expectation, and this
+owner record; three existing files changed, zero runtime modules, dependencies, or always-load bytes.
+Rollback removes this exact adoption and guide/test expectations while preserving retained quarantine
+artifacts and previously issued evidence.
+
 ### Current-quarantine retention adoption — agentic-os PR #487 — 2026-10-17
 
 The owner delegated autonomous END ADLC completion. This exact current-retention adoption binds
