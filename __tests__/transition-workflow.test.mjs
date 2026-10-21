@@ -245,7 +245,12 @@ test('committed transition workflow is bound to the canonical authority policy',
     quarantineCoordinate: 'ef0317e48e484a527fb1a06ba957f34e3136d48c2f8ffdedb89cd7a7bf694881',
     historicalSuccessionAuthorityProven: false,
   }]);
-  assert.deepEqual(policy.retentionAdoptions, [{
+  const closeoutTargets = new Set([
+    'agent/device-0232231d4a19/closeout-explicit-cleanup',
+    'agent/device-0232231d4a19/pr554-current-facts-enrollment',
+    'agent/device-0232231d4a19/completion-bundle-hydration',
+  ]);
+  assert.deepEqual(policy.retentionAdoptions.filter(({ targetRef }) => !closeoutTargets.has(targetRef)), [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-os',
     targetRef: 'agent/device-0232231d4a19/cleanup-retirement-manifest-compat',
@@ -346,6 +351,12 @@ test('committed transition workflow is bound to the canonical authority policy',
     originalReceiptDigest: 'd66754a10cb0decfdd527f930d89c52f2875f91cba2799611527518e4ac85696',
     historicalQuarantineAuthorityProven: false,
   }]);
+  assert.deepEqual(policy.retentionAdoptions.filter(({ targetRef }) => closeoutTargets.has(targetRef))
+    .map(({ targetRef, reviewLocator }) => [targetRef, reviewLocator]), [
+    ['agent/device-0232231d4a19/closeout-explicit-cleanup', 'https://github.com/huijoohwee/agentic-os/pull/556'],
+    ['agent/device-0232231d4a19/pr554-current-facts-enrollment', 'https://github.com/huijoohwee/agentic-os/pull/555'],
+    ['agent/device-0232231d4a19/completion-bundle-hydration', 'https://github.com/huijoohwee/agentic-os/pull/557'],
+  ]);
 
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /workflow_dispatch:/u);
