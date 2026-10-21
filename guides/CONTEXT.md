@@ -145,7 +145,9 @@ const packet = registry.assemble({ handle: entry.handle,
 token estimate, eligibility estimate and `registered|already_registered` status. JSON key order is
 canonical; array order is preserved; snapshots are deeply frozen. `assemble` returns the unchanged
 prefix first, then the dynamic tail. `invalidate({handle})` removes a retained entry; `stats()` exposes
-counts and policy only. Input aliases are copied; cycles, accessors, sparse arrays and invalid JSON fail.
+counts, the combined UTF-8 byte length of retained serialized stable prefixes, and policy. This byte
+count excludes JavaScript object, map and runtime overhead, so it is a reproducible payload measure
+rather than an RSS estimate. Input aliases are copied; cycles, accessors, sparse arrays and invalid JSON fail.
 
 Retention defaults to 32 entries, hard maximum 128. Stable prefixes have a configurable character
 ceiling up to 200,000 and a 200,000 UTF-8 byte ceiling; dynamic tails have the same byte ceiling.
@@ -158,7 +160,9 @@ a later explicit registration may reuse an old revision name. Eviction is least-
 Local assembly reports `localPrefixStatus: reused` and `providerCacheStatus: unverified`.
 The default 1,024-token threshold is a configurable heuristic, not a provider guarantee.
 `normalizeCacheUsage` exposes model, prompt/completion/cache-read/cache-write tokens, cache hits,
-provider status and an attributed estimated cost. Missing telemetry stays `unreported`; a miss
+provider status and `estimated_cost_usd`. That cost is a finite nonnegative numeric estimate when
+supplied and `null` when missing or invalid; only an explicit numeric zero reports zero. It is not
+provider cost evidence. Missing cache telemetry stays `unreported`; a miss
 requires an explicit zero cached-token report. Counts exceeding reported input remain attributed
 as returned but cannot establish a hit. Local reuse never establishes a provider cache hit.
 Routing isolation does not replace authorization: scope registry ownership to a trusted caller boundary.

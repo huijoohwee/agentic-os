@@ -11,6 +11,7 @@ import { MAX_OUTPUT, hash, digest, fail, same, direct, command, git, location, a
 import { RECOVERY_KINDS, configureRecovery, planRecovery, applyRecovery, inventoryRecovery,
   recoveryLocation } from './agentic-os-storage-recovery.mjs';
 import { reportStorage } from './agentic-os-storage-report.mjs';
+import { workspaceLaneCache } from '../src/lane-cache-legacy.mjs';
 
 const SCHEMA = 'agentic-os/storage-plan/v1';
 const KINDS = ['git', 'dependencies', 'worktree-dependencies', 'artifact-archive', 'artifact-compression', 'canonical-quarantine'];
@@ -391,21 +392,24 @@ export function runStorage(argv) {
     if (!match || Object.hasOwn(args, match[1])) fail('arguments');
     args[match[1]] = match[2] ?? true;
   }
-  const allowed = action === 'report' ? ['repository', 'directory', 'name', 'deep', 'category', 'max-entries', 'max-ms']
+  const allowed = action === 'report' ? ['repository', 'directory', 'lane-cache', 'name', 'deep', 'category', 'max-entries', 'max-ms', 'max-roots']
     : action === 'plan' ? ['repository', 'kind', 'quarantine', 'artifact', 'operation', 'store', 'destination', 'resume-from']
       : action === 'apply' ? ['plan', 'authorize', 'stopped', 'resume'] : action === 'inventory' ? ['repository', 'store', 'summary'] : ['repository', 'store'];
   if (Object.keys(args).some(k => !allowed.includes(k))) fail('arguments');
   let result;
   if (action === 'report') {
-    if ((typeof args.repository === 'string') === (typeof args.directory === 'string')
-      || args.repository !== undefined && typeof args.repository !== 'string' || args.directory !== undefined && typeof args.directory !== 'string'
-      || args.name !== undefined && typeof args.name !== 'string' || args.deep !== undefined && args.deep !== true
-      || args.category !== undefined && typeof args.category !== 'string'
-      || ['max-entries', 'max-ms'].some(key => args[key] !== undefined && !/^[1-9][0-9]*$/u.test(args[key]))) fail('arguments');
-    result = reportStorage({ cwd: args.repository, directory: args.directory ?? null, name: args.name ?? null,
+    const laneCache = args['lane-cache'] === true;
+    if (args.repository !== undefined && typeof args.repository !== 'string' || args.directory !== undefined && typeof args.directory !== 'string'
+      || args['lane-cache'] !== undefined && !laneCache
+      || (laneCache ? typeof args.repository !== 'string' || args.directory !== undefined : (typeof args.repository === 'string') === (typeof args.directory === 'string'))
+      || args.name !== undefined && typeof args.name !== 'string' || args.deep !== undefined && args.deep !== true || args.category !== undefined && typeof args.category !== 'string'
+      || ['max-entries', 'max-ms', 'max-roots'].some(key => args[key] !== undefined && !/^[1-9][0-9]*$/u.test(args[key]))) fail('arguments');
+    const location = laneCache ? workspaceLaneCache(args.repository) ?? fail('lane-cache-unenrolled') : null;
+    result = reportStorage({ cwd: args.repository, directory: location?.directory ?? args.directory ?? null, name: args.name ?? null,
       deep: args.deep ?? false, category: args.category ?? null,
       ...(args['max-entries'] === undefined ? {} : { maxEntries: Number(args['max-entries']) }),
-      ...(args['max-ms'] === undefined ? {} : { maxMs: Number(args['max-ms']) }) });
+      ...(args['max-ms'] === undefined ? {} : { maxMs: Number(args['max-ms']) }),
+      ...(args['max-roots'] === undefined ? {} : { maxRoots: Number(args['max-roots']) }) });
   } else if (action === 'configure' || action === 'inventory') {
     if (typeof args.repository !== 'string' || action === 'configure' && typeof args.store !== 'string'
       || args.store !== undefined && typeof args.store !== 'string'

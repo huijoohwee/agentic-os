@@ -39,11 +39,10 @@ function readNonNegativeInteger(value) {
 }
 
 function readNonNegativeNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? number : 0;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-export function normalizeCacheUsage({ model = "", usage = {}, estimatedCostUsd = 0 } = {}) {
+export function normalizeCacheUsage({ model = "", usage = {}, estimatedCostUsd = null } = {}) {
   usage = usage && typeof usage === "object" ? usage : {};
   const inputDetails = usage.input_tokens_details || usage.prompt_tokens_details || {};
   const promptTokens = readNonNegativeInteger(usage.input_tokens ?? usage.prompt_tokens);
@@ -88,11 +87,11 @@ export function createCacheContextRegistry({
   let compileCount = 0;
   let localReuseCount = 0;
   let evictionCount = 0;
+  let retainedStablePrefixBytes = 0;
 
   function deleteEntry(handle) {
-    if (!entries.delete(handle)) return false;
-    evictionCount += 1;
-    return true;
+    const entry = entries.get(handle); if (!entry) return false;
+    entries.delete(handle); retainedStablePrefixBytes -= entry.stablePrefixBytes; evictionCount += 1; return true;
   }
 
   function trimToBound() {
@@ -109,10 +108,9 @@ export function createCacheContextRegistry({
     const safeRevision = assertNonEmptyText(revision, "revision");
     const canonicalPrefix = canonicalSegments(stablePrefix, "stablePrefix");
     const serializedPrefix = JSON.stringify(canonicalPrefix);
+    const stablePrefixBytes = new TextEncoder().encode(serializedPrefix).length;
     if (serializedPrefix.length > maxStablePrefixChars
-      || new TextEncoder().encode(serializedPrefix).length > DEFAULT_MAX_STABLE_PREFIX_CHARS) {
-      throw new RangeError(`stablePrefix exceeds ${maxStablePrefixChars} characters.`);
-    }
+      || stablePrefixBytes > DEFAULT_MAX_STABLE_PREFIX_CHARS) throw new RangeError("stablePrefix exceeds its configured character or byte budget.");
 
     let namespaceState = namespaces.get(safeNamespace);
     const pending = namespaceState?.current.revision === safeRevision
@@ -170,12 +168,14 @@ export function createCacheContextRegistry({
         revision: safeRevision,
         routingKey: `pc_${routingDigest.slice(0, 48)}`,
         stablePrefix: canonicalPrefix,
+        stablePrefixBytes,
         stablePrefixDigest: identity,
         estimatedStablePrefixTokens,
         providerEligible: estimatedStablePrefixTokens >= minCacheableTokens,
       };
       compileCount += 1;
       entries.set(handle, entry);
+      retainedStablePrefixBytes += stablePrefixBytes;
       trimToBound();
       return publicRegistration(entry, "registered");
     }
@@ -219,6 +219,7 @@ export function createCacheContextRegistry({
   function stats() {
     return Object.freeze({
       entries: entries.size,
+      retainedStablePrefixBytes,
       maxEntries,
       maxStablePrefixChars,
       minCacheableTokens,

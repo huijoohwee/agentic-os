@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { reportStorage, REPORT_LIMITS } from '../bin/agentic-os-storage-report.mjs';
 import { runStorage } from '../bin/agentic-os-storage.mjs';
+import { workspaceLaneCache } from '../src/lane-cache-legacy.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os-storage.mjs', import.meta.url));
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -105,6 +106,21 @@ test('root discovery and recursion depth return explicit incomplete coverage', t
   const deep = d.report({ deep: true });
   assert.ok(deep.rows.find(row => row.category === 'retained-archives').reasons.includes('depth-budget'));
 });
+test('enrolled lane-cache selector reports cumulative exact-directory bytes with an explicit larger root bound', t => {
+  const s = fixture(t), workspace = join(s.workspace, '.workspace'); mkdirSync(workspace);
+  git(s.root, 'config', '--local', 'agentic-os.laneCacheStorage', 'workspace-v1');
+  git(s.root, 'config', '--local', 'agentic-os.workspaceRoot', '../.workspace');
+  const cache = workspaceLaneCache(s.root).directory; mkdirSync(cache, { recursive: true });
+  for (let i = 0; i < REPORT_LIMITS.roots + 1; i++) writeFileSync(join(cache, `record-${i}.json`), 'record');
+  const output = execFileSync(process.execPath, [CLI, 'report', `--repository=${s.root}`, '--lane-cache',
+    '--deep', '--max-roots=300', '--max-entries=1000', '--max-ms=10000'], { encoding: 'utf8' });
+  const result = JSON.parse(output);
+  assert.equal(result.directory, cache); assert.equal(result.status, 'complete');
+  assert.equal(result.discoveryComplete, true); assert.equal(result.rows.length, REPORT_LIMITS.roots + 1);
+  assert.equal(result.cost.maxRoots, 300); assert.equal(result.cost.contentBytesRead, 0);
+  assert.equal(result.totals.logicalBytesObserved, (REPORT_LIMITS.roots + 1) * Buffer.byteLength('record'));
+  assert.equal(result.grantsAuthority, false); assert.equal(result.reclaimableBytes, null);
+});
 test('linked worktrees resolve the shared common directory, not their registration directory', t => {
   const s = fixture(t), lane = join(s.workspace, 'lane'); git(s.root, 'worktree', 'add', '-qb', 'lane', lane);
   const report = reportStorage({ cwd: lane, maxMs: 10_000 });
@@ -187,7 +203,7 @@ test('CLI emits structured diagnostics and rejects unknown, duplicate and unboun
     '--category=retained-archives', '--max-ms=10000'], { encoding: 'utf8' });
   assert.equal(JSON.parse(output).schema, 'agentic-os/storage-report/v1');
   for (const flags of [['--deep=false'], ['--max-ms'], ['--max-ms=0'], ['--max-ms=60001'],
-    ['--max-entries=200001'], ['--category=unknown', '--deep'], ['--category=git-objects'],
+    ['--max-entries=200001'], ['--max-roots=200001'], ['--lane-cache'], ['--category=unknown', '--deep'], ['--category=git-objects'],
     ['--deep', '--deep'], ['--authorize=anything'], ['--store=/tmp/store']])
     assert.throws(() => runStorage(['report', `--repository=${s.root}`, ...flags]), /blocked-storage/);
   for (const maxEntries of [0, -1, 1.5, NaN, Infinity])

@@ -27,7 +27,7 @@ gtm_revision: "1.6.0"
 
 # Exact quarantine inventory
 
-[Storage compaction](STORAGE.md) owns the common report and all effects. This on-demand recipe helps
+[Storage](STORAGE.md) owns the common report and all effects. This on-demand recipe helps
 prioritize exact quarantine records without walking or opening their projection data.
 
 ## PRD — STORAGE-001@1.6.0
