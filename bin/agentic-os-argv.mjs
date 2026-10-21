@@ -284,7 +284,7 @@ export function cmdHelp() {
       '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
       '  Follow-up and diagnostics:',
       '  agentic-os completion status --ref=<lane> [--preservation=<json>] [--cleanup-receipt=<json>] [--integration-receipt=<json> --retirement-receipt=<json>]  receipt pair requires preservation; read-only',
-      '  npm run completion:scaffold -- --ref=<lane>  print a cleanup bundle scaffold with exact lane facts, committed policy, default limits, and remaining placeholders',
+      '  npm run completion:scaffold -- --ref=<lane> --derive  hydrate, plan, then apply with --confirm=<digest> --stopped',
       '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
       '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
       '  npm run autonomy:class    compute the committed candidate promotion ceiling',

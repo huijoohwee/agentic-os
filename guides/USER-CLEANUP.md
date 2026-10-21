@@ -417,13 +417,26 @@ agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-workt
 
 ### Auto-derive placeholders (`completion:scaffold --derive`)
 
-Pre-fills the locally-derivable scaffold fields (`recoveryInventoryDigest`, `recoveryInventoryContentEntries`, `expiresAt`, `integratedResource`, `integratedImmutableRevision`) so the operator only needs to replace the ~6 true authority fields (workflow runs + operation inputs) that require authenticated GitHub Actions dispatch.
+Pre-fills the lane inventory and a 15-minute expiry. Fill the listed evidence fields: integration and retirement operation inputs, workflow run records, transition receipts, and preservation/no-value receipts. If the authority repository or transition policy is not already known locally, the scaffold also lists those verifier fields.
 
 ```sh
-npm run completion:scaffold -- --ref=<lane> --derive
+npm run completion:scaffold -- --ref=<lane> --derive > /tmp/completion-scaffold.json
 ```
 
-The derived scaffold includes `derivedFields`, `remainingPlaceholders` (only the authoritative ones), `derivedAt`, and a `deriveNote` explaining what was pre-filled.
+Fill the fields listed in `hydrationInputs` under `bundleTemplate` in that file. Keep scaffold and plan files outside the canonical checkout so they do not make it dirty. Pass the same scaffold file to planning:
+
+```sh
+npm run completion:plan -- --ref=<lane> --bundle=/tmp/completion-scaffold.json > /tmp/completion-plan.json
+```
+
+`completion:plan` derives the repeated requests, plan bytes, and digests before live provider checks. It verifies the scaffold still matches the exact lane, integration, profile, and locally observed inventory. An expired scaffold must be regenerated and its provider transitions replayed. Planning does not authorize cleanup; inspect the exact target and `authorizationDigest`. After stopping writers, the short apply form rechecks eligibility and accepts that digest directly, so there is no second plan file to manage:
+
+```sh
+npm run completion:apply -- --ref=<lane> --bundle=/tmp/completion-scaffold.json \
+  --confirm=<authorizationDigest> --stopped
+```
+
+The longer `--plan=<json> --authorize=<digest>` form remains available when a saved plan artifact is required. A changed target, bundle, provider winner, or eligibility observation blocks apply.
 
 ### Applicable-to-change-class findings (`completion status`)
 
