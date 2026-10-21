@@ -802,6 +802,6 @@ Merge `cb4149dc7581e48923de851b424e39bc339afb5a`; equal tree `bc6aadd2331db05d41
 Current facts only. Historical protection, check policy, Ruleset Suite, merge method and all later-effect authority remain unproven. Additional exact enrollments are recorded in [CLEANUP-AUTHORITY-ENROLLMENTS.md](CLEANUP-AUTHORITY-ENROLLMENTS.md).
 
 ### Current-quarantine adoption — PRs #555, #556 and #557 — 2026-10-22
-Owner delegated END ADLC for these exact lanes. Policy binds ref/head, merged PR, quarantine coordinate and discard-receipt digest; historical authority remains false. Adoption permits current disposition and fresh provider integration/record-only retirement, not receipt changes or deployment. PRs #555–#557 passed `budgets` and `test`.
+Owner delegated END ADLC for these exact lanes. Policy binds ref/head, merged PR, quarantine coordinate and discard-receipt digest, and enrolls the three exact merge-content facts for provider integration. Historical quarantine/protection/method authority remains false. Adoption permits current disposition and fresh provider integration/record-only retirement, not receipt changes or deployment. PRs #555–#557 passed `budgets` and `test`.
 
-Budget: three rows, test and this record; no runtime, dependency or always-load change. Each needs its provider receipt.
+Budget: six exact policy rows, test and this record; no runtime, dependency or always-load change. Each needs its provider receipt.
