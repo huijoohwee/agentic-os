@@ -176,8 +176,8 @@ export function validateCommandArguments(command, argv) {
             flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
-      if (['retire-empty-active', 'allocation-release'].includes(action))
-        return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
+      if (action === 'retire-empty-active') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
+      if (action === 'allocation-release') return exact(argv, { min: 1, max: 1, options: ['ref', 'cleanup-receipt'], requiredOptions: ['ref'] });
     }
     case 'start': {
       const error = exact(argv, { min: 1, max: 1,
