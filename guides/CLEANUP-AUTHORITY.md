@@ -173,6 +173,29 @@ owner record; three existing files changed, zero runtime modules, dependencies, 
 Rollback removes this exact adoption and guide/test expectations while preserving retained quarantine
 artifacts and previously issued evidence.
 
+### Current-quarantine retention adoption — agentic-os PR #551 — 2026-10-21
+
+The current request still includes END ADLC completion for the exact
+`agent/device-0232231d4a19/completion-status-cleanup-observation-test-fix` lane after its local
+cleanup quarantined the mounted checkout while PR #551 merged the exact reviewed source. This
+current-retention adoption binds branch
+`agent/device-0232231d4a19/completion-status-cleanup-observation-test-fix`, reviewed head
+`557bccb4091fa26004772ad2ca8466c0a9fb3dec`, PR #551 merge
+`a07e28f490c00e5c7e5d3d6e7c49b2d7c430959c`, quarantine coordinate
+`bfd93748369ed519df93648e215112b6108f2a5a4d452d1133fa22a36caa7a22`, and original local
+receipt digest `3a720da791f13e3c7cea86229b9c553e6f99decaf61c850af61b0320d492ab53`.
+The receipt records projection and registration quarantine with no byte deletion, no branch
+mutation, and no object mutation. Historical quarantine authority and actor remain unknown.
+
+This enrollment permits the native create-only `current-quarantine-retained` carrier to verify the
+existing receipt, retained registration, exact reviewed merge, and committed policy without
+reconstructing historical receipts or inventing cleanup effects. Current integration, record-only
+retirement, allocation release, and any later deployment remain separate effects.
+
+Budget: one exact v1 retention row, one focused transition-workflow expectation, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Rollback removes this exact row,
+test entry, and guide record while keeping the retained local receipt and issued evidence.
+
 ### Current-quarantine retention adoption — agentic-os PR #487 — 2026-10-17
 
 The owner delegated autonomous END ADLC completion. This exact current-retention adoption binds
