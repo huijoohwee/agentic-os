@@ -196,3 +196,24 @@ later effect requires its own exact plan, authorization, and receipt.
 Budget: two exact v1 enrollments, updates to the existing transition-workflow test, and this owner
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact entries and test
 expectations while preserving source history and all prior enrollments.
+
+## Current recovery enrollment — agentic-os PR #554 — 2026-10-21
+
+Under the owner's authorization to enroll current facts, this record binds repository
+`github.com/huijoohwee/agentic-os`: base
+`2ece094c096c67aec5b7f44afe6f84f5520333a2`, reviewed head
+`7d0c92dc280a357eadf27cda4caf25f7e4a09e05`, merge
+`d22e94505c8e2b4653c7992cc3388a5ca70ef01c`, and equal source/merge tree
+`2ea757a6c1f86a54187b634347efe340328eee10`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/554>; its successful pre-merge checks are `budgets`
+and `test`.
+
+The distinct scope is `recovery/current-historical-content/pr-554`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The enrollment does not issue provider evidence or authorize integration, retirement,
+cleanup, synchronization, deployment, or rollback. Each later effect requires its own exact plan,
+authorization, and receipt.
+
+Budget: one exact v1 enrollment, an update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving source history and prior enrollments.
