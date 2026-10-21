@@ -1,7 +1,7 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.43"
+version: "1.4.44"
 date: "2026-10-21"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
@@ -11,9 +11,9 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.43"
-tad_revision: "1.4.43"
-adr_revision: "1.4.43"
+prd_revision: "1.4.44"
+tad_revision: "1.4.44"
+adr_revision: "1.4.44"
 guideline_revision: "3.4.0"
 worktree_id: "device-0232231d4a19--adlc-closeout"
 agent_id: "codex-adlc-closeout"
@@ -21,8 +21,8 @@ load_policy: "on-demand"
 verification_scope: "simplify read-only lane closeout while preserving separate source and Dev-to-Production receipts"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "93183ba8748e8168bf2ed1fe29a95c7a89ff1e46"
-mvp_revision: "1.4.43"
-gtm_revision: "1.4.43"
+mvp_revision: "1.4.44"
+gtm_revision: "1.4.44"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json); [TECH-STACK.md](TECH-STACK.md) owns refresh commands. Admission checkpoint (2026-09-24): a new Graph task inherited an exhausted prior mission through default navigation. This successor fixes new-task selection at OS base `0433c86a3528f2130d952a1b63c9e40feb41fde3`; validation and protected integration bind the actual candidate separately. Continuity checkpoint (2026-10-01): successor 1.4.15 adopts the merged [authoring guideline 3.4.0][guideline] from website PR #281 across the pipeline, document routing and cost register. The [lifecycle process][process] joins validated learning and audience projections to ADLC receipts and reuses valid decisions for the same effect. The website record checker proves structural continuity only; demand, financial correctness and production remain separate evidence. The runtime prompt stays at `guides/SYSTEM-PROMPT-RUNTIME.md`; its Git LF rule follows that owner. No runtime behavior or always-load guidance is added.
@@ -597,3 +597,7 @@ Budget/economics: reuse the existing START observer and admission regression sui
 ### Operator closeout summary — ADLC-CLOSEOUT-001
 PRD/TAD/ADR: Add `release-common closeout --ref=<lane>` from the exact lane or registered canonical checkout; summarize local ADLC/source state and next owner/action without fetch, writes, or effect authority. It never substitutes for `close`/`complete` or product-owned Dev/Prod/Runtime receipts.
 MVP/GTM/rollback: Verify lane/canonical parity, wrong-lane refusal, and unchanged refs/bytes. Existing CLI cap records +42 lines (24,607→24,649) for one read-only command; zero modules, dependencies or paid resources, with a +1 always-load byte delta. This reduces command discovery friction; time/cost savings are unmeasured. Protected revert restores the command, tests, docs, and cap.
+### Explicit cleanup in source closeout — ADLC-CLOSEOUT-001@1.4.44
+PRD: A routine merged-source closeout should not quarantine a mounted lane as a side effect of a profile default. Keep the merged source and local recovery bytes available until an operator separately requests cleanup.
+TAD/ADR: `release-common complete --ref=<lane>` continues to observe integration, finish source bookkeeping, and report closeout. It runs no cleanup implicitly. Preserve the authenticated `--bundle=<json> --stopped` cleanup path; its exact plan and receipt remain a distinct effect. A completion or source receipt grants no retirement, cleanup, canonical synchronization, deployment, promotion, or rollback authority.
+MVP/GTM/rollback: Regression tests prove default closeout retains the worktree and ignored bytes, while explicit bundle cleanup remains available. Update the operator guide and README; add no modules, dependencies, paid resources, or always-load instructions. This removes a surprising local quarantine from the routine path; measure operator time and resource effects after adoption. Roll back through a protected revert and retain lane bytes and effect receipts.

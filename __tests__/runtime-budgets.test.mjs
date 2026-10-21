@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40959, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40796, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -99,17 +99,15 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Unsupported: report blocker, not proof. Headless: N/A.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      '`npm run release:common -- <action>`',
-      'reports ADLC state and next owner/action in lane or canonical checkout',
-      'no fetch, writes or effect authority.',
-      '`close` is diagnostics only.',
-      'complete --ref=<lane>',
-      'Cleanup: exact eligible-target evidence; `--bundle --stopped` preserves recovery bytes.',
-      '`publish` hands off after checks; merges need green checks.',
-      'Separate grants: integration, retirement, cleanup, sync, production;',
+      '`publish` hands off after checks; merge requires green checks.',
+      '`complete --ref=<lane>` waits for exact integration and reports closeout',
+      'keeping the lane mounted.',
+      '`closeout --ref=<lane>` is read-only; `close` is diagnostic.',
+      'Cleanup is separate: exact eligible targets require `--bundle --stopped`.',
+      'Source closeout grants no cleanup, sync, or production authority;',
       '[DEPLOY](../guides/DEPLOY-WORKFLOW.md).',
-      '`retire-empty-active --ref=<lane>` quarantines a clean active lane if recorded head=base;',
-      'retains refs, objects, projection, registration; no provider, merge or deploy authority.',
+      '`retire-empty-active --ref=<lane>` quarantines a clean lane at its base;',
+      'refs, objects, and registration remain.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',

@@ -1,7 +1,7 @@
 ---
 title: "Agentic OS"
 doc_type: "Index"
-version: "1.0.1"
+version: "1.0.2"
 date: "2026-09-23"
 lang: "en-US"
 owner: "agentic-os"
@@ -37,13 +37,13 @@ Forking under a different owner starts at the [fork guide](guides/FORK.md).
 npm run release:common --help                                  # the full operator flow
 npm run release:common -- start <scope> --write=<path[,path...]>
 npm run release:common -- publish --message="feat: ..."
-npm run release:common -- complete --ref=<lane>               # wait for merge, then close and retire the lane when local evidence is sufficient
+npm run release:common -- complete --ref=<lane>               # wait for merge and report source closeout; keep the lane mounted
 npm run release:common -- complete --ref=<lane> --bundle=<json> --stopped
 ```
 
-`complete` without a bundle now uses the exact local merged-review and required-check evidence to
-quarantine the retained lane when the profile-governed local cleanup path is sufficient. Use
-`--bundle` and `--stopped` when the exact authenticated cleanup plan is required instead.
+`complete` reports source integration and closeout while retaining the lane. Cleanup is a separate,
+explicit action: pass the exact authenticated cleanup bundle with `--bundle` and acknowledge stopped
+writers with `--stopped`. Profile settings alone never trigger lane quarantine.
 
 `npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
 diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
