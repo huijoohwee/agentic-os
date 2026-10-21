@@ -80,7 +80,7 @@ function cmdReleaseCommonHelp() {
       '    provider refresh: rebind plan --ref=<lane> --mode=provider-refresh --pr=<n> --expected-head=<sha> --expected-base=<sha>',
       '    provider refresh apply: rebind apply --mode=provider-refresh --plan=<file> --authorize=agentic-os:provider-lane-rebind:<digest> --stopped',
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
-      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
+      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait for exact integration and report closeout; cleanup runs only with an explicit bundle',
       '  agentic-os release-common closeout --ref=<lane>   read-only closeout summary from the exact lane or canonical checkout',
       '  agentic-os release-common allocation-release --ref=<lane>   free one fully closed workflow allocation while retaining its history',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
@@ -153,17 +153,14 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       const completionModule = await import('./agentic-os-completion-status.mjs');
       const completion = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
       out(JSON.stringify(completion));
-      const localCleanup = cleanup.bundlePath === null && profile.cleanup.worktreeProjection !== 'retain' && completion.lane.mounted;
-      if (localCleanup || cleanup.bundlePath !== null) {
+      if (cleanup.bundlePath !== null) {
         beforeClose();
-        const cleanupStatus = localCleanup
-          ? await completeModule.runReleaseCommonLocalCleanup({ root, ref: option(rest, 'ref'), profile, out, err })
-          : await completeModule.runReleaseCommonCleanup({ root, ref: option(rest, 'ref'), ...cleanup, out });
+        const cleanupStatus = await completeModule.runReleaseCommonCleanup({ root, ref: option(rest, 'ref'), ...cleanup, out });
         if (cleanupStatus !== 0) return cleanupStatus;
         const settled = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
         out(JSON.stringify(settled));
         if (settled.lane.mounted) {
-          err(`blocked-release-common-complete-${localCleanup ? 'local-cleanup' : 'cleanup'}-retained: cleanup returned, but the exact lane is still mounted.`);
+          err('blocked-release-common-complete-cleanup-retained: cleanup returned, but the exact lane is still mounted.');
           return 1;
         }
       }

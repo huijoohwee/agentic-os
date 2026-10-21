@@ -291,7 +291,7 @@ test('review count/deadline limits reject long waits and late merge evidence', a
   assert.equal(expired.reason, 'observation-window-elapsed');
 });
 
-for (const cachedReview of [41, null]) test(`complete closes an exact merged review with cached PR ${cachedReview}`, (t) => {
+for (const cachedReview of [41, null]) test(`complete reports an exact merged review and retains the mounted lane with cached PR ${cachedReview}`, (t) => {
   const subject = completeFixture(t, 'MERGED');
   put({ ref: subject.ref, pr: cachedReview }, subject.root);
   const result = complete(subject, 1000);
@@ -300,15 +300,15 @@ for (const cachedReview of [41, null]) test(`complete closes an exact merged rev
   assert.match(result.stdout, /"schema":"agentic-os\/sprint-finish\/v1"/u);
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
   assert.doesNotMatch(result.stderr, /blocked-release-common-complete-cleanup-required/u);
-  assert.equal(existsSync(subject.lane), false);
+  assert.equal(existsSync(subject.lane), true);
   const statuses = result.stdout.split('\n')
     .filter((line) => line.includes('"schema":"agentic-os/completion-status/v1"'))
     .map((line) => JSON.parse(line));
   const settled = statuses.at(-1);
-  assert.equal(settled.closeout.missionState, 'source_complete');
-  assert.equal(settled.closeout.laneDisposition, 'quarantined');
-  assert.equal(settled.cleanupVerified, true);
-  assert.equal(settled.closeout.nextAction, null);
+  assert.equal(settled.closeout.missionState, 'continuable');
+  assert.equal(settled.lane.mounted, true);
+  assert.equal(settled.closeout.laneDisposition, 'awaiting-cleanup');
+  assert.equal(settled.cleanupVerified, false);
 });
 
 test('retire-empty-active quarantines one clean zero-candidate lane with a native receipt', (t) => {
@@ -379,20 +379,18 @@ test('release-common complete returns success when the profile retains worktree 
   assert.equal(status.lane.mounted, true);
 });
 
-test('native completion preserves ignored inventories above the obsolete ten-thousand entry override', t => {
+test('default completion leaves ignored lane content available for explicit cleanup review', t => {
   const subject = completeFixture(t);
   const ignored = join(subject.lane, 'runtime'); mkdirSync(ignored);
   // Local excludes are independent of the already-integrated authored tree.
   const exclude = git(['rev-parse', '--git-path', 'info/exclude'], { cwd: subject.root });
   writeFileSync(join(subject.root, exclude), 'runtime/\n');
-  for (let i = 0; i < 10001; i++) writeFileSync(join(ignored, `evidence-${i}`), `retained ${i}`);
+  writeFileSync(join(ignored, 'evidence.txt'), 'retained for explicit review');
   const result = complete(subject, 1000);
   assert.equal(result.status, 0, result.stderr);
-  const receipt = result.stdout.split('\n').filter(line => line.startsWith('{'))
-    .map(line => JSON.parse(line)).find(value => value.result === 'quarantined');
-  assert.ok(receipt, result.stdout);
-  assert.equal(readFileSync(join(receipt.projectionQuarantinePath, 'runtime/evidence-10000'), 'utf8'), 'retained 10000');
-  assert.equal(existsSync(subject.lane), false);
+  assert.equal(readFileSync(join(ignored, 'evidence.txt'), 'utf8'), 'retained for explicit review');
+  assert.equal(existsSync(subject.lane), true);
+  assert.doesNotMatch(result.stdout, /worktree-cleanup-receipt/u);
 });
 
 test('release-common complete returns the verified wait code while the exact review stays open', (t) => {

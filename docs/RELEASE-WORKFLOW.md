@@ -1,13 +1,10 @@
 # Release workflow
 
-`npm run release:common -- <action>`: `publish` hands off after checks; merges need green checks.
-`complete --ref=<lane>` waits for integration; `close` is diagnostics only.
+`publish` hands off after checks; merge requires green checks.
+`complete --ref=<lane>` waits for exact integration and reports closeout while keeping the lane mounted.
+`closeout --ref=<lane>` is read-only; `close` is diagnostic.
 
-`closeout --ref=<lane>` reports ADLC state and next owner/action in lane or canonical checkout; no fetch, writes or
-effect authority.
+Cleanup is separate: exact eligible targets require `--bundle --stopped`.
+Source closeout grants no cleanup, sync, or production authority; see [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
 
-Cleanup: exact eligible-target evidence; `--bundle --stopped` preserves recovery bytes.
-Separate grants: integration, retirement, cleanup, sync, production; see [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
-
-`retire-empty-active --ref=<lane>` quarantines a clean active lane if recorded head=base; retains refs, objects,
-projection, registration; no provider, merge or deploy authority.
+`retire-empty-active --ref=<lane>` quarantines a clean lane at its base; refs, objects, and registration remain.
