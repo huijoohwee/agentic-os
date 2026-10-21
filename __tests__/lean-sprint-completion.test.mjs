@@ -641,7 +641,7 @@ test('finish accepts an exact integrated lane ref after its worktree is detached
   assert.equal(scaffold.bundleTemplate.cleanup.plan.projectionByteCeiling, 4 * 1024 ** 3);
   assert.equal(scaffold.bundleTemplate.integrationVerifier.policy, 'REPLACE_WITH_TRANSITION_POLICY_OBJECT');
   assert.equal(scaffold.requiredPlaceholders.includes('integrationVerifier.policy'), true);
-  assert.ok(scaffold.stillRequiresAuthenticatedWinners.includes('retirement workflow run'));
+  assert.ok(scaffold.hydrationInputs.includes('retirementVerifier.workflowRun'));
   assert.ok(scaffold.warnings.some((item) => item.code === 'lane-registration-detached'));
 });
 

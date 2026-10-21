@@ -5,6 +5,9 @@ import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { repoRoot, currentBranch, headSha, isAncestor, observeGit, worktreeInventory, acquireOperationLock, finishOperationLock } from '../src/git.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { validateWorktreeCleanupPlan, assessWorktreeCleanupEligibility, executeWorktreeCleanup } from '../src/cleanup.mjs';
+import { createWorktreeCleanupPlan, deriveCleanupOwnerStateDigest, validateCleanupEvidenceReceipt } from '../src/cleanup-records.mjs';
+import { encodeEffectPlan, effectPlanByteDigest, validateAuthenticatedTransitionOperationReceipt } from '../src/completion.mjs';
+import { validateGitHubTransitionInput } from '../src/github-transition-client.mjs';
 import { get } from '../src/lane-records.mjs'; import { isLaneRef } from '../src/lane-id.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { classifyExistingWorktreeQuarantine, observeWorktreeCleanupTarget, quarantineWorktreeTarget } from '../src/cleanup-quarantine.mjs';
@@ -20,18 +23,74 @@ export const EMPTY_ACTIVE_LANE_RETIREMENT_RECEIPT = 'agentic-os/empty-active-lan
 const BUNDLE_KEYS = ['cleanup', 'integrationVerifier', 'retirementVerifier'];
 const CLEANUP_KEYS = ['plan', 'integrationReceipt', 'integrationPlanBytes', 'retirementReceipt', 'retirementPlanBytes', 'integrationRequest', 'retirementRequest', 'preservationReceipt', 'noRemainingValueReceipt'];
 const CONFIG_KEYS = ['repository', 'targetRepository', 'operationInput', 'workflowRun', 'policy'];
+const SCAFFOLD_SCHEMA = 'agentic-os/completion-bundle-scaffold/v1', DERIVE_TTL_MS = 900000;
 const EMPTY_LANE_LIMITS = Object.freeze({ projectionByteCeiling: 4 * 1024 ** 3, projectionEntryCeiling: 250_000, registrationByteCeiling: 16 * 1024 ** 2, registrationEntryCeiling: 20_000, sharedStateByteCeiling: 20 * 1024 ** 3, sharedStateEntryCeiling: 500_000 });
 const same = (left, right) => canonicalJson(left) === canonicalJson(right), sha = value => typeof value === 'string' && /^[0-9a-f]{40}$/u.test(value), iso = value => new Date(value).toISOString();
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); } function exact(value, keys, label, optional = []) { if (!value || typeof value !== 'object' || Array.isArray(value) || keys.some(key => !Object.hasOwn(value, key)) || Object.keys(value).some(key => !keys.includes(key) && !optional.includes(key))) fail('blocked-completion-input', `${label} must have exactly ${keys.join(', ')}${optional.length ? ` and optional ${optional.join(', ')}` : ''}`); }
 function jsonFile(path, ceiling, label) { try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedStableFile(path, ceiling, label))); } catch (error) { fail('blocked-completion-input', `${label}: ${error.message}`); } } function serializableBundle(value) { try { return JSON.parse(JSON.stringify(value, (_key, entry) => Buffer.isBuffer(entry) || entry instanceof Uint8Array ? [...entry] : entry?.type === 'Buffer' && Array.isArray(entry.data) ? entry.data : entry)); } catch (error) { fail('blocked-completion-input', `completion bundle: ${error.message}`); } }
 function planBytes(value, label) { const entries = Buffer.isBuffer(value) || value instanceof Uint8Array ? [...value] : value; if (!Array.isArray(entries) || entries.length === 0 || entries.length > 500_000 || entries.some(entry => !Number.isInteger(entry) || entry < 0 || entry > 255)) fail('blocked-completion-input', `${label} must be a bounded byte array`); return Buffer.from(entries); }
-export function materializeCompletionCloseBundle(value, { now = Date.now } = {}) { const result = serializableBundle(value); exact(result, BUNDLE_KEYS, 'completion bundle'); exact(result.cleanup, CLEANUP_KEYS, 'cleanup evidence', ['cleanupContinuation']); result.cleanup.integrationPlanBytes = planBytes(result.cleanup.integrationPlanBytes, 'integrationPlanBytes'); result.cleanup.retirementPlanBytes = planBytes(result.cleanup.retirementPlanBytes, 'retirementPlanBytes'); result.cleanup.cleanupContinuation = deriveCompletionCleanupContinuation(result.cleanup, now); return result; }
+const isPlaceholder = value => typeof value === 'string' && value.startsWith('REPLACE_WITH_');
+function setDerived(target, path, value) { const parts = path.split('.'); let node = target; for (const key of parts.slice(0, -1)) node = node[key]; const key = parts.at(-1), prior = node[key]; if (!isPlaceholder(prior) && !same(prior, value)) fail('blocked-completion-input', `${path} conflicts with authenticated evidence`); node[key] = value; }
+export function deriveCompletionBundleFields(value, { now = Date.now } = {}) {
+  const bundle = serializableBundle(value); exact(bundle, BUNDLE_KEYS, 'completion bundle'); exact(bundle.cleanup, CLEANUP_KEYS, 'cleanup evidence', ['cleanupContinuation']);
+  const cleanup = bundle.cleanup, operations = {};
+  for (const name of ['integration', 'retirement']) {
+    const verifier = bundle[`${name}Verifier`], transition = name === 'integration' ? 'integrate' : 'retire'; let input;
+    try { input = validateGitHubTransitionInput(verifier.operationInput); } catch (error) { fail('blocked-completion-input', `${name} operation input: ${error.message}`); }
+    if (input.request.requestedTransition !== transition || input.plan.target.repository !== verifier.targetRepository) fail('blocked-completion-target-mismatch', `${name} operation does not target its declared repository`);
+    const bytes = encodeEffectPlan(input.plan), byteDigest = effectPlanByteDigest(bytes);
+    setDerived(cleanup, `${name}Request`, input.request); setDerived(cleanup, `${name}PlanBytes`, [...bytes]);
+    operations[name] = { input, bytes, byteDigest };
+  }
+  const integration = operations.integration, retirement = operations.retirement, integratePlan = integration.input.plan;
+  for (const [key, value] of Object.entries({
+    integratedResource: integratePlan.target.resource, integratedImmutableRevision: integratePlan.target.immutableRevision,
+    candidateDigest: integratePlan.candidateDigest, snapshotDigest: integratePlan.snapshotDigest,
+    integrationProofDigest: integratePlan.parametersDigest, integrationPlanByteDigest: integration.byteDigest,
+    integrationPredecessorDigest: integratePlan.authority.predecessorDigest,
+  })) setDerived(cleanup.plan, key, value);
+  const receipts = {};
+  for (const name of ['integration', 'retirement']) {
+    const receipt = validateAuthenticatedTransitionOperationReceipt(cleanup[`${name}Receipt`]), operation = operations[name];
+    if (receipt.requestDigest !== operation.input.request.requestDigest || receipt.planDigest !== operation.input.plan.planDigest || receipt.planByteDigest !== operation.byteDigest) fail('blocked-completion-input', `${name} receipt does not match its operation input`);
+    receipts[name] = receipt;
+  }
+  const integrated = receipts.integration.transitionReceipt;
+  setDerived(cleanup.plan, 'integrationReceiptDigest', receipts.integration.receiptDigest);
+  setDerived(cleanup.plan, 'ownerStateDigest', deriveCleanupOwnerStateDigest({ claimId: integrated.resultClaimId, leaseEpoch: integrated.resultLeaseEpoch, fenceRevision: integrated.resultFenceRevision, state: integrated.resultState }));
+  for (const name of ['preservation', 'noRemainingValue']) setDerived(cleanup.plan, `${name === 'preservation' ? 'preservation' : 'noRemainingValue'}ReceiptDigest`, validateCleanupEvidenceReceipt(cleanup[`${name}Receipt`]).receiptDigest);
+  cleanup.plan = createWorktreeCleanupPlan(cleanup.plan);
+  cleanup.integrationPlanBytes = integration.bytes; cleanup.retirementPlanBytes = retirement.bytes;
+  cleanup.cleanupContinuation = deriveCompletionCleanupContinuation(cleanup, now);
+  return bundle;
+}
+function validateCompletionScaffold(value, status, profile, now) {
+  const plan = value?.bundleTemplate?.cleanup?.plan, derivedAt = Date.parse(value?.derivedAt ?? ''), expiresAt = Date.parse(plan?.expiresAt ?? '');
+  if (value?.schema !== SCAFFOLD_SCHEMA || value.ref !== status.ref || value.repository !== status.repository
+    || value.profileDigest !== profile.profileDigest || value.canonicalRevision !== status.canonicalRevision
+    || value.canonicalRef !== profile.canonical.localRef || !same(value.lane, status.lane) || !same(value.integration, status.integration))
+    fail('blocked-completion-target-mismatch', 'scaffold no longer matches the exact lane, integration, profile, and canonical source');
+  if (!status.lane.mounted || !status.lane.path || !Number.isFinite(derivedAt) || !Number.isFinite(expiresAt)
+    || new Date(expiresAt).toISOString() !== plan.expiresAt || expiresAt !== derivedAt + DERIVE_TTL_MS || now < derivedAt || now >= expiresAt)
+    fail('blocked-completion-input', 'scaffold is unmounted, expired, or missing its exact derived inventory window');
+  const inventory = collectRecoveryInventory({ cwd: status.lane.path, canonicalRef: profile.canonical.localRef, maxContentEntries: plan.projectionEntryCeiling });
+  if (inventory.branch !== status.ref || inventory.headRevision !== status.lane.head || inventory.canonicalRevision !== status.canonicalRevision
+    || governanceDigest(inventory) !== plan.recoveryInventoryDigest || inventory.inventoryEntries.content !== plan.recoveryInventoryContentEntries)
+    fail('blocked-recovery-inventory-drift', 'scaffold inventory no longer matches the exact lane');
+  return value.bundleTemplate;
+}
+export function materializeCompletionCloseBundle(value, { now = Date.now, status = null, profile = null } = {}) {
+  const source = value?.schema === SCAFFOLD_SCHEMA ? validateCompletionScaffold(value, status, profile, now()) : value;
+  const result = deriveCompletionBundleFields(source, { now });
+  result.cleanup.integrationPlanBytes = planBytes(result.cleanup.integrationPlanBytes, 'integrationPlanBytes');
+  result.cleanup.retirementPlanBytes = planBytes(result.cleanup.retirementPlanBytes, 'retirementPlanBytes'); return result;
+}
 export function completionCloseBundleDigest(value) { return governanceDigest(serializableBundle(value)); }
 export function validateCompletionCloseArguments(argv) {
-  const [mode, ...args] = argv, names = mode === 'plan' ? ['ref', 'bundle'] : mode === 'apply' ? ['ref', 'bundle', 'plan', 'authorize', 'stopped'] : null;
-  if (!names || args.length !== names.length) fail('blocked-completion-arguments', 'usage: completion-close plan --ref=<lane> --bundle=<json> | apply --ref=<lane> --bundle=<json> --plan=<json> --authorize=<digest> --stopped');
+  const [mode, ...args] = argv, confirmApply = mode === 'apply' && args.some(arg => arg?.startsWith?.('--confirm=')), names = mode === 'plan' ? ['ref', 'bundle'] : mode === 'apply' ? confirmApply ? ['ref', 'bundle', 'confirm', 'stopped'] : ['ref', 'bundle', 'plan', 'authorize', 'stopped'] : null;
+  if (!names || args.length !== names.length) fail('blocked-completion-arguments', 'usage: completion-close plan --ref=<lane> --bundle=<json> | apply --ref=<lane> --bundle=<json> (--confirm=<digest> | --plan=<json> --authorize=<digest>) --stopped');
   const found = new Map(); for (const arg of args) { const match = arg.match(/^--([a-z]+)(?:=(.+))?$/u); if (!match || !names.includes(match[1]) || found.has(match[1]) || (match[1] === 'stopped' ? match[2] !== undefined : match[2] === undefined)) fail('blocked-completion-arguments', `invalid or duplicate argument ${arg}`); found.set(match[1], match[2] ?? true); }
-  if (names.some(name => !found.has(name))) fail('blocked-completion-arguments', 'required argument missing'); return { mode, ref: found.get('ref'), bundle: found.get('bundle'), plan: found.get('plan'), authorize: found.get('authorize'), stopped: found.get('stopped') === true };
+  if (names.some(name => !found.has(name))) fail('blocked-completion-arguments', 'required argument missing'); return { mode, ref: found.get('ref'), bundle: found.get('bundle'), plan: found.get('plan'), authorize: found.get('authorize'), confirm: found.get('confirm'), stopped: found.get('stopped') === true };
 }
 export function validateCompletionCloseBundle(value, status) {
   exact(value, BUNDLE_KEYS, 'completion bundle'); exact(value.cleanup, CLEANUP_KEYS, 'cleanup evidence', ['cleanupContinuation']); exact(value.integrationVerifier, CONFIG_KEYS, 'integration verifier'); exact(value.retirementVerifier, CONFIG_KEYS, 'retirement verifier'); const plan = validateWorktreeCleanupPlan(value.cleanup.plan);
@@ -39,15 +98,15 @@ export function validateCompletionCloseBundle(value, status) {
 }
 function context(root, ref) {
   const canonical = realpathSync(repoRoot(root)); if (realpathSync(root) !== canonical) fail('blocked-canonical-required', 'run from the canonical checkout'); const profile = trustedRepositoryProfile(canonical).profile;
-  if (!profile) fail('blocked-repository-profile-missing', 'committed trusted profile required'); const status = inspectCompletionStatus(canonical, ref, providerPolicy(profile), profile); const blocker = status.findings.find(item => ['canonical-not-current-clean', 'lane-ref-missing', 'lane-registration-detached', 'lane-dirty', 'integration-not-classified'].includes(item.code)); if (blocker) fail(`blocked-${blocker.code}`, blocker.action); return { canonical, status };
+  if (!profile) fail('blocked-repository-profile-missing', 'committed trusted profile required'); const status = inspectCompletionStatus(canonical, ref, providerPolicy(profile), profile); const blocker = status.findings.find(item => ['canonical-not-current-clean', 'lane-ref-missing', 'lane-registration-detached', 'lane-dirty', 'integration-not-classified'].includes(item.code)); if (blocker) fail(`blocked-${blocker.code}`, blocker.action); return { canonical, status, profile };
 }
 function verifier(config, token) { if (!token) fail('blocked-provider-credentials', 'GITHUB_TOKEN is required for live winner verification'); return createGitHubTransitionAuthorityVerifier({ ...config, token }); }
 function options(root, bundle, token, now = Date.now) { return { cwd: root, now, verifyIntegrationAuthority: verifier(bundle.integrationVerifier, token), verifyRetirementAuthority: verifier(bundle.retirementVerifier, token) }; }
 export async function planCompletionClose(root, ref, bundle, { token = process.env.GITHUB_TOKEN, now = Date.now } = {}) {
-  const { canonical, status } = context(root, ref), bundleDigest = completionCloseBundleDigest(bundle), runtime = materializeCompletionCloseBundle(bundle, { now }); validateCompletionCloseBundle(runtime, status); const eligibility = await assessWorktreeCleanupEligibility(runtime.cleanup, options(canonical, runtime, token, now)); return { schema: PLAN_SCHEMA, ref, repository: status.repository, targetPath: status.lane.path, canonicalRevision: status.canonicalRevision, laneHead: status.lane.head, bundleDigest, eligibility, authorizationDigest: eligibility.eligibilityDigest, effectsAuthorized: false };
+  const { canonical, status, profile } = context(root, ref), bundleDigest = completionCloseBundleDigest(bundle), runtime = materializeCompletionCloseBundle(bundle, { now, status, profile }); validateCompletionCloseBundle(runtime, status); const eligibility = await assessWorktreeCleanupEligibility(runtime.cleanup, options(canonical, runtime, token, now)); return { schema: PLAN_SCHEMA, ref, repository: status.repository, targetPath: status.lane.path, canonicalRevision: status.canonicalRevision, laneHead: status.lane.head, bundleDigest, eligibility, authorizationDigest: eligibility.eligibilityDigest, effectsAuthorized: false };
 }
 export async function applyCompletionClose(root, ref, bundle, planned, authorization, { token = process.env.GITHUB_TOKEN, stopped = false, now = Date.now } = {}) {
-  if (!stopped) fail('blocked-completion-stop-acknowledgement', 'stop writers before applying cleanup'); const { canonical, status } = context(root, ref), bundleDigest = completionCloseBundleDigest(bundle), runtime = materializeCompletionCloseBundle(bundle, { now }); validateCompletionCloseBundle(runtime, status); exact(planned, ['schema', 'ref', 'repository', 'targetPath', 'canonicalRevision', 'laneHead', 'bundleDigest', 'eligibility', 'authorizationDigest', 'effectsAuthorized'], 'completion plan');
+  if (!stopped) fail('blocked-completion-stop-acknowledgement', 'stop writers before applying cleanup'); const { canonical, status, profile } = context(root, ref), bundleDigest = completionCloseBundleDigest(bundle), runtime = materializeCompletionCloseBundle(bundle, { now, status, profile }); validateCompletionCloseBundle(runtime, status); exact(planned, ['schema', 'ref', 'repository', 'targetPath', 'canonicalRevision', 'laneHead', 'bundleDigest', 'eligibility', 'authorizationDigest', 'effectsAuthorized'], 'completion plan');
   if (planned.schema !== PLAN_SCHEMA || planned.ref !== ref || planned.repository !== status.repository || planned.targetPath !== status.lane.path || planned.canonicalRevision !== status.canonicalRevision || planned.laneHead !== status.lane.head || planned.bundleDigest !== bundleDigest || planned.authorizationDigest !== planned.eligibility?.eligibilityDigest || authorization !== planned.authorizationDigest || planned.effectsAuthorized !== false) fail('blocked-completion-plan-drift', 'exact plan, bundle and authorization must agree'); return executeWorktreeCleanup({ ...runtime.cleanup, eligibility: planned.eligibility, authorizationDigest: authorization }, options(canonical, runtime, token, now));
 }
 
@@ -74,5 +133,5 @@ function applyEmptyActiveLaneRetirement(plan, { root, profile, now = Date.now } 
 function emptyLaneLocked(root, operation) { const lock = acquireOperationLock('agentic-os-empty-active-lane-retirement', root); if (!lock) fail('blocked-empty-active-lane-retirement-busy', 'another empty active lane retirement is in progress'); let result, error; try { result = operation(); } catch (caught) { error = caught; } return finishOperationLock(lock, { label: 'empty active lane retirement', result, error, artifacts: error?.operationArtifacts ?? null }); }
 export function runEmptyActiveLaneRetirement({ root, argv, profile, out = line => process.stdout.write(`${line}\n`), err = line => process.stderr.write(`${line}\n`), now = Date.now } = {}) { try { return emptyLaneLocked(root, () => { const plan = planEmptyActiveLaneRetirement({ root, ref: option(argv, 'ref'), profile, issuedAt: now() }); out(JSON.stringify(plan)); out(JSON.stringify(applyEmptyActiveLaneRetirement(plan, { root, profile, now }))); return 0; }); } catch (error) { err(`${error.reason ?? 'blocked-empty-active-lane-retirement'}: ${error.message}`); return 1; } }
 
-async function main() { const args = validateCompletionCloseArguments(process.argv.slice(2)), root = process.cwd(), bundle = jsonFile(args.bundle, 4_194_304, 'completion-bundle'); const result = args.mode === 'plan' ? await planCompletionClose(root, args.ref, bundle) : await applyCompletionClose(root, args.ref, bundle, jsonFile(args.plan, 65_536, 'completion-plan'), args.authorize, { stopped: args.stopped }); process.stdout.write(`${canonicalJson(result)}\n`); }
+async function main() { const args = validateCompletionCloseArguments(process.argv.slice(2)), root = process.cwd(), bundle = jsonFile(args.bundle, 4_194_304, 'completion-bundle'), planned = args.mode === 'apply' ? args.confirm ? await planCompletionClose(root, args.ref, bundle) : jsonFile(args.plan, 65_536, 'completion-plan') : null, result = args.mode === 'plan' ? await planCompletionClose(root, args.ref, bundle) : await applyCompletionClose(root, args.ref, bundle, planned, args.confirm ?? args.authorize, { stopped: args.stopped }); process.stdout.write(`${canonicalJson(result)}\n`); }
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main().catch(error => { process.stderr.write(`completion-close: ${error.reason ?? 'error'}: ${error.message}\n`); process.exitCode = 1; });

@@ -5,18 +5,20 @@ import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
 import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
   createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS,
-  RETAINED_EFFECTS, createWorktreeCleanupContinuation, createWorktreeCleanupPlan,
+  RETAINED_EFFECTS, createCleanupEvidenceReceipt, createWorktreeCleanupContinuation, createWorktreeCleanupPlan,
   deriveCleanupOwnerStateDigest, worktreeCleanupPlanByteDigest } from '../src/cleanup.mjs';
+import { createGitHubTransitionInput } from '../src/github-transition-client.mjs';
+import { integrationDraft, predecessorIssuance } from './lib/github-transition-fixture.mjs';
 import { validateCompletionCloseArguments, validateCompletionCloseBundle,
   applyCompletionClose, completionCloseBundleDigest,
-  materializeCompletionCloseBundle } from '../bin/agentic-os-completion-close.mjs';
+  materializeCompletionCloseBundle, deriveCompletionBundleFields } from '../bin/agentic-os-completion-close.mjs';
 import { buildCompletionBundleScaffold, validateCompletionScaffoldArguments } from '../bin/agentic-os-completion-scaffold.mjs';
 
 const REF = 'agent/device/feature';
 const hash = char => char.repeat(64);
-const transitionPlan = ({ transition, target, revision, claimId, leaseEpoch, fenceRevision,
+const transitionPlan = ({ repository = 'github.com/example/repository', transition, target, revision, claimId, leaseEpoch, fenceRevision,
   predecessorDigest, candidateDigest, snapshotDigest, parametersDigest, cleanup = false }) =>
-  createEffectPlan({ target: { repository: 'github.com/example/repository', resource: target,
+  createEffectPlan({ target: { repository, resource: target,
     immutableRevision: revision }, authority: { requestedTransition: transition,
     authoritySubject: 'github-user:42', ownerSubject: 'github-user:42', claimId, leaseEpoch,
     fenceRevision, writeSetDigest: governanceDigest(['owner-bound-worktree']),
@@ -27,9 +29,11 @@ const transitionPlan = ({ transition, target, revision, claimId, leaseEpoch, fen
   forbiddenEffects: cleanup ? RETAINED_EFFECTS : INTEGRATION_RECORD_RETAINED_EFFECTS,
   parametersDigest });
 async function closeBundleFixture() {
-  const repository = 'github.com/example/repository', targetPath = '/tmp/lane',
-    review = `https://${repository}/pull/7`, candidateDigest = hash('a'), snapshotDigest = hash('b'),
-    mergedRevision = 'f'.repeat(40), now = Date.parse('2026-09-02T00:40:00.000Z');
+  const issuance = predecessorIssuance(), draft = integrationDraft(issuance, hash('d'));
+  const repository = 'github.com/example/target', targetPath = '/tmp/lane',
+    review = draft.plan.target.resource, candidateDigest = draft.plan.candidateDigest,
+    snapshotDigest = draft.plan.snapshotDigest, mergedRevision = draft.plan.target.immutableRevision,
+    now = Date.parse('2026-09-02T00:40:00.000Z');
   const makeRequest = (plan) => {
     const input = { repository, authoritySubject: 'github-user:42', ownerSubject: 'github-user:42',
       scope: ['owner-bound-worktree'], claimId: plan.authority.claimId,
@@ -39,8 +43,8 @@ async function closeBundleFixture() {
       observedAt: '2026-09-02T00:00:00.000Z', expiresAt: '2026-09-02T01:00:00.000Z' };
     return plan.authority.requestedTransition === 'integrate' ? integrate(input) : retire(input);
   };
-  const makeReceipt = async plan => {
-    const request = makeRequest(plan), planBytes = encodeEffectPlan(plan);
+  const makeReceipt = async (plan, exactRequest = null) => {
+    const request = exactRequest ?? makeRequest(plan), planBytes = encodeEffectPlan(plan);
     const verify = async () => ({ adapter: { id: 'fixture-provider', version: '1' },
       authenticatedSubject: 'github-user:42', providerRecordLocator: 'provider://operation/1',
       providerRecordDigest: hash('4'), requestDigest: request.requestDigest,
@@ -52,29 +56,36 @@ async function closeBundleFixture() {
       resultState: request.requestedTransition === 'integrate' ? 'integrated' : 'retired',
       operationReceiptDigest: hash(request.requestedTransition === 'integrate' ? '5' : '8'),
       transitionedAt: new Date(now).toISOString(), verifiedAt: new Date(now).toISOString(),
-      expiresAt: '2026-09-02T01:00:00.000Z' });
+      expiresAt: request.expiresAt });
     return { request, planBytes, receipt: await createAuthenticatedTransitionOperationReceipt(
       { request, planBytes }, verify, { now: () => now }) };
   };
-  const integrationPlan = transitionPlan({ transition: 'integrate', target: review,
-    revision: mergedRevision, claimId: hash('1'), leaseEpoch: 7, fenceRevision: hash('2'),
-    predecessorDigest: hash('6'), candidateDigest, snapshotDigest,
-    parametersDigest: hash('d') });
-  const integration = await makeReceipt(integrationPlan);
+  const integrationPlan = draft.plan;
+  const integration = await makeReceipt(integrationPlan, draft.request);
   const ownerStateDigest = deriveCleanupOwnerStateDigest({
     claimId: integration.receipt.transitionReceipt.resultClaimId,
     leaseEpoch: integration.receipt.transitionReceipt.resultLeaseEpoch,
     fenceRevision: integration.receipt.transitionReceipt.resultFenceRevision, state: 'integrated' });
+  const recoveryInventoryDigest = hash('f'), recoveryInventoryContentEntries = 1, archiveDigest = hash('e');
+  const preservationReceipt = createCleanupEvidenceReceipt({ kind: 'preservation', repository,
+    targetPath, candidateDigest, snapshotDigest, integrationReceiptDigest: integration.receipt.receiptDigest,
+    recoveryInventoryDigest, recoveryInventoryContentEntries, ownerStateDigest, archiveDigest,
+    preservationComplete: true, reachableFromRetainedRefs: null, unpreservedValueCount: null });
+  const noRemainingValueReceipt = createCleanupEvidenceReceipt({ kind: 'no-remaining-value', repository,
+    targetPath, candidateDigest, snapshotDigest, integrationReceiptDigest: integration.receipt.receiptDigest,
+    recoveryInventoryDigest, recoveryInventoryContentEntries, ownerStateDigest, archiveDigest,
+    preservationComplete: null, reachableFromRetainedRefs: true, unpreservedValueCount: 0 });
   const retiredPlan = createWorktreeCleanupPlan({ repository, targetPath, expectedBranch: REF,
     expectedHeadRevision: 'c'.repeat(40), expectedCanonicalRef: 'refs/heads/main',
     expectedCanonicalRevision: 'c'.repeat(40), integratedResource: review,
     integratedImmutableRevision: mergedRevision, candidateDigest, snapshotDigest,
     integrationProofDigest: hash('d'), profileDigest: hash('e'),
-    recoveryInventoryDigest: hash('f'), recoveryInventoryContentEntries: 1, ownerStateDigest,
+    recoveryInventoryDigest, recoveryInventoryContentEntries, ownerStateDigest,
     integrationReceiptDigest: integration.receipt.receiptDigest,
     integrationPlanByteDigest: effectPlanByteDigest(integration.planBytes),
-    integrationPredecessorDigest: hash('6'), preservationReceiptDigest: hash('9'),
-    noRemainingValueReceiptDigest: hash('0'), projectionByteCeiling: 1024,
+    integrationPredecessorDigest: integrationPlan.authority.predecessorDigest,
+    preservationReceiptDigest: preservationReceipt.receiptDigest,
+    noRemainingValueReceiptDigest: noRemainingValueReceipt.receiptDigest, projectionByteCeiling: 1024,
     projectionEntryCeiling: 10, registrationByteCeiling: 1024, registrationEntryCeiling: 10,
     sharedStateByteCeiling: 1024, sharedStateEntryCeiling: 10,
     authorizedEffects: CLEANUP_EFFECTS, retainedEffects: RETAINED_EFFECTS,
@@ -83,26 +94,37 @@ async function closeBundleFixture() {
     .filter(([key]) => key !== 'planDigest'));
   const plan = createWorktreeCleanupPlan({ ...retiredPlanFields,
     expiresAt: '2026-09-02T02:00:00.000Z' });
-  const retirementPlan = transitionPlan({ transition: 'retire', target: targetPath,
+  const retirementPlan = transitionPlan({ repository, transition: 'retire', target: targetPath,
     revision: mergedRevision, claimId: integration.receipt.transitionReceipt.resultClaimId,
     leaseEpoch: integration.receipt.transitionReceipt.resultLeaseEpoch,
     fenceRevision: integration.receipt.transitionReceipt.resultFenceRevision,
     predecessorDigest: integration.receipt.receiptDigest, candidateDigest, snapshotDigest,
     parametersDigest: worktreeCleanupPlanByteDigest(retiredPlan), cleanup: true });
   const retirement = await makeReceipt(retirementPlan);
-  const verifier = request => ({ repository, targetRepository: repository,
-    operationInput: { request }, workflowRun: 'fixture', policy: {} });
-  return { now, plan, integration, retirement, retirementPlan,
+  const integrationOperationInput = createGitHubTransitionInput({ request: integration.request,
+    plan: integrationPlan, planByteDigest: effectPlanByteDigest(integration.planBytes),
+    predecessorIssuance: issuance });
+  const retirementOperationInput = createGitHubTransitionInput({ request: retirement.request,
+    plan: retirementPlan, planByteDigest: effectPlanByteDigest(retirement.planBytes),
+    predecessorIssuance: null });
+  const verifier = operationInput => ({ repository: 'github.com/example/evidence', targetRepository: repository,
+    operationInput, workflowRun: 'fixture', policy: {} });
+  return { now, plan, integration, retirement, retirementPlan, integrationOperationInput,
+    retirementOperationInput,
     bundle: { cleanup: { plan, integrationReceipt: integration.receipt,
       integrationPlanBytes: integration.planBytes, retirementReceipt: retirement.receipt,
       retirementPlanBytes: retirement.planBytes, integrationRequest: integration.request,
-      retirementRequest: retirement.request, preservationReceipt: {}, noRemainingValueReceipt: {} },
-    integrationVerifier: verifier(integration.request), retirementVerifier: verifier(retirement.request) } };
+      retirementRequest: retirement.request, preservationReceipt, noRemainingValueReceipt },
+    integrationVerifier: verifier(integrationOperationInput), retirementVerifier: verifier(retirementOperationInput) } };
 }
 test('completion close accepts only an exact plan or acknowledged apply invocation', () => {
   assert.deepEqual(validateCompletionCloseArguments(['plan', `--ref=${REF}`, '--bundle=/tmp/evidence.json']),
     { mode: 'plan', ref: REF, bundle: '/tmp/evidence.json', plan: undefined,
-      authorize: undefined, stopped: false });
+      authorize: undefined, confirm: undefined, stopped: false });
+  assert.deepEqual(validateCompletionCloseArguments(['apply', `--ref=${REF}`,
+    '--bundle=/tmp/evidence.json', '--confirm=sha256:abc', '--stopped']),
+  { mode: 'apply', ref: REF, bundle: '/tmp/evidence.json', plan: undefined,
+    authorize: undefined, confirm: 'sha256:abc', stopped: true });
   assert.throws(() => validateCompletionCloseArguments(['apply', `--ref=${REF}`]),
     { reason: 'blocked-completion-arguments' });
   assert.throws(() => validateCompletionCloseArguments(['plan', `--ref=${REF}`,
@@ -110,6 +132,9 @@ test('completion close accepts only an exact plan or acknowledged apply invocati
   { reason: 'blocked-completion-arguments' });
   assert.throws(() => validateCompletionCloseArguments(['apply', `--ref=${REF}`,
     '--bundle=/tmp/evidence.json', '--plan=/tmp/plan.json', '--authorize=abc', '--stopped=true']),
+  { reason: 'blocked-completion-arguments' });
+  assert.throws(() => validateCompletionCloseArguments(['apply', `--ref=${REF}`,
+    '--bundle=/tmp/evidence.json', '--confirm=abc', '--plan=/tmp/plan.json', '--stopped']),
   { reason: 'blocked-completion-arguments' });
 });
 
@@ -164,6 +189,8 @@ test('completion close derives a receipt-bound continuation through provider-win
 
 test('completion scaffold validates arguments and preserves known lane facts', () => {
   assert.deepEqual(validateCompletionScaffoldArguments([`--ref=${REF}`]), { ref: REF, derive: false });
+  assert.throws(() => validateCompletionScaffoldArguments([`--ref=${REF}`, '--from=/tmp/scaffold.json']),
+    { reason: 'blocked-completion-arguments' });
   assert.throws(() => validateCompletionScaffoldArguments([]),
     { reason: 'blocked-completion-arguments' });
   const scaffold = buildCompletionBundleScaffold({
@@ -186,11 +213,12 @@ test('completion scaffold validates arguments and preserves known lane facts', (
   assert.equal(scaffold.bundleTemplate.cleanup.plan.integratedImmutableRevision, 'c'.repeat(40));
   assert.equal(scaffold.bundleTemplate.cleanup.plan.projectionByteCeiling, 4 * 1024 ** 3);
   assert.equal(scaffold.bundleTemplate.integrationVerifier.policy.schema, 'agentic-os/github-transition-policy/v1');
+  assert.equal(scaffold.hydrationInputs.length, 8);
   assert.equal(scaffold.requiredPlaceholders.includes('integrationVerifier.policy'), false);
   assert.equal(scaffold.requiredPlaceholders.includes('cleanup.plan.projectionByteCeiling'), false);
   assert.equal(scaffold.requiredPlaceholders.includes('cleanup.plan.integratedResource'), false);
   assert.equal(scaffold.requiredPlaceholders.includes('cleanup.plan.integratedImmutableRevision'), false);
-  assert.ok(scaffold.stillRequiresAuthenticatedWinners.includes('integration receipt object'));
+  assert.ok(scaffold.hydrationInputs.includes('cleanup.integrationReceipt'));
   assert.deepEqual(scaffold.bundleTemplate.cleanup.plan.authorizedEffects, [
     'quarantine-worktree-projection',
     'quarantine-worktree-registration',
@@ -198,6 +226,46 @@ test('completion scaffold validates arguments and preserves known lane facts', (
   assert.deepEqual(scaffold.autoDerivedFields, ['cleanup.cleanupContinuation']);
   assert.equal(scaffold.bundleTemplate.cleanup.cleanupContinuation, null);
   assert.ok(scaffold.warnings.some((item) => item.code === 'lane-registration-detached'));
+});
+
+test('completion plan hydration derives duplicate requests, plan bytes, digests, and continuation', async () => {
+  const fixture = await closeBundleFixture(), bundle = structuredClone(fixture.bundle);
+  const run = id => ({ id: String(id),
+    url: `https://api.github.com/repos/example/evidence/actions/runs/${id}`,
+    ref: 'refs/heads/main', revision: 'a'.repeat(40), workflowRef: 'refs/heads/main',
+    workflowPath: '.github/workflows/adlc-transition.yml', workflowRevision: 'a'.repeat(40),
+    authoritySubject: 'github-user:42' });
+  bundle.integrationVerifier = { repository: 'github.com/example/evidence',
+    targetRepository: 'github.com/example/target',
+    operationInput: fixture.integrationOperationInput, workflowRun: run(1), policy: {} };
+  bundle.retirementVerifier = { repository: 'github.com/example/evidence',
+    targetRepository: 'github.com/example/target',
+    operationInput: fixture.retirementOperationInput, workflowRun: run(2), policy: {} };
+  const hydrated = deriveCompletionBundleFields(bundle,
+    { now: () => Date.parse('2026-09-02T01:10:00.000Z') });
+  assert.equal(hydrated.cleanup.plan.candidateDigest, fixture.plan.candidateDigest);
+  assert.equal(hydrated.cleanup.plan.integrationReceiptDigest, fixture.integration.receipt.receiptDigest);
+  assert.deepEqual([...hydrated.cleanup.integrationPlanBytes], [...fixture.integration.planBytes]);
+  assert.deepEqual(hydrated.cleanup.integrationRequest, fixture.integration.request);
+  assert.ok(hydrated.cleanup.cleanupContinuation);
+  assert.equal(hydrated.cleanup.plan.planDigest, fixture.plan.planDigest);
+  assert.doesNotThrow(() => materializeCompletionCloseBundle(hydrated,
+    { now: () => Date.parse('2026-09-02T01:10:00.000Z') }));
+});
+
+test('completion bundle hydration rejects conflicting duplicate evidence instead of overwriting it', async () => {
+  const fixture = await closeBundleFixture(), bundle = structuredClone(fixture.bundle);
+  const evidence = fixture.integration;
+  bundle.integrationVerifier = { repository: 'github.com/example/evidence',
+    targetRepository: 'github.com/example/target',
+    operationInput: fixture.integrationOperationInput,
+    workflowRun: 'REPLACE_WITH_INTEGRATION_WORKFLOW_RUN', policy: {} };
+  bundle.retirementVerifier = { repository: 'github.com/example/evidence',
+    targetRepository: 'github.com/example/target', operationInput: 'REPLACE_WITH_RETIREMENT_OPERATION_INPUT',
+    workflowRun: 'REPLACE_WITH_RETIREMENT_WORKFLOW_RUN', policy: {} };
+  bundle.cleanup.integrationRequest = { ...evidence.request, requestDigest: hash('9') };
+  assert.throws(() => deriveCompletionBundleFields(bundle),
+    /integrationRequest conflicts with authenticated evidence/u);
 });
 
 test('completion scaffold keeps verifier policy as a placeholder when no committed policy is available', () => {
@@ -208,9 +276,12 @@ test('completion scaffold keeps verifier policy as a placeholder when no committ
     canonicalRevision: 'a'.repeat(40),
     lane: { path: '/tmp/lane', mounted: true, head: 'b'.repeat(40), clean: true },
     integration: { kind: 'exact-tree-projection', pathCount: 3 },
-    enrollment: { authorityRepository: 'github.com/example/repo', files: {}, localPolicyCandidate: true },
     findings: [],
   }, { profileDigest: '1'.repeat(64), canonical: { localRef: 'refs/heads/main' } });
   assert.equal(scaffold.bundleTemplate.integrationVerifier.policy, 'REPLACE_WITH_TRANSITION_POLICY_OBJECT');
+  assert.ok(scaffold.hydrationInputs.includes('integrationVerifier.policy'));
+  assert.ok(scaffold.hydrationInputs.includes('retirementVerifier.policy'));
+  assert.ok(scaffold.hydrationInputs.includes('integrationVerifier.repository'));
+  assert.ok(scaffold.hydrationInputs.includes('retirementVerifier.repository'));
   assert.equal(scaffold.requiredPlaceholders.includes('integrationVerifier.policy'), true);
 });

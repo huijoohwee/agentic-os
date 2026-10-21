@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
-import { validateCompletionScaffoldArguments, buildCompletionBundleScaffold, deriveLocallyAvailableFields } from '../bin/agentic-os-completion-scaffold.mjs';
+import { validateCompletionScaffoldArguments, buildCompletionBundleScaffold,
+  deriveLocallyAvailableFields } from '../bin/agentic-os-completion-scaffold.mjs';
+import { materializeCompletionCloseBundle } from '../bin/agentic-os-completion-close.mjs';
 
 const REF = 'agent/device/simplification';
 function fixture(t) {
@@ -79,6 +81,8 @@ test('completion scaffold --derive flag parses correctly', () => {
   assert.equal(noDerive.derive, false);
   assert.throws(() => validateCompletionScaffoldArguments(['--ref=agent/device/x', '--unknown']),
     /unknown argument/u);
+  assert.throws(() => validateCompletionScaffoldArguments(['--ref=agent/device/x', '--from=/tmp/scaffold.json']),
+    { reason: 'blocked-completion-arguments' });
 });
 
 test('deriveLocallyAvailableFields fills expiresAt and preserves authority placeholders', () => {
@@ -91,6 +95,7 @@ test('deriveLocallyAvailableFields fills expiresAt and preserves authority place
       'cleanup.plan.expiresAt',
       'integrationVerifier.workflowRun',
     ],
+    hydrationInputs: ['integrationVerifier.workflowRun'],
     bundleTemplate: {
       cleanup: {
         plan: {
@@ -110,11 +115,27 @@ test('deriveLocallyAvailableFields fills expiresAt and preserves authority place
   // Authority placeholders must be preserved
   assert.equal(result.bundleTemplate.cleanup.plan.candidateDigest, 'REPLACE_WITH_CANDIDATE_DIGEST');
   assert.equal(result.bundleTemplate.integrationVerifier.workflowRun, 'REPLACE_WITH_INTEGRATION_WORKFLOW_RUN');
-  assert.ok(result.remainingPlaceholders.includes('cleanup.plan.candidateDigest'));
+  assert.ok(!result.remainingPlaceholders.includes('cleanup.plan.candidateDigest'));
   assert.ok(result.remainingPlaceholders.includes('integrationVerifier.workflowRun'));
   assert.ok(!result.remainingPlaceholders.includes('cleanup.plan.expiresAt'));
   assert.ok(result.derivedFields.includes('cleanup.plan.expiresAt'));
-  assert.equal(result.deriveNote.includes('authenticated'), true);
+  assert.equal(result.deriveNote.includes('completion:plan'), true);
+});
+
+test('completion plan refuses a scaffold whose lane head changed after derivation', (t) => {
+  const subject = fixture(t), observed = subject.status(), now = Date.now();
+  const status = { ...observed, ref: REF, repository: subject.profile.repository,
+    lane: { ...observed.lane, path: subject.lane, mounted: true, clean: true },
+    integration: { kind: 'exact-tree-projection', pathCount: 0 }, enrollment: {
+      authorityRepository: subject.profile.repository, files: {}, localPolicyCandidate: true,
+    }, findings: [], canonicalRoot: subject.root };
+  const current = buildCompletionBundleScaffold(status, subject.profile, {
+    transitionPolicy: { schema: 'agentic-os/github-transition-policy/v1' }, integratedReview: null,
+  });
+  const scaffold = deriveLocallyAvailableFields(current, status, subject.root, { now: () => now });
+  const drifted = { ...scaffold, lane: { ...scaffold.lane, head: '0'.repeat(40) } };
+  assert.throws(() => materializeCompletionCloseBundle(drifted,
+    { now: () => now, status, profile: subject.profile }), { reason: 'blocked-completion-target-mismatch' });
 });
 
 test('sweep and unified cleanup are exported from cleanup-user module', async () => {
