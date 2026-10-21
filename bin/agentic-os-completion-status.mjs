@@ -29,22 +29,18 @@ function classifyChangeClass(root, ref) {
 }
 const APPLICABILITY = Object.freeze({ 'docs-only': { 'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' }, 'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' } } });
 const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason);
-function cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord) {
+function localCleanupReceipt(cleanupReceipt, ref, laneHead, laneRecord) {
   return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
     && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
     && cleanupReceipt.review?.branch === ref && cleanupReceipt.review?.head === laneHead
     && cleanupReceipt.targetPath === laneRecord?.worktree
-    ? { coordinate: cleanupReceipt.planDigest, originalReceipt: cleanupReceipt }
-    : cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
-        && cleanupReceipt.result === 'quarantined'
-        && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest ?? '')
-      ? { coordinate: cleanupReceipt.cleanupPlanDigest, originalReceipt: null } : null;
+    ? cleanupReceipt : null;
 }
 const cleanupObserved = (root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef) => {
-  const hint = laneHead && cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord);
-  return Boolean(hint) && (cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
-    ? Boolean(observeRetainedQuarantineEvidence(root, ref, laneHead, hint.coordinate, { canonicalRef }))
-    : observeRetainedWorktreeQuarantine(root, ref, laneHead, hint.originalReceipt, canonicalRef));
+  return !laneHead ? false : cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
+    ? cleanupReceipt.result === 'quarantined' && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest ?? '')
+      && Boolean(observeRetainedQuarantineEvidence(root, ref, laneHead, cleanupReceipt.cleanupPlanDigest, { canonicalRef }))
+    : observeRetainedWorktreeQuarantine(root, ref, laneHead, localCleanupReceipt(cleanupReceipt, ref, laneHead, laneRecord), canonicalRef);
 };
 function withApplicability(findings, changeClass) {
   const table = APPLICABILITY[changeClass] ?? {};
