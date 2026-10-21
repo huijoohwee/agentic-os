@@ -260,6 +260,9 @@ test('CLI requires an explicit recovery selection while keeping apply exact and 
   assert.equal(validateCommandArguments('cleanup', ['plan', '--mode=recovery', '--ref=agent/device-0232231d4a19/recovery']), null);
   assert.ok(validateCommandArguments('cleanup', ['plan', '--ref=agent/device-0232231d4a19/recovery']));
   assert.equal(validateCommandArguments('release-common', ['allocation-release', '--ref=agent/device-0232231d4a19/recovery']), null);
+  assert.equal(validateCommandArguments('release-common', ['allocation-release', '--ref=agent/device-0232231d4a19/recovery', '--cleanup-receipt=/tmp/cleanup.json']), null);
+  assert.ok(validateCommandArguments('release-common', ['allocation-release', '--ref=agent/device-0232231d4a19/recovery', '--unexpected']));
+  assert.ok(validateCommandArguments('release-common', ['retire-empty-active', '--ref=agent/device-0232231d4a19/recovery', '--cleanup-receipt=/tmp/cleanup.json']));
 });
 
 test('explicit detached ancestor recovery keeps the checked PR head distinct and preserves history and replay', t => {

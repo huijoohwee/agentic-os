@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.5"
-date: "2026-10-17"
+version: "1.4.6"
+date: "2026-10-22"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.5"
-tad_revision: "1.4.5"
-adr_revision: "1.4.5"
+prd_revision: "1.4.6"
+tad_revision: "1.4.6"
+adr_revision: "1.4.6"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "397ce86dbcf9606cace473f0e1f1e8beabb20197"
-mvp_revision: "1.4.5"
-gtm_revision: "1.4.5"
+mvp_revision: "1.4.6"
+gtm_revision: "1.4.6"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -54,6 +54,12 @@ The progressive closeout pass uses cached lane state to try integrated, queued, 
 with path order as the stable tie-breaker. It shares the pass deadline across eligible candidates;
 unpublished, dirty-binding, detached, or otherwise ineligible rows are reported without taking a
 provider wait slot. This is a completion-proximity heuristic, not a claim of measured dollar ROI.
+
+`release-common allocation-release` accepts an optional `--cleanup-receipt=<json>` for local-consent
+quarantines. It reads the bounded receipt through the existing cleanup owner and passes it through the
+same completion observer used by `completion status`; exact ref, head, path, retained quarantine, and
+unmounted-lane checks remain mandatory. The option does not grant cleanup, provider, claim-retirement,
+sync, or deployment authority.
 
 The default local path refuses any committed/local `.agentic-os.json` or repository trust anchor.
 Profile-governed recovery requires the separate explicit selection below; protected cleanup retains its
@@ -304,6 +310,11 @@ shared source remains minimal. Protected release of this implementation remains 
 reader guard combines recursive open-descriptor checks with a bounded process-CWD scan and fails closed on
 an incomplete scan; source rollback uses the protected reviewed revert path and preserves remaining recovery data.
 
+ADR 1.4.6: allocation release may consume the same exact local cleanup receipt used by completion status.
+The receipt is an input to existing closeout verification, not a new authority source; receipt mismatch,
+unreadable input, incomplete source closeout, or a mounted lane blocks release. Validate CLI option scope
+and exact receipt binding with `__tests__/user-cleanup-recovery.test.mjs` and affected repository checks.
+
 `__tests__/user-cleanup.test.mjs` uses real local Git worktrees and mocked bounded provider observations;
 it does not claim live GitHub authority. Run it and `__tests__/user-cleanup-recovery.test.mjs` with the existing cleanup tests, then affected validation.
 Retain separate live merged/check, plan, consent, quarantine and final synchronization receipts.
@@ -394,10 +405,11 @@ After `completion status` reports `missionState: source_complete`, `cleanupSatis
 lane, release its consumed checkout allocation from canonical `main`:
 
 ```sh
-agentic-os release-common allocation-release --ref=<lane>
+agentic-os release-common allocation-release --ref=<lane> [--cleanup-receipt=<json>]
 ```
 
-The command rechecks that closeout before creating an immutable workflow successor whose allocation state is
+For a local-consent quarantine, pass the exact cleanup receipt retained beside its operation record. The
+command rechecks that closeout before creating an immutable workflow successor whose allocation state is
 `released`. It retains the lane ref, worktree identity, head, prior workflow manifests and quarantine evidence.
 Only `pending` and `active` allocations consume checkout capacity, so the released history no longer blocks a
 subsequent disjoint lane. A mounted, dirty, unintegrated, or unquarantined lane fails closed.
