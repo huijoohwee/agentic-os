@@ -800,3 +800,8 @@ Repository `github.com/huijoohwee/agentic-os`; review https://github.com/huijooh
 Base `27dedbdd6dec8bd4be8fa2eda530d8a6b697a4c6`; head `a5a70b40275b4e43b77c7e3033cb737729d27feb`.
 Merge `cb4149dc7581e48923de851b424e39bc339afb5a`; equal tree `bc6aadd2331db05d41480488b3b26f014207fcb6`; `budgets` and `test` passed.
 Current facts only. Historical protection, check policy, Ruleset Suite, merge method and all later-effect authority remain unproven. Additional exact enrollments are recorded in [CLEANUP-AUTHORITY-ENROLLMENTS.md](CLEANUP-AUTHORITY-ENROLLMENTS.md).
+
+### Current-quarantine adoption — PRs #555, #556 and #557 — 2026-10-22
+Owner delegated END ADLC for these exact lanes. Policy binds ref/head, merged PR, quarantine coordinate and discard-receipt digest, and enrolls the three exact merge-content facts for provider integration. Historical quarantine/protection/method authority remains false. Adoption permits current disposition and fresh provider integration/record-only retirement, not receipt changes or deployment. PRs #555–#557 passed `budgets` and `test`.
+
+Budget: six exact policy rows, test and this record; no runtime, dependency or always-load change. Each needs its provider receipt.

@@ -63,6 +63,9 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/542',
     'https://github.com/huijoohwee/agentic-os/pull/543',
     'https://github.com/huijoohwee/agentic-os/pull/554',
+    'https://github.com/huijoohwee/agentic-os/pull/555',
+    'https://github.com/huijoohwee/agentic-os/pull/556',
+    'https://github.com/huijoohwee/agentic-os/pull/557',
     'https://github.com/huijoohwee/agentic-base/pull/8',
   ]);
   const historicalChecks = new Map([
@@ -106,6 +109,9 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/542', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/543', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/554', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/555', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/556', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/557', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -203,6 +209,9 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['542', '0a23d51617e477c3543d88f97ff8a3f1224ff9eb', 'c66be7714a2e80f5bb232d8fccb3624c57bbb313', 'd3eb945b5f60cefdd8193e318f27c7afbdadd5fa', '976360af3efe0d3759710f5e42212de8cf2e9e1c'],
     ['543', 'd3eb945b5f60cefdd8193e318f27c7afbdadd5fa', 'e945bb8ff4450a5b9fc647fc8f444e3bd554e23a', 'e489e5f7f4fb2e046c92f5fea35887d97fa17e65', '3f6e6b1650601d29762fee93e1c1fc8f0104d989'],
     ['554', '2ece094c096c67aec5b7f44afe6f84f5520333a2', '7d0c92dc280a357eadf27cda4caf25f7e4a09e05', 'd22e94505c8e2b4653c7992cc3388a5ca70ef01c', '2ea757a6c1f86a54187b634347efe340328eee10'],
+    ['555', 'd22e94505c8e2b4653c7992cc3388a5ca70ef01c', '1455abe52fcd61cf7599f1aba2de0e6999f50f77', 'a9f36d95be3d23c3b207eaa5cd2e00af6c1293ca', '64d2641d8048f0eee5406691fffc462084e25e27'],
+    ['556', 'a9f36d95be3d23c3b207eaa5cd2e00af6c1293ca', '142fb86a5547f23762afd704a4100a9b3e128157', '99e21a10da1ea85df2e758612909a4b1ad50bef6', 'ad2049bb6585ecc05253e46af93f4db8d40aef73'],
+    ['557', '99e21a10da1ea85df2e758612909a4b1ad50bef6', 'f4fb4add7c403036383739cd2cfe56bde1128831', 'c8811762c2289a366d6ecf3a0bb8f9f4958db3ea', 'dd6a8d5da78d0ecebd76b3a7f9ef59e0c75eb4df'],
   ]) {
     const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
     assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
@@ -245,7 +254,12 @@ test('committed transition workflow is bound to the canonical authority policy',
     quarantineCoordinate: 'ef0317e48e484a527fb1a06ba957f34e3136d48c2f8ffdedb89cd7a7bf694881',
     historicalSuccessionAuthorityProven: false,
   }]);
-  assert.deepEqual(policy.retentionAdoptions, [{
+  const closeoutTargets = new Set([
+    'agent/device-0232231d4a19/closeout-explicit-cleanup',
+    'agent/device-0232231d4a19/pr554-current-facts-enrollment',
+    'agent/device-0232231d4a19/completion-bundle-hydration',
+  ]);
+  assert.deepEqual(policy.retentionAdoptions.filter(({ targetRef }) => !closeoutTargets.has(targetRef)), [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-os',
     targetRef: 'agent/device-0232231d4a19/cleanup-retirement-manifest-compat',
@@ -346,6 +360,12 @@ test('committed transition workflow is bound to the canonical authority policy',
     originalReceiptDigest: 'd66754a10cb0decfdd527f930d89c52f2875f91cba2799611527518e4ac85696',
     historicalQuarantineAuthorityProven: false,
   }]);
+  assert.deepEqual(policy.retentionAdoptions.filter(({ targetRef }) => closeoutTargets.has(targetRef))
+    .map(({ targetRef, reviewLocator }) => [targetRef, reviewLocator]), [
+    ['agent/device-0232231d4a19/closeout-explicit-cleanup', 'https://github.com/huijoohwee/agentic-os/pull/556'],
+    ['agent/device-0232231d4a19/pr554-current-facts-enrollment', 'https://github.com/huijoohwee/agentic-os/pull/555'],
+    ['agent/device-0232231d4a19/completion-bundle-hydration', 'https://github.com/huijoohwee/agentic-os/pull/557'],
+  ]);
 
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /workflow_dispatch:/u);
