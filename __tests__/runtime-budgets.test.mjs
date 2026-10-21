@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40958, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40959, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -99,12 +99,17 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Unsupported: report blocker, not proof. Headless: N/A.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
+      '`npm run release:common -- <action>`',
+      'reports ADLC state and next owner/action in lane or canonical checkout',
+      'no fetch, writes or effect authority.',
+      '`close` is diagnostics only.',
       'complete --ref=<lane>',
-      'Cleanup preserves recovery bytes and requires exact eligible-target evidence',
-      'diagnostics only',
-      'Publication stops at provider handoff. Authorized merges require green checks',
-      'Integration, retirement, cleanup, sync and production grants remain separate.',
-      '[DEPLOY](../guides/DEPLOY-WORKFLOW.md) only with its authority.',
+      'Cleanup: exact eligible-target evidence; `--bundle --stopped` preserves recovery bytes.',
+      '`publish` hands off after checks; merges need green checks.',
+      'Separate grants: integration, retirement, cleanup, sync, production;',
+      '[DEPLOY](../guides/DEPLOY-WORKFLOW.md).',
+      '`retire-empty-active --ref=<lane>` quarantines a clean active lane if recorded head=base;',
+      'retains refs, objects, projection, registration; no provider, merge or deploy authority.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
@@ -262,7 +267,7 @@ test('this repository is inside its own module budget', () => {
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
     modules: 51, totalLines: 16_041, perModuleLines: 400,
-    binModules: 113, binLines: 24_607, runtimeModules: 97, runtimeLines: 23_023,
+    binModules: 113, binLines: 24_649, runtimeModules: 97, runtimeLines: 23_023,
   });
   assert.equal(entries.length, 51);
   assert.ok(entries.length <= MODULE_BUDGET.modules);

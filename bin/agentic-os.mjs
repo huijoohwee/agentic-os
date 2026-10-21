@@ -81,6 +81,7 @@ function cmdReleaseCommonHelp() {
       '    provider refresh apply: rebind apply --mode=provider-refresh --plan=<file> --authorize=agentic-os:provider-lane-rebind:<digest> --stopped',
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait, close, optional cleanup; emit closeout verdict',
+      '  agentic-os release-common closeout --ref=<lane>   read-only closeout summary from the exact lane or canonical checkout',
       '  agentic-os release-common allocation-release --ref=<lane>   free one fully closed workflow allocation while retaining its history',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
@@ -130,6 +131,9 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
           retirementReceiptPath: option(rest, 'retirement-receipt'),
         });
     }
+    case 'closeout':
+      return (await import('./agentic-os-completion-status.mjs'))
+        .runCloseoutSummary(root, option(rest, 'ref'), policy, profile, out);
     case 'complete': {
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
       if (option(rest, 'via-pr') !== null)

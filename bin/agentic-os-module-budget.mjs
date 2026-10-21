@@ -24,6 +24,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-17 STORAGE-001: +52 existing-owner lines revalidate lock inputs and a staged dependency copy after HEAD-only movement; 2026-10-18 selected-source proof adds 23 src/43 bin lines to bind non-ancestral recovery to exact journals and refs, with no new module, dependency or runtime delta.
   // 2026-10-18: +34 existing-owner lines bind a replaced successor handoff to its exact retained predecessor, remote ref, transplant journal and source ancestry; 2026-10-19 cross-base readmission adds +9 src/+9 bin lines for exact old-base/head ancestry and immutable allocation pins; no new module or dependency.
   // 2026-10-19: one effect-cost owner validates scoped provider evidence before authority (+174 src lines).
+  // 2026-10-21 ADLC-CLOSEOUT-001: +42 existing bin lines for lane-safe read-only closeout; reduce command switching without changing effect authority.
   modules: 51,
   totalLines: 16041,
   perModuleLines: 400,
@@ -39,7 +40,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24607,
+  binLines: 24649,
   runtimeModules: 97,
   runtimeLines: 23023,
 });

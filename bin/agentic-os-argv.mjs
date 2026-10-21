@@ -112,14 +112,16 @@ export function validateCommandArguments(command, argv) {
       : 'source-evidence requires bundle';
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'complete', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
-        return 'release-common requires start, publish, finish, close, complete, or successor; retire-empty-active, allocation-release, scope-release, rebind and promote are also supported';
+      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'closeout', 'complete', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
+        return 'release-common requires start, publish, finish, close, complete, or successor; closeout, retire-empty-active, allocation-release, scope-release, rebind and promote are also supported';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
       if (action === '--help' || action === '-h')
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
       if (action === 'close') return exact(argv.slice(1), {
         options: ['ref', 'preservation', 'integration-receipt', 'retirement-receipt'], requiredOptions: ['ref'] });
+      if (action === 'closeout') return exact(argv.slice(1), {
+        options: ['ref'], requiredOptions: ['ref'] });
       if (action === 'start-lock-recovery') return argv[1] === 'plan'
         ? exact(argv.slice(1), { min: 1, max: 1 })
         : argv[1] === 'apply' ? (() => {
@@ -247,6 +249,7 @@ export function cmdHelp() {
       '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
+      '    npm run release:common -- closeout --ref=<lane>  one read-only local summary; works from that lane or canonical checkout',
       '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped  verify reviewed successor then quarantine the clean predecessor',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
       '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
