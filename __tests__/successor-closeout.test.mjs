@@ -381,6 +381,30 @@ test('current adoption acknowledges an exact prior projection discard without cl
   assert.deepEqual(s.apply({ now: () => NOW + 900001 }), receipt);
 });
 
+test('completion accepts the exact local retirement receipt after recovery bytes were discarded', t => {
+  const s = currentQuarantineFixture(t, { discardProjection: true }), receipt = s.input.originalReceipt;
+  const status = inspectCompletionStatus(s.root, s.nextRef, { protectedBranch: 'main' }, s.profile,
+    { cleanupReceipt: receipt });
+  assert.equal(status.lossDispositionVerified, true);
+  assert.equal(status.lossDispositionReceiptDigest, receipt.receiptDigest);
+  assert.equal(status.cleanupVerified, false);
+  assert.equal(status.preservationSatisfied, false);
+  assert.equal(status.closeout.cleanupSatisfied, true);
+  assert.equal(status.closeout.laneDisposition, 'current-quarantine-discard-acknowledged');
+  assert.equal(status.closeout.missionState, 'source_complete');
+  assert.equal(status.closeout.adlcState, 'retirement_pending');
+  assert.equal(status.closeout.retirementSatisfied, false);
+  assert.ok(!status.findings.some(item => ['lane-registration-detached', 'cleanup-receipt-unverified',
+    'provider-authority-unverified'].includes(item.code)));
+  assert.ok(status.findings.some(item => item.code === 'provider-retirement-unverified'));
+
+  const substituted = inspectCompletionStatus(s.root, s.nextRef, { protectedBranch: 'main' }, s.profile,
+    { cleanupReceipt: { ...receipt, branch: 'agent/device/substituted' } });
+  assert.equal(substituted.lossDispositionVerified, false);
+  assert.equal(substituted.closeout.missionState, 'continuable');
+  assert.ok(substituted.findings.some(item => item.code === 'lane-registration-detached'));
+});
+
 test('current discard acknowledgement accepts a retained worktree-cleanup eligibility record', t => {
   const s = currentQuarantineFixture(t, { discardProjection: true, legacyEligibility: true }), receipt = s.apply();
   assert.equal(receipt.schema, 'agentic-os/current-quarantine-discard-receipt/v1');

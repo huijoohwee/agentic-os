@@ -4,6 +4,9 @@
 `complete --ref=<lane>` waits for exact integration and reports closeout while keeping the lane mounted.
 `closeout --ref=<lane>` is read-only; `close` is diagnostic.
 
+Use `agentic-os completion status --ref=<lane> --cleanup-receipt=<path>` after discard
+to verify local loss; provider retirement remains pending.
+
 Cleanup is separate: exact eligible targets require `--bundle --stopped`.
 Source closeout grants no cleanup, sync, or production authority; see [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
 
