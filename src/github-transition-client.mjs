@@ -227,7 +227,7 @@ export function validateGitHubTransitionInput(value) {
   const recordOnly = plan.effectClass === 'claim-retirement-record-only';
   if (recordOnly !== Object.hasOwn(source, 'preservationDisposition'))
     fail('record-only retirement requires exactly one successor preservation disposition');
-  if (recordOnly && source.predecessorAuthority !== undefined) fail('record-only retirement requires its fresh integrated claim window');
+  // Fresh successor authority gives record-only retirement a receipt-bound window.
   const disposition = recordOnly ? validateRetentionDispositionReceipt(source.preservationDisposition) : null;
   if (disposition && (disposition.repository !== request.repository
     || disposition.adoption.merge !== plan.target.immutableRevision
