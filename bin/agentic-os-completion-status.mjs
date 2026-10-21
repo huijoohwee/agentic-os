@@ -22,13 +22,6 @@ const lanePaths = (root, branch, head) => { const output = observeGit(['diff', '
 const finding = (code, owner, action) => ({ code, owner, action });
 const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?.cleanup?.worktreeRegistration === 'quarantine';
 
-/**
- * Classify whether a finding is applicable given the lane's change class.
- * Findings marked `applicable: false` are not blockers for low-risk change classes
- * (e.g., docs-only), where local consent is sufficient and the protected authority
- * chain is not required. This is observation-only classification; it does not
- * authorize effects or grant cleanup authority.
- */
 const DOCS_ONLY_GLOBS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
 function classifyChangeClass(root, ref) {
   const head = headSha(`refs/heads/${ref}`, root); if (!head) return 'unknown'; const diff = observeGit(['diff', '--name-only', `refs/heads/main...${head}`], { cwd: root, allowFail: true, maxBuffer: 65536 }); if (!diff) return 'unknown';
@@ -37,28 +30,22 @@ function classifyChangeClass(root, ref) {
 const APPLICABILITY = Object.freeze({ 'docs-only': { 'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' }, 'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' } } });
 const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason);
 function cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord) {
-  if (cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
+  return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
     && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
     && cleanupReceipt.review?.branch === ref && cleanupReceipt.review?.head === laneHead
-    && cleanupReceipt.targetPath === laneRecord?.worktree) {
-    return { coordinate: cleanupReceipt.planDigest, originalReceipt: cleanupReceipt };
-  }
-  if (cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
-    && cleanupReceipt.result === 'quarantined'
-    && typeof cleanupReceipt.cleanupPlanDigest === 'string'
-    && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest)) {
-    return { coordinate: cleanupReceipt.cleanupPlanDigest, originalReceipt: null };
-  }
-  return null;
+    && cleanupReceipt.targetPath === laneRecord?.worktree
+    ? { coordinate: cleanupReceipt.planDigest, originalReceipt: cleanupReceipt }
+    : cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
+        && cleanupReceipt.result === 'quarantined'
+        && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest ?? '')
+      ? { coordinate: cleanupReceipt.cleanupPlanDigest, originalReceipt: null } : null;
 }
-function cleanupObserved(root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef) {
-  if (!laneHead) return false;
-  const hint = cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord);
-  if (!hint) return false;
-  return cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
+const cleanupObserved = (root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef) => {
+  const hint = laneHead && cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord);
+  return Boolean(hint) && (cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
     ? Boolean(observeRetainedQuarantineEvidence(root, ref, laneHead, hint.coordinate, { canonicalRef }))
-    : observeRetainedWorktreeQuarantine(root, ref, laneHead, hint.originalReceipt, canonicalRef);
-}
+    : observeRetainedWorktreeQuarantine(root, ref, laneHead, hint.originalReceipt, canonicalRef));
+};
 function withApplicability(findings, changeClass) {
   const table = APPLICABILITY[changeClass] ?? {};
   return findings.map(item => { const entry = table[item.code]; return entry
