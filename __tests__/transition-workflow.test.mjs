@@ -215,7 +215,31 @@ test('committed transition workflow is bound to the canonical authority policy',
       rationale: `Current recording of PR #${number} merge content with historical protection, required-check policy, rule-suite and method authority unproven.`,
     });
   }
-  assert.equal(policy.preservationAdoptions[0].historicalSuccessionAuthorityProven, false);
+  assert.deepEqual(policy.preservationAdoptions, [{
+    schema: 'agentic-os/successor-preservation-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-os',
+    predecessorRef: 'agent/device-0232231d4a19/current-recovery-pr542-543',
+    predecessorHead: 'f708d8bc7c34dee88c8f845002b2745d4001bebf',
+    successorRef: 'agent/device-0232231d4a19/current-recovery-pr542-543-ci-fix',
+    successorHead: 'e71fc61b75af5d48e94fba2bd8eda74b6f4b5f80',
+    merge: '400453da851523b93890264f0c1f2b2fad708ed3',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/545',
+    replacedPaths: ['__tests__/transition-workflow.test.mjs'],
+    quarantineCoordinate: '3d894d9330adaf918fbd05911eaa1579850bdf415eb0f3f3e8e42e761a8d64b1',
+    historicalSuccessionAuthorityProven: false,
+  }, {
+    schema: 'agentic-os/successor-preservation-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-graph',
+    predecessorRef: 'agent/device-0232231d4a19/dev-catalog-projection',
+    predecessorHead: 'fad830bba5ae0e7950f68fd7e1d2f25c5566f065',
+    successorRef: 'agent/device-0232231d4a19/dev-catalog-source-anchor',
+    successorHead: '9f8fdbffd18fa3b6a9ee4f6b920212c628255310',
+    merge: 'c8ccb768b3f0020b85a22e0cc1d4ec3e02b0f1f0',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-graph/pull/1504',
+    replacedPaths: ['docs/documents/prd-tad-adr-mvp-gtm-ui-appearance.md', 'scripts/__tests__/vite-native-docs-mirror.test.mjs'],
+    quarantineCoordinate: 'ef0317e48e484a527fb1a06ba957f34e3136d48c2f8ffdedb89cd7a7bf694881',
+    historicalSuccessionAuthorityProven: false,
+  }]);
   assert.deepEqual(policy.retentionAdoptions, [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-os',

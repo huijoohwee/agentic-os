@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs'; import { isAbsolute } from 'node:path'; import { currentBranch, headSha, isAncestor, observeGit, repoRoot, worktrees } from '../src/git.mjs'; import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs';
 import { isLaneRef } from '../src/lane-id.mjs'; import { successorLineage } from '../src/lane-state.mjs';
 import { integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
-import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
+import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { verifySuccessorPreservation, readUserCleanupJson } from './agentic-os-cleanup-user.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { get as getLaneRecord } from '../src/lane-records.mjs';
 import { DELIVERY_DISPOSITION_SET_PATH, bindRetirementOperationReceipts,
   validateDeliveryDispositionSet } from '../src/completion.mjs';
+import { WORKTREE_CLEANUP_RECEIPT_SCHEMA } from '../src/cleanup-records.mjs';
 
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
@@ -35,6 +36,29 @@ function classifyChangeClass(root, ref) {
 }
 const APPLICABILITY = Object.freeze({ 'docs-only': { 'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' }, 'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' } } });
 const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason);
+function cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord) {
+  if (cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
+    && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
+    && cleanupReceipt.review?.branch === ref && cleanupReceipt.review?.head === laneHead
+    && cleanupReceipt.targetPath === laneRecord?.worktree) {
+    return { coordinate: cleanupReceipt.planDigest, originalReceipt: cleanupReceipt };
+  }
+  if (cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
+    && cleanupReceipt.result === 'quarantined'
+    && typeof cleanupReceipt.cleanupPlanDigest === 'string'
+    && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest)) {
+    return { coordinate: cleanupReceipt.cleanupPlanDigest, originalReceipt: null };
+  }
+  return null;
+}
+function cleanupObserved(root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef) {
+  if (!laneHead) return false;
+  const hint = cleanupObservationHint(cleanupReceipt, ref, laneHead, laneRecord);
+  if (!hint) return false;
+  return cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
+    ? Boolean(observeRetainedQuarantineEvidence(root, ref, laneHead, hint.coordinate, { canonicalRef }))
+    : observeRetainedWorktreeQuarantine(root, ref, laneHead, hint.originalReceipt, canonicalRef);
+}
 function withApplicability(findings, changeClass) {
   const table = APPLICABILITY[changeClass] ?? {};
   return findings.map(item => { const entry = table[item.code]; return entry
@@ -91,7 +115,7 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   const registrations = worktrees(root), lane = registrations.find(entry => entry.branch === ref) ?? null,
     laneHead = headSha(`refs/heads/${ref}`, root), laneRecord = getLaneRecord(ref, root), lineage = successorLineage(laneRecord);
   const lanePath = lane?.path ?? null, laneMounted = lanePath !== null, laneClean = laneMounted ? read(lanePath, ['status', '--porcelain', '--untracked-files=all']) === '' : null, recoveryDisposition = laneRecord?.recovery?.disposition, retainedPath = (() => { try { return realpathSync(laneRecord?.worktree); } catch { return null; } })(), retainedRegistration = registrations.find(entry => entry.path === retainedPath) ?? null, retainedHead = retainedRegistration ? headSha('HEAD', retainedRegistration.path) : null, retainedClean = Boolean(retainedRegistration && read(retainedRegistration.path, ['status', '--porcelain', '--untracked-files=all']) === ''), retainedCheckout = retainedRegistration ? { path: retainedRegistration.path, branch: retainedRegistration.branch, head: retainedHead, clean: retainedClean } : null;
-  const quarantineProfile = quarantines(profile), quarantineObserved = Boolean(laneHead) && !laneMounted && observeRetainedWorktreeQuarantine(root, ref, laneHead, cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1' && cleanupReceipt.mode === 'explicit-local-user-consent-recovery' && cleanupReceipt.review?.branch === ref && cleanupReceipt.review?.head === laneHead && cleanupReceipt.targetPath === laneRecord?.worktree ? cleanupReceipt : null, profile.canonical.localRef);
+  const quarantineProfile = quarantines(profile), quarantineObserved = Boolean(laneHead) && !laneMounted && cleanupObserved(root, ref, laneHead, laneRecord, cleanupReceipt, profile.canonical.localRef);
   const acceptedMissingBytes = Boolean((retainedClean || quarantineObserved) && recoveryDisposition?.outcome === 'unrecoverable-accepted' && recoveryDisposition.ref === ref && recoveryDisposition.head === laneHead && recoveryDisposition.worktree === laneRecord?.worktree && recoveryDisposition.preserveCheckout === true && recoveryDisposition.preserveRef === true && recoveryDisposition.cleanupAuthorized === false && recoveryDisposition.deploymentAuthorized === false);
   const preservation = preservationReceipt ? verifySuccessorPreservation(root, preservationReceipt, { localOnly: true }) : null;
   const lossDispositionVerified = preservation?.disposition === 'current-quarantine-discard-acknowledged';
