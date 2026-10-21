@@ -670,6 +670,29 @@ test('release-common close runs finish, reap, and completion status', (t) => {
   assert.match(result.stdout, /"schema":"agentic-os\/completion-status\/v1"/u);
 });
 
+test('release-common closeout summarizes from its exact lane without changing repository state', (t) => {
+  const { root, run } = fixture(t), ref = 'agent/test-device/closeout-summary';
+  const lane = createLane(t, root, ref, 'closeout-summary');
+  const canonicalHead = run(['rev-parse', 'HEAD']), laneHead = run(['rev-parse', 'HEAD'], { cwd: lane.path });
+  const statusBefore = run(['status', '--porcelain', '--untracked-files=all']);
+  const invoke = (cwd, selectedRef = ref) => spawnSync(process.execPath,
+    [CLI, 'release-common', 'closeout', `--ref=${selectedRef}`], { cwd, encoding: 'utf8' });
+
+  for (const cwd of [lane.path, root]) {
+    const result = invoke(cwd);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(`Closeout ${ref}:`, 'u'));
+    assert.match(result.stdout, /Next owner:/u);
+    assert.match(result.stdout, /Read-only local observation; no provider refresh/u);
+  }
+  const mismatch = invoke(lane.path, 'agent/test-device/other-lane');
+  assert.equal(mismatch.status, 1);
+  assert.match(mismatch.stderr, /blocked-closeout-invocation-branch/u);
+  assert.equal(run(['rev-parse', 'HEAD']), canonicalHead);
+  assert.equal(run(['rev-parse', 'HEAD'], { cwd: lane.path }), laneHead);
+  assert.equal(run(['status', '--porcelain', '--untracked-files=all']), statusBefore);
+});
+
 
 test('declared overlap refuses before sibling byte scans; disjoint requests still inspect', (t) => {
   const { root, run } = fixture(t);

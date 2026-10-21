@@ -1,6 +1,6 @@
 /** Exact local completion preflight. No provider call, fetch, authority or effect. */
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs'; import { isAbsolute } from 'node:path'; import { currentBranch, headSha, isAncestor, observeGit, repoRoot, worktrees } from '../src/git.mjs'; import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs';
+import { realpathSync } from 'node:fs'; import { isAbsolute } from 'node:path'; import { commonDir, currentBranch, headSha, isAncestor, observeGit, repoRoot, worktrees } from '../src/git.mjs'; import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs';
 import { isLaneRef } from '../src/lane-id.mjs'; import { successorLineage } from '../src/lane-state.mjs';
 import { integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
@@ -173,5 +173,39 @@ export function runCompletionStatus(root, ref, policy, profile, out = console.lo
   } catch { retirementReceiptError = 'receipt-file-unreadable'; }
   out(JSON.stringify(inspectCompletionStatus(root, ref, policy, profile,
     { preservationReceipt, cleanupReceipt, integrationReceipt, retirementReceipt, retirementReceiptError, authorityRoot })));
+  return 0;
+}
+
+/** Summarize local closeout from the exact lane or its registered canonical checkout. */
+export function runCloseoutSummary(root, ref, policy, profile, out = console.log) {
+  if (!isLaneRef(ref)) throw Object.assign(new TypeError('closeout requires an exact lane ref'), { reason: 'blocked-invalid-lane-ref' });
+  const invocationRoot = realpathSync(repoRoot(root)), invocationBranch = currentBranch(invocationRoot), expectedCommon = realpathSync(commonDir(invocationRoot));
+  if (invocationBranch !== policy.protectedBranch && invocationBranch !== ref)
+    throw Object.assign(new Error(`run closeout from canonical ${policy.protectedBranch} or the exact lane ${ref}`), { reason: 'blocked-closeout-invocation-branch' });
+  const registrations = worktrees(invocationRoot), canonicalEntry = registrations.find(row => row.branch === policy.protectedBranch && !row.detached);
+  if (!canonicalEntry) throw Object.assign(new Error('the registered canonical checkout is unavailable'), { reason: 'blocked-closeout-canonical-missing' });
+  const canonicalRoot = realpathSync(canonicalEntry.path);
+  if (canonicalRoot !== canonicalEntry.path || realpathSync(repoRoot(canonicalRoot)) !== canonicalRoot
+    || realpathSync(commonDir(canonicalRoot)) !== expectedCommon || currentBranch(canonicalRoot) !== policy.protectedBranch)
+    throw Object.assign(new Error('the canonical checkout identity changed during closeout observation'), { reason: 'blocked-closeout-canonical-identity' });
+  if (invocationBranch === ref) {
+    const laneEntry = registrations.find(row => row.branch === ref);
+    if (!laneEntry || realpathSync(laneEntry.path) !== invocationRoot)
+      throw Object.assign(new Error('the invoked worktree is not the registered exact lane'), { reason: 'blocked-closeout-lane-identity' });
+  }
+  const canonicalProfile = trustedRepositoryProfile(canonicalRoot).profile;
+  if (!canonicalProfile || canonicalProfile.repository !== profile.repository
+    || canonicalProfile.profileDigest !== profile.profileDigest)
+    throw Object.assign(new Error('lane and canonical trusted repository profiles do not match'), { reason: 'blocked-closeout-profile-mismatch' });
+  const status = inspectCompletionStatus(canonicalRoot, ref, policy, canonicalProfile);
+  const verdict = status.closeout, next = verdict.nextAction;
+  out(`Closeout ${ref}: ${verdict.adlcState} (source ${verdict.missionState}; ${verdict.completionScope})`);
+  if (next) {
+    out(`Next owner: ${next.owner} (${next.id})`);
+    out(`Next step: ${next.command}`);
+  } else out('Next owner: none reported by the local closeout observer.');
+  const applicable = status.findings.filter(item => item.applicable !== false).slice(0, 3);
+  if (applicable.length) out(`Findings: ${applicable.map(item => item.code).join(', ')}`);
+  out('Read-only local observation; no provider refresh, integration, cleanup, deploy, promotion, or effect authorization.');
   return 0;
 }
