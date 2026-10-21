@@ -82,7 +82,7 @@ function cmdReleaseCommonHelp() {
       '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait for exact integration and report closeout; cleanup runs only with an explicit bundle',
       '  agentic-os release-common closeout --ref=<lane>   read-only closeout summary from the exact lane or canonical checkout',
-      '  agentic-os release-common allocation-release --ref=<lane>   free one fully closed workflow allocation while retaining its history',
+      '  agentic-os release-common allocation-release --ref=<lane> [--cleanup-receipt=<json>]   free one fully closed workflow allocation while retaining its history',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
       '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
@@ -173,12 +173,12 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       requireCanonical(root, policy);
       return (await import('../src/start-lock-recovery.mjs')).runStartLockRecovery(root, rest, out);
     case 'allocation-release': {
-      const completionModule = await import('./agentic-os-completion-status.mjs');
-      const ref = option(rest, 'ref'), status = completionModule.inspectCompletionStatus(root, ref, policy, profile);
-      if (status.closeout.missionState !== 'source_complete' || status.closeout.cleanupSatisfied !== true
-        || status.lane.mounted !== false) { err('blocked-allocation-release-closeout: release requires an unmounted lane with current source-complete quarantine evidence'); return 1; }
-      try { out(JSON.stringify(releaseWorkflowAllocation(root, profile.repository, ref))); return 0; }
-      catch (error) { err(`${error.reason ?? 'blocked-allocation-release'}: ${error.message}`); return 1; }
+      try {
+        const completionModule = await import('./agentic-os-completion-status.mjs'), cleanupReceiptPath = option(rest, 'cleanup-receipt'), cleanupReceipt = cleanupReceiptPath === null ? null : (await import('./agentic-os-cleanup-user.mjs')).readUserCleanupJson(cleanupReceiptPath, 'cleanup-receipt');
+        const ref = option(rest, 'ref'), status = completionModule.inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt });
+        if (status.closeout.missionState !== 'source_complete' || status.closeout.cleanupSatisfied !== true || status.lane.mounted !== false) throw Object.assign(new Error('release requires an unmounted lane with current source-complete quarantine evidence'), { reason: 'blocked-allocation-release-closeout' });
+        out(JSON.stringify(releaseWorkflowAllocation(root, profile.repository, ref))); return 0;
+      } catch (error) { err(`${error.reason ?? 'blocked-allocation-release'}: ${error.message}`); return 1; }
     }
     case 'successor':
       return cmdSuccessor(root, rest, policy, profile);
