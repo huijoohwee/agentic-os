@@ -32,6 +32,7 @@ test("registers a stable prefix once and reuses it before changing request tails
   assert.equal(first.cache.providerCacheStatus, "unverified");
   assert.deepEqual(registry.stats(), {
     entries: 1,
+    retainedStablePrefixBytes: Buffer.byteLength(JSON.stringify(STABLE_PREFIX)),
     maxEntries: 32,
     maxStablePrefixChars: 200000,
     minCacheableTokens: 1,
@@ -151,6 +152,7 @@ test("a revision change invalidates the prior namespace entry", async () => {
     /missing, stale, or evicted/,
   );
   assert.equal(registry.stats().entries, 1);
+  assert.equal(registry.stats().retainedStablePrefixBytes, Buffer.byteLength(JSON.stringify(STABLE_PREFIX)));
   assert.equal(registry.stats().evictionCount, 1);
 });
 
@@ -166,6 +168,24 @@ test("bounded registry evicts the least-recent entry", async () => {
     /missing, stale, or evicted/,
   );
   assert.equal(registry.stats().entries, 2);
+});
+
+test("retained prefix bytes track UTF-8 payload across invalidation and LRU eviction", async () => {
+  const registry = createCacheContextRegistry({ maxEntries: 2 });
+  const onePrefix = [{ role: "system", content: "é🌍" }];
+  const oneBytes = Buffer.byteLength(JSON.stringify(onePrefix));
+  const first = await registry.register({ namespace: "one", revision: "r1", stablePrefix: onePrefix });
+  assert.equal(registry.stats().retainedStablePrefixBytes, oneBytes);
+  const second = await registry.register({ namespace: "two", revision: "r1", stablePrefix: STABLE_PREFIX });
+  const twoBytes = Buffer.byteLength(JSON.stringify(STABLE_PREFIX));
+  assert.equal(registry.stats().retainedStablePrefixBytes, oneBytes + twoBytes);
+
+  registry.assemble({ handle: first.handle, dynamicTail: ["touch"] });
+  await registry.register({ namespace: "three", revision: "r1", stablePrefix: onePrefix });
+  assert.equal(registry.stats().retainedStablePrefixBytes, oneBytes * 2);
+  assert.throws(() => registry.assemble({ handle: second.handle, dynamicTail: ["evicted"] }), /evicted/);
+  assert.equal(registry.invalidate({ handle: first.handle }), true);
+  assert.equal(registry.stats().retainedStablePrefixBytes, oneBytes);
 });
 
 test("provider eligibility is an estimate and never a hit claim", async () => {
@@ -209,6 +229,14 @@ test("normalizes Responses and Chat Completions cache telemetry without conflati
   });
   assert.equal(write.provider_cache_status, "write");
   assert.equal(write.cache_hits, 0);
+});
+
+test("missing or invalid estimated cost stays unknown; only an explicit numeric zero reports zero", () => {
+  assert.equal(normalizeCacheUsage().estimated_cost_usd, null);
+  assert.equal(normalizeCacheUsage({ estimatedCostUsd: 0 }).estimated_cost_usd, 0);
+  for (const estimatedCostUsd of [null, -0.01, NaN, Infinity, "0", false]) {
+    assert.equal(normalizeCacheUsage({ estimatedCostUsd }).estimated_cost_usd, null);
+  }
 });
 
 function deferredPromise() {

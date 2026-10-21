@@ -1,38 +1,53 @@
 ---
-title: Storage compaction
+title: Storage
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.10.0"
-tad_revision: "1.10.0"
-adr_revision: "1.10.0"
+prd_revision: "1.11.0"
+tad_revision: "1.11.0"
+adr_revision: "1.11.0"
 load_policy: on-demand
-version: "1.10.0"
-date: "2026-10-18"
+version: "1.11.0"
+date: "2026-10-21"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--storage-inventory-summary"
+worktree_id: "device-0232231d4a19--cache-storage-economy"
 agent_id: "codex-storage-inventory-summary"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "f25e2b5301291d7f0f168ae452475b4a12021004"
-mvp_revision: "1.10.0"
-gtm_revision: "1.10.0"
+mvp_revision: "1.11.0"
+gtm_revision: "1.11.0"
 ---
 
-# Storage compaction
+# Storage
 
 [Shared cache policy](CACHE.md) owns cross-mechanism lifecycle declarations; this guide owns
-disk diagnosis, compaction and recoverable effects; see [triage](STORAGE-QUARANTINE-INVENTORY.md).
+disk and cache diagnosis, economical maintenance, compaction and recoverable effects; see
+[quarantine triage](STORAGE-QUARANTINE-INVENTORY.md).
 
 Large collaboration-ledger revisions left as loose Git objects and quarantined dependency installations
 can consume GiB in a small product repository. Reduce allocated storage while preserving source, recovery
 objects, refs, reflogs, and original quarantine receipts. Existing lifecycle cleanup still owns retirement
-and quarantine; storage compaction does not infer integration, retirement or deletion authority.
+and quarantine; storage maintenance does not infer integration, retirement or deletion authority.
+
+## Economic maintenance order
+
+Use the shared [cache lifecycle policy](CACHE.md), then start with the cheapest complete observation:
+shallow metadata first, one exact deep target only when it changes a decision. Prefer the owning
+package or application verifier/garbage collector before manual removal; keep its required cache if
+offline rebuild or recovery depends on it. Recheck after material growth, disk pressure or a failed
+owner operation, not on a timer or every invocation. Compare allocated bytes before and after, subtract
+any retained recovery copy, and include scan, verification, human review and rehydration time.
+If ownership or a working restore path is unknown, retain the bytes.
+
+This audit measured npm cache verification at about 968 MiB of allocated reduction in 6.1 seconds.
+The same local run's artifact compression saved 24 KiB in 122.9 seconds; do not repeat that operation
+on unchanged data. These are host-specific observations, not general performance guarantees.
 
 ## Storage diagnosis — STORAGE-001@1.1.0
 
@@ -74,10 +89,49 @@ visited. APFS clone sharing/compression and underlying filesystem accounting can
 from exclusive physical usage or space freed by deletion. The common directory's own inode is excluded.
 
 Defaults: 2,000 ms, 20,000 visited nodes, at most 256 roots and depth 64. Explicit maxima are 60,000 ms
-and 200,000 nodes. The deadline includes bounded Git location discovery and is checked between filesystem
+and 200,000 roots/nodes. `--max-roots` raises root discovery only for an explicit run; the default
+remains 256. The deadline includes bounded Git location discovery and is checked between filesystem
 calls; a blocked filesystem call cannot be preempted. `cost` records elapsed time, stat/directory calls,
 entries and zero content bytes read. No persistent cache is written. Partial results still return JSON
 and exit zero; invalid arguments and failed repository resolution exit nonzero.
+
+### Workspace lane-cache inventory and compaction
+
+For the enrolled clone's cumulative immutable lane records, run the read-only owner report:
+
+```sh
+node /absolute/path/to/agentic-os/bin/agentic-os-storage.mjs report \
+  --repository=/absolute/path/to/agentic-os --lane-cache --deep \
+  --max-roots=20000 --max-entries=20000 --max-ms=2000
+```
+
+`--lane-cache` resolves the clone's configured workspace root and selects only its exact
+`.local/lane-cache/<clone-digest>` directory. The report gives cumulative logical and allocated bytes
+for observed files; it does not read payloads or prove a consistent snapshot. `status=partial` means
+the total is unknown. Raise explicit bounds only as needed, up to 200,000 roots/nodes and 60 seconds.
+The live Git index names current immutable records, but an unreferenced file may still support an
+older index revision or recovery; never infer it is disposable or delete it manually.
+
+The record owner has no shard eviction or garbage-collection operation. For an exact in-place
+allocation optimization, stop every writer, require a complete report, and use the existing
+`artifact-compression` storage owner only when the selected workspace root is a Git repository and
+the measured target can produce positive net savings. This owner is macOS-only:
+
+```sh
+node /absolute/path/to/agentic-os/bin/agentic-os-storage.mjs plan \
+  --repository=/absolute/path/to/workspace-repository --kind=artifact-compression \
+  --artifact=.local/lane-cache/<clone-digest> > /private/lane-cache-plan.json
+node /absolute/path/to/agentic-os/bin/agentic-os-storage.mjs apply \
+  --plan=/private/lane-cache-plan.json --authorize=agentic-os:storage:<plan-digest> --stopped
+```
+
+Review that the plan binds the exact reported directory. Apply verifies the full file manifest before
+swapping, retains the original through that verification, and removes no lane record. It is supported
+only where the existing storage owner supports native compression. Check `contentPreserved`,
+`targetBytesReclaimed` and `netBytesReclaimed` in the receipt; stop if the manifest differs or net
+savings are zero/negative. This preserves the live byte content at the same path, not a second raw
+backup. If a separate recovery copy must remain, count its allocation in net savings; do not compact
+when the retained copy erases the benefit. No expiry, timer or automatic cleanup follows.
 
 Acceptance/evidence plan for this successor (PRD → TAD/ADR → MVP):
 
@@ -323,304 +377,171 @@ GTM: reuse the free local workflow for the next authorized cleanup, measuring ne
 active/machine time, including recovery and rebuild. Prefer the smallest eligible target whose benefit
 justifies that cost. Demand, willingness to pay, support cost and monetary savings remain unmeasured.
 
-### Native retirement and quarantine economy — STORAGE-001@1.9.0
+See [Storage recovery and retirement](STORAGE-RECOVERY.md) for the exact retirement, preservation and recovery procedures.
 
-PRD: reduce repeated scans, failed copies and cleanup that merely moves disk cost. TAD/ADR: prioritize
-net allocation reduction against total verification/rebuild effort; reuse owners and still-valid receipts.
-Distinguish detached residue from native lifecycle projections whose receipts require their original
-paths. Archive or relocate only payloads allowed by the retention owner and authorized recovery choice;
-keep native projections in place when their owner supports only compression. Preserve immutable evidence
-and publish a separate durable recovery locator before removing an authorized former payload. A locator
-does not establish native receipt compatibility. Verify required metadata separately: a content/mode/link
-manifest alone does not cover ownership, timestamps, xattrs, ACLs or flags; disclose unverified surfaces.
-After interruption, follow the owner's resume contract. Manual recovery needs exact authorization and
-revalidated archive hash, restore proof, source and journal; an incomplete copy is not reusable. For a
-verified pre-swap dependency stage after HEAD movement, a fresh exact plan may continue only when package
-source hashes, object alternates, live target and staged manifests still match; it preserves the original
-plan and binds the new head/plan in the existing operation. Any partial swap or other drift stays blocked.
+## Local artifact cache triage — STORAGE-001@1.11.0
 
-MVP acceptance: **AC-S11** reconcile accepted native requests with registry/payload absence and protected
-versions/data; **AC-S12** verify detached-payload recovery/locators while preserving path-dependent native
-receipts; **AC-S13** check tool capabilities and peak space before copying, then reconcile net allocation
-including evidence/staging and exclude prior cleanup; **AC-S14** bind dependency alternates, reject drift and keep Git compaction fail-closed; **AC-S15** resume a verified pre-swap copy after HEAD-only movement under fresh plan, identical lock inputs/manifests, and idle checks; reject other drift. Review these cases against private
-artifacts `macintosh-hd-reclaim-20261003` (14.84 GiB selected allocation removed) and
-`quarantine-reclaim-20261004` (1.23 GiB net after recovery); keep their final verification receipts.
-Archive bytes/modes/links passed; application/provenance restoration remains untested. Local observations
-establish no cross-device benchmark or promised saving. Budget: four existing files, under 20 KiB changed,
-45 active minutes, zero new modules, dependencies or always-load bytes; measure actual net reclaim separately.
-GTM: measure phase/restore costs before another pass; retain eligible warm caches when eviction costs more.
-Money/performance gains remain unmeasured. One on-demand guide, under 6 KiB added, zero new modules,
-dependencies or always-load bytes. Run `npm run check` and prose/evidence review; publish via RELEASE.
-Rollback reverts guidance, preserving effects/recovery. No new deletion API, timer or retention expiry.
-
-<a id="operator-workflow"></a>
-
-## PRD: operator workflow
-
-Run the packaged `bin/agentic-os-storage.mjs` only on demand. It is not loaded by agent startup, and adds
-no dependencies, polling, background worker or recurring job. The operator must have user authorization
-and stop writers across the shared clone before applying. `--stopped` records that assertion; the shared
-cleanup lock coordinates cooperative callers but cannot exclude uncooperative processes.
+PRD: reduce oversized local artifacts at low measurement cost without losing Graph-owned evidence.
+Run a content-free exact-child report first; scope any later history comparison to that selected child.
 
 ```sh
-node bin/agentic-os-storage.mjs plan --repository=/absolute/repository --kind=git > /private/git-plan.json
-node bin/agentic-os-storage.mjs apply --plan=/private/git-plan.json \
-  --authorize=agentic-os:storage:<planDigest> --stopped
+node /absolute/path/to/agentic-os/bin/agentic-os-storage.mjs report \
+  --directory=/absolute/workspace/.workspace/.artifacts --deep \
+  --name=<exact-child> --max-entries=100000 --max-ms=15000
 ```
 
-Git compaction first packs and verifies every object, including unreachable objects, into a retained
-clone-private recovery pack. It saves refs, logs and worktree metadata, then uses `git repack -a -d
---keep-unreachable`. Full object-ID, ref, reflog and worktree inventories must match before and after;
-`git fsck --full --no-dangling` must pass. No branch deletion, history rewrite, reflog expiry, `gc`, or
-object pruning is performed. Backup bytes count against net savings and are reported separately.
-Stores with at most one pack, fewer than 128 loose objects and less than 8 MiB of loose storage skip
-packing. Larger stores first measure the verified candidate pack plus recovery metadata. If retaining
-that backup and a similarly sized compact store cannot save space, only the new candidate is discarded;
-the source object store remains untouched. Previously committed recovery copies are never removed.
-`netBytesReclaimed` subtracts retained backup bytes from target savings; receipt metadata is additional.
-These on-demand thresholds prevent small repeated runs from accumulating full recovery copies.
+Use `selectedChildComplete` and the selected row's `status` for coverage; top-level `status=partial`
+is expected when siblings were not selected. Record logical/allocated bytes, elapsed time, visited
+entries and `contentBytesRead`. This report grants no authority or reclaimable-byte estimate. Begin
+with default bounds and raise them only for that child; rerun after material changes, not on every
+invocation. A local 2026-10-21 report covered 45,913 entries in 561 ms, observed 657,522,771 logical
+and 488,681,472 allocated bytes, and read zero content bytes.
+The full local artifact-root pass covered 88,605 entries in 2,474 ms and observed 1,755,042,686 logical
+and 1,146,216,448 allocated bytes, with zero content bytes read. This is filesystem allocation, not
+exclusive physical use or expected deletion savings.
 
-For one completed quarantine on macOS with a compression-capable APFS/HFS+ volume:
+An exact match to a locally reachable Git blob proves byte recovery from that object database only;
+it does not prove the current path is obsolete or that its owner permits deletion. Hash only a
+selected target when it changes an owner-approved recovery decision. A one-time broader survey took
+18.6 seconds to hash 79,308 files (1,755,025,388 bytes), finding 1,442 matches (211,779,584 allocated
+bytes). Existing artifact policy preserves records, so history matches alone are never deletion
+candidates. If an owner explicitly approves a retirement, bind it to the exact manifest digest and
+listed paths; retain that manifest, plan, per-file journal and effect receipt under
+`.git/agentic-os-storage/<planDigest>/`. Approval does not carry to a later manifest or authorize Git
+object pruning. Do not repeat the full scan while inputs and refs are unchanged. Hashing, allocated
+size and local history do not establish independent backup or physical space savings.
 
-```sh
-node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
-  --kind=dependencies --quarantine=<exact-64-character-coordinate> > /private/dependency-plan.json
-node bin/agentic-os-storage.mjs apply --plan=/private/dependency-plan.json \
-  --authorize=agentic-os:storage:<planDigest> --stopped
-```
+One owner-approved retirement on 2026-10-21 unlinked 1,442 exact paths (283,734,034 logical bytes;
+211,783,680 allocated bytes) after approval of manifest
+`16d72202432a16d8bbc5d2a96f4a74e87ec7c36e858d372e60d3ad9a0e2b78ea`. The complete artifact-root
+report observed allocated bytes drop from 1,146,216,448 to 934,432,768; `statfs` available bytes
+rose by 193,130,496 during the same interval. These are observed values, not isolated causal savings.
+Plan issuance through final receipt took 67 seconds, including reconciliation; the operation read
+567,468,068 content bytes for two exact verification passes. The zero-content metadata reports took
+4,818 ms before and 1,240 ms after. These are execution measurements, not performance guarantees.
+The durable receipt is `.git/agentic-os-storage/a2e096975b522dad70d30590ca13c2106a19b0fb34219bbc90abe1bdf85f4d39`.
 
-Only that quarantine's `projection/node_modules` is eligible. Native `ditto --hfsCompression --noclone`
-prepares a copy; the full projection manifest is checked before and after swapping directories.
-Files, modes, symlink bytes, authored patches, dependency availability, registration and receipt bytes
-remain preserved; filesystem representation alone changes. The planner accepts the exact legacy,
-user-cleanup, empty-active-lane-retirement and local-owner eligibility schemas, binding each to its
-native coordinate digest. Unknown or mismatched schemas fail closed. No checkout dependencies,
-package install, network call, source download or lifecycle script are selected.
+A follow-up in-place compression on the remaining largest child,
+`.artifacts/agent-observability-economy-20260916`, preserved its 44,966-entry, 379,442,549-byte
+manifest (`3abaee99a92a5f4f1b6d7b02958ac35400f76c6dc4a25cccc9c76f9bef0a9028`) and reclaimed only
+24,576 allocated bytes from 283,254,784 (<0.01%) in 122.9 seconds from plan issue through receipt.
+The post-operation exact-child metadata report took 345 ms, visited 44,966 entries and read zero
+content bytes. A complete artifact-root metadata pass then observed 87,163 entries, 1,471,308,732
+logical bytes and 934,408,192 allocated bytes in 2,179 ms, also reading zero content bytes. The
+receipt is `.git/agentic-os-storage/241df790267c6d1c072ea8f12d4244460d96d76cd86aa47e26401ec87f369633/receipt.json`.
+Do not repeat compression on unchanged contents; only reconsider after material new uncompressed
+data arrives. For larger savings, fix the owning generator or pursue a separately approved exact
+retirement after confirming its recovery path. Both reports are observations without snapshot consistency.
 
-For the exact checkout's installed dependencies, stop its development servers, tests, package managers,
-and other consumers first, then opt into the separate target kind:
+### Remaining local state audit — 2026-10-21
 
-```sh
-node bin/agentic-os-storage.mjs plan --repository=/absolute/checkout \
-  --kind=worktree-dependencies > /private/checkout-dependency-plan.json
-node bin/agentic-os-storage.mjs apply --plan=/private/checkout-dependency-plan.json \
-  --authorize=agentic-os:storage:<planDigest> --stopped
-```
+The next largest paths are not interchangeable cache candidates. Before the exact retirement below,
+`.git/agentic-os-cleanup-quarantine` accounted for 115,609,600 allocated bytes across 14,397 visited
+entries (81,012,550 logical bytes). Its largest exact coordinate accounted for 8,534,133 logical and
+10,059,776 allocated bytes across 753 entries. That recovery branch tip was not in local `main`, and
+the quarantined worktree's Git pointer no longer resolved after its original worktree was removed.
 
-This target is always the selected checkout's direct `node_modules` directory. Tracked installations, directory aliases
-and symlinked package sources are refused. Checkout dependency plans accept one local common-directory
-`objects/info/alternates` file, read no-follow with a 64 KiB cap; its digest is rechecked at apply. Changed or missing
-bytes block apply. HTTP alternates and `GIT_ALTERNATE_OBJECT_DIRECTORIES` remain unsupported; `kind=git` compaction
-rejects alternates. The plan binds HEAD, dependencies and package manifests/lockfiles (including absent files);
-source/install drift blocks the swap. It reuses quarantine compression, manifest comparison and recovery journaling.
-It removes no packages, optional platform dependencies or authored patches. macOS `lsof` observations before copying,
-swapping and discarding the verified original block visible checkout processes and open dependency files, including
-from another checkout. Each observation is bounded to 30 seconds and does not prove OS-wide exclusivity; the operator
-must keep consumers stopped through completion. Run application executable/package checks after the receipt, then
-resume. Re-run only after a material dependency reinstall; a no-saving compression is discarded without replacement.
+After explicit owner approval, retirement plan `e0c48e7c0af1023d4e613611bd4b2943dad487f03c078579312a6783d699827e`
+removed only coordinate `2a8cfe25b720eb5f0b437e663f535b1e2d3f28dc53b0c5f120057f398da1a732`.
+Its receipt records 8,458,243 logical bytes unlinked, recovery bytes discarded, registration retained,
+and no branch-ref or object-database mutation. `du -sk` observed the quarantine directory fall from
+112,900 KiB to 103,180 KiB (9,953,280 fewer allocated bytes); this does not prove physical free-space
+increase. Available volume space was lower at the later observation. The durable receipt is
+`.git/agentic-os-cleanup-quarantine/2a8cfe25b720eb5f0b437e663f535b1e2d3f28dc53b0c5f120057f398da1a732/retirement.json`.
 
-Generated-output cleanup is distinct from compression. Remove only exact, idle outputs verified against
-their owning generator. An old filename, matching file contents, or an ignored directory alone does not
-prove obsolescence. Keep local database state and quarantine/recovery evidence under their existing
-retention policy. Source cleanup belongs in its owning scoped lane and must update affected references.
+The next largest projection was coordinate
+`5741fa0ac15897a5ea051967f7e7baa8511c83ff077c3814a00b1579f1204fb8`: 8,444,465 logical bytes,
+751 entries and 9,820 KiB allocated. Its branch existed in local and remote-tracking refs but was not
+an ancestor of local `main`. After separate explicit owner approval, plan
+`12e83bee7f8cea54d1c210e456a57abe637d1dd3c7cb4d0ae8b7e318119b6e82` retired only that coordinate.
+Its receipt confirms registration and branch refs retained and no object-database mutation. `du -sk`
+observed the quarantine directory fall from 103,180 KiB to 93,468 KiB (9,945,088 fewer allocated
+bytes); physical free-space increase is not proven. The receipt is
+`.git/agentic-os-cleanup-quarantine/5741fa0ac15897a5ea051967f7e7baa8511c83ff077c3814a00b1579f1204fb8/retirement.json`.
 
-For canonical-sync quarantines, select `--kind=canonical-quarantine` and
-`--quarantine=agentic-os-canonical-sync-quarantine-<six-character-suffix>`. This compresses the exact
-clone-private recovery directory in place, including source slots and manifests. It recognizes the
-source-owned v1/v2 manifest and binds its digest plus the full directory manifest; no recovery slot,
-receipt or original manifest is removed or rewritten. This is separate from lifecycle retirement.
+After separate explicit owner approval, plan
+`8adda321b8a49bc5b8f8c9c6a7887ae2b2f063cfdab2ba00066d5901173ffd2b` retired only coordinate
+`8ce65881c0dedcfdaffe2b4d5a2d1c65754e10d7ca27d0afabf6e6816b74b929`. The bound projection had
+digest `c3042324541e0c8abad221ef245083d8428bfcca592f2938309f2259b67ceca5`, 748 entries and
+8,343,472 logical bytes; `du -sk` measured its projection at 9,708 KiB before retirement. The receipt
+records those logical bytes unlinked, recovery data discarded, registration and branch refs retained,
+and no object-database mutation. `du -sk` observed the quarantine root fall from 93,468 to 83,868 KiB
+(9,600 KiB less); this does not prove physical free-space increase. The receipt is
+`.git/agentic-os-cleanup-quarantine/8ce65881c0dedcfdaffe2b4d5a2d1c65754e10d7ca27d0afabf6e6816b74b929/retirement.json`.
 
-<a id="exact-obsolete-artifacts"></a>
+After separate explicit owner approval, plan
+`b5953953da3970457bb3ba5ee126b4911cffd2467be083de64211ac2f0a1eda9` retired only coordinate
+`5636396a8c4ed78c562276f1526f734f190a75a92aee31c79dfcba1cea3d5fc1`. The bound projection had
+digest `32797649b89f3535fa32b3ba3cb9a8ccbb2919698ebaf17a4c1260f910f1ef48`, 748 entries and
+8,314,312 logical bytes; `du -sk` measured it at 9,572 KiB before retirement. The receipt records
+recovery data discarded, registration and branch refs retained, and no object-database mutation.
+`du -sk` observed the quarantine root fall from 83,868 to 74,300 KiB (9,568 KiB less); physical free
+space increase remains unproven. The receipt is
+`.git/agentic-os-cleanup-quarantine/5636396a8c4ed78c562276f1526f734f190a75a92aee31c79dfcba1cea3d5fc1/retirement.json`.
 
-## TAD: exact obsolete artifacts
+Two larger remaining projections, coordinates `4b73b84c47d82b1ec6f4a70ce06e8c1ea1a56ac6e48000dbbaebeac944d505f6`
+and `683477102aa12521e6348bece7fafd49628b303dd937330d04205c07d9d224c5`, measured 9,132 KiB and
+8,676 KiB allocated respectively. The exact retirement planner refused both with
+`retirement-evidence`: each detached registration's `HEAD` log records only its initial commit and
+does not bind a lane ref. The first projection manifest is `f19470840fd3f04c0ff43898d2af1f727c29c020d08bb2ebdbba621679850ab8`
+(735 entries, 7,897,102 logical bytes); its detached HEAD is `3846c48dba4b40702451640e3e78e6bcc91408f4`.
+The second manifest is `59e8fcf4ab18cb667ae11a4923cd894851e70086c0f57c73c54cab36772155d4`
+(713 entries, 7,478,179 logical bytes); its detached HEAD is `1d3e803f9c28c33ab41f3bf6755e760426e1c956`.
+Their operation records contain no branch field, and 375 and 528 local/remote refs respectively
+contain those commits. The old checkout path names are hints only. Without an authoritative record
+binding a lane ref to each projection, the tool cannot prove which branch owns it. A fresh fetch showed
+both detached HEAD commits are ancestors of `origin/main` at `1e9c972bc0ffc85dff0e528792b8a2ba0610485f`.
+For each projection, the retained index exactly matches its detached HEAD tree, the projection matches
+that index, and Git reports no untracked or ignored files. Thus no working-tree file changes outside
+those committed trees were observed. The old checkout directories are absent and neither appears in
+`git worktree list`. Even from the clean canonical `main`, the exact retirement planner still refuses
+both coordinates with `retirement-evidence`: the detached HEAD logs do not bind a lane ref. Keep both
+intact; do not infer source-lane ownership from commit ancestry or path names, and do not bypass the
+owner planner. Resume only if the owner supplies verifiable source registration evidence or the owner
+adds a reviewed merged-snapshot retirement path, then generate a fresh exact plan and obtain separate
+approval. Four approved retirements unlinked 33,560,492 logical bytes total; the quarantine root's measured allocation
+fell from 112,900 to 74,300 KiB. This cumulative local observation does not establish volume-level free space.
 
-On macOS, archive an explicitly selected untracked directory only after its source owner establishes
-that it is obsolete or disposable output. An ignored name alone is insufficient authority.
+A complete metadata-only report of the canonical repository covered 26,052 entries in 768 ms,
+observed 869,036,032 allocated bytes and read no content. It found no cache or generated-output
+category. A name-targeted scan found no `.cache`, `__pycache__`, test-cache or bundler-cache paths;
+the only dependency directory found was `node_modules` at 4,644,864 allocated bytes across 1,145
+entries. Keep it for offline use: removing it offers less than 5 MB and would require a verified
+locked reinstall before builds or checks can run.
 
-```sh
-node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
-  --kind=artifact-archive --artifact=data/outputs/retired-preview > /private/artifact-plan.json
-node bin/agentic-os-storage.mjs apply --plan=/private/artifact-plan.json \
-  --authorize=agentic-os:storage:<planDigest> --stopped
-```
+The configured npm cache was a larger, separate local target. Before maintenance, `/Users/huijoohwee/.npm/_cacache`
+used 3,037,060 KiB allocated. `npm cache verify` ran offline in 6.115 seconds, verified 2,818 content
+entries (2,074,524,477 bytes), collected 323 garbage entries (1,008,884,486 logical bytes), and
+checked 3,483 index entries. Afterward, `_cacache` used 2,045,412 KiB, an observed allocation drop
+of 991,648 KiB; the whole `.npm` directory dropped from 3,898,048 to 2,906,396 KiB. Retain the
+verified remaining cache for offline installs. This used npm's integrity-checking garbage collector,
+not a full cache clean; [npm documents `cache verify`](https://docs.npmjs.com/cli-commands/cache.html)
+as usable offline and as collecting unneeded data. These local size samples do not guarantee a
+volume-level free-space increase.
 
-The exact relative directory must have direct ancestors and contain no tracked paths. Root selection,
-traversal, `.git`, `.wrangler`, aliases, special files and hardlinks pointing outside the selected tree are refused. A gzip tar archive is
-extracted into a private verification directory; the existing streamed manifest compares every file,
-mode and symlink. Reobserving the original and checking open files precedes removal. Recovery bytes
-and instructions are durable first. There is no glob, recursive discovery, age heuristic, automatic
-retention expiry or deletion of existing recovery records. Nested cached repositories are retained
-inside the verified archive. Partial archive operations remain for manual recovery; they cannot resume
-deletion. A completed replay requires the selected path to remain absent and the checkout HEAD unchanged.
+`.git/agentic-runtime/models` accounts for 639,447,040 allocated bytes for one local GGUF model.
+The runtime docs treat model provisioning as optional and do not establish an automatic or offline
+rehydration path. Preserve this model for local/offline use until its owner identifies a verified
+replacement or explicitly approves losing it. Do not read or compress the full model merely to test
+for savings while that recovery requirement remains unresolved; first establish an owner-approved
+replacement and a worthwhile expected gain.
 
-Keep active ingestion stores, local databases and production mirrors with their owners. Fix obsolete
-output paths at the owning generator; exclude disposable outputs from Git and regenerate only on demand.
-For an installed package, compression preserves its actual bytes; it does not prove those bytes match
-the lockfile. Diagnose package drift against the exact locked artifact before any separate repair.
+The repository's Git object directory accounts for 10,932,224 allocated bytes; `git count-objects -v`
+reports 355 loose objects, three packs, zero prune-packable objects and zero garbage. Git pruning has
+no measured target here, and repacking this small store would add work without a demonstrated material
+gain. The enclosing `Documents/GitHub/.workspace` repository's object directory accounts for
+247,177,216 allocated bytes across four packs, with 10 loose objects and zero prune-packable objects
+or garbage. Its storage is workspace state; the count shows no unreachable-object cleanup target.
+Repacking could consolidate packs, but the existing safe path retains a full recovery pack, so first
+measure a material reason to expect savings. Recheck only after material object growth. These findings
+are local observations, not new retention policy or deletion authority.
 
-Use `--kind=artifact-compression --artifact=<exact-untracked-directory>` for retained caches or nested
-workspace dependencies that must remain available offline. The same selection checks and manifest
-apply, but the verified filesystem-compression swap keeps the directory in place. It does not archive
-or delete the selected data. Keep its readers and writers stopped through completion.
+MVP: **AC-S17** exact-child triage reports bounded metadata, zero content bytes and explicit coverage;
+history matches never imply disposal. Reuse the existing report command, with no index, cache, module,
+dependency, timer or always-load addition. Compare elapsed time, visited entries and content bytes;
+the samples above are local observations, not promised performance or savings.
 
-Internal hardlink groups, including npm's linked executable binaries, must be wholly contained in the
-selected tree. Their path topology and link counts are bound and verified after copying. External
-hardlinks are refused. Allocated-byte accounting counts each regular-file inode once.
-
-## Bounds and recovery
-
-Plans expire after one hour; exact authorization binds their digest. Commands have 20-minute deadlines,
-64 MiB output ceilings, and Git uses two compression threads with 128 MiB window memory each (not a
-total RSS limit). Object inventory caps at 500,000; filesystem accounting caps at 150,000 entries;
-dependency/projection manifests cap at 4 GiB and 100,000 entries and stream file bytes in 64 KiB chunks.
-Git pack verification is quiet; bounded `show-index` output supplies the exact verified object IDs.
-These limits belong to storage compaction and do not raise lifecycle cleanup admission ceilings.
-
-Plans, recovery packs and swap journals live under `.git/agentic-os-storage/<planDigest>/`; original lifecycle
-receipts are immutable. Completed replay checks inventory. Unknown partial operations stay retained; inspect
-their exact journal and never delete blindly. If a swap left the target absent, `original` retains its bytes;
-verify both manifests before restoring or removing either copy. `--resume` with the same unexpired plan
-finalizes a fully swapped operation after rechecking its journal, both manifests, package sources/receipt and
-idle readers. It may also resume a pre-swap stage only when the directory contains exactly `plan.json` and
-`compressed`, the target and sources still match, the staged manifest is exact, and no original or swap journal
-exists. It repeats idle and same-volume checks, journals, swaps and runs the existing finalizer without recopying
-or discarding the stage. Altered, incomplete, expired or unfamiliar states remain preserved and blocked; missing
-copies and partial deletion remain manual recovery. For Git, restore the verified pack/index named in `backup.json`
-with writers stopped; saved refs/logs are evidence, never overwrite instructions.
-
-Use fresh plans when loose-object storage grows materially; do not create a timer or compact on every
-agent invocation. Keep retired ledger writers retired, reuse the existing coordination store, and
-separate transient state from growing full-file Git snapshots. The portable Git operation and optional
-macOS filesystem adapter share the existing lock and preservation manifest implementation.
-
-Validation: `node --test __tests__/storage.test.mjs`, then `npm run check`. Real Git fixtures cover
-unreachable object retention, recovery packs, stale plans, concurrent locks, partial operations and
-replay. macOS fixtures cover compression, original receipt parity, executable modes and symlinks.
-Checkout fixtures additionally cover executable invocation, manifest/lockfile/HEAD drift, tracked targets,
-aliases, active processes in and outside the checkout, preservation after a refused copy, verified
-pre-swap resume, and changed-journal/copy plus active-reader refusals.
-
-Additional validation covers no-op growth thresholds, uneconomic candidate disposal, complete archive
-restoration, tracked/state/alias/traversal refusals, active readers and changed-source preservation.
-
-Canonical-quarantine, retained-cache compression and internal/external hardlink cases are covered too.
-
-## ADR: shared recovery location
-
-Completed Git recovery packs and artifact archives can be relocated to a private local store. This
-extends STORAGE-001 with configurable placement, bounded inventory, immutable provenance records,
-exact duplicate reuse and separate restore verification. Existing receipts and incomplete operations
-remain in their original clone. There is no automatic expiry, cache eviction or backup service.
-
-Configure each participating clone explicitly; the path is device configuration, never a source default:
-
-```sh
-node bin/agentic-os-storage.mjs configure --repository=/absolute/repository \
-  --store=/absolute/workspace/.agentic-os-store
-node bin/agentic-os-storage.mjs inventory --repository=/absolute/repository
-node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
-  --kind=recovery-relocation --operation=<completed-storage-plan-digest> > /private/relocation-plan.json
-node bin/agentic-os-storage.mjs apply --plan=/private/relocation-plan.json \
-  --authorize=agentic-os:storage:<relocation-plan-digest> --stopped
-```
-
-`configure` creates an empty private store or reuses its exact descriptor, then writes the clone's
-`.git/agentic-os-storage/store.json`. Conflicting existing configuration, directory aliases, public
-permissions and unknown contents are refused. A location inside a Git checkout must already be ignored
-and contain no tracked files. The workspace publication allowlist remains the owning publication guard.
-Store initialization refuses partial or unfamiliar layouts; it does not adopt arbitrary archive folders.
-
-The store contains `store.json`, `payloads/<manifest-digest>`, `records/<record-id>.json`, and `staging/`.
-Record identity includes store ID, clone ID and original operation ID. Immutable payloads with exactly
-matching streamed manifests share bytes, while each operation retains its independent provenance.
-Records preserve original plan/receipt/proof text, source location, content/mode/link manifest, allocated
-bytes, verification time and native restore evidence. Recovery retention is always `hold`; age or a
-quota cannot authorize deletion. This local store shares the host disk and is not an independent backup.
-
-Relocation uses the existing clone cleanup lock followed by one store lock, with no waiting loop.
-`--stopped` asserts that recovery payloads and their receipts have no uncooperative writers. Active
-application readers need not stop because installed dependencies and application stores are not targets.
-The original payload is removed only after copying, flushing, matching its full manifest, verifying the
-native format, publishing a durable catalog record, and rechecking the original evidence and both copies.
-Git verification checks the complete packed object-ID inventory, including unreachable objects. Archive
-verification extracts into private staging and checks the original artifact's content, modes and links.
-Source and store must not contain each other; another filesystem is supported through copy/verify.
-Free-space checks reserve payload logical bytes plus artifact extraction bytes and 16 MiB headroom.
-
-Original receipt paths stay immutable. An added `relocation-plan.json` journals the operation and
-`relocation.json` points to its completed central record. Inventory and storage receipt replay resolve
-the new location. Preserve these pointers and the catalog when backing up; historical absolute paths
-in the original receipts are evidence, not current payload locations.
-
-If copying or validation fails, retain staging and the original. A partial copy cannot resume deletion.
-If the catalog was published, an explicit `apply --resume` with the same unexpired plan verifies all
-bindings again before finalizing removal. A completed replay revalidates the retained payload and does
-not create another copy. Unknown, incomplete or corrupt operation records are reported as retained and
-unclassified. Inventory is read-only and metadata-based; it does not claim a fresh deep verification.
-It bounds discovery to 2,000 operation entries and records to 512,000 bytes. Existing payload, command,
-entry and one-hour plan bounds apply. No daemon, startup import, network call or dependency is added.
-
-## Compact recovery inventory — STORAGE-001@1.10.0
-
-PRD: a full read-only recovery inventory can print hundreds of per-operation records even when the
-operator needs only the counts and the few records needing follow-up. Reduce terminal, log and agent
-context volume while retaining the detailed default for exact inspection. Inventory time and payload
-verification remain unchanged; compact output is not a storage-saving claim.
-
-TAD: add `--summary` only to `storage inventory`. Return a separate summary schema with sorted counts
-by state, known retained allocation, and at most 32 exact operation details for states other than
-`completed-no-payload`. Include the total detail count and a truncation flag. Omit absolute payload
-paths and the full operation array. Keep the existing detailed output as the default; `configure`,
-plans and applies reject this option. Summary reads the same bounded metadata inventory and opens no
-payload content.
-
-```sh
-node bin/agentic-os-storage.mjs inventory --repository=/absolute/repository --summary
-```
-
-ADR: keep one inventory owner and the existing 2,000-operation bound. Summary results state
-`operationsOmitted:true`, `grantsAuthority:false`, and use `knownRetainedAllocatedBytes`; unclassified
-records remain explicit details and do not become reclaimable. Operators needing a specific record or
-full inventory use the default output. No persistence, automatic cleanup, new module, dependency or
-always-load guidance is added.
-
-MVP: **AC-S16** empty and populated inventories produce deterministic compact summaries; exact retained
-operation identifiers, states, reasons and known allocation remain visible; output omits the full
-operation array; invalid action/flag combinations fail closed. Compare output bytes and elapsed time on
-the same current inventory, without claiming scan-time or disk savings. Sprint budget: three existing
-files, under 20 KiB changed, zero new modules/dependencies/always-load bytes, one focused check and one
-affected repository check.
-
-Observed Graph read-only sample on 2026-10-18 (280 operations, 3 follow-ups): output fell from 57,112
-to 1,181 bytes (97.9%). One process run measured 283 ms versus 146 ms; this includes startup and does
-not establish scan-time or disk savings.
-
-GTM: use compact output for summaries and handoffs; retain the detailed inventory when a native plan or
-restore requires exact record evidence. No storage effect or cleanup decision follows from this flag.
-
-Restore an independent payload copy into a new directory without overwriting live repository files:
-
-```sh
-node bin/agentic-os-storage.mjs plan --repository=/absolute/repository \
-  --kind=recovery-restore --operation=<original-storage-plan-digest> \
-  --destination=/private/new-recovery-directory > /private/restore-plan.json
-node bin/agentic-os-storage.mjs apply --plan=/private/restore-plan.json \
-  --authorize=agentic-os:storage:<restore-plan-digest> --stopped
-```
-
-The destination receives `recovery/` for Git or `artifact.tar.gz` for an archived artifact, together with
-its plan, catalog record and verified restore receipt. Native verification runs again; archive extraction
-is temporary verification, not installation into a checkout. Restore refuses existing destinations,
-store-internal destinations, aliases and changed payloads. A failed restore retains its partial copy;
-choose another new directory after diagnosis. Live Git refs, reflogs, packages, databases, pinned offline
-data and active graph output roots remain owned by their applications. Recovery records contain enough
-manifest and original evidence to support manual recovery if the source clone becomes unavailable;
-the command currently requires the original clone and its immutable operation receipts.
-
-Validation: `node --test __tests__/storage-recovery.test.mjs` exercises real Git object retention,
-archive extraction, separate restores, exact duplicate reuse across clones, private configuration,
-Git publication exclusion, read-only inventory, expiration, locks, interruption/resume and drift refusal.
-Use these checks with the original storage suite and `npm run check` before applying to retained data.
+See [Storage recovery and retirement](STORAGE-RECOVERY.md) for the exact retirement, preservation and recovery procedures.
 
 ## MVP — reference implementation
 

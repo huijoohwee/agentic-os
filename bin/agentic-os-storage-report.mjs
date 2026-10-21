@@ -5,7 +5,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 export const REPORT_LIMITS = Object.freeze({ entries: 20_000, milliseconds: 2_000,
-  maxEntries: 200_000, maxMilliseconds: 60_000, roots: 256, depth: 64 });
+  maxEntries: 200_000, maxMilliseconds: 60_000, roots: 256, maxRoots: 200_000, depth: 64 });
 export const REPORT_CATEGORIES = Object.freeze(['git-objects', 'git-metadata',
   'worktree-registrations', 'quarantine', 'recovery', 'retained-archives', 'agent-state', 'other']);
 export const DIRECTORY_CATEGORIES = Object.freeze(['dependencies', 'cache', 'generated-output',
@@ -62,8 +62,8 @@ function locations(cwd, timeout) {
 
 export function reportStorage({ cwd = process.cwd(), deep = false, category: selected = null,
   directory = null, name = null, maxEntries = REPORT_LIMITS.entries,
-  maxMs = REPORT_LIMITS.milliseconds } = {}) {
-  bound(maxEntries, REPORT_LIMITS.maxEntries); bound(maxMs, REPORT_LIMITS.maxMilliseconds);
+  maxMs = REPORT_LIMITS.milliseconds, maxRoots = REPORT_LIMITS.roots } = {}) {
+  bound(maxEntries, REPORT_LIMITS.maxEntries); bound(maxMs, REPORT_LIMITS.maxMilliseconds); bound(maxRoots, REPORT_LIMITS.maxRoots);
   const categories = directory === null ? REPORT_CATEGORIES : DIRECTORY_CATEGORIES;
   if (typeof deep !== 'boolean' || selected !== null && (!deep || !categories.includes(selected)))
     throw new Error('blocked-storage-report-selection');
@@ -151,7 +151,7 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
         directoryReads++;
         const entry = rootStream.readSync();
         if (!entry) break;
-        if (names.length >= Math.min(REPORT_LIMITS.roots, maxEntries)) {
+        if (names.length >= Math.min(maxRoots, maxEntries)) {
           reasons.add('root-budget'); discovered = false; break;
         }
         names.push(entry.name);
@@ -187,7 +187,7 @@ export function reportStorage({ cwd = process.cwd(), deep = false, category: sel
     filesystem, snapshotConsistent: false, contentVerified: false,
     grantsAuthority: false, reclaimableBytes: null, totals: { ...totals, complete }, rows,
     cost: { elapsedMs: Math.ceil(performance.now() - started), visitedEntries, statCalls,
-      directoryReads, statfsCalls: 1, contentBytesRead: 0, maxEntries, maxMs, maxRoots: REPORT_LIMITS.roots,
+      directoryReads, statfsCalls: 1, contentBytesRead: 0, maxEntries, maxMs, maxRoots,
       maxDepth: REPORT_LIMITS.depth, deadlineKind: 'cooperative-between-filesystem-calls' },
     recommendations: [] };
   const archives = rows.filter(row => row.category === 'retained-archives');
