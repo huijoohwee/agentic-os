@@ -38,6 +38,3 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 - Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.
 - Exact candidate; separate receipt per proof, retire, cleanup, sync, deploy and rollback.
 - Cleanup: exact global/local targets, no wildcards; prove bytes/paths/refs.
-- Read-only questions query remote/provider (`ls-remote`, `gh`, `reap --ref`), not a checkout.
-  Refs are global cost: retire integrated/superseded lanes and PRs at once. Default TAD:
-  git + protected PR + affected checks; heavier VCS/caches/sparse need ADR-measured over-budget cost.

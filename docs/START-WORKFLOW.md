@@ -12,9 +12,5 @@ lane mutation; fetch updates tracking only, not local main or release authority.
 
 [recovery](../guides/VALIDATION-ECONOMY-EXECUTION.md).
 
-Read-only/review work needs no lane. Global reap over its ref bound: use
-`reap --refs=<≤256 lanes>` batches and consent-gated `cleanup-user sweep`. Fetch failing with
-"remote-https is not a git command" (bundled git): put a full git first on PATH.
-
 Browser: run npm run dev; recheck URL. Unsupported: report blocker, not proof.
 Headless: N/A.
