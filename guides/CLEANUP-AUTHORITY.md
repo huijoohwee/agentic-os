@@ -805,3 +805,20 @@ Current facts only. Historical protection, check policy, Ruleset Suite, merge me
 Owner delegated END ADLC for these exact lanes. Policy binds ref/head, merged PR, quarantine coordinate and discard-receipt digest, and enrolls the three exact merge-content facts for provider integration. Historical quarantine/protection/method authority remains false. Adoption permits current disposition and fresh provider integration/record-only retirement, not receipt changes or deployment. PRs #555–#557 passed `budgets` and `test`.
 
 Budget: six exact policy rows, test and this record; no runtime, dependency or always-load change. Each needs its provider receipt.
+
+### Current recovery enrollment — agentic-os PR #565 — 2026-10-22
+
+This exact current-facts enrollment binds repository `github.com/huijoohwee/agentic-os`, base
+`ac91dde6cc3b52dc0d95560d108c1559306a6616`, reviewed head
+`e6d0f84af981e8b06dde033f6502eb3967a465c1`, merge
+`56baf5a70051769dda121ecb0eb82e02272093ab`, and equal source/merge tree
+`24f07a5b9682cf3cf589c4ff8e9e18308982d8b5`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/565>; its `budgets` and `test` checks passed.
+
+The scope is `recovery/current-historical-content/pr-565`. This records current merge facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It creates no provider evidence or effect authority; integration, retirement, cleanup,
+deployment, and canonical sync still require exact plans, authorization, and receipts.
+
+Budget: one exact v1 enrollment, one existing workflow-policy test, and this record; no runtime
+modules, dependencies, or always-load bytes. Remove only this exact policy row and record to revert.

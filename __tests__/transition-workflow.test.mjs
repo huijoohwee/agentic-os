@@ -66,6 +66,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/555',
     'https://github.com/huijoohwee/agentic-os/pull/556',
     'https://github.com/huijoohwee/agentic-os/pull/557',
+    'https://github.com/huijoohwee/agentic-os/pull/565',
     'https://github.com/huijoohwee/agentic-base/pull/8',
   ]);
   const historicalChecks = new Map([
@@ -112,6 +113,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-os/pull/555', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/556', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/557', ['budgets', 'test']],
+    ['https://github.com/huijoohwee/agentic-os/pull/565', ['budgets', 'test']],
   ]);
   for (const entry of policy.historicalIntegrations) {
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
@@ -212,6 +214,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['555', 'd22e94505c8e2b4653c7992cc3388a5ca70ef01c', '1455abe52fcd61cf7599f1aba2de0e6999f50f77', 'a9f36d95be3d23c3b207eaa5cd2e00af6c1293ca', '64d2641d8048f0eee5406691fffc462084e25e27'],
     ['556', 'a9f36d95be3d23c3b207eaa5cd2e00af6c1293ca', '142fb86a5547f23762afd704a4100a9b3e128157', '99e21a10da1ea85df2e758612909a4b1ad50bef6', 'ad2049bb6585ecc05253e46af93f4db8d40aef73'],
     ['557', '99e21a10da1ea85df2e758612909a4b1ad50bef6', 'f4fb4add7c403036383739cd2cfe56bde1128831', 'c8811762c2289a366d6ecf3a0bb8f9f4958db3ea', 'dd6a8d5da78d0ecebd76b3a7f9ef59e0c75eb4df'],
+    ['565', 'ac91dde6cc3b52dc0d95560d108c1559306a6616', 'e6d0f84af981e8b06dde033f6502eb3967a465c1', '56baf5a70051769dda121ecb0eb82e02272093ab', '24f07a5b9682cf3cf589c4ff8e9e18308982d8b5'],
   ]) {
     const reviewLocator = `https://github.com/huijoohwee/agentic-os/pull/${number}`;
     assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === reviewLocator), {
@@ -224,8 +227,8 @@ test('committed transition workflow is bound to the canonical authority policy',
       treeRevision,
       checkContexts: ['budgets', 'test'],
       adoptionScope: [`recovery/current-historical-content/pr-${number}`],
-      rationale: number === '554'
-        ? 'Owner-authorized current recording of PR #554 merge content; historical protection, required-check policy, Ruleset Suite and merge-method authority remain unproven.'
+      rationale: ['554', '565'].includes(number)
+        ? `Owner-authorized current recording of PR #${number} merge content; historical protection, required-check policy, Ruleset Suite and merge-method authority remain unproven.`
         : `Current recording of PR #${number} merge content with historical protection, required-check policy, rule-suite and method authority unproven.`,
     });
   }
