@@ -84,7 +84,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common closeout --ref=<lane>   read-only closeout summary from the exact lane or canonical checkout',
       '  agentic-os release-common allocation-release --ref=<lane> [--cleanup-receipt=<json>]   free one fully closed workflow allocation while retaining its history',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
-      '  agentic-os complete-adlc --worktrees=<absolute-directory>   serial bounded closeout; preserve blocked lanes',
+      '  agentic-os complete-adlc --worktrees=<absolute-directory>   one bounded source + delivery closeout pass; show exact owner actions',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',

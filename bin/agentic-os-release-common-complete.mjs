@@ -551,19 +551,19 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
         };
         guard();
         const code = await complete(target.branch, Math.min(60_000, Math.max(1, Math.ceil(remaining / Math.max(1, eligibleRemaining--)))), guard);
-          const settled = code === 0 ? status(root, target.branch, policy, profile) : null;
-          result = { ...result, status: code === 2 ? 'waiting' : settled?.closeout?.missionState === 'source_complete'
-            ? ['delivery_pending', 'delivery_scope_pending'].includes(settled.closeout.adlcState)
-              ? settled.closeout.adlcState : 'source_complete' : 'blocked',
-          reason: code === 2 ? 'review-pending' : code !== 0 ? 'completion-refused'
-            : settled?.closeout?.missionState === 'source_complete' ? null : 'closeout-incomplete' };
+          const settled = code === 0 ? status(root, target.branch, policy, profile) : null, closeout = settled?.closeout,
+            adlcState = closeout?.adlcState ?? (closeout?.missionState === 'source_complete' ? 'source_complete' : null),
+            settledState = closeout?.missionState === 'source_complete' && ['complete', 'source_complete', 'delivery_pending', 'delivery_scope_pending', 'retirement_pending'].includes(adlcState) ? adlcState : null;
+          result = { ...result, status: code === 2 ? 'waiting' : code !== 0 ? 'blocked' : settledState ?? 'blocked', missionState: closeout?.missionState ?? null, adlcState,
+            completionScope: closeout?.completionScope ?? null, nextAction: closeout?.nextAction ?? null, reason: code === 2 ? 'review-pending' : code !== 0 ? 'completion-refused' : settledState ? null : 'closeout-incomplete' };
       }
     } catch (error) { result.reason = error.reason ?? error.message; }
     results.push(result);
-    out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v1', authority: false, event: 'worktree', ...result }));
+    out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false, event: 'worktree', ...result }));
   }
-  const completed = results.filter(row => row.status === 'source_complete').length;
-  out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v1', authority: false, event: 'summary',
-    selected: targets.length, completed, deliveryPending: results.filter(row => ['delivery_pending', 'delivery_scope_pending'].includes(row.status)).length, remaining: targets.length - completed, results }));
+  const completed = results.filter(row => ['complete', 'source_complete'].includes(row.status)).length, deliveryPending = results.filter(row => ['delivery_pending', 'delivery_scope_pending'].includes(row.status)).length, nextActions = results.filter(row => row.nextAction).map(({ path, ref, adlcState, completionScope, nextAction }) => ({ path, ref, adlcState, completionScope, ...nextAction }));
+  out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false, event: 'summary', selected: targets.length,
+    sourceComplete: results.filter(row => row.missionState === 'source_complete').length, completed, deliveryComplete: results.filter(row => row.status === 'complete' && ['delivery-bound', 'delivery-and-retirement-bound'].includes(row.completionScope)).length,
+    deliveryPending, retirementPending: results.filter(row => row.status === 'retirement_pending').length, remaining: targets.length - completed, nextActions, results }));
   return results.some(row => row.status === 'blocked') ? 1 : completed === targets.length ? 0 : 2;
 }
