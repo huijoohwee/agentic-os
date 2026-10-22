@@ -34,6 +34,7 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 - Declare always-load deltas; replace/lazy-load/reject.
 - Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.
 - On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md` and `../guides/PRD-TAD-ADR-MVP-GTM.md`.
+- Post-release Maintain loop: website `guidelines/adlc-artifact-continuity.md` owns it (pinned in the PRD guide).
 - Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.
 - Exact candidate; separate receipt per proof, retire, cleanup, sync, deploy and rollback.
 - Cleanup: exact global/local targets, no wildcards; prove bytes/paths/refs.
