@@ -26,11 +26,12 @@ artifact, or log authority. A transition takes exactly two required string input
 - `operation_payload`: exact canonical UTF-8 transition input bytes;
 - `operation_input_digest`: lowercase SHA-256 of those exact bytes.
 
-Payload: `{schema,request,plan,planByteDigest,predecessorIssuance}`; no result fields. Integrate uses issuance
-and may add `integrationMode:"retrospective-recovery"`. Retire uses `null` or fresh `predecessorAuthority`
-bound to the exact integration receipt. Record-only excludes cleanup. GitHub limit: 65,535 chars.
+Payload: `{schema,request,plan,planByteDigest,predecessorIssuance}`; no results. Integrate may add
+`integrationMode` (`retrospective-recovery` or `retrospective-content-inclusion`). Retire uses `null`
+or fresh `predecessorAuthority` bound to the integration receipt. Record-only excludes cleanup.
+GitHub limit: 65,535 chars.
 
-The exact run name is:
+The run name:
 
 ```yaml
 run-name: ADLC transition ${{ inputs.operation_input_digest }} @ ${{ github.workflow_sha }}
