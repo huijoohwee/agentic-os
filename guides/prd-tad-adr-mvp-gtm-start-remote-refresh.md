@@ -84,6 +84,15 @@ This is an internal reliability improvement for contributors using the free loca
 
 The recovery value hypothesis is fewer stranded checkouts after an interrupted readmit. Saved time and cash remain unmeasured; the feature adds no paid service, storage provider, or new transport.
 
+## Source-control economy
+
+Grounded on [Redesigning source control](https://www.anthropic.com/research/redesigning-source-control) at this repo's scale; lazy-loaded, no always-load bytes.
+
+- Read-only and review questions query the remote/provider (`git ls-remote`, `gh`, `reap --ref`); they need no lane or checkout.
+- Refs and open PRs are global cost: retire integrated or superseded lanes and PRs at once. When global reap exceeds its ref bound, use `reap --refs=<≤256 lanes>` batches and the consent-gated `cleanup-user sweep`; over-bound inventory is cleanup debt, not capacity.
+- Default TAD: plain Git, protected PR, affected checks. A custom VCS, cache tier, sparse/virtual checkout or post-merge testing needs an ADR with measured over-budget cost.
+- If fetch fails with "remote-https is not a git command" (bundled git without its exec path), put a full Git first on `PATH`.
+
 ## Release boundary
 
 The change does not authorize publication, merge, canonical fast-forward, cleanup, deployment, or production mutation. Protected integration still requires the existing lane publication, green checks, and exact integration receipt. Runtime/deployment evidence is not produced by this local acceptance check.

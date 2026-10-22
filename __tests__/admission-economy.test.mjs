@@ -60,16 +60,14 @@ test('zero declared allowance still refreshes the protected ref before refusing 
 test('START refreshes the protected branch before canonical checks and mission planning', async t => {
   const f = fixture(t), initialHead = headSha(f.policy.protectedRef, f.root);
   const updater = join(f.parent, 'updater');
-  await exec('git', ['clone', '--quiet', join(f.parent, 'remote.git'), updater]);
+  await exec('git', ['clone', '--quiet', '--branch', 'main', join(f.parent, 'remote.git'), updater]);
   await exec('git', ['-C', updater, 'config', 'user.name', 'Test']);
   await exec('git', ['-C', updater, 'config', 'user.email', 'test@example.invalid']);
   writeFileSync(join(updater, 'upstream.txt'), 'new protected revision\n');
   await exec('git', ['-C', updater, 'add', 'upstream.txt']);
   await exec('git', ['-C', updater, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'advance protected branch']);
   const expectedHead = (await exec('git', ['-C', updater, 'rev-parse', 'HEAD'])).stdout.trim();
-  const remote = join(f.parent, 'remote.git');
-  await exec('git', ['-C', remote, 'fetch', '--quiet', updater, 'main']);
-  await exec('git', ['-C', remote, 'update-ref', 'refs/heads/main', expectedHead]);
+  await exec('git', ['-C', updater, 'push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
   assert.notEqual(initialHead, expectedHead);
   assert.equal(headSha(f.policy.protectedRef, f.root), initialHead);
 
