@@ -18,7 +18,7 @@ lane: "runtime"
 universal_scope: true
 load_policy: "on-demand"
 guideline_revision: "3.4.0"
-guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/4e5227ad892f8b0125a31c83cf87e14dc3c2621c/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "4aa68116c276d479e3064553460c6aa4f202d1e6"
 worktree_id: "device-0232231d4a19--pending-readmit-recovery"
 agent_id: "codex-pending-readmit-recovery"

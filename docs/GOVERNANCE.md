@@ -98,19 +98,12 @@ and canonical refs before that first setup. The record has schema
 `agentic-os/repository-trust/v1` and pins exactly the configured repository identity plus canonical
 local and remote refs.
 
-The anchor lives in Git's common directory, not a worktree, so every registered worktree in one
-clone observes the same identity. It intentionally omits `profileDigest`: the canonical profile may
-adapt its capabilities, required checks, and adapter selection while retaining the same repository
-and canonical refs. A repository-name or canonical-ref change is an identity rotation, not ordinary
-profile evolution. The v1 harness provides no implicit rotation or recovery path; a missing,
-malformed, unsafe, or conflicting anchor blocks repository-bound commands, setup will not replace a
-conflicting record, and no lane profile, sibling repository, remote metadata, or environment value
-may reconstruct it implicitly.
-
-This anchor answers only which local clone identity may supply repository policy. It is not an
-authenticated authority source and grants no claim, lease, fence, review, integration, runtime,
-release, retirement, deletion, or cleanup permission. Those decisions remain at the external
-authenticated authority and receipt boundary described above.
+The anchor lives in Git's common directory, so every worktree of one clone observes the same
+identity. It omits `profileDigest`, so capabilities, checks, and adapters may evolve; a repository-name
+or canonical-ref change is an identity rotation. v1 has no implicit rotation or recovery: a missing,
+malformed, unsafe, or conflicting anchor blocks repository-bound commands, setup never replaces it,
+and no lane profile, sibling repository, remote metadata, or environment value may reconstruct it.
+The anchor only selects which clone may supply policy; it grants no authority (see Trust boundary).
 
 The v1 profile fixes runtime and release authority to `consumer`. Cleanup defaults all six targets to
 `retain`. A profile may explicitly select `quarantine` only for both worktree projection and registration;
@@ -118,28 +111,23 @@ it then derives `quarantine-worktree-cleanup-opt-in` instead of `retain-all-clea
 branches, and unreachable objects always remain retained. No adapter can promote itself or translate
 legacy deletion into `retire`.
 
-Provider-policy capabilities are optional and explicit: pull-request integration, merge-queue
-ordering, strict checks, squash-only or squash-preferred integration, and linear history are selected per
-consumer rather than imposed by the harness. Merge-queue ordering and strict checks conflict and
-cannot be selected together. Required check names and canonical refs always come from the profile.
-The v1 capability vocabulary is closed: unknown names are rejected rather than silently ignored;
-new semantics require an explicit contract revision. Provider-bound capabilities and required
-checks cannot be declared when no provider adapter is selected.
+Provider-policy capabilities are explicit per consumer: pull-request integration, merge-queue
+ordering, strict checks, squash-only or squash-preferred integration, and linear history. Merge-queue
+ordering and strict checks conflict. Check names and canonical refs come from the profile. The v1
+vocabulary is closed: unknown names are rejected; new semantics need a contract revision. Provider-bound
+capabilities and required checks need a selected provider adapter.
 
 `agentic-os observe` emits a shallow, profile-bound repository observation as JSON; `--deep` opts
 into raw tracked-byte hashing and `--provider` adds a provider projection. `agentic-os request
-<operation> --input=<json>` canonicalizes an unsigned Coordination Request only. Neither command
-acquires authority or performs cleanup. Provider observation dispatches only the exact adapter ID
-and version selected by the profile; unsupported adapters fail before provider access. Request
-construction is repository-independent and does not access Git or adapter state.
+<operation> --input=<json>` canonicalizes an unsigned Coordination Request without Git or adapter
+access. Neither command acquires authority or performs cleanup. Provider observation dispatches only
+the profile's exact adapter ID and version; unsupported adapters fail before provider access.
 
 ### Compatibility imports
 
 The only declared migration imports are `agentic-os/compat/git`, `lane-id`, `lane-records`, and
-`worktree`. They replace old unpublished `agentic-os/src/*` observation imports without creating
-authority, release, integration, retirement, or cleanup effects. New consumers use the root records
-API or the named Git/GitHub adapters; compatibility imports are narrow v1 contracts, not a second
-lifecycle controller.
+`worktree`. They replace old unpublished `agentic-os/src/*` observation imports without effects.
+New consumers use the root records API or named adapters; these are not a second lifecycle controller.
 
 ## Reference adapters
 
@@ -151,12 +139,9 @@ exact drift paths and ignored ownership. Doctor uses the separate `structural` h
 raw HEAD-to-index state (including intent-to-add), structural deletion or mode/type changes, and hidden
 index flags without reading tracked content or executing checkout filters. Same-type content, symlink
 targets, and nested submodule state are deferred, so `operationallyClean` is `null` unless structural
-evidence already makes it `false`. Owned paths
-carry an explicit `ownedPathScope` and are a bounded sample, count, and digest; they do not make
-`operationallyClean` false. Lane
-publication separately rejects visible untracked paths while preserving and skipping ignored-only
-ownership such as dependency trees and caches. Opt-in
-`deep` mode performs the slower raw tracked-byte audit.
+evidence makes it `false`. Owned paths carry an explicit `ownedPathScope` (bounded sample, count, and
+digest) and never make it false. Lane publication rejects visible untracked paths but skips ignored-only
+ownership such as dependency trees and caches.
 
 The GitHub adapter derives the remote name from the profile's canonical remote ref. It binds the
 host-qualified repository to one unambiguous fetch URL and one equal push URL before provider
@@ -168,6 +153,6 @@ branch-named provider API cannot make that check and write atomic; a raced write
 as side-effect-free refusal.
 The compatibility `enqueue` export may create or refresh that exact review and recognize an
 externally created queue entry; it never arms auto-merge or grants protected-integration authority.
-Neither reference adapter owns consumer runtime or release authority, and neither performs cleanup.
-Transport success, HTTP success, a green check, or a merged review is only a projection until the
-consumer records its authenticated authority transition.
+Neither adapter owns runtime or release authority or performs cleanup. Transport or HTTP success, a
+green check, or a merged review is only a projection until the consumer records its authenticated
+authority transition.
