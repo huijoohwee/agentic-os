@@ -89,6 +89,13 @@ test('procedural asset discovery reuses text binding without broadening image co
   assert.doesNotMatch(executableCatalog, /\/asset\.create/);
 });
 
+test('WebMCP binding prefers document.modelContext and falls back to navigator.modelContext', () => {
+  const row = dictionaryDocuments().get('DICTIONARY-BINDING.md').split('\n')
+    .find(line => line.startsWith('| `@webmcp-surface`'));
+  assert.match(row, /feature-detect `document\.modelContext`[^|]*else legacy `navigator\.modelContext\.registerTool`/);
+  assert.match(row, /absent from both entry points fails visibly/);
+});
+
 test('Python learning discovery is the exact native tuple without an executable CLI route', () => {
   const documents = dictionaryDocuments();
   const command = documents.get('DICTIONARY-COMMAND.md');
