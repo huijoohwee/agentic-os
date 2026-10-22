@@ -43,6 +43,16 @@ checks and rule suite, and ancestry in the current protected ref. The receipt re
 claim squash, or authorize a new provider merge. Changed trees, bases, events, or issuer
 evidence fail. This mode is unavailable to successor-adoption authority.
 
+For the operator's current-facts-only path, prepare the exact transition payload with
+`node bin/agentic-os-transition.mjs prepare-current-facts --input=<json-file>`. The input must already
+bind the exact effect plan and fresh initial retrospective issuance for the merged review. The command
+adds no per-review policy row and only emits canonical workflow inputs; dispatch, evidence publication,
+integration, retirement and cleanup remain separately authorized. The live observer still checks the
+reviewed head and base, merge event, equal trees, current required checks and suite, and ancestry to the
+current protected ref. It returns exact content inclusion while recording the integration method and
+historical protection as unproven. Use the enrolled historical-content mode only when a reviewed
+historical-content claim is explicitly required.
+
 Provider rebase proof is deliberately bounded: 1–32 linear source commits must already start at
 the chosen protected base. The result must end at that same base and preserve every ordered tree,
 author and message while rewriting commit IDs. Observation allows at most 64 commit reads and

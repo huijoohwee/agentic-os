@@ -14,7 +14,7 @@ lifecycle_status: active
 ---
 # Exact current-recovery enrollments
 
-These records bind exact current observations in `.agentic-os/github-transition-policy.json`. They do not establish historical authority or grant effects beyond each separately authorized plan and receipt.
+These records bind exact current observations in `.agentic-os/github-transition-policy.json`. They grant no effects. For ordinary current-facts integration, use reusable `prepare-current-facts` in [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md); add a per-review enrollment only for an explicit historical-content claim.
 
 ## Current-quarantine discard acknowledgement adoption — agentic-os PR #475 — 2026-10-17
 
