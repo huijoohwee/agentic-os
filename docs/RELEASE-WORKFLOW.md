@@ -4,10 +4,10 @@
 `complete --ref=<lane>` waits for exact integration and reports closeout while keeping the lane mounted.
 `closeout --ref=<lane>` is read-only; `close` is diagnostic.
 
-Use `agentic-os completion status --ref=<lane> --cleanup-receipt=<path>` after discard
-to verify local loss; provider retirement remains pending.
+`agentic-os complete-adlc --worktrees=<dir>` reports per-lane ADLC state, scope and owner action in a bounded
+pass; exit `2` keeps END ADLC open.
 
-Cleanup is separate: exact eligible targets require `--bundle --stopped`.
-Source closeout grants no cleanup, sync, or production authority; see [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
+Cleanup is separate: exact eligible targets require `--bundle --stopped`. Source closeout grants no cleanup, sync,
+or production authority; see [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
 
 `retire-empty-active --ref=<lane>` quarantines a clean lane at its base; refs, objects, and registration remain.

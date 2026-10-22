@@ -565,12 +565,18 @@ test('progressive completion does not count deploy-bound source closeout as end-
     inventory: () => [{ path: join(directory, 'delivery'), branch: ref, head }],
     record: () => ({ state: 'published', head, worktree: join(directory, 'delivery') }),
     complete: async () => 0,
-    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'delivery_pending' } }),
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'delivery_pending',
+      completionScope: 'delivery-bound', nextAction: { id: 'deploy-workflow', owner: 'product-owner', command: 'Follow guides/DEPLOY-WORKFLOW.md.' } } }),
     out: line => events.push(JSON.parse(line)) });
   assert.equal(code, 2);
   assert.equal(events[0].status, 'delivery_pending');
+  assert.equal(events[0].nextAction.owner, 'product-owner');
   assert.equal(events.at(-1).completed, 0);
   assert.equal(events.at(-1).deliveryPending, 1);
+  assert.equal(events.at(-1).schema, 'agentic-os/progressive-completion/v2');
+  assert.deepEqual(events.at(-1).nextActions, [{ path: join(directory, 'delivery'), ref,
+    adlcState: 'delivery_pending', completionScope: 'delivery-bound', id: 'deploy-workflow',
+    owner: 'product-owner', command: 'Follow guides/DEPLOY-WORKFLOW.md.' }]);
 });
 
 test('progressive completion retains docs delivery-scope assessment as pending', async t => {
@@ -589,6 +595,47 @@ test('progressive completion retains docs delivery-scope assessment as pending',
   assert.equal(events[0].status, 'delivery_scope_pending');
   assert.equal(events.at(-1).completed, 0);
   assert.equal(events.at(-1).deliveryPending, 1);
+});
+
+test('progressive completion marks a delivery-bound disposition as ADLC complete', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const ref = 'agent/test-device/delivery-complete';
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: join(directory, 'delivery-complete'), branch: ref, head }],
+    record: () => ({ state: 'published', head, worktree: join(directory, 'delivery-complete') }),
+    complete: async () => 0,
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'complete',
+      completionScope: 'delivery-bound', nextAction: null } }),
+    out: line => events.push(JSON.parse(line)) });
+  assert.equal(code, 0);
+  assert.equal(events[0].status, 'complete');
+  assert.equal(events[0].adlcState, 'complete');
+  assert.equal(events.at(-1).completed, 1);
+  assert.equal(events.at(-1).deliveryComplete, 1);
+  assert.equal(events.at(-1).deliveryPending, 0);
+  assert.equal(events.at(-1).remaining, 0);
+});
+
+test('progressive completion keeps preservation retirement pending with its owner action', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const ref = 'agent/test-device/retirement-pending';
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: join(directory, 'retirement-pending'), branch: ref, head }],
+    record: () => ({ state: 'published', head, worktree: join(directory, 'retirement-pending') }),
+    complete: async () => 0,
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'retirement_pending',
+      completionScope: 'retirement-bound', nextAction: { id: 'verify-preservation-retirement', owner: 'authority-operator', command: 'Bind the current receipts.' } } }),
+    out: line => events.push(JSON.parse(line)) });
+  assert.equal(code, 2);
+  assert.equal(events[0].status, 'retirement_pending');
+  assert.equal(events.at(-1).retirementPending, 1);
+  assert.equal(events.at(-1).nextActions[0].owner, 'authority-operator');
 });
 
 test('progressive completion refuses changed identity and false completion; budget prevents later effects', async t => {
