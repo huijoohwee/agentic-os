@@ -10,15 +10,17 @@ import { parseNoCiArguments } from '../bin/agentic-os-cleanup-no-ci.mjs';
 const NOW = Date.parse('2026-09-14T02:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args,
   { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-function fixture(t) {
+function fixture(t, { profiled = false, changePath = 'file.txt' } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-no-ci-')));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'repo'), target = join(parent, 'lane'); mkdirSync(root);
   git(root, 'init', '--quiet', '--initial-branch=main');
+  if (profiled) writeFileSync(join(root, '.agentic-os.json'), '{}\n');
+  mkdirSync(join(root, changePath, '..'), { recursive: true });
   git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid');
-  writeFileSync(join(root, 'file.txt'), 'base\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+  writeFileSync(join(root, changePath), 'base\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
   const branch = 'agent/device/task'; git(root, 'worktree', 'add', '--quiet', '-b', branch, target);
-  writeFileSync(join(target, 'file.txt'), 'done\n'); git(target, 'add', '.'); git(target, 'commit', '--quiet', '-m', 'candidate');
+  writeFileSync(join(target, changePath), 'done\n'); git(target, 'add', '.'); git(target, 'commit', '--quiet', '-m', 'candidate');
   const head = git(target, 'rev-parse', 'HEAD');
   git(root, 'merge', '--squash', '--quiet', branch); git(root, 'commit', '--quiet', '-m', 'merge');
   const merge = git(root, 'rev-parse', 'HEAD'); git(root, 'update-ref', 'refs/remotes/origin/main', merge);
@@ -56,6 +58,17 @@ test('separate no-CI consent quarantines only the exact merged, zero-check lane'
   assert.equal(receipt.protectionProven, false); assert.equal(receipt.claimRetired, false);
   assert.equal(existsSync(s.target), false); assert.equal(git(s.root, 'show-ref'), before);
   assert.equal(s.apply(plan, { now: () => NOW + 900001 }).replayed, true);
+});
+
+test('docs-only local consent survives policy rechecks for a profile-governed repository', t => {
+  const s = fixture(t, { profiled: true, changePath: 'docs/README.md' });
+  const plan = planUserCleanup({ ...s.input, changeClass: 'docs-only' }, s.options);
+  assert.equal(plan.changeClass.fastPath, true);
+  const receipt = s.apply(plan);
+  assert.equal(receipt.authorityTerminalState, 'local-consent');
+  assert.equal(receipt.changeClass.observed, 'docs-only');
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(existsSync(s.target), false);
 });
 
 test('no-CI refuses present checks, legacy statuses, and provider drift', t => {
