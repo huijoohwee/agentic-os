@@ -120,7 +120,8 @@ function descriptor(value) {
   const plan = snapshot(value), required = ['schema', 'cwd', 'ref', 'expectedHead', 'targetRef', 'expectedTarget', 'stopped', 'journalPath', 'oldRef', 'candidateRef', 'mergeBase', 'authoredPaths', 'incomingPaths', 'dirty', 'candidateHead'];
   if (!plan || required.some(key => !Object.hasOwn(plan, key)) || Object.keys(plan).some(key => ![...required, 'digest', 'resume', 'liveHead', 'squashPredecessor'].includes(key)) || plan.schema !== SCHEMA || plan.stopped !== true || !SHA.test(plan.expectedHead ?? '') || !SHA.test(plan.expectedTarget ?? '') || !SHA.test(plan.mergeBase ?? '') || plan.candidateHead !== null && !SHA.test(plan.candidateHead ?? '')) fail('journal');
   if (!same(journalLocation(plan), { journalPath: plan.journalPath, oldRef: plan.oldRef, candidateRef: plan.candidateRef }) || plan.cwd !== realpathSync(plan.cwd) || observeGit(['merge-base', plan.expectedHead, plan.expectedTarget], { cwd: plan.cwd }) !== plan.mergeBase) fail('journal');
-  if (!Array.isArray(plan.dirty) || !Array.isArray(plan.authoredPaths) || !Array.isArray(plan.incomingPaths) || !plan.incomingPaths.length || !same(changes(plan.cwd, plan.mergeBase, plan.expectedHead), plan.authoredPaths) || !same(changes(plan.cwd, plan.mergeBase, plan.expectedTarget), plan.incomingPaths)) fail('journal');
+  if (!Array.isArray(plan.dirty) || !Array.isArray(plan.authoredPaths) || !Array.isArray(plan.incomingPaths) || !same(changes(plan.cwd, plan.mergeBase, plan.expectedHead), plan.authoredPaths) || !same(changes(plan.cwd, plan.mergeBase, plan.expectedTarget), plan.incomingPaths)) fail('journal');
+  if (plan.incomingPaths.length === 0 && headSha(`${plan.mergeBase}^{tree}`, plan.cwd) !== headSha(`${plan.expectedTarget}^{tree}`, plan.cwd)) fail('journal');
   if (Object.hasOwn(plan, 'squashPredecessor')) {
     const binding = plan.squashPredecessor;
     if (!binding || Object.keys(binding).sort().join(',') !== 'head,ref,tree'
@@ -196,7 +197,7 @@ export function planLaneAlignment(input) {
   const mergeBase = observeGit(['merge-base', input.expectedHead, input.expectedTarget], { cwd: input.cwd });
   if (!SHA.test(mergeBase ?? '')) fail('base');
   const authoredPaths = changes(input.cwd, mergeBase, input.expectedHead), incomingPaths = changes(input.cwd, mergeBase, input.expectedTarget), dirty = dirtySnapshot(input.cwd, input.expectedHead);
-  if (!incomingPaths.length) fail('empty');
+  if (incomingPaths.length === 0 && headSha(`${mergeBase}^{tree}`, input.cwd) !== headSha(`${input.expectedTarget}^{tree}`, input.cwd)) fail('empty');
   const occupied = [...authoredPaths, ...dirty.map(row => row.path)];
   const overlapping = incomingPaths.some(path => occupied.some(other => overlap(path, other)));
   const squashPredecessor = overlapping ? squashBinding(input) : null;
@@ -236,7 +237,7 @@ export function prepareLaneAlignment(plan) {
     if (!SHA.test(merged)) fail('merge'); artifacts.candidateTree = merged; artifacts.objectWriteResultUnknown = false;
     const seconds = Math.max(...[plan.expectedHead, plan.expectedTarget].map(ref => Number(observeGit(['show', '--no-patch', '--format=%ct', ref], { cwd: plan.cwd }))));
     artifacts.objectWriteResultUnknown = true;
-    const candidateHead = git(['-c', 'commit.gpgSign=false', 'commit-tree', merged, '-p', plan.expectedHead, '-p', plan.expectedTarget], { cwd: plan.cwd, input: `agentic-os exact ${plan.squashPredecessor ? 'squash-equivalent' : 'disjoint'} lane alignment\n`, env: { GIT_AUTHOR_NAME: 'agentic-os', GIT_AUTHOR_EMAIL: 'alignment@agentic-os.invalid', GIT_COMMITTER_NAME: 'agentic-os', GIT_COMMITTER_EMAIL: 'alignment@agentic-os.invalid', GIT_AUTHOR_DATE: `${seconds} +0000`, GIT_COMMITTER_DATE: `${seconds} +0000` } });
+    const candidateHead = git(['-c', 'commit.gpgSign=false', 'commit-tree', merged, '-p', plan.expectedHead, '-p', plan.expectedTarget], { cwd: plan.cwd, input: `agentic-os exact ${plan.squashPredecessor ? 'squash-equivalent' : plan.incomingPaths.length === 0 ? 'topology-only' : 'disjoint'} lane alignment\n`, env: { GIT_AUTHOR_NAME: 'agentic-os', GIT_AUTHOR_EMAIL: 'alignment@agentic-os.invalid', GIT_COMMITTER_NAME: 'agentic-os', GIT_COMMITTER_EMAIL: 'alignment@agentic-os.invalid', GIT_AUTHOR_DATE: `${seconds} +0000`, GIT_COMMITTER_DATE: `${seconds} +0000` } });
     artifacts.candidateHead = candidateHead; artifacts.objectWriteResultUnknown = false; plan = { ...plan, candidateHead }; verifyUnion(plan, candidateHead);
     const parent = dirname(dirname(plan.journalPath));
     if (!existsSync(parent)) mkdirSync(parent, { mode: 0o700 }); privateDirectory(parent);
@@ -269,16 +270,15 @@ export function applyLaneAlignment(input) {
   if (headSha('HEAD', plan.cwd) === plan.candidateHead) { verifyCompleted(plan); return receipt(plan, true); }
   identity(plan); cleanIndex(plan.cwd, plan.expectedHead); assertDirty(plan);
   if (!same(dirtySnapshot(plan.cwd, plan.expectedHead), plan.dirty)) fail('partial');
-  if (plan.squashPredecessor) {
-    // Identical index/tree: no checkout, staging or quarantine operation is needed.
+  if (plan.squashPredecessor || plan.incomingPaths.length === 0) {
     const artifacts = { effectsRetained: true, operation: 'lane-alignment', journalPath: plan.journalPath,
       oldRef: plan.oldRef, candidateRef: plan.candidateRef, previousHead: plan.expectedHead,
       candidateHead: plan.candidateHead, targetHead: plan.expectedTarget, refPublished: false };
     try {
-      assertSquashBinding(plan);
+      if (plan.squashPredecessor) assertSquashBinding(plan);
+      else if (headSha(`${plan.mergeBase}^{tree}`, plan.cwd) !== headSha(`${plan.expectedTarget}^{tree}`, plan.cwd)) fail('postcondition');
       atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.candidateHead, plan.expectedHead,
-        [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead],
-          [plan.candidateRef, plan.candidateHead], ...alignmentFences(plan)], plan.cwd);
+        [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead], [plan.candidateRef, plan.candidateHead], ...alignmentFences(plan)], plan.cwd);
       artifacts.refPublished = true;
       verifyCompleted(plan); return receipt(plan, plan.resume);
     } catch (error) {
