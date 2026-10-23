@@ -517,6 +517,18 @@ test('completion verifies recovery after canonical and policy changes without gr
   assert.equal(status().closeout.cleanupSatisfied, false);
 });
 
+test('completion still finds exact retained cleanup when the quarantine root has more than 256 entries', t => {
+  const s = fixture(t), receipt = s.apply(s.plan());
+  const quarantineRoot = join(s.root, '.git', 'agentic-os-cleanup-quarantine');
+  for (let index = 0; index < 300; index += 1)
+    mkdirSync(join(quarantineRoot, `${String(index).padStart(64, '0')}`, 'registration'), { recursive: true });
+  const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile);
+  assert.equal(receipt.result, 'quarantined');
+  assert.equal(status.cleanupVerified, true);
+  assert.equal(status.closeout.laneDisposition, 'quarantined');
+  assert.equal(status.closeout.missionState, 'source_complete');
+});
+
 test('retained cleanup does not certify an advanced branch or changed operation metadata', t => {
   const s = fixture(t), receipt = s.apply(s.plan());
   const status = () => inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile);

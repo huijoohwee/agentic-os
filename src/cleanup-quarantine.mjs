@@ -16,6 +16,7 @@ import { freezeCleanupRecord as frozen, validateCurrentQuarantineReconciliation,
 export { observeQuarantineManifest } from './cleanup-manifest.mjs';
 const UTF8 = new TextDecoder('utf-8', { fatal: true }), QUARANTINE_ROOT = 'agentic-os-cleanup-quarantine',
   OPERATION_SCHEMA = 'agentic-os/worktree-quarantine-operation/v1';
+const QUARANTINE_OBSERVATION_ENTRY_CEILING = 16_384;
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
 function absent(path, label) {
@@ -188,7 +189,7 @@ function retainedInventorySnapshot(root, operation, registration, canonicalRef, 
 export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef, reconciliation = null, diagnostic = false, retirementTarget = false } = {}) {
   try {
     const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT); privateDirectory(base, 'cleanup-quarantine-root');
-    const exactStat = typeof coordinate === 'string' && /^[a-f0-9]{64}$/u.test(coordinate) ? lstatSync(join(base, coordinate), { throwIfNoEntry: false }) : null, entries = coordinate === null ? boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root') : exactStat?.isDirectory() ? [{ name: coordinate, isDirectory: () => true, isSymbolicLink: () => false }] : [];
+    const exactStat = typeof coordinate === 'string' && /^[a-f0-9]{64}$/u.test(coordinate) ? lstatSync(join(base, coordinate), { throwIfNoEntry: false }) : null, entries = coordinate === null ? boundedDirectoryEntries(base, QUARANTINE_OBSERVATION_ENTRY_CEILING, 'cleanup-quarantine-root') : exactStat?.isDirectory() ? [{ name: coordinate, isDirectory: () => true, isSymbolicLink: () => false }] : [];
     for (const entry of entries) {
       if (coordinate !== null && entry.name !== coordinate) continue;
       if (!/^[a-f0-9]{64}$/u.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
