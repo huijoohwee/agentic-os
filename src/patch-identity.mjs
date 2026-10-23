@@ -97,20 +97,19 @@ function treeEntries(revision, paths, { cwd } = {}) {
 }
 /** Exact mode/type/blob state for every path changed by the lane. */
 export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
-  const mergeBase = observeGit(['merge-base', base, ref], { cwd, allowFail: true });
-  if (!mergeBase) return null;
-  const paths = changedPaths(mergeBase, ref, { cwd });
+  const ancestor = ref !== base && isAncestor(ref, base, cwd),
+    basis = ancestor ? observeGit(['show', '-s', '--format=%P', ref], { cwd }).trim().split(/\s+/u).filter(Boolean)
+      : observeGit(['merge-base', base, ref], { cwd, allowFail: true });
+  if (ancestor ? basis.length !== 1 : !basis) return null;
+  const paths = changedPaths(ancestor ? basis[0] : basis, ref, { cwd });
   if (!paths || paths.length === 0) return null;
-  // Reuse one bounded read per tree/batch, never a proof across observations or effects.
   for (const batch of projectionBatches(paths)) {
     if (batch === null) return null;
-    const baseEntries = treeEntries(base, batch, { cwd });
-    if (!baseEntries) return null;
-    const laneEntries = treeEntries(ref, batch, { cwd });
-    if (!laneEntries || !baseEntries.equals(laneEntries)) return null;
+    const source = treeEntries(ancestor ? ref : base, batch, { cwd }), target = treeEntries(ancestor ? base : ref, batch, { cwd });
+    if (!source || !target || !source.equals(target)) return null;
   }
-  return { kind: 'exact-tree-projection', detail: `${paths.length} lane-touched path(s) exactly match ${base}`,
-    pathCount: paths.length, pending: [] };
+  return { kind: ancestor ? 'ancestor-content-inclusion' : 'exact-tree-projection',
+    detail: `${paths.length} changed path(s) exactly match ${base}`, pathCount: paths.length, pending: [] };
 }
 const HISTORICAL_TREE_SCAN_LIMIT = 512, ALIGNMENT_ANCESTRY_LIMIT = 32;
 function laneTipHasTreeDelta(tip, base, cwd, depth = 0) {
