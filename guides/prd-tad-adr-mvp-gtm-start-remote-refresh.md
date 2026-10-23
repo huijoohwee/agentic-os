@@ -88,9 +88,10 @@ The recovery value hypothesis is fewer stranded checkouts after an interrupted r
 
 Grounded on [Redesigning source control](https://www.anthropic.com/research/redesigning-source-control) at this repo's scale; lazy-loaded, no always-load bytes.
 
-- Read-only and review questions query the remote/provider (`git ls-remote`, `gh`, `reap --ref`); they need no lane or checkout.
-- Refs and open PRs are global cost: retire integrated or superseded lanes and PRs at once. When global reap exceeds its ref bound, use `reap --refs=<≤256 lanes>` batches and the consent-gated `cleanup-user sweep`; over-bound inventory is cleanup debt, not capacity.
-- Default TAD: plain Git, protected PR, affected checks. A custom VCS, cache tier, sparse/virtual checkout or post-merge testing needs an ADR with measured over-budget cost.
+- Reuse current provider observations for metadata and review questions; query refs without a checkout when possible. Hydrate only exact shallow/path content needed for local byte or tree evidence.
+- Refs, open PRs, checkouts and caches are global cost. When a global `reap` survey exceeds its 256-ref bound, split it into `reap --refs=<comma-separated exact lane refs>` batches of at most 256. This is read-only classification; it grants no authority to retire lanes, close PRs, delete branches or clean worktrees.
+- Keep inventory, retirement, PR closure, branch deletion and worktree cleanup as separate effects. Follow [user cleanup](./USER-CLEANUP.md) and require each effect's exact authority and receipt; preserve deferred targets.
+- Default TAD: Git, protected PR and affected pre-merge checks. Consider a custom VCS, cache tier, sparse/virtual checkout or post-merge test regime only after repeatable measurements exceed the declared budget and an ADR approves it. Post-merge checks supplement required pre-merge checks.
 - If fetch fails with "remote-https is not a git command" (bundled git without its exec path), put a full Git first on `PATH`.
 
 ## Release boundary
