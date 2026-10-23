@@ -65,8 +65,14 @@ Optional `reuse` on `native-design-check/v1` has exact keys `schema`, `modules`,
 Each module declares `{id, source, symbol, owns, uses}`: source is an opaque supplied source ID; symbol
 must occur in its text; owns lists concern IDs; uses lists module IDs. Both lists are unique and bounded.
 Every joined concern has one matching declared owner ID and source; aliases of one source/symbol and
-competing concern owners fail. Adapters consume the owner's module through uses rather than declaring
-another owner. The checker evaluates these declarations, not actual imports or semantic equivalence.
+competing concern owners fail. `owns` marks the sole declared implementation/contract owner for those
+concerns; `uses` records a module's direct dependencies. Read each `uses` entry as a directed edge from
+consumer to provider. The dependency graph must be acyclic, with providers built and released before
+their consumers. Adapters consume the provider's declared contract through `uses`; they may translate
+or compose it, but do not claim the same concern, create a competing implementation or maintain
+conflicting variants. Runtime request, response, event and data-flow direction is documented separately
+and is not inferred from this graph. The checker evaluates these declarations, not actual imports or
+semantic equivalence.
 
 Each generated record declares `{output, producer, inputs, recipe, inputDigest, outputDigest}`.
 Output, inputs and recipe reference supplied sources; producer references a declared module. Inputs
