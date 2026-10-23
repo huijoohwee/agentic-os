@@ -71,8 +71,8 @@ function policy(root, mode = MODE, { changeClass = undefined } = {}) {
 function resolvePolicy(root, mode, resolver = null, options = {}) {
   return typeof resolver === 'function' ? resolver(root, mode, options) : policy(root, mode, options);
 }
-function observePolicy(mechanics, root, resolver = null) {
-  const current = resolvePolicy(root, mechanics.mode, resolver);
+function observePolicy(mechanics, root, resolver = null, changeClass = undefined) {
+  const current = resolvePolicy(root, mechanics.mode, resolver, { changeClass });
   if (governanceDigest(current) !== mechanics.profileDigest || current.canonical !== mechanics.expectedCanonicalRevision
     || `github.com/${current.repository}` !== mechanics.repository) refuse('local-policy-drift');
   return { root, canonicalRevision: current.canonical,
@@ -264,7 +264,8 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
     mergedState(plan, options, review);
     plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root,
-      observePolicy: (configured, configuredRoot) => observePolicy(configured, configuredRoot, policyResolver) });
+      observePolicy: (configured, configuredRoot) => observePolicy(configured, configuredRoot,
+        policyResolver, changeClassInfo.fastPath ? changeClassInfo.declared : undefined) });
     plan.planDigest = governanceDigest(plan);
     return validatePlan(plan);
   });
@@ -291,11 +292,11 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
   return locked(root, () => {
     refuseUnknownLaneBytes(plan.targetPath, root, { recovery: plan.mode === RECOVERY_MODE });
     const m = mechanics(plan), eligible = eligibility(plan);
-    observePolicy(m, root, policyResolver); mergedState(plan, options);
+    const changeClass = plan.changeClass?.fastPath === true ? plan.changeClass.declared : undefined; observePolicy(m, root, policyResolver, changeClass); mergedState(plan, options);
     if (plan.mode === RECOVERY_MODE && (!same(resolvePolicy(root, plan.mode, policyResolver), plan.recoveryPolicy)
       || plan.recoveryPolicy.requiredChecks.some(name => !plan.requiredChecks.includes(name)))) refuse('recovery-policy-drift');
     const configuredObservePolicy = (configured, configuredRoot) =>
-      observePolicy(configured, configuredRoot, policyResolver);
+      observePolicy(configured, configuredRoot, policyResolver, changeClass);
     let applied = classifyExistingWorktreeQuarantine(m, eligible, {
       cwd: root, observePolicy: configuredObservePolicy,
     });
@@ -311,7 +312,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
           cwd: root, eligibility: eligible, observePolicy: configuredObservePolicy,
           authorizeEffects() {
             const time = now(); if (time < plan.issuedAt || time >= plan.expiresAt) refuse('expired');
-            observePolicy(m, root, policyResolver); return new Date(time).toISOString();
+            observePolicy(m, root, policyResolver, changeClass); return new Date(time).toISOString();
           } });
       } catch (error) {
         Object.assign(error, { retainedOperation: true, operationResult: null,
