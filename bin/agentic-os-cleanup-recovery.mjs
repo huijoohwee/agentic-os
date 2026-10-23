@@ -1,7 +1,8 @@
 /** Explicit operator recovery policy; never provider authority or a merge-method choice. */
 import { canonicalJson } from '../src/governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef } from '../src/git-repository.mjs';
-import { exactTreeProjectionProof, reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
+import { exactAncestorContentInclusionProof, exactTreeProjectionProof,
+  reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 export const refuse = reason => { throw Object.assign(new Error(`blocked-user-cleanup-${reason}`), { reason }); };
 export const RECOVERY_MODE = 'explicit-local-user-consent-recovery';
 export const RECOVERY_LIMITS = Object.freeze({
@@ -49,8 +50,10 @@ export function recoveryIntegration(plan, read) {
   if (!plan.detachedHead) return integration;
   if (read(plan.root, ['merge-base', '--is-ancestor', plan.detachedHead, plan.head], { allowFail: true }) === null)
     refuse('detached-not-reviewed-ancestor');
+  const detachedInclusion = exactAncestorContentInclusionProof(plan.detachedHead, plan.merge, { cwd: plan.root })
+    ?? contentInclusion(plan, plan.detachedHead, read);
   return { ...integration, detached: { head: plan.detachedHead, reviewedHead: plan.head,
-    inclusion: contentInclusion(plan, plan.detachedHead, read) } };
+    inclusion: detachedInclusion } };
 }
 /** Resolve one authenticated check locator and bind its provider run to the reviewed source. */
 export function reviewedCheckRun(value, pull, c, read, skipOtherWorkflow = false) {

@@ -13,13 +13,36 @@ import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup, planQua
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { CLEANUP_EFFECTS, RETAINED_EFFECTS, createWorktreeCleanupEligibility,
   validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
-import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryIntegration } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { inferMergedReviewWorkflow } from '../bin/agentic-os-cleanup-review.mjs';
 import { put } from '../src/lane-records.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+function ancestorMergeFixture(t, overwriteSource = false) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-ancestor-inclusion-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'root'); mkdirSync(root);
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid');
+  writeFileSync(join(root, 'source.txt'), 'base\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+  writeFileSync(join(root, 'source.txt'), 'delivered\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'source');
+  const detachedHead = git(root, 'rev-parse', 'HEAD');
+  git(root, 'switch', '--quiet', '-c', 'agent/device-0232231d4a19/reviewed');
+  writeFileSync(join(root, 'review.txt'), 'reviewed successor\n');
+  if (overwriteSource) writeFileSync(join(root, 'source.txt'), 'overwritten\n');
+  git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'reviewed successor');
+  const head = git(root, 'rev-parse', 'HEAD');
+  git(root, 'switch', '--quiet', 'main'); git(root, 'merge', '--squash', '--quiet', 'agent/device-0232231d4a19/reviewed');
+  git(root, 'commit', '--quiet', '-m', 'merged successor');
+  const merge = git(root, 'rev-parse', 'HEAD');
+  const read = (cwd, args, { allowFail = false } = {}) => {
+    try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    catch (error) { if (allowFail) return null; throw error; }
+  };
+  return { plan: { root, detachedHead, head, merge }, read };
+}
 const staleSocket = path => { const source = join(tmpdir(), `agentic-os-${process.pid}-${Date.now()}.ipc`), signal = spawnSync(process.execPath, ['-e', 'const net = require("node:net"); net.createServer().listen(process.argv[1], () => process.kill(process.pid, "SIGKILL"));', source], { stdio: ['ignore', 'ignore', 'pipe'] }).signal; if (signal === 'SIGKILL') renameSync(source, path); return signal; };
 function fixture(t, concurrentBase = false, detached = false, mergedProjection = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-consent-recovery-')));
@@ -277,6 +300,14 @@ test('explicit detached ancestor recovery keeps the checked PR head distinct and
   assert.equal(readFileSync(join(receipt.projectionQuarantinePath, 'runtime/evidence.txt'), 'utf8'), 'retained local evidence');
   assert.equal(receipt.providerAuthority, false); assert.equal(receipt.claimRetired, false);
   assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
+});
+
+test('detached reviewed base is included only while its original changed paths remain exact', t => {
+  const s = ancestorMergeFixture(t), p = recoveryIntegration(s.plan, s.read);
+  assert.equal(p.detached.inclusion.kind, 'ancestor-content-inclusion');
+  assert.equal(p.detached.inclusion.pathCount, 1);
+  const overwritten = ancestorMergeFixture(t, true);
+  assert.throws(() => recoveryIntegration(overwritten.plan, overwritten.read), /source-not-integrated/);
 });
 test('detached cleanup requires explicit recovery and a truly detached target', t => {
   const s = fixture(t);

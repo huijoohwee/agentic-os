@@ -113,6 +113,22 @@ export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
     pathCount: paths.length, pending: [] };
 }
 const HISTORICAL_TREE_SCAN_LIMIT = 512, ALIGNMENT_ANCESTRY_LIMIT = 32;
+/** Verify a source commit's own changed paths remain exact in a later reviewed tree. */
+export function exactAncestorContentInclusionProof(source, target, { cwd } = {}) {
+  if (!headSha(source, cwd) || !headSha(target, cwd) || !isAncestor(source, target, cwd)) return null;
+  const parents = observeGit(['show', '-s', '--format=%P', source], { cwd }).trim().split(/\s+/u).filter(Boolean);
+  if (parents.length !== 1) return null;
+  const paths = changedPaths(parents[0], source, { cwd });
+  if (!paths || paths.length === 0 || paths.length > HISTORICAL_TREE_SCAN_LIMIT) return null;
+  for (const batch of projectionBatches(paths)) {
+    if (batch === null) return null;
+    const sourceEntries = treeEntries(source, batch, { cwd });
+    const targetEntries = treeEntries(target, batch, { cwd });
+    if (!sourceEntries || !targetEntries || !sourceEntries.equals(targetEntries)) return null;
+  }
+  return { kind: 'ancestor-content-inclusion',
+    detail: `${paths.length} source-touched path(s) remain exact at ${target}`, pathCount: paths.length, pending: [] };
+}
 function laneTipHasTreeDelta(tip, base, cwd, depth = 0) {
   if (depth === ALIGNMENT_ANCESTRY_LIMIT) return false;
   const row = observeGit(['show', '-s', '--format=%P %T', tip], { cwd }).trim().split(/\s+/u),
