@@ -30,11 +30,8 @@ function classifyChangeClass(root, ref) {
 const APPLICABILITY = Object.freeze({ 'docs-only': { 'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' }, 'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' } } });
 const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason);
 function localCleanupReceipt(cleanupReceipt, ref, laneHead, laneRecord) {
-  return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
-    && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
-    && cleanupReceipt.review?.branch === ref
-    && cleanupReceipt.targetPath === laneRecord?.worktree
-    ? cleanupReceipt : null;
+  return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1' && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
+    && cleanupReceipt.review?.branch === ref && cleanupReceipt.targetPath === laneRecord?.worktree ? cleanupReceipt : null;
 }
 const cleanupObserved = (root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef) => {
   return !laneHead ? false : cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
