@@ -45,8 +45,11 @@ function fixture(t, incoming = 'incoming/new module.sh', squash = false) {
   const prior = { ref: predecessor, state: 'published', head, base: 'refs/remotes/origin/main', baseSha: base, worktree: lane, writePaths: ['owned', 'lane', 'legacy.txt'] };
   put(prior, root); put({ ...prior, ref, state: 'active', handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: predecessor, predecessorHead: head } }, root);
   if (squash) git(root, 'merge', '--squash', predecessor);
-  else write(root, incoming, '#!/bin/sh\nprintf protected\n', 0o755);
-  const target = commit(root, squash ? 'protected squash fixture' : 'fixture'); git(root, 'push', '--quiet', 'origin', 'main');
+  else if (incoming !== null) write(root, incoming, '#!/bin/sh\nprintf protected\n', 0o755);
+  let target;
+  if (squash || incoming !== null) target = commit(root, squash ? 'protected squash fixture' : 'fixture');
+  else { git(root, 'commit', '--allow-empty', '--quiet', '-m', 'same-tree protected merge'); target = git(root, 'rev-parse', 'HEAD'); }
+  git(root, 'push', '--quiet', 'origin', 'main');
   if (squash) {
     assert.notEqual(target, head, 'a squash fixture must have a distinct protected commit');
     assert.equal(git(root, 'rev-parse', `${target}^{tree}`), git(root, 'rev-parse', `${head}^{tree}`));
@@ -140,6 +143,19 @@ test('alignment joins both histories and preserves exact dirty bytes, modes and 
   assert.equal(lstatSync(join(f.lane, 'owned/- option "quote".txt')).mode & 0o777, 0o755);
   assert.deepEqual(readFileSync(join(f.lane, 'owned/- option "quote".txt')), Buffer.from('untracked\0bytes\r\n'));
   assert.deepEqual(new Set(receipt.preservedDirtyPaths), new Set(['owned/edit.txt', 'owned/delete.txt', 'owned/tool.sh', 'owned/- option "quote".txt']));
+  assert.equal(git(f.root, 'status', '--porcelain'), '', 'canonical fixture remains untouched');
+});
+
+test('same-tree protected merge creates a topology-only join without rewriting lane bytes', t => {
+  const f = fixture(t, null), mergeBase = git(f.root, 'merge-base', f.head, f.target), priorTree = git(f.lane, 'rev-parse', `${f.head}^{tree}`);
+  assert.deepEqual(plan(f).incomingPaths, []);
+  assert.equal(git(f.root, 'rev-parse', `${f.target}^{tree}`), git(f.root, 'rev-parse', `${mergeBase}^{tree}`));
+  const prepared = prepareLaneAlignment(plan(f)), receipt = applyLaneAlignment(prepared);
+  assert.equal(receipt.schema, 'agentic-os/lane-alignment-receipt/v1');
+  assert.deepEqual(receipt.incomingPaths, []);
+  assert.equal(git(f.lane, 'rev-parse', `${receipt.head}^{tree}`), priorTree);
+  assert.deepEqual(git(f.lane, 'rev-list', '--parents', '-n', '1', receipt.head).split(' ').slice(1), [f.head, f.target]);
+  unchanged(f, receipt.head);
   assert.equal(git(f.root, 'status', '--porcelain'), '', 'canonical fixture remains untouched');
 });
 
