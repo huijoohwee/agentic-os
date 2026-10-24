@@ -142,7 +142,8 @@ function validatePlan(input) {
       || !/^[a-f0-9]{40}$/u.test(plan.successor.predecessorHead)
       || !Array.isArray(plan.successor.replacedPaths)))
     || (Object.hasOwn(plan, 'mergedProjection') && (plan.mode !== RECOVERY_MODE || plan.detachedHead || plan.successor || !plan.mergedProjection || Object.keys(plan.mergedProjection).sort().join(',') !== 'branch,head' || !isLaneRef(plan.mergedProjection.branch) || plan.mergedProjection.branch === plan.branch || plan.mergedProjection.head !== plan.merge))
-    || (Object.hasOwn(plan, 'historicalCheckGap') && (!plan.historicalCheckGap || !plan.mergedProjection || !plan.review?.historicalCheckGap || plan.review.historicalCheckGap.checkRunsObserved !== 0 || !same(plan.review.historicalCheckGap.requiredChecks, plan.requiredChecks)))
+    || (Object.hasOwn(plan, 'historicalCheckGap') && (!plan.historicalCheckGap || (!plan.mergedProjection && !(plan.detachedHead && plan.detachedHead === plan.head))
+      || !plan.review?.historicalCheckGap || plan.review.historicalCheckGap.checkRunsObserved !== 0 || !same(plan.review.historicalCheckGap.requiredChecks, plan.requiredChecks)))
     || plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch)
     refuse('plan-binding');
   return plan;
@@ -222,7 +223,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
   if (typeof mergedProjection !== 'boolean' || mergedProjection && (!recovery || detached || successor)) refuse('merged-projection-options');
-  if (typeof historicalCheckGap !== 'boolean' || historicalCheckGap && (!recovery || !mergedProjection)) refuse('historical-check-gap-options');
+  if (typeof historicalCheckGap !== 'boolean' || historicalCheckGap && (!recovery || (!mergedProjection && !detached))) refuse('historical-check-gap-options');
   if (reviewedEquivalentCommit !== undefined && (!recovery || !detached || successor || !/^[a-f0-9]{40}$/u.test(reviewedEquivalentCommit))) refuse('equivalent-options');
   if (recovery && changeClass !== undefined) refuse('incompatible-modes');
   if (successor && (!recovery || detached || typeof successor.predecessorRef !== 'string'
@@ -231,7 +232,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
   if (changeClass !== undefined && !SUPPORTED_CHANGE_CLASSES.includes(changeClass)) refuse('unsupported-change-class');
   const root = realpathSync(repoRoot(cwd));
   const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
-  reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode });
+  reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode, historicalCheckGap });
   return locked(root, () => {
     const current = resolvePolicy(root, mode, policyResolver, { changeClass }), targetPath = realpathSync(target);
     refuseUnknownLaneBytes(targetPath, root, { recovery });
@@ -244,6 +245,7 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (successor && (inventory.branch !== successor.predecessorRef
       || inventory.headRevision !== successor.predecessorHead)) refuse('successor-target-drift');
     if (detached && inventory.branch !== null) refuse('target-not-detached');
+      if (historicalCheckGap && detached && inventory.headRevision !== review.head) refuse('historical-check-gap-target');
     if (mergedProjection && (!isLaneRef(inventory.branch) || inventory.branch === review.branch || inventory.headRevision !== review.merge)) refuse('merged-projection-target');
     if (inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('hidden-or-untracked-work');
     const observedChangeClass = classifyLaneChangeClass(targetPath);
