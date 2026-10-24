@@ -20,6 +20,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'github.com/huijoohwee/agentic-commerce-os',
     'github.com/huijoohwee/agentic-graph',
     'github.com/huijoohwee/agentic-os',
+    'github.com/huijoohwee/joohwee',
   ]);
 
   assert.equal(policy.schema, GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA);
