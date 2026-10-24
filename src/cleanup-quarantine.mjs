@@ -210,14 +210,17 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
         const protectedReceipt = ['agentic-os/authenticated-transition-operation-receipt/v1', 'agentic-os/authenticated-transition-operation-receipt/v2'].includes(originalReceipt?.schema);
         if (protectedReceipt) protectedRetirementReceipt(originalReceipt, e, entry.name);
         const targetPath = protectedReceipt ? retainedTargetPath(registration) : originalReceipt?.targetPath;
+        const reviewedHead = detachedRegistration && originalReceipt?.integration?.kind === 'equal-tree'
+          ? detachedHead : head;
         if (originalReceipt && !protectedReceipt && (originalReceipt.schema !== 'agentic-os/user-cleanup-receipt/v1'
           || originalReceipt.mode !== 'explicit-local-user-consent-recovery' || originalReceipt.planDigest !== entry.name
-          || originalReceipt.review?.branch !== ref || originalReceipt.review?.head !== head
+          || originalReceipt.review?.branch !== ref
+          || originalReceipt.review?.head !== reviewedHead
           || originalReceipt.operationPath !== operation || originalReceipt.projectionQuarantinePath !== join(operation, 'projection')
           || originalReceipt.registrationQuarantinePath !== registration || originalReceipt.executedAt !== record.executedAt
           || originalReceipt.result !== 'quarantined' || originalReceipt.projectionQuarantined !== true
           || originalReceipt.registrationQuarantined !== true || originalReceipt.stoppedAcknowledged !== true
-          || detachedRegistration && !detachedReceiptMatches(originalReceipt, detachedHead, head)
+          || detachedRegistration && !detachedReceiptMatches(originalReceipt, detachedHead, reviewedHead)
           || Boolean(originalReceipt.detachedHead) !== detachedRegistration
           || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
           )) continue;
