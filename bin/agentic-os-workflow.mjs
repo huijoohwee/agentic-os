@@ -440,6 +440,19 @@ function validateAllocations(allocations = [], members, previous = [], root) {
 export function releaseWorkflowAllocation(root, repository, ref) {
   if (!isLaneRef(ref)) fail('allocation-release-ref');
   const selected = readSelectedWorkflow(root, repository, { ref, navigation: true });
+  if (!selected) {
+    return {
+      schema: 'agentic-os/workflow-allocation-release/v1',
+      authority: false,
+      status: 'standalone',
+      ref,
+      worktreeId: null,
+      allocationHead: null,
+      workflow: null,
+      workflowDigest: null,
+      released: false,
+    };
+  }
   if (!selected?.manifest.execution) fail('allocation-release-selection');
   const allocation = selected.manifest.allocations?.find(row => row.ref === ref);
   if (!allocation || allocation.state !== 'active') fail('allocation-release-state');
