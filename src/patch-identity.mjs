@@ -195,15 +195,18 @@ export function integrationProof(base, ref, { cwd } = {}) { return integrationPr
 /** Historical successor content proof; provider authority remains separate. */
 export function successorIntegrationProof(merge, predecessor, reviewedHead, replacedPaths, { cwd } = {}) {
   const merged = headSha(merge, cwd), old = headSha(predecessor, cwd), reviewed = headSha(reviewedHead, cwd);
-  if (!merged || !old || !reviewed || !isAncestor(old, reviewed, cwd)
+  if (!merged || !old || !reviewed
     || !Array.isArray(replacedPaths) || replacedPaths.length > 128
     || replacedPaths.some(path => typeof path !== 'string' || !path || path.includes('\0')
       || path.startsWith('/') || path.split('/').some(part => !part || part === '.' || part === '..'))
     || new Set(replacedPaths).size !== replacedPaths.length) return null;
-  const base = observeGit(['merge-base', merged, old], { cwd, allowFail: true });
-  const paths = base ? changedPaths(base, old, { cwd }) : null;
-  if (!paths || paths.length === 0 || paths.length > 512 || replacedPaths.some(path => !paths.includes(path))) return null;
-  const replaced = new Set(replacedPaths), observedReplacements = [];
+  const base = observeGit(['merge-base', merged, old], { cwd, allowFail: true }),
+    preservedPaths = base ? changedPaths(base, old, { cwd }) : null,
+    observedReplacementPaths = changedPaths(old, reviewed, { cwd });
+  if (!preservedPaths || !observedReplacementPaths || preservedPaths.length === 0 || preservedPaths.length > 512 || observedReplacementPaths.length > 512
+    || replacedPaths.some(path => !observedReplacementPaths.includes(path))) return null;
+  const replaced = new Set(replacedPaths), paths = [...new Set([...preservedPaths, ...replacedPaths])];
+  const observedReplacements = [];
   for (const path of paths) {
     const oldEntry = treeEntries(old, [path], { cwd });
     const mergeEntry = treeEntries(merged, [path], { cwd });
@@ -211,13 +214,11 @@ export function successorIntegrationProof(merge, predecessor, reviewedHead, repl
     if (!oldEntry || !mergeEntry || !reviewedEntry || !reviewedEntry.equals(mergeEntry)) return null;
     if (replaced.has(path)) {
       if (oldEntry.equals(mergeEntry)) return null;
-      observedReplacements.push({ path, old: oldEntry.toString('utf8').split('\t')[0],
-        accepted: mergeEntry.toString('utf8').split('\t')[0] });
+      observedReplacements.push({ path, old: oldEntry.toString('utf8').split('\t')[0], accepted: mergeEntry.toString('utf8').split('\t')[0] });
     } else if (!oldEntry.equals(mergeEntry)) return null;
   }
   if (observedReplacements.length !== replacedPaths.length) return null;
-  return { kind: 'reviewed-successor', predecessorHead: old, reviewedHead: reviewed,
-    merge: merged, pathCount: paths.length, replacements: observedReplacements };
+    return { kind: 'reviewed-successor', predecessorHead: old, reviewedHead: reviewed, merge: merged, pathCount: paths.length, replacements: observedReplacements };
 }
 
 /**
