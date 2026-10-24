@@ -32,7 +32,7 @@ const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.eviden
 function localCleanupReceipt(cleanupReceipt, ref, laneHead, laneRecord) {
   return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
     && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
-    && cleanupReceipt.review?.branch === ref && cleanupReceipt.review?.head === laneHead
+    && cleanupReceipt.review?.branch === ref
     && cleanupReceipt.targetPath === laneRecord?.worktree
     ? cleanupReceipt : null;
 }

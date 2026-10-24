@@ -204,6 +204,68 @@ test('explicit historical-check-gap recovery quarantines only an exact merged pr
   assert.equal(receipt.claimRetired, false);
   assert.equal(existsSync(s.target), false);
 });
+test('explicit historical-check-gap recovery accepts zero required checks only through the exact gap path', t => {
+  const s = fixture(t, false, false, true);
+  s.checks.check_runs = []; s.checks.total_count = 0;
+  const resolvePolicy = (_root, mode) => ({
+    root: s.root,
+    repository: 'example/GameXR',
+    remoteUrl: 'https://github.com/example/GameXR.git',
+    canonical: s.merge,
+    localRef: 'refs/heads/main',
+    mode,
+    enrollment: 'agentic-os.userCleanup=quarantine-recovery',
+    repositoryProfileDigest: s.profile.profileDigest,
+    requiredChecks: [],
+    protectedCleanupPolicy: s.profile.cleanup,
+    limits: RECOVERY_LIMITS,
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'],
+  });
+  assert.throws(() => planUserCleanup({ ...s.input, requiredChecks: [] },
+    { ...s.options, resolvePolicy }), /review-options/);
+  const plan = planUserCleanup({ ...s.input, requiredChecks: [], historicalCheckGap: true },
+    { ...s.options, resolvePolicy });
+  assert.deepEqual(plan.requiredChecks, []);
+  assert.deepEqual(plan.review.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options, resolvePolicy,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.selectedChecksVerified, false);
+  assert.deepEqual(receipt.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(existsSync(s.target), false);
+});
+test('explicit historical-check-gap recovery accepts a detached exact reviewed head with zero required checks', t => {
+  const s = fixture(t, false, true);
+  git(s.target, 'switch', '--detach', s.head);
+  s.checks.check_runs = []; s.checks.total_count = 0;
+  const resolvePolicy = (_root, mode) => ({
+    root: s.root,
+    repository: 'example/GameXR',
+    remoteUrl: 'https://github.com/example/GameXR.git',
+    canonical: s.merge,
+    localRef: 'refs/heads/main',
+    mode,
+    enrollment: 'agentic-os.userCleanup=quarantine-recovery',
+    repositoryProfileDigest: s.profile.profileDigest,
+    requiredChecks: [],
+    protectedCleanupPolicy: s.profile.cleanup,
+    limits: RECOVERY_LIMITS,
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'],
+  });
+  const plan = planUserCleanup({ ...s.input, detached: true, requiredChecks: [], historicalCheckGap: true },
+    { ...s.options, resolvePolicy });
+  assert.equal(plan.detachedHead, s.head);
+  assert.deepEqual(plan.review.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options, resolvePolicy,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.selectedChecksVerified, false);
+  assert.equal(receipt.detachedHead, s.head);
+  assert.equal(receipt.integration.detached.head, s.head);
+  assert.equal(receipt.integration.detached.reviewedHead, s.head);
+  assert.deepEqual(receipt.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(existsSync(s.target), false);
+});
 test('recovery remains opt-in; normal consent, no-CI, wrong trust and missing profile checks fail', t => {
   const s = fixture(t);
   assert.throws(() => planUserCleanup({ ...s.input, recovery: false }, s.options), /local-enrollment/);
@@ -476,6 +538,20 @@ test('current retention joins an exact-head detached equal-tree receipt without 
   assert.equal(observe(wrongHead), null);
   const wrongTree = structuredClone(receipt); wrongTree.integration.detached.inclusion.mergeTree = '0'.repeat(40);
   assert.equal(observe(wrongTree), null);
+});
+test('completion accepts a detached equal-tree cleanup receipt after the lane ref advances to the merge commit', t => {
+  const s = fixture(t); git(s.target, 'switch', '--detach', s.head);
+  const plan = planUserCleanup({ ...s.input, detached: true }, s.options);
+  const receipt = s.apply(plan);
+  git(s.root, 'update-ref', `refs/heads/${s.branch}`, s.merge);
+  const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile,
+    { cleanupReceipt: receipt });
+  assert.equal(status.cleanupVerified, true);
+  assert.equal(status.closeout.cleanupSatisfied, true);
+  assert.equal(status.closeout.missionState, 'source_complete');
+  assert.equal(status.closeout.laneDisposition, 'quarantined');
+  assert.ok(!status.findings.some(item => ['lane-registration-detached', 'cleanup-receipt-unverified',
+    'provider-authority-unverified'].includes(item.code)));
 });
 test('reviewed-equivalent mode refuses mismatched transitions and unreviewed commits', t => {
   const s = fixture(t, false, true);
