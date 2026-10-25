@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA, encodeGitHubTransitionPolicy, validateGitHubTransitionPolicy }
+import { GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA, encodeGitHubTransitionPolicy,
+  selectPreservationAdoption, validateGitHubTransitionPolicy }
   from '../src/github-transition-policy.mjs';
 
 const policyPath = new URL('../.agentic-os/github-transition-policy.json', import.meta.url);
@@ -283,6 +284,16 @@ test('committed transition workflow is bound to the canonical authority policy',
   ]);
   assert.deepEqual(policy.retentionAdoptions.filter(({ targetRef }) => !closeoutTargets.has(targetRef)), [{
     schema: 'agentic-os/current-quarantine-adoption/v1',
+    repository: 'github.com/huijoohwee/joohwee',
+    targetRef: 'agent/device-0232231d4a19/cleanup-policy-quarantine',
+    targetHead: '12a9f36769bcad5c9a4b3915f90907247d495ccc',
+    merge: '07143e1a4a7e265fa0a3252e3ad57346fe5d6eda',
+    reviewLocator: 'https://github.com/huijoohwee/joohwee/pull/8',
+    quarantineCoordinate: '91f56f777a72b76703d71ed391a31cdaaab3ad297505981588e804b050cadd17',
+    originalReceiptDigest: '14bc1d3e0b0d7c0d72ccb04446f3a4e9b45a7185cef2d805e1b5533dffe229dd',
+    historicalQuarantineAuthorityProven: false,
+  }, {
+    schema: 'agentic-os/current-quarantine-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-os',
     targetRef: 'agent/device-0232231d4a19/cleanup-retirement-manifest-compat',
     targetHead: 'bc223be5e0e94eb18c1dbaeb24743ec21c087b50',
@@ -388,6 +399,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['agent/device-0232231d4a19/pr554-current-facts-enrollment', 'https://github.com/huijoohwee/agentic-os/pull/555'],
     ['agent/device-0232231d4a19/completion-bundle-hydration', 'https://github.com/huijoohwee/agentic-os/pull/557'],
   ]);
+  const joohweeAdoption = policy.retentionAdoptions.find(({ repository }) => repository === 'github.com/huijoohwee/joohwee');
+  assert.deepEqual(selectPreservationAdoption(policy, joohweeAdoption), joohweeAdoption);
 
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /workflow_dispatch:/u);

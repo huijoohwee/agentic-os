@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { createRepositoryProfile, RETAIN_ALL_CLEANUP, governanceDigest, canonicalJson } from '../src/governance.mjs';
 import { validateSuccessorPreservationReceipt, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
-import { successorIntegrationProof } from '../src/patch-identity.mjs';
+import * as laneRecords from '../src/lane-records.mjs';
+import { successorIntegrationProof, createReservationScopeReleasePlan, applyReservationScopeRelease } from '../src/patch-identity.mjs';
 import { planSuccessorPreservation, applySuccessorPreservation, verifySuccessorPreservation,
   planUserCleanup, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
@@ -508,4 +509,92 @@ test('current discard acknowledgement accepts a retained worktree-cleanup eligib
   assert.equal(receipt.retention.projectionRetained, false);
   assert.equal(receipt.retention.recoveryBytesDiscarded, true);
   assert.deepEqual(validateRetentionDispositionReceipt(receipt), receipt);
+});
+
+test('scope release accepts stale published lineage when the retained local ref preserves the remote tree', t => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-scope-lineage-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'root'), lane = join(parent, 'lane'), origin = join(parent, 'origin.git');
+  mkdirSync(root); git(parent, 'init', '--bare', '--quiet', origin); git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid'); git(root, 'remote', 'add', 'origin', origin);
+  mkdirSync(join(root, 'canvas', 'src'), { recursive: true }); mkdirSync(join(root, 'docs'));
+  writeFileSync(join(root, 'canvas', 'src', 'App.tsx'), 'export const value = 1;\n');
+  writeFileSync(join(root, 'docs', 'base.md'), 'base\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+  const base = git(root, 'rev-parse', 'HEAD'), ref = 'agent/device-0232231d4a19/commerce-data-view-embed';
+  git(root, 'push', '--quiet', 'origin', 'main'); git(root, 'update-ref', 'refs/remotes/origin/main', base);
+  git(root, 'worktree', 'add', '--quiet', '-b', ref, lane, base);
+  writeFileSync(join(lane, 'canvas', 'src', 'App.tsx'), 'export const value = 2;\n');
+  writeFileSync(join(lane, 'docs', 'commerce.md'), 'commerce reservation\n');
+  git(lane, 'add', '.'); git(lane, 'commit', '--quiet', '-m', 'published candidate');
+  const recordHead = git(lane, 'rev-parse', 'HEAD');
+  git(lane, 'push', '--quiet', 'origin', `refs/heads/${ref}`); git(root, 'update-ref', `refs/remotes/origin/${ref}`, recordHead);
+  laneRecords.put({ ref, device: 'device-0232231d4a19', scope: 'commerce-data-view-embed',
+    state: 'published', base: 'refs/remotes/origin/main', baseSha: base, worktree: lane, pr: 17,
+    createdAt: new Date(0).toISOString(), head: recordHead, writePaths: ['canvas/src/App.tsx', 'docs/commerce.md'] }, root);
+  writeFileSync(join(lane, 'docs', 'remote-successor.md'), 'remote successor\n');
+  git(lane, 'add', 'docs/remote-successor.md'); git(lane, 'commit', '--quiet', '-m', 'remote successor');
+  const remoteHead = git(lane, 'rev-parse', 'HEAD');
+  git(lane, 'push', '--quiet', 'origin', `refs/heads/${ref}`); git(root, 'update-ref', `refs/remotes/origin/${ref}`, remoteHead);
+  git(root, 'worktree', 'remove', '--force', lane);
+  git(root, 'merge', '--squash', '--quiet', ref); git(root, 'commit', '--quiet', '-m', 'integrated successor');
+  const localHead = git(root, 'rev-parse', 'HEAD');
+  git(root, 'update-ref', 'refs/remotes/origin/main', localHead); git(root, 'update-ref', `refs/heads/${ref}`, localHead);
+  const plan = createReservationScopeReleasePlan({ cwd: root, ref, path: 'canvas/src/App.tsx',
+    protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' });
+  assert.equal(plan.laneProjection, 'unmounted-published-lineage-drift');
+  assert.equal(plan.laneRecordHead, recordHead); assert.equal(plan.laneHead, remoteHead);
+  assert.equal(plan.laneRemoteHead, remoteHead); assert.equal(plan.laneLocalRefHead, localHead);
+  const receipt = applyReservationScopeRelease({ cwd: root, plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true,
+    protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' });
+  assert.equal(receipt.laneHead, remoteHead); assert.equal(receipt.laneLocalRefHead, localHead);
+  assert.equal(git(root, 'rev-parse', `refs/heads/${ref}`), localHead);
+  assert.equal(git(root, '--git-dir', origin, 'rev-parse', `refs/heads/${ref}`), remoteHead);
+  assert.equal(laneRecords.get(ref, root).head, remoteHead);
+  assert.deepEqual(laneRecords.get(ref, root).writePaths, ['docs/commerce.md']);
+});
+
+test('scope release integrates a stale published lane when releasing its final exact claim', t => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-scope-empty-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'root'), lane = join(parent, 'lane'), origin = join(parent, 'origin.git');
+  mkdirSync(root); git(parent, 'init', '--bare', '--quiet', origin); git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid'); git(root, 'remote', 'add', 'origin', origin);
+  writeFileSync(join(root, '.agentic-os.json'), '{"cleanup":"base"}\n');
+  git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+  const base = git(root, 'rev-parse', 'HEAD'), ref = 'agent/device-0232231d4a19/cleanup-policy-quarantine';
+  git(root, 'push', '--quiet', 'origin', 'main'); git(root, 'update-ref', 'refs/remotes/origin/main', base);
+  git(root, 'worktree', 'add', '--quiet', '-b', ref, lane, base);
+  writeFileSync(join(lane, '.agentic-os.json'), '{"cleanup":"lane"}\n');
+  git(lane, 'add', '.agentic-os.json'); git(lane, 'commit', '--quiet', '-m', 'published candidate');
+  const recordHead = git(lane, 'rev-parse', 'HEAD');
+  git(lane, 'push', '--quiet', 'origin', `refs/heads/${ref}`); git(root, 'update-ref', `refs/remotes/origin/${ref}`, recordHead);
+  laneRecords.put({ ref, device: 'device-0232231d4a19', scope: 'cleanup-policy-quarantine',
+    state: 'published', base: 'refs/remotes/origin/main', baseSha: base, worktree: lane, pr: null,
+    createdAt: new Date(0).toISOString(), head: recordHead, writePaths: ['.agentic-os.json'] }, root);
+  writeFileSync(join(lane, 'README.md'), 'remote successor\n');
+  git(lane, 'add', 'README.md'); git(lane, 'commit', '--quiet', '-m', 'remote successor');
+  const remoteHead = git(lane, 'rev-parse', 'HEAD');
+  git(lane, 'push', '--quiet', 'origin', `refs/heads/${ref}`); git(root, 'update-ref', `refs/remotes/origin/${ref}`, remoteHead);
+  git(root, 'worktree', 'remove', '--force', lane);
+  git(root, 'merge', '--squash', '--quiet', ref); git(root, 'commit', '--quiet', '-m', 'integrated successor');
+  const localHead = git(root, 'rev-parse', 'HEAD');
+  git(root, 'update-ref', 'refs/remotes/origin/main', localHead); git(root, 'update-ref', `refs/heads/${ref}`, localHead);
+  const plan = createReservationScopeReleasePlan({ cwd: root, ref, path: '.agentic-os.json',
+    protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' });
+  assert.equal(plan.laneProjection, 'unmounted-published-lineage-drift');
+  assert.deepEqual(plan.resultingWritePaths, []);
+  assert.equal(plan.resultingLaneState, 'integrated');
+  const receipt = applyReservationScopeRelease({ cwd: root, plan,
+    authorization: `agentic-os:scope-release:${plan.planDigest}`, stopped: true,
+    protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' });
+  assert.equal(receipt.laneState, 'published');
+  assert.equal(receipt.resultingLaneState, 'integrated');
+  assert.equal(receipt.laneHead, remoteHead);
+  assert.equal(receipt.laneLocalRefHead, localHead);
+  assert.equal(git(root, 'rev-parse', `refs/heads/${ref}`), localHead);
+  assert.equal(git(root, '--git-dir', origin, 'rev-parse', `refs/heads/${ref}`), remoteHead);
+  assert.equal(laneRecords.get(ref, root).head, remoteHead);
+  assert.equal(laneRecords.get(ref, root).state, 'integrated');
+  assert.deepEqual(laneRecords.get(ref, root).writePaths, []);
 });

@@ -173,6 +173,32 @@ owner record; three existing files changed, zero runtime modules, dependencies, 
 Rollback removes this exact adoption and guide/test expectations while preserving retained quarantine
 artifacts and previously issued evidence.
 
+### Current-quarantine discard acknowledgement adoption — joohwee PR #8 — 2026-10-25
+
+The delegated END ADLC closeout for `github.com/huijoohwee/joohwee` reached the point where local
+quarantine retirement had already discarded the exact projection bytes, but the retained registration
+stayed detached and therefore could not satisfy the native current-loss observer on its own. This
+current-retention adoption binds repository `github.com/huijoohwee/joohwee`, branch
+`agent/device-0232231d4a19/cleanup-policy-quarantine`, reviewed head
+`12a9f36769bcad5c9a4b3915f90907247d495ccc`, PR #8 merge
+`07143e1a4a7e265fa0a3252e3ad57346fe5d6eda`, quarantine coordinate
+`91f56f777a72b76703d71ed391a31cdaaab3ad297505981588e804b050cadd17`, and original discard
+receipt digest `14bc1d3e0b0d7c0d72ccb04446f3a4e9b45a7185cef2d805e1b5533dffe229dd`.
+It records `historicalQuarantineAuthorityProven: false`.
+
+The unmodified retirement receipt already records `bytesDeleted: true`,
+`recoveryBytesDiscarded: true`, `registrationRetained: true`, `providerAuthority: false`, and
+`claimRetired: false`. This enrollment only permits the create-only
+`current-quarantine-discard-acknowledged` carrier to bind that exact joohwee receipt, surviving
+registration evidence, and exact merged review. It does not recreate the discarded projection,
+reattach the retained registration, prove historical quarantine authority, or authorize any further
+cleanup, sync, deployment, or provider retirement effect.
+
+Budget: one exact v1 retention adoption row, one focused policy test, and this owner record; three
+existing files changed, zero runtime modules, dependencies, or always-load bytes. Rollback removes
+this exact adoption and guide/test expectations while preserving the retained joohwee receipt,
+branch, registration, and Git-object evidence.
+
 ### Current-quarantine retention adoption — agentic-os PR #551 — 2026-10-21
 
 The current request still includes END ADLC completion for the exact
