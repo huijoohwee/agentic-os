@@ -352,13 +352,23 @@ test('successor readmission binds a recovered allocation head and member atomica
   assert.equal(runPublishedLaneSuccessor({ cwd: lane, predecessorRef: predecessor, scope: 'native-next', explicitHead: head,
     remote: 'origin', protectedRef: policy.protectedRef, out() {} }), 0);
   write(lane, 'native-owned.txt', 'recovered successor candidate\n'); const candidate = commit(lane);
+  git(root, 'merge', '--squash', predecessor);
+  const target = commit(root, 'protected squash of published predecessor'); git(root, 'push', '--quiet', 'origin', 'main');
   const mission = readSelectedWorkflow(root, profile.repository, { required: true });
-  assert.equal(await cmdStart(root, ['native-next', '--device=test-device', '--write=native-owned.txt', `--mission=${mission.path}`, `--expected-head=${candidate}`, '--readmit'], policy, profile, services), 0);
-  const completed = readSelectedWorkflow(root, profile.repository, { required: true }), allocation = completed.manifest.allocations[0];
+  const alignedStart = () => cmdStart(root, ['native-next', '--device=test-device', `--mission=${mission.path}`,
+    `--expected-head=${candidate}`, '--readmit'], policy, profile, { ...services, refresh: {
+    expectedTarget: target, stopped: true, owner: { plan: planLaneAlignment, prepare: prepareLaneAlignment, apply: applyLaneAlignment },
+  } });
+  assert.equal(await alignedStart(), 0);
+  const alignedHead = git(lane, 'rev-parse', 'HEAD'), alignedWorkflow = readSelectedWorkflow(root, profile.repository, { required: true });
+  const allocation = alignedWorkflow.manifest.allocations[0];
   assert.equal(allocation.ref, 'agent/test-device/native-next'); assert.equal(allocation.predecessorRef, predecessor);
-  assert.equal(allocation.state, 'active'); assert.equal(allocation.headRevision, candidate);
-  assert.equal(allocation.recoveredFromHead, baseHead); assert.equal(completed.members[0].child.source.revision, candidate);
-  assert.equal(get('agent/test-device/native-next', root).head, candidate);
+  assert.equal(allocation.recoveredFromHead, candidate);
+  assert.deepEqual(git(lane, 'show', '-s', '--format=%P', 'HEAD').split(' '), [candidate, target]);
+  assert.equal(alignedWorkflow.manifest.allocations[0].headRevision, alignedHead);
+  assert.equal(alignedWorkflow.manifest.allocations[0].state, 'active');
+  assert.equal(alignedWorkflow.members[0].child.source.revision, alignedHead);
+  assert.equal(get('agent/test-device/native-next', root).head, alignedHead);
   assert.equal(git(root, 'rev-parse', predecessor), head);
 });
 

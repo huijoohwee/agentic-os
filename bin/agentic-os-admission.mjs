@@ -232,7 +232,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
           observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true);
-          if (liveDigest !== nextDigest || record.head !== identity.head) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
+          if (liveDigest !== nextDigest || record.head !== identity.head) { store.putExact({ ...record, head: identity.head, writePaths }, record, root); record.head = identity.head; record.writePaths = writePaths; }
           if (alignment) {
             const receipt = refreshMethods.apply(alignment);
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
