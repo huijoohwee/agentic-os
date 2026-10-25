@@ -7,13 +7,14 @@ import { dirname, join } from 'node:path';
 import { load, put, get, putExact } from '../src/lane-records.mjs';
 import { fileURLToPath } from 'node:url';
 import { cmdStart, matchesSelectedSourcePendingReadmit, matchesSelectedSourceTransplantSuccessor } from '../bin/agentic-os-admission.mjs';
-import { collectWorkflowValue, readSelectedWorkflow } from '../bin/agentic-os-workflow.mjs';
+import { collectWorkflowValue, readSelectedWorkflow, startWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { worktrees } from '../src/git.mjs';
 import { hash } from '../bin/agentic-os-test-inputs.mjs';
 import { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment, validateLaneAlignmentInput } from '../bin/agentic-os-lane-alignment.mjs';
+import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSelectedSourceTransplant } from '../src/lane-selected-source-transplant.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 }).trim();
 const bytes = (cwd, revision, path) => execFileSync('git', ['show', `${revision}:${path}`], { cwd });
@@ -460,4 +461,57 @@ test('prepared squash recovery rechecks the protected target before returning re
   const f = squashFixture(t), prepared = prepareLaneAlignment(plan(f));
   write(f.root, 'later-protected.txt', 'protected advanced\n'); commit(f.root); git(f.root, 'push', '--quiet', 'origin', 'main');
   refusal('target', () => prepareLaneAlignment(prepared)); unchanged(f);
+});
+
+test('selected-source recovery replaces a legacy marker atomically with its exact transplant proof', t => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-legacy-source-recovery-'))), root = join(base, 'repo'); mkdirSync(root);
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  git(root, 'init', '-b', 'main'); git(root, 'config', 'user.name', 'Test'); git(root, 'config', 'user.email', 'test@example.invalid');
+  git(root, 'config', 'commit.gpgsign', 'false');
+  const planningPath = 'native-prd-tad-adr-mvp-gtm.md';
+  write(root, planningPath, '# Recovery plan\n'); write(root, 'source.txt', 'source base\n'); write(root, 'target.txt', 'target base\n');
+  const workflowBase = commit(root, 'base'), remote = join(base, 'remote.git');
+  git(root, 'init', '--bare', remote); git(root, 'remote', 'add', 'origin', remote); git(root, 'push', '-u', 'origin', 'main'); git(root, 'fetch', 'origin');
+  git(root, 'switch', '-c', 'legacy-recovery'); write(root, 'legacy.txt', 'old recovery marker\n');
+  const markerHead = commit(root, 'legacy marker'); write(root, 'stale.txt', 'prior allocation\n');
+  const priorHead = commit(root, 'prior allocation'), sourceBase = priorHead;
+  const ref = 'agent/device/transplant', lane = join(base, 'lane'); git(root, 'worktree', 'add', '-b', ref, lane, sourceBase);
+  write(lane, 'source.txt', 'selected source change\n'); const sourceHead = commit(lane, 'selected source');
+  git(root, 'switch', 'main'); write(root, 'target.txt', 'protected target change\n');
+  const targetHead = commit(root, 'protected target'); git(root, 'push', 'origin', 'main'); git(root, 'fetch', 'origin');
+  const repository = 'github.com/example/recovery', worktreeId = 'device--transplant', path = realpathSync(lane);
+  const started = startWorkflow(root, repository, { revision: markerHead, planningPath, worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } } });
+  const selected = () => readSelectedWorkflow(root, repository, { required: true });
+  const collect = patch => { const current = selected(); return collectWorkflowValue(root, repository,
+    { ...current.manifest, ...patch, previous: { file: current.path, digest: current.digest } }, join(base, '.workspace', 'workflow-input.json')); };
+  const paths = ['source.txt'], writeDigest = hash(JSON.stringify(paths));
+  const initial = { worktreeId, ref, path, baseRevision: workflowBase, headRevision: markerHead,
+    writeDigest, previousWriteDigest: 'a'.repeat(64), state: 'pending', operation: 'readmit' };
+  collect({ allocations: [initial] });
+  const legacyActive = { ...initial, headRevision: priorHead, recoveredFromHead: markerHead, state: 'active' }; delete legacyActive.previousWriteDigest;
+  const oldChild = selected().members[0].child;
+  const activeChild = collectWorkflowValue(root, repository, { ...oldChild,
+    source: { ...oldChild.source, revision: priorHead, tree: git(root, 'rev-parse', `${priorHead}^{tree}`) } }, join(base, 'active-member.json'));
+  collect({ members: [{ id: worktreeId, file: activeChild.manifest, digest: activeChild.digest }], allocations: [legacyActive] });
+  const pending = { ...legacyActive, state: 'pending', previousWriteDigest: legacyActive.writeDigest };
+  collect({ allocations: [pending] });
+  put({ ref, device: 'device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: sourceBase,
+    worktree: path, pr: null, createdAt: new Date(0).toISOString(), head: sourceHead, writePaths: paths }, root);
+  const plan = prepareSelectedSourceTransplant(planSelectedSourceTransplant({ cwd: path, ref, expectedHead: sourceHead,
+    expectedBase: sourceBase, targetRef: 'refs/remotes/origin/main', expectedTarget: targetHead, selectedPaths: paths, stopped: true }));
+  const receipt = applySelectedSourceTransplant(plan), priorMember = selected().members[0].child;
+  const candidateMember = collectWorkflowValue(root, repository, { ...priorMember,
+    source: { ...priorMember.source, revision: receipt.head, tree: git(root, 'rev-parse', `${receipt.head}^{tree}`) } }, join(base, 'candidate-member.json'));
+  const recovery = { schema: 'agentic-os/workflow-selected-source-recovery/v1', priorAllocationHead: priorHead,
+    sourceHead, sourceBase, targetHead, selectedPaths: paths, planDigest: plan.digest };
+  const completed = { ...pending, headRevision: receipt.head, state: 'active', selectedSourceRecovery: recovery };
+  delete completed.previousWriteDigest; delete completed.recoveredFromHead;
+  assert.notEqual(git(root, 'merge-base', markerHead, receipt.head), markerHead,
+    'the legacy recovery marker is not an ancestor of the selected-source candidate');
+  collect({ members: [{ id: worktreeId, file: candidateMember.manifest, digest: candidateMember.digest }], allocations: [completed] });
+  assert.equal(selected().manifest.allocations[0].selectedSourceRecovery.planDigest, plan.digest);
+  assert.equal(Object.hasOwn(selected().manifest.allocations[0], 'recoveredFromHead'), false);
+  assert.equal(selected().members[0].child.source.revision, receipt.head);
+  assert.equal(started.selected, true);
 });
