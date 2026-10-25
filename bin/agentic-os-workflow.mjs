@@ -438,24 +438,11 @@ function validateAllocations(allocations = [], members, previous = [], root) {
   }
 }
 export function releaseWorkflowAllocation(root, repository, ref) {
-  if (!isLaneRef(ref)) fail('allocation-release-ref');
-  const selected = readSelectedWorkflow(root, repository, { ref, navigation: true });
-  if (!selected) {
-    return {
-      schema: 'agentic-os/workflow-allocation-release/v1',
-      authority: false,
-      status: 'standalone',
-      ref,
-      worktreeId: null,
-      allocationHead: null,
-      workflow: null,
-      workflowDigest: null,
-      released: false,
-    };
-  }
+  if (!isLaneRef(ref)) fail('allocation-release-ref'); const selected = readSelectedWorkflow(root, repository, { ref, navigation: true });
+  if (!selected) return { schema: 'agentic-os/workflow-allocation-release/v1', authority: false, status: 'standalone', ref, worktreeId: null, allocationHead: null,
+    workflow: null, workflowDigest: null, released: false };
   if (!selected?.manifest.execution) fail('allocation-release-selection');
-  const allocation = selected.manifest.allocations?.find(row => row.ref === ref);
-  if (!allocation || allocation.state !== 'active') fail('allocation-release-state');
+  const allocation = selected.manifest.allocations?.find(row => row.ref === ref); if (!allocation || allocation.state !== 'active') fail('allocation-release-state');
   if (worktreeInventory(root).some(row => row.branch === ref || row.path === allocation.path || basename(row.path) === allocation.worktreeId)) fail('allocation-release-mounted');
   if (readSelectedWorkflow(root, repository, { input: selected.path, required: true }).digest !== selected.digest) fail('selection-drift');
   const released = collectManifest(root, repository, { ...selected.manifest,
