@@ -93,3 +93,14 @@ test('Base enrollment binds Base checks and stays read-only', () => {
   assert.match(workflow, /persist-credentials: false/u);
   assert.doesNotMatch(workflow, /issue-github|secrets\.|contents: write|pull_request_target|schedule:|npm (?:ci|install)/u);
 });
+
+test('joohwee enrollment binds joohwee checks and stays read-only', () => {
+  const workflow = readFileSync('.github/workflows/adlc-authority-joohwee.yml', 'utf8');
+  const joohweePolicy = loadCommittedAuthorityPolicy('.github/adlc-authority-joohwee-policy.json');
+  assert.equal(joohweePolicy.workflowPath, '.github/workflows/adlc-authority-joohwee.yml');
+  assert.deepEqual(joohweePolicy.requiredStatusChecks, ['budgets', 'test']);
+  assert.match(workflow, /const target = "github.com\/huijoohwee\/joohwee"/u);
+  assert.match(workflow, /contents: read/u);
+  assert.match(workflow, /persist-credentials: false/u);
+  assert.doesNotMatch(workflow, /issue-github|secrets\.|contents: write|pull_request_target|schedule:|npm (?:ci|install)/u);
+});
