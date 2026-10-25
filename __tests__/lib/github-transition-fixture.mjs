@@ -232,7 +232,8 @@ function apiFixture(issuance) {
     mergeParents: [TARGET_BASE, CANDIDATE], mergeCommittedAt: '2026-09-02T00:15:00Z',
     candidateTree: hex('a', 40), mergeTree: hex('a', 40), pullBaseRevision: TARGET_BASE,
     targetOwner: { id: 42, login: 'example' }, targetRulesetRowsEmpty: false,
-    targetClassicStrict: false, absentRefBarrier: null,
+    targetClassicStrict: false, targetRulesFeatureDenied: false,
+    targetClassicProtectionFeatureDenied: false, absentRefBarrier: null,
     refCreateStatuses: [], concurrentRunTimes: false, runDigests: {},
     compareHeadCommitMissing: false, runStartedAtById: {}, runUpdatedAtById: {},
     retirePublicationCommittedAt: '2026-09-02T00:23:00Z' };
@@ -291,6 +292,7 @@ function apiFixture(issuance) {
     if (route === 'GET /repos/example/target') return response({ id: state.targetRepositoryId,
       full_name: 'example/target', owner: state.targetOwner,
       allow_merge_commit: state.targetMergeMethods.includes('merge'),
+      allow_rebase_merge: state.targetMergeMethods.includes('rebase'),
       allow_squash_merge: state.targetMergeMethods.includes('squash') });
     if (route === 'GET /repos/example/target/git/ref/heads/agent/device/recovery')
       return response({ ref: 'refs/heads/agent/device/recovery', object: { type: 'commit', sha: CANDIDATE } });
@@ -312,13 +314,21 @@ function apiFixture(issuance) {
       return response(commit(CANDIDATE, [TARGET_BASE], state.candidateTree,
         '2026-09-02T00:04:00Z'));
     if (route === 'GET /repos/example/target/branches/main/protection')
-      return response(classicProtection(state.targetClassicProtectionContexts, {
-        conversationResolution: state.targetClassicConversationResolution,
-        strict: state.targetClassicStrict,
-      }));
+      return state.targetClassicProtectionFeatureDenied
+        ? response({ message: 'Upgrade to GitHub Pro or make this repository public to enable this feature.',
+          documentation_url: 'https://docs.github.com/rest/branches/branch-protection#get-branch-protection',
+          status: '403' }, 403)
+        : response(classicProtection(state.targetClassicProtectionContexts, {
+          conversationResolution: state.targetClassicConversationResolution,
+          strict: state.targetClassicStrict,
+        }));
     if (route === 'GET /repos/example/target/rules/branches/main')
-      return response(state.targetRulesetRowsEmpty ? []
-        : targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts));
+      return state.targetRulesFeatureDenied
+        ? response({ message: 'Upgrade to GitHub Pro or make this repository public to enable this feature.',
+          documentation_url: 'https://docs.github.com/rest/repos/rules#get-rules-for-a-branch',
+          status: '403' }, 403)
+        : response(state.targetRulesetRowsEmpty ? []
+          : targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts));
     if (route === 'GET /repos/example/target/rulesets/21') {
       const detail = { ...ruleDetail(21,
         targetRuleRows(21, state.targetMergeMethods, state.targetRulesetContexts)),
