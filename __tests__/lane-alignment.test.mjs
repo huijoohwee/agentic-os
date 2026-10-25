@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { load, put, get, putExact } from '../src/lane-records.mjs';
 import { fileURLToPath } from 'node:url';
 import { cmdStart, matchesSelectedSourcePendingReadmit, matchesSelectedSourceTransplantSuccessor } from '../bin/agentic-os-admission.mjs';
-import { readSelectedWorkflow } from '../bin/agentic-os-workflow.mjs';
+import { collectWorkflowValue, readSelectedWorkflow } from '../bin/agentic-os-workflow.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
@@ -313,6 +313,53 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
     assert.deepEqual(readFileSync(join(lane, 'node_modules/keep.bin')), Buffer.from([0, 255, 1]));
     assert.equal(git(lane, 'diff', '--cached', '--name-only'), '');
   });
+});
+
+test('successor readmission binds a recovered allocation head and member atomically', async t => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'lane-recovered-successor-'))), root = join(parent, 'repo'), remote = join(parent, 'remote.git'); mkdirSync(root);
+  const priorGlobal = process.env.GIT_CONFIG_GLOBAL, priorSystem = process.env.GIT_CONFIG_NOSYSTEM;
+  process.env.GIT_CONFIG_GLOBAL = join(parent, 'global-config'); process.env.GIT_CONFIG_NOSYSTEM = '1'; writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
+  t.after(() => { if (priorGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = priorGlobal;
+    if (priorSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM; else process.env.GIT_CONFIG_NOSYSTEM = priorSystem;
+    rmSync(parent, { recursive: true, force: true }); });
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  for (const [key, value] of [['user.name', 'Fixture'], ['user.email', 'fixture@example.invalid'], ['commit.gpgsign', 'false'], ['core.autocrlf', 'false'], ['core.filemode', 'true']]) git(root, 'config', key, value);
+  const policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
+  const profile = createRepositoryProfile({ repository: 'github.com/example/alignment', canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef }, adapters: { repository: { id: 'git', version: '1' }, provider: null } });
+  write(root, '.agentic-os.json', JSON.stringify(profile));
+  write(root, 'prd-tad-adr-mvp-gtm.md', '---\ndoc_type: PRD-TAD-ADR-MVP-GTM\n---\n# Native plan\n');
+  write(root, '.gitignore', 'node_modules/\n'); write(root, 'native-owned.txt', 'native base\n'); commit(root);
+  git(root, 'init', '--quiet', '--bare', remote); git(root, 'remote', 'add', 'origin', remote); git(root, 'push', '--quiet', '-u', 'origin', 'main');
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
+  const services = { out() {}, err() {}, projectCache: (record, cwd) => put(record, cwd), effectReceipt: (_operation, receipt) => receipt, remoteName: () => 'origin', requireCanonical: () => assert.equal(git(root, 'branch', '--show-current'), 'main') };
+  assert.equal(await cmdStart(root, ['native-first', '--device=test-device', '--write=native-owned.txt', '--plan=prd-tad-adr-mvp-gtm.md', '--checkout-limit=1'], policy, profile, services), 0);
+  const lane = lanePath('native-first', 'test-device', root), predecessor = 'agent/test-device/native-first';
+  const baseHead = git(root, 'rev-parse', 'HEAD'), initial = readSelectedWorkflow(root, profile.repository, { required: true });
+  const initialAllocation = initial.manifest.allocations[0];
+  const pending = collectWorkflowValue(root, profile.repository, { ...initial.manifest,
+    members: initial.members.map(row => ({ ...row.ref, file: row.path })),
+    allocations: [{ ...initialAllocation, state: 'pending', operation: 'readmit', previousWriteDigest: initialAllocation.writeDigest }],
+    previous: { file: initial.path, digest: initial.digest },
+  }, join(root, 'workflow-input.json'));
+  write(lane, 'native-owned.txt', 'published native UI\n'); const head = commit(lane);
+  const pendingMission = readSelectedWorkflow(root, profile.repository, { input: pending.manifest, required: true });
+  assert.equal(await cmdStart(root, ['native-first', '--device=test-device', '--write=native-owned.txt', `--mission=${pendingMission.path}`, `--expected-head=${head}`, '--readmit'], policy, profile, services), 0);
+  const recovered = readSelectedWorkflow(root, profile.repository, { required: true });
+  assert.equal(recovered.manifest.allocations[0].state, 'active'); assert.equal(recovered.manifest.allocations[0].recoveredFromHead, baseHead);
+  const prior = get(predecessor, root);
+  putExact({ ...prior, state: 'published', head, handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, root);
+  git(lane, 'push', '--quiet', 'origin', predecessor);
+  assert.equal(runPublishedLaneSuccessor({ cwd: lane, predecessorRef: predecessor, scope: 'native-next', explicitHead: head,
+    remote: 'origin', protectedRef: policy.protectedRef, out() {} }), 0);
+  write(lane, 'native-owned.txt', 'recovered successor candidate\n'); const candidate = commit(lane);
+  const mission = readSelectedWorkflow(root, profile.repository, { required: true });
+  assert.equal(await cmdStart(root, ['native-next', '--device=test-device', '--write=native-owned.txt', `--mission=${mission.path}`, `--expected-head=${candidate}`, '--readmit'], policy, profile, services), 0);
+  const completed = readSelectedWorkflow(root, profile.repository, { required: true }), allocation = completed.manifest.allocations[0];
+  assert.equal(allocation.ref, 'agent/test-device/native-next'); assert.equal(allocation.predecessorRef, predecessor);
+  assert.equal(allocation.state, 'active'); assert.equal(allocation.headRevision, candidate);
+  assert.equal(allocation.recoveredFromHead, baseHead); assert.equal(completed.members[0].child.source.revision, candidate);
+  assert.equal(get('agent/test-device/native-next', root).head, candidate);
+  assert.equal(git(root, 'rev-parse', predecessor), head);
 });
 
 function squashFixture(t) {

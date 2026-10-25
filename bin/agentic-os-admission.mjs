@@ -68,16 +68,13 @@ function successor(root, repository, selected, changes) {
   const collected = collectWorkflowValue(root, repository, value, resolve(root, 'workflow-input.json'));
   return readSelectedWorkflow(root, repository, { input: collected.manifest, required: true });
 }
-function withMember(root, repository, selected, worktreeId, revision) {
-  const member = selected.members.find(row => row.child.context.worktreeId === worktreeId && row.child.source.repository === repository);
-  if (member?.child.source.revision === revision) return selected;
-  const child = collectWorkflowValue(root, repository, { schema: 'agentic-os/workflow-observation-input/v1',
-    id: worktreeId, source: { repository, revision, tree: headSha(`${revision}^{tree}`, root) },
-    context: { workflowId: selected.manifest.id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, resolve(root, 'workflow-input.json'));
-  const replacement = { id: member?.ref.id ?? worktreeId, file: child.manifest, digest: child.digest };
-  const members = selected.members.map(row => row === member ? replacement : { ...row.ref, file: row.path });
-  if (!member) members.push(replacement);
-  return successor(root, repository, selected, { members });
+function withMember(root, repository, selected, worktreeId, revision, allocation = null) {
+  const member = selected.members.find(row => row.child.context.worktreeId === worktreeId && row.child.source.repository === repository); if (member?.child.source.revision === revision && !allocation) return selected;
+  let members = selected.members.map(row => ({ ...row.ref, file: row.path })); if (member?.child.source.revision !== revision) {
+    const child = collectWorkflowValue(root, repository, { schema: 'agentic-os/workflow-observation-input/v1', id: worktreeId, source: { repository, revision, tree: headSha(`${revision}^{tree}`, root) }, context: { workflowId: selected.manifest.id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, resolve(root, 'workflow-input.json'));
+    const replacement = { id: member?.ref.id ?? worktreeId, file: child.manifest, digest: child.digest }; members = selected.members.map(row => row === member ? replacement : { ...row.ref, file: row.path }); if (!member) members.push(replacement);
+  }
+  const changes = { members }; if (allocation) changes.allocations = [...(selected.manifest.allocations ?? []).filter(row => row.worktreeId !== allocation.worktreeId), allocation]; return successor(root, repository, selected, changes);
 }
 function recordAllocation(root, repository, selected, allocation) {
   const allocations = (selected.manifest.allocations ?? []).filter(row => row.worktreeId !== allocation.worktreeId);
@@ -213,7 +210,9 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
-        if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+        const recoveredSuccessorReadmit = Boolean(successorReadmit && readmit && row?.recoveredFromHead); let allocation;
+        if (recoveredSuccessorReadmit) { allocation = { worktreeId, ref, path, baseRevision: row.baseRevision, headRevision: identity.head, writeDigest: nextDigest, state: 'pending', operation: 'readmit', previousWriteDigest: row.writeDigest, recoveredFromHead: row.recoveredFromHead, predecessorRef: row.ref }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
+        else if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
         if (alignment) {
           alignment = refreshMethods.prepare(alignment);
@@ -221,14 +220,14 @@ export async function cmdStart(root, argv, policy, profile, services) {
             alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
               oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         }
-        allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: row?.baseRevision ?? record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
+        if (!recoveredSuccessorReadmit) allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: row?.baseRevision ?? record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
           writeDigest: nextDigest, state: readmit ? 'pending' : 'active', operation: readmit ? 'readmit' : row?.operation ?? 'create',
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit || recertification ? row.writeDigest : liveDigest } : {}),
           ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}),
           ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
-        if (JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
+        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) artifacts.workflow = selected.path;
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
@@ -238,7 +237,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
             const receipt = refreshMethods.apply(alignment);
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
-            selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+            if (recoveredSuccessorReadmit) { const previousAllocationHead = allocation.headRevision, { previousWriteDigest, ...completed } = allocation; allocation = { ...completed, headRevision: identity.head, recoveredFromHead: previousAllocationHead, state: 'active' }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
+            else selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
             const currentRecord = store.get(ref, root); if (!currentRecord || currentRecord.state !== 'active' || ['ref', 'device', 'scope', 'base', 'baseSha', 'worktree', 'pr'].some(field => currentRecord[field] !== record[field]) || JSON.stringify(currentRecord.writePaths ?? []) !== JSON.stringify(writePaths) || ![record.head, alignment.candidateHead, identity.head].includes(currentRecord.head)) fail('alignment-record-drift', 'Lane identity changed while refresh was applying; preserve the owner record and reconcile from its current head');
             if (currentRecord.head !== identity.head) store.putExact({ ...currentRecord, head: identity.head }, currentRecord, root);
             out(JSON.stringify(receipt));
@@ -251,7 +251,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           } : null;
           allocation = { ...completed, ...(recoveringHeadAdvance ? { headRevision: identity.head, recoveredFromHead: row.headRevision } : {}),
             ...(selectedSourceRecovery ? { headRevision: identity.head, selectedSourceRecovery } : {}), state: 'active' };
-          selected = recordAllocation(root, profile.repository, selected, allocation);
+          if (!(recoveredSuccessorReadmit && alignment)) selected = recordAllocation(root, profile.repository, selected, allocation);
         }
         out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: readmit ? 'readmitted' : 'reused',
           ref, worktree: path, head: identity.head, writeDigest: allocation.writeDigest, workflow: selected.path, digest: selected.digest, ...(recertification ? { recertified: { previousWriteDigest: row.writeDigest, writeDigest: allocation.writeDigest, providerAuthority: false, integrationProof: false, cleanupAuthority: false } } : {}), ...(identity.recoveryReceipt ? { recovery: identity.recoveryReceipt } : {}), created: false }));
