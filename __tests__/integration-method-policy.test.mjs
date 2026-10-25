@@ -28,7 +28,8 @@ test('reference profile selects squash preference without changing legacy strict
   const reference = validateRepositoryProfile(JSON.parse(readFileSync(
     new URL('../.agentic-os.json', import.meta.url), 'utf8')));
   assert.equal(providerPolicy(reference).squashPreferredRequired, true);
-  for (const file of ['adlc-authority-policy.json', 'adlc-authority-graph-policy.json']) {
+  for (const file of ['adlc-authority-policy.json', 'adlc-authority-graph-policy.json',
+    'adlc-authority-joohwee-policy.json']) {
     const authority = JSON.parse(readFileSync(new URL(`../.github/${file}`, import.meta.url), 'utf8'));
     assert.deepEqual(authority.allowedMergeMethods, ['merge', 'rebase', 'squash']);
   }
