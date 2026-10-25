@@ -218,6 +218,27 @@ Budget: one exact v1 enrollment, an update to the existing transition-workflow t
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving source history and prior enrollments.
 
+## Current recovery enrollment — huijoohwee.github.io PR #297 — 2026-10-25
+
+Under the owner's authorization to enroll current facts, this record binds repository
+`github.com/huijoohwee/huijoohwee.github.io`: base
+`254ad7c28ded94f0169c29c63db589a72bd5e8ef`, reviewed head
+`d824d8275fed084bc12d87597d87d7a3dd7d1722`, merge
+`6b1e7488719b726e979c848dd0078f29d69ca3d0`, and equal source/merge tree
+`f4dcccfc766787299e4a503395da242c834bac46`. The exact review is
+<https://github.com/huijoohwee/huijoohwee.github.io/pull/297>; the enrolled required check is
+`adlc-policy-contract`.
+
+The distinct scope is `recovery/current-historical-content/pr-297`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The enrollment does not issue provider evidence or authorize integration, retirement,
+cleanup, synchronization, deployment, or rollback. Each later effect requires its own exact plan,
+authorization, and receipt.
+
+Budget: one exact v1 enrollment, one current-quarantine adoption row, an update to the existing
+transition-workflow test, and this owner record; zero runtime modules, dependencies, or always-load
+bytes. Revert these exact additions while preserving source history and prior enrollments.
+
 ## Current recovery enrollment — joohwee PR #9 — 2026-10-25
 
 Under the owner's authorization to enroll current facts, this record binds repository
