@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA, encodeGitHubTransitionPolicy, validateGitHubTransitionPolicy }
+import { GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA, encodeGitHubTransitionPolicy,
+  selectPreservationAdoption, validateGitHubTransitionPolicy }
   from '../src/github-transition-policy.mjs';
 
 const policyPath = new URL('../.agentic-os/github-transition-policy.json', import.meta.url);
@@ -398,6 +399,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['agent/device-0232231d4a19/pr554-current-facts-enrollment', 'https://github.com/huijoohwee/agentic-os/pull/555'],
     ['agent/device-0232231d4a19/completion-bundle-hydration', 'https://github.com/huijoohwee/agentic-os/pull/557'],
   ]);
+  const joohweeAdoption = policy.retentionAdoptions.find(({ repository }) => repository === 'github.com/huijoohwee/joohwee');
+  assert.deepEqual(selectPreservationAdoption(policy, joohweeAdoption), joohweeAdoption);
 
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /workflow_dispatch:/u);

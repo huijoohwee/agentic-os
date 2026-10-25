@@ -61,10 +61,8 @@ function changedPaths(mergeBase, tip, { cwd } = {}) {
   );
   return decodeNulFields(output);
 }
-
 const PROJECTION_BATCH_PATHS = 128, PROJECTION_BATCH_PATH_BYTES = 32 * 1024,
   PROJECTION_BATCH_OUTPUT_BYTES = 64 * 1024;
-/** Bound process arguments; parent/child selectors must never share an ls-tree query. */
 function* projectionBatches(paths) {
   let batch = [], bytes = 0;
   for (const path of paths) {
@@ -95,7 +93,6 @@ function treeEntries(revision, paths, { cwd } = {}) {
   }
   return output;
 }
-/** Exact mode/type/blob state for every path changed by the lane. */
 export function exactTreeProjectionProof(base, ref, { cwd } = {}) {
   const ancestor = ref !== base && isAncestor(ref, base, cwd),
     basis = ancestor ? observeGit(['show', '-s', '--format=%P', ref], { cwd }).trim().split(/\s+/u).filter(Boolean)
@@ -141,8 +138,6 @@ function historicalFullTreeMatch(base, ref, { cwd } = {}) {
   }
   return null;
 }
-
-/** Exact historical transition in a reviewed PR series; never integration authority. */
 export function reviewedEquivalentTransitionProof(merge, detached, reviewed, head, { cwd } = {}) {
   if (!headSha(merge, cwd) || !headSha(detached, cwd) || !headSha(reviewed, cwd)
     || detached === reviewed || !isAncestor(reviewed, head, cwd)
@@ -167,7 +162,6 @@ export function reviewedEquivalentTransitionProof(merge, detached, reviewed, hea
   return { kind: 'reviewed-equivalent-superseded-transition',
     detachedHead: detached, reviewedCommit: reviewed, pathCount: oldPaths.length, sourceIntegrated: false };
 }
-
 function integrationProofFor(base, ref, { cwd } = {}, historical) {
   const baseTip = headSha(base, cwd);
   const tip = headSha(ref, cwd);
@@ -180,19 +174,12 @@ function integrationProofFor(base, ref, { cwd } = {}, historical) {
   const alignment = exactAlignmentProjectionProof(baseTip, tip, cwd);
   if (!laneTipHasTreeDelta(tip, baseTip, cwd) && !alignment) return null;
 
-  const content = exactTreeProjectionProof(baseTip, tip, { cwd })
-    ?? alignment
+  const content = exactTreeProjectionProof(baseTip, tip, { cwd }) ?? alignment
     ?? (historical ? historicalFullTreeMatch(baseTip, tip, { cwd }) : null);
   return content ? { ...content, baseHead: baseTip, head: tip } : null;
 }
-
-/** Exact current ancestry or touched-path state; suitable for cleanup and sync decisions. */
 export function exactCurrentIntegrationProof(base, ref, { cwd } = {}) { return integrationProofFor(base, ref, { cwd }, false); }
-
-/** Content history classification; never cleanup, synchronization, or provider authority. */
 export function integrationProof(base, ref, { cwd } = {}) { return integrationProofFor(base, ref, { cwd }, true); }
-
-/** Historical successor content proof; provider authority remains separate. */
 export function successorIntegrationProof(merge, predecessor, reviewedHead, replacedPaths, { cwd } = {}) {
   const merged = headSha(merge, cwd), old = headSha(predecessor, cwd), reviewed = headSha(reviewedHead, cwd);
   if (!merged || !old || !reviewed
@@ -203,8 +190,8 @@ export function successorIntegrationProof(merge, predecessor, reviewedHead, repl
   const base = observeGit(['merge-base', merged, old], { cwd, allowFail: true }),
     preservedPaths = base ? changedPaths(base, old, { cwd }) : null,
     observedReplacementPaths = changedPaths(old, reviewed, { cwd });
-  if (!preservedPaths || !observedReplacementPaths || preservedPaths.length === 0 || preservedPaths.length > 512 || observedReplacementPaths.length > 512
-    || replacedPaths.some(path => !observedReplacementPaths.includes(path))) return null;
+  if (!preservedPaths || !observedReplacementPaths || preservedPaths.length === 0 || preservedPaths.length > 512
+    || observedReplacementPaths.length > 512 || replacedPaths.some(path => !observedReplacementPaths.includes(path))) return null;
   const replaced = new Set(replacedPaths), paths = [...new Set([...preservedPaths, ...replacedPaths])];
   const observedReplacements = [];
   for (const path of paths) {
@@ -218,13 +205,9 @@ export function successorIntegrationProof(merge, predecessor, reviewedHead, repl
     } else if (!oldEntry.equals(mergeEntry)) return null;
   }
   if (observedReplacements.length !== replacedPaths.length) return null;
-    return { kind: 'reviewed-successor', predecessorHead: old, reviewedHead: reviewed, merge: merged, pathCount: paths.length, replacements: observedReplacements };
+  return { kind: 'reviewed-successor', predecessorHead: old, reviewedHead: reviewed, merge: merged,
+    pathCount: paths.length, replacements: observedReplacements };
 }
-
-/**
- * Whole-repository reap survey. Read-only: it decides nothing and deletes
- * nothing, it only classifies every lane branch.
- */
 export function surveyLanes(base, branches, { cwd } = {}) {
   const integrated = [];
   const open = [];
@@ -236,8 +219,7 @@ export function surveyLanes(base, branches, { cwd } = {}) {
     });
     const proof = integrationProof(base, capturedHead, { cwd });
     if (proof) {
-      integrated.push({ branch, head: proof.head, baseHead: proof.baseHead,
-        proof: proof.kind, detail: proof.detail });
+      integrated.push({ branch, head: proof.head, baseHead: proof.baseHead, proof: proof.kind, detail: proof.detail });
     } else {
       const { upstream, pending } = cherry(base, capturedHead, { cwd });
       open.push({ branch, alreadyUpstream: upstream.length, pending: pending.length });
@@ -250,7 +232,6 @@ export function surveyLanes(base, branches, { cwd } = {}) {
   }
   return { integrated, open };
 }
-
 const RELEASE_PLAN = 'agentic-os/reservation-scope-release-plan/v1', RELEASE_RECEIPT = 'agentic-os/reservation-scope-release-receipt/v1';
 const SCOPE_RELEASE_PLAN_BYTES = 128 * 1024;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
@@ -282,9 +263,8 @@ function cleanReservedPath(path, worktree) {
   const diff = observeGit(['diff', '--quiet', 'HEAD', '--', path], { cwd: worktree, allowFail: true });
   if (status.length || diff === null) throw scopeFailure('blocked-reservation-path-dirty', `reserved path has local edits: ${path}`);
 }
-
-export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, path,
-  protectedBranch, protectedRef, [REMOTE_HEAD]: liveRemoteHead } = {}) {
+export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, path, protectedBranch,
+  protectedRef, [REMOTE_HEAD]: liveRemoteHead } = {}) {
   const root = repoRoot(cwd);
   if (currentBranch(root) !== protectedBranch || !worktrees(root).some(entry =>
     entry.branch === protectedBranch && realpathSync(entry.path) === realpathSync(root)))
@@ -352,8 +332,6 @@ export function createReservationScopeReleasePlan({ cwd = process.cwd(), ref, pa
       : record.state };
   return Object.freeze({ ...plan, planDigest: scopeDigest(plan) });
 }
-
-/** Apply only a fresh, digest-authorized plan through the lane cache CAS. */
 export function applyReservationScopeRelease({ cwd = process.cwd(), plan, authorization, stopped,
   protectedBranch, protectedRef }) {
   const unsigned = plan && Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planDigest'));
@@ -396,8 +374,6 @@ export function applyReservationScopeRelease({ cwd = process.cwd(), plan, author
     resultingRecordDigest: scopeDigest(after), previousWritePaths: before.writePaths,
     resultingWritePaths: after.writePaths });
 }
-
-/** CLI adapter for `release-common scope-release`; this path remains lazy. */
 export function runReservationScopeRelease(root, argv, policy, out) {
   const value = name => argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
   if (argv[0] === 'plan') {

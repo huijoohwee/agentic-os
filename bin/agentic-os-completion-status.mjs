@@ -10,7 +10,6 @@ import { get as getLaneRecord } from '../src/lane-records.mjs';
 import { DELIVERY_DISPOSITION_SET_PATH, bindRetirementOperationReceipts,
   validateDeliveryDispositionSet } from '../src/completion.mjs';
 import { WORKTREE_CLEANUP_RECEIPT_SCHEMA } from '../src/cleanup-records.mjs';
-
 const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
 const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
 const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 }), committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
