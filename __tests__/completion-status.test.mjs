@@ -413,6 +413,34 @@ test('quarantine directory names and HEAD alone do not prove completed cleanup',
   assert.ok(report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
 });
 
+test('integrated zero-scope lane closes without quarantine evidence after its last claim is released', (t) => {
+  const subject = fixture(t);
+  writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
+  const laneHead = subject.git(subject.root, 'rev-parse', `refs/heads/${REF}`);
+  subject.git(subject.root, 'merge', '--squash', REF);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merged');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main',
+    subject.git(subject.root, 'rev-parse', 'HEAD'));
+  subject.git(subject.root, 'worktree', 'remove', '--force', subject.lane);
+  put({ ref: REF, state: 'integrated', head: laneHead, worktree: subject.lane, writePaths: [] }, subject.root);
+  const profile = { repository: 'github.com/example/repository', profileDigest: 'a'.repeat(64),
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    cleanup: { localBranch: 'retain', remoteBranch: 'retain', remoteTrackingRef: 'retain',
+      unreachableObjects: 'retain', worktreeProjection: 'quarantine',
+      worktreeRegistration: 'quarantine' } };
+  const report = inspectCompletionStatus(subject.root, REF, { protectedBranch: 'main' }, profile);
+  assert.equal(report.cleanupVerified, false);
+  assert.equal(report.closeout.laneDisposition, 'released');
+  assert.equal(report.closeout.cleanupSatisfied, true);
+  assert.equal(report.closeout.retentionState, 'not-required');
+  assert.equal(report.closeout.sourceState, 'source_complete');
+  assert.equal(report.closeout.missionState, 'source_complete');
+  assert.equal(report.closeout.adlcState, 'source_complete');
+  assert.ok(!report.findings.some((item) => item.code === 'lane-registration-detached'));
+  assert.ok(!report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
+});
+
 test('enrolled production-activation is a deploy nextAction after source complete', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
