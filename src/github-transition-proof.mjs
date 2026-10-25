@@ -12,14 +12,6 @@ function object(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`);
   return value;
 }
-function planGatedFeature(result, docStem) {
-  const message = typeof result?.value?.message === 'string' ? result.value.message : '';
-  const documentationUrl = typeof result?.value?.documentation_url === 'string'
-    ? result.value.documentation_url : '';
-  return result?.status === 403
-    && message === 'Upgrade to GitHub Pro or make this repository public to enable this feature.'
-    && documentationUrl.includes(docStem);
-}
 function id(value, label) {
   const result = String(value); if (!ID.test(result)) fail(`${label} must be an identifier`);
   return result;
@@ -84,8 +76,9 @@ function historicalCheckGapRecord(value, contexts) {
 const requiredChecksDigest = (target, revision, required) => governanceDigest({ schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository, revision, required });
 async function classicBranchProtection(api, target, branch) {
   const response = await api.call('GET', `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
-  if (response.status === 404) return null;
-  if (planGatedFeature(response, '/rest/branches/branch-protection#get-branch-protection')) return null;
+  if (response.status === 404 || response.status === 403
+    && response.value?.message === 'Upgrade to GitHub Pro or make this repository public to enable this feature.'
+    && String(response.value?.documentation_url ?? '').includes('/rest/branches/branch-protection#get-branch-protection')) return null;
   const value = api.exact(response, [200], 'GitHub branch protection'), strict = value?.required_status_checks?.strict;
   if (typeof strict !== 'boolean') fail('GitHub branch protection required checks are invalid'); return parseClassicBranchProtection({ ...value, required_status_checks: { ...value.required_status_checks, strict: false } }, GITHUB_ACTIONS_INTEGRATION_ID);
 }
@@ -175,8 +168,7 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
     rulesetVersions };
   return { ...payload, ruleSuiteDigest: governanceDigest(payload) };
 }
-function targetProtection(observation, target, ref, classicProtection = null, retrospective = false, repositoryValue = null,
-  fallbackRequiredContexts = null) { const projection = object(observation, 'target protection observation').projection, versions = observation.versions;
+function targetProtection(observation, target, ref, classicProtection = null, retrospective = false, repositoryValue = null, fallbackRequiredContexts = null) { const projection = object(observation, 'target protection observation').projection, versions = observation.versions;
   if (projection.repository !== target.repository || projection.ref !== ref
     || projection.rulesets.some((entry) => entry.bypassActors.length !== 0
       && !same(entry.bypassActors, [REDACTED_BYPASS])))
@@ -186,8 +178,7 @@ function targetProtection(observation, target, ref, classicProtection = null, re
     const requiredContexts = classicProtection?.requiredContexts ?? fallbackRequiredContexts;
     if (allowedMethods.length === 0 || !Array.isArray(requiredContexts) || requiredContexts.length === 0)
       fail('target canonical protection lacks observable required checks or supported merge methods');
-    return { projection, versions: [], requiredContexts, allowedMethods,
-      activeRuleTypes: classicProtection?.activeRuleTypes ?? [], bypassActorsObserved: classicProtection !== null };
+    return { projection, versions: [], requiredContexts, allowedMethods, activeRuleTypes: classicProtection?.activeRuleTypes ?? [], bypassActorsObserved: classicProtection !== null };
   }
   if (!Array.isArray(versions) || versions.length !== projection.rulesets.length
     || versions.some((entry) => !projection.rulesets.some((ruleset) => ruleset.id === entry.id)))
