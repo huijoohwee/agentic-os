@@ -76,6 +76,69 @@ function fixture(t, { replacement = true } = {}) {
   return { root, target, next, nextRef, profile, oldRef, oldHead, reviewedHead, merge, input, options, check };
 }
 
+function siblingFixture(t) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-successor-sibling-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'root'), target = join(parent, 'old'), next = join(parent, 'next');
+  mkdirSync(root); git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid');
+  const repository = 'example/GameXR', oldRef = 'agent/device/old', nextRef = 'agent/device/next';
+  const profile = createRepositoryProfile({ repository: `github.com/${repository}`,
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
+    requiredChecks: ['test'], capabilities: ['integration-method:squash'],
+    cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine', worktreeRegistration: 'quarantine' } });
+  writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
+  writeFileSync(join(root, '.gitignore'), 'runtime/\n');
+  writeFileSync(join(root, 'starter.py'), 'speed = 1\n');
+  writeFileSync(join(root, 'scene.py'), 'draw()\n');
+  writeFileSync(join(root, 'policy.json'), '{"mode":"base"}\n');
+  git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+  const base = git(root, 'rev-parse', 'HEAD');
+  git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD'); ensureRepositoryTrust(root, profile, { allowCreate: true });
+  git(root, 'worktree', 'add', '--quiet', '-b', oldRef, target);
+  writeFileSync(join(target, 'scene.py'), 'draw_rover()\n');
+  writeFileSync(join(target, 'policy.json'), '{"mode":"preserved"}\n');
+  git(target, 'add', '.'); git(target, 'commit', '--quiet', '-m', 'old preserved implementation');
+  const oldHead = git(target, 'rev-parse', 'HEAD');
+  git(root, 'worktree', 'add', '--quiet', '-b', nextRef, next, base);
+  writeFileSync(join(next, 'scene.py'), 'draw_rover()\n');
+  writeFileSync(join(next, 'policy.json'), '{"mode":"preserved"}\n');
+  writeFileSync(join(next, 'starter.py'), 'speed = 3\n');
+  writeFileSync(join(next, 'cleanup.py'), 'trim()\n');
+  git(next, 'add', '.'); git(next, 'commit', '--quiet', '-m', 'reviewed sibling replacement');
+  const reviewedHead = git(next, 'rev-parse', 'HEAD');
+  git(root, 'merge', '--squash', '--quiet', nextRef); git(root, 'commit', '--quiet', '-m', 'accepted sibling review');
+  const merge = git(root, 'rev-parse', 'HEAD');
+  git(root, 'update-ref', 'refs/remotes/origin/main', merge);
+  git(root, 'remote', 'add', 'origin', `https://github.com/${repository}.git`);
+  git(root, 'config', '--local', 'agentic-os.userCleanup', 'quarantine-recovery');
+  mkdirSync(join(target, 'runtime')); writeFileSync(join(target, 'runtime/notes.txt'), 'preserve me');
+  const pr = 12, workflow = '.github/workflows/ci.yml';
+  const pull = { number: pr, merged: true, state: 'closed', merged_at: '2026-09-13T00:00:00Z',
+    merge_commit_sha: merge, html_url: `https://github.com/${repository}/pull/${pr}`,
+    base: { ref: 'main', repo: { full_name: repository } },
+    head: { sha: reviewedHead, ref: nextRef, repo: { full_name: repository } } };
+  const check = { name: 'test', id: 123, head_sha: reviewedHead,
+    app: { id: 15368, slug: 'github-actions' }, status: 'completed', conclusion: 'success',
+    completed_at: '2026-09-12T23:59:00Z',
+    details_url: `https://github.com/${repository}/actions/runs/456/job/123` };
+  const run = { id: 456, head_sha: reviewedHead, head_branch: nextRef,
+    repository: { full_name: repository }, head_repository: { full_name: repository },
+    event: 'pull_request', path: workflow, run_attempt: 1, status: 'completed', conclusion: 'success' };
+  const api = path => {
+    if (path.endsWith(`/pulls/${pr}`)) return structuredClone(pull);
+    if (path.includes('/check-runs?')) return { total_count: 1, check_runs: [structuredClone(check)] };
+    if (path.endsWith('/actions/runs/456')) return structuredClone(run);
+    assert.fail(`unexpected provider read: ${path}`);
+  };
+  const input = { cwd: root, target, pr, requiredChecks: ['test'], workflow, recovery: true,
+    successor: { predecessorRef: oldRef, predecessorHead: oldHead,
+      replacedPaths: ['cleanup.py', 'starter.py'] } };
+  const options = { api, now: () => NOW, observeRemote: () => `${merge}\trefs/heads/main` };
+  return { root, target, next, nextRef, profile, oldRef, oldHead, reviewedHead, merge, input, options };
+}
+
 test('reviewed successor closes a clean predecessor while preserving recovery bytes and branch', t => {
   const s = fixture(t);
   const proof = successorIntegrationProof(s.merge, s.oldHead, s.reviewedHead,
@@ -141,6 +204,39 @@ test('reviewed successor permits an explicit empty replacement set when every pr
     authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
   assert.equal(existsSync(s.target), false);
   assert.equal(receipt.providerAuthority, false);
+});
+
+test('current preservation accepts a reviewed sibling successor that preserves predecessor paths', t => {
+  const s = siblingFixture(t);
+  const proof = successorIntegrationProof(s.merge, s.oldHead, s.reviewedHead, ['cleanup.py', 'starter.py'], { cwd: s.root });
+  assert.equal(proof.kind, 'reviewed-successor');
+  assert.equal(proof.pathCount, 4);
+  git(s.root, 'worktree', 'remove', s.next);
+  git(s.target, 'checkout', '--quiet', s.nextRef);
+  const physicalPlan = planUserCleanup({ ...s.input, successor: undefined }, s.options);
+  const physical = applyUserCleanup(physicalPlan, { cwd: s.root, ...s.options,
+    authorization: `agentic-os:user-cleanup:${physicalPlan.planDigest}`, stopped: true });
+  const adoption = { schema: 'agentic-os/successor-preservation-adoption/v1',
+    repository: 'github.com/example/GameXR', predecessorRef: s.oldRef, predecessorHead: s.oldHead,
+    successorRef: s.nextRef, successorHead: s.reviewedHead, merge: s.merge,
+    reviewLocator: 'https://github.com/example/GameXR/pull/12', replacedPaths: ['cleanup.py', 'starter.py'],
+    quarantineCoordinate: physical.planDigest, historicalSuccessionAuthorityProven: false };
+  const transitionPolicy = { schema: 'agentic-os/github-transition-policy/v2',
+    authorityRepository: adoption.repository, authorityRef: 'refs/heads/main',
+    workflowPath: '.github/workflows/adlc-transition.yml', targetRepositories: [adoption.repository],
+    evidenceRefPrefix: 'refs/heads/adlc/authority/', historicalIntegrations: [], preservationAdoptions: [adoption] };
+  mkdirSync(join(s.root, '.agentic-os'));
+  writeFileSync(join(s.root, '.agentic-os/github-transition-policy.json'), JSON.stringify(transitionPolicy));
+  git(s.root, 'add', '.agentic-os'); git(s.root, 'commit', '--quiet', '-m', 'review current sibling preservation adoption');
+  const canonical = git(s.root, 'rev-parse', 'HEAD');
+  git(s.root, 'update-ref', 'refs/remotes/origin/main', canonical);
+  const plan = planSuccessorPreservation({ cwd: s.root, adoption, policyRoot: s.root,
+    workflow: '.github/workflows/ci.yml' }, { ...s.options, observeRemote: () => `${canonical}\trefs/heads/main` });
+  const receipt = applySuccessorPreservation(plan, { cwd: s.root, ...s.options,
+    observeRemote: () => `${canonical}\trefs/heads/main`,
+    authorization: `agentic-os:successor-preservation:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.disposition, 'successor-preserved');
+  assert.equal(readFileSync(join(physical.projectionQuarantinePath, 'runtime/notes.txt'), 'utf8'), 'preserve me');
 });
 
 function preservedFixture(t) {

@@ -96,6 +96,26 @@ function executionFixture(t) {
   return { base, root, git, repository, revision, worktreeId, execution, selected, collect, guard };
 }
 
+test('allocation release stays standalone when no workflow selection was ever retained', t => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-allocation-standalone-'))), root = join(base, 'repo'); mkdirSync(root);
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
+  writeFileSync(join(root, 'native-prd-tad-adr-mvp-gtm.md'), '# Native plan\n');
+  git('add', '.'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'source');
+  assert.deepEqual(releaseWorkflowAllocation(root, 'github.com/example/native', 'agent/device/legacy'), {
+    schema: 'agentic-os/workflow-allocation-release/v1',
+    authority: false,
+    status: 'standalone',
+    ref: 'agent/device/legacy',
+    worktreeId: null,
+    allocationHead: null,
+    workflow: null,
+    workflowDigest: null,
+    released: false,
+  });
+});
+
 test('source-bound handoffs reject dirty admission and survive immutable workflow successors', t => {
   const s = executionFixture(t), initial = s.selected(), old = initial.members[0].child;
   const participants = ['writer', 'reviewer'].map(role => ({ memberId: s.worktreeId, traceId: role, role }));

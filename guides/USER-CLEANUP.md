@@ -412,7 +412,9 @@ For a local-consent quarantine, pass the exact cleanup receipt retained beside i
 command rechecks that closeout before creating an immutable workflow successor whose allocation state is
 `released`. It retains the lane ref, worktree identity, head, prior workflow manifests and quarantine evidence.
 Only `pending` and `active` allocations consume checkout capacity, so the released history no longer blocks a
-subsequent disjoint lane. A mounted, dirty, unintegrated, or unquarantined lane fails closed.
+subsequent disjoint lane. If no workflow selection was ever retained for that repository and ref, the command
+returns a standalone no-op result and writes no workflow successor. A mounted, dirty, unintegrated, or
+unquarantined lane still fails closed, and any declared workflow selection continues to fail on drift.
 
 ### Unified cleanup CLI (`agentic-os cleanup`)
 
