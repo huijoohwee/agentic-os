@@ -392,12 +392,11 @@ function validateAllocations(allocations = [], members, previous = [], root) {
       || Object.hasOwn(row, 'predecessorRef') && (row.operation !== 'readmit' || !isLaneRef(row.predecessorRef) || row.predecessorRef === row.ref) || Object.hasOwn(row, 'recoveredFromHead') && (row.operation !== 'readmit' || !/^[a-f0-9]{40}$/u.test(row.recoveredFromHead ?? ''))
       || Object.hasOwn(row, 'selectedSourceRecovery') && (row.operation !== 'readmit' || Object.hasOwn(row, 'recoveredFromHead') || !recoveryValid(row.selectedSourceRecovery))
       || row.state === 'released' && !previous.some(before => before.worktreeId === row.worktreeId)) fail('allocation-binding');
-    identities.forEach((key, index) => { if (seen[index].has(row[key])) fail('allocation-duplicate'); seen[index].add(row[key]); });
-    if (row.recoveredFromHead !== undefined) { const before = previous.find(item => item.worktreeId === row.worktreeId), member = members.find(item => item.child.context.worktreeId === row.worktreeId);
+    identities.forEach((key, index) => { if (seen[index].has(row[key])) fail('allocation-duplicate'); seen[index].add(row[key]); }); const before = previous.find(item => item.worktreeId === row.worktreeId);
+    if (row.recoveredFromHead !== undefined) { const member = members.find(item => item.child.context.worktreeId === row.worktreeId);
       if (!root || !before || !member || member.child.source.revision !== row.headRevision || observeGit(['cat-file', '-t', row.recoveredFromHead], { cwd: root }) !== 'commit' || observeGit(['merge-base', '--is-ancestor', row.recoveredFromHead, row.headRevision], { cwd: root, allowFail: true }) === null) fail('allocation-recovery-source');
       if ((before.recoveredFromHead === undefined || before.recoveredFromHead !== row.recoveredFromHead) && !(before.state === 'pending' && before.operation === 'readmit' && row.state === 'active' && row.operation === 'readmit' && before.headRevision === row.recoveredFromHead && before.headRevision !== row.headRevision && before.writeDigest === row.writeDigest && before.previousWriteDigest !== undefined && row.previousWriteDigest === undefined)) fail('allocation-recovery-lineage');
-    } else if (previous.some(before => before.worktreeId === row.worktreeId && before.recoveredFromHead !== undefined)) fail('allocation-recovery-lineage');
-    const before = previous.find(item => item.worktreeId === row.worktreeId);
+    } else if (before?.recoveredFromHead !== undefined && !(before.state === 'pending' && before.operation === 'readmit' && row.state === 'active' && row.operation === 'readmit' && row.selectedSourceRecovery !== undefined)) fail('allocation-recovery-lineage');
     if (row.selectedSourceRecovery !== undefined && (!before
       || before.selectedSourceRecovery !== undefined && !same(before.selectedSourceRecovery, row.selectedSourceRecovery))) fail('allocation-selected-source-lineage');
   }
