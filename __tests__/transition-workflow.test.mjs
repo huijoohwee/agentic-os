@@ -26,6 +26,7 @@ test('committed transition workflow is bound to the canonical authority policy',
 
   assert.equal(policy.schema, GITHUB_TRANSITION_RETENTION_POLICY_SCHEMA);
   assert.deepEqual(policy.historicalIntegrations.map(entry => entry.reviewLocator), [
+    'https://github.com/huijoohwee/joohwee/pull/10',
     'https://github.com/huijoohwee/agentic-commerce-os/pull/133',
     'https://github.com/huijoohwee/agentic-graph/pull/1492',
     'https://github.com/huijoohwee/agentic-graph/pull/1504',
@@ -70,6 +71,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-os/pull/557',
     'https://github.com/huijoohwee/agentic-os/pull/565',
     'https://github.com/huijoohwee/agentic-base/pull/8',
+    'https://github.com/huijoohwee/joohwee/pull/9',
   ]);
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
@@ -77,6 +79,8 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/agentic-graph/pull/1504', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-base/pull/4', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-base/pull/8', ['Integration Gate']],
+    ['https://github.com/huijoohwee/joohwee/pull/9', ['check']],
+    ['https://github.com/huijoohwee/joohwee/pull/10', ['check']],
     ['https://github.com/huijoohwee/agentic-os/pull/425', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/438', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/441', ['budgets', 'test']],
@@ -144,6 +148,30 @@ test('committed transition workflow is bound to the canonical authority policy',
     checkContexts: ['Integration Gate'],
     adoptionScope: ['recovery/current-historical-content/pr-8'],
     rationale: 'Current recording of PR #8 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
+  });
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/9')), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/joohwee',
+    reviewLocator: 'https://github.com/huijoohwee/joohwee/pull/9',
+    baseRevision: '07143e1a4a7e265fa0a3252e3ad57346fe5d6eda',
+    headRevision: '14b00696fad7ef593a4e86bed58684a90cb5559f',
+    mergeRevision: 'eb8adf363bf23e72dc24ab1a62e9f1b414ed0a2f',
+    treeRevision: 'ca3c837b64c30b9985dfaada5246be7ef573b9cc',
+    checkContexts: ['check'],
+    adoptionScope: ['recovery/current-historical-content/pr-9'],
+    rationale: 'Current recording of PR #9 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
+  });
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/10')), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/joohwee',
+    reviewLocator: 'https://github.com/huijoohwee/joohwee/pull/10',
+    baseRevision: 'eb8adf363bf23e72dc24ab1a62e9f1b414ed0a2f',
+    headRevision: 'ab23bcd2db92c0ff2edbb699690e7d912e4bee95',
+    mergeRevision: '4d9e20f669817603034f65d585fb4609680ff647',
+    treeRevision: '9e46840aaf7187300cd7f4acc9ed10852a0c593e',
+    checkContexts: ['check'],
+    adoptionScope: ['recovery/current-historical-content/pr-10'],
+    rationale: 'Current recording of PR #10 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
   });
   assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/133')), {
     schema: 'agentic-os/historical-content-enrollment/v1',
