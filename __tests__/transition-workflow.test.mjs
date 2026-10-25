@@ -378,7 +378,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     merge: '4d9e20f669817603034f65d585fb4609680ff647',
     reviewLocator: 'https://github.com/huijoohwee/joohwee/pull/10',
     quarantineCoordinate: 'ab1a20e3c6d23de2fad98870fce87304f593763ec3b17b70485fda8243c1ec42',
-    originalReceiptDigest: 'ceb1fc6bf51037d198fc019d85849c0ba2e353ad485844754d5d41f131102e60',
+    originalReceiptDigest: 'a58c74fa3df04ac88b11c49c797e48ad3d77c241886ad811d5efd19984ff203f',
     historicalQuarantineAuthorityProven: false,
   }, {
     schema: 'agentic-os/current-quarantine-adoption/v1',

@@ -208,13 +208,13 @@ lane registration. This adoption binds repository `github.com/huijoohwee/joohwee
 `agent/device-0232231d4a19/joohwee-external-authority-closeout`, reviewed head
 `ab23bcd2db92c0ff2edbb699690e7d912e4bee95`, PR #10 merge
 `4d9e20f669817603034f65d585fb4609680ff647`, quarantine coordinate
-`ab1a20e3c6d23de2fad98870fce87304f593763ec3b17b70485fda8243c1ec42`, and authenticated
-retirement receipt digest `ceb1fc6bf51037d198fc019d85849c0ba2e353ad485844754d5d41f131102e60`.
+`ab1a20e3c6d23de2fad98870fce87304f593763ec3b17b70485fda8243c1ec42`, and native
+`quarantine-retirement-receipt/v2` digest `a58c74fa3df04ac88b11c49c797e48ad3d77c241886ad811d5efd19984ff203f`.
 It records `historicalQuarantineAuthorityProven: false`.
 
-The unmodified authenticated retirement receipt already binds the exact integrate winner, cleanup
-authorizing retirement winner, and retained registration facts while leaving historical quarantine
-authority unproven. This enrollment only permits the create-only
+The unmodified native quarantine retirement receipt already binds the exact retained registration,
+retained branch head, deleted projection bytes, and cleanup coordinate while leaving historical
+quarantine authority unproven. This enrollment only permits the create-only
 `current-quarantine-discard-acknowledged` carrier to join that exact retained joohwee registration,
 cleanup coordinate, and reviewed merge. It does not recreate the quarantined projection, upgrade
 historical quarantine authority, authorize cleanup replay, or replace the still-required exact
