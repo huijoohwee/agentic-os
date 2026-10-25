@@ -100,6 +100,14 @@ function exactStatus(result, expected, label) {
   if (!expected.includes(result.status)) fail(`${label} failed with HTTP ${result.status}`);
   return result.value;
 }
+function planGatedFeature(result, docStem) {
+  const message = typeof result?.value?.message === 'string' ? result.value.message : '';
+  const documentationUrl = typeof result?.value?.documentation_url === 'string'
+    ? result.value.documentation_url : '';
+  return result?.status === 403
+    && message === 'Upgrade to GitHub Pro or make this repository public to enable this feature.'
+    && documentationUrl.includes(docStem);
+}
 function rule(value) {
   const source = object(value, 'GitHub transition rule'), type = text(source.type,
     'GitHub transition rule type');
@@ -113,7 +121,12 @@ function bypass(value) {
     'bypass actor id')}:${text(source.bypass_mode, 'bypass mode')}`;
 }
 async function rulesProjection(call, repo, ref, allowRedactedBypass = false, allowClassicOnly = false) {
-  const short = ref.slice('refs/heads/'.length), page = await call('GET', `${repo.path}/rules/branches/${encodeURIComponent(short)}?per_page=100`), rows = exactStatus(page, [200], 'GitHub transition rules');
+  const short = ref.slice('refs/heads/'.length), page = await call('GET', `${repo.path}/rules/branches/${encodeURIComponent(short)}?per_page=100`);
+  if (allowClassicOnly && planGatedFeature(page, '/rest/repos/rules#get-rules-for-a-branch')) {
+    const payload = { schema: 'agentic-os/github-protection-projection/v1', repository: repo.repository, ref, rulesets: [] };
+    return { projection: { ...payload, projectionDigest: governanceDigest(payload) }, versions: [] };
+  }
+  const rows = exactStatus(page, [200], 'GitHub transition rules');
   if (!Array.isArray(rows) || page.headers?.get?.('link')?.includes('rel="next"')) fail('GitHub transition rules are incomplete'); if (rows.length === 0) {
     if (!allowClassicOnly) fail('GitHub transition rules are incomplete');
     const payload = { schema: 'agentic-os/github-protection-projection/v1', repository: repo.repository, ref, rulesets: [] };
