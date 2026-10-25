@@ -212,7 +212,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
         const recoveredSuccessorReadmit = Boolean(successorReadmit && readmit && row?.recoveredFromHead); let allocation;
         if (recoveredSuccessorReadmit) { allocation = { worktreeId, ref, path, baseRevision: row.baseRevision, headRevision: identity.head, writeDigest: nextDigest, state: 'pending', operation: 'readmit', previousWriteDigest: row.writeDigest, recoveredFromHead: row.recoveredFromHead, predecessorRef: row.ref }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
-        else if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+        else if (expectedHead && !(alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && row?.state === 'pending' && row.operation === 'readmit' && row.recoveredFromHead)) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
         if (alignment) {
           alignment = refreshMethods.prepare(alignment);
@@ -238,7 +238,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
             if (recoveredSuccessorReadmit) { const previousAllocationHead = allocation.headRevision, { previousWriteDigest, ...completed } = allocation; allocation = { ...completed, headRevision: identity.head, recoveredFromHead: previousAllocationHead, state: 'active' }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
-            else selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+            else if (!recoveringSelectedSource) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
             const currentRecord = store.get(ref, root); if (!currentRecord || currentRecord.state !== 'active' || ['ref', 'device', 'scope', 'base', 'baseSha', 'worktree', 'pr'].some(field => currentRecord[field] !== record[field]) || JSON.stringify(currentRecord.writePaths ?? []) !== JSON.stringify(writePaths) || ![record.head, alignment.candidateHead, identity.head].includes(currentRecord.head)) fail('alignment-record-drift', 'Lane identity changed while refresh was applying; preserve the owner record and reconcile from its current head');
             if (currentRecord.head !== identity.head) store.putExact({ ...currentRecord, head: identity.head }, currentRecord, root);
             out(JSON.stringify(receipt));
@@ -249,9 +249,10 @@ export async function cmdStart(root, argv, policy, profile, services) {
             sourceHead: alignment.expectedHead, sourceBase: alignment.expectedBase, targetHead: alignment.expectedTarget,
             selectedPaths: alignment.selectedPaths, planDigest: alignment.digest,
           } : null;
+          if (selectedSourceRecovery) delete completed.recoveredFromHead;
           allocation = { ...completed, ...(recoveringHeadAdvance ? { headRevision: identity.head, recoveredFromHead: row.headRevision } : {}),
             ...(selectedSourceRecovery ? { headRevision: identity.head, selectedSourceRecovery } : {}), state: 'active' };
-          if (!(recoveredSuccessorReadmit && alignment)) selected = recordAllocation(root, profile.repository, selected, allocation);
+          if (!(recoveredSuccessorReadmit && alignment)) selected = selectedSourceRecovery ? withMember(root, profile.repository, selected, worktreeId, identity.head, allocation) : recordAllocation(root, profile.repository, selected, allocation);
         }
         out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: readmit ? 'readmitted' : 'reused',
           ref, worktree: path, head: identity.head, writeDigest: allocation.writeDigest, workflow: selected.path, digest: selected.digest, ...(recertification ? { recertified: { previousWriteDigest: row.writeDigest, writeDigest: allocation.writeDigest, providerAuthority: false, integrationProof: false, cleanupAuthority: false } } : {}), ...(identity.recoveryReceipt ? { recovery: identity.recoveryReceipt } : {}), created: false }));
