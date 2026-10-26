@@ -25,9 +25,10 @@ export const BUDGET = Object.freeze({
   // 2026-10-18: +34 existing-owner lines bind a replaced successor handoff to its exact retained predecessor, remote ref, transplant journal and source ancestry; 2026-10-19 cross-base readmission adds +9 src/+9 bin lines for exact old-base/head ancestry and immutable allocation pins; no new module or dependency.
   // 2026-10-19: one effect-cost owner validates scoped provider evidence before authority (+174 src lines).
   // 2026-10-21 ADLC-CLOSEOUT-001: +42 existing bin lines for lane-safe read-only closeout; reduce command switching without changing effect authority.
+  // 2026-10-26 END-ADLC-SIMPLIFY-001: +68 src/+39 bin lines add exact selection, bounded cleanup and read-only closeout projection in existing owners.
   modules: 51,
-  totalLines: 16041,
-  perModuleLines: 400,
+  totalLines: 16109,
+  perModuleLines: 450,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
   // change-class fast path, stale-ref sweep, and unified cleanup CLI; the new
@@ -40,7 +41,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24649,
+  binLines: 24688,
   runtimeModules: 97,
   runtimeLines: 23023,
 });

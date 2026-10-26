@@ -1,6 +1,7 @@
 /** Join authenticated lifecycle evidence to exact, quarantine-only Git worktree effects. */
 import { canonicalJson } from './governance.mjs';
-import { basename } from 'node:path';
+import { lstatSync, realpathSync, rmdirSync } from 'node:fs';
+import { basename, isAbsolute, relative, resolve } from 'node:path';
 import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from './git.mjs';
 import { isLaneRef, parseLaneRef } from './lane-id.mjs';
 import { get } from './lane-records.mjs';
@@ -326,6 +327,48 @@ export function cleanupWorkflowContext(root, ref, repository) {
   return { root, repository, phase: 'cleanup', ref, worktreeId, revision: registration ? observeGit(['rev-parse', 'HEAD'], { cwd: registration.path }) : record?.head,
     dirty: registration ? Boolean(observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: registration.path })) : false };
 }
+
+const containsPath = (parent, candidate) => {
+  const observed = relative(parent, candidate);
+  return observed === '' || (!observed.startsWith('..') && !isAbsolute(observed));
+};
+
+/** Remove only an exact empty worktree-parent directory; retain every file and nested checkout. */
+export function removeInactiveProgressiveCompletionTarget({ root, directory, inventory = worktrees,
+  stat = path => lstatSync(path, { throwIfNoEntry: false }), removeEmptyDirectory = rmdirSync } = {}) {
+  if (typeof directory !== 'string' || !isAbsolute(directory) || resolve(directory) !== directory)
+    fail('blocked-progressive-completion-cleanup-path', 'cleanup requires one normalized absolute directory path');
+  const canonicalRoot = realpathSync(root);
+  if (repoRoot(root) !== canonicalRoot)
+    fail('blocked-progressive-completion-cleanup-root', 'cleanup requires the exact canonical repository root');
+  const observedTarget = stat(directory);
+  if (!observedTarget) return Object.freeze({ status: 'absent', path: directory, mode: 'empty-directory' });
+  if (!observedTarget.isDirectory() || observedTarget.isSymbolicLink())
+    fail('blocked-progressive-completion-cleanup-target', 'cleanup requires one direct, non-symbolic directory');
+  const targetPath = realpathSync(directory), target = stat(targetPath);
+  if (!target || !target.isDirectory() || target.isSymbolicLink()
+    || observedTarget.dev !== target.dev || observedTarget.ino !== target.ino)
+    fail('blocked-progressive-completion-cleanup-target', 'cleanup requires one direct, non-symbolic directory');
+  directory = targetPath;
+  if (containsPath(directory, canonicalRoot) || containsPath(canonicalRoot, directory))
+    fail('blocked-progressive-completion-cleanup-scope', 'cleanup refuses the canonical repository and every ancestor or descendant');
+  const descendants = inventory(root).filter(row => row.path !== canonicalRoot && containsPath(directory, row.path));
+  if (descendants.length > 0)
+    fail('blocked-progressive-completion-cleanup-registered', 'cleanup requires zero registered worktrees at or below the exact directory');
+  const current = stat(directory);
+  if (!current || !current.isDirectory() || current.isSymbolicLink()
+    || target.dev !== current.dev || target.ino !== current.ino)
+    fail('blocked-progressive-completion-cleanup-race', 'cleanup target changed during observation');
+  try { removeEmptyDirectory(directory); }
+  catch (error) {
+    if (error?.code === 'ENOTEMPTY' || error?.code === 'EEXIST')
+      return Object.freeze({ status: 'deferred', path: directory, mode: 'empty-directory', reason: 'directory-not-empty' });
+    throw error;
+  }
+  if (stat(directory)) fail('blocked-progressive-completion-cleanup-postcondition', 'cleanup target remained after removal');
+  return Object.freeze({ status: 'removed', path: directory, mode: 'empty-directory' });
+}
+
 /** Explicit superseded-lane closeout; the accepted PR owns review/check evidence, and a failed or closed predecessor PR is never represented as merged. */
 export async function runReleaseCommonSuccessorComplete({
   root, argv, profile,

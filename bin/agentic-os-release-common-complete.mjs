@@ -11,7 +11,7 @@ import { inferMergedReviewWorkflow, githubRead } from './agentic-os-cleanup-revi
 import { applyUserCleanup, planUserCleanup } from './agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE } from './agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
-import { cleanupWorkflowContext, releaseCommonLocalCleanupPolicy, runReleaseCommonSuccessorComplete } from '../src/cleanup.mjs';
+import { cleanupWorkflowContext, releaseCommonLocalCleanupPolicy, removeInactiveProgressiveCompletionTarget, runReleaseCommonSuccessorComplete } from '../src/cleanup.mjs';
 export { runReleaseCommonSuccessorComplete };
 import { isLaneRef } from '../src/lane-id.mjs';
 import { dirname, isAbsolute, resolve } from 'node:path';
@@ -297,6 +297,21 @@ export function resolveReleaseCommonCleanupRequest(argv) {
   return Object.freeze({ bundlePath, stopped: true });
 }
 
+export function resolveProgressiveCleanupRequest(argv) {
+  const cleanup = argv.includes('--cleanup');
+  const stopped = argv.includes('--stopped');
+  if (!cleanup) {
+    if (stopped)
+      fail('blocked-progressive-completion-cleanup-stopped',
+        '--stopped is only valid together with --cleanup');
+    return Object.freeze({ cleanup: false, stopped: false });
+  }
+  if (!stopped)
+    fail('blocked-progressive-completion-cleanup-stopped',
+      '--cleanup requires --stopped to authorize exact path removal');
+  return Object.freeze({ cleanup: true, stopped: true });
+}
+
 export async function watchReleaseCommonReview(binding, {
   timeoutMs = 60_000,
   once = false,
@@ -517,18 +532,22 @@ export async function runReleaseCommonCompleteWait({
 }
 
 /** One bounded pass over registered immediate children; existing owners govern every effect. */
-export async function runProgressiveCompletion({ root, directory, timeoutMs = 60_000, policy, profile, complete,
+export async function runProgressiveCompletion({ root, directory, ref = null, timeoutMs = 60_000, policy, profile, complete,
   out = line => process.stdout.write(`${line}\n`), now = () => performance.now(),
-  inventory = worktreeInventory, record = get, status = inspectCompletionStatus,
+  inventory = worktreeInventory, record = get, status = inspectCompletionStatus, cleanup = { cleanup: false },
 } = {}) {
   integer(timeoutMs, 1, 60_000, 'timeout-ms');
   if (currentBranch(root) !== policy.protectedBranch || !isAbsolute(directory)
     || realpathSync(directory) !== resolve(directory)) fail('blocked-progressive-completion-scope',
     'Use canonical main and one absolute directory without symbolic links');
   directory = resolve(directory);
-  const targets = inventory(root).filter(row => row.path !== root && dirname(row.path) === directory)
+  let targets = inventory(root).filter(row => row.path !== root && dirname(row.path) === directory)
     .map(target => ({ target, bound: isLaneRef(target.branch) ? record(target.branch, root) : null }))
     .sort((a, b) => completionPriority(a.bound?.state) - completionPriority(b.bound?.state) || a.target.path.localeCompare(b.target.path));
+  if (ref !== null) {
+    targets = targets.filter(({ target }) => target.branch === ref);
+    if (targets.length !== 1) fail('blocked-progressive-completion-selection', 'ref must identify one registered worktree directly under --worktrees');
+  }
   if (targets.length > 32) fail('blocked-progressive-completion-budget', 'Select at most 32 registered worktrees');
   const eligibleTarget = ({ target, bound }) => COMPLETE_STATES.has(bound?.state) && bound.head === target.head
     && bound.worktree === target.path && bound.recovery?.dirtyState !== 'unobservable-at-missing-path'
@@ -537,7 +556,7 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
   const deadline = now() + timeoutMs, results = []; for (const { target, bound } of targets) {
     let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null }; try {
       const remaining = Math.ceil(deadline - now());
-      if (!bound || !COMPLETE_STATES.has(bound.state)) result.reason = 'requires-published-lane';
+      if (!bound || !COMPLETE_STATES.has(bound.state)) result = (await import('../src/completion.mjs')).projectProgressiveCloseout(target, target.branch ? status(root, target.branch, policy, profile) : null);
       else if (bound.recovery?.dirtyState === 'unobservable-at-missing-path') result.reason = 'lane-dirty-state-unknown';
       else if (target.locked || target.prunable || bound.head !== target.head || bound.worktree !== target.path)
         result.reason = target.locked || target.prunable ? 'worktree-not-completable' : 'lane-binding-drift';
@@ -565,5 +584,15 @@ export async function runProgressiveCompletion({ root, directory, timeoutMs = 60
   out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false, event: 'summary', selected: targets.length,
     sourceComplete: results.filter(row => row.sourceState === 'source_complete').length, completed, deliveryComplete: results.filter(row => ['deployed', 'no-deploy'].includes(row.deliveryState)).length,
     deliveryPending, cleanupPending, retirementPending: results.filter(row => row.status === 'retirement_pending').length, remaining: targets.length - completed, nextActions, results }));
-  return results.some(row => row.status === 'blocked') ? 1 : completed === targets.length ? 0 : 2;
+  const code = results.some(row => row.status === 'blocked') ? 1 : completed === targets.length ? 0 : 2;
+  if (cleanup.cleanup === true) {
+    const result = targets.length > 0
+      ? { status: 'deferred', reason: 'selected-worktrees-remain' }
+      : code !== 0 ? { status: 'deferred', reason: code === 2 ? 'completion-open' : 'completion-blocked' }
+        : removeInactiveProgressiveCompletionTarget({ root, directory, inventory });
+    out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false,
+      event: 'cleanup', path: directory, ...result }));
+    if (result.status === 'deferred' && code === 0) return 2;
+  }
+  return code;
 }
