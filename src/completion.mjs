@@ -329,3 +329,29 @@ export function validateDeliveryDispositionSet(value, expected) {
     return Object.freeze({ ...row, ...(expected.changeClass === 'delivery-evidence-only' && row.disposition === 'no-deploy' ? { scopeRule: 'delivery-evidence-artifact-exclusion' } : {}), receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
   } catch (error) { if (error?.reason?.startsWith('blocked-delivery-disposition-')) throw error; deliveryFail('invalid'); }
 }
+
+/** Project only an exact, current, read-only closeout when a lane is already settled or still pending. */
+export function projectProgressiveCloseout(target, observed) {
+  const closeout = observed?.closeout, base = { path: target.path, ref: target.branch,
+    head: target.head, status: 'blocked' };
+  const exact = observed?.ref === target.branch && observed?.authorizesEffects === false
+    && observed?.lane?.path === target.path && observed?.lane?.head === target.head
+    && observed?.lane?.mounted === true && observed?.lane?.clean === true
+    && observed?.canonicalClean === true
+    && observed?.canonicalRevision === observed?.remoteTrackingRevision
+    && closeout?.schema === 'agentic-os/closeout-verdict/v1'
+    && closeout?.observationOnly === true && closeout?.authorizesEffects === false
+    && closeout?.canonicalCurrent === true
+    && (closeout?.sourceState !== 'source_complete' || closeout?.sourceIntegrated === true);
+  if (!exact) return { ...base, reason: 'requires-published-lane' };
+  const fields = { sourceState: closeout.sourceState, missionState: closeout.missionState ?? null,
+    adlcState: closeout.adlcState ?? null, retentionState: closeout.retentionState ?? null,
+    deliveryState: closeout.deliveryState ?? null, completionScope: closeout.completionScope ?? null,
+    nextAction: closeout.nextAction ?? null };
+  if (closeout.sourceState !== 'source_complete') return { ...base, ...fields,
+    reason: closeout.nextAction?.id ?? 'source-not-complete' };
+  const settled = ['complete', 'source_complete', 'cleanup_pending', 'delivery_pending',
+    'delivery_scope_pending', 'retirement_pending'].includes(closeout.adlcState) ? closeout.adlcState : null;
+  return { ...base, ...fields, status: settled ?? 'blocked', adlcState: settled,
+    reason: settled && ['complete', 'source_complete'].includes(settled) ? null : 'closeout-incomplete' };
+}
