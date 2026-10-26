@@ -11,7 +11,9 @@ import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
+import { removeInactiveProgressiveCompletionTarget } from '../src/cleanup.mjs';
 import {
+  resolveProgressiveCleanupRequest,
   resolveReleaseCommonCleanupRequest,
   runProgressiveCompletion,
   runReleaseCommonCleanup,
@@ -407,6 +409,17 @@ test('cleanup request requires --stopped when a bundle is supplied', () => {
   assert.deepEqual(resolveReleaseCommonCleanupRequest(['--ref=agent/test']).bundlePath, null);
 });
 
+test('progressive cleanup request requires explicit stopped authorization', () => {
+  assert.throws(() => resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes', '--cleanup']),
+    /--cleanup requires --stopped/u);
+  assert.throws(() => resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes', '--stopped']),
+    /--stopped is only valid together with --cleanup/u);
+  assert.deepEqual(resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes']),
+    { cleanup: false, stopped: false });
+  assert.deepEqual(resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes', '--cleanup', '--stopped']),
+    { cleanup: true, stopped: true });
+});
+
 test('release-common cleanup plans and applies the exact bundle in one run', async (t) => {
   const fixture = completeFixture(t);
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-release-common-bundle-'));
@@ -579,6 +592,113 @@ test('progressive completion does not count deploy-bound source closeout as end-
     owner: 'product-owner', command: 'Follow guides/DEPLOY-WORKFLOW.md.' }]);
 });
 
+test('progressive cleanup removes one inactive exact directory after a selected-zero pass', async t => {
+  const s = completeFixture(t);
+  const parent = mkdtempSync(join(tmpdir(), 'agentic-os-progressive-cleanup-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const target = realpathSync(parent);
+  const inactive = join(target, 'inactive');
+  mkdirSync(inactive);
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory: inactive,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: (cwd) => cwd === s.root ? [{ path: s.root, branch: 'main', head: git(['rev-parse', 'HEAD'], { cwd: s.root }) }] : assert.fail('unexpected nested inventory'),
+    out: line => events.push(JSON.parse(line)),
+    cleanup: { cleanup: true, stopped: true },
+    complete: async () => assert.fail('no worktrees should be selected') });
+  assert.equal(code, 0);
+  assert.equal(existsSync(inactive), false);
+  assert.equal(events.at(-1).event, 'cleanup');
+  assert.equal(events.at(-1).status, 'removed');
+  assert.equal(events.at(-1).mode, 'empty-directory');
+});
+
+test('progressive cleanup preserves non-empty directories and nested clones', async t => {
+  const s = completeFixture(t);
+  const nested = join(dirname(s.root), 'cleanup-clone');
+  git(['clone', '--quiet', s.root, nested], { cwd: dirname(s.root) });
+  t.after(() => rmSync(nested, { recursive: true, force: true }));
+  const cloneRoot = realpathSync(nested);
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory: cloneRoot,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: cwd => cwd === s.root
+      ? [{ path: s.root, branch: 'main', head: git(['rev-parse', 'HEAD'], { cwd: s.root }) }]
+      : assert.fail(`unexpected inventory ${cwd}`),
+    out: line => events.push(JSON.parse(line)), cleanup: { cleanup: true, stopped: true },
+    complete: async () => assert.fail('no worktrees should be selected') });
+  assert.equal(code, 2);
+  assert.equal(events.at(-1).event, 'cleanup');
+  assert.equal(events.at(-1).status, 'deferred');
+  assert.equal(events.at(-1).reason, 'directory-not-empty');
+  assert.equal(existsSync(cloneRoot), true);
+  assert.equal(git(['rev-parse', 'HEAD'], { cwd: cloneRoot }), git(['rev-parse', 'HEAD'], { cwd: s.root }));
+});
+
+test('progressive cleanup refuses canonical roots and their descendants', t => {
+  const s = completeFixture(t);
+  assert.throws(() => removeInactiveProgressiveCompletionTarget({
+    root: s.root, directory: s.root,
+  }), /canonical repository and every ancestor or descendant/u);
+  const child = join(s.root, 'empty-child');
+  mkdirSync(child);
+  t.after(() => rmSync(child, { recursive: true, force: true }));
+  assert.throws(() => removeInactiveProgressiveCompletionTarget({
+    root: s.root, directory: realpathSync(child),
+  }), /canonical repository and every ancestor or descendant/u);
+  assert.equal(existsSync(child), true);
+});
+
+test('progressive cleanup defers while selected worktrees remain', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const ref = 'agent/test-device/published';
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: join(directory, 'published'), branch: ref, head }],
+    record: () => ({ state: 'published', head, worktree: join(directory, 'published') }),
+    complete: async () => 0,
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'complete', completionScope: 'repository-only' } }),
+    out: line => events.push(JSON.parse(line)),
+    cleanup: { cleanup: true, stopped: true } });
+  assert.equal(code, 2);
+  assert.equal(events.at(-1).event, 'cleanup');
+  assert.equal(events.at(-1).status, 'deferred');
+  assert.equal(events.at(-1).reason, 'selected-worktrees-remain');
+});
+
+test('progressive completion can select one exact lane from a shared worktree directory', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const selectedRef = 'agent/test-device/selected', otherRef = 'agent/test-device/other';
+  const rows = [selectedRef, otherRef].map((branch, index) => ({
+    path: join(directory, `lane-${index}`), branch, head,
+  }));
+  const calls = [], events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory, ref: selectedRef,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => rows,
+    record: branch => ({ state: 'published', head, pr: 41, worktree: rows.find(row => row.branch === branch)?.path }),
+    complete: async branch => { calls.push(branch); return 0; },
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'complete',
+      completionScope: 'repository-only' } }),
+    out: line => events.push(JSON.parse(line)),
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [selectedRef]);
+  assert.equal(events.at(-1).selected, 1);
+  assert.equal(events.at(-1).completed, 1);
+});
+
+test('progressive completion rejects a ref outside the exact worktree directory', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  await assert.rejects(runProgressiveCompletion({ root: s.root, directory, ref: 'agent/test-device/missing',
+    policy: { protectedBranch: 'main' }, profile: profile(), inventory: () => [],
+    complete: async () => assert.fail('no lane should be selected') }),
+  /ref must identify one registered worktree directly under --worktrees/u);
+});
+
 test('progressive completion retains docs delivery-scope assessment as pending', async t => {
   const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
   const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
@@ -673,7 +793,10 @@ test('progressive completion refuses changed identity and false completion; budg
 
 test('progressive argument selection is exclusive and a pending review needs only one observation', async () => {
   assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes']), null);
-  for (const extra of ['--ref=agent/test/x', '--bundle=/tmp/bundle', '--stopped'])
+  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--ref=agent/test/lane']), null);
+  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--cleanup', '--stopped']), null);
+  assert.match(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--cleanup']) ?? '', /requires --stopped/u);
+  for (const extra of ['--bundle=/tmp/bundle', '--stopped'])
     assert.notEqual(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', extra]), null);
   const c = clock(); let reads = 0;
   const result = await watchReleaseCommonReview({ ref: 'agent/test/lane', head: 'a'.repeat(40) }, {

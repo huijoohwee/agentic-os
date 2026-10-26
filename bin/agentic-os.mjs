@@ -84,7 +84,7 @@ function cmdReleaseCommonHelp() {
       '  agentic-os release-common closeout --ref=<lane>   read-only closeout summary from the exact lane or canonical checkout',
       '  agentic-os release-common allocation-release --ref=<lane> [--cleanup-receipt=<json>]   free one fully closed workflow allocation while retaining its history',
       '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
-      '  agentic-os complete-adlc --worktrees=<absolute-directory>   one bounded source + delivery closeout pass; show exact owner actions',
+      '  agentic-os complete-adlc --worktrees=<absolute-directory> [--ref=<lane>] [--cleanup --stopped]   one bounded closeout pass; choose one lane or the directory',
       '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
       '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
       '',
@@ -139,7 +139,9 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       if (option(rest, 'via-pr') !== null)
         return completeModule.runReleaseCommonSuccessorComplete({ root, argv: rest, profile, out, err });
       if (option(rest, 'worktrees') !== null) return completeModule.runProgressiveCompletion({
-        root, directory: option(rest, 'worktrees'), timeoutMs: Number(option(rest, 'timeout-ms', '60000')), policy, profile, out,
+        root, directory: option(rest, 'worktrees'), ref: option(rest, 'ref'),
+        timeoutMs: Number(option(rest, 'timeout-ms', '60000')), policy, profile, out,
+        cleanup: completeModule.resolveProgressiveCleanupRequest(rest),
         complete: (ref, timeoutMs, guard) => cmdReleaseCommon(cwd, root, ['complete', `--ref=${ref}`, `--timeout-ms=${timeoutMs}`], policy, profile, true, guard),
       });
       const cleanup = completeModule.resolveReleaseCommonCleanupRequest(rest);

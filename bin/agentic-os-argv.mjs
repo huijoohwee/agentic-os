@@ -169,8 +169,14 @@ export function validateCommandArguments(command, argv) {
           requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
           : 'scope-release requires plan or apply';
       if (action === 'complete') {
-        if (option(argv, 'worktrees') !== null)
-          return exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms'], requiredOptions: ['worktrees'] });
+        if (option(argv, 'worktrees') !== null) {
+          const error = exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms', 'ref'],
+            flags: ['cleanup', 'stopped'], requiredOptions: ['worktrees'] });
+          if (error) return error;
+          return flag(argv, 'cleanup')
+            ? flag(argv, 'stopped') ? null : '--cleanup requires --stopped'
+            : flag(argv, 'stopped') ? '--stopped is only valid with --cleanup' : null;
+        }
         if (option(argv, 'via-pr') !== null)
           return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'replaced'],
             flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
@@ -249,6 +255,7 @@ export function cmdHelp() {
       '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
+      '    agentic-os complete-adlc --worktrees=<dir> [--ref=<lane>] [--cleanup --stopped]  one bounded END ADLC pass; select one lane or the directory',
       '    npm run release:common -- closeout --ref=<lane>  one read-only local summary; works from that lane or canonical checkout',
       '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped  verify reviewed successor then quarantine the clean predecessor',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
