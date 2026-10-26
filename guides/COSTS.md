@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Portfolio Cost Index"
 doc_type: "Cost Index"
-version: "1.1.2"
-date: "2026-10-19"
+version: "1.1.3"
+date: "2026-10-26"
 lang: "en-US"
 owner: "agentic-os"
 load_policy: "on-demand"
@@ -40,16 +40,28 @@ its authoring ledger records source reads and checks but leaves active minutes, 
 unmetered. The OS workflow adapter can carry resource observations, including explicit nulls; its
 presence is not an actual-cost receipt. The storage TCO source compares optional paid variants; they
 are outside this index's zero incremental paid-spend constraint. A free path is admissible only
-when it has no billable usage or the provider enforces a hard USD 0 spend cap. A free allowance or
-below-quota usage snapshot alone does not prove zero cost. No row proves a payment, enforceable
-spend cap, free-quota headroom or a complete financial model.
+when it has no billable usage, the provider enforces a hard USD 0 spend cap, or a complete race-safe
+free-quota allocation reserves each effect within included limits.
+A free allowance or below-quota usage snapshot alone does not prove zero cost. The gate must use
+exact current terms, reserve before
+the call and deny at an owner allocation that accounts for every consumer sharing the provider
+allowance. A usage snapshot, alert, per-bucket reading or isolated owner's ledger is not account-wide
+enforcement. Unknown consumers or total usage make headroom unknown and block the effect. Never
+label quota compliance as a provider spend cap. No row proves a payment, global R2 headroom or a
+complete financial model.
 
 This rule applies to storage, compute, telemetry, CI and deployment effects across every repository
-and worktree. Usage-billed services such as Cloudflare R2 remain blocked unless the provider can
-enforce a USD 0 cap or deny the operation when free quota is exhausted. Included usage, current
-usage or billing snapshots, and budget alerts do not cap later requests. See Cloudflare's
-[usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/)
-and [R2 pricing](https://developers.cloudflare.com/r2/pricing/) for the provider's current terms.
+and worktree. Cloudflare R2's current Standard Free allowance is 10 GB-month of storage, 1 million
+Class A operations and 10 million Class B operations per month; Infrequent Access is excluded and
+has retrieval fees. Storage uses the average of daily peak usage over a 30-day period, with billing
+units rounded up. Check the provider's [current R2 terms](https://developers.cloudflare.com/r2/pricing/)
+before an effect. Apply these limits to total account usage across all covered buckets and callers,
+not one bucket or application. An owner-scoped guard proves only its reserved share; unaccounted
+account consumers block the effect. See also Cloudflare's [usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/).
+
+For scale, 108.8 MB held in Standard for 30 days is about 0.11 GB-month, within the 10 GB-month
+storage allowance; storage alone adds no charge at that usage. Confirm total account storage and
+operations stay within their separate monthly allowances. Infrequent Access remains billable.
 
 This public repository uses GitHub-hosted standard runners, which GitHub currently provides at no charge for public repositories. Workflow artifacts and caches can incur storage charges beyond included limits, so repository workflows do not upload, download or cache artifacts. CI and canary evidence remains in the run log and local receipts; preserve existing provider artifacts through their configured expiry. Recheck repository visibility and GitHub billing terms before relying on this runner path.
 
@@ -72,16 +84,18 @@ records to this public catalog.
 | Operator opportunity cost | Dated time and stated rate | Unknown imputed cost, separate from cash |
 
 The paid-spend ceiling is **USD 0 incremental** under the [ADLC policy][adlc]. It is a constraint,
-not an observed expense. Track free-quota limit, usage, reset and remaining headroom by owner and
-period, but do not treat them as a spend cap: every billable path needs a provider-enforced hard
-USD 0 cap. Unknown cost or headroom blocks; without an enforceable cap, stop, reduce scope, or use
-a nonbillable local/offline fallback before the effect. Budget reporting never authorizes a paid
-plan, add-on or overage.
+not an observed expense. Track free-quota limit, usage, reset and allocated headroom by owner and
+period. A provider hard USD 0 cap or a complete race-safe free-quota allocation can guard an effect;
+the latter must reserve before each call, deny on exhaustion and include all account consumers.
+Unknown cost, consumer coverage or headroom blocks; stop, reduce scope or use a nonbillable
+local/offline fallback. Budget reporting never authorizes a paid plan, add-on or overage.
 
 An effect plan binds the provider, billing mode, evidence digest, exact effect scope and evidence
 expiry. Its trusted provider adapter must verify that evidence immediately before effect authority
 runs and return a current zero-cost verification receipt that covers the complete authorization
-window. A below-quota usage view, budget alert, or owner-entered claim is not that receipt.
+window. For free quota, that receipt binds current terms, the complete owner allocation and a
+pre-call reservation slot.
+A below-quota usage view, budget alert, or owner-entered claim is not that receipt.
 
 Built-in runtime model, skill-proposal and remote MCP calls use this rule per provider request: the
 adapter obtains current evidence bound to the exact provider, resource, operation and request digest
