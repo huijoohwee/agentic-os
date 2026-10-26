@@ -386,9 +386,11 @@ export async function runReleaseCommonSuccessorComplete({
     const current = releaseCommonLocalCleanupPolicy(root, profile);
     const record = get(ref, root);
     const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
-    if (!record || !['published', 'queued', 'integrated'].includes(record.state)
+    const predecessorEligible = record && (['published', 'queued', 'integrated'].includes(record.state)
+      || record.state === 'active' && record.pr === null);
+    if (!predecessorEligible
       || record.head !== status.lane.head || status.lane.clean === false)
-      fail('blocked-release-common-successor-lane', 'one exact published, clean predecessor is required');
+      fail('blocked-release-common-successor-lane', 'one exact clean predecessor with no unresolved PR is required');
     let reviewedCandidate = null;
     const assertWorkflowCurrent = createWorkflowEffectGuard(() => ({
       ...cleanupWorkflowContext(root, ref, profile.repository),

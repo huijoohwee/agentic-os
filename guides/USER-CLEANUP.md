@@ -172,7 +172,9 @@ npm run release:common -- complete --ref=<old-lane> --via-pr=<merged-successor-p
 
 The command runs from clean canonical `main`, which must equal fetched and live `origin/main` and
 contain the accepted merge. If it does not, use the separately governed canonical sync workflow first.
-The old lane must be a mounted, clean, stopped published worktree with its cached head unchanged.
+The old lane must be mounted, clean, stopped and have its cached head unchanged. A published,
+queued or integrated record is eligible; an active record is eligible only when it has no recorded
+predecessor PR (`pr:null`) and this exact reviewed successor proves the content transition.
 It verifies the successor's exact reviewed head, successful selected checks and actual merge. The old
 head must be an ancestor of the reviewed head. Every path changed by the old lane must match the
 accepted merge tree exactly, except the explicitly listed replacements; each replacement must match
