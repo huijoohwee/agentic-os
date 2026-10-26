@@ -556,8 +556,47 @@ export async function runProgressiveCompletion({ root, directory, ref = null, ti
   const deadline = now() + timeoutMs, results = []; for (const { target, bound } of targets) {
     let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null }; try {
       const remaining = Math.ceil(deadline - now());
-      if (!bound || !COMPLETE_STATES.has(bound.state)) result.reason = 'requires-published-lane';
-      else if (bound.recovery?.dirtyState === 'unobservable-at-missing-path') result.reason = 'lane-dirty-state-unknown';
+      if (!bound || !COMPLETE_STATES.has(bound.state)) {
+        const observed = status(root, target.branch, policy, profile), closeout = observed?.closeout;
+        const exactObservation = observed?.ref === target.branch
+          && observed?.lane?.path === target.path && observed?.lane?.head === target.head
+          && observed?.lane?.mounted === true && observed?.lane?.clean === true
+          && observed?.canonicalClean === true
+          && observed?.canonicalRevision === observed?.remoteTrackingRevision
+          && observed?.closeout?.observationOnly === true
+          && observed?.closeout?.authorizesEffects === false
+          && observed?.closeout?.canonicalCurrent === true;
+        if (exactObservation && closeout?.sourceState === 'source_complete') {
+          const adlcState = closeout.adlcState;
+          const settledState = ['complete', 'source_complete', 'cleanup_pending', 'delivery_pending',
+            'delivery_scope_pending', 'retirement_pending'].includes(adlcState) ? adlcState : null;
+          result = {
+            ...result,
+            status: settledState ?? 'blocked',
+            sourceState: closeout.sourceState,
+            missionState: closeout.missionState ?? null,
+            adlcState: settledState,
+            retentionState: closeout.retentionState ?? null,
+            deliveryState: closeout.deliveryState ?? null,
+            completionScope: closeout.completionScope ?? null,
+            nextAction: closeout.nextAction ?? null,
+            reason: settledState && ['complete', 'source_complete'].includes(settledState)
+              ? null : 'closeout-incomplete',
+          };
+        } else if (exactObservation) {
+          result = {
+            ...result,
+            sourceState: closeout?.sourceState ?? null,
+            missionState: closeout?.missionState ?? null,
+            adlcState: closeout?.adlcState ?? null,
+            retentionState: closeout?.retentionState ?? null,
+            deliveryState: closeout?.deliveryState ?? null,
+            completionScope: closeout?.completionScope ?? null,
+            nextAction: closeout?.nextAction ?? null,
+            reason: closeout?.nextAction?.id ?? 'source-not-complete',
+          };
+        } else result.reason = 'requires-published-lane';
+      } else if (bound.recovery?.dirtyState === 'unobservable-at-missing-path') result.reason = 'lane-dirty-state-unknown';
       else if (target.locked || target.prunable || bound.head !== target.head || bound.worktree !== target.path)
         result.reason = target.locked || target.prunable ? 'worktree-not-completable' : 'lane-binding-drift';
       else if (remaining <= 0) result = { ...result, status: 'deferred', reason: 'pass-budget' };
