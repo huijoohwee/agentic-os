@@ -389,11 +389,9 @@ export async function runReleaseCommonSuccessorComplete({
     if (!record || !(['published', 'queued', 'integrated'].includes(record.state)
       || record.state === 'active' && record.pr === null) || record.head !== status.lane.head || status.lane.clean === false)
       fail('blocked-release-common-successor-lane', 'one exact clean predecessor with no unresolved PR is required');
-    let reviewedCandidate = null;
-    const assertWorkflowCurrent = createWorkflowEffectGuard(() => ({
-      ...cleanupWorkflowContext(root, ref, profile.repository),
-      ...(reviewedCandidate === null ? {} : { revision: reviewedCandidate }),
-    }));
+    // Cleanup remains bound to the predecessor lane; successor review is checked separately.
+    const assertWorkflowCurrent = createWorkflowEffectGuard(
+      () => cleanupWorkflowContext(root, ref, profile.repository));
     const workflow = inferMergedReviewWorkflow({ repository: current.repository, pr,
       requiredChecks: [...current.requiredChecks].sort() }, { cwd: root, api });
     if (!status.lane.mounted) {
@@ -422,7 +420,6 @@ export async function runReleaseCommonSuccessorComplete({
     const successor = { ...plan.successor, reviewedHead: plan.head, merge: plan.merge };
     if (plan.integration.kind !== 'reviewed-successor')
       fail('blocked-release-common-successor-integration', 'reviewed successor must remain exact');
-    reviewedCandidate = plan.head;
     assertWorkflowCurrent();
     const receipt = applyUserCleanup(plan, { cwd: root,
       authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true, ...options });
