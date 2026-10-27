@@ -20,7 +20,8 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 
 - Exact PRD/TAD/ADR ID+revision binds scope, acceptance, design and decision; stale joins block.
 - Global repo/worktree: USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.
-- Public-source archives use private, frozen, Actions-disabled `*-private-archive` repos; follow the [policy](../guides/PRIVATE-ARCHIVE-POLICY.md) before creation, refresh, or public mirroring.
+- Public-source archives use private, frozen, Actions-disabled `*-private-archive` repos.
+  Follow the [policy](../guides/PRIVATE-ARCHIVE-POLICY.md) before creation, refresh, or public mirroring.
 - Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
 - START/resume Mission binds current code/workflow; reuse evidence.
