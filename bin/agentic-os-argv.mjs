@@ -179,7 +179,7 @@ export function validateCommandArguments(command, argv) {
         }
         if (option(argv, 'via-pr') !== null)
           return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'via-repository', 'via-checks', 'replaced', 'reason'],
-            flags: ['stopped', 'superseded'], requiredOptions: ['ref', 'via-pr', 'via-repository', 'via-checks', 'replaced', 'reason'], requiredFlags: ['stopped', 'superseded'], allowEmptyOptions: ['replaced'] });
+            flags: ['stopped', 'superseded'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
       if (action === 'retire-empty-active') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
