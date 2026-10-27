@@ -9,7 +9,7 @@ export const RECOVERY_LIMITS = Object.freeze({
   registrationByteCeiling: 16 * 1024 ** 2, registrationEntryCeiling: 20000,
   sharedStateByteCeiling: 20 * 1024 ** 3, sharedStateEntryCeiling: 500000,
 });
-export function recoveryPolicy(root, repository) {
+export function recoveryPolicy(root, repository, { requireChecks = true } = {}) {
   const trust = loadRepositoryTrust(root);
   const { profile } = observeRepositoryProfileAtRef({ repository: root, ref: 'refs/heads/main' });
   if (!profile || profile.repository !== `github.com/${repository}`
@@ -19,7 +19,7 @@ export function recoveryPolicy(root, repository) {
     || profile.canonical.remoteRef !== 'refs/remotes/origin/main'
     || profile.adapters.repository?.id !== 'git' || profile.adapters.repository.version !== '1'
     || profile.adapters.provider?.id !== 'github' || profile.adapters.provider.version !== '1'
-    || !profile.requiredChecks.length) refuse('recovery-profile-binding');
+    || requireChecks && !profile.requiredChecks.length) refuse('recovery-profile-binding');
   return { repositoryProfileDigest: profile.profileDigest, requiredChecks: profile.requiredChecks,
     protectedCleanupPolicy: profile.cleanup, limits: RECOVERY_LIMITS };
 }

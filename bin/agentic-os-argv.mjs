@@ -178,8 +178,8 @@ export function validateCommandArguments(command, argv) {
             : flag(argv, 'stopped') ? '--stopped is only valid with --cleanup' : null;
         }
         if (option(argv, 'via-pr') !== null)
-          return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'replaced'],
-            flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
+          return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'via-repository', 'via-checks', 'replaced', 'reason'],
+            flags: ['stopped', 'superseded'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
       if (action === 'retire-empty-active') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
@@ -257,7 +257,7 @@ export function cmdHelp() {
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
       '    agentic-os complete-adlc --worktrees=<dir> [--ref=<lane>] [--cleanup --stopped]  one bounded END ADLC pass; select one lane or the directory',
       '    npm run release:common -- closeout --ref=<lane>  one read-only local summary; works from that lane or canonical checkout',
-      '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped  verify reviewed successor then quarantine the clean predecessor',
+      '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --via-repository=<owner/repo> --via-checks=<names> --replaced=<exact,path> --reason=<text> --superseded --stopped  record reviewed cross-repository supersession without cleanup',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
       '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
       '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>] [--message=<text>]  continue after publish; message commits only reserved retained bytes',

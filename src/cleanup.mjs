@@ -303,7 +303,7 @@ export async function executeWorktreeCleanup(input, options) {
   return finishOperationLock(lock, { label: 'worktree-cleanup', result, error, artifacts });
 }
 
-export function releaseCommonLocalCleanupPolicy(root, profile) {
+export function releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyChecks = false } = {}) {
   if (repoRoot(root) !== root || currentBranch(root) !== 'main')
     fail('blocked-release-common-local-cleanup-canonical', 'local cleanup runs from canonical main');
   const remoteUrl = remoteTransport('origin', root).fetchUrl;
@@ -316,7 +316,7 @@ export function releaseCommonLocalCleanupPolicy(root, profile) {
     || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root, maxBuffer: 65536 }) !== '')
     fail('blocked-release-common-local-cleanup-canonical', 'canonical main must be current and clean before local cleanup');
   return { root, repository: remote, remoteUrl, canonical, localRef: 'refs/heads/main',
-    mode: RECOVERY_MODE, enrollment: 'release-common-complete', ...recoveryPolicy(root, remote),
+    mode: RECOVERY_MODE, enrollment: 'release-common-complete', ...recoveryPolicy(root, remote, { requireChecks: !allowEmptyChecks }),
     selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
 }
 
@@ -391,7 +391,7 @@ export async function runReleaseCommonSuccessorComplete({ root, argv, profile,
       || new Set(requiredChecks).size !== requiredChecks.length || !replaced.length || replaced.length > 128
       || !/^[^\x00-\x1f\x7f]{12,512}$/u.test(reason.trim()) || Buffer.byteLength(reason.trim()) > 512) fail('blocked-supersession-options',
       'Use --ref=<lane> --via-repository=<owner/repo> --via-pr=<n> --via-checks=<names> --replaced=<paths> --reason=<text> --superseded --stopped');
-    const current = releaseCommonLocalCleanupPolicy(root, profile), record = get(ref, root), status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
+    const current = releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyChecks: true }), record = get(ref, root), status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
     if (status.sourceSuperseded) {
       if (status.supersession?.successor?.repository === repository && status.supersession.successor.pr === pr) { out(JSON.stringify(status)); return 0; }
       fail('blocked-supersession-existing', 'a different immutable supersession is already recorded');
