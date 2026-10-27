@@ -331,7 +331,7 @@ export function createGitHubTransitionRestProvider({ repository: identity,
           || disposition.policyDigest !== governanceDigest(adoptedPolicy)
           || disposition.state.policyRepository !== repo.repository || disposition.state.policyRevision !== workflowRevision
           || observedProof.reviewLocator !== disposition.adoption.reviewLocator
-          || observedProof.mergeRevision !== disposition.adoption.merge
+          || observedProof.candidateBranch !== (disposition.adoption.successorRef ?? disposition.adoption.targetRef) || observedProof.mergeRevision !== disposition.adoption.merge
           || observedProof.candidateHeadRevision !== (disposition.adoption.successorHead ?? disposition.adoption.targetHead)
           || !same(disposition.review.checks.map(check => [String(check.checkId), check.name]).sort(),
             verifiedChecks.map(check => [check.checkRunId, check.context]).sort()))
@@ -345,7 +345,7 @@ export function createGitHubTransitionRestProvider({ repository: identity,
           preservationReceiptDigest: disposition.receiptDigest, adoptionDigest: disposition.adoptionDigest,
           preservationPolicyRevision: workflowRevision,
           physicalCleanupPerformed: false,
-          [disposition.adoption.targetHead ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven']: false } : {}) };
+          [disposition.disposition === 'current-quarantine-retained' || disposition.disposition === 'current-quarantine-discard-acknowledged' ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven']: false } : {}) };
       const proofPayload = { schema: 'agentic-os/github-retire-provider-proof/v1', ...payload };
       const proof = freeze({ ...proofPayload, proofDigest: governanceDigest(proofPayload) });
       if (expectedProof !== null && !same(proof, expectedProof))

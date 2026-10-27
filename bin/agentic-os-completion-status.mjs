@@ -109,8 +109,7 @@ export function inspectCompletionStatus(root, ref, policy, profile, { successor 
   const lossDispositionVerified = preservation?.disposition === 'current-quarantine-discard-acknowledged' || Boolean(discardedEvidence), lossDispositionReceiptDigest = preservation?.receiptDigest ?? (discardedEvidence ? cleanupReceipt.receiptDigest : null);
   const unknownDirtyState = laneRecord?.recovery?.dirtyState === 'unobservable-at-missing-path'
     && !acceptedMissingBytes && !lossDispositionVerified;
-  if (preservation && (laneMounted || (preservation.adoption.predecessorRef ?? preservation.adoption.targetRef) !== ref
-    || (preservation.adoption.predecessorHead ?? preservation.adoption.targetHead) !== laneHead)) throw new TypeError('preservation does not bind this lane');
+  if (preservation && ((laneMounted && preservation.disposition !== 'standalone-lane-retained') || (preservation.adoption.predecessorRef ?? preservation.adoption.targetRef) !== ref || (preservation.adoption.predecessorHead ?? preservation.adoption.targetHead) !== laneHead)) throw new TypeError('preservation does not bind this lane');
   successor ??= preservation?.adoption.predecessorRef ? { ...preservation.adoption, reviewedHead: preservation.adoption.successorHead,
     predecessorHead: preservation.adoption.predecessorHead, replacedPaths: preservation.adoption.replacedPaths } : null;
   let retirementReceiptBinding = null;
