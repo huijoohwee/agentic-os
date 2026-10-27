@@ -1,5 +1,5 @@
 /** Committed policy for one GitHub transition evidence workflow and target set. */
-import { freezeCleanupRecord as freeze } from './cleanup-records.mjs';
+import { freezeCleanupRecord as freeze, STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA } from './cleanup-records.mjs';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 
@@ -197,7 +197,7 @@ function preservationAdoption(source) {
 }
 export function selectPreservationAdoption(policyValue, receiptOrEntry) {
   const policy = validateGitHubTransitionPolicy(policyValue), entry = receiptOrEntry.adoption ?? receiptOrEntry;
-  const entries = entry.schema === 'agentic-os/current-quarantine-adoption/v1' ? policy.retentionAdoptions : policy.preservationAdoptions;
+  const entries = entry.schema === STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA ? [entry] : entry.schema === 'agentic-os/current-quarantine-adoption/v1' ? policy.retentionAdoptions : policy.preservationAdoptions;
   const selected = entries?.find((value) => canonicalJson(value) === canonicalJson(entry));
   if (!selected) fail('preservation adoption is not exactly enrolled in committed policy');
   return selected;
@@ -250,7 +250,7 @@ export function validateTransitionProviderProof(value, input) {
   if (disposition && (source.effectClass !== 'claim-retirement-record-only'
     || source.preservationReceiptDigest !== disposition.receiptDigest
     || source.adoptionDigest !== disposition.adoptionDigest || source.physicalCleanupPerformed !== false
-    || source[disposition.adoption.targetHead ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven'] !== false)) fail('retirement proof changed preservation basis');
+    || source[['current-quarantine-retained', 'current-quarantine-discard-acknowledged'].includes(disposition.disposition) ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven'] !== false)) fail('retirement proof changed preservation basis');
   const { proofDigest, ...payload } = source;
   if (canonicalJson(source).length > 100_000 || !/^[0-9a-f]{64}$/u.test(proofDigest)
     || proofDigest !== governanceDigest(payload)) fail('GitHub transition provider proof digest is invalid');

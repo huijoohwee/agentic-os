@@ -226,11 +226,11 @@ export function validateGitHubTransitionInput(value) {
   const mode = integrationMode(source, request, predecessorSource);
   const recordOnly = plan.effectClass === 'claim-retirement-record-only';
   if (recordOnly !== Object.hasOwn(source, 'preservationDisposition'))
-    fail('record-only retirement requires exactly one successor preservation disposition');
-  // Fresh successor authority gives record-only retirement a receipt-bound window.
+    fail('record-only retirement requires exactly one retention disposition');
+  // A fresh retention disposition gives record-only retirement a receipt-bound window.
   const disposition = recordOnly ? validateRetentionDispositionReceipt(source.preservationDisposition) : null;
   if (disposition && (disposition.repository !== request.repository
-    || disposition.adoption.merge !== plan.target.immutableRevision
+    || disposition.adoption.merge !== plan.target.immutableRevision || disposition.disposition === 'standalone-lane-retained' && disposition.adoption.integrationReceiptDigest !== plan.authority.predecessorDigest
     || plan.parametersDigest !== governanceDigest({ schema: 'agentic-os/record-only-retirement-parameters/v1',
       preservationReceiptDigest: disposition.receiptDigest, adoptionDigest: disposition.adoptionDigest })
     || Date.parse(request.observedAt) < Date.parse(disposition.issuedAt)
