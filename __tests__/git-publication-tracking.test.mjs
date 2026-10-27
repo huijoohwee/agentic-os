@@ -19,21 +19,27 @@ function fixture(t) {
   publishExactNewRef('origin',ref,head,root,bare);
   return {root,bare,run,ref,head,base,tracking,bind:()=>bindPublishedUpstream('origin',ref,head,root,bare)};
 }
+function publishedTrackingHead(f) {
+  const trackingHead = headSha(f.tracking, f.root);
+  assert.ok(trackingHead === null || trackingHead === f.head,
+    `publication must not leave a conflicting tracking ref: ${trackingHead}`);
+  return trackingHead;
+}
 test('exact new publication makes upstream usable immediately and is idempotent',t=>{
-  const f=fixture(t);assert.equal(headSha(f.tracking,f.root),null);
-  const result=f.bind();assert.equal(result.upstream,'bound');assert.equal(result.trackingCreated,true);
+  const f=fixture(t), trackingBeforeBind=publishedTrackingHead(f);
+  const result=f.bind();assert.equal(result.upstream,'bound');assert.equal(result.trackingCreated,trackingBeforeBind===null);
   assert.equal(f.run('rev-parse','@{upstream}'),f.head);
   assert.equal(f.run('rev-list','--left-right','--count','HEAD...@{upstream}'),'0\t0');
   assert.equal(f.bind().effectsRetained,false);
 });
 test('custom and partial author upstream configuration is retained verbatim',t=>{
-  const f=fixture(t);f.run('config',`branch.${f.ref}.remote`,'custom');
+  const f=fixture(t), trackingBeforeBind=publishedTrackingHead(f);f.run('config',`branch.${f.ref}.remote`,'custom');
   assert.equal(f.bind().upstream,'preserved-custom');
   assert.equal(f.run('config','--get',`branch.${f.ref}.remote`),'custom');
-  assert.equal(headSha(f.tracking,f.root),null);
+  assert.equal(headSha(f.tracking,f.root),trackingBeforeBind);
   f.run('config',`branch.${f.ref}.remote`,'');
   assert.equal(f.bind().upstream,'preserved-custom');
-  assert.equal(headSha(f.tracking,f.root),null,'explicit empty values are still author configuration');
+  assert.equal(headSha(f.tracking,f.root),trackingBeforeBind,'explicit empty values are still author configuration');
 });
 test('conflicting or symbolic tracking refs cannot be overwritten',t=>{
   const f=fixture(t);f.run('update-ref',f.tracking,f.base);
@@ -42,6 +48,6 @@ test('conflicting or symbolic tracking refs cannot be overwritten',t=>{
   assert.throws(f.bind,/tracking-symbolic/);assert.equal(f.run('rev-parse','main'),f.base);
 });
 test('remote candidate drift refuses local metadata repair',t=>{
-  const f=fixture(t);f.run('--git-dir',f.bare,'update-ref',`refs/heads/${f.ref}`,f.base);
-  assert.throws(f.bind,/tracking-drift/);assert.equal(headSha(f.tracking,f.root),null);
+  const f=fixture(t), trackingBeforeBind=publishedTrackingHead(f);f.run('--git-dir',f.bare,'update-ref',`refs/heads/${f.ref}`,f.base);
+  assert.throws(f.bind,/tracking-drift/);assert.equal(headSha(f.tracking,f.root),trackingBeforeBind);
 });
