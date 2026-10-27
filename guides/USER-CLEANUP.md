@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.6"
-date: "2026-10-22"
+version: "1.4.7"
+date: "2026-10-27"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.6"
-tad_revision: "1.4.6"
-adr_revision: "1.4.6"
+prd_revision: "1.4.7"
+tad_revision: "1.4.7"
+adr_revision: "1.4.7"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "397ce86dbcf9606cace473f0e1f1e8beabb20197"
-mvp_revision: "1.4.6"
-gtm_revision: "1.4.6"
+mvp_revision: "1.4.7"
+gtm_revision: "1.4.7"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -205,6 +205,34 @@ with exact local opt-in, successful checks, complete content/preservation proof 
 wrong identity, missing checks, failed source inclusion, hidden/dirty bytes, drift and stale consent fail.
 `__tests__/user-cleanup-recovery.test.mjs` covers those boundaries with real temporary Git repositories and
 mocked provider reads. Live execution receipts remain separate from these tests.
+
+## Cross-repository source supersession
+
+When the exact source repository is frozen private and archived, and the same lane change has already
+landed through a reviewed successor PR in a different public source repository, close the old source task
+with a distinct local supersession receipt. This is not a merge, source integration, protection proof,
+claim retirement, cleanup, or deployment. Keep the old worktree, branch, refs, objects, and archive intact.
+
+From the clean canonical checkout, select the successor repository, all required successful checks, every
+changed path, and a short reason for the disposition:
+
+```sh
+npm run release:common -- complete --ref=<old-lane> --via-pr=<merged-pr> \
+  --via-repository=<owner/repo> --via-checks=<exact-check[,check...]> \
+  --replaced=<exact-repository-relative-path[,path...]> \
+  --reason='Superseded by the reviewed public source change; preserve the frozen archive.' \
+  --superseded --stopped
+```
+
+Admission verifies the exact private archived source identity, the unchanged clean mounted lane with no
+own PR, current local/tracking/live source `main`, the merged same-ref PR and named successful workflow
+checks, exact path-set equality between the old lane and successor PR, and that the successor merge remains
+on its current `main`. The immutable local receipt is stored in the clone's common Git directory. It says
+`sourceIntegrated:false`, `sourceSuperseded:true`, `providerAuthority:false`, and `claimRetired:false`.
+Closeout may report `missionState=source_complete` and `adlcState=complete` only while the exact clean lane
+remains mounted under its retained profile and canonical source remains current. Deployment remains a
+separate owner decision whenever the lane is product-bound. A missing or drifted receipt keeps closeout
+continuable; this path never removes a checkout or Git object.
 
 ## Current successor preservation adoption
 

@@ -1,8 +1,9 @@
 /** Join authenticated lifecycle evidence to exact, quarantine-only Git worktree effects. */
-import { canonicalJson } from './governance.mjs';
-import { lstatSync, realpathSync, rmdirSync } from 'node:fs';
-import { basename, isAbsolute, relative, resolve } from 'node:path';
-import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from './git.mjs';
+import { canonicalJson, governanceDigest } from './governance.mjs';
+import { createHash } from 'node:crypto';
+import { closeSync, constants, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, realpathSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import { commonDir, currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from './git.mjs';
 import { isLaneRef, parseLaneRef } from './lane-id.mjs';
 import { get } from './lane-records.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
@@ -369,6 +370,156 @@ export function removeInactiveProgressiveCompletionTarget({ root, directory, inv
   return Object.freeze({ status: 'removed', path: directory, mode: 'empty-directory' });
 }
 
+const SOURCE_SUPERSESSION_SCHEMA = 'agentic-os/cross-repository-supersession-receipt/v1';
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+function changedPaths(root, base, head) {
+  const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `${base}...${head}`],
+    { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
+  return output === null ? null : output.split('\0').filter(Boolean).sort();
+}
+function writeSupersessionReceipt(root, ref, payload) {
+  const common = commonDir(root), directory = join(common, 'agentic-os-supersessions');
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const dirStat = lstatSync(directory, { bigint: true });
+  if (!dirStat.isDirectory() || dirStat.isSymbolicLink() || (dirStat.mode & 0o077n) !== 0n)
+    fail('blocked-release-common-superseded-receipt-path', 'receipt directory must be private, direct, and within the common Git directory');
+  const path = join(directory, `${sha256(ref)}.json`), temporary = `${path}.${process.pid}.${payload.issuedAt}.tmp`;
+  const receipt = { ...payload, receiptDigest: governanceDigest(payload) }, bytes = Buffer.from(canonicalJson(receipt));
+  let descriptor = null, linked = false;
+  try {
+    descriptor = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
+    writeFileSync(descriptor, bytes); fsyncSync(descriptor); closeSync(descriptor); descriptor = null;
+    linkSync(temporary, path); linked = true; unlinkSync(temporary);
+  } catch (error) {
+    if (descriptor !== null) closeSync(descriptor);
+    try { unlinkSync(temporary); } catch {}
+    if (error?.code === 'EEXIST') fail('blocked-release-common-superseded-receipt-exists', 'an immutable supersession receipt already exists for this lane');
+    throw error;
+  }
+  if (!linked) fail('blocked-release-common-superseded-receipt-write', 'supersession receipt was not linked into place');
+  return receipt;
+}
+
+/** Record an exact local-consent supersession without claiming cross-repository integration or retirement. */
+async function runReleaseCommonSupersededComplete({ root, argv, profile, out, err, now, api }) {
+  try {
+    const ref = option(argv, 'ref'), pr = Number(option(argv, 'via-pr'));
+    const repository = option(argv, 'via-repository') ?? '';
+    const checksText = option(argv, 'via-checks') ?? '';
+    const reason = option(argv, 'reason') ?? '';
+    const replacedPaths = (option(argv, 'replaced') ?? '').split(',').filter(Boolean);
+    const requiredChecks = checksText.split(',').filter(Boolean).sort();
+    if (!argv.includes('--superseded') || !argv.includes('--stopped') || !isLaneRef(ref)
+      || !Number.isSafeInteger(pr) || pr < 1
+      || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)
+      || repository === profile.repository.replace(/^github\.com\//u, '')
+      || requiredChecks.length < 1 || requiredChecks.length > 8
+      || requiredChecks.some((name, index) => !name.trim() || Buffer.byteLength(name) > 128
+        || /[\x00-\x1f\x7f]/u.test(name) || index > 0 && name === requiredChecks[index - 1])
+      || replacedPaths.length < 1 || replacedPaths.length > 128
+      || replacedPaths.some(path => path.startsWith('/') || path.includes('\\')
+        || path.split('/').some(part => !part || part === '.' || part === '..'))
+      || !/^[^\x00-\x1f\x7f]{12,512}$/u.test(reason.trim()) || Buffer.byteLength(reason.trim()) > 512)
+      fail('blocked-release-common-superseded-options',
+        'Use --ref=<lane> --via-pr=<merged-pr> --via-repository=<owner/repo> --via-checks=<exact-check[,check...]> --replaced=<exact,path> --reason=<local-consent-reason> --superseded --stopped');
+    const current = releaseCommonLocalCleanupPolicy(root, profile);
+    if (observeGit(['ls-remote', '--refs', '--', current.remoteUrl, 'refs/heads/main'], { cwd: root })
+      !== `${current.canonical}\trefs/heads/main`)
+      fail('blocked-release-common-superseded-canonical', 'live origin/main must equal clean local and tracking main');
+    const record = get(ref, root), status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    assertLaneBytesResolved(ref, root);
+    if (!record || record.state !== 'active' || record.pr !== null || record.head !== status.lane.head
+      || status.lane.mounted !== true || status.lane.clean !== true || status.lane.path !== record.worktree
+      || !/^[a-f0-9]{40}$/u.test(record.baseSha ?? ''))
+      fail('blocked-release-common-superseded-lane', 'one exact mounted, clean active lane with no PR and an unchanged base is required');
+    const sourcePaths = changedPaths(root, record.baseSha, record.head);
+    if (!sourcePaths || sourcePaths.length < 1 || sourcePaths.length > 128
+      || JSON.stringify(sourcePaths) !== JSON.stringify([...new Set(replacedPaths)].sort()))
+      fail('blocked-release-common-superseded-paths', 'the explicit replacement paths must equal every path changed by this lane');
+
+    const archiveRepository = current.repository;
+    const archive = api(`repos/${archiveRepository}`, { cwd: root });
+    if (archive?.full_name !== archiveRepository || archive.private !== true || archive.archived !== true)
+      fail('blocked-release-common-superseded-archive', 'the source repository must remain the exact private, archived repository');
+    const successorRepo = api(`repos/${repository}`, { cwd: root });
+    if (successorRepo?.full_name !== repository || successorRepo.private !== false || successorRepo.archived === true)
+      fail('blocked-release-common-superseded-successor', 'the successor must be the exact public, active repository');
+    const workflow = inferMergedReviewWorkflow({ repository, pr, requiredChecks }, { cwd: root, api });
+    const review = observeMergedReview({ repository, pr, requiredChecks, workflow, mode: RECOVERY_MODE }, { cwd: root, api });
+    if (review.branch !== ref || review.checks.length !== requiredChecks.length
+      || JSON.stringify(review.checks.map(check => check.name).sort()) !== JSON.stringify(requiredChecks))
+      fail('blocked-release-common-superseded-review', 'the selected public PR, source ref, workflow, and successful checks must match exactly');
+    const files1 = api(`repos/${repository}/pulls/${pr}/files?per_page=100&page=1`, { cwd: root });
+    const files2 = api(`repos/${repository}/pulls/${pr}/files?per_page=100&page=2`, { cwd: root });
+    if (!Array.isArray(files1) || !Array.isArray(files2) || files2.length !== 0 || files1.length < 1
+      || files1.length > 100 || files1.some(file => file.status !== 'modified' || typeof file.filename !== 'string'))
+      fail('blocked-release-common-superseded-files', 'the successor PR must have a bounded, complete list of modified files');
+    const successorPaths = files1.map(file => file.filename).sort();
+    if (new Set(successorPaths).size !== successorPaths.length
+      || JSON.stringify(successorPaths) !== JSON.stringify(sourcePaths))
+      fail('blocked-release-common-superseded-content-scope', 'the reviewed successor must change exactly the old lane path set');
+    const main = api(`repos/${repository}/branches/main`, { cwd: root });
+    const mainHead = main?.commit?.sha;
+    if (!/^[a-f0-9]{40}$/u.test(mainHead ?? ''))
+      fail('blocked-release-common-superseded-main', 'the successor main revision is unavailable');
+    const comparison = api(`repos/${repository}/compare/${review.merge}...main`, { cwd: root });
+    if (!['ahead', 'identical'].includes(comparison?.status)
+      || comparison.base_commit?.sha !== review.merge
+      || comparison.merge_base_commit?.sha !== review.merge
+      || comparison.status === 'ahead' && comparison.head_commit?.sha !== mainHead)
+      fail('blocked-release-common-superseded-main', 'the successor merge must remain an ancestor of its current main');
+
+    const finalArchive = api(`repos/${archiveRepository}`, { cwd: root });
+    const finalReview = observeMergedReview({ repository, pr, requiredChecks, workflow, mode: RECOVERY_MODE }, { cwd: root, api });
+    const finalMain = api(`repos/${repository}/branches/main`, { cwd: root });
+    const finalComparison = api(`repos/${repository}/compare/${review.merge}...main`, { cwd: root });
+    if (finalArchive?.full_name !== archiveRepository || finalArchive.private !== true || finalArchive.archived !== true
+      || !same(finalReview, review) || finalMain?.commit?.sha !== mainHead
+      || !['ahead', 'identical'].includes(finalComparison?.status)
+      || finalComparison.base_commit?.sha !== review.merge || finalComparison.merge_base_commit?.sha !== review.merge
+      || finalComparison.status === 'ahead' && finalComparison.head_commit?.sha !== mainHead)
+      fail('blocked-release-common-superseded-provider-drift', 'archive, merged PR/checks, or successor main changed during observation');
+    const finalCurrent = releaseCommonLocalCleanupPolicy(root, profile);
+    const finalStatus = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    if (finalCurrent.canonical !== current.canonical || finalStatus.lane.path !== record.worktree
+      || finalStatus.lane.head !== record.head || finalStatus.lane.mounted !== true || finalStatus.lane.clean !== true
+      || !same(changedPaths(root, record.baseSha, record.head), sourcePaths)
+      || observeGit(['ls-remote', '--refs', '--', finalCurrent.remoteUrl, 'refs/heads/main'], { cwd: root })
+        !== `${finalCurrent.canonical}\trefs/heads/main`)
+      fail('blocked-release-common-superseded-source-drift', 'canonical source or exact old lane changed during observation');
+
+    const payload = { schema: SOURCE_SUPERSESSION_SCHEMA, repository: profile.repository,
+      profileDigest: profile.profileDigest, ref, sourceBase: record.baseSha, head: record.head,
+      worktree: record.worktree, changedPaths: sourcePaths, replacedPaths: sourcePaths,
+      disposition: 'superseded', sourceIntegrated: false, sourceSuperseded: true,
+      providerAuthority: false, claimRetired: false, archivePrivate: true, archiveArchived: true,
+      reason: reason.trim(), issuedAt: new Date(now()).toISOString(),
+      successor: { repository, pr, branch: review.branch, head: review.head, merge: review.merge,
+        mergedAt: review.mergedAt, mainHead, workflow, changedPaths: successorPaths,
+        checks: review.checks.map(({ name, checkId, runId, attempt, workflow: checkWorkflow, conclusion, url }) =>
+          ({ name, checkId, runId, attempt, workflow: checkWorkflow, conclusion, url })) } };
+    const existing = status.supersession;
+    if (existing) {
+      if (!same(existing.successor, payload.successor) || existing.reason !== payload.reason
+        || existing.profileDigest !== payload.profileDigest)
+        fail('blocked-release-common-superseded-existing', 'an existing supersession receipt binds a different disposition');
+      out(JSON.stringify(status)); return 0;
+    }
+    const receipt = writeSupersessionReceipt(root, ref, payload);
+    out(JSON.stringify(receipt));
+    const settled = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    out(JSON.stringify(settled));
+    if (settled.closeout.missionState !== 'source_complete' || settled.closeout.adlcState !== 'complete'
+      || settled.closeout.sourceIntegrated !== false || settled.sourceSuperseded !== true
+      || settled.lane.mounted !== true || settled.lane.clean !== true)
+      fail('blocked-release-common-superseded-postcondition', 'supersession did not reach a clean retained source-complete state');
+    return 0;
+  } catch (error) {
+    err(`${error.reason ?? 'blocked-release-common-superseded-complete'}: ${error.message}`);
+    return 1;
+  }
+}
+
 /** Explicit superseded-lane closeout; the accepted PR owns review/check evidence, and a failed or closed predecessor PR is never represented as merged. */
 export async function runReleaseCommonSuccessorComplete({
   root, argv, profile,
@@ -377,6 +528,8 @@ export async function runReleaseCommonSuccessorComplete({
   now = Date.now, api = githubRead,
 } = {}) {
   try {
+    if (argv.includes('--superseded'))
+      return await runReleaseCommonSupersededComplete({ root, argv, profile, out, err, now, api });
     const ref = option(argv, 'ref'), pr = Number(option(argv, 'via-pr'));
     const replacedPaths = (option(argv, 'replaced') ?? '').split(',').filter(Boolean);
     if (!isLaneRef(ref) || !Number.isSafeInteger(pr) || pr < 1 || !argv.includes('--stopped')
