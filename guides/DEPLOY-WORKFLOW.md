@@ -89,9 +89,9 @@ across candidates.
 After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `deploy-workflow`
 only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
 OS stop is `source_complete`; do not invent a generic deploy command.
-The closeout reports `completionScope=source-only` and `adlcState=source_complete` for that
-lane. This describes its source and lane closeout only; it makes no delivery claim for another
-lane or product.
+The closeout reports `missionState=source_complete`, `completionScope=source-only` and
+`adlcState=complete` for that exact lane. This closes only its enrolled source obligations; it
+makes no delivery claim for another lane or product.
 
 For that enrolled repo, `closeout.missionState=source_complete` means only source and lane
 closeout passed. `closeout.adlcState=delivery_pending` and progressive completion's

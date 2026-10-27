@@ -66,7 +66,7 @@ test('completion grammar accepts only one exact status target', () => {
   assert.match(validateCommandArguments('completion', ['apply', `--ref=${REF}`]), /requires status/u);
 });
 
-test('merged retained lane is source_complete without invented cleanup authority', (t) => {
+test('merged retained lane completes its exact source-only scope without invented cleanup authority', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
   subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
@@ -88,7 +88,7 @@ test('merged retained lane is source_complete without invented cleanup authority
   assert.ok(!after.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
   assert.equal(after.closeout.missionState, 'source_complete');
   assert.equal(after.closeout.completionScope, 'source-only');
-  assert.equal(after.closeout.adlcState, 'source_complete');
+  assert.equal(after.closeout.adlcState, 'complete');
   assert.equal(after.closeout.laneDisposition, 'retained');
   assert.equal(after.closeout.nextAction, null);
   assert.equal(subject.git(subject.root, 'rev-parse', 'HEAD'), after.canonicalRevision);
@@ -215,7 +215,7 @@ test('accepted missing bytes close source only when an exact clean successor che
   assert.equal(report.closeout.laneDisposition, 'retained-unrecoverable-accepted');
   assert.equal(report.closeout.cleanupSatisfied, false);
   assert.equal(report.closeout.completionScope, 'source-only');
-  assert.equal(report.closeout.adlcState, 'source_complete');
+  assert.equal(report.closeout.adlcState, 'complete');
   assert.equal(report.cleanupVerified, false);
   assert.equal(report.providerVerified, false);
   assert.equal(report.authorizesEffects, false);
@@ -323,7 +323,7 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   const complete = deriveCloseoutVerdict(base);
   assert.equal(complete.missionState, 'source_complete');
   assert.equal(complete.completionScope, 'source-only');
-  assert.equal(complete.adlcState, 'source_complete');
+  assert.equal(complete.adlcState, 'complete');
   assert.equal(complete.nextAction, null);
   const sync = deriveCloseoutVerdict({
     ...base, canonicalCurrent: false, findingCodes: ['canonical-not-current-clean'],
@@ -436,7 +436,7 @@ test('integrated zero-scope lane closes without quarantine evidence after its la
   assert.equal(report.closeout.retentionState, 'not-required');
   assert.equal(report.closeout.sourceState, 'source_complete');
   assert.equal(report.closeout.missionState, 'source_complete');
-  assert.equal(report.closeout.adlcState, 'source_complete');
+  assert.equal(report.closeout.adlcState, 'complete');
   assert.ok(!report.findings.some((item) => item.code === 'lane-registration-detached'));
   assert.ok(!report.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
 });

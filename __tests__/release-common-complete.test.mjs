@@ -528,7 +528,7 @@ test('progressive completion closes serially, retains pending and detached work,
       rows = rows.filter(row => row.branch !== ref); return 0;
     } };
   assert.equal(await runProgressiveCompletion(options), 1);
-  assert.deepEqual(events.filter(e => e.event === 'worktree').map(e => e.status), ['source_complete', 'waiting', 'source_complete', 'blocked']);
+  assert.deepEqual(events.filter(e => e.event === 'worktree').map(e => e.status), ['complete', 'waiting', 'complete', 'blocked']);
   assert.equal(events.at(-1).completed, 2);
   assert.equal(await runProgressiveCompletion(options), 1);
   assert.deepEqual(calls, ['agent/test-device/a', 'agent/test-device/b', 'agent/test-device/c', 'agent/test-device/b']);
