@@ -121,3 +121,24 @@ observation grants neither a production effect nor a no-deploy exemption for oth
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
 [PRD/TAD/ADR](./PRD-TAD-ADR-MVP-GTM.md) for transition and handover requirements.
+
+## Full END ADLC completion
+
+`source_complete` closes source obligations for one lane; it does not by itself close product delivery.
+Report full END ADLC complete only when the same exact lane and candidate have:
+
+1. **Source:** protected integration on the current source `origin/main`, or a policy-approved,
+   receipt-backed successor disposition. Record supersession as supersession, not as a merge.
+2. **Delivery:** the product owner has classified the exact changed paths against the deployed
+   artifact. When Dev and Prod are distinct, bind Dev readback and Production promotion/readback to
+   the same candidate digest. For a Prod-only owner or excluded paths, retain an exact owner-bound
+   applicability/no-deploy disposition and reason; do not invent a Dev pass.
+3. **Product:** current live route/runtime evidence and the required feature/planning handover join
+   the deployment receipt; retain the exact rollback predecessor or record the rollback outcome.
+4. **Workspace:** stop and unmount every task worktree; verify its exact cleanup/quarantine receipt
+   and absent checkout path. Keep refs, objects and byte reclamation as separate dispositions; path
+   removal alone does not prove storage was freed. A mounted worktree or pending cleanup keeps full
+   closeout open.
+
+Every triggered item must pass with current evidence; missing, stale, ambiguous, or unjoined evidence
+keeps full closeout open. Mark a stage `not-applicable` only with its exact product-scope reason.
