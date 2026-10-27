@@ -122,6 +122,8 @@ test('an invalid cache refuses land before fetch or publication effects', (t) =>
   const before = subject.run(['rev-parse', 'refs/remotes/origin/main'], subject.lane);
   subject.run(['push', '--quiet', '--force', subject.bare,
     `${subject.head}:refs/heads/main`], subject.lane);
+  // Git 2.56 can update a matching remote-tracking ref for a URL-addressed push.
+  subject.run(['update-ref', 'refs/remotes/origin/main', before], subject.lane);
   writeFileSync(storePath(subject.lane), '{"schema":"invalid","lanes":{}}\n');
 
   const result = spawnSync(process.execPath, [CLI, 'land'], {
@@ -144,6 +146,8 @@ test('local publication byte risk refuses before an advanced remote can mutate t
   const tree = subject.run(['rev-parse', 'HEAD^{tree}'], subject.root);
   const advanced = subject.run(['commit-tree', tree, '-p', before, '-m', 'remote advance']);
   subject.run(['push', '--quiet', subject.bare, `${advanced}:refs/heads/main`]);
+  // Keep the fixture's pre-operation tracking state stable across Git versions.
+  subject.run(['update-ref', 'refs/remotes/origin/main', before]);
   writeFileSync(join(subject.lane, 'candidate.txt'), 'uncommitted authored bytes\n');
 
   const result = spawnSync(process.execPath, [CLI, 'land'], {
