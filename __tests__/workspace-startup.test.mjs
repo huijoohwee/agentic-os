@@ -44,6 +44,8 @@ test('remote advances are reported without fetching payloads or modifying local 
   const before = s.run(source, ['rev-parse', 'refs/remotes/origin/main']);
   const next = s.run(source, ['commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'published elsewhere']);
   s.run(source, ['push', '--quiet', s.config.sources.artifacts.remote, `${next}:refs/heads/main`]);
+  // A URL-addressed push may update its uniquely matching remote-tracking ref; restore the stale local observation fixture.
+  s.run(source, ['update-ref', 'refs/remotes/origin/main', before]);
   const result = s.hydrate({ source: 'artifacts' }).sources.artifacts;
   assert.equal(result.status, 'update-available'); assert.equal(result.sourceRevision, before);
   assert.equal(result.remoteRevision, next);
@@ -110,6 +112,7 @@ test('consolidated remote advance leaves the checkout and origin ref unchanged',
   const s = consolidate(fixture(t)), before = s.run(s.container, ['rev-parse', 'HEAD']);
   const next = s.run(s.container, ['commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'other device']);
   s.run(s.container, ['push', '--quiet', s.config.remote, `${next}:refs/heads/main`]);
+  s.run(s.container, ['update-ref', 'refs/remotes/origin/main', before]);
   const result = s.hydrate({ source: 'artifacts' }).sources.artifacts;
   assert.equal(result.status, 'update-available'); assert.equal(result.remoteRevision, next);
   assert.equal(s.run(s.container, ['rev-parse', 'origin/main']), before);

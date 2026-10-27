@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -249,6 +249,39 @@ test('unchanged observations stop failed loops or reuse passed evidence without 
 
 test('ownership collector rejects incomplete roots without recursively searching the filesystem', () => {
   assert.throws(() => collectFleetOwnership(fleetPolicy(), {}), /explicit repository roots/u);
+});
+
+test('ownership collection enforces canonical clone names and exempts registered worktrees', (t) => {
+  const parent = mkdtempSync(join(tmpdir(), 'fleet-checkout-name-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const policy = fleetPolicy();
+  const initialize = (name, id, source = false) => {
+    const root = join(parent, name); mkdirSync(root);
+    const git = (...args) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
+    };
+    git('init', '-q', '--initial-branch=main');
+    git('config', 'user.name', 'Fleet Test'); git('config', 'user.email', 'test@example.org');
+    git('remote', 'add', 'origin', `https://${id}.git`);
+    const file = source ? 'src/runtime.mjs' : 'base.txt';
+    mkdirSync(join(root, source ? 'src' : '.'), { recursive: true });
+    writeFileSync(join(root, file), 'fixture\n'); git('add', file); git('commit', '-qm', 'fixture');
+    return { root, git };
+  };
+  const projectId = policy.repositories[0].id, consumerId = policy.repositories[1].id;
+  const project = initialize('project', projectId, true), consumer = initialize('consumer', consumerId);
+  const roots = { [projectId]: project.root, [consumerId]: consumer.root };
+  assert.equal(evaluateFleetOwnership(policy, collectFleetOwnership(policy, roots)).ok, true);
+
+  const wrong = initialize('project--candidate-runtime', projectId, true);
+  assert.throws(() => collectFleetOwnership(policy, { ...roots, [projectId]: wrong.root }),
+    /canonical checkout directory mismatch.*expected project, found project--candidate-runtime/u);
+
+  const lane = join(parent, 'device-a--ownership-audit');
+  project.git('worktree', 'add', '-q', '--detach', lane, 'HEAD');
+  assert.equal(evaluateFleetOwnership(policy, collectFleetOwnership(policy,
+    { ...roots, [projectId]: lane })).ok, true);
 });
 
 

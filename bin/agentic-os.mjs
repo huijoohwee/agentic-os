@@ -63,7 +63,7 @@ function requireCanonical(root, policy) {
 }
 async function cmdStart(root, argv, policy, profile) {
   return (await import('./agentic-os-admission.mjs')).cmdStart(root, argv, policy, profile,
-    { out, err, projectCache, effectReceipt, remoteName, requireCanonical });
+    { out, err, projectCache, effectReceipt, remoteName, requireCanonical, enforceCheckoutName: true });
 }
 function cmdReleaseCommonHelp() {
   out(

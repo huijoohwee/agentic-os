@@ -18,6 +18,7 @@ import {
 import {
   observeRepositoryProfileAtRef,
   observeRepository,
+  repositoryCheckoutLocation,
   loadRepositoryTrust,
   REPOSITORY_PROFILE_FILENAME,
 } from '../src/git-repository.mjs';
@@ -530,9 +531,27 @@ export function cmdDoctor(root, profile, policy) {
   const entries = worktrees(root);
   const configEntries = hookDoctorEntries(root, entries);
   const local = observeLocalHealth(root, policy, profile, entries);
+  const checkout = repositoryCheckoutLocation(root, profile);
+  const checkoutOk = checkout.mode !== 'mismatch';
   out(report.formatConfig(configEntries));
   out('');
   out(report.formatLocal(local));
+  out('');
+  const checkoutDetail = checkout.mode === 'canonical'
+    ? 'canonical checkout name matches repository slug ' + checkout.expectedName
+    : checkout.mode === 'archive'
+      ? 'archive checkout name matches ' + checkout.expectedName + '; START is disabled'
+      : checkout.mode === 'auxiliary'
+        ? 'auxiliary checkout ' + checkout.name + ' has role ' + checkout.role + '; START is disabled'
+        : checkout.mode === 'worktree'
+          ? 'registered Git worktree ' + checkout.name + '; lane names are exempt'
+          : checkout.mode === 'mismatch'
+            ? 'checkout is named ' + checkout.name + '; expected ' + checkout.expectedName
+            : 'repository identity has no GitHub checkout-name rule';
+  out(report.formatFindings('repository checkout naming', [{
+    id: 'checkout-name', ok: checkoutOk, detail: checkoutDetail,
+    remedy: checkoutOk ? null : 'rename the canonical clone to ' + checkout.expectedName,
+  }]));
   out('');
   const kind = providerKind(profile);
   const providerRequired = providerAdapterRequired(policy);
@@ -552,6 +571,7 @@ export function cmdDoctor(root, profile, policy) {
   const failures =
     prerequisiteFailures + configEntries.filter((entry) => !entry.ok).length +
     findings.filter((finding) => !finding.ok).length +
+    (checkoutOk ? 0 : 1) +
     (local.canonicalDirty ? 1 : 0) +
     (local.relation === 'equal' ? 0 : 1) +
     (local.staleWorktrees.length > 0 ? 1 : 0);

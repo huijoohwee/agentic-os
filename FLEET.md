@@ -1,12 +1,12 @@
 ---
 title: "Fleet Work Allocation"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.2.1"
-date: "2026-09-13"
+version: "1.2.2"
+date: "2026-10-27"
 owner: "agentic-os"
 frontmatter_contract: "required"
 load_policy: "on-demand"
-status: "discovery-and-allocation-implemented"
+status: "implementation"
 lang: "en-US"
 continuity_id: "FLEET-01"
 local_rung: "undocumented"
@@ -18,11 +18,11 @@ agent_id: "codex-01a09985"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "934f44fd30df4b23829a29df6cbe8d6456f7616d"
-prd_revision: "1.2.1"
-tad_revision: "1.2.1"
-adr_revision: "1.2.1"
-mvp_revision: "1.2.1"
-gtm_revision: "1.2.1"
+prd_revision: "1.2.2"
+tad_revision: "1.2.2"
+adr_revision: "1.2.2"
+mvp_revision: "1.2.2"
+gtm_revision: "1.2.2"
 ---
 
 # Fleet work allocation
@@ -48,6 +48,7 @@ The selected outcome and its acceptance criteria come from the owning PRD/TAD/AD
 | FLEET-01.3: parallel tasks have disjoint write ownership | Reuse the lane path matcher; reject unordered scope or path overlap. |
 | FLEET-01.4: shared files have an explicit order | Compute dependency waves and required handoffs; reject missing dependencies and cycles. |
 | FLEET-01.5: checks cannot grant claims or lose work | Read only an explicit bounded snapshot; always report authority and liveClaimsVerified as false. |
+| FLEET-01.10: checkout names preserve repository identity | doctor reports canonical/archive/auxiliary/worktree roles; START blocks mismatched clones and private archives before provisioning; fleet ownership checks reject noncanonical clone roots while allowing registered worktrees. |
 
 Executable evidence: [allocation tests](__tests__/fleet.test.mjs). These criteria describe allocation
 validation, not a deployed cross-device ownership service. The checker cannot prove that supplied
@@ -72,6 +73,8 @@ Central navigation remains in `DOCUMENTS.md`; moving files does not make simulta
 
 ## Cross-repository source ownership
 
+Apply the [repository checkout naming policy](guides/REPOSITORY-NAMING.md): the primary clone directory matches the committed repository slug, private archives use their own full -private-archive slug, auxiliary clones use a --purpose suffix, and registered task worktrees retain lane names. The GitHub profile and Git metadata remain the only identity inputs; do not add a second workspace path registry. doctor diagnoses checkout naming, while START is the enforcement boundary that refuses a mismatch, an auxiliary clone, or an archive before lane creation.
+
 The [fleet ownership policy](catalog/fleet-ownership.json) is the sole machine-readable registry for the eight selected repositories and their declared responsibilities. Each responsibility has one source owner; consumer and generated-projection relationships carry no authoring authority. Keep lifecycle governance in Agentic OS, planning rules in the website, product implementations in their named repositories, and generated production content in the existing protected mirror workflow. Launch Copilot’s existing `docs/documents/launch-copilot-prd-tad-adr-mvp-gtm.md` plan and `docs/launch-copilot.md` runbook belong to Graph; the standalone repository remains a reference. GameXR owns its frontend and consumes the Graph spatial core.
 
 Before cross-repository authoring and before publication, run the existing fleet checker in ownership mode with one explicit JSON mapping from each registered repository identity to its absolute checkout path:
@@ -83,6 +86,8 @@ npm run fleet:check -- --ownership=/absolute/path/to/repository-roots.json
 Use the selected task worktree when checking an unpublished candidate. Do not create a second persistent owner registry in a consumer. The command verifies each root and Git origin locally, reads only selected Git-indexed or non-ignored candidate files, and rejects missing responsibility sources, a competing source path in another authoring repository, duplicate planning bodies across source repositories, or the same continuity ID owned by different repositories or revisions. Companions may share one exact revision inside their owning repository. Historical exclusions require exact path and SHA-256; modified historical authority fails. Generated mirrors are declared projections, not additional planning owners; their byte parity stays with the existing release checks.
 
 **FLEET-01.6 / SRP:** each declared responsibility has exactly one owner and an existing source artifact. **FLEET-01.7 / MECE:** every registered repository is observed once, and the existing allocation check covers each selected acceptance criterion exactly once. **FLEET-01.8 / SSOT:** current planning identities, revisions and duplicate bodies cannot establish conflicting authority across source repositories. These are finite declared-identity checks; source review must still identify semantic duplication that uses different names and different bytes. Neither a label nor a passing scan proves arbitrary code equivalence.
+
+**FLEET-01.10 / checkout identity:** the committed GitHub repository slug names the primary checkout. The exact -private-archive repository slug names its frozen archive; auxiliary clones use <slug>--<purpose> and are not lane-admission roots; Git-registered worktrees keep lane names. doctor reports mismatches and START fails closed before creating a lane. The existing fleet ownership audit checks each explicit canonical root against its registered directory and exempts Git-registered worktrees. These local path checks do not authenticate a remote or establish repository visibility.
 
 ## On-demand capability discovery
 
@@ -199,16 +204,18 @@ publication and integration. Exercise simultaneous claims, stale/offline writers
 and exact checkpoint recovery before claiming automatic exclusion. Existing GitHub recovery authority
 must not be treated as a general task-claim service. See [ordering boundaries](docs/MERGE-QUEUE.md).
 
+**ADR FLEET-01.10.** Derive checkout names from the committed profile and Git worktree metadata. Enforce the exact slug for primary clone lane admission; recognize explicit --purpose suffixes for auxiliary clones and block them as lane roots; exempt registered worktrees; refuse -private-archive roots. This avoids path aliases and a second registry. Recovery is a whole-directory move with stopped writers; the CLI never renames a checkout.
+
 [todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
 [kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
 
 ## MVP — reference implementation
 
-`FLEET-01@1.2.1` selects one disjoint allocation for a complete acceptance list. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
-Verify that acceptance with `node --test __tests__/fleet.test.mjs` and the affected repository checks, preserving their exact source, result and authoring surface. The named command is a check plan; existing observations above retain their original scope and revision.
+FLEET-01@1.2.2 selects one disjoint allocation for a complete acceptance list and enforces checkout identity at START. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+Verify checkout naming with node --test __tests__/doctor-start-regressions.test.mjs and ownership roots with node --test __tests__/fleet.test.mjs, along with the affected repository checks. The named commands are a check plan; prior observations retain their original scope and revision.
 
 ## GTM — reference implementation
 
 The initial user is a solo developer or operator completing the selected engineering outcome. WTP, priced-offer acceptance, collected payment and repeat use remain unvalidated. Reuse this free local slice for a timed pilot before considering a hosted service; reject paid infrastructure until buyer evidence justifies it.
 
-Experience assessment for `FLEET-01@1.2.1` in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.
+Experience assessment for FLEET-01@1.2.2 in the authoring environment: Core Requirements & Functionality, Innovation & Theme Alignment, Technical Execution & Integration, and Usefulness & Agentic Experience are all **unassessed**. No user-study evidence is attached; the document owner must record one timed pilot and criterion-specific observations before rating them. Keep token usage, active minutes, provider waits and actual cost separate; no savings or revenue follows from structural checks.

@@ -13,17 +13,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git } from '../src/git.mjs';
-import { ensureRepositoryTrust } from '../src/git-repository.mjs';
+import {
+  assertCanonicalRepositoryCheckout, ensureRepositoryTrust, repositoryCheckoutLocation,
+} from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
+import { cmdStart } from '../bin/agentic-os-admission.mjs';
 import {
   inspect as inspectWorktree, LANE_BRANCH_LIMIT, lanePath, provision, registeredLaneBranches,
 } from '../src/worktree.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
-function fixture(t, { profile = true } = {}) {
+function fixture(t, { profile = true, directory = 'repo', repository = 'local:fixture' } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-doctor-start-'));
-  const root = join(parent, 'repo');
+  const root = join(parent, directory);
   mkdirSync(root);
   const run = (args, options = {}) => git(args, { cwd: root, ...options });
   run(['init', '--quiet', '--initial-branch=main']);
@@ -32,7 +35,7 @@ function fixture(t, { profile = true } = {}) {
   writeFileSync(join(root, 'base.txt'), 'base\n');
   run(['add', 'base.txt']);
   run(['commit', '--quiet', '--message', 'base']);
-  if (profile) commitProfile(run, root);
+  if (profile) commitProfile(run, root, repository);
 
   const support = join(parent, 'bin');
   mkdirSync(support);
@@ -50,15 +53,15 @@ function commit(run, root, path, contents, message) {
   return run(['rev-parse', 'HEAD']);
 }
 
-function commitProfile(run, root) {
-  const profile = fixtureProfile();
+function commitProfile(run, root, repository = 'local:fixture') {
+  const profile = fixtureProfile(repository);
   commit(run, root, '.agentic-os.json', `${JSON.stringify(profile, null, 2)}\n`, 'profile');
   ensureRepositoryTrust(root, profile, { allowCreate: true });
 }
 
-function fixtureProfile() {
+function fixtureProfile(repository = 'local:fixture') {
   return createRepositoryProfile({
-    repository: 'local:fixture',
+    repository,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
@@ -440,4 +443,62 @@ test('canonical sync apply rejects an anchored canonical profile disappearance',
   assert.equal(result.status, 1);
   assert.match(result.stderr, /blocked-repository-trust-conflict/u);
   assert.equal(run(['for-each-ref', '--format=%(refname) %(objectname)']), before);
+});
+
+test('checkout names follow the committed repository identity and START blocks noncanonical roots', async (t) => {
+  const slug = 'agentic-design-system';
+  const profile = fixtureProfile(`github.com/example/${slug}`);
+  for (const [directory, mode, role] of [
+    [slug, 'canonical', undefined],
+    [`${slug}--candidate-runtime`, 'auxiliary', 'candidate-runtime'],
+    [`${slug}-public`, 'mismatch', undefined],
+    [`${slug}-private-archive`, 'mismatch', undefined],
+  ]) {
+    await t.test(`${directory} is ${mode}`, async (child) => {
+      const { root } = fixture(child, { directory, repository: profile.repository });
+      const location = repositoryCheckoutLocation(root, profile);
+      assert.equal(location.mode, mode);
+      assert.equal(location.role, role);
+      if (mode === 'canonical') {
+        assert.equal(assertCanonicalRepositoryCheckout(root, profile).startAllowed, true);
+        return;
+      }
+      assert.throws(() => assertCanonicalRepositoryCheckout(root, profile), (error) => {
+        assert.equal(error.reason, mode === 'mismatch'
+          ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
+        return true;
+      });
+      let fetched = false;
+      await assert.rejects(cmdStart(root, ['scope', '--write=base.txt'], {}, profile, {
+        out() {}, err() {}, enforceCheckoutName: true,
+        remoteName() { fetched = true; return 'origin'; },
+      }), (error) => error.reason === (mode === 'mismatch'
+        ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout'));
+      assert.equal(fetched, false, 'START must refuse before remote effects');
+    });
+  }
+  const archiveSlug = `${slug}-private-archive`;
+  const archive = fixture(t, {
+    directory: archiveSlug, repository: `github.com/example/${archiveSlug}`,
+  });
+  const archiveProfile = fixtureProfile(`github.com/example/${archiveSlug}`);
+  assert.equal(repositoryCheckoutLocation(archive.root, archiveProfile).mode, 'archive');
+  assert.throws(() => assertCanonicalRepositoryCheckout(archive.root, archiveProfile),
+    (error) => error.reason === 'blocked-private-archive');
+});
+
+test('doctor reports checkout naming mismatches and registered worktrees are exempt', (t) => {
+  const slug = 'agentic-design-system';
+  const profile = fixtureProfile(`github.com/example/${slug}`);
+  const mismatch = fixture(t, {
+    directory: `${slug}-public`, repository: profile.repository,
+  });
+  const result = doctor(mismatch.root, mismatch.support);
+  assert.match(result.stdout,
+    /FAIL checkout-name\s+checkout is named agentic-design-system-public; expected agentic-design-system/u);
+
+  const canonical = fixture(t, { directory: slug, repository: profile.repository });
+  const worktree = join(canonical.parent, 'lane-device--naming');
+  canonical.run(['worktree', 'add', '--quiet', '--detach', worktree, 'HEAD']);
+  assert.equal(repositoryCheckoutLocation(worktree, profile).mode, 'worktree');
 });

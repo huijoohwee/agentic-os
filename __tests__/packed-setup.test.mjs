@@ -15,6 +15,7 @@ import {
 const ROOT = resolve(import.meta.dirname, '..'); const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function priorRuntimeFiles(selected, quarantineLegacy = true) {
   const fixtures = new Map([
+    ['src/git-repository.mjs', ['git-repository-pre-naming.mjs.txt', '293725c6285065e102ee55ef5890efe9eb204a29cb7f826d8d0ffb23f4814c26']],
     ['src/governance.mjs', ['governance-squash-only.mjs.txt', 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390']],
     ['src/lane-id.mjs', ['lane-id-hostname.mjs.txt', 'ec8fe90dcbf2f853ed2c4e49efc7573c9cb73b55c4d09a2b4abf10de66b7134a']],
     ['src/catalog-input.mjs', ['catalog-input-copy.mjs.txt', '057c68168f09cf6b59042b3cd9ed7508314f722b6f881b8ade2b590ba5820667']],
@@ -206,7 +207,10 @@ function installImmediatePriorRuntime(selected, guardRelease = false, currentRel
         sha256: '6809e20491002ba32af7fffe636527f468f69249af4cc9a251df56b792db2309' }
     : file.path === 'src/file-integrity.mjs'
       ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)),
-        sha256: 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f' } : file)
+        sha256: 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f' }
+      : file.path === 'src/git-repository.mjs'
+        ? { ...file, bytes: readFileSync(new URL('./fixtures/git-repository-pre-naming.mjs.txt', import.meta.url)),
+          sha256: '293725c6285065e102ee55ef5890efe9eb204a29cb7f826d8d0ffb23f4814c26' } : file)
     : priorRuntimeFiles(selected, !currentRelease);
   const files = source.map((file) => {
     if (latest && file.path === 'src/git-tracked.mjs') return { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)), sha256: '9cb0dd0592c564ea8e0630539cc767638a993a912a9f6a2f070a4062bde39bd8' };

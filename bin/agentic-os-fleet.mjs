@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** On-demand allocation check over an explicit task-registry snapshot; no writes or authority. */
-import { resolve, relative, isAbsolute } from 'node:path';
+import { basename, resolve, relative, isAbsolute, sep } from 'node:path';
 import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -380,6 +380,12 @@ export function collectFleetOwnership(policyValue, roots) {
     const root = realpathSync(roots[repo.id]);
     if (observedRoots.has(root) || realpathSync(run(root, ['rev-parse', '--show-toplevel']).trim()) !== root) fail('duplicate or non-root repository');
     observedRoots.add(root);
+    const gitDir = resolve(root, run(root, ['rev-parse', '--absolute-git-dir']).trim());
+    const commonDir = resolve(root, run(root, ['rev-parse', '--git-common-dir']).trim());
+    const gitDirFromCommon = relative(commonDir, gitDir);
+    const worktree = gitDirFromCommon.split(sep)[0] === 'worktrees' && gitDirFromCommon !== 'worktrees';
+    if (!worktree && basename(root) !== repo.directory)
+      fail(`canonical checkout directory mismatch for ${repo.id}: expected ${repo.directory}, found ${basename(root)}`);
     const remote = run(root, ['config', '--get', 'remote.origin.url']).trim();
     const identity = remoteRepositoryIdentity(remote)?.repository.toLowerCase();
     if (identity !== repo.id) fail(`repository identity mismatch for ${repo.directory}`);

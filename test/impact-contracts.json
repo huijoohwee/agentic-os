@@ -89,6 +89,8 @@
     "__tests__/check-discovery.test.mjs": ["bin/agentic-os-checks.mjs", "test/repositories.json"],
     "__tests__/clonability.test.mjs": ["bin/agentic-os-hooks.mjs", "bin/composition-runtime-check.mjs"],
     "__tests__/lean-sprint-completion.test.mjs": ["bin/agentic-os.mjs", "src/lane-records.mjs"],
+    "__tests__/doctor-start-regressions.test.mjs": ["src/git-repository.mjs", "bin/agentic-os-admission.mjs", "bin/agentic-os-auxiliary.mjs"],
+    "__tests__/fleet.test.mjs": ["bin/agentic-os-fleet.mjs"],
     "__tests__/packed-setup.test.mjs": ["src/governance.mjs", "bin/agentic-os-hook-runtime.mjs", "__tests__/fixtures/"],
     "__tests__/setup-trust-ordering.test.mjs": ["bin/agentic-os-hooks.mjs"],
     "__tests__/public-api.test.mjs": ["package.json"],
