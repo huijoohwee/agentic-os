@@ -436,22 +436,12 @@ export function observeUserCleanupSweep(root, { staleDays, requireMerged = false
   return { current, candidates };
 }
 function runUserCleanupSweep(root, argv, out = console.log) {
-  const staleDays = Number(option(argv, 'stale-older-than') ?? '0');
-  const requireMerged = argv.includes('--merged');
-  const requireNoActiveWorktree = argv.includes('--no-active-worktree');
-  const { current, candidates } = observeUserCleanupSweep(root, { staleDays, requireMerged, requireNoActiveWorktree });
-  const canonical = current.canonical;
-  const sweep = {
-    schema: SWEEP_SCHEMA, observationOnly: true, authorizesEffects: false,
-    repository: current.repository, canonicalRevision: canonical,
-    staleOlderThanDays: staleDays, requireMerged, requireNoActiveWorktree,
-    candidateCount: candidates.length, candidates,
-    authority: 'explicit-local-user-consent', providerAuthority: false,
-    nextAction: candidates.length > 0
-      ? 'For each candidate, run cleanup-user plan --target=<worktree-path> --change-class=<class> then apply with --authorize=<plan-digest> --stopped'
-      : 'no stale lane refs match the sweep criteria',
-  };
-  out(canonicalJson(sweep));
+  const staleDays = Number(option(argv, 'stale-older-than') ?? '0'), requireMerged = argv.includes('--merged'), requireNoActiveWorktree = argv.includes('--no-active-worktree'),
+    { current, candidates } = observeUserCleanupSweep(root, { staleDays, requireMerged, requireNoActiveWorktree });
+  out(canonicalJson({ schema: SWEEP_SCHEMA, observationOnly: true, authorizesEffects: false, repository: current.repository,
+    canonicalRevision: current.canonical, staleOlderThanDays: staleDays, requireMerged, requireNoActiveWorktree,
+    candidateCount: candidates.length, candidates, authority: 'explicit-local-user-consent', providerAuthority: false,
+    nextAction: candidates.length ? 'For each candidate, run cleanup-user plan --target=<worktree-path> --change-class=<class> then apply with --authorize=<plan-digest> --stopped' : 'no stale lane refs match the sweep criteria' }));
   return 0;
 }
 function preservationPolicy(root) {

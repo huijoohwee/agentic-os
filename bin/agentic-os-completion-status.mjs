@@ -1,71 +1,32 @@
 /** Exact local completion preflight. No provider call, fetch, authority or effect. */
 import { createHash } from 'node:crypto';
-import { lstatSync, realpathSync } from 'node:fs'; import { isAbsolute, join } from 'node:path'; import { commonDir, currentBranch, headSha, isAncestor, observeGit, repoRoot, worktrees } from '../src/git.mjs'; import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs';
+import { lstatSync, realpathSync } from 'node:fs'; import { isAbsolute, join } from 'node:path'; import { commonDir, currentBranch, headSha, isAncestor, observeGit, repoRoot, worktrees } from '../src/git.mjs'; import { privateDirectoryIdentity } from '../src/file-integrity.mjs'; import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs';
 import { isLaneRef } from '../src/lane-id.mjs'; import { successorLineage } from '../src/lane-state.mjs';
 import { integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine, observeDiscardedQuarantineEvidence } from '../src/cleanup-quarantine.mjs';
 import { verifySuccessorPreservation, readUserCleanupJson } from './agentic-os-cleanup-user.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { get as getLaneRecord } from '../src/lane-records.mjs';
-import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { governanceDigest } from '../src/governance.mjs';
 import { DELIVERY_DISPOSITION_SET_PATH, bindRetirementOperationReceipts,
   validateDeliveryDispositionSet } from '../src/completion.mjs';
 import { WORKTREE_CLEANUP_RECEIPT_SCHEMA } from '../src/cleanup-records.mjs';
-const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json';
-const AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
+const AUTHORITY_POLICY = '.github/adlc-authority-policy.json', TRANSITION_POLICY = '.agentic-os/github-transition-policy.json', AUTHORITY_WORKFLOW = '.github/workflows/adlc-authority.yml', TRANSITION_WORKFLOW = '.github/workflows/adlc-transition.yml';
 const read = (cwd, args) => observeGit(args, { cwd, allowFail: true, maxBuffer: 131072 }), committed = (root, revision, path) => observeGit(['show', `${revision}:${path}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 });
 export const retirementReviewLocator = (repository, laneRecord, preservationReceipt) => {
   const path = typeof repository === 'string' ? repository.replace(/^github\.com\//u, '') : '', lane = Number.isSafeInteger(laneRecord?.pr) && laneRecord.pr > 0 ? `https://github.com/${path}/pull/${laneRecord.pr}` : null, preserved = preservationReceipt?.adoption?.reviewLocator ?? null, locator = lane ?? preserved, match = typeof locator === 'string' ? /^https:\/\/github\.com\/([^/?#]+\/[^/?#]+)\/pull\/([1-9][0-9]*)$/u.exec(locator) : null; if (!/^[^/?#]+\/[^/?#]+$/u.test(path) || !match || match[1] !== path || lane && preserved !== lane) throw new TypeError('exact review locator is unavailable or inconsistent'); return locator;
 };
-const sha256 = (value) => createHash('sha256').update(value).digest('hex');
-const lanePaths = (root, branch, head) => { const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `refs/heads/${branch}...${head}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }); return output === null ? null : output.split('\0').filter(Boolean).sort(); };
+const sha256 = (value) => createHash('sha256').update(value).digest('hex'), lanePaths = (root, branch, head) => { const output = observeGit(['diff', '--name-only', '-z', '--no-renames', `refs/heads/${branch}...${head}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }); return output === null ? null : output.split('\0').filter(Boolean).sort(); };
 function sourceSupersessionReceipt(root, ref, profile, laneHead, record) {
-  const path = join(commonDir(root), 'agentic-os-supersessions', `${sha256(ref)}.json`);
-  if (!lstatSync(path, { throwIfNoEntry: false })) return { receipt: null, error: null };
+  const directory = join(commonDir(root), 'agentic-os-supersessions'), path = join(directory, `${sha256(ref)}.json`); if (!lstatSync(path, { throwIfNoEntry: false })) return { receipt: null, error: null };
   try {
-    const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBoundedStableFile(path, 64000, 'source supersession receipt')));
-    const { receiptDigest, ...payload } = receipt, successor = receipt.successor;
-    const changedBytes = record?.baseSha && laneHead ? observeGit(
-      ['diff', '--name-only', '-z', '--no-renames', `${record.baseSha}...${laneHead}`],
-      { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }) : null;
-    const changed = changedBytes === null ? null : changedBytes.split('\0').filter(Boolean).sort();
-    const exactKeys = 'archiveArchived,archivePrivate,changedPaths,claimRetired,disposition,head,issuedAt,profileDigest,providerAuthority,reason,receiptDigest,ref,replacedPaths,repository,schema,sourceBase,sourceIntegrated,sourceSuperseded,successor,worktree';
-    const successorKeys = 'branch,changedPaths,checks,head,mainHead,merge,mergedAt,pr,repository,workflow';
-    const checkKeys = 'attempt,checkId,conclusion,name,runId,url,workflow';
-    if (!receipt || Object.keys(receipt).sort().join(',') !== exactKeys
-      || Object.keys(successor ?? {}).sort().join(',') !== successorKeys
-      || receipt.schema !== 'agentic-os/cross-repository-supersession-receipt/v1'
-      || receiptDigest !== governanceDigest(payload) || receipt.repository !== profile.repository
-      || receipt.profileDigest !== profile.profileDigest || receipt.archivePrivate !== true || receipt.archiveArchived !== true
-      || receipt.disposition !== 'superseded' || receipt.sourceIntegrated !== false || receipt.sourceSuperseded !== true
-      || receipt.providerAuthority !== false || receipt.claimRetired !== false || receipt.ref !== ref
-      || typeof receipt.reason !== 'string' || receipt.reason.trim().length < 12 || Buffer.byteLength(receipt.reason) > 512
-      || receipt.worktree !== record?.worktree || receipt.changedPaths?.length === 0
-      || JSON.stringify(receipt.changedPaths) !== JSON.stringify(changed)
-      || JSON.stringify(receipt.replacedPaths) !== JSON.stringify(receipt.changedPaths)
-      || successor.repository === profile.repository.replace(/^github\.com\//u, '')
-      || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(successor.repository ?? '')
-      || successor.branch !== ref || successor.pr < 1 || !Number.isSafeInteger(successor.pr)
-      || !/^[a-f0-9]{40}$/u.test(successor.head ?? '') || !/^[a-f0-9]{40}$/u.test(successor.merge ?? '')
-      || !/^[a-f0-9]{40}$/u.test(successor.mainHead ?? '') || !Number.isFinite(Date.parse(successor.mergedAt ?? ''))
-      || !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(successor.workflow ?? '')
-      || JSON.stringify(successor.changedPaths) !== JSON.stringify(receipt.replacedPaths)
-      || !Array.isArray(successor.checks) || successor.checks.length < 1 || successor.checks.length > 8
-      || successor.checks.some(check => !check || Object.keys(check).sort().join(',') !== checkKeys
-        || typeof check.name !== 'string' || !check.name || check.conclusion !== 'success'
-        || check.workflow !== successor.workflow || !Number.isSafeInteger(check.checkId) || check.checkId < 1
-        || !Number.isSafeInteger(check.runId) || check.runId < 1 || !Number.isSafeInteger(check.attempt) || check.attempt < 1
-        || typeof check.url !== 'string' || !check.url.startsWith(`https://github.com/${successor.repository}/actions/runs/`))
-      || JSON.stringify(successor.checks.map(check => check.name)) !== JSON.stringify([...new Set(successor.checks.map(check => check.name))].sort())
-      || !/^[0-9a-f]{64}$/u.test(receiptDigest ?? '') || !Number.isFinite(Date.parse(receipt.issuedAt ?? ''))
-      || !/^[a-f0-9]{40}$/u.test(receipt.sourceBase ?? '') || receipt.sourceBase !== record?.baseSha
-      || receipt.head !== laneHead || record?.state !== 'active' || record?.pr !== null) return { receipt: null, error: 'invalid' };
-    return { receipt, error: null };
+    const r = readUserCleanupJson(path, 'source-supersession', privateDirectoryIdentity(directory)), { receiptDigest, ...payload } = r, s = r.successor,
+      changed = observeGit(['diff', '--name-only', '-z', '--no-renames', `${record?.baseSha}...${laneHead}`], { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 })?.split('\0').filter(Boolean).sort();
+    const valid = r.schema === 'agentic-os/cross-repository-supersession-receipt/v1' && receiptDigest === governanceDigest(payload) && r.repository === profile.repository && r.profileDigest === profile.profileDigest && r.ref === ref && r.sourceBase === record?.baseSha && r.head === laneHead && r.worktree === record?.worktree && r.sourceIntegrated === false && r.sourceSuperseded === true && r.providerAuthority === false && r.claimRetired === false && r.archivePrivate === true && r.archiveArchived === true && JSON.stringify(r.changedPaths) === JSON.stringify(changed) && JSON.stringify(r.replacedPaths) === JSON.stringify(changed) && typeof r.reason === 'string' && r.reason.trim().length >= 12 && /^[a-f0-9]{40}$/u.test(s?.merge ?? '') && s?.branch === ref && Number.isSafeInteger(s?.pr) && Array.isArray(s?.checks) && s.checks.length > 0 && s.checks.every(check => check?.conclusion === 'success') && record?.state === 'active' && record?.pr === null;
+    return valid ? { receipt: r, error: null } : { receipt: null, error: 'invalid' };
   } catch { return { receipt: null, error: 'invalid' }; }
 }
-const finding = (code, owner, action) => ({ code, owner, action });
-const quarantines = (p) => p?.cleanup?.worktreeProjection === 'quarantine' && p?.cleanup?.worktreeRegistration === 'quarantine';
+const finding = (code, owner, action) => ({ code, owner, action }), quarantines = p => p?.cleanup?.worktreeProjection === 'quarantine' && p?.cleanup?.worktreeRegistration === 'quarantine';
 
 const DOCS_ONLY_GLOBS = [/^docs\//u, /^guides\//u, /\.md$/u, /^AGENTS\.md$/u, /^README\.md$/u, /^DOCUMENTS\.md$/u, /^FLEET\.md$/u, /^PRD-.*\.md$/u];
 function classifyChangeClass(root, ref) {

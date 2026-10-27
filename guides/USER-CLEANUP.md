@@ -159,52 +159,15 @@ later revisions. Apply rechecks the transition and all preservation conditions. 
 `sourceIntegrated:false`, `historicalDraft:superseded`, `providerAuthority:false` and
 `claimRetired:false`. The original detached-ancestor mode remains strict.
 
-## Reviewed successor closeout
+## Same-repository historical successor
 
-When a historical lane's own PR was closed or failed but a later checked PR incorporated its work,
-use the existing `release-common complete` command with an explicit successor PR and every path whose
-accepted content replaced the lane's content:
-
-```sh
-npm run release:common -- complete --ref=<old-lane> --via-pr=<merged-successor-pr> \
-  --replaced=<exact-repository-relative-path[,path...]> --stopped
-```
-
-The command runs from clean canonical `main`, which must equal fetched and live `origin/main` and
-contain the accepted merge. If it does not, use the separately governed canonical sync workflow first.
-The old lane must be mounted, clean, stopped and have its cached head unchanged. A published,
-queued or integrated record is eligible; an active record is eligible only when it has no recorded
-predecessor PR (`pr:null`) and this exact reviewed successor proves the content transition.
-It verifies the successor's exact reviewed head, successful selected checks and actual merge. The old
-head must be an ancestor of the reviewed head. Every path changed by the old lane must match the
-accepted merge tree exactly, except the explicitly listed replacements; each replacement must match
-the reviewed successor and differ from the old lane. Missing or extra replacement paths fail.
-
-The predecessor PR remains historical and is never reported as merged. The result is a local-consent
-recovery receipt with `reviewed-successor` content evidence, not provider-issued integration or
-retirement authority. The existing cleanup planner inventories the target, peers, refs, objects and
-ignored bytes, then moves its projection and registration into recoverable quarantine. It retains
-the old branch and Git objects. Re-run only after checking the retained effect and current GitHub
-and canonical state; later edits to `main` do not change the accepted merge-tree comparison.
-
-The exact plan binds the existing profile digest, retention policy, required checks, recovery mode and
-resource ceilings. The operator's local consent selects recoverable projection/registration quarantine
-even when the protected profile retains them; it does not edit that shared policy or create a provider
-grant. Every branch, ref, object and other worktree is preserved by the existing lock, manifests and journal.
-The receipt remains `providerAuthority:false`, `protectionProven:false`, `claimRetired:false`, and adds
-`historicalIntegrationMethodProven:false`. No outstanding governance claim is silently retired.
-
-Recovery ceilings are fixed at 4 GiB/250,000 projection entries, 16 MiB/20,000 registration entries, and
-20 GiB/500,000 shared-state entries. Plans bind these ceilings and observation totals; crossing them fails
-before quarantine. These are maximum observation budgets, not allocated buffers; reads stream in 64 KiB
-chunks. Original profileless modes retain their smaller budgets and admissions. This revision adds one
-lazy CLI helper, no source-core module, dependency, authority issuer or background process.
-
-Acceptance: a profile with retained targets and a historical concurrent-base merge can be cleaned only
-with exact local opt-in, successful checks, complete content/preservation proof and stopped acknowledgement;
-wrong identity, missing checks, failed source inclusion, hidden/dirty bytes, drift and stale consent fail.
-`__tests__/user-cleanup-recovery.test.mjs` covers those boundaries with real temporary Git repositories and
-mocked provider reads. Live execution receipts remain separate from these tests.
+To stay within existing module caps, the release-complete shortcut for quarantining a predecessor
+through a later same-repository PR was removed. The underlying `planUserCleanup` API still supports
+an explicit `successor` binding with the predecessor ref/head and replacement paths, followed by the
+ordinary authorized `applyUserCleanup` step. There is no CLI wrapper for that case. Do not substitute
+cross-repository supersession: if the predecessor's own integration evidence is unavailable, leave its
+closeout continuable until an owner provides an exact recovery path. The cross-repository disposition
+below remains available only for a private archived source and a public active successor repository.
 
 ## Cross-repository source supersession
 
