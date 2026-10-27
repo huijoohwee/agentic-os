@@ -23,7 +23,7 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 - Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
 - START/resume Mission binds current code/workflow; reuse evidence.
-- START -> RELEASE -> DEPLOY; global cleanup, local mechanics.
+- END ADLC: read [DEPLOY](../guides/DEPLOY-WORKFLOW.md) guide.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
 - Reuse covered authority; preflight; never infer grants.
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
@@ -38,7 +38,3 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 - Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.
 - Exact candidate; separate receipt per proof, retire, cleanup, sync, deploy and rollback.
 - Cleanup: exact global/local targets, no wildcards; prove bytes/paths/refs.
-- Full END ADLC joins one lane's protected source integration or policy-approved supersession,
-  applicable Dev-to-Prod and product/runtime delivery evidence, and its exact workspace-cleanup
-  disposition. Source completion alone is not product completion; missing or stale triggered proof
-  keeps the closeout open. See [DEPLOY](../guides/DEPLOY-WORKFLOW.md).

@@ -52,6 +52,12 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
   different rollback rules; follow the product owner that controls that effect.
 - If backward compatibility is unproven, block rollback until the owner supplies a verified recovery path.
 
+## END ADLC completion
+
+Completion joins protected source integration (or policy-approved supersession), applicable
+Dev-to-Prod and product/runtime delivery evidence, and the exact workspace-cleanup disposition.
+Source completion alone is insufficient; missing or stale required proof keeps closeout open.
+
 ## Source-control preflight
 
 Before a consumer builds a Dev-to-Prod candidate, run its exact upstream source checkout:
