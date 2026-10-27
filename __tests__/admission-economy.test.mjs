@@ -19,7 +19,7 @@ import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 function fixture(t) {
-  const parent = mkdtempSync(join(tmpdir(), 'admission-economy-')), root = join(parent, 'repo');
+  const parent = mkdtempSync(join(tmpdir(), 'admission-economy-')), root = join(parent, 'economy');
   t.after(() => rmSync(parent, { recursive: true, force: true })); mkdirSync(root);
   const run = (...args) => git(args, { cwd: root });
   run('init', '--quiet', '--initial-branch=main'); run('config', 'user.name', 'Test'); run('config', 'user.email', 'test@example.invalid');

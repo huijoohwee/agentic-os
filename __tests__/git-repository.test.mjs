@@ -559,7 +559,12 @@ test('the prior single-ref runtime remains pinned for managed hook migration', (
   const governanceBytes = readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url));
   const governanceSha = createHash('sha256').update(governanceBytes).digest('hex');
   assert.equal(governanceSha, 'cb8b7babb2e1340297d79b2fad1af1e95f558d60c4c53f456a101ac279e1b390'); const fileIntegrityBytes = readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)); const fileIntegritySha = createHash('sha256').update(fileIntegrityBytes).digest('hex'); assert.equal(fileIntegritySha, 'efde3ea4eddeb8bf2e3a3dac8052e333fb38c21dc64de2fca2bcbd987c86579f'); const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes.toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync')); const quarantineSha = createHash('sha256').update(quarantineBytes).digest('hex'); assert.equal(quarantineSha, '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
-  const priorFiles = selected.files.map(file => file.path === 'src/file-integrity.mjs' ? { ...file, bytes: fileIntegrityBytes, sha256: fileIntegritySha } : file.path === 'src/quarantine.mjs' ? { ...file, bytes: quarantineBytes, sha256: quarantineSha } : file.path === 'bin/agentic-os-filter-compare.mjs'
+  const priorGitRepositoryBytes = readFileSync(new URL('./fixtures/git-repository-pre-naming.mjs.txt', import.meta.url));
+  const priorGitRepositorySha = createHash('sha256').update(priorGitRepositoryBytes).digest('hex');
+  assert.equal(priorGitRepositorySha, '293725c6285065e102ee55ef5890efe9eb204a29cb7f826d8d0ffb23f4814c26');
+  const priorFiles = selected.files.map(file => file.path === 'src/git-repository.mjs'
+    ? { ...file, bytes: priorGitRepositoryBytes, sha256: priorGitRepositorySha }
+    : file.path === 'src/file-integrity.mjs' ? { ...file, bytes: fileIntegrityBytes, sha256: fileIntegritySha } : file.path === 'src/quarantine.mjs' ? { ...file, bytes: quarantineBytes, sha256: quarantineSha } : file.path === 'bin/agentic-os-filter-compare.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/filter-compare-batch32.mjs.txt', import.meta.url)),
       sha256: 'cfe755b0da687741d3128aeb4d78bba905b55fa1005663a50ef6c938f272bf2a' } : file.path === 'src/git.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url)),

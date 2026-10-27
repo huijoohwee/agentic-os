@@ -13,6 +13,7 @@ import { isBoundLane } from '../src/guard-main.mjs';
 import { provision, assertProvisionable, assertDisjointReservation, committedLanePaths, lanePath, parseWritePaths } from '../src/worktree.mjs';
 import { recoverLaneRecordFromMission } from '../src/lane-cache-legacy.mjs';
 import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
+import { assertCanonicalRepositoryCheckout } from '../src/git-repository.mjs';
 import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
@@ -116,9 +117,11 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   return { head, reserved, lineage, record, recoveryReceipt };
 }
 export async function cmdStart(root, argv, policy, profile, services) {
-  const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null } = services;
+  const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null,
+    enforceCheckoutName = false } = services;
   const [scope] = positional(argv), device = assertDevice(option(argv, 'device') ?? deviceSegment());
   if (!scope) { err('usage: start <scope> --write=<paths>'); return 1; }
+  if (enforceCheckoutName) assertCanonicalRepositoryCheckout(root, profile);
   const ref = laneRef(scope, device);
   let path = lanePath(scope, device, root), worktreeId = basename(path);
   const requested = option(argv, 'write') === null ? [] : parseWritePaths(option(argv, 'write'));
@@ -142,6 +145,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
     const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
     Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
     artifacts.effectsRetained ||= fetched.effectsRetained;
+    if (enforceCheckoutName) assertCanonicalRepositoryCheckout(root, profile);
     requireCanonical(root, policy);
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
