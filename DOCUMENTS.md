@@ -31,6 +31,7 @@ Read only the row needed for the task, then the owner's local index or contract.
 | `/`, `#`, `@` dictionary definitions and consumption | [Invocation dictionary owner](guides/INVOCATION-DICTIONARIES.md) |
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
 | Global development lifecycle | [ADLC runtime profile](docs/adlc-guidelines.md), [universal ADLC contract][adlc-universal] |
+| Public-source archive handling | [Private archive policy](guides/PRIVATE-ARCHIVE-POLICY.md) |
 | Start, release, deploy, or cleanup work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md), [deploy](guides/DEPLOY-WORKFLOW.md) — global protocol, repo-local mechanics |
 | Shared workspace startup, source freshness and offline retrieval | [Workspace routine](guides/WORKSPACE.md), [memory format](guides/MEMORY.md) |
 | Cache lifecycle, reuse, retention and measured cost | [Shared cache policy](guides/CACHE.md) |
