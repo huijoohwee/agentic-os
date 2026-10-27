@@ -344,14 +344,15 @@ export function projectProgressiveCloseout(target, observed) {
     && closeout?.canonicalCurrent === true
     && (closeout?.sourceState !== 'source_complete' || closeout?.sourceIntegrated === true);
   if (!exact) return { ...base, reason: 'requires-published-lane' };
+  const adlcState = closeout.adlcState ?? (closeout.missionState === 'source_complete' ? 'complete' : null);
   const fields = { sourceState: closeout.sourceState, missionState: closeout.missionState ?? null,
-    adlcState: closeout.adlcState ?? null, retentionState: closeout.retentionState ?? null,
+    adlcState, retentionState: closeout.retentionState ?? null,
     deliveryState: closeout.deliveryState ?? null, completionScope: closeout.completionScope ?? null,
     nextAction: closeout.nextAction ?? null };
   if (closeout.sourceState !== 'source_complete') return { ...base, ...fields,
     reason: closeout.nextAction?.id ?? 'source-not-complete' };
   const settled = ['complete', 'source_complete', 'cleanup_pending', 'delivery_pending',
-    'delivery_scope_pending', 'retirement_pending'].includes(closeout.adlcState) ? closeout.adlcState : null;
+    'delivery_scope_pending', 'retirement_pending'].includes(adlcState) ? adlcState : null;
   return { ...base, ...fields, status: settled ?? 'blocked', adlcState: settled,
     reason: settled && ['complete', 'source_complete'].includes(settled) ? null : 'closeout-incomplete' };
 }

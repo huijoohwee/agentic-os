@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — As-Built ADLC Pipeline"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.44"
-date: "2026-10-21"
+version: "1.4.45"
+date: "2026-10-27"
 lang: "en-US"
 owner: "ADLC pipeline architecture"
 local_rung: "spec-complete"
@@ -11,18 +11,18 @@ lane: "authoring"
 universal_scope: false
 frontmatter_contract: "required"
 continuity_id: "PRD-TAD-ADR-ADLC-PIPELINE-001"
-prd_revision: "1.4.44"
-tad_revision: "1.4.44"
-adr_revision: "1.4.44"
+prd_revision: "1.4.45"
+tad_revision: "1.4.45"
+adr_revision: "1.4.45"
 guideline_revision: "3.4.0"
-worktree_id: "device-0232231d4a19--adlc-closeout"
-agent_id: "codex-adlc-closeout"
+worktree_id: "device-0232231d4a19--adlc-terminal-state"
+agent_id: "codex-adlc-terminal-state"
 load_policy: "on-demand"
-verification_scope: "simplify read-only lane closeout while preserving separate source and Dev-to-Production receipts"
+verification_scope: "use common source-complete and ADLC-complete terminal states while preserving separate delivery, cleanup and retirement receipts"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/4e5227ad892f8b0125a31c83cf87e14dc3c2621c/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "93183ba8748e8168bf2ed1fe29a95c7a89ff1e46"
-mvp_revision: "1.4.44"
-gtm_revision: "1.4.44"
+mvp_revision: "1.4.45"
+gtm_revision: "1.4.45"
 ---
 # Reference implementation — As-built ADLC pipeline
 This document owns source-to-completion governance; acceptance grants no deployment authority. Current pins live in [`catalog/composition-source-lock.json`](../catalog/composition-source-lock.json); [TECH-STACK.md](TECH-STACK.md) owns refresh commands. Admission checkpoint (2026-09-24): a new Graph task inherited an exhausted prior mission through default navigation. This successor fixes new-task selection at OS base `0433c86a3528f2130d952a1b63c9e40feb41fde3`; validation and protected integration bind the actual candidate separately. Continuity checkpoint (2026-10-01): successor 1.4.15 adopts the merged [authoring guideline 3.4.0][guideline] from website PR #281 across the pipeline, document routing and cost register. The [lifecycle process][process] joins validated learning and audience projections to ADLC receipts and reuses valid decisions for the same effect. The website record checker proves structural continuity only; demand, financial correctness and production remain separate evidence. The runtime prompt stays at `guides/SYSTEM-PROMPT-RUNTIME.md`; its Git LF rule follows that owner. No runtime behavior or always-load guidance is added.
@@ -50,7 +50,7 @@ Each `AC-Pnn` states Given/When/Then. Its `VCC-Pnn` is the stated check plus the
 | AC-P07 / VCC-P07 | Given selected operation requirements, when flight evaluates their presence and freshness, then only the selected scope is gated and the result grants no effects; no manifest means no invented enrollment. | `node --test __tests__/lifecycle-flight.test.mjs`; F18/F19. | T07 / ADR-P03 |
 | AC-P08 / VCC-P08 | Given an eligible Free/FOSS executor and exact release inputs, when Commerce activates and independently evaluates them, then release, isolated execution, lifecycle identity and readback agree; preserve admission and never substitute a local runner test for a deployed transport. | Commerce [release safety][commerce-release-test], [executor test][commerce-executor-test], [context test][commerce-context-test], then live owner receipts; F07–F09/F19. **Unfinished** at G08–G10. | T08 / ADR-P03 |
 | AC-P09 / VCC-P09 | Given those deployed owner versions and a valid confirmation, when the buyer completes and replays checkout, then receipt/readback matches and no second money effect occurs; offline drafts never authorize offline settlement. | F01–F05 owner checks and TECH-STACK runtime VCCs, followed by actual provider and replay evidence. **Unverified here**; demand remains separate. | T09 / ADR-P03 |
-PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directive→RAO coverage is **9/9 derived outcomes** through T01–T09. These ratios measure linked specification coverage, not passed acceptance conditions. Status scope interpretation: `completionScope=source-only` reports `adlcState=source_complete` for the exact source lane, without a delivery claim for sibling lanes or products. `retirement-bound` and `delivery-bound` scopes remain pending until their exact receipts validate; a preservation lane with delivery binding requires both. `adlcState=complete` means all obligations for that exact lane's enrolled scope are closed, never a repository-wide summary.
+PRD→TAD coverage is **9/9 criteria**, TAD→PRD is **9/9 steps**, and Directive→RAO coverage is **9/9 derived outcomes** through T01–T09. These ratios measure linked specification coverage, not passed acceptance conditions. Status scope interpretation: `completionScope=source-only` reports `missionState=source_complete`, `adlcState=complete` for the exact source lane, without a delivery claim for sibling lanes or products. `retirement-bound` and `delivery-bound` scopes remain pending until their exact receipts validate; a preservation lane with delivery binding requires both. `adlcState=complete` means all obligations for that exact lane's enrolled scope are closed, never a repository-wide summary.
 ### Priority, economics and open questions
 **Must:** reuse T01–T07 and the completion primitive T06; close the product-owned T08 gaps before the T09 runtime demonstration. **Should:** improve measured iteration cost, the P04-M shared-memory invocation handoff and optional generated publication F21; emit the shared [ADLC Cost Ledger fields][ledger], as listed for receipt references in [COSTS.md](COSTS.md), from lane and completion records so the cost register can join receipts instead of reporting unknown (planned; no implementation or acceptance criterion in this revision). **Could:** live agent-state memory tiers (the separately accepted [shared-memory startup](MEMORY.md) covers curated context only), merchant/shopping roles and spatial extensions F22–F24 after demand or a measured bottleneck. **Won't in this revision:** new orchestration controllers, copied schemas, paid infrastructure, new dependencies, invented provider receipts or customer selection. ROI score for every tier is **unmeasured**; ordering reflects dependency closure and existing-code reuse, not a commercial winner. When several conforming next moves exist, take the highest-ROI sequence: preserve the current accepted value path, remove repeated startup or handoff friction in the existing owner, short-circuit unchanged preparation with explicit invalidation, refresh admitted dependencies on a bounded cadence, and defer broader expansion until a measured bottleneck remains. **ZERO-COST-EFFECT-POLICY (2026-10-19):** effect-plan v4 rejects prior schemas and binds provider-owned cost evidence to the exact effect scope. A trusted provider verifier must confirm the current free/no-billable mode, fail-closed quota behavior, or hard USD 0 cap before authority runs; its receipt must cover the exact effect window. Paid plans/add-ons/overages, quota snapshots alone, unknown cost and unknown headroom block.
 Historical timing, clonability and cost observations remain in the [predecessor metrics](https://github.com/huijoohwee/agentic-os/blob/934f44fd30df4b23829a29df6cbe8d6456f7616d/guides/PRD-TAD-ADR-MVP-GTM.md#priority-economics-and-open-questions).
