@@ -3,12 +3,12 @@ schema: agentic-os/cleanup-authority-enrollments/v1
 title: Exact current-recovery enrollments
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.5
-prd_revision: 1.2.5
-tad_revision: 1.2.5
-adr_revision: 1.2.5
-mvp_revision: 1.2.5
-gtm_revision: 1.2.5
+version: 1.2.7
+prd_revision: 1.2.7
+tad_revision: 1.2.7
+adr_revision: 1.2.7
+mvp_revision: 1.2.7
+gtm_revision: 1.2.7
 load_policy: on-demand
 lifecycle_status: active
 ---
@@ -217,6 +217,29 @@ authorization, and receipt.
 Budget: one exact v1 enrollment, an update to the existing transition-workflow test, and this owner
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving source history and prior enrollments.
+
+## Current-quarantine retention enrollments — agentic-os PRs #616 and #617 — 2026-10-28
+
+These entries resolve the final disposition for two integrated test-only lanes whose local worktree
+projections and registrations are quarantined. PR #616 binds reviewed head
+`fff6f324644844ac7a0c1014da39ca9d04c962c1`, merge
+`d53e8f19e77c0855b6df8ebafff0991a01c321a0`, quarantine coordinate
+`cc28647f2961c27a29256b8470a4246b396848094d2fa55687e39526d6b9462a`, and its exact retained
+cleanup receipt. PR #617 binds reviewed head `ccbfe07f73eb05501bf22443fedc8e9b4111cf26`, merge
+`cfd8b48d67e18e325bf167995f398d8c83ba7f2a`, quarantine coordinate
+`cb4a9ad4a7718eecf932a3f0e0000846df393b79a58a0e7d85d63c2ac17a6cf7`, and its exact retained
+cleanup receipt. Both source PRs passed `budgets` and `test`.
+
+The exact entries permit only a create-only `current-quarantine-retained` disposition over the
+existing quarantine evidence. They make no physical-cleanup claim, no provider-authority claim,
+and no claim that historical quarantine protection or merge-method authority was proven. The
+independent integration and record-only retirement receipts remain separate; neither entry grants
+deployment, rollback, or further cleanup authority.
+
+Budget: two exact v1 retention entries, two existing transition-workflow expectations, and this
+owner record; zero runtime modules, dependencies, or always-load bytes. Rollback removes only these
+two entries and their matching test/guide evidence while retaining the original quarantine bytes,
+branches, Git objects, and lifecycle receipts.
 
 ## Current recovery enrollment — huijoohwee.github.io PR #297 — 2026-10-25
 

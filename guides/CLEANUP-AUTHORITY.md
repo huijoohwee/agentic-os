@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.6
-prd_revision: 1.2.6
-tad_revision: 1.2.6
-adr_revision: 1.2.6
-mvp_revision: 1.2.6
-gtm_revision: 1.2.6
+version: 1.2.7
+prd_revision: 1.2.7
+tad_revision: 1.2.7
+adr_revision: 1.2.7
+mvp_revision: 1.2.7
+gtm_revision: 1.2.7
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.6`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.7`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
