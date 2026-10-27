@@ -1,14 +1,15 @@
 /** Join authenticated lifecycle evidence to exact, quarantine-only Git worktree effects. */
-import { canonicalJson } from './governance.mjs';
-import { lstatSync, realpathSync, rmdirSync } from 'node:fs';
-import { basename, isAbsolute, relative, resolve } from 'node:path';
-import { currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from './git.mjs';
+import { canonicalJson, governanceDigest } from './governance.mjs';
+import { createHash } from 'node:crypto';
+import { lstatSync, mkdirSync, realpathSync, rmdirSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import { commonDir, currentBranch, observeGit, remoteTransport, repoRoot, worktrees } from './git.mjs';
 import { isLaneRef, parseLaneRef } from './lane-id.mjs';
 import { get } from './lane-records.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { inferMergedReviewWorkflow, observeMergedReview, githubRead } from '../bin/agentic-os-cleanup-review.mjs';
-import { applyUserCleanup, planUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 import { RECOVERY_MODE, recoveryPolicy } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { assertPrivateDirectoryIdentity, privateDirectoryIdentity, writePrivateFileExclusive } from './file-integrity.mjs';
 import { createWorkflowEffectGuard } from '../bin/agentic-os-workflow.mjs';
 import { option } from '../bin/agentic-os-argv.mjs';
 import {
@@ -369,70 +370,71 @@ export function removeInactiveProgressiveCompletionTarget({ root, directory, inv
   return Object.freeze({ status: 'removed', path: directory, mode: 'empty-directory' });
 }
 
-/** Explicit superseded-lane closeout; the accepted PR owns review/check evidence, and a failed or closed predecessor PR is never represented as merged. */
-export async function runReleaseCommonSuccessorComplete({
-  root, argv, profile,
-  out = line => process.stdout.write(`${line}\n`),
-  err = line => process.stderr.write(`${line}\n`),
+const SOURCE_SUPERSESSION_SCHEMA = 'agentic-os/cross-repository-supersession-receipt/v1', sha256 = value => createHash('sha256').update(value).digest('hex');
+function writeSupersessionReceipt(root, ref, payload) {
+  const directory = join(commonDir(root), 'agentic-os-supersessions'); mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const parent = privateDirectoryIdentity(directory, 'source-supersession'), path = join(directory, `${sha256(ref)}.json`), receipt = { ...payload, receiptDigest: governanceDigest(payload) };
+  writePrivateFileExclusive(path, Buffer.from(canonicalJson(receipt)), { maxBytes: 64000, label: 'source-supersession' });
+  assertPrivateDirectoryIdentity(parent, 'source-supersession'); return receipt;
+}
+/** Record verified cross-repository supersession; this grants no integration or cleanup authority. */
+export async function runReleaseCommonSuccessorComplete({ root, argv, profile,
+  out = line => process.stdout.write(`${line}\n`), err = line => process.stderr.write(`${line}\n`),
   now = Date.now, api = githubRead,
 } = {}) {
   try {
-    const ref = option(argv, 'ref'), pr = Number(option(argv, 'via-pr'));
-    const replacedPaths = (option(argv, 'replaced') ?? '').split(',').filter(Boolean);
-    if (!isLaneRef(ref) || !Number.isSafeInteger(pr) || pr < 1 || !argv.includes('--stopped')
-      || replacedPaths.length > 128)
-      fail('blocked-release-common-successor-options',
-        'Use --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped');
-    const current = releaseCommonLocalCleanupPolicy(root, profile);
-    const record = get(ref, root);
-    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
-    if (!record || !(['published', 'queued', 'integrated'].includes(record.state)
-      || record.state === 'active' && record.pr === null) || record.head !== status.lane.head || status.lane.clean === false)
-      fail('blocked-release-common-successor-lane', 'one exact clean predecessor with no unresolved PR is required');
-    // Cleanup remains bound to the predecessor lane; successor review is checked separately.
-    const assertWorkflowCurrent = createWorkflowEffectGuard(
-      () => cleanupWorkflowContext(root, ref, profile.repository));
-    const workflow = inferMergedReviewWorkflow({ repository: current.repository, pr,
-      requiredChecks: [...current.requiredChecks].sort() }, { cwd: root, api });
-    if (!status.lane.mounted) {
-      const review = observeMergedReview({ ...current, pr, workflow,
-        requiredChecks: [...current.requiredChecks].sort() }, { cwd: root, api });
-      const successor = { predecessorHead: record.head, replacedPaths,
-        reviewedHead: review.head, merge: review.merge };
-      const settled = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile, { successor });
-      if (!settled.cleanupVerified || settled.closeout.missionState !== 'source_complete'
-        || observeGit(['ls-remote', '--refs', '--', current.remoteUrl, 'refs/heads/main'], { cwd: root })
-          !== `${current.canonical}\trefs/heads/main`)
-        fail('blocked-release-common-successor-replay', 'retained closeout or live canonical state drifted');
-      out(JSON.stringify(settled)); return 0;
+    const ref = option(argv, 'ref'), pr = Number(option(argv, 'via-pr')), repository = option(argv, 'via-repository') ?? '',
+      requiredChecks = (option(argv, 'via-checks') ?? '').split(',').filter(Boolean).sort(),
+      replaced = (option(argv, 'replaced') ?? '').split(',').filter(Boolean).sort(), reason = option(argv, 'reason') ?? '';
+    if (!argv.includes('--superseded') || !argv.includes('--stopped') || !isLaneRef(ref) || !Number.isSafeInteger(pr) || pr < 1
+      || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository) || !requiredChecks.length || requiredChecks.length > 8
+      || new Set(requiredChecks).size !== requiredChecks.length || !replaced.length || replaced.length > 128
+      || !/^[^\x00-\x1f\x7f]{12,512}$/u.test(reason.trim()) || Buffer.byteLength(reason.trim()) > 512) fail('blocked-supersession-options',
+      'Use --ref=<lane> --via-repository=<owner/repo> --via-pr=<n> --via-checks=<names> --replaced=<paths> --reason=<text> --superseded --stopped');
+    const current = releaseCommonLocalCleanupPolicy(root, profile), record = get(ref, root), status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
+    if (status.sourceSuperseded) {
+      if (status.supersession?.successor?.repository === repository && status.supersession.successor.pr === pr) { out(JSON.stringify(status)); return 0; }
+      fail('blocked-supersession-existing', 'a different immutable supersession is already recorded');
     }
-    const resolvePolicy = (policyRoot, mode) => {
-      if (policyRoot !== root || mode !== RECOVERY_MODE)
-        fail('blocked-release-common-successor-policy', 'successor recovery policy drifted');
-      return current;
-    };
-    const request = { cwd: root, target: status.lane.path, pr,
-      requiredChecks: [...current.requiredChecks].sort(), workflow, recovery: true,
-      successor: { predecessorRef: ref, predecessorHead: record.head, replacedPaths } };
-    const options = { now, api, resolvePolicy };
-    const plan = planUserCleanup(request, options);
-    out(JSON.stringify(plan));
-    const successor = { ...plan.successor, reviewedHead: plan.head, merge: plan.merge };
-    if (plan.integration.kind !== 'reviewed-successor')
-      fail('blocked-release-common-successor-integration', 'reviewed successor must remain exact');
-    assertWorkflowCurrent();
-    const receipt = applyUserCleanup(plan, { cwd: root,
-      authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true, ...options });
-    out(JSON.stringify(receipt));
-    const settled = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile, { successor });
-    out(JSON.stringify(settled));
-    if (settled.closeout.missionState !== 'source_complete' || settled.lane.mounted
-      || settled.integration?.kind !== 'reviewed-successor')
-      fail('blocked-release-common-successor-postcondition', 'successor closeout did not reach exact terminal state');
-    return 0;
-  } catch (error) {
-    err(`${error.reason ?? 'blocked-release-common-successor-complete'}: ${error.message}`);
-    return 1;
-  }
+    const sourceBytes = observeGit(['diff', '--name-only', '-z', '--no-renames', `${record?.baseSha}...${record?.head}`],
+      { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }), source = sourceBytes?.split('\0').filter(Boolean).sort();
+    if (!record || record.state !== 'active' || record.pr !== null || record.head !== status.lane.head
+      || status.lane.mounted !== true || status.lane.clean !== true || status.lane.path !== record.worktree
+      || JSON.stringify(source) !== JSON.stringify(replaced)) fail('blocked-supersession-lane', 'exact clean lane and all replacement paths are required');
+    const archive = api(`repos/${current.repository}`, { cwd: root }), successorRepo = api(`repos/${repository}`, { cwd: root });
+    if (archive?.full_name !== current.repository || archive.private !== true || archive.archived !== true
+      || successorRepo?.full_name !== repository || successorRepo.private !== false || successorRepo.archived === true)
+      fail('blocked-supersession-repository', 'the source archive must be private and archived; successor public and active');
+    const workflow = inferMergedReviewWorkflow({ repository, pr, requiredChecks }, { cwd: root, api });
+    const review = observeMergedReview({ repository, pr, requiredChecks, workflow, mode: RECOVERY_MODE }, { cwd: root, api });
+    const files = api(`repos/${repository}/pulls/${pr}/files?per_page=100&page=1`, { cwd: root }), next = api(`repos/${repository}/pulls/${pr}/files?per_page=100&page=2`, { cwd: root });
+    const paths = Array.isArray(files) ? files.map(file => file.filename).sort() : [], mainHead = api(`repos/${repository}/branches/main`, { cwd: root })?.commit?.sha;
+    const comparison = api(`repos/${repository}/compare/${review.merge}...main`, { cwd: root });
+    if (review.branch !== ref || paths.length !== files?.length || !paths.length || paths.length > 100 || next?.length !== 0
+      || files.some(file => file.status !== 'modified') || JSON.stringify(paths) !== JSON.stringify(replaced)
+      || new Set(paths).size !== paths.length || !/^[a-f0-9]{40}$/u.test(mainHead ?? '')
+      || !['ahead', 'identical'].includes(comparison?.status) || comparison.base_commit?.sha !== review.merge
+      || comparison.merge_base_commit?.sha !== review.merge || comparison.status === 'ahead' && comparison.head_commit?.sha !== mainHead)
+      fail('blocked-supersession-review', 'merged PR, green checks, replaced paths and current successor main must match');
+    const finalReview = observeMergedReview({ repository, pr, requiredChecks, workflow, mode: RECOVERY_MODE }, { cwd: root, api });
+    const finalArchive = api(`repos/${current.repository}`, { cwd: root }), finalSuccessor = api(`repos/${repository}`, { cwd: root }), finalMain = api(`repos/${repository}/branches/main`, { cwd: root })?.commit?.sha;
+    const finalStatus = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    if (!same(review, finalReview) || finalArchive?.private !== true || finalArchive.archived !== true || finalSuccessor?.full_name !== repository || finalSuccessor.private !== false || finalSuccessor.archived === true || finalMain !== mainHead
+      || finalStatus.lane.head !== record.head || finalStatus.lane.clean !== true
+      || observeGit(['ls-remote', '--refs', '--', current.remoteUrl, 'refs/heads/main'], { cwd: root }) !== `${current.canonical}\trefs/heads/main`)
+      fail('blocked-supersession-drift', 'source, archive, merged review or successor main changed during observation');
+    const payload = { schema: SOURCE_SUPERSESSION_SCHEMA, repository: profile.repository, profileDigest: profile.profileDigest,
+      ref, sourceBase: record.baseSha, head: record.head, worktree: record.worktree, changedPaths: source, replacedPaths: replaced,
+      disposition: 'superseded', sourceIntegrated: false, sourceSuperseded: true, providerAuthority: false,
+      claimRetired: false, archivePrivate: true, archiveArchived: true, reason: reason.trim(), issuedAt: new Date(now()).toISOString(),
+      successor: { repository, pr, branch: review.branch, head: review.head, merge: review.merge, mergedAt: review.mergedAt,
+        mainHead, workflow, changedPaths: paths, checks: review.checks } };
+    writeSupersessionReceipt(root, ref, payload);
+    const settled = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    if (settled.closeout.missionState !== 'source_complete' || settled.closeout.adlcState !== 'complete'
+      || settled.closeout.sourceIntegrated !== false || settled.sourceSuperseded !== true)
+      fail('blocked-supersession-postcondition', 'supersession did not reach the explicit local terminal state');
+    out(JSON.stringify(settled)); return 0;
+  } catch (error) { err(`${error.reason ?? 'blocked-supersession-complete'}: ${error.message}`); return 1; }
 }
 export { planSuccessorPreservation, applySuccessorPreservation, verifySuccessorPreservation } from '../bin/agentic-os-cleanup-user.mjs';
