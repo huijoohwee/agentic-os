@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.5
-prd_revision: 1.2.5
-tad_revision: 1.2.5
-adr_revision: 1.2.5
-mvp_revision: 1.2.5
-gtm_revision: 1.2.5
+version: 1.2.6
+prd_revision: 1.2.6
+tad_revision: 1.2.6
+adr_revision: 1.2.6
+mvp_revision: 1.2.6
+gtm_revision: 1.2.6
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.5`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.6`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -68,11 +68,13 @@ recovery transition. A narrower proof never silently inherits stronger historica
   protected ancestry. Emit a distinct historical-content proof or fail.
 - H02: Reject missing/foreign enrollment, changed identities, failed/late checks, stale policy,
   expiry, altered event/tree/ancestry and fabricated historical assertions before publication.
-- P01: Verify a distinct successor preservation disposition with exact source and retained bytes.
-  Authenticate historical succession if claimed; otherwise require a separately reviewed current
-  adoption decision and explicitly retain historical succession authority as unproven.
-- P02: Ancestor/path equality, cached handoff, source inclusion or an unrelated green PR alone is
-  insufficient. Missing, mounted, changed or foreign retention coordinates fail.
+- P01: For a clean merged lane kept mounted, accept a standalone retention receipt bound to its exact
+  integration receipt, review, merge, branch head, current policy and clean checkout. This avoids a
+  successor PR and claims no historical succession, provider authority or cleanup. Use the existing
+  successor-preservation flow only when another lane actually replaces the source.
+- P02: For successor preservation, ancestor/path equality, cached handoff, source inclusion or an
+  unrelated green PR alone is insufficient; missing, mounted, changed or foreign coordinates fail.
+  Standalone retention requires the exact lane to remain mounted and clean at observation time.
 - D01: An already-quarantined original target needs its own enrolled current retention disposition,
   exact retained receipt/registration/manifests/index/source and fresh current integration claim.
   Keep historical authority and actor unknown; do not remount or relabel the old physical receipt.
@@ -80,6 +82,23 @@ recovery transition. A narrower proof never silently inherits stronger historica
   plan, grant and real receipt. No adoption backdates a claim or creates historical evidence.
 - A02: Full completion requires every applicable owner receipt and handover. Passing tests, local
   observations or this specification alone do not establish END ADLC.
+
+### Standalone retained-lane closeout — implementation candidate 1.2.6 — 2026-10-27
+
+This path lets an already-integrated source lane stay mounted through record-only retirement without
+creating a successor PR solely to prove retention. It reuses `preservation-plan` and `preservation-apply`;
+the short-lived receipt binds the integration-receipt digest, merged review, branch head, clean mounted
+worktree, canonical ancestry and current target and authority policies. Record-only retirement must join
+that digest to its authenticated integration receipt. This path makes no historical-succession,
+provider-authority, retirement or physical-cleanup claim.
+
+The implementation adds no CLI, module, package entry or dependency. Receipt size is capped at 64 KB,
+lifetime at 15 minutes and check list at eight entries. It removes the successor-PR step for this case;
+time and compute savings are unmeasured. Physical cleanup still uses separately authorized quarantine.
+
+Rollback: revert the standalone adoption handling and its guide sections. Existing successor-preservation
+and quarantine flows remain available. No deployment, provider write, cleanup, or integration receipt is
+created by this source change.
 
 ### Current recovery enrollment — agentic-os PR #487 — 2026-10-17
 

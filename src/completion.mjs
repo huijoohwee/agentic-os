@@ -5,7 +5,7 @@ import { canonicalJson, createAuthorityTransitionReceiptEnvelope, governanceDige
 import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupRecordFields as typedFields,
   cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze,
   createWorktreeCleanupContinuation, deriveCleanupOwnerStateDigest,
-  validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan,
+  validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan, validateRetentionDispositionReceipt,
   worktreeCleanupPlanByteDigest } from './cleanup-records.mjs';
 import { EFFECT_COST_POLICY, effectCostScopeDigest, normalizeEffectCostEvidence,
   validateEffectCostEvidenceVerification, validateStoredEffectCostEvidence,
@@ -260,11 +260,12 @@ export function bindRetirementOperationReceipts(integrationValue, retirementValu
   const integration = validateAuthenticatedTransitionOperationReceipt(integrationValue);
   const retirement = validateAuthenticatedTransitionOperationReceipt(retirementValue);
   const integrated = integration.transitionReceipt, retired = retirement.transitionReceipt;
-  const preservation = preservationReceipt;
+  const preservation = preservationReceipt?.disposition === 'standalone-lane-retained' ? validateRetentionDispositionReceipt(preservationReceipt) : preservationReceipt, standalone = preservation?.disposition === 'standalone-lane-retained';
   if (integration.requestedTransition !== 'integrate' || retirement.requestedTransition !== 'retire'
     || !preservation || preservation.repository !== repository
     || preservation.adoption?.reviewLocator !== reviewLocator
     || preservation.adoption?.merge !== integrated.immutableRevision
+    || standalone && preservation.adoption.integrationReceiptDigest !== integration.receiptDigest
     || integrated.repository !== repository || retired.repository !== repository
     || integrated.reviewLocator !== reviewLocator
     || integrated.resultState !== 'integrated' || retired.resultState !== 'retired'

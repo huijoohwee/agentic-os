@@ -12,7 +12,7 @@ export const SUCCESSOR_PRESERVATION_SCHEMA = 'agentic-os/successor-preservation-
 export const SUCCESSOR_PRESERVATION_PLAN_SCHEMA = 'agentic-os/successor-preservation-plan/v1';
 export const CURRENT_QUARANTINE_SCHEMA = 'agentic-os/current-quarantine-retention-receipt/v1';
 export const CURRENT_QUARANTINE_PLAN_SCHEMA = 'agentic-os/current-quarantine-retention-plan/v1';
-export const CURRENT_QUARANTINE_DISCARD_SCHEMA = 'agentic-os/current-quarantine-discard-receipt/v1'; export const CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA = 'agentic-os/current-quarantine-discard-plan/v1';
+export const CURRENT_QUARANTINE_DISCARD_SCHEMA = 'agentic-os/current-quarantine-discard-receipt/v1'; export const CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA = 'agentic-os/current-quarantine-discard-plan/v1', STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA = 'agentic-os/standalone-lane-retention-adoption/v1';
 export const CURRENT_QUARANTINE_RECONCILIATION_SCHEMA = 'agentic-os/current-quarantine-reconciliation/v1';
 export const RECORD_ONLY_RETIREMENT_EFFECTS = Object.freeze(['record-retirement', 'retire-claim']);
 export const CLEANUP_EFFECTS = Object.freeze(['quarantine-worktree-projection', 'quarantine-worktree-registration']);
@@ -296,20 +296,19 @@ export function createCurrentQuarantineReconciliation(input) {
 export const validateCurrentQuarantineReconciliation = value => canonicalRecord(value, createCurrentQuarantineReconciliation, 'current quarantine reconciliation', 'current quarantine reconciliation is not canonical');
 function preservationRecord(value, receipt, allowCurrent = false) {
   const source = snap(value), checksum = receipt ? 'receiptDigest' : 'planDigest';
-  const current = allowCurrent && ['current-quarantine-retained', 'current-quarantine-discard-acknowledged'].includes(source.disposition), discarded = current && source.disposition === 'current-quarantine-discard-acknowledged';
+  const current = allowCurrent && ['current-quarantine-retained', 'current-quarantine-discard-acknowledged'].includes(source.disposition), discarded = current && source.disposition === 'current-quarantine-discard-acknowledged', standalone = source.disposition === 'standalone-lane-retained';
   const history = current ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven';
   const keys = ['schema', 'disposition', 'adoption', 'adoptionDigest', 'repository', 'canonicalRevision', 'profileDigest', 'policyDigest', 'review', 'integration', 'retention', 'state', 'issuedAt', 'expiresAt', 'physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history, checksum];
   exact(source, keys, 'successor preservation record');
-  if (Buffer.byteLength(canonicalJson(source)) > 64000 || source.schema !== (discarded ? receipt ? CURRENT_QUARANTINE_DISCARD_SCHEMA : CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA : receipt ? SUCCESSOR_PRESERVATION_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA) || source.disposition !== (current ? discarded ? 'current-quarantine-discard-acknowledged' : 'current-quarantine-retained' : 'successor-preserved') || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false)) fail('successor preservation claims are invalid');
+  if (standalone && !allowCurrent || Buffer.byteLength(canonicalJson(source)) > 64000 || source.schema !== (discarded ? receipt ? CURRENT_QUARANTINE_DISCARD_SCHEMA : CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA : receipt ? SUCCESSOR_PRESERVATION_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA) || source.disposition !== (current ? discarded ? 'current-quarantine-discard-acknowledged' : 'current-quarantine-retained' : standalone ? 'standalone-lane-retained' : 'successor-preserved') || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false)) fail('successor preservation claims are invalid');
   const adoption = source.adoption;
-  exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', 'quarantineCoordinate', history, ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest'] : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])], 'successor preservation adoption');
-  const coordinates = current ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef, predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
-  if (adoption.schema !== (current ? 'agentic-os/current-quarantine-adoption/v1' : 'agentic-os/successor-preservation-adoption/v1') || adoption[history] !== false || adoption.repository !== source.repository || !Array.isArray(coordinates.replacedPaths) || !current && !coordinates.replacedPaths.length || coordinates.replacedPaths.length > 512 || new Set(coordinates.replacedPaths).size !== coordinates.replacedPaths.length || coordinates.replacedPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..'))) fail('successor preservation adoption is invalid');
+  exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', ...(standalone ? ['targetRef', 'targetHead', 'integrationReceiptDigest'] : ['quarantineCoordinate', history, ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest'] : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])])], 'successor preservation adoption');
+  const coordinates = current || standalone ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef, predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
+  if (adoption.schema !== (standalone ? STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA : current ? 'agentic-os/current-quarantine-adoption/v1' : 'agentic-os/successor-preservation-adoption/v1') || !standalone && adoption[history] !== false || adoption.repository !== source.repository || !Array.isArray(coordinates.replacedPaths) || !current && !standalone && !coordinates.replacedPaths.length || coordinates.replacedPaths.length > 512 || new Set(coordinates.replacedPaths).size !== coordinates.replacedPaths.length || coordinates.replacedPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..'))) fail('successor preservation adoption is invalid');
   typedFields(coordinates, 'predecessorRef successorRef', text); text(adoption.reviewLocator, 'reviewLocator');
   typedFields(coordinates, 'predecessorHead successorHead', revision); revision(adoption.merge, 'merge');
-  digest(adoption.quarantineCoordinate, 'quarantineCoordinate');
-  if (digest(source.adoptionDigest, 'adoptionDigest') !== governanceDigest(adoption))
-    fail('successor preservation adoption digest is invalid');
+  digest(standalone ? adoption.integrationReceiptDigest : adoption.quarantineCoordinate, standalone ? 'integrationReceiptDigest' : 'quarantineCoordinate');
+  if (digest(source.adoptionDigest, 'adoptionDigest') !== governanceDigest(adoption)) fail('successor preservation adoption digest is invalid');
   typedFields(source, 'profileDigest policyDigest', digest);
   revision(source.canonicalRevision, 'canonicalRevision');
   instant(source.issuedAt, 'issuedAt'); instant(source.expiresAt, 'expiresAt');
@@ -317,7 +316,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   const { review, integration, retention, state } = source, retainedHead = retention.originalReceipt?.detachedHead ?? coordinates.successorHead;
   exact(review, ['repository', 'pr', 'url', 'branch', 'head', 'merge', 'mergedAt', 'checks', 'protectionProven', 'authority'], 'preservation review');
   exact(integration, ['kind', 'predecessorHead', 'reviewedHead', 'merge', 'pathCount', 'replacements'], 'preservation integration');
-  exact(retention, ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead', 'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest', ...(discarded ? ['retainedIndexBytesDigest', 'retainedHeadBytesDigest', 'projectionRetained', 'recoveryBytesDiscarded'] : ['retainedIndexInventoryDigest', 'recoveryInventoryDigest'])] : [])], 'preservation retention');
+  exact(retention, standalone ? ['branchRef', 'retainedHead', 'worktreePath', 'worktreeClean', 'integrationReceiptDigest'] : ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead', 'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest', ...(discarded ? ['retainedIndexBytesDigest', 'retainedHeadBytesDigest', 'projectionRetained', 'recoveryBytesDiscarded'] : ['retainedIndexInventoryDigest', 'recoveryInventoryDigest'])] : [])], 'preservation retention');
   if (current) {
     const original = retention.originalReceipt, protectedReceipt = ['agentic-os/authenticated-transition-operation-receipt/v1', 'agentic-os/authenticated-transition-operation-receipt/v2'].includes(original?.schema), discardedReceipt = discarded && original?.schema === 'agentic-os/quarantine-retirement-receipt/v2', originalPayload = original && Object.fromEntries(Object.entries(original).filter(([key]) => key !== 'receiptDigest')), originalDigest = protectedReceipt || discardedReceipt ? digest(original.receiptDigest, 'originalReceiptDigest') : governanceDigest(original);
     if (digest(adoption.originalReceiptDigest, 'originalReceiptDigest') !== originalDigest || retention.originalReceiptDigest !== adoption.originalReceiptDigest) fail('current quarantine receipt is not enrolled');
@@ -334,11 +333,11 @@ function preservationRecord(value, receipt, allowCurrent = false) {
     digest(state.planDigest, 'preservation planDigest'); instant(state.planIssuedAt, 'preservation planIssuedAt');
     if (Date.parse(state.planIssuedAt) > Date.parse(source.issuedAt)) fail('preservation issuance chronology is invalid');
   }
-  if (Date.parse(source.expiresAt) - Date.parse(receipt ? state.planIssuedAt : source.issuedAt) > 900000)
-    fail('successor preservation window exceeds the admitted ceiling');
+  if (Date.parse(source.expiresAt) - Date.parse(receipt ? state.planIssuedAt : source.issuedAt) > 900000) fail('successor preservation window exceeds the admitted ceiling');
   text(state.policyRepository, 'policyRepository'); text(state.workflow, 'workflow');
-  digest(retention.operationDigest, 'retained operationDigest'); revision(retention.retainedHead, 'retainedHead');
-  for (const name of ['projectionManifest', 'registrationManifest']) {
+  if (standalone && (retention.branchRef !== coordinates.successorRef || retention.worktreeClean !== true || retention.integrationReceiptDigest !== adoption.integrationReceiptDigest)) fail('standalone retained lane is not joined');
+  if (standalone) absolute(retention.worktreePath, 'standalone worktreePath'); else { digest(retention.operationDigest, 'retained operationDigest'); revision(retention.retainedHead, 'retainedHead'); }
+  for (const name of standalone ? [] : ['projectionManifest', 'registrationManifest']) {
     exact(retention[name], ['digest', 'bytes', 'entries'], name);
     digest(retention[name].digest, name); count(retention[name].entries, name);
     if (!Number.isSafeInteger(retention[name].bytes) || retention[name].bytes < 0) fail('retained bytes are invalid');
@@ -348,19 +347,18 @@ function preservationRecord(value, receipt, allowCurrent = false) {
     || review.protectionProven !== false || review.authority !== 'observation-only'
     || review.url !== adoption.reviewLocator || review.branch !== coordinates.successorRef
     || review.head !== coordinates.successorHead || review.merge !== adoption.merge
-    || integration.kind !== (current ? 'current-quarantined' : 'reviewed-successor') || integration.predecessorHead !== coordinates.predecessorHead
+    || integration.kind !== (standalone ? 'standalone-lane-retained' : current ? 'current-quarantined' : 'reviewed-successor') || integration.predecessorHead !== coordinates.predecessorHead
     || integration.reviewedHead !== coordinates.successorHead || integration.merge !== adoption.merge
     || !Number.isSafeInteger(integration.pathCount) || integration.pathCount < coordinates.replacedPaths.length
     || !Array.isArray(integration.replacements) || integration.replacements.length !== coordinates.replacedPaths.length
     || new Set(integration.replacements.map(row => row?.path)).size !== coordinates.replacedPaths.length
     || !Array.isArray(review.checks) || !review.checks.length || review.checks.length > 8
-    || retention.coordinate !== adoption.quarantineCoordinate || retention.registrationRef !== coordinates.successorRef
+    || !standalone && (retention.coordinate !== adoption.quarantineCoordinate || retention.registrationRef !== coordinates.successorRef)
     || retention.retainedHead !== retainedHead || state.predecessorHead !== coordinates.predecessorHead
     || state.successorHead !== coordinates.successorHead) fail('preservation source facts are not joined');
   for (const row of integration.replacements) {
     exact(row, ['path', 'old', 'accepted'], 'preservation replacement');
-    if (!coordinates.replacedPaths.includes(row.path) || typeof row.old !== 'string' || typeof row.accepted !== 'string')
-      fail('preservation replacement is invalid');
+    if (!coordinates.replacedPaths.includes(row.path) || typeof row.old !== 'string' || typeof row.accepted !== 'string') fail('preservation replacement is invalid');
   }
   for (const check of review.checks) {
     exact(check, ['name', 'checkId', 'runId', 'attempt', 'workflow', 'conclusion', 'completedAt', 'url'], 'preservation check');
