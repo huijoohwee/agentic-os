@@ -391,15 +391,15 @@ export async function runReleaseCommonSuccessorComplete({ root, argv, profile,
       || new Set(requiredChecks).size !== requiredChecks.length || !replaced.length || replaced.length > 128
       || !/^[^\x00-\x1f\x7f]{12,512}$/u.test(reason.trim()) || Buffer.byteLength(reason.trim()) > 512) fail('blocked-supersession-options',
       'Use --ref=<lane> --via-repository=<owner/repo> --via-pr=<n> --via-checks=<names> --replaced=<paths> --reason=<text> --superseded --stopped');
-    const current = releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyChecks: true }), record = get(ref, root), status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile); assertLaneBytesResolved(ref, root);
+    const current = releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyChecks: true }), record = get(ref, root), status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile), laneHead = status.lane.head; assertLaneBytesResolved(ref, root);
     if (status.sourceSuperseded) {
       if (status.supersession?.successor?.repository === repository && status.supersession.successor.pr === pr) { out(JSON.stringify(status)); return 0; }
       fail('blocked-supersession-existing', 'a different immutable supersession is already recorded');
     }
-    const sourceBytes = observeGit(['diff', '--name-only', '-z', '--no-renames', `${record?.baseSha}...${record?.head}`],
+    const sourceBytes = observeGit(['diff', '--name-only', '-z', '--no-renames', `${record?.baseSha}...${laneHead}`],
       { cwd: root, allowFail: true, raw: true, encoding: 'utf8', maxBuffer: 131072 }), source = sourceBytes?.split('\0').filter(Boolean).sort();
-    if (!record || record.state !== 'active' || record.pr !== null || record.head !== status.lane.head
-      || status.lane.mounted !== true || status.lane.clean !== true || status.lane.path !== record.worktree
+    if (!record || record.state !== 'active' || record.pr !== null || (record.head !== undefined && record.head !== null && record.head !== laneHead)
+      || !/^[a-f0-9]{40}$/u.test(laneHead ?? '') || status.lane.mounted !== true || status.lane.clean !== true || status.lane.path !== record.worktree
       || JSON.stringify(source) !== JSON.stringify(replaced)) fail('blocked-supersession-lane', 'exact clean lane and all replacement paths are required');
     const archive = api(`repos/${current.repository}`, { cwd: root }), successorRepo = api(`repos/${repository}`, { cwd: root });
     if (archive?.full_name !== current.repository || archive.private !== true || archive.archived !== true
@@ -420,11 +420,11 @@ export async function runReleaseCommonSuccessorComplete({ root, argv, profile,
     const finalArchive = api(`repos/${current.repository}`, { cwd: root }), finalSuccessor = api(`repos/${repository}`, { cwd: root }), finalMain = api(`repos/${repository}/branches/main`, { cwd: root })?.commit?.sha;
     const finalStatus = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
     if (!same(review, finalReview) || finalArchive?.private !== true || finalArchive.archived !== true || finalSuccessor?.full_name !== repository || finalSuccessor.private !== false || finalSuccessor.archived === true || finalMain !== mainHead
-      || finalStatus.lane.head !== record.head || finalStatus.lane.clean !== true
+      || finalStatus.lane.head !== laneHead || finalStatus.lane.clean !== true
       || observeGit(['ls-remote', '--refs', '--', current.remoteUrl, 'refs/heads/main'], { cwd: root }) !== `${current.canonical}\trefs/heads/main`)
       fail('blocked-supersession-drift', 'source, archive, merged review or successor main changed during observation');
     const payload = { schema: SOURCE_SUPERSESSION_SCHEMA, repository: profile.repository, profileDigest: profile.profileDigest,
-      ref, sourceBase: record.baseSha, head: record.head, worktree: record.worktree, changedPaths: source, replacedPaths: replaced,
+      ref, sourceBase: record.baseSha, head: laneHead, worktree: record.worktree, changedPaths: source, replacedPaths: replaced,
       disposition: 'superseded', sourceIntegrated: false, sourceSuperseded: true, providerAuthority: false,
       claimRetired: false, archivePrivate: true, archiveArchived: true, reason: reason.trim(), issuedAt: new Date(now()).toISOString(),
       successor: { repository, pr, branch: review.branch, head: review.head, merge: review.merge, mergedAt: review.mergedAt,
