@@ -224,11 +224,13 @@ These entries resolve the final disposition for two integrated test-only lanes w
 projections and registrations are quarantined. PR #616 binds reviewed head
 `fff6f324644844ac7a0c1014da39ca9d04c962c1`, merge
 `d53e8f19e77c0855b6df8ebafff0991a01c321a0`, quarantine coordinate
-`cc28647f2961c27a29256b8470a4246b396848094d2fa55687e39526d6b9462a`, and its exact retained
-cleanup receipt. PR #617 binds reviewed head `ccbfe07f73eb05501bf22443fedc8e9b4111cf26`, merge
+`cc28647f2961c27a29256b8470a4246b396848094d2fa55687e39526d6b9462a`, and its authenticated
+record-only retirement receipt, which binds that quarantine coordinate. PR #617 binds reviewed head
+`ccbfe07f73eb05501bf22443fedc8e9b4111cf26`, merge
 `cfd8b48d67e18e325bf167995f398d8c83ba7f2a`, quarantine coordinate
-`cb4a9ad4a7718eecf932a3f0e0000846df393b79a58a0e7d85d63c2ac17a6cf7`, and its exact retained
-cleanup receipt. Both source PRs passed `budgets` and `test`.
+`cb4a9ad4a7718eecf932a3f0e0000846df393b79a58a0e7d85d63c2ac17a6cf7`, and its authenticated
+record-only retirement receipt, which binds that quarantine coordinate. Both source PRs passed
+`budgets` and `test`.
 
 The exact entries permit only a create-only `current-quarantine-retained` disposition over the
 existing quarantine evidence. They make no physical-cleanup claim, no provider-authority claim,
