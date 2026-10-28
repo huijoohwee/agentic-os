@@ -21,8 +21,5 @@ Source closeout grants no cleanup, sync, or production authority; see
 See [CLEANUP](../guides/CLEANUP-AUTHORITY.md) for same-repository preservation and retirement.
 Record-only retirement and cleanup require separate receipts.
 
-Merged-lane provider gaps may use [local recovery](../guides/USER-CLEANUP.md);
-refs/objects remain, with no provider-authority or claim-retirement claim.
-
 `retire-empty-active --ref=<lane>` quarantines a clean lane at its base;
 refs, objects, and registration remain.
