@@ -21,13 +21,8 @@ Source closeout grants no cleanup, sync, or production authority; see
 See [CLEANUP](../guides/CLEANUP-AUTHORITY.md) for same-repository preservation and retirement.
 Record-only retirement and cleanup require separate receipts.
 
-When a merged profile-governed lane lacks historical provider receipts, closeout offers the explicit
-`cleanup-user --recovery --ref=<lane>` path. It verifies the exact merged PR, profile-required checks,
-current `main`, and worktree inventory, then quarantines only the worktree projection and registration
-under a digest-bound plan and stopped-writer acknowledgement. This records no historical protection,
-merge-method, provider-authority, or claim-retirement proof; branch refs and Git objects remain retained.
-Use the protected receipt path when provider claim retirement is required. See
-[local recovery](../guides/USER-CLEANUP.md#explicit-recovery-for-profile-governed-repositories).
+Merged-lane provider gaps may use [local recovery](../guides/USER-CLEANUP.md);
+refs/objects remain, with no provider-authority or claim-retirement claim.
 
 `retire-empty-active --ref=<lane>` quarantines a clean lane at its base;
 refs, objects, and registration remain.
