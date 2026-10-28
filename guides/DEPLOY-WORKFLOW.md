@@ -133,8 +133,10 @@ See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and l
 `source_complete` closes source obligations for one lane; it does not by itself close product delivery.
 Report full END ADLC complete only when the same exact lane and candidate have:
 
-1. **Source:** protected integration on the current source `origin/main`, or a policy-approved,
-   receipt-backed successor disposition. Record supersession as supersession, not as a merge.
+1. **Source:** the exact lane is protected-integrated into the current source `origin/main` (or the
+   repository profile's protected ref). GitHub promotion uses squash and exact-head matching; an
+   open or merely queued PR is not integration. Record a policy-approved successor as supersession,
+   not as a merge.
 2. **Delivery:** the product owner has classified the exact changed paths against the deployed
    artifact. When Dev and Prod are distinct, bind Dev readback and Production promotion/readback to
    the same candidate digest. For a Prod-only owner or excluded paths, retain an exact owner-bound
