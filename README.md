@@ -90,19 +90,26 @@ identifiable. Consumers reference the packaged evaluator instead of copying it:
 
 ### Consumer bootstrap
 
-For a static repository, install Agentic OS as a local development dependency at a full commit SHA.
-The install creates a manifest and lock if absent; commit both. `node_modules` is not a runtime or
-browser dependency. Use the same local pin for setup, doctor, START, RUN, and release commands.
+For a static repository that already has a reviewed, committed `.agentic-os.json`, install Agentic OS
+as a local development dependency at a full commit SHA. Its canonical branch and `origin` must match
+that profile. The install creates a manifest and lock if absent; commit both. `node_modules` is not a
+runtime or browser dependency. Run setup from the clean primary canonical checkout; use the same pin
+for setup, doctor, START, and release commands.
 
 ```sh
 npm install --save-dev --save-exact agentic-os@github:huijoohwee/agentic-os#<full-40-hex-sha>
 npm exec -- agentic-os setup
 npm exec -- agentic-os doctor
 npm exec -- agentic-os release-common start <scope> --write=<paths>
-npm exec -- agentic-os run start --input=<workflow-input.json>
 ```
 
-Do not use a floating package, `npx` latest, or an external source path for repository-bound work.
+If the target has no reviewed profile, stop and have its owner enroll it before setup; profile values
+must not be guessed. For a fork, use [Fork bootstrap](guides/FORK.md). Do not use a floating package,
+`npx` latest, or an external source path for repository-bound work.
+
+`run` is a separate, optional remote invocation. It requires a consumer-configured authenticated
+`AGENTIC_OS_RUN_ENDPOINT`; local setup does not provide one or a local fallback. Keep RUN disabled
+unless the consumer has current provider evidence for a hard $0 cap and denial at quota exhaustion.
 
 ```sh
 npm --prefix node_modules/agentic-os run evals
