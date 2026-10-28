@@ -322,6 +322,8 @@ export function readmissionPredecessors(record, records, allocation = null, prov
       || !anchor || anchor.ref !== allocation.ref || anchor.worktree !== record.worktree || anchor.base !== record.base) return false;
     if (allocation.baseRevision === record.baseSha && anchor.baseSha === record.baseSha
       && anchor.head !== allocation.headRevision && chain.some(link => link.predecessorHead === allocation.headRevision)) return chain;
+    if (allocation.baseRevision === record.baseSha && anchor.baseSha === record.baseSha
+      && allocation.headRevision === record.head && chain.some(link => link.predecessorRef === allocation.ref && link.predecessorHead === anchor.head)) return chain;
     if (!ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha)
       || !/^[a-f0-9]{40}$/u.test(anchor.head ?? '') || !ancestor(allocation.headRevision, anchor.head)) return false;
     chain.push({ predecessorRef: allocation.ref, predecessorHead: anchor.head });
