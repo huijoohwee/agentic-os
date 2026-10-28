@@ -145,6 +145,8 @@ Report full END ADLC complete only when the same exact lane and candidate have:
    and absent checkout path. Keep refs, objects and byte reclamation as separate dispositions; path
    removal alone does not prove storage was freed. A mounted worktree or pending cleanup keeps full
    closeout open.
+5. **Branch disposition:** record local/remote policy and local/cached tracking-ref states; live remote
+   state remains unobserved. Deletion needs separate authority and a receipt; see [release closeout](../docs/RELEASE-WORKFLOW.md).
 
 Every triggered item must pass with current evidence; missing, stale, ambiguous, or unjoined evidence
 keeps full closeout open. Mark a stage `not-applicable` only with its exact product-scope reason.
