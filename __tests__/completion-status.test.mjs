@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
+import { projectProgressiveCloseout } from '../src/completion.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { get, put } from '../src/lane-records.mjs';
 import { governanceDigest } from '../src/governance.mjs';
@@ -355,6 +356,38 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   });
   assert.equal(cleanup.laneDisposition, 'awaiting-cleanup');
   assert.equal(cleanup.nextAction.id, 'release-common-complete');
+});
+
+test('completion status records branch policy separately from local ref observations', (t) => {
+  const subject = fixture(t), disposition = subject.status().closeout.branchDisposition;
+  assert.equal(disposition.schema, 'agentic-os/branch-disposition/v1');
+  assert.deepEqual(disposition.policy, {
+    localBranch: 'retain', remoteBranch: 'retain', remoteTrackingRef: 'retain',
+    unreachableObjects: 'retain',
+  });
+  assert.deepEqual(disposition.localRef, {
+    ref: `refs/heads/${REF}`, state: 'present', head: subject.git(subject.root, 'rev-parse', `refs/heads/${REF}`),
+  });
+  assert.deepEqual(disposition.remoteTrackingRef, {
+    ref: `refs/remotes/origin/${REF}`, state: 'absent', head: null,
+  });
+  assert.equal(disposition.liveRemoteState, 'not-observed');
+  assert.equal(disposition.deletionReceiptDigest, null);
+});
+
+test('progressive closeout preserves the explicit branch disposition', () => {
+  const branchDisposition = { policy: { localBranch: 'retain', remoteBranch: 'retain' } };
+  const target = { path: '/repo/lane', branch: REF, head: 'a'.repeat(40) };
+  const observed = {
+    ref: REF, authorizesEffects: false, lane: { path: target.path, head: target.head, mounted: true, clean: true },
+    canonicalClean: true, canonicalRevision: 'b'.repeat(40), remoteTrackingRevision: 'b'.repeat(40),
+    closeout: { schema: 'agentic-os/closeout-verdict/v1', observationOnly: true,
+      authorizesEffects: false, canonicalCurrent: true, sourceIntegrated: true,
+      sourceState: 'source_complete', adlcState: 'complete', branchDisposition },
+  };
+  const projected = projectProgressiveCloseout(target, observed);
+  assert.equal(projected.status, 'complete');
+  assert.deepEqual(projected.branchDisposition, branchDisposition);
 });
 
 test('quarantine profile reports cleanup as unfinished until a coordinate is observed', (t) => {
