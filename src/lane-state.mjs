@@ -301,40 +301,40 @@ export function successorLineage(record) {
 }
 /** Local predecessor pins; callers reobserve each exact remote and Git ancestry. */
 export function readmissionPredecessors(record, records, allocation = null, provesAncestor = null) {
-  const sha = value => /^[a-f0-9]{40}$/u.test(value ?? '');
-  const ancestor = (older, newer) => sha(older) && sha(newer)
+  const sha = value => /^[a-f0-9]{40}$/u.test(value ?? ''), ancestor = (older, newer) => sha(older) && sha(newer)
     && (older === newer || typeof provesAncestor === 'function' && provesAncestor(older, newer) === true);
   const chain = [], seen = new Set([record.ref]); let current = record;
   for (;;) {
     const link = successorLineage(current); if (link === null) break;
     if (link === false || chain.length === 32 || seen.has(link.predecessorRef)) return false;
     const previous = records[link.predecessorRef];
-    if (!previous || previous.ref !== link.predecessorRef || previous.head != null && previous.head !== link.predecessorHead
-      || previous.worktree !== record.worktree || previous.base !== record.base
-      || !ancestor(previous.baseSha, record.baseSha)) return false;
+    if (!previous || previous.ref !== link.predecessorRef || previous.head != null && previous.head !== link.predecessorHead || previous.worktree !== record.worktree || previous.base !== record.base || !ancestor(previous.baseSha, record.baseSha)) return false;
     chain.push(link); seen.add(link.predecessorRef); current = previous;
   }
-  // Reconcile an older workflow checkpoint only through exact retained Git ancestry.
   if (allocation && allocation.ref !== record.ref && !seen.has(allocation.ref)) {
     const anchor = records[allocation.ref];
-    if (!chain.length || chain.length === 32 || allocation.path !== record.worktree
-      || !/^[a-f0-9]{40}$/u.test(allocation.baseRevision ?? '') || !/^[a-f0-9]{40}$/u.test(allocation.headRevision ?? '')
+    if (!chain.length || chain.length === 32 || allocation.path !== record.worktree || !/^[a-f0-9]{40}$/u.test(allocation.baseRevision ?? '') || !/^[a-f0-9]{40}$/u.test(allocation.headRevision ?? '')
       || !anchor || anchor.ref !== allocation.ref || anchor.worktree !== record.worktree || anchor.base !== record.base) return false;
     if (allocation.baseRevision === record.baseSha && anchor.baseSha === record.baseSha
-      && ((anchor.head !== allocation.headRevision && chain.some(link => link.predecessorHead === allocation.headRevision)) || (allocation.headRevision === record.head && chain.some(link => link.predecessorRef === allocation.ref && link.predecessorHead === anchor.head)))) return chain;
-    if (!ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha)
-      || !/^[a-f0-9]{40}$/u.test(anchor.head ?? '') || !ancestor(allocation.headRevision, anchor.head)) return false;
+      && ((anchor.head !== allocation.headRevision && chain.some(link => link.predecessorHead === allocation.headRevision)) || (allocation.headRevision === record.head && chain.some(link => link.predecessorRef === allocation.ref && link.predecessorHead === anchor.head))
+        || (allocation.headRevision !== allocation.baseRevision && ancestor(allocation.baseRevision, allocation.headRevision) && ancestor(allocation.headRevision, record.head)))) return chain;
+    if (!ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha) || !/^[a-f0-9]{40}$/u.test(anchor.head ?? '') || !ancestor(allocation.headRevision, anchor.head)) return false;
     chain.push({ predecessorRef: allocation.ref, predecessorHead: anchor.head });
   } else if (allocation && allocation.ref !== record.ref) {
     const anchor = records[allocation.ref], retained = chain.find(link => link.predecessorRef === allocation.ref);
-    if (!anchor || !retained || retained.predecessorHead !== anchor.head
-      || !ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha)
-      || !ancestor(allocation.headRevision, anchor.head)) return false;
+    const checkpoint = allocation.baseRevision === record.baseSha && anchor?.baseSha === record.baseSha && allocation.headRevision !== allocation.baseRevision && ancestor(allocation.baseRevision, allocation.headRevision) && ancestor(allocation.headRevision, record.head);
+    if (!anchor || !retained || retained.predecessorHead !== anchor.head || !ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha) || !checkpoint && !ancestor(allocation.headRevision, anchor.head)) return false;
   }
   return chain;
 }
-export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef,
-  tip, worktree, device, scope, createdAt, writePaths }) {
+/** Bind an older active workflow slot to a successor only through its exact captured commit ancestry. */
+export function matchesAllocationCheckpointSuccessor({ record, allocation, path, worktreeId, head, lineage, provesAncestor }) {
+  const ancestor = (older, newer) => /^[a-f0-9]{40}$/u.test(older ?? '') && /^[a-f0-9]{40}$/u.test(newer ?? '') && (older === newer || typeof provesAncestor === 'function' && provesAncestor(older, newer) === true);
+  return Boolean(record?.state === 'active' && record.worktree === path && allocation?.state === 'active' && isLaneRef(allocation.ref)
+    && allocation.ref !== record.ref && allocation.path === path && allocation.worktreeId === worktreeId && allocation.baseRevision === record.baseSha && allocation.headRevision !== allocation.baseRevision
+    && Array.isArray(lineage) && lineage.length > 0 && ancestor(record.baseSha, allocation.headRevision) && ancestor(allocation.headRevision, record.head) && ancestor(record.head, head));
+}
+export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef, tip, worktree, device, scope, createdAt, writePaths }) {
   const boundRecord = lanes[boundRef], targetRecord = lanes[successorRef],
     boundLineage = successorLineage(boundRecord), targetLineage = successorLineage(targetRecord);
   if (boundLineage === false || targetLineage === false) return successorRefusal('blocked-successor-cache-race', 'successor lineage payload is invalid');

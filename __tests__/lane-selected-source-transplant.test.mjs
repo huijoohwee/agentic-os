@@ -11,7 +11,7 @@ import { applySelectedSourceTransplant, planSelectedSourceTransplant, prepareSel
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 }).trim();
 const commit = (cwd, message) => { run(cwd, 'add', '--all'); run(cwd, 'commit', '--quiet', '-m', message); return run(cwd, 'rev-parse', 'HEAD'); };
 
-function fixture(t, { divergent = false } = {}) {
+function fixture(t, { divergent = false, retainedCheckpoint = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'lane-selected-source-transplant-'));
   const root = join(parent, 'repo'), remote = join(parent, 'remote.git'), lane = join(parent, 'lane'); mkdirSync(root);
   run(root, 'init', '--quiet', '--initial-branch=main');
@@ -19,6 +19,7 @@ function fixture(t, { divergent = false } = {}) {
   writeFileSync(join(root, 'source.txt'), 'first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntenth\n'); writeFileSync(join(root, 'base.txt'), 'base\n');
   let base = commit(root, 'base'); run(root, 'init', '--quiet', '--bare', remote); run(root, 'remote', 'add', 'origin', remote); run(root, 'push', '--quiet', '-u', 'origin', 'main');
   const ref = 'agent/test-device/transplant'; run(root, 'worktree', 'add', '--quiet', '-b', ref, lane, base);
+  if (retainedCheckpoint) run(lane, 'commit', '--allow-empty', '--quiet', '-m', 'retained successor checkpoint');
   if (divergent) {
     writeFileSync(join(lane, 'source.txt'), 'first\nsecond\nthird\nhistoric fourth\nfifth\nsixth\nseventh\neighth\nninth\ntenth\n');
     base = commit(lane, 'historic source advance');
@@ -27,7 +28,8 @@ function fixture(t, { divergent = false } = {}) {
   writeFileSync(join(root, 'source.txt'), 'first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntarget tenth\n'); writeFileSync(join(root, 'target.txt'), 'protected\n');
   const target = commit(root, 'protected advance'); run(root, 'push', '--quiet', 'origin', 'main'); run(root, 'fetch', '--quiet', 'origin');
   put({ ref, device: 'test-device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: base,
-    worktree: realpathSync(lane), pr: null, createdAt: new Date(0).toISOString(), head: source, writePaths: ['source.txt'] }, root);
+    worktree: realpathSync(lane), pr: null, createdAt: new Date(0).toISOString(), head: source, writePaths: ['source.txt'],
+    ...(retainedCheckpoint ? { handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: 'agent/test-device/predecessor', predecessorHead: base } } : {}) }, root);
   t.after(() => rmSync(parent, { recursive: true, force: true, maxRetries: 3, retryDelay: 20 }));
   return { root, lane, ref, base, source, target };
 }
@@ -76,6 +78,13 @@ test('selected source transplant applies an exact source delta when its parent p
   assert.equal(run(f.lane, 'show', `${receipt.head}:source.txt`), 'source first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\nninth\ntarget tenth');
   assert.equal(run(f.lane, 'show', '-s', '--format=%P', receipt.head), f.target);
   assert.equal(run(f.lane, 'diff', '--name-only', f.target, receipt.head), 'source.txt');
+});
+
+test('selected source transplant accepts the exact retained successor checkpoint as its source base', t => {
+  const f = fixture(t, { retainedCheckpoint: true });
+  const receipt = applySelectedSourceTransplant(planSelectedSourceTransplant(input(f)));
+  assert.equal(receipt.baseHead, f.base); assert.equal(run(f.lane, 'diff', '--name-only', f.target, receipt.head), 'source.txt');
+  assert.equal(run(f.lane, 'show', '-s', '--format=%P', receipt.head), f.target);
 });
 
 test('selected source transplant accepts only an exact readmit advance of the recorded lane head', t => {
