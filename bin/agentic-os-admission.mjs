@@ -173,14 +173,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
         record = identity.record;
         if (!selected) fail('mission-required', 'Existing lanes need their exact workflow identity; no new root is created for reuse');
         if (!selected.members.some(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)) fail('member-binding', 'The existing lane is not a member of the selected mission');
-        const liveDigest = scopeDigest(identity.reserved), recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit';
-        const checkpointSuccessorReadmit = Boolean(readmit && expectedHead === identity.head
-          && matchesAllocationCheckpointSuccessor({ record: identity.record, allocation: row, path, worktreeId,
-            head: identity.head, lineage: identity.lineage,
-            provesAncestor: (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null }));
-        const successorReadmit = row && row.ref !== ref
-          && (identity.lineage.some(link => link.predecessorRef === row.ref) || checkpointSuccessorReadmit);
-        const writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved, nextDigest = scopeDigest(writePaths);
+        const liveDigest = scopeDigest(identity.reserved), recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit', checkpointSuccessorReadmit = readmit && expectedHead === identity.head && matchesAllocationCheckpointSuccessor({ record: identity.record, allocation: row, path, worktreeId, head: identity.head, lineage: identity.lineage, provesAncestor: (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null });
+        const successorReadmit = row && row.ref !== ref && (identity.lineage.some(link => link.predecessorRef === row.ref) || checkpointSuccessorReadmit), writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved, nextDigest = scopeDigest(writePaths);
         const recertification = readmit && row?.state === 'active' && row.ref === ref && row.writeDigest !== liveDigest
           && row.headRevision === selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)?.child.source.revision
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;

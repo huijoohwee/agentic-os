@@ -47,21 +47,13 @@ function location(input) {
 function direct(ref, cwd) { return observeGit(['symbolic-ref', '--quiet', ref], { cwd, allowFail: true }) === null; }
 function identity(input, acceptedHead = input.expectedHead) {
   if (input.stopped !== true || !SHA.test(input.expectedHead ?? '') || !SHA.test(input.expectedBase ?? '') || !SHA.test(input.expectedTarget ?? '') || !isLaneRef(input.ref)
-    || !/^refs\/remotes\/[^/]+\/.+/u.test(input.targetRef ?? '') || !isAbsolute(input.cwd) || repoRoot(input.cwd) !== input.cwd
-    || currentBranch(input.cwd) !== input.ref || !worktrees(input.cwd).some(row => row.path === input.cwd && row.branch === input.ref)
+    || !/^refs\/remotes\/[^/]+\/.+/u.test(input.targetRef ?? '') || !isAbsolute(input.cwd) || repoRoot(input.cwd) !== input.cwd || currentBranch(input.cwd) !== input.ref || !worktrees(input.cwd).some(row => row.path === input.cwd && row.branch === input.ref)
     || headSha('HEAD', input.cwd) !== acceptedHead || headSha(input.targetRef, input.cwd) !== input.expectedTarget) fail('identity');
-  const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd);
-  if (remoteRefSha(remote, input.ref, input.cwd, transport.fetchUrl) !== null) fail('published');
-  const parents = observeGit(['show', '--no-patch', '--format=%P', input.expectedHead], { cwd: input.cwd });
-  const record = store.get(input.ref, input.cwd), lineage = successorLineage(record), handoff = record?.handoff;
-  const retainedSuccessorBase = lineage?.predecessorHead === input.expectedBase;
-  const retainedTransplantBase = handoff?.schema === 'agentic-os-lane-selected-source-transplant/v1'
-    && handoff.preservedHead === input.expectedHead && handoff.sourceBase === input.expectedBase
-    && handoff.targetHead === input.expectedTarget && same(handoff.selectedPaths, input.selectedPaths)
+  const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd); if (remoteRefSha(remote, input.ref, input.cwd, transport.fetchUrl) !== null) fail('published');
+  const parents = observeGit(['show', '--no-patch', '--format=%P', input.expectedHead], { cwd: input.cwd }), record = store.get(input.ref, input.cwd), handoff = record?.handoff, retainedBase = successorLineage(record)?.predecessorHead === input.expectedBase || handoff?.schema === 'agentic-os-lane-selected-source-transplant/v1'
+    && handoff.preservedHead === input.expectedHead && handoff.sourceBase === input.expectedBase && handoff.targetHead === input.expectedTarget && same(handoff.selectedPaths, input.selectedPaths)
     && (!input.digest || handoff.planDigest === input.digest);
-  if (parents !== input.expectedBase && (!(retainedSuccessorBase || retainedTransplantBase)
-    || !isAncestor(input.expectedBase, input.expectedHead, input.cwd))) fail('base');
-  return remote;
+  if (parents !== input.expectedBase && (!retainedBase || !isAncestor(input.expectedBase, input.expectedHead, input.cwd))) fail('base'); return remote;
 }
 function body(plan) { return Object.fromEntries(Object.entries(plan).filter(([key]) => !['digest', 'resume', 'liveHead'].includes(key))); }
 function readJournal(path) {
