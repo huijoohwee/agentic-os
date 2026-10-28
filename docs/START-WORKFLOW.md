@@ -1,16 +1,21 @@
 # Start
 
-Use release:common start <scope> --write=<paths>. New task: committed --plan.
+`release:common start <scope> --write=<paths>`; new work uses committed `--plan`. Five slots/repo,
+one checkout/task, no nesting. Resume its mission or clone. [Readmit](../guides/LANE-RECERTIFICATION.md).
 
-Five per repo; canonical excluded; no nesting. One checkout/task; resume its
-bound mission. Without plan/mission, use clone. Readmit/published continuation:
-see guides/LANE-RECERTIFICATION.md.
+START fetches protected ref before checks; failure stops pre-mutation.
+[Recovery](../guides/VALIDATION-ECONOMY-EXECUTION.md).
 
-Valid START locks and fetches the profile's protected ref before canonical/mission
-checks, including reuse/refusal. Failure stops before
-lane mutation; fetch updates tracking only, not local main or release authority.
+## Static consumer bootstrap
 
-[recovery](../guides/VALIDATION-ECONOMY-EXECUTION.md).
+Pin Agentic OS as local dev tooling to a full upstream SHA; never ship it in browser/production:
 
-Browser: run npm run dev; recheck URL. Unsupported: report blocker, not proof.
-Headless: N/A.
+```sh
+npm install --save-dev --save-exact agentic-os@git+https://github.com/agentic-os/agentic-os.git#<full-commit-sha>
+npm exec -- agentic-os setup
+npm exec -- agentic-os doctor
+```
+
+Reuse the pin for `start`, `run`, release; setup/doctor verify package and lock. No latest/external
+path. Do not ship `node_modules`. Browser: `npm run dev`, then recheck URL; unsupported/headless
+is not proof.

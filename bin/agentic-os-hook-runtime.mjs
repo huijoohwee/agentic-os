@@ -49,7 +49,7 @@ const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-c9b1a5145b4253d1ad57ce901b40526d7c57cb7f4b02556953a3be2e1617f79d',
   'v1-f02f83febf4448eb30b353acd06ec2274fb9ab7253eb537285fd6fb17af0dee5',
   'v1-40628b45b7fd1f33546dcf6e41bb4869614db132a4a42a4ac85f1625122ba51c','v1-fc400b918a251d063e794f477cc5202e0fbdbb5017969ca904ae9b867ee1c9b8',
-  'v1-8a6a780ec45fd2c082bfeb7f9c4d03dd088c03bec29c0989eae4fc2bbc89c7e1',
+  'v1-8a6a780ec45fd2c082bfeb7f9c4d03dd088c03bec29c0989eae4fc2bbc89c7e1', 'v1-5c9e1df231a5133bdcba5cf0af0ffaf24aa51e8f0f5705e496a5c0299959271c', // source 12a7
 ]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
