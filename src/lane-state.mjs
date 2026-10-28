@@ -321,17 +321,33 @@ export function readmissionPredecessors(record, records, allocation = null, prov
       || !/^[a-f0-9]{40}$/u.test(allocation.baseRevision ?? '') || !/^[a-f0-9]{40}$/u.test(allocation.headRevision ?? '')
       || !anchor || anchor.ref !== allocation.ref || anchor.worktree !== record.worktree || anchor.base !== record.base) return false;
     if (allocation.baseRevision === record.baseSha && anchor.baseSha === record.baseSha
-      && ((anchor.head !== allocation.headRevision && chain.some(link => link.predecessorHead === allocation.headRevision)) || (allocation.headRevision === record.head && chain.some(link => link.predecessorRef === allocation.ref && link.predecessorHead === anchor.head)))) return chain;
+      && ((anchor.head !== allocation.headRevision && chain.some(link => link.predecessorHead === allocation.headRevision))
+        || (allocation.headRevision === record.head && chain.some(link => link.predecessorRef === allocation.ref && link.predecessorHead === anchor.head))
+        || (ancestor(allocation.baseRevision, allocation.headRevision) && ancestor(allocation.headRevision, record.head)))) return chain;
     if (!ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha)
       || !/^[a-f0-9]{40}$/u.test(anchor.head ?? '') || !ancestor(allocation.headRevision, anchor.head)) return false;
     chain.push({ predecessorRef: allocation.ref, predecessorHead: anchor.head });
   } else if (allocation && allocation.ref !== record.ref) {
     const anchor = records[allocation.ref], retained = chain.find(link => link.predecessorRef === allocation.ref);
     if (!anchor || !retained || retained.predecessorHead !== anchor.head
-      || !ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha)
-      || !ancestor(allocation.headRevision, anchor.head)) return false;
+      || !ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha)) return false;
+    if (allocation.baseRevision === record.baseSha && anchor.baseSha === record.baseSha
+      && ancestor(allocation.baseRevision, allocation.headRevision)
+      && ancestor(allocation.headRevision, record.head)) return chain;
+    if (!ancestor(allocation.headRevision, anchor.head)) return false;
   }
   return chain;
+}
+/** Bind an older active workflow slot to a successor only through its exact captured commit ancestry. */
+export function matchesAllocationCheckpointSuccessor({ record, allocation, path, worktreeId, head, lineage, provesAncestor }) {
+  const ancestor = (older, newer) => /^[a-f0-9]{40}$/u.test(older ?? '') && /^[a-f0-9]{40}$/u.test(newer ?? '')
+    && (older === newer || typeof provesAncestor === 'function' && provesAncestor(older, newer) === true);
+  return Boolean(record?.state === 'active' && record.worktree === path && allocation?.state === 'active'
+    && isLaneRef(allocation.ref) && allocation.ref !== record.ref && allocation.path === path
+    && allocation.worktreeId === worktreeId && allocation.baseRevision === record.baseSha
+    && /^[a-f0-9]{40}$/u.test(allocation.headRevision ?? '') && Array.isArray(lineage) && lineage.length > 0
+    && ancestor(record.baseSha, allocation.headRevision) && ancestor(allocation.headRevision, record.head)
+    && ancestor(record.head, head));
 }
 export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef,
   tip, worktree, device, scope, createdAt, writePaths }) {

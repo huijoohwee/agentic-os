@@ -14,7 +14,7 @@ import { git, headSha, worktrees } from '../src/git.mjs';
 import * as records from '../src/lane-records.mjs';
 import { lanePath, runPublishedLaneSuccessor } from '../src/worktree.mjs';
 import { hash } from '../bin/agentic-os-test-inputs.mjs';
-import { readmissionPredecessors, successorRecordPlan } from '../src/lane-state.mjs';
+import { matchesAllocationCheckpointSuccessor, readmissionPredecessors, successorRecordPlan } from '../src/lane-state.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
@@ -538,6 +538,48 @@ test('older allocation re-admission requires exact base and head ancestry', () =
   assert.deepEqual(readmissionPredecessors(current, records, allocation, proves), [current.handoff]);
   assert.equal(readmissionPredecessors(current, records, { ...allocation, baseRevision: '9'.repeat(40) }, proves), false);
   assert.equal(readmissionPredecessors(current, { ...records, [predecessorRef]: { ...anchor, head: '8'.repeat(40) } }, allocation, proves), false);
+});
+
+test('successor allocation accepts the exact retained predecessor checkpoint at the current lane head', () => {
+  const path = '/repo/lane', base = 'refs/remotes/origin/main', revision = 'a'.repeat(40),
+    predecessorHead = 'b'.repeat(40), currentHead = 'c'.repeat(40), ref = 'agent/device/current',
+    predecessorRef = 'agent/device/previous';
+  const handoff = { schema: 'agentic-os-lane-successor/v1', predecessorRef, predecessorHead },
+    current = { ref, worktree: path, base, baseSha: revision, head: currentHead, handoff },
+    predecessor = { ref: predecessorRef, worktree: path, base, baseSha: revision, head: predecessorHead },
+    allocation = { ref: predecessorRef, path, baseRevision: revision, headRevision: currentHead };
+  assert.deepEqual(readmissionPredecessors(current, { [ref]: current, [predecessorRef]: predecessor }, allocation,
+    (older, newer) => older === newer || older === revision && newer === currentHead), [handoff]);
+});
+
+test('readmission accepts a captured allocation checkpoint carried by a later retained candidate', () => {
+  const path = '/repo/lane', base = 'refs/remotes/origin/main', baseSha = 'a'.repeat(40),
+    checkpointHead = 'b'.repeat(40), anchorHead = 'c'.repeat(40), currentHead = 'd'.repeat(40),
+    ref = 'agent/device/current', intermediateRef = 'agent/device/intermediate', allocationRef = 'agent/device/original';
+  const handoff = { schema: 'agentic-os-lane-successor/v1', predecessorRef: intermediateRef, predecessorHead: anchorHead },
+    current = { ref, worktree: path, base, baseSha, head: currentHead, handoff },
+    intermediate = { ref: intermediateRef, worktree: path, base, baseSha, head: anchorHead },
+    original = { ref: allocationRef, worktree: path, base, baseSha, head: 'e'.repeat(40) },
+    allocation = { ref: allocationRef, path, baseRevision: baseSha, headRevision: checkpointHead },
+    proves = (older, newer) => new Set([`${baseSha}:${checkpointHead}`, `${checkpointHead}:${currentHead}`]).has(`${older}:${newer}`);
+  assert.deepEqual(readmissionPredecessors(current, { [ref]: current, [intermediateRef]: intermediate, [allocationRef]: original }, allocation, proves), [handoff]);
+  assert.equal(readmissionPredecessors(current, { [ref]: current, [intermediateRef]: intermediate, [allocationRef]: original },
+    { ...allocation, headRevision: 'f'.repeat(40) }, proves), false);
+});
+
+test('successor readmit binds an older active workflow slot to its exact captured checkpoint', () => {
+  const path = '/repo/lane', baseSha = 'a'.repeat(40), checkpoint = 'b'.repeat(40),
+    recordedHead = 'c'.repeat(40), currentHead = 'd'.repeat(40), ref = 'agent/device/current',
+    predecessorRef = 'agent/device/previous', lineage = [{ predecessorRef, predecessorHead: 'e'.repeat(40) }],
+    record = { ref, state: 'active', worktree: path, baseSha, head: recordedHead },
+    allocation = { ref: predecessorRef, state: 'active', path, worktreeId: 'device--lane', baseRevision: baseSha, headRevision: checkpoint },
+    proves = (older, newer) => new Set([`${baseSha}:${checkpoint}`, `${checkpoint}:${recordedHead}`, `${recordedHead}:${currentHead}`]).has(`${older}:${newer}`);
+  const input = { record, allocation, path, worktreeId: 'device--lane', head: currentHead, lineage, provesAncestor: proves };
+  assert.equal(matchesAllocationCheckpointSuccessor(input), true);
+  assert.equal(matchesAllocationCheckpointSuccessor({ ...input, allocation: { ...allocation, baseRevision: 'f'.repeat(40) } }), false);
+  assert.equal(matchesAllocationCheckpointSuccessor({ ...input, path: '/other/lane' }), false);
+  assert.equal(matchesAllocationCheckpointSuccessor({ ...input, lineage: [] }), false);
+  assert.equal(matchesAllocationCheckpointSuccessor({ ...input, provesAncestor: () => false }), false);
 });
 
 test('historical larger allowances remain readable but effective admission is capped at five', t => {
