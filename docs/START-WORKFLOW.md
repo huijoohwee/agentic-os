@@ -14,3 +14,5 @@ lane mutation; fetch updates tracking only, not local main or release authority.
 
 Browser: run npm run dev; recheck URL. Unsupported: report blocker, not proof.
 Headless: N/A.
+
+Static consumer setup: [exact local pin and commands](../README.md#consumer-bootstrap).

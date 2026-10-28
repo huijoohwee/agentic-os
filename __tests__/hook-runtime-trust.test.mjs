@@ -14,6 +14,11 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+test('the recovered canonical predecessor is explicitly release-pinned', () => {
+  const source = readFileSync(new URL('../bin/agentic-os-hook-runtime.mjs', import.meta.url), 'utf8');
+  assert.match(source, /v1-5c9e1df231a5133bdcba5cf0af0ffaf24aa51e8f0f5705e496a5c0299959271c/u);
+});
+
 for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context', 'pre-alignment']) test(released
   ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {

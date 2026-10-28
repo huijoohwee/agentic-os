@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40735, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40824, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -97,6 +97,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       '[recovery](../guides/VALIDATION-ECONOMY-EXECUTION.md).',
       'Browser: run npm run dev; recheck URL.',
       'Unsupported: report blocker, not proof. Headless: N/A.',
+      'Static consumer setup: [exact local pin and commands](../README.md#consumer-bootstrap).',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       '`publish` hands off after checks; merge requires green checks.',
