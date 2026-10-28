@@ -179,9 +179,7 @@ export function verifySelectedSourceTransplantRecovery(root, input) {
   if (!record?.worktree || record.ref !== input.ref || !record.head
     || !isAncestor(input.candidateHead, record.head, root) || !isAncestor(record.head, branchHead, root)) fail('recovery-record');
   const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase, targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
-  let journal;
-  try { journal = readJournal(location({ ...planInput, gitRoot: root }).journalPath); }
-  catch { fail('recovery-plan'); }
+  let journal; try { journal = readJournal(location({ ...planInput, gitRoot: root }).journalPath); } catch { fail('recovery-plan'); }
   if (journal.cwd !== record.worktree || journal.ref !== input.ref || journal.expectedHead !== input.sourceHead || journal.expectedBase !== input.sourceBase
     || journal.targetRef !== record.base || journal.expectedTarget !== input.targetHead
     || !same(journal.selectedPaths, input.selectedPaths) || journal.digest !== input.planDigest || journal.candidateHead !== input.candidateHead) fail('recovery-plan');
