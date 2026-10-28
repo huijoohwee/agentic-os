@@ -113,7 +113,7 @@ test('completion status rejects receipts with the wrong review, merge, digest, o
       repository: REPOSITORY, adoption: { reviewLocator: REVIEW, merge: MERGE } } }), /do not bind/u);
 });
 
-test('read-only closeout remains retirement-pending until the exact receipt pair is bound', () => {
+test('retirement receipt does not replace the separate workspace-cleanup receipt', () => {
   const shared = { sourceIntegrated: true, canonicalCurrent: true, laneMounted: false, laneClean: null,
     laneHead: true, quarantineProfile: true, quarantineObserved: false, preservationObserved: true,
     preservationDisposition: 'current-quarantine-retained', deployBound: false, findingCodes: [],
@@ -122,7 +122,9 @@ test('read-only closeout remains retirement-pending until the exact receipt pair
   assert.equal(pending.adlcState, 'retirement_pending');
   const bound = deriveCloseoutVerdict({ ...shared, retirementReceiptVerified: true });
   assert.equal(bound.completionScope, 'retirement-bound');
-  assert.equal(bound.adlcState, 'complete');
+  assert.equal(bound.adlcState, 'cleanup_pending');
+  assert.equal(bound.cleanupSatisfied, false);
+  assert.equal(bound.nextAction.id, 'workspace-cleanup');
   assert.equal(bound.retirementSatisfied, true);
   assert.equal(bound.authorizesEffects, false);
 });

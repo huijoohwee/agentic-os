@@ -67,7 +67,7 @@ test('completion grammar accepts only one exact status target', () => {
   assert.match(validateCommandArguments('completion', ['apply', `--ref=${REF}`]), /requires status/u);
 });
 
-test('merged retained lane completes its exact source-only scope without invented cleanup authority', (t) => {
+test('merged retained lane closes source scope but full END ADLC waits for worktree cleanup', (t) => {
   const subject = fixture(t);
   writeFileSync(join(subject.lane, 'feature.txt'), 'feature\n');
   subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'feature');
@@ -89,9 +89,10 @@ test('merged retained lane completes its exact source-only scope without invente
   assert.ok(!after.findings.some((item) => item.code === 'cleanup-receipt-unverified'));
   assert.equal(after.closeout.missionState, 'source_complete');
   assert.equal(after.closeout.completionScope, 'source-only');
-  assert.equal(after.closeout.adlcState, 'complete');
+  assert.equal(after.closeout.cleanupSatisfied, false);
+  assert.equal(after.closeout.adlcState, 'cleanup_pending');
   assert.equal(after.closeout.laneDisposition, 'retained');
-  assert.equal(after.closeout.nextAction, null);
+  assert.equal(after.closeout.nextAction.id, 'workspace-cleanup');
   assert.equal(subject.git(subject.root, 'rev-parse', 'HEAD'), after.canonicalRevision);
 });
 
@@ -216,7 +217,7 @@ test('accepted missing bytes close source only when an exact clean successor che
   assert.equal(report.closeout.laneDisposition, 'retained-unrecoverable-accepted');
   assert.equal(report.closeout.cleanupSatisfied, false);
   assert.equal(report.closeout.completionScope, 'source-only');
-  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.adlcState, 'cleanup_pending');
   assert.equal(report.cleanupVerified, false);
   assert.equal(report.providerVerified, false);
   assert.equal(report.authorizesEffects, false);
@@ -324,8 +325,10 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   const complete = deriveCloseoutVerdict(base);
   assert.equal(complete.missionState, 'source_complete');
   assert.equal(complete.completionScope, 'source-only');
-  assert.equal(complete.adlcState, 'complete');
-  assert.equal(complete.nextAction, null);
+  assert.equal(complete.cleanupSatisfied, false);
+  assert.equal(complete.retentionState, 'retained');
+  assert.equal(complete.adlcState, 'cleanup_pending');
+  assert.equal(complete.nextAction.id, 'workspace-cleanup');
   const sync = deriveCloseoutVerdict({
     ...base, canonicalCurrent: false, findingCodes: ['canonical-not-current-clean'],
   });
@@ -533,13 +536,14 @@ test('exact deployed delivery receipt closes ADLC without granting effect author
   assert.equal(report.deliveryDisposition.producerAuthorityVerified, false);
   assert.equal(report.closeout.deliveryDisposition.disposition, 'deployed');
   assert.equal(report.closeout.completionScope, 'delivery-bound');
-  assert.equal(report.closeout.adlcState, 'complete');
-  assert.equal(report.closeout.nextAction, null);
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.adlcState, 'cleanup_pending');
+  assert.equal(report.closeout.nextAction.id, 'workspace-cleanup');
   assert.equal(report.authorizesEffects, false);
   assert.equal(report.grantsAuthority, false);
 });
 
-test('exact docs-only no-deploy receipt closes delivery scope and retains decision evidence', (t) => {
+test('exact docs-only no-deploy receipt closes delivery scope but keeps full closeout open for cleanup', (t) => {
   const subject = fixture(t);
   mkdirSync(join(subject.lane, 'docs'));
   writeFileSync(join(subject.lane, 'docs', 'handover.md'), '# Handover\n');
@@ -558,9 +562,10 @@ test('exact docs-only no-deploy receipt closes delivery scope and retains decisi
   assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
   assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
   assert.equal(report.closeout.completionScope, 'delivery-bound');
-  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.adlcState, 'cleanup_pending');
   assert.equal(report.closeout.deliveryDisposition.disposition, 'no-deploy');
-  assert.equal(report.closeout.nextAction, null);
+  assert.equal(report.closeout.nextAction.id, 'workspace-cleanup');
   assert.equal(report.authorizesEffects, false);
 });
 
@@ -583,7 +588,8 @@ test('exact control-ledger no-deploy proof closes scope and supports later ledge
   assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
   assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
   assert.equal(report.closeout.completionScope, 'delivery-bound');
-  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.adlcState, 'cleanup_pending');
   assert.equal(report.authorizesEffects, false);
 
   const maintenanceRef = 'agent/device/control-ledger-maintenance', maintenance = join(subject.parent, 'maintenance');
@@ -600,7 +606,8 @@ test('exact control-ledger no-deploy proof closes scope and supports later ledge
   assert.equal(maintenanceReport.deliveryDisposition.scopeRule, 'exact-control-ledger-artifact-exclusion');
   assert.equal(maintenanceReport.deliveryDisposition.evidenceForRef, REF);
   assert.equal(maintenanceReport.closeout.completionScope, 'delivery-bound');
-  assert.equal(maintenanceReport.closeout.adlcState, 'complete');
+  assert.equal(maintenanceReport.closeout.cleanupSatisfied, false);
+  assert.equal(maintenanceReport.closeout.adlcState, 'cleanup_pending');
 });
 
 test('delivery evidence and ledger paths close only with artifact-exclusion no-deploy evidence', (t) => {
@@ -625,7 +632,8 @@ test('delivery evidence and ledger paths close only with artifact-exclusion no-d
   assert.equal(report.deliveryDisposition.scopeRule, 'delivery-evidence-artifact-exclusion');
   assert.equal(report.deliveryDisposition.receiptDigest, governanceDigest(receipt.dispositions[0]));
   assert.equal(report.closeout.completionScope, 'delivery-bound');
-  assert.equal(report.closeout.adlcState, 'complete');
+  assert.equal(report.closeout.cleanupSatisfied, false);
+  assert.equal(report.closeout.adlcState, 'cleanup_pending');
   assert.equal(report.authorizesEffects, false);
 });
 
