@@ -163,7 +163,7 @@ function retainedTargetPath(registration) {
 }
 function protectedRetirementReceipt(originalReceipt, eligibility, coordinate) {
   const receipt = validateAuthenticatedTransitionOperationReceipt(originalReceipt), transition = receipt.transitionReceipt, cleanup = validateWorktreeCleanupEligibility(eligibility);
-  if (receipt.requestedTransition !== 'retire' || transition.resultState !== 'retired' || transition.immutableRevision !== cleanup.canonicalRevision || cleanup.cleanupPlanDigest !== coordinate || cleanup.retirementReceiptDigest !== receipt.receiptDigest || cleanup.retirementPlanByteDigest !== receipt.planByteDigest) fail('blocked-cleanup-retained-artifact', 'protected retirement receipt does not bind the retained cleanup operation');
+  if (receipt.requestedTransition !== 'retire' || transition.resultState !== 'retired' || cleanup.cleanupPlanDigest !== coordinate || cleanup.retirementReceiptDigest !== receipt.receiptDigest || cleanup.retirementPlanByteDigest !== receipt.planByteDigest) fail('blocked-cleanup-retained-artifact', 'protected retirement receipt does not bind the retained cleanup operation');
   return receipt;
 }
 function reconciliationCandidate(value, { originalReceipt, originalRegistrationManifest,

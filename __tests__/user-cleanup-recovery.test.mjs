@@ -457,6 +457,7 @@ test('current retention joins an exact detached reviewed-equivalent receipt with
 });
 test('current retention joins protected retirement receipt to the exact retained cleanup eligibility', async t => {
   const s = fixture(t), cleanupReceipt = s.apply(s.plan()), retirementReceipt = await protectedRetirementReceipt(s),
+    laterCanonical = git(s.root, 'commit-tree', `${s.merge}^{tree}`, '-p', s.merge, '-m', 'later canonical revision'),
     operationPath = join(s.root, '.git', 'agentic-os-cleanup-quarantine', cleanupReceipt.planDigest, 'operation.json'),
     operation = JSON.parse(readFileSync(operationPath, 'utf8')), prior = operation.eligibility;
   operation.eligibility = createWorktreeCleanupEligibility({
@@ -465,7 +466,7 @@ test('current retention joins protected retirement receipt to the exact retained
     retirementReceiptDigest: retirementReceipt.receiptDigest, preservationReceiptDigest: 'd'.repeat(64),
     noRemainingValueReceiptDigest: 'e'.repeat(64), retirementPlanByteDigest: retirementReceipt.planByteDigest,
     recoveryInventoryDigest: '1'.repeat(64), recoveryInventoryContentEntries: 0,
-    ownerStateDigest: 'f'.repeat(64), profileDigest: s.profile.profileDigest, canonicalRevision: s.merge,
+    ownerStateDigest: 'f'.repeat(64), profileDigest: s.profile.profileDigest, canonicalRevision: laterCanonical,
     targetObservationDigest: '0'.repeat(64), projectionManifestDigest: prior.projectionManifestDigest,
     projectionBytes: prior.projectionBytes, projectionEntries: prior.projectionEntries,
     registrationManifestDigest: prior.registrationManifestDigest,
