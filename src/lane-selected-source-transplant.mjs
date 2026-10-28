@@ -175,9 +175,9 @@ export function verifySelectedSourceTransplantRecovery(root, input) {
     || !/^[a-f0-9]{64}$/u.test(input.planDigest ?? '') || !isLaneRef(input.ref) || input.schema !== 'agentic-os/workflow-selected-source-recovery/v1') fail('recovery-input-identity');
   if (!Array.isArray(input.selectedPaths) || !input.selectedPaths.length || input.selectedPaths.length > 32 || !same(input.selectedPaths, [...new Set(input.selectedPaths)].sort())) fail('recovery-input-paths');
   const record = store.get(input.ref, root), branchHead = headSha(input.ref, root);
-  if (!record?.worktree || !record.head || !isAncestor(input.candidateHead, record.head, root) || !isAncestor(record.head, branchHead, root)
-    || record.handoff?.planDigest !== input.planDigest || record.handoff?.preservedHead !== input.sourceHead || record.handoff?.sourceBase !== input.sourceBase
-    || record.handoff?.targetHead !== input.targetHead || !same(record.handoff?.selectedPaths, input.selectedPaths)) fail('recovery-record');
+  // Provider publication may replace record.handoff; the immutable journal and pinned refs below are the recovery proof.
+  if (!record?.worktree || record.ref !== input.ref || !record.head
+    || !isAncestor(input.candidateHead, record.head, root) || !isAncestor(record.head, branchHead, root)) fail('recovery-record');
   const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase, targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
   const journal = readJournal(location({ ...planInput, gitRoot: root }).journalPath);
   if (journal.cwd !== record.worktree || journal.ref !== input.ref || journal.expectedHead !== input.sourceHead || journal.expectedBase !== input.sourceBase
