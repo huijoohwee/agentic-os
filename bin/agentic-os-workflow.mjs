@@ -124,7 +124,7 @@ function collectManifest(root, repository, manifest, inputPath) {
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'workflow collection', result, error });
 }
-export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution }) {
+export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution, releaseTargets = [] }) {
   if (!/^[a-f0-9]{40}$/u.test(revision) || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(worktreeId)) fail('start-binding');
   const planning = validateWorkflowPlanning(root, repository, { revision, planningPath });
   const source = { repository, revision, tree: observeGit(['rev-parse', `${revision}^{tree}`], { cwd: root }) };
@@ -134,7 +134,7 @@ export function startWorkflow(root, repository, { revision, planningPath, worktr
     id, source, context: { workflowId: id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, inputPath);
   return collectManifest(root, repository, { schema: WORKFLOW_GROUP, id, source, planning,
     ...(execution === undefined ? {} : { execution }),
-    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
+    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets }, inputPath);
 }
 export function readSelectedWorkflow(root, repository, { input = null, required = false, worktreeId = null, ref = null, navigation = true } = {}) {
   const key = [ref && selectionKey(repository, 'ref', ref), worktreeId && selectionKey(repository, 'member', worktreeId)]

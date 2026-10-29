@@ -42,12 +42,15 @@ test('planning-bound startup captures one reusable root with no invented phase o
  const first=startWorkflow(root,repository,args),bytes=readFileSync(first.manifest,'utf8'),manifest=JSON.parse(bytes);
  assert.equal(manifest.planning.digest,createHash('sha256').update('---\ndoc_type: "PRD-TAD-ADR-MVP-GTM"\n---\n# Native plan').digest('hex'));
  assert.equal(manifest.source.tree,git('rev-parse','HEAD^{tree}'));
- assert.equal(manifest.members.length,1);assert.deepEqual(manifest.releaseTargets,['device--change']);
+ assert.equal(manifest.members.length,1);assert.deepEqual(manifest.releaseTargets,[]);
  assert.equal(manifest.releaseEvidence.length,0);
  const result=readWorkflowManifestPage(root,bytes);
  assert.equal(result.profile.workflow.members.length,1);
  assert.notEqual(result.status,'completed');
- assert.equal(result.profile.workflow.missing.length,9);
+ assert.deepEqual(result.profile.workflow.expected,['planning','worktrees']);
+ assert.equal(result.profile.workflow.release.boundary,'not-declared');
+ assert.equal(result.profile.workflow.closure.target,'workflow-receipts-complete');
+ assert.equal(result.profile.workflow.missing.length,7);
  assert(result.spans.every(span => span.resources.tokens === null));
  assert.equal(startWorkflow(root,repository,args).manifest,first.manifest);
  assert.equal(readFileSync(first.manifest,'utf8'),bytes);
@@ -55,6 +58,8 @@ test('planning-bound startup captures one reusable root with no invented phase o
  writeFileSync(join(root,plan),'uncommitted change');assert.equal(startWorkflow(root,repository,args).manifest,first.manifest);
  for(const planningPath of ['../adlc-economy.md','missing-prd-tad-adr-mvp-gtm.md',notPlan,'README.md'])
   assert.throws(()=>startWorkflow(root,repository,{...args,planningPath}),/blocked-workflow-planning/);
+ const production=startWorkflow(root,repository,{...args,worktreeId:'device--production',releaseTargets:['device--production']});
+ assert.deepEqual(JSON.parse(readFileSync(production.manifest,'utf8')).releaseTargets,['device--production']);
 });
 
 test('workflow lineage admits only a descendant head for pending readmit recovery', t => {

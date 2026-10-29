@@ -293,16 +293,17 @@ export function validateWorkflowExecution(execution, members, previous) {
 /** Deterministic prerequisite decisions, with no scheduler, waiting or effect execution. */
 export function workflowEligibility(manifest, members) {
   const execution = validateWorkflowExecution(manifest.execution, members);
-  const rows = members.flatMap(({ ref, child, advice }) => child.expected.map(phase => {
-    const receipt = child.phases.find(row => row.id === phase);
-    const progress = advice.progress?.find(row => row.id === phase && row.digest === receipt?.digest
-      && row.revision === (receipt?.revision ?? child.source.revision));
-    const current = receipt && (receipt.revision ?? child.source.revision) === child.source.revision;
-    return { memberId: ref.id, phase, memberDigest: ref.digest, requiredRevision: child.source.revision,
-      revision: receipt ? receipt.revision ?? child.source.revision : null,
-      evidenceDigest: receipt?.digest ?? null,
-      status: !current && receipt ? 'stale' : progress?.partial ? 'partial' : progress?.status ?? 'missing' };
-  }));
+  const rows = members.flatMap(({ ref, child, advice, read }) => {
+    const stale = child.phases.some(row => row.revision && row.revision !== child.source.revision), integration = stale && child.phases.find(row => row.id === 'integration'), bytes = integration && read?.(integration.file);
+    const value = integration && typeof bytes === 'string' && hash(bytes) === integration.digest ? JSON.parse(bytes) : null,
+      laneHead = value?.schema === 'agentic-os/sprint-finish/v1' && value.grantsAuthority === false
+        && value.integratedRevision === child.source.revision && /^[a-f0-9]{40}$/u.test(value.laneHead ?? '') ? value.laneHead : null;
+    return child.expected.map(phase => {
+      const receipt = child.phases.find(row => row.id === phase), revision = receipt?.revision ?? child.source.revision;
+      const progress = advice.progress?.find(row => row.id === phase && row.digest === receipt?.digest && row.revision === revision), current = receipt && (revision === child.source.revision || laneHead === revision);
+      return { memberId: ref.id, phase, memberDigest: ref.digest, requiredRevision: child.source.revision,
+        revision: receipt ? revision : null, evidenceDigest: receipt?.digest ?? null, status: !current && receipt ? 'stale' : progress?.partial ? 'partial' : progress?.status ?? 'missing' };
+    }); });
   const byKey = new Map(rows.map(row => [endpointKey(row), row])), prerequisites = new Map();
   const handoffs = new Map(members.map(member => [member.ref.id, readinessBlockers(member,
     (execution?.readiness?.participants ?? []).filter(row => row.memberId === member.ref.id))]));
@@ -377,7 +378,7 @@ function releaseClosure(manifest, members) {
   const pending = steps.filter(row => row.status !== 'completed');
   const eligible = pending.filter(row => !row.blockers?.length && row.eligibility !== 'undeclared')
     .sort((a, b) => (b.unblocks ?? 0) - (a.unblocks ?? 0) || steps.indexOf(a) - steps.indexOf(b));
-  return { target: 'production-runtime-ready', status: pending.some(row => ['failed', 'blocked'].includes(row.status))
+  return { target: manifest.releaseTargets.length ? 'production-runtime-ready' : 'workflow-receipts-complete', status: pending.some(row => ['failed', 'blocked'].includes(row.status))
     ? 'blocked' : pending.length ? 'incomplete' : 'observed-complete',
     authorizesEffects: false, authorityVerified: false, total: steps.length,
     completed: steps.length - pending.length, pending, dependencyCoverage: eligibility.coverage, readinessCoverage: eligibility.readinessCoverage,
@@ -404,7 +405,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
     const advice=readArchive(child,loaded.read,{adviceOnly:true});
     return {ref,child,read:loaded.read,advice};
   });
-  requireFact(Array.isArray(manifest.releaseTargets) && manifest.releaseTargets.length>0
+  requireFact(Array.isArray(manifest.releaseTargets)
     && new Set(manifest.releaseTargets).size===manifest.releaseTargets.length && manifest.releaseTargets.every(value=>ids.has(value)), 'release-targets');
   requireFact(Array.isArray(manifest.releaseEvidence??[]) && (manifest.releaseEvidence??[]).length<=64, 'release-budget');
   const releaseKeys=new Set();
@@ -422,7 +423,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
   const closure=releaseClosure(manifest,members);
   const common={schema:'agentic-os/workflow-group-recommendations/v1',authority:false,executable:false,closure,
     source:manifest.source,workflowId:manifest.id,planning:manifest.planning,appliesTo:['next-workflow','next-session','next-turn','next-thread'],
-    members:summaries,release:{boundary:'production-runtime-ready',targets:manifest.releaseTargets,
+    members:summaries,release:{boundary:manifest.releaseTargets.length?'production-runtime-ready':'not-declared',targets:manifest.releaseTargets,
       evidence:manifest.releaseEvidence??[],missing:missingRelease,authorityVerified:false},
     recommendations:[...members.flatMap(({ref,advice})=>advice.recommendations.slice(0,5).map(row=>({...row,memberId:ref.id,manifestDigest:ref.digest}))),
       ...(missingRelease.length ? [{id:'release-coverage',action:'Capture the missing production deployment and runtime receipts before claiming end-to-end completion.',
@@ -465,7 +466,7 @@ export function workflowGroup(manifest, load, { offset=0, now=Date.now(), advice
   spans.push(...releaseRows.slice(Math.max(0,offset-start),Math.max(0,offset+32-start)));
   return {schema:'agent-toolkit-run/v1',authority:false,importedObservation:true,runId:`workflow-${manifest.id}`,
     status:root.status,subjectDigest:candidate.digest,candidate,cohortId:manifest.id,context:null,
-    profile:{workflow:{source:manifest.source,expected:['planning','worktrees','production-deployment','production-runtime'],
+    profile:{workflow:{source:manifest.source,expected:manifest.releaseTargets.length?['planning','worktrees','production-deployment','production-runtime']:['planning','worktrees'],
       missing:[...summaries.flatMap(row=>row.missing.map(phase=>`${row.id}:phase:${phase}`)),...missingRelease.map(ref=>`${ref.memberId}:${ref.kind}`)],phases:[],planning:manifest.planning,members:summaries,
       release:common.release,closure,optimization:common,receiptAuthorityVerified:false,
       boundary:manifest.boundary??null,sequence:manifest.sequence??null,previous:manifest.previous??null,
