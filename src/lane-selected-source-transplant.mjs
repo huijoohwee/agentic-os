@@ -72,8 +72,9 @@ function pins(plan) {
 function exactRecord(plan, candidate = false) {
   const record = store.get(plan.ref, plan.cwd);
   if (!record || record.worktree !== plan.cwd || record.base !== plan.targetRef) fail('record');
-  const digest = hash(json(record)), prior = { ...record, head: plan.recordHead };
-  if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && hash(json(prior)) === plan.recordDigest)) fail('record');
+  const digest = hash(json(record)), prior = { ...record, head: plan.recordHead }, priorDigests = [hash(json(prior))];
+  if (plan.recordHead === null) { const omittedHead = { ...record }; delete omittedHead.head; priorDigests.push(hash(json(omittedHead))); }
+  if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && priorDigests.includes(plan.recordDigest))) fail('record');
   if (candidate && (record.head !== plan.candidateHead || record.handoff?.schema !== 'agentic-os-lane-selected-source-transplant/v1'
     || record.handoff?.preservedRef !== plan.oldRef || record.handoff?.preservedHead !== plan.expectedHead
     || record.handoff?.sourceBase !== plan.expectedBase || record.handoff?.targetHead !== plan.expectedTarget
@@ -163,9 +164,8 @@ export function applySelectedSourceTransplant(value) {
   identity(plan); clean(plan.cwd, plan.expectedHead); pins(plan); verifyCandidate(plan); const record = exactRecord(plan);
   atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.candidateHead, plan.expectedHead, [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead], [plan.deltaRef, plan.deltaHead], [plan.candidateRef, plan.candidateHead]], plan.cwd);
   git(['read-tree', '--reset', '-u', plan.candidateHead], { cwd: plan.cwd }); clean(plan.cwd, plan.candidateHead);
-  store.putExact({ ...record, head: plan.candidateHead, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1',
-    preservedRef: plan.oldRef, preservedHead: plan.expectedHead, sourceBase: plan.expectedBase,
-    targetHead: plan.expectedTarget, selectedPaths: plan.selectedPaths, planDigest: plan.digest } }, record, plan.cwd);
+  store.putExact({ ...record, head: plan.candidateHead, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1', preservedRef: plan.oldRef,
+    preservedHead: plan.expectedHead, sourceBase: plan.expectedBase, targetHead: plan.expectedTarget, selectedPaths: plan.selectedPaths, planDigest: plan.digest } }, record, plan.cwd);
   return receipt(plan, false);
 }
 export function verifySelectedSourceTransplantRecovery(root, input) {

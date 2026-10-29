@@ -535,10 +535,13 @@ test('selected-source recovery replaces a legacy marker atomically with its exac
   collect({ members: [{ id: worktreeId, file: activeChild.manifest, digest: activeChild.digest }], allocations: [legacyActive] });
   const pending = { ...legacyActive, state: 'pending', previousWriteDigest: legacyActive.writeDigest };
   collect({ allocations: [pending] });
-  put({ ref, device: 'device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: sourceBase,
-    worktree: path, pr: null, createdAt: new Date(0).toISOString(), head: sourceHead, writePaths: paths }, root);
+  const laneRecord = { ref, device: 'device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: sourceBase,
+    worktree: path, pr: null, createdAt: new Date(0).toISOString(), writePaths: paths };
+  put(laneRecord, root);
   const plan = prepareSelectedSourceTransplant(planSelectedSourceTransplant({ cwd: path, ref, expectedHead: sourceHead,
     expectedBase: sourceBase, targetRef: 'refs/remotes/origin/main', expectedTarget: targetHead, selectedPaths: paths, stopped: true }));
+  assert.equal(plan.recordHead, null);
+  putExact({ ...laneRecord, head: sourceHead }, laneRecord, root);
   const receipt = applySelectedSourceTransplant(plan), priorMember = selected().members[0].child;
   const candidateMember = collectWorkflowValue(root, repository, { ...priorMember,
     source: { ...priorMember.source, revision: receipt.head, tree: git(root, 'rev-parse', `${receipt.head}^{tree}`) } }, join(base, 'candidate-member.json'));
