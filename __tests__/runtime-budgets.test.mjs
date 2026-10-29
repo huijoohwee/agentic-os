@@ -49,13 +49,13 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 991);
+  assert.equal([...prompt].length, 989);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'c244e81743133adf44cd831f77bdfabf8e9487b2c043a66f45afd474c8bf421d');
+    'edfab6a19768c47508e7a6110d59216af9752821787129387826f4a2f1fc294f');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
