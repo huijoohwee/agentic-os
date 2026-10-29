@@ -39,6 +39,11 @@ function exact(argv, {
   if (missingFlag) return `missing --${missingFlag}`;
   return null;
 }
+function progressiveArguments(argv, directoryRequired = false) {
+  const error = exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms', 'ref'], flags: ['cleanup', 'stopped'], requiredOptions: directoryRequired ? ['worktrees'] : [] }); if (error) return error;
+  if (!directoryRequired && option(argv, 'worktrees') === null && option(argv, 'ref') === null) return 'complete-adlc requires --ref or --worktrees';
+  return flag(argv, 'cleanup') ? flag(argv, 'stopped') ? null : '--cleanup requires --stopped' : flag(argv, 'stopped') ? '--stopped is only valid with --cleanup' : null;
+}
 export function validateCommandArguments(command, argv) {
   switch (command) {
     case 'design-check': return exact(argv, { options: ['input'], requiredOptions: ['input'] });
@@ -112,7 +117,7 @@ export function validateCommandArguments(command, argv) {
       : 'source-evidence requires bundle';
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'closeout', 'complete', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
+      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'closeout', 'complete', 'complete-adlc', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
         return 'release-common requires start, publish, finish, close, complete, or successor; closeout, retire-empty-active, allocation-release, scope-release, rebind and promote are also supported';
       if (argv.length === 0) return null;
       if (action === 'help') return exact(argv, { min: 1, max: 1 });
@@ -169,19 +174,13 @@ export function validateCommandArguments(command, argv) {
           requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
           : 'scope-release requires plan or apply';
       if (action === 'complete') {
-        if (option(argv, 'worktrees') !== null) {
-          const error = exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms', 'ref'],
-            flags: ['cleanup', 'stopped'], requiredOptions: ['worktrees'] });
-          if (error) return error;
-          return flag(argv, 'cleanup')
-            ? flag(argv, 'stopped') ? null : '--cleanup requires --stopped'
-            : flag(argv, 'stopped') ? '--stopped is only valid with --cleanup' : null;
-        }
+        if (option(argv, 'worktrees') !== null) return progressiveArguments(argv, true);
         if (option(argv, 'via-pr') !== null)
           return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'via-repository', 'via-checks', 'replaced', 'reason'],
             flags: ['stopped', 'superseded'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
+      if (action === 'complete-adlc') return progressiveArguments(argv);
       if (action === 'retire-empty-active') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
       if (action === 'allocation-release') return exact(argv, { min: 1, max: 1, options: ['ref', 'cleanup-receipt'], requiredOptions: ['ref'] });
     }
@@ -255,7 +254,7 @@ export function cmdHelp() {
       '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
       '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
       '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
-      '    agentic-os complete-adlc --worktrees=<dir> [--ref=<lane>] [--cleanup --stopped]  one bounded END ADLC pass; select one lane or the directory',
+      '    agentic-os complete-adlc [--ref=<lane>] [--worktrees=<dir>] [--cleanup --stopped]  one lane or bounded directory END ADLC pass; --ref narrows scans',
       '    npm run release:common -- closeout --ref=<lane>  one read-only local summary; works from that lane or canonical checkout',
       '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --via-repository=<owner/repo> --via-checks=<names> --replaced=<exact,path> --reason=<text> --superseded --stopped  record reviewed cross-repository supersession without cleanup',
       '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',

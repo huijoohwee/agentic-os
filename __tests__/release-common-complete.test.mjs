@@ -668,7 +668,7 @@ test('progressive cleanup defers while selected worktrees remain', async t => {
   assert.equal(events.at(-1).reason, 'selected-worktrees-remain');
 });
 
-test('progressive completion can select one exact lane from a shared worktree directory', async t => {
+test('progressive completion infers the parent directory when selecting one exact lane', async t => {
   const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
   const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
   const selectedRef = 'agent/test-device/selected', otherRef = 'agent/test-device/other';
@@ -676,7 +676,7 @@ test('progressive completion can select one exact lane from a shared worktree di
     path: join(directory, `lane-${index}`), branch, head,
   }));
   const calls = [], events = [];
-  const code = await runProgressiveCompletion({ root: s.root, directory, ref: selectedRef,
+  const code = await runProgressiveCompletion({ root: s.root, ref: selectedRef,
     policy: { protectedBranch: 'main' }, profile: profile(),
     inventory: () => rows,
     record: branch => ({ state: 'published', head, pr: 41, worktree: rows.find(row => row.branch === branch)?.path }),
@@ -691,9 +691,9 @@ test('progressive completion can select one exact lane from a shared worktree di
   assert.equal(events.at(-1).completed, 1);
 });
 
-test('progressive completion rejects a ref outside the exact worktree directory', async t => {
-  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
-  await assert.rejects(runProgressiveCompletion({ root: s.root, directory, ref: 'agent/test-device/missing',
+test('progressive completion rejects a ref outside the exact worktree inventory', async t => {
+  const s = completeFixture(t);
+  await assert.rejects(runProgressiveCompletion({ root: s.root, ref: 'agent/test-device/missing',
     policy: { protectedBranch: 'main' }, profile: profile(), inventory: () => [],
     complete: async () => assert.fail('no lane should be selected') }),
   /ref must identify one registered worktree directly under --worktrees/u);
@@ -792,7 +792,7 @@ test('progressive completion refuses changed identity and false completion; budg
 });
 
 test('progressive argument selection is exclusive and a pending review needs only one observation', async () => {
-  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes']), null);
+  for (const args of [['complete', '--worktrees=/tmp/lanes'], ['complete-adlc', '--ref=agent/test/lane']]) assert.equal(validateCommandArguments('release-common', args), null);
   assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--ref=agent/test/lane']), null);
   assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--cleanup', '--stopped']), null);
   assert.match(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--cleanup']) ?? '', /requires --stopped/u);

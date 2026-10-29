@@ -530,14 +530,15 @@ export async function runReleaseCommonCompleteWait({
     return 1;
   }
 }
-
 /** One bounded pass over registered immediate children; existing owners govern every effect. */
-export async function runProgressiveCompletion({ root, directory, ref = null, timeoutMs = 60_000, policy, profile, complete,
+export async function runProgressiveCompletion({ root, directory = null, ref = null, timeoutMs = 60_000, policy, profile, complete,
   out = line => process.stdout.write(`${line}\n`), now = () => performance.now(),
   inventory = worktreeInventory, record = get, status = inspectCompletionStatus, cleanup = { cleanup: false },
 } = {}) {
-  integer(timeoutMs, 1, 60_000, 'timeout-ms');
-  if (currentBranch(root) !== policy.protectedBranch || !isAbsolute(directory)
+  integer(timeoutMs, 1, 60_000, 'timeout-ms'); const selectedPath = directory === null && ref !== null ? inventory(root).find(row => row.branch === ref)?.path ?? null : null;
+  if (directory === null) directory = selectedPath ? dirname(selectedPath) : null;
+  if (directory === null) fail('blocked-progressive-completion-selection', 'ref must identify one registered worktree directly under --worktrees');
+  if (currentBranch(root) !== policy.protectedBranch || !directory || !isAbsolute(directory)
     || realpathSync(directory) !== resolve(directory)) fail('blocked-progressive-completion-scope',
     'Use canonical main and one absolute directory without symbolic links');
   directory = resolve(directory);
