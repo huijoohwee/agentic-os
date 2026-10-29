@@ -229,9 +229,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
           ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}),
           ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
+        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' && row?.recoveredFromHead ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
-        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
-        if (alignment) artifacts.workflow = selected.path;
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
           observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true);
