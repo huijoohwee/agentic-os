@@ -373,6 +373,45 @@ test('successor readmission binds a recovered allocation head and member atomica
   assert.equal(git(root, 'rev-parse', predecessor), head);
 });
 
+test('alignment advances a recovered existing member and allocation atomically', async t => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'lane-recovered-alignment-'))), root = join(parent, 'repo'), remote = join(parent, 'remote.git'); mkdirSync(root);
+  const priorGlobal = process.env.GIT_CONFIG_GLOBAL, priorSystem = process.env.GIT_CONFIG_NOSYSTEM;
+  process.env.GIT_CONFIG_GLOBAL = join(parent, 'global-config'); process.env.GIT_CONFIG_NOSYSTEM = '1'; writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
+  t.after(() => { if (priorGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = priorGlobal;
+    if (priorSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM; else process.env.GIT_CONFIG_NOSYSTEM = priorSystem;
+    rmSync(parent, { recursive: true, force: true }); });
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  for (const [key, value] of [['user.name', 'Fixture'], ['user.email', 'fixture@example.invalid'], ['commit.gpgsign', 'false'], ['core.autocrlf', 'false'], ['core.filemode', 'true']]) git(root, 'config', key, value);
+  const policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
+  const profile = createRepositoryProfile({ repository: 'github.com/example/alignment', canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef }, adapters: { repository: { id: 'git', version: '1' }, provider: null } });
+  write(root, '.agentic-os.json', JSON.stringify(profile)); write(root, 'prd-tad-adr-mvp-gtm.md', '# Native plan\n');
+  write(root, '.gitignore', 'node_modules/\n'); write(root, 'native-owned.txt', 'native base\n'); commit(root);
+  git(root, 'init', '--quiet', '--bare', remote); git(root, 'remote', 'add', 'origin', remote); git(root, 'push', '--quiet', '-u', 'origin', 'main');
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
+  const services = { out() {}, err() {}, projectCache: (record, cwd) => put(record, cwd), effectReceipt: (_operation, receipt) => receipt, remoteName: () => 'origin', requireCanonical: () => assert.equal(git(root, 'branch', '--show-current'), 'main') };
+  assert.equal(await cmdStart(root, ['recovered-alignment', '--device=test-device', '--write=native-owned.txt', '--plan=prd-tad-adr-mvp-gtm.md', '--checkout-limit=1'], policy, profile, services), 0);
+  const lane = lanePath('recovered-alignment', 'test-device', root), ref = 'agent/test-device/recovered-alignment';
+  const initial = readSelectedWorkflow(root, profile.repository, { required: true }), oldHead = initial.manifest.allocations[0].headRevision;
+  const pending = collectWorkflowValue(root, profile.repository, { ...initial.manifest,
+    members: initial.members.map(row => ({ ...row.ref, file: row.path })),
+    allocations: [{ ...initial.manifest.allocations[0], state: 'pending', operation: 'readmit', previousWriteDigest: initial.manifest.allocations[0].writeDigest }],
+    previous: { file: initial.path, digest: initial.digest },
+  }, join(root, 'workflow-input.json'));
+  write(lane, 'native-owned.txt', 'recovered candidate\n'); const head = commit(lane);
+  assert.equal(await cmdStart(root, ['recovered-alignment', '--device=test-device', '--write=native-owned.txt', `--mission=${pending.manifest}`, `--expected-head=${head}`, '--readmit'], policy, profile, services), 0);
+  assert.equal(readSelectedWorkflow(root, profile.repository, { required: true }).manifest.allocations[0].recoveredFromHead, oldHead);
+  write(root, 'incoming.txt', 'protected advance\n'); const target = commit(root); git(root, 'push', '--quiet', 'origin', 'main');
+  const mission = readSelectedWorkflow(root, profile.repository, { required: true });
+  assert.equal(await cmdStart(root, ['recovered-alignment', '--device=test-device', `--mission=${mission.path}`, `--expected-head=${head}`, '--readmit'], policy, profile, { ...services, refresh: {
+    expectedTarget: target, stopped: true, owner: { plan: planLaneAlignment, prepare: prepareLaneAlignment, apply: applyLaneAlignment },
+  } }), 0);
+  const aligned = readSelectedWorkflow(root, profile.repository, { required: true }), alignedHead = git(lane, 'rev-parse', 'HEAD');
+  assert.equal(aligned.manifest.allocations[0].headRevision, alignedHead);
+  assert.equal(aligned.manifest.allocations[0].recoveredFromHead, oldHead);
+  assert.equal(aligned.members[0].child.source.revision, alignedHead);
+  assert.equal(get(ref, root).head, alignedHead);
+});
+
 function squashFixture(t) {
   const f = fixture(t, undefined, true);
   write(f.lane, 'legacy.txt', 'later committed toolbar behavior\n');
@@ -496,10 +535,13 @@ test('selected-source recovery replaces a legacy marker atomically with its exac
   collect({ members: [{ id: worktreeId, file: activeChild.manifest, digest: activeChild.digest }], allocations: [legacyActive] });
   const pending = { ...legacyActive, state: 'pending', previousWriteDigest: legacyActive.writeDigest };
   collect({ allocations: [pending] });
-  put({ ref, device: 'device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: sourceBase,
-    worktree: path, pr: null, createdAt: new Date(0).toISOString(), head: sourceHead, writePaths: paths }, root);
+  const laneRecord = { ref, device: 'device', scope: 'transplant', state: 'active', base: 'refs/remotes/origin/main', baseSha: sourceBase,
+    worktree: path, pr: null, createdAt: new Date(0).toISOString(), writePaths: paths };
+  put(laneRecord, root);
   const plan = prepareSelectedSourceTransplant(planSelectedSourceTransplant({ cwd: path, ref, expectedHead: sourceHead,
     expectedBase: sourceBase, targetRef: 'refs/remotes/origin/main', expectedTarget: targetHead, selectedPaths: paths, stopped: true }));
+  assert.equal(plan.recordHead, null);
+  putExact({ ...laneRecord, head: sourceHead }, laneRecord, root);
   const receipt = applySelectedSourceTransplant(plan), priorMember = selected().members[0].child;
   const candidateMember = collectWorkflowValue(root, repository, { ...priorMember,
     source: { ...priorMember.source, revision: receipt.head, tree: git(root, 'rev-parse', `${receipt.head}^{tree}`) } }, join(base, 'candidate-member.json'));
