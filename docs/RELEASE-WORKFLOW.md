@@ -4,10 +4,10 @@
 head; GitHub squashes into the profile's protected ref (`origin/main` in the standard profile).
 `complete --ref=<lane>` waits for exact integration and reports closeout, keeping the lane mounted.
 
-`complete-adlc --worktrees=<dir> [--ref=<lane>]` reports source, delivery and workspace status;
-exit `2` means END ADLC remains open. A mounted checkout is `cleanup_pending`. It does not merge,
-deploy or clean lanes. `--cleanup --stopped` removes only an empty batch directory after
-`selected: 0`, never a lane checkout or Git data.
+`agentic-os complete-adlc --ref=<lane>` runs a pass and infers its parent.
+`--worktrees=<dir>` scans worktrees; `--ref` selects a lane. Exit `2` means open; mounted lanes
+are `cleanup_pending`. It cannot merge, deploy or clean lanes. `--cleanup --stopped` removes only an
+empty directory after `selected: 0`, never lane or Git data.
 
 Delivery binds the exact activation and changed paths. Dev and Prod readbacks use the same
 candidate. Docs-only paths may use an exact owner-bound no-deploy reason; see
