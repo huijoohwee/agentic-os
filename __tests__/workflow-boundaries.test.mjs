@@ -420,10 +420,10 @@ test('foreign declared roots fail closed while unrelated legacy roots remain sta
 test('planning validation returns the committed binding without changing admission evidence', t => {
   const s = executionFixture(t), before = s.selected(), planningPath = before.manifest.planning.path;
   const inputs = { revision: s.revision, planningPath };
-  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, inputs), before.manifest.planning);
+  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, inputs), { planning: before.manifest.planning, content: null });
   writeFileSync(join(s.root, planningPath), 'dirty writer-owned plan');
   const status = s.git('status', '--porcelain');
-  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, { ...inputs, digest: before.manifest.planning.digest }), before.manifest.planning);
+  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, { ...inputs, digest: before.manifest.planning.digest }), { planning: before.manifest.planning, content: null });
   assert.throws(() => validateWorkflowPlanning(s.root, s.repository, { ...inputs, digest: '0'.repeat(64) }), /planning-digest/);
   assert.throws(() => validateWorkflowPlanning(s.root, s.repository, { ...inputs, planningPath: '../outside.md' }), /planning-binding/);
   assert.equal(s.selected().digest, before.digest); assert.equal(s.git('status', '--porcelain'), status);

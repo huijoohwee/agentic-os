@@ -67,12 +67,12 @@ export function collectWorkflowValue(root, repository, value, inputPath = join(r
   if (Buffer.byteLength(json(value)) > 32000) fail('manifest-budget');
   return collectManifest(root, repository, value, resolve(inputPath));
 }
-function collectManifest(root, repository, manifest, inputPath) {
+function collectManifest(root, repository, manifest, inputPath, draftText = null) {
   if (manifest.source?.repository !== repository) fail('repository-binding');
   if (!/^[a-f0-9]{40}$/u.test(manifest.source?.revision ?? '') || !/^[a-f0-9]{40}$/u.test(manifest.source?.tree ?? '')) fail('source-binding');
   if (observeGit(['cat-file', '-t', manifest.source.revision], { cwd: root }) !== 'commit') fail('source-binding');
   if (observeGit(['rev-parse', '--verify', `${manifest.source.revision}^{tree}`], { cwd: root }) !== manifest.source.tree) fail('tree-binding');
-  if (manifest.schema === WORKFLOW_GROUP) return collectGroup(root, repository, manifest, inputPath);
+  if (manifest.schema === WORKFLOW_GROUP) return collectGroup(root, repository, manifest, inputPath, draftText);
   if (JSON.stringify(manifest.expected) !== JSON.stringify(WORKFLOW_PHASES)) fail('phase-coverage');
   const receipts = new Map();
   workflowObservation(manifest, file => {
@@ -124,9 +124,9 @@ function collectManifest(root, repository, manifest, inputPath) {
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'workflow collection', result, error });
 }
-export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution, releaseTargets = [] }) {
+export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution, releaseTargets = [], planSnapshot, allocation }) {
   if (!/^[a-f0-9]{40}$/u.test(revision) || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(worktreeId)) fail('start-binding');
-  const planning = validateWorkflowPlanning(root, repository, { revision, planningPath });
+  const { planning, content } = planSnapshot ? validatePlanning(root, repository, planSnapshot.planning, true, planSnapshot.content) : validatePlanning(root, repository, { repository, revision, path: planningPath }, false);
   const source = { repository, revision, tree: observeGit(['rev-parse', `${revision}^{tree}`], { cwd: root }) };
   const id = `workflow-${hash(json({ source, planning, worktreeId })).slice(0, 32)}`;
   const inputPath = join(root, 'workflow-input.json'); // Resolution base only; never written.
@@ -134,7 +134,8 @@ export function startWorkflow(root, repository, { revision, planningPath, worktr
     id, source, context: { workflowId: id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, inputPath);
   return collectManifest(root, repository, { schema: WORKFLOW_GROUP, id, source, planning,
     ...(execution === undefined ? {} : { execution }),
-    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets }, inputPath);
+    ...(allocation === undefined ? {} : { allocations: [allocation] }),
+    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets }, inputPath, content);
 }
 export function readSelectedWorkflow(root, repository, { input = null, required = false, worktreeId = null, ref = null, navigation = true } = {}) {
   const key = [ref && selectionKey(repository, 'ref', ref), worktreeId && selectionKey(repository, 'member', worktreeId)]
@@ -163,7 +164,8 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
   }
   if (!/^[a-f0-9]{40}$/u.test(manifest.source.revision ?? '')
     || observeGit(['rev-parse', `${manifest.source.revision}^{tree}`], { cwd: root }) !== manifest.source.tree) fail('source-binding');
-  validatePlanning(root, repository, manifest.planning); verifyGroupRelease(manifest, path);
+  if (manifest.planning?.source === 'working-tree' && manifest.planning.snapshotFile !== 'planning.md') fail('planning-binding');
+  validatePlanning(root, repository, manifest.planning, true, manifest.planning?.source === 'working-tree' ? read(join(dirname(path), 'planning.md'), 128000) : null); verifyGroupRelease(manifest, path);
   const load = groupLoader(root, repository);
   workflowGroup(manifest, load, { adviceOnly: true });
   const members = manifest.members.map(ref => {
@@ -350,22 +352,25 @@ function planningDocument(path, text) {
   const frontmatter = text.slice(4, end);
   return /^doc_type:[\t ]*(?:"PRD-TAD-ADR-MVP-GTM"|'PRD-TAD-ADR-MVP-GTM'|PRD-TAD-ADR-MVP-GTM)[\t ]*$/mu.test(frontmatter);
 }
-function validatePlanning(root, repository, planning, checkDigest = true) {
+function validatePlanning(root, repository, planning, checkDigest = true, snapshotContent = null) {
+  const path = planning?.path;
   if (!planning || planning.repository !== repository || !/^[a-f0-9]{40}$/u.test(planning.revision ?? '')
-    || typeof planning.path !== 'string' || /[\\\x00-\x1f]/u.test(planning.path) || planning.path.startsWith('/')
-    || planning.path.split('/').some(part => !part || part === '..' || part === '.')
-    || checkDigest && !/^[a-f0-9]{64}$/u.test(planning.digest ?? '')) fail('planning-binding');
-  const entry = observeGit(['ls-tree', planning.revision, '--', planning.path], { cwd: root });
-  if (!/^100644 blob [a-f0-9]{40}\t/u.test(entry ?? '')) fail('planning-file');
-  const planned = observeGit(['show', `${planning.revision}:${planning.path}`], { cwd: root });
-  if (Buffer.byteLength(planned) > 128000) fail('planning-budget');
-  if (!planningDocument(planning.path, planned)) fail('planning-binding');
+    || typeof path !== 'string' || /[\\\x00-\x1f]/u.test(path) || path.startsWith('/')
+    || path.split('/').some(part => !part || part === '..' || part === '.')) fail('planning-binding');
+  const tracked = observeGit(['ls-tree', planning.revision, '--', path], { cwd: root });
+  const draft = planning?.source === 'working-tree' || planning?.source === undefined && tracked === '';
+  if (checkDigest && !/^[a-f0-9]{64}$/u.test(planning.digest ?? '') || planning.source !== undefined && planning.source !== 'working-tree'
+    || draft && (planning.source === 'working-tree' ? planning.snapshotFile !== 'planning.md' : planning.snapshotFile !== undefined) || !draft && planning.snapshotFile !== undefined) fail('planning-binding');
+  if (draft ? tracked !== '' : !/^100644 blob [a-f0-9]{40}\t/u.test(tracked ?? '')) fail('planning-file');
+  let file; try { file = draft && snapshotContent === null ? readRegular(root, path, 128000) : null; } catch { fail('planning-file'); }
+  const content = draft ? snapshotContent ?? file.text : null;
+  const planned = draft ? content : observeGit(['show', `${planning.revision}:${path}`], { cwd: root });
+  if (Buffer.byteLength(planned) > 128000 || !planningDocument(path, planned)) fail('planning-binding');
+  if (file && hash(content) !== file.digest) fail('planning-encoding');
   if (checkDigest && hash(planned) !== planning.digest) fail('planning-digest');
-  return { repository, revision: planning.revision, path: planning.path, digest: hash(planned) };
+  return { planning: { repository, revision: planning.revision, path, digest: hash(planned), ...(draft ? { source: 'working-tree', snapshotFile: 'planning.md' } : {}) }, content };
 }
-export function validateWorkflowPlanning(root, repository, { revision, planningPath, digest } = {}) {
-  return validatePlanning(root, repository, { repository, revision, path: planningPath, digest }, digest !== undefined);
-}
+export const validateWorkflowPlanning = (root, repository, { revision, planningPath, digest } = {}) => validatePlanning(root, repository, { repository, revision, path: planningPath, ...(digest === undefined ? {} : { digest }) }, digest !== undefined);
 function validateAllocations(allocations = [], members, previous = [], root) {
   if (!Array.isArray(allocations) || allocations.length > 32) fail('allocation-budget');
   const keys = ['worktreeId', 'ref', 'path', 'baseRevision', 'headRevision', 'writeDigest', 'state', 'operation'];
@@ -462,10 +467,11 @@ function assertGroupSuccessor(root, manifest, older, members, load, checkSequenc
   }
   const resolvedMembers = members.map(ref => ({ ref, child: load(ref).manifest })); validateWorkflowExecution(manifest.execution, resolvedMembers, older.execution); validateAllocations(manifest.allocations, resolvedMembers, older.allocations, root);
 }
-function collectGroup(root, repository, manifest, inputPath) {
-  const paths=workflowPaths(root,repository), load=groupLoader(root,repository), files=new Map();
-  const planning=manifest.planning;
-  validatePlanning(root, repository, planning);
+function collectGroup(root, repository, manifest, inputPath, draftText = null) {
+  const paths=workflowPaths(root,repository),load=groupLoader(root,repository),files=new Map(),previous=manifest.previous&&{...manifest.previous,file:relative(paths.workspace,resolve(dirname(inputPath),manifest.previous.file))},
+    older=previous&&load(previous).manifest,sequence=older?older.sequence+1:1,originalPlanning=manifest.planning,draft=originalPlanning?.source==='working-tree';
+  if(draft&&draftText===null)draftText=older?(older.planning?.snapshotFile==='planning.md'?load(previous).read('planning.md'):fail('planning-binding')):readRegular(root,originalPlanning.path,128000).text;
+  const resolved=validatePlanning(root,repository,originalPlanning,true,draftText),planning=resolved.planning;if(resolved.content!==null)files.set(planning.snapshotFile,resolved.content);
   if(!Array.isArray(manifest.members))fail('members');
   const members=manifest.members.map(ref=>{
     const normalized={...ref,file:relative(paths.workspace,resolve(dirname(inputPath),ref.file))};
@@ -485,12 +491,6 @@ function collectGroup(root, repository, manifest, inputPath) {
       : ['failed','blocked'].includes(value.status)?'failed':'queued';
     return {...ref,file,schema:value.schema,observedStatus,authorityVerified:false};
   });
-  let previous, older, sequence=1;
-  if(manifest.previous){
-    previous={...manifest.previous,file:relative(paths.workspace,resolve(dirname(inputPath),manifest.previous.file))};
-    older=load(previous).manifest;
-    sequence=older.sequence+1;
-  }
   const execution = manifest.execution === undefined ? older?.execution : manifest.execution;
   const allocations = manifest.allocations === undefined ? older?.allocations : manifest.allocations;
   const resolvedMembers = members.map(ref => ({ ref, child: load(ref).manifest })); validateWorkflowExecution(execution, resolvedMembers); validateAllocations(allocations, resolvedMembers, older?.allocations, root);
@@ -535,7 +535,7 @@ function collectGroup(root, repository, manifest, inputPath) {
     assertDirectoryAncestors(join(directory,'entry'),sep,{allowMissing:true});
     mkdirSync(paths.storage,{recursive:true,mode:0o700});
     const reused=Boolean(lstatSync(directory,{throwIfNoEntry:false}));
-    if(reused){if(read(manifestPath,32000)!==bytes)fail('storage-drift');verifyGroupRelease(stored,manifestPath);}
+    if(reused){if(read(manifestPath,32000)!==bytes)fail('storage-drift');for(const [file,content] of files)if(read(join(directory,file),128000)!==content)fail('storage-drift');verifyGroupRelease(stored,manifestPath);}
     else{
       const staging=mkdtempSync(join(paths.storage,'.collect-'));
       for(const [file,content] of files)writeFileSync(join(staging,file),content,{flag:'wx',mode:0o600});

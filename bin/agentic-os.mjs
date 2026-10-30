@@ -71,7 +71,7 @@ function cmdReleaseCommonHelp() {
       'agentic-os release-common',
       '',
       'Default path:',
-      '  agentic-os release-common start <scope> --write=<paths> [--plan=<committed-plan>]',
+      '  agentic-os release-common start <scope> --write=<paths> [--plan=<PRD-path>]',
       '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
       '  agentic-os release-common promote plan --ref=<lane> | apply --plan=<file> --authorize=<token> [--authority-head=<head>]',
       '  agentic-os release-common scope-release plan --ref=<published-lane> --path=<exact-file> | apply --plan=<file> --authorize=agentic-os:scope-release:<digest> --stopped',

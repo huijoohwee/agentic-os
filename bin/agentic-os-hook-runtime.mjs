@@ -71,7 +71,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/quarantine.mjs', mode: 0o644,
     sha256: '87d949cccfd3429f3618b7b03654abdd2b731e99cfd652ec42310c4e574d0978' }),
   Object.freeze({ path: 'src/git-repository.mjs', mode: 0o644,
-    sha256: 'd53f4bb546e7c5967d38ee74eff4a93983129cd48644969cf284cbf063d00e1a' }),
+    sha256: '0f19dd78cedf92839fe0fdd3df5cb36c65ebe888adfe41df1bb268fe4bbd3206' }),
   Object.freeze({ path: 'src/catalog-input.mjs', mode: 0o644,
     sha256: '89276893b78148da2b67e88902ab22f6b4908a723dc4bb7ff038fe6174100219' }),
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,

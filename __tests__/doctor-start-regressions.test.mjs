@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git } from '../src/git.mjs';
 import {
-  assertCanonicalRepositoryCheckout, ensureRepositoryTrust, repositoryCheckoutLocation,
+  assertStartCheckout, ensureRepositoryTrust, repositoryCheckoutLocation,
 } from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { cmdStart } from '../bin/agentic-os-admission.mjs';
@@ -445,11 +445,12 @@ test('canonical sync apply rejects an anchored canonical profile disappearance',
   assert.equal(run(['for-each-ref', '--format=%(refname) %(objectname)']), before);
 });
 
-test('checkout names follow the committed repository identity and START blocks noncanonical roots', async (t) => {
+test('checkout names follow repository identity and START admits explicit scratch clones only', async (t) => {
   const slug = 'agentic-design-system';
   const profile = fixtureProfile(`github.com/example/${slug}`);
   for (const [directory, mode, role] of [
     [slug, 'canonical', undefined],
+    [`${slug}-geostack-prd-scratch`, 'scratch', 'geostack-prd-scratch'],
     [`${slug}--candidate-runtime`, 'auxiliary', 'candidate-runtime'],
     [`${slug}-public`, 'mismatch', undefined],
     [`${slug}-private-archive`, 'mismatch', undefined],
@@ -459,11 +460,11 @@ test('checkout names follow the committed repository identity and START blocks n
       const location = repositoryCheckoutLocation(root, profile);
       assert.equal(location.mode, mode);
       assert.equal(location.role, role);
-      if (mode === 'canonical') {
-        assert.equal(assertCanonicalRepositoryCheckout(root, profile).startAllowed, true);
+      if (mode === 'canonical' || mode === 'scratch') {
+        assert.equal(assertStartCheckout(root, profile).startAllowed, true);
         return;
       }
-      assert.throws(() => assertCanonicalRepositoryCheckout(root, profile), (error) => {
+      assert.throws(() => assertStartCheckout(root, profile), (error) => {
         assert.equal(error.reason, mode === 'mismatch'
           ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
         return true;
@@ -483,7 +484,7 @@ test('checkout names follow the committed repository identity and START blocks n
   });
   const archiveProfile = fixtureProfile(`github.com/example/${archiveSlug}`);
   assert.equal(repositoryCheckoutLocation(archive.root, archiveProfile).mode, 'archive');
-  assert.throws(() => assertCanonicalRepositoryCheckout(archive.root, archiveProfile),
+  assert.throws(() => assertStartCheckout(archive.root, archiveProfile),
     (error) => error.reason === 'blocked-private-archive');
 });
 
@@ -496,6 +497,13 @@ test('doctor reports checkout naming mismatches and registered worktrees are exe
   const result = doctor(mismatch.root, mismatch.support);
   assert.match(result.stdout,
     /FAIL checkout-name\s+checkout is named agentic-design-system-public; expected agentic-design-system/u);
+
+  const scratch = fixture(t, {
+    directory: `${slug}-geostack-prd-scratch`, repository: profile.repository,
+  });
+  const scratchResult = doctor(scratch.root, scratch.support);
+  assert.match(scratchResult.stdout,
+    /ok\s+checkout-name\s+explicit scratch clone for agentic-design-system; START keeps its lane local to this clone/u);
 
   const canonical = fixture(t, { directory: slug, repository: profile.repository });
   const worktree = join(canonical.parent, 'lane-device--naming');
