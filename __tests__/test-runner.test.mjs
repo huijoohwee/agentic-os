@@ -131,6 +131,25 @@ test('runner records commands, counts, byte identity, and reuses only the same l
   process.env.CI = 'true'; f.messages.length = 0; assert.equal(await f.invoke(), 0);
   assert.equal(f.messages.some(message => message.startsWith('reused')), false);
 });
+test('committed verification reuses identical local source checks but keeps CI and fresh runs fresh', async t => {
+  localEnvironment(t);
+  const f = fixture(t), base = f.git('rev-parse','HEAD'), messages = [];
+  writeFileSync(join(f.root,'__tests__/small.test.mjs'),
+    "import test from 'node:test'; test('committed candidate', () => {});\n");
+  const run = (...args) => runTests(['affected',`--base=${base}`,...args],{root:f.root,out:text=>messages.push(text)});
+  assert.equal(await run(),0);
+  const before = f.receipt(), tested = before.results.find(result=>result.name==='__tests__/small.test.mjs');
+  assert.equal(tested.reused,false);
+  f.git('add','__tests__/small.test.mjs'); f.git('commit','-qm','commit the checked source');
+  assert.equal(await run('--committed'),0);
+  const committed = f.receipt(), reused = committed.results.find(result=>result.name==='__tests__/small.test.mjs');
+  assert.equal(reused.reused,true);
+  assert.equal(reused.validatedAt,tested.validatedAt,'reuse keeps the original validation time');
+  assert.equal(committed.identity.headRevision,f.git('rev-parse','HEAD'));
+  process.env.CI='true';
+  assert.equal(await run('--committed','--fresh'),0);
+  assert.ok(f.receipt().results.every(result=>result.reused===false),'CI fresh execution accepts no local receipt');
+});
 test('stale, failed, tampered, incomplete and mismatched check receipts are rejected', async t => {
   const f = fixture(t); assert.equal(await f.invoke(['--fresh']), 0);
   const directory = receiptDirectory(f.root), check = validationChecks(snapshot({ root: f.root, base: 'HEAD' }), f.receipt().plan)[1];
