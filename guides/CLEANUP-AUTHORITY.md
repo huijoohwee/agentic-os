@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.7
-prd_revision: 1.2.7
-tad_revision: 1.2.7
-adr_revision: 1.2.7
-mvp_revision: 1.2.7
-gtm_revision: 1.2.7
+version: 1.2.8
+prd_revision: 1.2.8
+tad_revision: 1.2.8
+adr_revision: 1.2.8
+mvp_revision: 1.2.8
+gtm_revision: 1.2.8
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.7`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.8`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -62,6 +62,23 @@ policy, merge method, succession authority or physical effects.
 Full END ADLC retains separate source, provider integration/retirement, disposition, delivery and
 handover requirements. The policy owner must accept whether these explicit facts satisfy the current
 recovery transition. A narrower proof never silently inherits stronger historical claims.
+
+### Current-quarantine retention enrollment — Agentic Design System PR #4 — 2026-10-30
+
+This exact enrollment binds `agent/device-0232231d4a19/csp-production-policy` at head
+`5ea8aba4f71f4c3065396b2b0a8bf58a4ba0f220`, merged by PR #4 as
+`9dd6c3a98621aaebdf2a36187d3aa9272c27fbee`, to the retained quarantine coordinate
+`f29c78535a0d07600bcd9f8c601006508874086b86b4e64e6e529d911f126cf3` and original receipt digest
+`efe35adc9bd930bf14e6216151b843fbc10f5c9460d5da01ceafe1aa4abb393d`. The original receipt records
+`bytesDeleted:false`; this enrollment preserves that receipt and projection without asserting historical
+quarantine authority, provider authority, claim retirement or a new physical cleanup effect. A fresh
+current preservation plan and its create-only receipt remain required before closeout can consume this
+retention disposition.
+
+The enrollment is limited to this repository, lane, reviewed merge and receipt. Removing this exact
+policy row and record rolls back the enrollment; it does not delete the retained bytes or original receipt.
+Budget: one existing policy row and this handover record; zero runtime modules, dependencies, paid
+resources or always-load bytes. Savings are not claimed.
 
 - H01: Given exact committed enrollment and fresh initial retrospective issuance, authenticate the
   real merge event, reviewed head/base, equal merge tree, successful pre-merge checks and current
