@@ -12,13 +12,13 @@ import { loadCommittedAuthorityPolicy, runAuthority } from '../bin/agentic-os-au
 const policyPath = '.github/adlc-authority-policy.json';
 const policy = loadCommittedAuthorityPolicy(policyPath);
 const revision = 'a'.repeat(40), digest = 'b'.repeat(64);
-function fixture(t) {
+function fixture(t, targetRepository = 'github.com/huijoohwee/agentic-os') {
   const directory = mkdtempSync(join(tmpdir(), 'authority-enrollment-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const event = join(directory, 'event.json');
-  const candidate = createRecoveryCandidate({ targetRepository: 'github.com/huijoohwee/agentic-os',
+  const candidate = createRecoveryCandidate({ targetRepository,
     branch: 'agent/test/enrollment', canonicalBranch: 'main', headRevision: revision,
-    canonicalRevision: 'c'.repeat(40), reviewLocator: 'https://github.com/huijoohwee/agentic-os/pull/1',
+    canonicalRevision: 'c'.repeat(40), reviewLocator: `https://${targetRepository.slice('github.com/'.length)}/pull/1`,
     predecessorEvidenceDigest: digest, inventoryAlgorithm: RECOVERY_CANDIDATE_INVENTORY_ALGORITHM,
     inventoryEntries: { index: 1, tracked: 1, visibleUntracked: 0, hidden: 0, ignoredRuntime: 0, content: 1 },
     indexInventoryDigest: digest, trackedInventoryDigest: digest, visibleUntrackedInventoryDigest: digest,
@@ -63,8 +63,9 @@ test('enrollment stays explicit, read-only, exact-target and credential-free', (
   assert.match(workflow, /workflow_dispatch:/u);
   assert.match(workflow, /contents: read/u);
   assert.match(workflow, /persist-credentials: false/u);
-  assert.match(workflow, /const target = "github.com\/huijoohwee\/agentic-os"/u);
-  assert.match(workflow, /dispatch.request.repository !== target \|\| dispatch.candidate.targetRepository !== target/u);
+  assert.match(workflow, /validateGitHubTransitionPolicy/u);
+  assert.match(workflow, /policy.targetRepositories.includes\(target\)/u);
+  assert.match(workflow, /dispatch.candidate.targetRepository !== target/u);
   assert.match(workflow, /run: node bin\/agentic-os-authority.mjs validate-event/u);
   assert.doesNotMatch(workflow, /issue-github|secrets\.|contents: write|pull_request_target|schedule:|npm (?:ci|install)/u);
 });
@@ -81,6 +82,27 @@ test('the enrolled workflow rejects either foreign request or foreign candidate 
     const result = invoke(); assert.equal(result.status, 1);
     assert.match(result.stderr, /authority target is outside this enrollment/u);
   }
+});
+
+test('authority target gate admits an exact committed transition target and rejects an unselected target', t => {
+  const target = 'github.com/huijoohwee/agentic-design-system';
+  const f = fixture(t, target), workflow = readFileSync('.github/workflows/adlc-authority.yml', 'utf8');
+  const script = workflow.match(/node --input-type=module -e '([\s\S]+?)\n          '/u)[1];
+  const invoke = () => spawnSync(process.execPath, ['--input-type=module', '-e', script],
+    { env: { ...process.env, GITHUB_EVENT_PATH: f.event }, encoding: 'utf8' });
+  assert.equal(invoke().status, 0);
+  const selected = JSON.parse(readFileSync('.agentic-os/github-transition-policy.json', 'utf8')).targetRepositories;
+  assert.ok(selected.includes(target));
+  const dispatch = JSON.parse(f.inputs.authority_payload);
+  dispatch.request.repository = 'github.com/huijoohwee/agentic-os';
+  writeFileSync(f.event, JSON.stringify({ inputs: { ...f.inputs, authority_payload: canonicalJson(dispatch) } }));
+  const mismatched = invoke(); assert.equal(mismatched.status, 1);
+  assert.match(mismatched.stderr, /authority target is outside this enrollment/u);
+  dispatch.request.repository = 'github.com/huijoohwee/unrelated';
+  dispatch.candidate.targetRepository = 'github.com/huijoohwee/unrelated';
+  writeFileSync(f.event, JSON.stringify({ inputs: { ...f.inputs, authority_payload: canonicalJson(dispatch) } }));
+  const result = invoke(); assert.equal(result.status, 1);
+  assert.match(result.stderr, /authority target is outside this enrollment/u);
 });
 
 test('Base enrollment binds Base checks and stays read-only', () => {
