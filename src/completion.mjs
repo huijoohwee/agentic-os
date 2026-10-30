@@ -312,6 +312,7 @@ function deliveryRow(row) {
   } else deliveryFail('disposition');
   return row;
 }
+const mixedNoDeployExclusion = (row, expected, evidence) => row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && [row.reason, evidence].every(text => /excluded from (?:the )?product artifact/iu.test(text) && expected.paths.every(path => text.includes(path)));
 /** Source/path/evidence binding only; consumer validation never authenticates or authorizes the producer. */
 export function validateDeliveryDispositionSet(value, expected) {
   try {
@@ -326,11 +327,10 @@ export function validateDeliveryDispositionSet(value, expected) {
     if (!expected.candidateIsCurrent(row.candidateRevision) || !expected.laneIntegratedAtCandidate(row.candidateRevision, row.laneHead)) deliveryFail('candidate-stale');
     const evidence = expected.readEvidence(row.evidencePath);
     if (typeof evidence !== 'string' || Buffer.byteLength(evidence) > 128_000 || expected.sha256(evidence) !== row.evidenceDigest) deliveryFail('evidence-binding');
-    if (row.disposition === 'deployed' ? ['docs-only', 'control-ledger-only', 'delivery-evidence-only'].includes(expected.changeClass) || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only' && !(expected.changeClass === 'control-ledger-only' && canonicalJson(expected.paths) === canonicalJson([DELIVERY_DISPOSITION_SET_PATH])) && !(expected.changeClass === 'delivery-evidence-only' && Array.isArray(expected.paths) && expected.paths.some(path => path.startsWith('docs/reports/')) && expected.paths.every(path => path === DELIVERY_DISPOSITION_SET_PATH || path.startsWith('docs/reports/')) && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason)) ) deliveryFail('disposition-scope');
-    return Object.freeze({ ...row, ...(expected.changeClass === 'delivery-evidence-only' && row.disposition === 'no-deploy' ? { scopeRule: 'delivery-evidence-artifact-exclusion' } : {}), receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
+    if (row.disposition === 'deployed' ? ['docs-only', 'control-ledger-only', 'delivery-evidence-only'].includes(expected.changeClass) || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only' && !(expected.changeClass === 'control-ledger-only' && canonicalJson(expected.paths) === canonicalJson([DELIVERY_DISPOSITION_SET_PATH])) && !(expected.changeClass === 'delivery-evidence-only' && expected.paths.some(path => path.startsWith('docs/reports/')) && expected.paths.every(path => path === DELIVERY_DISPOSITION_SET_PATH || path.startsWith('docs/reports/')) && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason)) && !(expected.changeClass === 'mixed' && mixedNoDeployExclusion(row, expected, evidence))) deliveryFail('disposition-scope');
+    return Object.freeze({ ...row, ...(expected.changeClass === 'mixed' && row.disposition === 'no-deploy' ? { scopeRule: 'mixed-path-artifact-exclusion' } : expected.changeClass === 'delivery-evidence-only' && row.disposition === 'no-deploy' ? { scopeRule: 'delivery-evidence-artifact-exclusion' } : {}), receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
   } catch (error) { if (error?.reason?.startsWith('blocked-delivery-disposition-')) throw error; deliveryFail('invalid'); }
 }
-
 /** Project only an exact, current, read-only closeout when a lane is already settled or still pending. */
 export function projectProgressiveCloseout(target, observed) {
   const closeout = observed?.closeout, base = { path: target.path, ref: target.branch,
