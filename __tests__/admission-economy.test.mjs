@@ -455,13 +455,16 @@ for (const hops of [1, 2, 3]) test(`${hops} published successors reuse the retai
 
 test('multi-hop readmission refuses a missing older remote without changing the mission or reservation', async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
-  const target = lanePath('one', 'test-device', f.root), head = headSha('HEAD', target);
+  const target = lanePath('one', 'test-device', f.root), cachedHead = headSha('HEAD', target);
+  writeFileSync(join(target, 'owned.txt'), 'advance predecessor\n');
+  git(['add', 'owned.txt'], { cwd: target }); git(['-c', 'commit.gpgsign=false', 'commit', '-m', 'advance predecessor'], { cwd: target });
+  const head = headSha('HEAD', target);
   let ref = 'agent/test-device/one';
   for (const scope of ['second', 'third']) {
     f.run('push', 'origin', `refs/heads/${ref}:refs/heads/${ref}`);
     const prior = records.get(ref, f.root);
-    records.putExact({ ...prior, state: 'published', head,
-      handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
+    records.putExact({ ...prior, state: 'published', head: ref.endsWith('/one') ? cachedHead : head,
+      handoff: prior.handoff ?? { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, prior, f.root);
     runPublishedLaneSuccessor({ cwd: target, predecessorRef: ref, scope, explicitHead: head,
       remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {} });
     ref = `agent/test-device/${scope}`;
@@ -472,6 +475,17 @@ test('multi-hop readmission refuses a missing older remote without changing the 
     `--mission=${before.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), /exact published predecessor/);
   assert.equal(f.selected().digest, before.digest);
   assert.deepEqual(records.get(ref, f.root), record);
+  f.run('push', 'origin', head + ':refs/heads/agent/test-device/one');
+  assert.equal(await cmdStart(f.root, ['third', '--device=test-device', '--write=additional.txt',
+    `--mission=${before.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), 0);
+  const rows = records.load(f.root).lanes, allocation = f.selected().manifest.allocations[0],
+    proves = (older, newer) => git(['merge-base', '--is-ancestor', older, newer], { cwd: f.root, allowFail: true }) !== null;
+  assert.equal(rows['agent/test-device/one'].head, cachedHead);
+  assert.deepEqual(readmissionPredecessors(rows[ref], rows, allocation, proves),
+    [rows[ref].handoff, rows['agent/test-device/second'].handoff]);
+  assert.equal(readmissionPredecessors(rows[ref], { ...rows, 'agent/test-device/one': {
+    ...rows['agent/test-device/one'], head: 'e'.repeat(40),
+  } }, allocation, proves), false);
 });
 
 test('successor lineage rejects missing, mismatched, cyclic and over-budget ancestry', () => {

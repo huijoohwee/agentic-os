@@ -308,7 +308,7 @@ export function readmissionPredecessors(record, records, allocation = null, prov
     const link = successorLineage(current); if (link === null) break;
     if (link === false || chain.length === 32 || seen.has(link.predecessorRef)) return false;
     const previous = records[link.predecessorRef];
-    if (!previous || previous.ref !== link.predecessorRef || previous.head != null && previous.head !== link.predecessorHead || previous.worktree !== record.worktree || previous.base !== record.base || !ancestor(previous.baseSha, record.baseSha)) return false;
+    if (!previous || previous.ref !== link.predecessorRef || !sha(previous.head) || previous.head !== link.predecessorHead && !ancestor(previous.head, link.predecessorHead) || previous.worktree !== record.worktree || previous.base !== record.base || !ancestor(previous.baseSha, record.baseSha)) return false;
     chain.push(link); seen.add(link.predecessorRef); current = previous;
   }
   if (allocation && allocation.ref !== record.ref && !seen.has(allocation.ref)) {
@@ -323,7 +323,7 @@ export function readmissionPredecessors(record, records, allocation = null, prov
   } else if (allocation && allocation.ref !== record.ref) {
     const anchor = records[allocation.ref], retained = chain.find(link => link.predecessorRef === allocation.ref);
     const checkpoint = allocation.baseRevision === record.baseSha && anchor?.baseSha === record.baseSha && allocation.headRevision !== allocation.baseRevision && ancestor(allocation.baseRevision, allocation.headRevision) && ancestor(allocation.headRevision, record.head);
-    if (!anchor || !retained || retained.predecessorHead !== anchor.head || !ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha) || !checkpoint && !ancestor(allocation.headRevision, anchor.head)) return false;
+    if (!anchor || !retained || !ancestor(anchor.head, retained.predecessorHead) || !ancestor(allocation.baseRevision, anchor.baseSha) || !ancestor(anchor.baseSha, record.baseSha) || !checkpoint && !ancestor(allocation.headRevision, anchor.head)) return false;
   }
   return chain;
 }
