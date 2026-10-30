@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
-import { projectProgressiveCloseout } from '../src/completion.mjs';
+import { DELIVERY_DISPOSITION_SET_PATH, projectProgressiveCloseout } from '../src/completion.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { get, put } from '../src/lane-records.mjs';
 import { governanceDigest } from '../src/governance.mjs';
@@ -31,15 +31,15 @@ function fixture(t) {
   const status = () => inspectCompletionStatus(root, REF, policy, profile);
   return { parent, root, lane, git, profile, policy, status };
 }
-function addDeliveryDisposition(subject, { disposition, evidencePath = 'docs/delivery-evidence.md', reason = null, candidateRevision = null } = {}) {
+function addDeliveryDisposition(subject, { disposition, evidencePath = 'docs/delivery-evidence.md', reason = null, candidateRevision = null, ref = REF, laneHead: boundHead = null } = {}) {
   const root = subject.root;
   candidateRevision ??= subject.git(root, 'rev-parse', 'HEAD');
-  const laneHead = subject.git(root, 'rev-parse', `refs/heads/${REF}`);
+  const laneHead = boundHead ?? subject.git(root, 'rev-parse', `refs/heads/${ref}`);
   const paths = execFileSync('git', ['diff', '--name-only', '-z', '--no-renames', `refs/heads/main...${laneHead}`],
     { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean).sort();
   const evidence = execFileSync('git', ['show', `${candidateRevision}:${evidencePath}`], { cwd: root, encoding: 'utf8' });
   const row = {
-    schema: 'agentic-os/delivery-disposition/v1', ref: REF, laneHead, paths, disposition,
+    schema: 'agentic-os/delivery-disposition/v1', ref, laneHead, paths, disposition,
     candidateRevision, candidateDigest: 'a'.repeat(64),
     sourceReleaseReceiptDigest: disposition === 'deployed' ? 'b'.repeat(64) : null,
     deploymentReceiptDigest: disposition === 'deployed' ? 'c'.repeat(64) : null,
@@ -608,6 +608,55 @@ test('exact control-ledger no-deploy proof closes scope and supports later ledge
   assert.equal(maintenanceReport.closeout.completionScope, 'delivery-bound');
   assert.equal(maintenanceReport.closeout.cleanupSatisfied, false);
   assert.equal(maintenanceReport.closeout.adlcState, 'cleanup_pending');
+});
+
+test('successor delivery scope starts at its exact squash-integrated predecessor', (t) => {
+  const subject = fixture(t), predecessorRef = REF, proofRef = 'agent/device/control-ledger-proof',
+    successorRef = 'agent/device/successor-ledger-maintenance';
+  mkdirSync(join(subject.lane, 'docs'), { recursive: true });
+  writeFileSync(join(subject.lane, 'docs', 'product-plan.md'), '# Product plan\n');
+  subject.git(subject.lane, 'add', '.');
+  subject.git(subject.lane, 'commit', '--quiet', '-m', 'document product plan');
+  const predecessorHead = subject.git(subject.root, 'rev-parse', `refs/heads/${predecessorRef}`);
+  subject.git(subject.root, 'merge', '--squash', predecessorRef);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'merge product plan');
+  mkdirSync(join(subject.root, 'docs'), { recursive: true });
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'),
+    JSON.stringify({ operations: ['production-activation'] }));
+  writeFileSync(join(subject.root, 'docs', 'delivery-evidence.md'),
+    '# Artifact boundary\nThe product artifact excludes the delivery ledger.\n');
+  subject.git(subject.root, 'add', '.');
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'record delivery boundary');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  const proofPath = join(subject.parent, 'proof');
+  subject.git(subject.root, 'worktree', 'add', '--quiet', '-b', proofRef, proofPath);
+  writeFileSync(join(proofPath, DELIVERY_DISPOSITION_SET_PATH), '{}\n');
+  subject.git(proofPath, 'add', DELIVERY_DISPOSITION_SET_PATH);
+  subject.git(proofPath, 'commit', '--quiet', '-m', 'add delivery ledger');
+  const proofHead = subject.git(subject.root, 'rev-parse', `refs/heads/${proofRef}`);
+  subject.git(subject.root, 'merge', '--squash', proofRef);
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'integrate delivery ledger proof');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+  addDeliveryDisposition(subject, { ref: proofRef, laneHead: proofHead, disposition: 'no-deploy',
+    evidencePath: 'docs/delivery-evidence.md', reason: 'The delivery ledger is excluded from the product artifact.' });
+
+  const successorPath = join(subject.parent, 'successor');
+  subject.git(subject.root, 'worktree', 'add', '--quiet', '-b', successorRef, successorPath, predecessorHead);
+  writeFileSync(join(successorPath, DELIVERY_DISPOSITION_SET_PATH), '{ }\n');
+  subject.git(successorPath, 'add', DELIVERY_DISPOSITION_SET_PATH);
+  subject.git(successorPath, 'commit', '--quiet', '-m', 'maintain delivery ledger');
+  const successorHead = subject.git(subject.root, 'rev-parse', `refs/heads/${successorRef}`);
+  put({ ref: successorRef, state: 'active', head: successorHead, worktree: successorPath,
+    handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef, predecessorHead } }, subject.root);
+
+  const report = inspectCompletionStatus(subject.root, successorRef, subject.policy, subject.profile);
+  assert.equal(report.changeClass, 'control-ledger-only');
+  assert.equal(report.deliveryDisposition.disposition, 'no-deploy');
+  assert.deepEqual(report.deliveryDisposition.paths, [DELIVERY_DISPOSITION_SET_PATH]);
+  assert.equal(report.deliveryDisposition.scopeRule, 'exact-control-ledger-artifact-exclusion');
+  assert.equal(report.deliveryDisposition.evidenceForRef, proofRef);
+  assert.equal(report.deliveryDispositionError, null);
+  assert.equal(report.authorizesEffects, false);
 });
 
 test('delivery evidence and ledger paths close only with artifact-exclusion no-deploy evidence', (t) => {
