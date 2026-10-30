@@ -117,12 +117,12 @@ For delivery-bound lanes, `adlcState=complete` requires a valid disposition that
 enrolled delivery scope. A preservation lane also needs its bound retirement receipt pair;
 `completionScope=retirement-bound` reports `retirement_pending` until that pair validates.
 Status values apply to one exact lane and do not summarize siblings.
-No-deploy requires a documented reason and is accepted for docs-only paths, or for the single
-exact `.agentic-os-delivery-dispositions.json` path when the committed evidence digest binds the
-product artifact boundary and the reason says the ledger is excluded from the product artifact.
-Later changes to that same ledger may reuse this path-bound evidence after its source lane and
-candidate are verified. Any additional path returns to the normal mixed-scope decision. This
-observation grants neither a production effect nor a no-deploy exemption for other paths.
+No-deploy requires a documented reason and is accepted for docs-only paths, the exact delivery
+ledger, delivery-evidence-only paths, or a mixed lane whose committed evidence digest binds a
+product-owner report naming every exact changed path and stating that each is excluded from the
+product artifact. Ledger and evidence-only records must also state their artifact exclusion.
+This observation is source-bound only: it does not authenticate the producer or authorize a
+production effect.
 
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
