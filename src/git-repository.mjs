@@ -115,11 +115,11 @@ export function repositoryCheckoutLocation(repository, profile) {
     return Object.freeze({ mode: 'worktree', name, expectedName: slug, ok: true,
       startAllowed: false });
   }
-  if (name === slug) {
-    const archive = slug.endsWith('-private-archive');
-    return Object.freeze({ mode: archive ? 'archive' : 'canonical', name,
-      expectedName: slug, ok: true, startAllowed: !archive });
-  }
+  const scratchRole = name.startsWith(`${slug}-`) ? name.slice(slug.length + 1) : '';
+  const scratch = scratchRole.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*-scratch$/u.test(scratchRole);
+  if (name === slug || scratch) return Object.freeze({ mode: slug.endsWith('-private-archive') ? 'archive'
+    : scratch ? 'scratch' : 'canonical', name, expectedName: slug, ...(scratch ? { role: scratchRole } : {}),
+  ok: true, startAllowed: !slug.endsWith('-private-archive') });
   const role = name.startsWith(slug + '--') ? name.slice(slug.length + 2) : '';
   if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(role) && role.length <= 64) {
     return Object.freeze({ mode: 'auxiliary', name, expectedName: slug, role, ok: true,
@@ -129,20 +129,13 @@ export function repositoryCheckoutLocation(repository, profile) {
     startAllowed: false });
 }
 
-/** Refuse lane admission from a mismatched, auxiliary, or private-archive checkout. */
-export function assertCanonicalRepositoryCheckout(repository, profile) {
+/** Refuse lane admission from auxiliary, worktree, mismatched, or private-archive checkouts. */
+export function assertStartCheckout(repository, profile) {
   const location = repositoryCheckoutLocation(repository, profile);
-  if (location.mode === 'not-applicable') return location;
-  if (location.mode === 'archive') {
-    blocked('private archive checkouts are frozen and cannot start source lanes',
-      'blocked-private-archive');
-  }
-  if (location.mode !== 'canonical') {
-    const reason = location.mode === 'mismatch'
-      ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout';
-    blocked('START requires the canonical checkout ' + location.expectedName + '; found '
-      + location.name + ' (' + location.mode + ')', reason);
-  }
+  if (location.mode === 'archive') blocked('private archive checkouts are frozen and cannot start source lanes', 'blocked-private-archive');
+  if (!['not-applicable', 'canonical', 'scratch'].includes(location.mode)) blocked(
+    `START requires the canonical checkout or an explicit -scratch clone for ${location.expectedName}; found ${location.name} (${location.mode})`,
+    location.mode === 'mismatch' ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
   return location;
 }
 

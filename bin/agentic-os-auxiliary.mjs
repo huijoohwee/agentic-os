@@ -531,14 +531,14 @@ export function cmdDoctor(root, profile, policy) {
   const entries = worktrees(root);
   const configEntries = hookDoctorEntries(root, entries);
   const local = observeLocalHealth(root, policy, profile, entries);
-  const checkout = repositoryCheckoutLocation(root, profile);
-  const checkoutOk = checkout.mode !== 'mismatch';
-  out(report.formatConfig(configEntries));
-  out('');
+  const checkout = repositoryCheckoutLocation(root, profile),
+    checkoutOk = ['canonical', 'scratch', 'not-applicable'].includes(checkout.mode);
+  out(report.formatConfig(configEntries)); out('');
   out(report.formatLocal(local));
   out('');
   const checkoutDetail = checkout.mode === 'canonical'
     ? 'canonical checkout name matches repository slug ' + checkout.expectedName
+    : checkout.mode === 'scratch' ? 'explicit scratch clone for ' + checkout.expectedName + '; START keeps its lane local to this clone'
     : checkout.mode === 'archive'
       ? 'archive checkout name matches ' + checkout.expectedName + '; START is disabled'
       : checkout.mode === 'auxiliary'
@@ -550,7 +550,7 @@ export function cmdDoctor(root, profile, policy) {
             : 'repository identity has no GitHub checkout-name rule';
   out(report.formatFindings('repository checkout naming', [{
     id: 'checkout-name', ok: checkoutOk, detail: checkoutDetail,
-    remedy: checkoutOk ? null : 'rename the canonical clone to ' + checkout.expectedName,
+    remedy: checkoutOk ? null : 'use the canonical clone or an explicit -scratch clone of ' + checkout.expectedName,
   }]));
   out('');
   const kind = providerKind(profile);

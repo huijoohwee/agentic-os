@@ -49,14 +49,12 @@ function fixture(t) {
   const selected = () => readSelectedWorkflow(root, profile.repository, { required: true });
   return { root, parent, run, plan, profile, policy, events, effects, fetches, start, selected, services };
 }
-
 test('zero declared allowance still refreshes the protected ref before refusing checkout', async t => {
   const f = fixture(t);
   await assert.rejects(f.start('one', `--plan=${f.plan}`, '--checkout-limit=0'), /allows no checkout/);
   assert.equal(f.fetches.length, 1); assert.deepEqual(f.effects, []); assert.equal(worktrees(f.root).length, 1);
   assert.equal(f.run('status', '--porcelain'), '');
 });
-
 test('START refreshes the protected branch before canonical checks and mission planning', async t => {
   const f = fixture(t), initialHead = headSha(f.policy.protectedRef, f.root);
   const updater = join(f.parent, 'updater');
@@ -70,7 +68,6 @@ test('START refreshes the protected branch before canonical checks and mission p
   await exec('git', ['-C', updater, 'push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
   assert.notEqual(initialHead, expectedHead);
   assert.equal(headSha(f.policy.protectedRef, f.root), initialHead);
-
   assert.equal(await f.start('fresh', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
   assert.equal(headSha(f.policy.protectedRef, f.root), expectedHead);
   assert.equal(f.events.indexOf('fetch') < f.events.indexOf('canonical'), true);
@@ -80,16 +77,21 @@ test('START refreshes the protected branch before canonical checks and mission p
 
 
 test('new planned missions default to one without inheriting unrelated mission navigation', async t => {
-  const f = fixture(t);
-  assert.equal(await f.start('one', `--plan=${f.plan}`), 0);
-  const first = f.selected();
-  assert.equal(first.manifest.execution.checkoutLimit, 1);
+  const f = fixture(t), draft = 'undocumented-draft/prd-tad-adr-mvp-gtm.md', bytes = version => `---\ndoc_type: PRD-TAD-ADR-MVP-GTM\n---\n# Draft ${version}\n`;
+  mkdirSync(join(f.root, 'undocumented-draft')); writeFileSync(join(f.root, draft), bytes('0.3.1'));
+  assert.equal(await f.start('one', `--plan=${draft}`), 0);
+  const first = f.selected(), previousBytes = readFileSync(first.path, 'utf8'), effects = f.effects.length; assert.equal(first.manifest.execution.checkoutLimit, 1);
+  writeFileSync(join(f.root, draft), bytes('0.3.2'));
+  assert.equal(await f.start('one', `--plan=${draft}`), 0);
+  const current = f.selected();
+  assert.notEqual(current.manifest.id, first.manifest.id); assert.equal(current.manifest.planning.digest, hash(bytes('0.3.2')));
+  assert.equal(readFileSync(first.path, 'utf8'), previousBytes); assert.equal(current.manifest.planning.source, 'working-tree'); assert.equal(f.effects.length, effects); assert.equal(worktrees(f.root).length, 2);
   assert.equal(await cmdStart(f.root, ['two', '--device=test-device', '--write=second.txt',
     `--plan=${f.plan}`], f.policy, f.profile, f.services), 0);
   const second = f.selected();
   assert.notEqual(first.manifest.id, second.manifest.id);
   assert.equal(second.manifest.execution.checkoutLimit, 1);
-  await assert.rejects(f.start('three'), new RegExp(`exhausted for workflow ${second.manifest.id} \\(1/1\\).*committed --plan`));
+  await assert.rejects(f.start('three'), new RegExp(`exhausted for workflow ${second.manifest.id} \\(1/1\\).*--plan=<PRD-path>`));
 });
 
 test('CLI and native START reject declarations above five without effects', async t => {
@@ -486,59 +488,6 @@ test('multi-hop readmission refuses a missing older remote without changing the 
   assert.equal(readmissionPredecessors(rows[ref], { ...rows, 'agent/test-device/one': {
     ...rows['agent/test-device/one'], head: 'e'.repeat(40),
   } }, allocation, proves), false);
-});
-
-test('successor lineage rejects missing, mismatched, cyclic and over-budget ancestry', () => {
-  const common = { worktree: '/one', base: 'refs/remotes/origin/main', baseSha: 'a'.repeat(40), head: 'a'.repeat(40) };
-  const rows = {};
-  for (let index = 0; index <= 33; index++) {
-    const ref = `agent/device/lane-${index}`;
-    rows[ref] = { ...common, ref, ...(index ? { handoff: { schema: 'agentic-os-lane-successor/v1',
-      predecessorRef: `agent/device/lane-${index - 1}`, predecessorHead: common.head } } : {}) };
-  }
-  const record = rows['agent/device/lane-32'];
-  assert.equal(readmissionPredecessors(record, rows).length, 32);
-  const released = { ...record, handoff: { ...record.handoff, reservationPathReleases: [{
-    schema: 'agentic-os/reservation-path-release/v1', path: 'docs/released.md',
-    laneHead: common.head, protectedHead: common.head,
-    lanePathEntry: { mode: '100644', type: 'blob', oid: common.head },
-    protectedPathEntry: { mode: '100644', type: 'blob', oid: common.head },
-    bytesDiffer: false, digest: 'b'.repeat(64),
-  }] } };
-  assert.equal(readmissionPredecessors(released, { ...rows, [record.ref]: released }).length, 32);
-  const malformedRelease = { ...released, handoff: { ...released.handoff,
-    reservationPathReleases: [{ ...released.handoff.reservationPathReleases[0], path: '../released.md' }] } };
-  assert.equal(readmissionPredecessors(malformedRelease, { ...rows, [record.ref]: malformedRelease }), false);
-  const recoveryRef = 'agent/device/recovery', predecessorRef = 'agent/device/predecessor',
-    recovery = { ref: recoveryRef, device: 'device', scope: 'recovery', state: 'active',
-      base: common.base, baseSha: common.baseSha, worktree: common.worktree, pr: null, createdAt: '2026-10-10T00:00:00.000Z',
-      writePaths: ['src/owned.mjs'], head: common.head,
-      handoff: { ...released.handoff, predecessorRef, predecessorHead: common.head } },
-    predecessor = { ...common, ref: predecessorRef, state: 'published', writePaths: recovery.writePaths };
-  assert.deepEqual(successorRecordPlan({ boundRef: recoveryRef, successorRef: recoveryRef,
-    lanes: { [recoveryRef]: recovery, [predecessorRef]: predecessor }, explicitHead: common.head,
-    protectedRef: common.base, tip: common.head, worktree: common.worktree, device: 'device',
-    scope: 'recovery', createdAt: 'ignored', writePaths: recovery.writePaths }).plannedRecord, recovery);
-  assert.equal(readmissionPredecessors(rows['agent/device/lane-33'], rows), false);
-  for (const patch of [undefined, { ...rows['agent/device/lane-0'], head: 'b'.repeat(40) },
-    { ...rows['agent/device/lane-0'], worktree: '/other' },
-    { ...rows['agent/device/lane-0'], handoff: { schema: 'agentic-os-lane-successor/v1', predecessorRef: record.ref, predecessorHead: common.head } }]) {
-    assert.equal(readmissionPredecessors(record, { ...rows, 'agent/device/lane-0': patch }), false);
-  }
-  const published = { ...rows, 'agent/device/lane-31': { ...rows['agent/device/lane-31'], handoff: null } };
-  const allocation = { ref: 'agent/device/lane-0', path: common.worktree,
-    baseRevision: common.baseSha, headRevision: common.head };
-  assert.equal(readmissionPredecessors(record, published, allocation).length, 2);
-  const replacedAnchor = { ...published, 'agent/device/lane-0': {
-    ...published['agent/device/lane-0'], head: 'c'.repeat(40),
-  } };
-  assert.equal(readmissionPredecessors(record, replacedAnchor, allocation).length, 1);
-  assert.equal(readmissionPredecessors(record, replacedAnchor, {
-    ...allocation, headRevision: 'b'.repeat(40),
-  }), false);
-  for (const patch of [{ path: '/other' }, { headRevision: 'b'.repeat(40) }, { baseRevision: 'b'.repeat(40) }, { ref: 'agent/device/missing' }]) {
-    assert.equal(readmissionPredecessors(record, published, { ...allocation, ...patch }), false);
-  }
 });
 
 test('older allocation re-admission requires exact base and head ancestry', () => {

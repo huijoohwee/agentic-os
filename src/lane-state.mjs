@@ -334,7 +334,14 @@ export function matchesAllocationCheckpointSuccessor({ record, allocation, path,
     && allocation.ref !== record.ref && allocation.path === path && allocation.worktreeId === worktreeId && allocation.baseRevision === record.baseSha && allocation.headRevision !== allocation.baseRevision
     && Array.isArray(lineage) && lineage.length > 0 && ancestor(record.baseSha, allocation.headRevision) && ancestor(allocation.headRevision, record.head) && ancestor(record.head, head));
 }
-export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef, tip, worktree, device, scope, createdAt, writePaths }) {
+export function draftPlanRebindAllowed({ selected, prior, record, identity, member, base, ref, path, scope, requestedExact, protectedRef, clean }) {
+  return Boolean(selected.manifest.execution && selected.manifest.allocations?.length === 1 && selected.members.length === 1
+    && prior?.state === 'active' && prior.ref === ref && prior.path === path && prior.baseRevision === base && prior.headRevision === base
+    && prior.writeDigest === scope && requestedExact && record?.base === protectedRef && record.baseSha === base
+    && identity.head === base && member?.child.source.revision === base && !clean);
+}
+export function successorRecordPlan({ boundRef, successorRef, lanes, explicitHead, protectedRef,
+  tip, worktree, device, scope, createdAt, writePaths }) {
   const boundRecord = lanes[boundRef], targetRecord = lanes[successorRef],
     boundLineage = successorLineage(boundRecord), targetLineage = successorLineage(targetRecord);
   if (boundLineage === false || targetLineage === false) return successorRefusal('blocked-successor-cache-race', 'successor lineage payload is invalid');

@@ -8,12 +8,12 @@ import { snapshotWorktreeEntry } from '../src/file-integrity.mjs';
 import { assertDevice, deviceSegment, isLaneRef, laneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { DEFAULT_TASK_CHECKOUTS, MAX_TASK_CHECKOUTS, assertCheckoutPlacement } from '../src/canonical-resources.mjs';
 import * as store from '../src/lane-records.mjs';
-import { matchesAllocationCheckpointSuccessor, readmissionPredecessors } from '../src/lane-state.mjs';
+import { draftPlanRebindAllowed, matchesAllocationCheckpointSuccessor, readmissionPredecessors } from '../src/lane-state.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
 import { provision, assertProvisionable, assertDisjointReservation, committedLanePaths, lanePath, parseWritePaths } from '../src/worktree.mjs';
 import { recoverLaneRecordFromMission } from '../src/lane-cache-legacy.mjs';
 import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
-import { assertCanonicalRepositoryCheckout } from '../src/git-repository.mjs';
+import { assertStartCheckout } from '../src/git-repository.mjs';
 import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
@@ -121,7 +121,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
     enforceCheckoutName = false } = services;
   const [scope] = positional(argv), device = assertDevice(option(argv, 'device') ?? deviceSegment());
   if (!scope) { err('usage: start <scope> --write=<paths>'); return 1; }
-  if (enforceCheckoutName) assertCanonicalRepositoryCheckout(root, profile);
+  if (enforceCheckoutName) assertStartCheckout(root, profile);
   const ref = laneRef(scope, device);
   let path = lanePath(scope, device, root), worktreeId = basename(path);
   const requested = option(argv, 'write') === null ? [] : parseWritePaths(option(argv, 'write'));
@@ -130,35 +130,30 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const readmit = flag(argv, 'readmit'), expectedHead = option(argv, 'expected-head');
   if (expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)) fail('head', 'expected-head must be an exact commit SHA');
   if (readmit && (!input || !expectedHead)) fail('readmit-binding', 'readmit requires an exact mission and expected-head');
-  const refreshMethods = refresh?.owner ? { plan: refresh.owner.plan ?? refresh.owner.planLaneAlignment,
-    prepare: refresh.owner.prepare ?? refresh.owner.prepareLaneAlignment,
-    apply: refresh.owner.apply ?? refresh.owner.applyLaneAlignment } : null;
-  if (refresh && (!readmit || refresh.stopped !== true || !/^[a-f0-9]{40}$/u.test(refresh.expectedTarget ?? '')
-    || ['plan', 'prepare', 'apply'].some(key => typeof refreshMethods?.[key] !== 'function')))
-    fail('refresh-binding', 'Refresh requires stopped-writer readmission and one exact protected target');
+  const refreshMethods = refresh?.owner ? { plan: refresh.owner.plan ?? refresh.owner.planLaneAlignment, prepare: refresh.owner.prepare ?? refresh.owner.prepareLaneAlignment, apply: refresh.owner.apply ?? refresh.owner.applyLaneAlignment } : null;
+  if (refresh && (!readmit || refresh.stopped !== true || !/^[a-f0-9]{40}$/u.test(refresh.expectedTarget ?? '') || ['plan', 'prepare', 'apply'].some(key => typeof refreshMethods?.[key] !== 'function'))) fail('refresh-binding', 'Refresh requires stopped-writer readmission and one exact protected target');
   const lock = acquireOperationLock('agentic-os-start', root);
   if (!lock) { err('blocked-concurrent-start: another lane admission owns the clone-wide start lock'); return 1; }
-  let result, error, selected, allocation;
+  let result, error, selected, allocation, planSnapshot;
   const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null, protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
     provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false, fetchReceipt: null, provisionReceipt: null, alignmentReceipt: null, allocation: null, workflow: null };
   try {
     const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
     Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
     artifacts.effectsRetained ||= fetched.effectsRetained;
-    if (enforceCheckoutName) assertCanonicalRepositoryCheckout(root, profile);
+    if (enforceCheckoutName) assertStartCheckout(root, profile);
     requireCanonical(root, policy);
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
     selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || !planningPath || readmit) });
-    if (!selected && planningPath && explicitLimit === null) explicitLimit = DEFAULT_TASK_CHECKOUTS;
-    const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
-    assertCheckoutPlacement(path, worktrees(root));
-    if (input && selected) selectedAgain(root, profile.repository, selected);
+    if (selected && planningPath === selected.manifest.planning.path) planSnapshot = validateWorkflowPlanning(root, profile.repository, { revision: artifacts.fetchedProtectedSha, planningPath });
+    if (!selected && planningPath && explicitLimit === null) explicitLimit = DEFAULT_TASK_CHECKOUTS; const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
+    assertCheckoutPlacement(path, worktrees(root)); if (input && selected) selectedAgain(root, profile.repository, selected);
     if (enrolled) {
       if (!selected?.manifest.execution && explicitLimit === null) fail('allowance-required', 'Declare the mission checkout limit before creation or explicit legacy adoption'); if (selected?.manifest.execution && explicitLimit !== null && selected.manifest.execution.checkoutLimit !== explicitLimit) fail('allowance-drift', 'A retry cannot reset or enlarge the existing mission allowance');
-      if (selected && planningPath && selected.manifest.planning.path !== planningPath) fail('planning-drift', 'The selected mission binds a different plan'); if (!selected && !planningPath) fail('plan-required', 'A new declared mission requires a committed planning document');
-      if (!selected) validateWorkflowPlanning(root, profile.repository, { revision: headSha(policy.protectedRef, root), planningPath }); const row = selected?.manifest.allocations?.find(item => item.worktreeId === worktreeId);
+      if (selected && planningPath && selected.manifest.planning.path !== planningPath) fail('planning-drift', 'The selected mission binds a different plan'); if (!selected && !planningPath) fail('plan-required', 'A new declared mission requires a planning document'); let row = selected?.manifest.allocations?.find(item => item.worktreeId === worktreeId);
+      if (!selected) planSnapshot = validateWorkflowPlanning(root, profile.repository, { revision: headSha(policy.protectedRef, root), planningPath });
       const registered = worktrees(root).find(item => item.branch === ref || item.path === path);
       if (registered) {
         let record = records[ref];
@@ -170,6 +165,11 @@ export async function cmdStart(root, argv, policy, profile, services) {
         const reusePaths = refresh ? parseWritePaths((record?.writePaths ?? []).join(',')) : requested;
         const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead, reusePaths, policy, row, readmit,
           { enabled: readmit && !refresh, selected, repository: profile.repository, artifacts });
+        if (selected && planSnapshot && planSnapshot.planning.digest !== selected.manifest.planning.digest) {
+          const base = artifacts.fetchedProtectedSha, prior = row, member = selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository);
+          if (!draftPlanRebindAllowed({ selected, prior, record: identity.record, identity, member, base, ref, path, scope: scopeDigest(identity.reserved), requestedExact: JSON.stringify(requested) === JSON.stringify(identity.reserved), protectedRef: policy.protectedRef, clean: git(['status', '--porcelain', '--untracked-files=all'], { cwd: path }) })) fail('draft-rebind', 'Changed plans require one clean active lane at the fetched base and its exact reservation');
+          selected = readSelectedWorkflow(root, profile.repository, { input: startWorkflow(root, profile.repository, { revision: base, planningPath, worktreeId, planSnapshot, execution: selected.manifest.execution, allocation: { worktreeId, ref, path, baseRevision: base, headRevision: base, writeDigest: prior.writeDigest, state: 'active', operation: 'create' } }).manifest, required: true }); row = selected.manifest.allocations?.find(item => item.worktreeId === worktreeId);
+        }
         record = identity.record;
         if (!selected) fail('mission-required', 'Existing lanes need their exact workflow identity; no new root is created for reuse');
         if (!selected.members.some(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)) fail('member-binding', 'The existing lane is not a member of the selected mission');
@@ -265,7 +265,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (row) fail('recovery-required', 'A retained allocation still consumes capacity; reconcile it without another checkout');
         const limit = Math.min(selected?.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS);
         const capacity = selected ? checkoutCapacity(selected, profile.repository, worktrees(root), explicitLimit) : { consumed: 0 };
-        if (limit === 0 || capacity.consumed >= limit) fail('capacity', limit === 0 ? `Mission ${selected?.manifest.id ?? 'new task'} allows no checkout. Declare a separate task with a positive --checkout-limit.` : `Checkout allowance exhausted for workflow ${selected.manifest.id} (${capacity.consumed}/${limit}). Resume/reconcile its allocation or pass a committed --plan for a new task.`, { capacity: { ...capacity, limit } });
+        if (limit === 0 || capacity.consumed >= limit) fail('capacity', limit === 0 ? `Mission ${selected?.manifest.id ?? 'new task'} allows no checkout. Declare a separate task with a positive --checkout-limit.` : `Checkout allowance exhausted for workflow ${selected.manifest.id} (${capacity.consumed}/${limit}). Resume/reconcile its allocation or pass --plan=<PRD-path> for a new task.`, { capacity: { ...capacity, limit } });
       }
     }
     if (result !== 0) {
@@ -282,7 +282,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
       assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
       if (enrolled) {
         if (!selected) {
-          const initial = startWorkflow(root, profile.repository, { revision: baseSha, planningPath, worktreeId,
+          const initial = startWorkflow(root, profile.repository, { revision: baseSha, planningPath, worktreeId, planSnapshot,
             execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
           selected = readSelectedWorkflow(root, profile.repository, { input: initial.manifest, required: true });
         } else {
