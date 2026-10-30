@@ -307,3 +307,24 @@ exact plan, authorization, and receipt.
 Budget: one exact v1 enrollment, an update to the existing transition-workflow test, and this owner
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving source history and prior enrollments.
+
+## Current recovery enrollment — agentic-design-system PR #4 — 2026-10-30
+
+Under the owner's authorization to continue receipt-bound recovery, this record binds repository
+`github.com/huijoohwee/agentic-design-system`: base
+`1c1952803520279b2b9259d888081bbe8fe07106`, reviewed head
+`5ea8aba4f71f4c3065396b2b0a8bf58a4ba0f220`, merge
+`9dd6c3a98621aaebdf2a36187d3aa9272c27fbee`, and equal source/merge tree
+`86034813db8a5dccf400e7c4e892f8cab09e7dcf`. The exact review is
+<https://github.com/huijoohwee/agentic-design-system/pull/4>; its recorded required check is
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-4`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This enrollment does not establish provider checks, issue integration or retirement
+receipts, or authorize cleanup, synchronization, deployment, or rollback. Each later effect needs
+its own exact plan, authority, and receipt.
+
+Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving the merged PR and its original quarantine evidence.
