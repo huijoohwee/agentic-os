@@ -33,6 +33,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-graph/pull/1492',
     'https://github.com/huijoohwee/agentic-graph/pull/1504',
     'https://github.com/huijoohwee/huijoohwee.github.io/pull/297',
+    'https://github.com/huijoohwee/agentic-design-system/pull/4',
     'https://github.com/huijoohwee/agentic-base/pull/4',
     'https://github.com/huijoohwee/agentic-os/pull/425',
     'https://github.com/huijoohwee/agentic-os/pull/438',
@@ -79,6 +80,7 @@ test('committed transition workflow is bound to the canonical authority policy',
   const historicalChecks = new Map([
     ['https://github.com/huijoohwee/huijoohwee.github.io/pull/297', ['adlc-policy-contract']],
     ['https://github.com/huijoohwee/agentic-commerce-os/pull/133', ['Integration Gate']],
+    ['https://github.com/huijoohwee/agentic-design-system/pull/4', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-graph/pull/1492', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-graph/pull/1504', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-base/pull/4', ['Integration Gate']],
@@ -129,7 +131,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     assert.deepEqual(entry.checkContexts, historicalChecks.get(entry.reviewLocator));
     assert.deepEqual(entry.adoptionScope, [`recovery/current-historical-content/pr-${entry.reviewLocator.split('/').at(-1)}`]);
   }
-  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/4')), {
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === 'https://github.com/huijoohwee/agentic-base/pull/4'), {
     schema: 'agentic-os/historical-content-enrollment/v1',
     repository: 'github.com/huijoohwee/agentic-base',
     reviewLocator: 'https://github.com/huijoohwee/agentic-base/pull/4',
@@ -140,6 +142,18 @@ test('committed transition workflow is bound to the canonical authority policy',
     checkContexts: ['Integration Gate'],
     adoptionScope: ['recovery/current-historical-content/pr-4'],
     rationale: 'Current recording of PR #4 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
+  });
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator === 'https://github.com/huijoohwee/agentic-design-system/pull/4'), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/agentic-design-system',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-design-system/pull/4',
+    baseRevision: '1c1952803520279b2b9259d888081bbe8fe07106',
+    headRevision: '5ea8aba4f71f4c3065396b2b0a8bf58a4ba0f220',
+    mergeRevision: '9dd6c3a98621aaebdf2a36187d3aa9272c27fbee',
+    treeRevision: '86034813db8a5dccf400e7c4e892f8cab09e7dcf',
+    checkContexts: ['Integration Gate'],
+    adoptionScope: ['recovery/current-historical-content/pr-4'],
+    rationale: 'Owner-authorized current recording of Design System PR #4 merge content; historical protection, required-check policy, Ruleset Suite and merge-method authority remain unproven.',
   });
   assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/8')), {
     schema: 'agentic-os/historical-content-enrollment/v1',
