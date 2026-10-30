@@ -1,16 +1,16 @@
 ---
-title: "START refreshes the protected base and recovers pending readmission"
+title: "START refreshes the protected base and recovers exact readmission"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.1.0"
-date: "2026-10-18"
+version: "1.2.0"
+date: "2026-10-30"
 lang: "en-US"
 owner: "Agentic OS runtime maintainers"
 continuity_id: "AGENTIC-OS-START-REMOTE-REFRESH-001"
-prd_revision: "1.1.0"
-tad_revision: "1.1.0"
-adr_revision: "1.1.0"
-mvp_revision: "1.1.0"
-gtm_revision: "1.1.0"
+prd_revision: "1.2.0"
+tad_revision: "1.2.0"
+adr_revision: "1.2.0"
+mvp_revision: "1.2.0"
+gtm_revision: "1.2.0"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
@@ -19,14 +19,14 @@ universal_scope: true
 load_policy: "on-demand"
 guideline_revision: "3.4.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/4e5227ad892f8b0125a31c83cf87e14dc3c2621c/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "4aa68116c276d479e3064553460c6aa4f202d1e6"
-worktree_id: "device-0232231d4a19--pending-readmit-recovery"
-agent_id: "codex-pending-readmit-recovery"
-verification_scope: "Fetch the configured protected tracking ref before admission; safely reconcile a pending readmit when its exact unpublished lane advances by descendant commits inside the same declared reservation."
-budget: "Six reserved paths; two existing runtime modules; two existing test modules; one START guide; this planning record; under 12 KiB authored delta; 20 active minutes; zero dependencies, new runtime modules, paid services, or spend."
+reviewed_source_revision: "6b4757b067750311b6e1d195c7ef092a75685db1"
+worktree_id: "device-0232231d4a19--merged-predecessor-cache-reconciliation"
+agent_id: "codex-merged-predecessor-cache-reconciliation"
+verification_scope: "Fetch the configured protected tracking ref before admission; safely recover an exact pending readmit and accept an older cached predecessor head only when it is an ancestor of the pinned head and the existing live-ref check matches that pin."
+budget: "Three paths total: one existing runtime module, one existing test module, and this plan; under 4 KiB authored implementation delta; 15 active minutes; zero dependencies, modules, provider calls, paid services, or spend."
 ---
 
-# START refreshes the protected base and recovers pending readmission
+# START refreshes the protected base and recovers exact readmission
 
 ## PRD
 
@@ -58,25 +58,38 @@ An interrupted scope expansion can leave an immutable workflow allocation pendin
 | PR-02 | Refuse wrong mission, scope, head, non-descendant, published branch, or bytes outside the expansion before local record mutation. | Negative fixtures retain the prior pending root, lane record, refs, and files. |
 | PR-03 | Workflow lineage binds recovery to the previous pending readmit, unchanged scope digest, exact child revision, and Git ancestry. | A forged marker, wrong predecessor, mismatched child head, or unrelated commit fails collection and selection. |
 
+### Retained predecessor cache drift
+
+A successor may pin a published predecessor at `P` while its local lane-cache projection still records an earlier head `C`. Rejecting `C != P` strands an otherwise exact successor even when the retained predecessor ref still points to `P`. The current readmission path already rechecks that remote ref at `P` and verifies `P` is an ancestor of the successor head.
+
+**Minimum outcome:** permit the cache projection to be older than its pinned predecessor only when Git proves `C` is an ancestor of `P`, the predecessor ref/worktree/protected base bindings remain exact, and the caller's existing live remote-ref observation equals `P`. Keep the projection immutable; do not advance refs, rewrite cache records, infer a squash/merge from tree similarity, or add a provider call. A missing, changed, unrelated, or unverifiable predecessor remains refused.
+
+| ID | Requirement | VCC |
+|---|---|---|
+| PR-04 | Accept a stale cached predecessor head only when it is a proven ancestor of the handoff's exact predecessor head and all existing identity/base checks pass. | Fixture with cache head `C`, pinned/live remote head `P`, and `C` ancestor of `P` admits; the returned lineage retains `P`. |
+| PR-05 | Preserve exact remote and successor-ancestry gates; do not mutate the predecessor record or add remote observations. | Wrong/absent remote `P`, unrelated cache head, changed worktree/base, or non-ancestor `P` refuses before allocation, cache, ref, or file writes; query count remains unchanged. |
+
 ## TAD
 
 The cmdStart function in bin/agentic-os-admission.mjs owns the ordering. It already owns the clone-wide start lock, protected fetch, fetch receipt, profile check, and worktree admission. Move that single fetch to immediately inside the lock and before the canonical guard; retain the receipt and remove the second fetch from the create-only branch. Its existing `--readmit` path also owns exact pending expansion retry. bin/agentic-os-workflow.mjs validates the new recovery lineage against the prior immutable allocation and current member commit.
+
+For retained predecessor cache drift, change only `readmissionPredecessors` in `src/lane-state.mjs`: when the cached head differs from the handoff pin, require Git ancestry from cached head to pinned head. Keep `observeExisting` in `bin/agentic-os-admission.mjs` as the final gate: it must still observe the exact live predecessor ref at the pinned SHA and prove the pinned SHA is an ancestor of the candidate. Extend the existing `admission-economy.test.mjs` coverage for this positive path and its negative cases. Do not modify the predecessor projection or introduce another fetch/provider query.
 
 The existing admission-economy.test.mjs covers protected-ref ordering, lane reuse and pending allocation recovery; workflow-collection.test.mjs verifies descendant ancestry and rejects unrelated commits. Existing tests remain the contract owners. docs/START-WORKFLOW.md records the retry conditions. No browser or provider API is needed.
 
 ## ADR
 
-**Decision:** START always refreshes the profile-selected protected remote while holding its existing admission lock, before validating the canonical branch and reading mission state.
+**Decision:** START always refreshes the profile-selected protected remote while holding its existing admission lock, before validating the canonical branch and reading mission state. A stale cached predecessor projection may be tolerated only as an ancestor of its exact handoff pin, with the existing exact remote-ref and successor-ancestry observations still required.
 
-For pending readmit recovery, reuse the current `--readmit`, mission and expected-head inputs. The command validates the descendant, exact reservation and local unpublished identity, then emits one immutable workflow successor that moves pending to active and updates the child revision. Keep the recovery parent SHA as explicit lineage.
+For pending readmit recovery, reuse the current `--readmit`, mission and expected-head inputs. The command validates the descendant, exact reservation and local unpublished identity, then emits one immutable workflow successor that moves pending to active and updates the child revision. Keep the recovery parent SHA as explicit lineage. For predecessor cache drift, retain the old cache bytes and handoff pin; accept only if ancestry reaches the pin and the existing live-ref observation still equals it.
 
-**Rejected:** relying on a caller-run fetch leaves reuse and direct CLI/MCP paths inconsistent; fetching after planning allows stale-base resolution; auto-fast-forwarding local main combines observation with a separate canonical-sync effect and would silently change the developer checkout. Resetting the lane or rewriting an immutable workflow root would lose recoverable evidence.
+**Rejected:** relying on a caller-run fetch leaves reuse and direct CLI/MCP paths inconsistent; fetching after planning allows stale-base resolution; auto-fast-forwarding local main combines observation with a separate canonical-sync effect and would silently change the developer checkout. Resetting the lane or rewriting an immutable workflow root would lose recoverable evidence. Rewriting a predecessor's cache head or accepting tree similarity without exact live-ref equality would weaken immutable lineage and could admit a replaced branch.
 
 The configured ref keeps the behavior neutral across remotes; the default product profile uses origin/main. A fetch result proves only that the local remote-tracking view was refreshed.
 
 ## MVP
 
-Change the existing admission and workflow owners, their two existing test modules, START guide, and this plan. Budget: six paths, two existing runtime modules, two existing test modules, under 12 KiB and 20 active minutes; zero new modules/dependencies and zero always-load bytes. Run focused regressions and required npm run check. Rollback is a protected source revert; immutable workflow roots, local remote-tracking refs, lane refs and authored files remain preserved.
+The original START/readmit slice and this cache-drift refinement retain the same owners. The combined plan remains capped at seven paths total: three existing runtime modules, two existing test modules, the START guide, and this planning record. The cache-drift refinement touches only one runtime module, one test module, and this plan, with under 4 KiB authored implementation delta. Zero new modules, dependencies, provider calls, paid services, or always-load bytes. Run focused regressions and required `npm run check`. Rollback is a protected source revert; immutable workflow roots, local remote-tracking refs, lane refs and authored files remain preserved.
 
 ## GTM
 
@@ -96,4 +109,4 @@ Grounded on [Redesigning source control](https://www.anthropic.com/research/rede
 
 ## Release boundary
 
-The change does not authorize publication, merge, canonical fast-forward, cleanup, deployment, or production mutation. Protected integration still requires the existing lane publication, green checks, and exact integration receipt. Runtime/deployment evidence is not produced by this local acceptance check.
+The change does not authorize publication, merge, canonical fast-forward, cleanup, deployment, or production mutation. Protected integration still requires the existing lane publication, green checks, and exact integration receipt. Runtime/deployment evidence is not produced by this local acceptance check. The cache-drift path remains unavailable when the predecessor's live remote ref is absent or no longer equals its pinned head; such cases need a separate exact integration proof design.
