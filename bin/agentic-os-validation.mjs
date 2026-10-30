@@ -76,11 +76,11 @@ export function validationCheckDefinitions(policy, plan, observed, ownerDigest) 
     const patterns = checkInputPatterns(policy, check.id), key = JSON.stringify([...patterns].sort());
     if (!projections.has(key)) projections.set(key, sourceDigest([...observed.after].filter(([path]) => patterns.some(input => matchesInput(path, input))
       || path === VALIDATION_POLICY || /(^|\/)(?:package(?:-lock)?\.json|\.npmrc)$/u.test(path))));
-    const { root, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
-    // Nested affected planners consume the whole candidate and baseline, not only file contents.
+    const { root, requestedBase, baseRevision, sourceDigest: identitySourceDigest, configurationDigest, environmentDigest, node, executable, platform, arch } = observed.identity;
+    // Bind local plan reuse to exact source/base, not commit/index provenance; commit-sensitive checks must opt out.
     // Partition selection is deliberately excluded so a narrow run can satisfy the same full plan.
-    const planInput = check.reuse === 'local-plan' ? { identity: observed.identity,
-      mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
+    const planInput = check.reuse === 'local-plan' ? { identity: { root, requestedBase, baseRevision, sourceDigest: identitySourceDigest,
+      configurationDigest, environmentDigest, node, executable, platform, arch }, mode: plan.mode, changed: plan.changed, broadReasons: plan.broadReasons } : null;
     const fingerprint = hash(JSON.stringify({ version: VALIDATION_VERSION, ownerDigest, check: policy.checks.find(item => item.id === check.id),
       sourceDigest: projections.get(key), root, configurationDigest, environmentDigest, node, executable, platform, arch, planInput }));
     return { ...check, id: `consumer-${hash(check.id).slice(0, 24)}`, name: check.id, stage: 'owner-check', report: 'exit',
