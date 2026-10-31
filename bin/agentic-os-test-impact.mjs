@@ -1,7 +1,7 @@
 /** Conservative source impact with exact reviewed lazy-route contracts. No execution. */
 import { posix } from 'node:path';
 
-export const IMPACT_VERSION = 'agentic-os/test-impact/v2', CONTRACT_PATH = 'test/impact-contracts.json';
+export const IMPACT_VERSION = 'agentic-os/test-impact/v2', CONTRACT_PATH = 'test/impact-contracts.json', TEST_SUITE_LIMIT = 258;
 const testPath = name => `__tests__/${name}`, isTest = path => /^__tests__\/[^/]+\.test\.mjs$/u.test(path);
 const matches = (path, input) => input.endsWith('/') ? path.startsWith(input)
   : input === 'bin/agentic-os-test' ? path.startsWith(input) : path === input;
@@ -93,7 +93,7 @@ function reverseGraph(files, contracts) {
 export function selectTests({ before, after, changed, forceAll = false }) {
   const contracts = validateContracts(JSON.parse(after.get(CONTRACT_PATH)?.text ?? 'null'), after);
   const tests = [...after.keys()].filter(isTest).sort();
-  if (!tests.length || tests.length > 257) throw new Error('blocked-test-suite-inventory');
+  if (!tests.length || tests.length > TEST_SUITE_LIMIT) throw new Error('blocked-test-suite-inventory');
   const selected = new Map(), broadReasons = [];
   const add = (path, reason) => { if (isTest(path) && after.has(path)) {
     if (!selected.has(path)) selected.set(path, new Set()); selected.get(path).add(reason);

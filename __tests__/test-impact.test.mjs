@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkInputResolver, checkInputs, references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
+import { checkInputResolver, checkInputs, references, selectTests, TEST_SUITE_LIMIT, validateContracts } from '../bin/agentic-os-test-impact.mjs';
 import { snapshot, LIMITS } from '../bin/agentic-os-test-inputs.mjs';
 import { writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 
@@ -105,6 +105,17 @@ test('no changes still runs safety sentinels, while all selects every suite', ()
   assert.deepEqual(paths(selectTests({ ...f, changed: [] })), ['__tests__/safety.test.mjs']);
   const all = selectTests({ ...f, changed: [], forceAll: true });
   assert.equal(all.suites.length, all.available); assert.deepEqual(all.reasons, ['explicit-all']);
+});
+test('suite inventory admits 258 suites and blocks the next one', () => {
+  const f = fixture(), suites = [...f.after.keys()].filter(path => /^__tests__\/[^/]+\.test\.mjs$/u.test(path));
+  assert.equal(TEST_SUITE_LIMIT, 258);
+  for (let index = suites.length; index < TEST_SUITE_LIMIT; index++)
+    f.after.set(`__tests__/budget-${index}.test.mjs`, file(''));
+  const accepted = selectTests({ ...f, changed: ['unmapped'] });
+  assert.equal(accepted.available, TEST_SUITE_LIMIT);
+  assert.equal(accepted.suites.length, TEST_SUITE_LIMIT);
+  f.after.set('__tests__/budget-over-limit.test.mjs', file(''));
+  assert.throws(() => selectTests({ ...f, changed: [] }), /blocked-test-suite-inventory/u);
 });
 test('contract drift and missing suites cannot silently remove obligations', () => {
   const f = fixture();
