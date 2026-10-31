@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.7"
-date: "2026-10-27"
+version: "1.4.8"
+date: "2026-10-31"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.7"
-tad_revision: "1.4.7"
-adr_revision: "1.4.7"
+prd_revision: "1.4.8"
+tad_revision: "1.4.8"
+adr_revision: "1.4.8"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--cleanup-cwd-guard"
+worktree_id: "device-0232231d4a19--detached-snapshot-cleanup"
 agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "397ce86dbcf9606cace473f0e1f1e8beabb20197"
-mvp_revision: "1.4.7"
-gtm_revision: "1.4.7"
+mvp_revision: "1.4.8"
+gtm_revision: "1.4.8"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -118,6 +118,37 @@ checks, content inclusion, inventory and remote main before emitting the same 15
 enrollment and the separate `apply --plan --authorize --stopped` confirmation remain required. Run from the
 surviving canonical checkout with the reviewed upstream CLI. Remove the clone-local opt-in after the selected
 batch. Never invoke code from a directory after it has been quarantined.
+
+## Exact detached main snapshot
+
+The unified `cleanup` command supports a clean detached worktree that is an exact snapshot of the
+currently published `main`. This is for redundant checkout projections with no lane ref or review record;
+it does not infer a lane, merge, claim, or release. It uses the same clone-private quarantine mechanics
+and local cleanup lock as other modes.
+
+From the surviving canonical root, prepare an exact, short-lived plan:
+
+```sh
+agentic-os cleanup plan --mode=local-snapshot --target=<absolute-worktree-path> --expected-head=<full-commit-sha>
+```
+
+The plan requires a clean canonical `main`, matching `origin/main`, a live `origin/main` advertisement,
+and one clean detached worktree whose head and canonical `main` equal the supplied full SHA. It binds the
+repository profile, remote, target inventory, peer registrations, shared refs and object-store inventory.
+Review the printed path, head, policy, inventory and expiry; stop all processes using the target.
+
+Apply only that plan with explicit local-owner authorization and stop acknowledgement:
+
+```sh
+agentic-os cleanup apply --plan=<saved-json> \
+  --authorize=agentic-os:local-snapshot-cleanup:<planDigest> --stopped
+```
+
+The projection and Git worktree registration move into `.git/agentic-os-cleanup-quarantine/<planDigest>/`;
+their bytes remain recoverable. The receipt records the quarantine paths and confirms that refs, objects,
+provider authority and deployment authority were not changed or granted. Drift, aliases, dirty files,
+attached branches, a nonidentical head, stale remote `main`, or an expired plan fail closed. This uses the
+existing unified cleanup entry point and does not add another cleanup command or local enrollment variant.
 
 Admission requires the existing valid clone trust anchor and committed Git/GitHub profile, equal clean
 local/tracking/live main, and every profile-required check. Each selected check must belong to the exact
