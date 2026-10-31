@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40659, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40631, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -130,7 +130,9 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/BUDGETS.md', [
       'Modules in `src/` | 52',
-      'Authored lines in `src/` | 16,553',
+      'Authored lines in `src/` | 16,572',
+      'CLI modules in `bin/` | 114',
+      'Authored lines in `bin/` | 25,153',
       'Lines in one module | 450',
       'Universal runtime prompt | 1,000 UTF-8 bytes',
       'states its projected byte delta and fits the configured budget',
@@ -268,8 +270,8 @@ test('this repository is inside its own module budget', () => {
   const { found, entries, total, surfaces } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
-    modules: 52, totalLines: 16_553, perModuleLines: 450,
-    binModules: 113, binLines: 24_866, runtimeModules: 97, runtimeLines: 23_023,
+    modules: 52, totalLines: 16_572, perModuleLines: 450,
+    binModules: 114, binLines: 25_153, runtimeModules: 97, runtimeLines: 23_023,
   });
   assert.ok(entries.length === 51 || entries.length === 52);
   if (entries.length === 52) {
