@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, readdirSync,
   readFileSync, lstatSync, linkSync, symlinkSync, truncateSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,6 +24,50 @@ function fixture(t) {
   return { workspace, root, common, archive,
     report: (options = {}) => reportStorage({ cwd: root, maxMs: 10_000, ...options }) };
 }
+function quarantineInventoryScript() {
+  const guide = readFileSync(new URL('../guides/STORAGE-QUARANTINE-INVENTORY.md', import.meta.url), 'utf8');
+  const match = guide.match(/node --input-type=module - \/absolute\/repository > "\$inventory_file" <<'NODE'\n([\s\S]*?)\nNODE/);
+  assert.ok(match, 'quarantine inventory recipe is present in the guide');
+  return match[1];
+}
+function runQuarantineInventory(root, script, cursor) {
+  const args = ['--input-type=module', '-', root, ...(cursor ? [`--cursor=${cursor}`] : [])];
+  return JSON.parse(execFileSync(process.execPath, args, { input: script, encoding: 'utf8' }));
+}
+test('quarantine inventory paginates bounded coordinate rows and rejects a cursor from another repository', t => {
+  const s = fixture(t), other = fixture(t), store = join(s.common, 'agentic-os-cleanup-quarantine');
+  mkdirSync(store);
+  const coordinates = Array.from({ length: 260 }, (_, i) => i.toString(16).padStart(64, '0'));
+  for (const coordinate of coordinates) mkdirSync(join(store, coordinate));
+  const before = readdirSync(store).sort(), script = quarantineInventoryScript();
+
+  const first = runQuarantineInventory(s.root, script);
+  assert.equal(first.status, 'partial'); assert.equal(first.discoveryComplete, false);
+  assert.equal(first.pageComplete, true); assert.equal(first.enumerationComplete, true);
+  assert.equal(first.rows.length, 256); assert.ok(first.nextCursor);
+  assert.equal(first.cost.maxRows, 256); assert.equal(first.cost.maxCoordinates, 20_000);
+  assert.equal(first.cost.contentBytesRead, 0);
+
+  const second = runQuarantineInventory(s.root, script, first.nextCursor);
+  assert.equal(second.status, 'partial'); assert.equal(second.pageComplete, true);
+  assert.equal(second.discoveryComplete, false); assert.equal(second.rows.length, 4);
+  assert.equal(second.cursorAfter, coordinates[255]); assert.equal(second.nextCursor, null);
+  const observed = [...first.rows, ...second.rows].map(row => row.coordinate).sort();
+  assert.deepEqual(observed, coordinates);
+  assert.deepEqual(readdirSync(store).sort(), before);
+  assert.ok(before.every(coordinate => readdirSync(join(store, coordinate)).length === 0));
+
+  mkdirSync(join(store, 'f'.repeat(64)));
+  const stale = spawnSync(process.execPath,
+    ['--input-type=module', '-', s.root, `--cursor=${first.nextCursor}`],
+    { input: script, encoding: 'utf8' });
+  assert.notEqual(stale.status, 0); assert.match(stale.stderr, /invalid-cursor/);
+
+  const foreign = spawnSync(process.execPath,
+    ['--input-type=module', '-', other.root, `--cursor=${first.nextCursor}`],
+    { input: script, encoding: 'utf8' });
+  assert.notEqual(foreign.status, 0); assert.match(foreign.stderr, /invalid-cursor/);
+});
 test('shallow report distinguishes retained archives from objects without traversing or writing them', t => {
   const s = fixture(t), names = readdirSync(s.common), head = readFileSync(join(s.common, 'HEAD'));
   const result = s.report(), archive = result.rows.find(row => row.category === 'retained-archives');
