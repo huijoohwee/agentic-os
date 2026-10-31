@@ -52,12 +52,6 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
   different rollback rules; follow the product owner that controls that effect.
 - If backward compatibility is unproven, block rollback until the owner supplies a verified recovery path.
 
-## END ADLC completion
-
-Completion joins protected source integration (or policy-approved supersession), applicable
-Dev-to-Prod and product/runtime delivery evidence, and the exact workspace-cleanup disposition.
-Source completion alone is insufficient; missing or stale required proof keeps closeout open.
-
 ## Source-control preflight
 
 Before a consumer builds a Dev-to-Prod candidate, run its exact upstream source checkout:
@@ -128,27 +122,19 @@ See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and l
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
 [PRD/TAD/ADR](./PRD-TAD-ADR-MVP-GTM.md) for transition and handover requirements.
 
-## Full END ADLC completion
+## END ADLC completion
 
-`source_complete` closes source obligations for one lane; it does not by itself close product delivery.
-Report full END ADLC complete only when the same exact lane and candidate have:
+`source_complete` closes source obligations only. [RELEASE](../docs/RELEASE-WORKFLOW.md) owns source,
+workspace, and branch closeout; [USER-CLEANUP](./USER-CLEANUP.md) gives exact workspace steps. Full END ADLC requires
+the product owner to join the same exact lane and candidate:
 
-1. **Source:** the exact lane is protected-integrated into the current source `origin/main` (or the
-   repository profile's protected ref). GitHub promotion uses squash and exact-head matching; an
-   open or merely queued PR is not integration. Record a policy-approved successor as supersession,
-   not as a merge.
-2. **Delivery:** the product owner has classified the exact changed paths against the deployed
-   artifact. When Dev and Prod are distinct, bind Dev readback and Production promotion/readback to
-   the same candidate digest. For a Prod-only owner or excluded paths, retain an exact owner-bound
-   applicability/no-deploy disposition and reason; do not invent a Dev pass.
-3. **Product:** current live route/runtime evidence and the required feature/planning handover join
-   the deployment receipt; retain the exact rollback predecessor or record the rollback outcome.
-4. **Workspace:** stop and unmount every task worktree; verify its exact cleanup/quarantine receipt
-   and absent checkout path. Keep refs, objects and byte reclamation as separate dispositions; path
-   removal alone does not prove storage was freed. A mounted worktree or pending cleanup keeps full
-   closeout open.
-5. **Branch disposition:** record local/remote policy and local/cached tracking-ref states; live remote
-   state remains unobserved. Deletion needs separate authority and a receipt; see [release closeout](../docs/RELEASE-WORKFLOW.md).
+- Classify every changed path against the deployed artifact. For distinct Dev and Prod stages, bind both readbacks
+  to one immutable candidate digest; a Prod-only path or excluded artifact needs an exact owner-bound disposition.
+- Bind current route/runtime evidence, feature and planning handover, and the rollback predecessor or outcome to the
+  deployment receipt. Append the workspace TODO successor with Development, Production, Runtime, remaining work,
+  and next owner action.
+- For no-deploy, state why each exact path is excluded. A mixed lane needs a committed owner report naming every
+  changed path; a docs-only lane still needs an owner decision because public docs may be product content.
 
-Every triggered item must pass with current evidence; missing, stale, ambiguous, or unjoined evidence
-keeps full closeout open. Mark a stage `not-applicable` only with its exact product-scope reason.
+Missing, stale, ambiguous, or mismatched evidence keeps full END ADLC open. If verification fails, preserve the
+runtime state and stop promotion until the owner supplies a verified recovery path.
