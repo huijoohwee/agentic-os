@@ -9,17 +9,23 @@ export const OPERATIONS = Object.freeze(['claim', 'continue', 'integrate', 'reti
 const PROFILE_CAPABILITIES = new Set((
   'deep-byte-audit-opt-in history:linear host-qualified-repository-pin integration-method:squash integration-method:squash-preferred ' +
   'protected-integration:pull-request read-only-repository-observation read-only-review-observation ' +
-  'quarantine-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +
+  'governed-branch-retirement quarantine-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +
   'shallow-observation-default tested-protected-ordering:merge-queue'
 ).split(' '));
 const PROVIDER_BOUND_CAPABILITIES = new Set((
-  'history:linear host-qualified-repository-pin integration-method:squash integration-method:squash-preferred protected-integration:pull-request ' +
+  'governed-branch-retirement history:linear host-qualified-repository-pin integration-method:squash integration-method:squash-preferred protected-integration:pull-request ' +
   'read-only-review-observation required-check-policy:strict tested-protected-ordering:merge-queue'
 ).split(' '));
 const DIGEST = /^[0-9a-f]{64}$/u, EFFECT_PLAN = /^effect-plan:sha256:[0-9a-f]{64}$/u;
 const MAX_DEPTH = 16, MAX_NODES = 10_000, MAX_BYTES = 500_000;
 const CLEANUP_KEYS = Object.freeze(['worktreeProjection', 'worktreeRegistration',
   'remoteTrackingRef', 'localBranch', 'remoteBranch', 'unreachableObjects']);
+const BRANCH_RETIREMENT_KEYS = Object.freeze(['localBranch', 'remoteBranch', 'remoteTrackingRef']);
+const BRANCH_RETIREMENT_VALUES = Object.freeze({
+  localBranch: Object.freeze(['retain', 'retire-merged']),
+  remoteBranch: Object.freeze(['retain', 'retire-merged']),
+  remoteTrackingRef: Object.freeze(['retain', 'prune-absent']),
+});
 const REQUEST_KEYS = Object.freeze([
   'schema', 'repository', 'authoritySubject', 'ownerSubject', 'scope', 'writeSetDigest', 'claimId',
   'leaseEpoch', 'fenceRevision', 'immutableRevision', 'reviewLocator', 'blocker', 'requestedTransition',
@@ -31,7 +37,7 @@ const RECEIPT_KEYS = Object.freeze([
   'receiptDigest']);
 const PROFILE_KEYS = Object.freeze([
   'schema', 'repository', 'canonical', 'adapters', 'requiredChecks', 'capabilities', 'authority',
-  'cleanup', 'profileDigest']);
+  'cleanup', 'branchRetirement', 'profileDigest']);
 const RESULT_STATE = Object.freeze({ claim: 'current', continue: 'current',
   integrate: 'integrated', retire: 'retired' });
 export const RETAIN_ALL_CLEANUP = Object.freeze(Object.fromEntries(
@@ -115,6 +121,13 @@ function cleanup(value = RETAIN_ALL_CLEANUP) {
     && (!quarantineKeys.includes(key) || value[key] !== 'quarantine'))
     fail(`cleanup.${key} selects an unsupported effect`);
   if ((value.worktreeProjection === 'quarantine') !== (value.worktreeRegistration === 'quarantine')) fail('cleanup quarantine requires exact projection and registration opt-in');
+  return { ...value };
+}
+function branchRetirement(value) {
+  if (value === undefined) return null;
+  exactKeys(value, BRANCH_RETIREMENT_KEYS, 'branchRetirement');
+  for (const key of BRANCH_RETIREMENT_KEYS) if (!BRANCH_RETIREMENT_VALUES[key].includes(value[key]))
+    fail(`branchRetirement.${key} selects an unsupported effect`);
   return { ...value };
 }
 export function deriveCoordinationClaimId({ repository, authoritySubject, ownerSubject, scope }) { return governanceDigest({ schema: 'agentic-os/claim-id/v1', repository, authoritySubject, ownerSubject, scope }); }
@@ -352,6 +365,7 @@ function profilePayload(input) {
   if (authority.runtime !== 'consumer' || authority.release !== 'consumer')
     fail('runtime and release authority must remain consumer-owned');
   const cleanupPolicy = cleanup(source.cleanup);
+  const branchRetirementPolicy = branchRetirement(source.branchRetirement);
   const cleanupCapability = Object.values(cleanupPolicy).every((value) => value === 'retain')
     ? 'retain-all-cleanup' : 'quarantine-worktree-cleanup-opt-in';
   const requestedCapabilities = strings(source.capabilities ?? [], 'capabilities');
@@ -360,6 +374,10 @@ function profilePayload(input) {
   if (requestedCapabilities.includes(conflicting)) fail('cleanup capability conflicts with selected effects');
   const capabilities = strings([...requestedCapabilities.filter((value) => value !== conflicting
     && value !== cleanupCapability), cleanupCapability], 'capabilities');
+  if (branchRetirementPolicy !== null
+    && Object.entries(branchRetirementPolicy).some(([key, value]) => value !== 'retain')
+    && !capabilities.includes('governed-branch-retirement'))
+    fail('non-retain branchRetirement effects require governed-branch-retirement capability');
   const unsupported = capabilities.filter((capability) => !PROFILE_CAPABILITIES.has(capability));
   if (unsupported.length > 0)
     fail(`unsupported repository profile capabilities: ${unsupported.join(', ')}`);
@@ -369,7 +387,7 @@ function profilePayload(input) {
   if (providerAdapter === null && (requiredChecks.length > 0
     || capabilities.some((capability) => PROVIDER_BOUND_CAPABILITIES.has(capability))))
     fail('provider-bound capabilities and checks require a provider adapter');
-  return {
+  const payload = {
     schema: REPOSITORY_PROFILE_SCHEMA,
     repository: text(source.repository, 'repository'),
     canonical: { localRef: text(source.canonical.localRef, 'canonical.localRef'),
@@ -378,6 +396,8 @@ function profilePayload(input) {
     requiredChecks, capabilities,
     authority: { ...CONSUMER_AUTHORITY }, cleanup: cleanupPolicy,
   };
+  if (branchRetirementPolicy !== null) payload.branchRetirement = branchRetirementPolicy;
+  return payload;
 }
 export function createRepositoryProfile(input) {
   const source = snapshot(input), payload = profilePayload(source), profileDigest = governanceDigest(payload);
@@ -385,7 +405,7 @@ export function createRepositoryProfile(input) {
   return frozen({ ...payload, profileDigest });
 }
 export function validateRepositoryProfile(value) {
-  const source = snapshot(value); exactKeys(source, PROFILE_KEYS, 'repository profile');
+  const source = snapshot(value); exactKeys(source, PROFILE_KEYS, 'repository profile', false);
   if (source.schema !== REPOSITORY_PROFILE_SCHEMA) fail('repository profile schema is invalid');
   const normalized = createRepositoryProfile(source);
   if (canonicalJson(source) !== canonicalJson(normalized)) fail('repository profile is not canonical');

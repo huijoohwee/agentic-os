@@ -158,7 +158,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     selected: plan.suites.length, skipped: plan.available - plan.suites.length,
     reused: coverage ? checks.length : preview.filter(check => check.reuse).length,
     estimatedCommandMs: coverage ? 0 : Math.ceil(preview.reduce((total, check) => total + (check.reuse ? 0 : check.estimatedMs), 0)),
-    concurrency: options.concurrency, timeBudgetMs: LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
+    concurrency: options.concurrency, timeBudgetMs: plan.reasons.some(reason => reason.startsWith('shared-contract:')) ? LIMITS.sharedContractMs : LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
     ...(coverage ? { boundCi: coverage } : {}) };
   if (options.mode === 'plan') {
     out(JSON.stringify({ identity: observed.identity, ...plan, cost: summary,
@@ -178,7 +178,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     if (ci) out('evaluators: allocated to required budgets job; result not observed by test job');
     writeReceipt(directory, 'last.json', receipt);
     out(`${plan.mode}: ${plan.suites.length}/${plan.available} suites; ${plan.changed.length} changed paths; ${summary.skipped} skipped`);
-    out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency ${summary.concurrency}; budget ${LIMITS.testMs / 1000}s`);
+    out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency ${summary.concurrency}; budget ${summary.timeBudgetMs / 1000}s`);
     if (plan.reasons.length) out(`coverage reasons: ${plan.reasons.join(', ')}`);
     for (const suite of plan.suites) out(`selected ${suite.path}: ${suite.reasons.join(', ')}`);
     if (coverage) {
@@ -203,7 +203,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
       }
       await runCheckPool(pending, async check => {
         stable();
-        const remaining = LIMITS.testMs - (performance.now() - started);
+        const remaining = summary.timeBudgetMs - (performance.now() - started);
         if (remaining <= 0) throw new Error('blocked-test-time-budget');
         out(`running ${check.name}`);
         assertWorkflowCurrent();
