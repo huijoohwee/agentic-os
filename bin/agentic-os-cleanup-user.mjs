@@ -13,7 +13,8 @@ import { privateDirectoryIdentity, legacyPrivateDirectoryIdentity, assertPrivate
   tightenLegacyPrivateDirectory } from '../src/file-integrity.mjs';
 import { inferMergedReviewWorkflow, observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
-import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration } from './agentic-os-cleanup-recovery.mjs';
+import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration, SNAPSHOT_CLEANUP_SCHEMA,
+  planDetachedMainSnapshotCleanup, applyDetachedMainSnapshotCleanup } from './agentic-os-cleanup-recovery.mjs';
 import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
 import { get } from '../src/lane-records.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
@@ -338,7 +339,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
-const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [] });
+const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [], 'local-snapshot': [] });
 export function runUnifiedCleanup(root, argv, out = console.log) {
   if (!['plan', 'apply', 'sweep', 'retire'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep|retire> [options]');
   return runUserCleanup(root, argv, out, { unified: true });
@@ -363,6 +364,10 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
   if (argv[0] === 'plan') {
     const modeFlag = unified ? option(argv, 'mode') || 'local-consent' : null;
     if (unified && !Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
+    if (unified && modeFlag === 'local-snapshot') {
+      out(canonicalJson(planDetachedMainSnapshotCleanup({ cwd: root, target: option(argv, 'target'), expectedHead: option(argv, 'expected-head') })));
+      return 0;
+    }
     const recovery = modeFlag === 'recovery' || (!unified && argv.includes('--recovery'));
     const ref = option(argv, 'ref');
     if (ref !== null) {
@@ -383,7 +388,10 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
     out(canonicalJson(plan)); return 0;
   }
   const plan = readUserCleanupJson(option(argv, 'plan'), 'user-cleanup-plan');
-  out(canonicalJson(applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })));
+  const receipt = unified && plan.schema === SNAPSHOT_CLEANUP_SCHEMA
+    ? applyDetachedMainSnapshotCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })
+    : applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') });
+  out(canonicalJson(receipt));
   return 0;
 }
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';

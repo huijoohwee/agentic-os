@@ -69,6 +69,9 @@ export function validateCommandArguments(command, argv) {
       ? option(argv, 'mode') === 'recovery'
         ? exact(argv, { min: 1, options: ['mode', 'ref'], requiredOptions: ['mode', 'ref'] })
         : 'cleanup --ref requires --mode=recovery'
+      : argv[0] === 'plan' && option(argv, 'mode') === 'local-snapshot'
+      ? exact(argv, { min: 1, options: ['mode', 'target', 'expected-head'],
+        requiredOptions: ['mode', 'target', 'expected-head'] })
       : argv[0] === 'plan'
       ? exact(argv, { min: 1, options: ['mode', 'target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'], flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
         requiredOptions: ['target', 'pr'] })

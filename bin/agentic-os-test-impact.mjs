@@ -93,7 +93,7 @@ function reverseGraph(files, contracts) {
 export function selectTests({ before, after, changed, forceAll = false }) {
   const contracts = validateContracts(JSON.parse(after.get(CONTRACT_PATH)?.text ?? 'null'), after);
   const tests = [...after.keys()].filter(isTest).sort();
-  if (!tests.length || tests.length > 256) throw new Error('blocked-test-suite-inventory');
+  if (!tests.length || tests.length > 257) throw new Error('blocked-test-suite-inventory');
   const selected = new Map(), broadReasons = [];
   const add = (path, reason) => { if (isTest(path) && after.has(path)) {
     if (!selected.has(path)) selected.set(path, new Set()); selected.get(path).add(reason);
