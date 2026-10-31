@@ -14,4 +14,5 @@ workspace receipt and absent path. Ref deletion needs separate exact authority a
 
 Cleanup `--bundle --stopped` removes only an empty parent at `selected: 0`, never a lane or Git data. Source closeout
 grants no cleanup, sync, or production authority. `retire-empty-active` retains refs, objects, and registration.
-See [CLEANUP](../guides/CLEANUP-AUTHORITY.md); each cleanup or retirement needs its own receipt.
+
+cleanup-user sweep is read-only; worktree plans; [branch-retirement plan|apply](GOVERNANCE.md).
