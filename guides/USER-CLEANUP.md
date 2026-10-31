@@ -453,6 +453,29 @@ agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-workt
 
 `--mode` defaults to `local-consent`. `--mode=protected` is reserved for profile-governed repos (those still use `release-common complete` → `completion:scaffold` → `completion:plan/apply`).
 
+### Explicit abandonment of an unpublished dirty lane
+
+Use this only when the owner chooses to stop work on an active unpublished lane and retain every checkout byte for
+recovery. The lane must have no pull request or live remote branch, its exact active registration must still match,
+and canonical main must be clean and current. The operation never deletes a branch, reflog, or Git object.
+
+```sh
+npm run lane:abandon -- plan --ref=<lane> --reason='<bounded reason>' > /tmp/lane-abandon-plan.json
+npm run completion:status -- --ref=<lane>
+npm run lane:abandon -- apply --plan=/tmp/lane-abandon-plan.json \
+  --authorize=agentic-os:unpublished-lane-abandonment:<planDigest> --stopped
+npm run completion:status -- --ref=<lane>
+npm run release:common -- allocation-release --ref=<lane>
+```
+
+Inspect the exact plan, byte inventory, branch/ref and object evidence, and private archive destination before
+applying. Stop all writers and pass the plan's digest exactly. Apply moves the checkout projection and worktree
+registration into recoverable Git-private quarantine, writes a local immutable abandonment receipt, and rechecks
+that refs and objects stayed unchanged. Completion status must report `sourceDisposition: abandoned`, verified
+archive retention, no integration or supersession claim, and `cleanupSatisfied: true` before allocation release.
+Then finish the enclosing wrapper with its own `complete-adlc --cleanup --stopped` plan and receipt. Abandonment
+does not authorize branch deletion or quarantine retirement.
+
 ### Auto-derive placeholders (`completion:scaffold --derive`)
 
 Pre-fills the lane inventory and a 15-minute expiry. Fill the listed evidence fields: integration and retirement operation inputs, workflow run records, transition receipts, and preservation/no-value receipts. If the authority repository or transition policy is not already known locally, the scaffold also lists those verifier fields.
