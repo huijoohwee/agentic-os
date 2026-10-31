@@ -6,10 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { canonicalJson, governanceDigest } from '../src/governance.mjs';
+import { canonicalJson, createRepositoryProfile, governanceDigest, RETAIN_ALL_CLEANUP } from '../src/governance.mjs';
 import { commonDir } from '../src/git.mjs';
+import { ensureRepositoryTrust } from '../src/git-repository.mjs';
+import { CACHE_LIMITS, load, newRecord, put, save } from '../src/lane-records.mjs';
 import { observeQuarantineManifest } from '../src/cleanup-manifest.mjs';
 import { applyQuarantineRetirement, createRetirementOpenReaderProbe, planQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
+import { applyUnpublishedLaneAbandonment, planUnpublishedLaneAbandonment } from '../bin/agentic-os-lane-abandon.mjs';
+import { deriveCloseoutVerdict, inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
+import { trustedRepositoryProfile } from '../bin/agentic-os-auxiliary.mjs';
 
 const NOW = Date.parse('2026-10-11T00:05:00Z');
 const g = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -78,6 +83,20 @@ function apply(state, extra = {}) {
     authorization: state.authorization, stopped: true, discardRecovery: true,
     now: () => NOW + 1_000, probe: () => {}, ...extra });
 }
+function unpublishedDirtyLane(t) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-abandonment-'))), root = join(parent, 'repo'), target = join(parent, 'lane');
+  t.after(() => rmSync(parent, { recursive: true, force: true })); mkdirSync(root);
+  g(root, 'init', '--quiet', '--initial-branch=main'); g(root, 'config', 'user.name', 'Fixture'); g(root, 'config', 'user.email', 'fixture@example.invalid');
+  const profile = createRepositoryProfile({ repository: 'github.com/example/repository', canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' }, adapters: { repository: { id: 'git', version: '1' }, provider: null }, cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine', worktreeRegistration: 'quarantine' } });
+  writeFileSync(join(root, '.agentic-os.json'), `${JSON.stringify(profile, null, 2)}\n`); writeFileSync(join(root, 'tracked.txt'), 'canonical\n');
+  g(root, 'add', '.'); g(root, 'commit', '--quiet', '-m', 'trusted canonical profile'); const baseSha = g(root, 'rev-parse', 'HEAD');
+  g(root, 'update-ref', 'refs/remotes/origin/main', baseSha); ensureRepositoryTrust(root, profile, { allowCreate: true });
+  const ref = 'agent/device/unpublished-abandonment'; g(root, 'worktree', 'add', '--quiet', '-b', ref, target, 'main');
+  writeFileSync(join(target, 'candidate.txt'), 'unreviewed candidate\n'); g(target, 'add', 'candidate.txt'); g(target, 'commit', '--quiet', '-m', 'local candidate');
+  const head = g(target, 'rev-parse', 'HEAD'); writeFileSync(join(target, 'tracked.txt'), 'dirty tracked bytes\n'); writeFileSync(join(target, 'untracked.txt'), 'dirty untracked bytes\n');
+  put({ ...newRecord({ ref, device: 'device', scope: 'unpublished-abandonment', base: 'refs/remotes/origin/main', baseSha, worktree: target, writePaths: ['candidate.txt', 'tracked.txt'] }), state: 'active', head }, root);
+  return { root, target, ref, head, profile, publicationCheck: () => {} };
+}
 function interrupt(state) {
   const content = { schema: 'agentic-os/quarantine-retirement-intent/v2', planDigest: state.plan.planDigest,
     plan: state.plan, authorizationDigest: governanceDigest(state.authorization), authorizedAt: NOW + 1_000 };
@@ -86,6 +105,19 @@ function interrupt(state) {
   chmodSync(state.projection, 0o700); rmSync(join(state.projection, 'recovery.txt'));
   return intent;
 }
+
+test('lane cache admits bounded records above the previous aggregate-string ceiling', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-cache-headroom-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  g(root, 'init', '--quiet', '--initial-branch=main');
+  const ref = 'agent/device/cache-headroom', writePaths = Array.from({ length: 410 }, (_, index) =>
+    `src/${String(index).padStart(4, '0')}-${'x'.repeat(980)}`);
+  save({ schema: 'agentic-os/lanes/v1', lanes: {
+    [ref]: { ref, state: 'planned', writePaths },
+  } }, root);
+  assert.equal(CACHE_LIMITS.aggregateStringBytes, 415_000);
+  assert.equal(load(root).lanes[ref].writePaths.length, writePaths.length);
+});
 
 test('retirement reader probe catches process working directories and fails closed on incomplete lsof output', () => {
   const target = '/tmp/repo/.git/quarantine/projection';
@@ -112,6 +144,48 @@ test('retirement reader probe catches process working directories and fails clos
   try { assert.throws(() => createRetirementOpenReaderProbe({ pid: 42, execute: args => args[0] === '-t'
     ? '' : `p42\ncnode\nfcwd\nn${alias}/canvas` })(actual), error => error.reason === 'retirement-open-files'); }
   finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('unpublished abandonment archives dirty projection and registration without changing refs or objects', (t) => {
+  const state = unpublishedDirtyLane(t), plan = planUnpublishedLaneAbandonment({ cwd: state.root, ref: state.ref,
+    reason: 'Obsolete unpublished scratch source; reviewed successor already carries the feature.', now: () => NOW,
+    publicationCheck: state.publicationCheck });
+  const refsBefore = g(state.root, 'for-each-ref', '--format=%(refname) %(objectname)'), objectsBefore = g(state.root, 'cat-file', '--batch-all-objects', '--batch-check=%(objectname)');
+  const receipt = applyUnpublishedLaneAbandonment(plan, { cwd: state.root,
+    authorization: `agentic-os:unpublished-lane-abandonment:${plan.planDigest}`, stopped: true,
+    now: () => NOW + 1000, probe: () => {}, publicationCheck: state.publicationCheck });
+  assert.equal(receipt.sourceAbandoned, true); assert.equal(receipt.sourceIntegrated, false); assert.equal(receipt.sourceSuperseded, false);
+  assert.equal(g(state.root, 'rev-parse', `refs/heads/${state.ref}`), state.head);
+  assert.equal(g(state.root, 'for-each-ref', '--format=%(refname) %(objectname)'), refsBefore);
+  assert.equal(g(state.root, 'cat-file', '--batch-all-objects', '--batch-check=%(objectname)'), objectsBefore);
+  assert.equal(readFileSync(join(receipt.projectionPath, 'tracked.txt'), 'utf8'), 'dirty tracked bytes\n');
+  assert.equal(readFileSync(join(receipt.projectionPath, 'untracked.txt'), 'utf8'), 'dirty untracked bytes\n');
+  assert.equal(existsSync(state.target), false);
+  const profile = trustedRepositoryProfile(state.root).profile, status = inspectCompletionStatus(state.root, state.ref,
+    { protectedBranch: 'main' }, profile);
+  assert.equal(status.closeout.sourceDisposition, 'abandoned'); assert.equal(status.closeout.sourceIntegrated, false);
+  assert.equal(status.closeout.sourceSuperseded, false); assert.equal(status.closeout.missionState, 'source_complete');
+  assert.equal(status.closeout.adlcState, 'complete'); assert.equal(status.closeout.cleanupSatisfied, true);
+});
+
+test('unpublished abandonment refuses dirty-byte drift before the quarantine effect', (t) => {
+  const state = unpublishedDirtyLane(t), plan = planUnpublishedLaneAbandonment({ cwd: state.root, ref: state.ref,
+    reason: 'Obsolete unpublished scratch source; reviewed successor already carries the feature.', now: () => NOW,
+    publicationCheck: state.publicationCheck });
+  writeFileSync(join(state.target, 'tracked.txt'), 'changed after the archive plan\n');
+  assert.throws(() => applyUnpublishedLaneAbandonment(plan, { cwd: state.root,
+    authorization: `agentic-os:unpublished-lane-abandonment:${plan.planDigest}`, stopped: true,
+    now: () => NOW + 1000, probe: () => {}, publicationCheck: state.publicationCheck }), error => error.reason === 'blocked-lane-abandonment-recovery-drift');
+  assert.equal(existsSync(state.target), true); assert.equal(g(state.root, 'rev-parse', `refs/heads/${state.ref}`), state.head);
+});
+
+test('closeout labels owner abandonment separately from integration and supersession', () => {
+  const result = deriveCloseoutVerdict({ sourceIntegrated: false, sourceSuperseded: false, sourceAbandoned: true,
+    canonicalCurrent: true, laneMounted: false, laneHead: true, quarantineProfile: true,
+    quarantineObserved: true, deployBound: false, findingCodes: [] });
+  assert.equal(result.sourceDisposition, 'abandoned'); assert.equal(result.sourceIntegrated, false);
+  assert.equal(result.sourceSuperseded, false); assert.equal(result.sourceAbandoned, true);
+  assert.equal(result.adlcState, 'complete'); assert.equal(result.cleanupSatisfied, true);
 });
 
 test('exact local-consent retirement removes only the projection and leaves branch evidence', t => {
