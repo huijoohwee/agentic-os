@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import {
   assertPriorManagedRuntime, describeHookRuntime, inspectHookRuntime, installHookRuntime,
 } from '../bin/agentic-os-hook-runtime.mjs';
@@ -26,6 +27,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
+  const historicalGovernance = gunzipSync(Buffer.from(readFileSync(new URL('./fixtures/governance-pre-branch-retirement.mjs.gz.b64', import.meta.url), 'utf8'), 'base64'));
+  assert.equal(digest(historicalGovernance), 'ea91f7a577936590c13dac1a353ef02dbf445f86ac73b347084c9b74e38c5f10');
   const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes
     .toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync'));
   assert.equal(digest(quarantineBytes), '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
@@ -39,7 +42,9 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
     : file.path === 'src/git-tracked.mjs'
       ? { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)) } : file);
   const altered = predecessor.map((file, index) => {
-    const bytes = ['batch32', 'retained-context', 'pre-alignment'].includes(released) ? file.bytes : released ? (file.path === 'src/git.mjs'
+    const bytes = ['pre-upstream', 'batch32', 'retained-context', 'pre-alignment'].includes(released)
+      && file.path === 'src/governance.mjs' ? historicalGovernance
+      : ['batch32', 'retained-context', 'pre-alignment'].includes(released) ? file.bytes : released ? (file.path === 'src/git.mjs'
       ? readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url))
       : released === 'pre-upstream' ? file.bytes : file.path === 'src/governance.mjs'
       ? readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url))

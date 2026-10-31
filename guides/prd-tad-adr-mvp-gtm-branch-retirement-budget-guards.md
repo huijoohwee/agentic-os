@@ -1,5 +1,5 @@
 ---
-title: "Budget guards for exact branch retirement"
+title: "Budget guards and exact branch retirement"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: agentic-os
 continuity_id: BRANCH-RETIREMENT-BUDGET-001
@@ -15,7 +15,7 @@ frontmatter_contract: required
 load_policy: on-demand
 ---
 
-# Budget guards for exact branch retirement
+# Budget guards and exact branch retirement
 
 ## PRD
 
@@ -39,33 +39,41 @@ only to the measured feature boundary and retaining strict over-limit failures.
   the always-loaded byte total does not grow.
 - BG-06: The original five-path branch-retirement lane remains untouched. No branch refs, objects,
   worktrees outside START, or provider state are modified by these budget changes.
+- BG-07: The first shared-governance run selected 258 suites (3,030.8 estimated command-seconds)
+  and exhausted 540 seconds after 41 suites. The 900-second rerun recorded 208 passing suites and
+  stopped at 903.6 seconds with 46 unstarted; its four reported timeouts were the batch deadline.
+  The cold candidate run then reached 1,081.3 seconds against the 1,080-second window and timed out
+  only the final packaging suite. Set the shared-contract window to 1,200 seconds; each suite stays
+  capped at 540 seconds, concurrency stays four, and all input and receipt checks remain enabled.
 
 ## TAD
 
-Change only the existing module-budget and test-impact owners. Extend their existing regression suites
-and keep the budget table synchronized. The feature owner is neutral and exact: an opt-in policy,
-per-ref expiring plans, compare-and-delete apply, and separate effect receipts. The new source module
-is one lifecycle responsibility, stays under 400 lines, and replaces no existing owner. Its ten-line
-CLI addition is the only executable growth outside `src/`. Test inventory grows by one because the
-feature has its own durable safety suite. No runtime copy, dependency, provider integration, or
-always-loaded prompt expansion is needed.
+Change the existing module and test-impact budgets, plus the measured shared-contract batch window.
+Extend existing regression suites and keep the budget table synchronized. The feature owner remains
+neutral and exact: an opt-in policy, per-ref expiring plans, compare-and-delete apply, and separate
+effect receipts. The new source module is one lifecycle responsibility, stays under 400 lines, and
+replaces no existing owner. Its ten-line CLI addition is the only executable growth outside `src/`.
+Test inventory grows by one because the feature has its own durable safety suite. No runtime copy,
+dependency, provider integration, or always-loaded prompt expansion is needed.
 
 ## ADR
 
 Authorize only the measured limits required by the parent decision: 52 source modules, 16,553 source
-lines, 24,866 CLI lines, and 258 test suites. Keep all other caps unchanged. Do not loosen the test
-inventory guard beyond one additional suite, and do not weaken the 450-line per-module cap. Place the
-reason for this cap adjustment in this on-demand decision record; preserve the always-loaded budget
-by making only equal-length corrections in its existing cap table.
+lines, 24,866 CLI lines, 258 test suites, and a 1,200-second batch ceiling only for shared-contract
+plans. Keep ordinary batch and per-suite limits at 540 seconds. Do not loosen the test inventory
+guard beyond one additional suite, or weaken the 450-line per-module cap. Preserve the always-loaded
+budget by making only equal-length corrections in its existing cap table.
 
 ## MVP
 
-Six reserved paths: two existing CLI budget guards, their two existing regression suites, the existing
-budget table, and this plan. Maximum 60 active minutes and 12 KiB authored diff. Zero new modules,
-dependencies, runtime changes, provider calls, paid services, or always-loaded byte increase. Run the
-focused guard suites and `npm run check`. Stop and replan if measured feature deltas differ from the
-values above. Rollback is a protected revert of the guard and table changes; it grants no branch or
-workspace cleanup authority.
+Thirteen reserved paths in this re-planned candidate: the branch-retirement owner and safety suite,
+governance and CLI integration, hook and documentation-budget regressions, existing module and
+test-impact budgets, the test runner and its inputs, and this plan. Cap work at 60 active minutes and
+96 KiB authored diff. Keep the new lifecycle module under 400 lines and the test inventory at 258
+suites. Add no dependencies, runtime copy, provider calls, paid services, or always-loaded bytes. Run
+focused retirement and budget regressions plus `npm run check` and its evaluators. Stop if measured
+feature deltas exceed these bounds. Rollback is a protected scoped revert; this grants no branch
+retirement or workspace cleanup effect.
 
 ## GTM
 

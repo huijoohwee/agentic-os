@@ -37,38 +37,30 @@ sourceLeaseEpoch sourceFenceRevision resultClaimId resultLeaseEpoch resultFenceR
 resultState immutableRevision reviewLocator operationReceiptDigest transitionedAt receiptDigest
 ```
 
-An External Authority Evidence v1 record binds one request to an adapter version, authenticated
-subject, provider record, challenge and response, candidate inventory, validity window, and derived
-replay key. `agentic-os/records/authority-evidence` validates its canonical structure. The record is
-not authentication by itself: the selected adapter must re-observe the provider record and prove the
-content-addressed replay fence before a consumer accepts the joined transition envelope.
+External Authority Evidence v1 binds each request to adapter version, authenticated subject, provider
+record, challenge/response, candidate inventory, validity window, and replay key.
+`agentic-os/records/authority-evidence` validates its canonical structure; the adapter reobserves provider
+state and proves the content-addressed replay fence before a consumer accepts the transition.
 
 `agentic-os/records/recovery-candidate` binds the observed and canonical branch names, repository,
 review, revisions, and opaque inventory digests without local paths or authored bytes.
 `collectRecoveryInventory({ cwd, canonicalRef })` from `agentic-os/adapters/recovery-inventory` computes
 those digests from raw-byte Git paths and netstring-framed index, content, hidden-flag, and category records.
 It compares two complete read-only collections plus HEAD, canonical ref, branch, porcelain-v2, and hidden
-state, so ignored-byte or Git-state drift fails closed. `agentic-os/adapters/github-authority` binds it to a
-committed target-owner namespace, exact canonical input/policy bytes, run start/completion, active workflow,
-and equal protected ref/workflow revisions. A claim requires its authenticated owner and exactly one
-digest-bound effect plan; claim ID, lease epoch, and root operation form the create-only CAS coordinate.
-The stored bundle has no transition receipt. The issuer binds exact target repository, branch, revision,
-pull-request, owner, status-context, Actions integration, and merge-method projections. Evidence creation
-uses one active zero-bypass ruleset with exact update, deletion, and non-fast-forward immutability;
-creation restrictions, extra rules or rulesets, and every bypass actor fail closed. Publication is an
-absent-ref, create-only compare-and-swap. Its authenticity comes from the exact owner-bound
-workflow run, bundle, commit, tree, blob, and live re-observation, not from the identity of the ref creator.
-A repository writer can win the absent-ref race with a conflicting value and deny availability, but that
-value cannot authenticate as the requested authority; an exact winner is only an idempotent replay. Only
-after re-reading the run completion, canonical and evidence refs, commit time, target state, stored
-bytes, and unchanged protection does the issuer emit a publication-bound transition receipt.
-Issuance record validation is structural only. JSON copied from a file, message, or prior run is never
-transferable authority. A later consumer must obtain the exact owner-local issuance bound to the successful
-read-only workflow run, call `verifyGitHubAuthorityIssuanceLive` to re-observe exact provider state with a
-trusted current clock while `issuedAt <= now < expiresAt`, and separately resolve the digest-bound effect
-plan to its exact bytes before considering any effect. Live verification does not approve that plan or
-grant merge, deployment, retirement, cleanup, or target-repository writes; those remain separate
-consumer decisions.
+state, so ignored-byte or Git-state drift fails closed. `agentic-os/adapters/github-authority` binds issuance
+to committed owner namespace, canonical input/policy bytes, workflow run start/completion, active workflow,
+and equal protected-ref/workflow revisions. Claims require the authenticated owner and one digest-bound
+plan; claim ID, lease epoch, and root operation form its create-only CAS key. The bundle has no transition
+receipt. The issuer binds exact repository, branch, revision, PR, owner, status context, Actions integration,
+and merge method. Evidence publication requires one active zero-bypass ruleset with exact update/deletion/
+non-fast-forward immutability; creation restrictions, extra rules/rulesets, and bypass actors fail closed.
+Absent-ref publication uses CAS. Authenticity comes from the exact owner-bound run, bundle, commit/tree/blob,
+and live reobservation; a conflicting writer can deny availability but cannot authenticate a value. Before
+issuing a receipt, the issuer rechecks run completion, canonical/evidence refs, commit time, target state,
+stored bytes, and protection. Issuance validation is structural only. Consumers obtain the exact owner-local
+issuance for the successful read-only run, call `verifyGitHubAuthorityIssuanceLive` with a trusted clock
+while `issuedAt <= now < expiresAt`, and resolve the digest-bound plan to exact bytes. Neither envelope nor
+live verification authorizes effects.
 
 Validators reject unknown, missing, noncanonical, accessor-backed, aliased, cyclic, oversized, or
 wrong-schema data. Set-like arrays are sorted and duplicate-free. Receipt replay is request-digest,
@@ -105,11 +97,16 @@ malformed, unsafe, or conflicting anchor blocks repository-bound commands, setup
 and no lane profile, sibling repository, remote metadata, or environment value may reconstruct it.
 The anchor only selects which clone may supply policy; it grants no authority (see Trust boundary).
 
-The v1 profile fixes runtime and release authority to `consumer`. Cleanup defaults all six targets to
-`retain`. A profile may explicitly select `quarantine` only for both worktree projection and registration;
-it then derives `quarantine-worktree-cleanup-opt-in` instead of `retain-all-cleanup`. Remote-tracking refs,
-branches, and unreachable objects always remain retained. No adapter can promote itself or translate
-legacy deletion into `retire`.
+Runtime/release authority stays with `consumer`; cleanup retains all six targets. Worktree quarantine
+requires both projection and registration (`quarantine-worktree-cleanup-opt-in`). Branch retirement is
+opt-in (`branchRetirement` + `governed-branch-retirement`) and grants no authorization.
+`branch-retirement plan --effect=<remote-branch|local-branch|remote-tracking-ref> --branch=<name>` stores
+one exact 15-minute plan in Git-private state. Branch effects require a same-repo merged PR matching the
+exact head and canonical base; tracking-ref pruning requires live remote absence. Open PRs, protected refs,
+active worktrees, or drift block. Apply requires
+`--authorize=agentic-os:branch-retirement:<digest>`, uses expected-OID compare-and-delete, and writes a
+per-ref receipt recording GitHub identity/time.
+Objects and reflogs remain; no GC. Adapters cannot self-promote or map legacy deletion to `retire`.
 
 Provider-policy capabilities are explicit per consumer: pull-request integration, merge-queue
 ordering, strict checks, squash-only or squash-preferred integration, and linear history. Merge-queue

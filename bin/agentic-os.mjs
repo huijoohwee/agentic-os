@@ -337,7 +337,8 @@ async function main() {
   }
   if (command === 'complete-adlc') { command = 'release-common'; argv = ['complete-adlc', ...argv]; }
   if (['cleanup-user', 'cleanup'].includes(command) && argv[0] === 'retire') return (await import('./agentic-os-cleanup-user.mjs')).runUserCleanup(repoRoot(process.cwd()), argv, out);
-  const argumentError = validateCommandArguments(command, argv);
+  const argumentError = command === 'branch-retirement' ? null
+    : validateCommandArguments(command, argv);
   if (argumentError) {
     err(`blocked-invalid-arguments: ${command}: ${argumentError}`);
     return 1;
@@ -385,6 +386,15 @@ async function main() {
     case 'guard-install':
       return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
     case 'doctor': return cmdDoctor(root, profile, policy);
+    case 'branch-retirement': {
+      const protectedRevision = assertProfileCurrent(root, policy, profile);
+      if (headSha(policy.protectedRef, root) !== protectedRevision)
+        throw Object.assign(new Error('protected repository profile ref changed'), {
+          reason: 'blocked-protected-ref-race',
+        });
+      return (await import('../src/branch-retirement.mjs'))
+        .runBranchRetirement(root, profile, argv, out);
+    }
     case 'start': return cmdStart(root, argv, policy, profile);
     case 'release-common': return cmdReleaseCommon(cwd, root, argv, policy, profile);
     case 'memory': case 'workspace': return (await import('./agentic-os-workspace-sync.mjs'))

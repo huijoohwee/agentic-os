@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArguments, runTests, validationChecks, runCheckPool, boundCiCoverage } from '../bin/agentic-os-tests.mjs';
-import { snapshot } from '../bin/agentic-os-test-inputs.mjs';
+import { LIMITS, snapshot } from '../bin/agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { collectWorkflowValue, readSelectedWorkflow, startWorkflow, workflowPaths } from '../bin/agentic-os-workflow.mjs';
@@ -60,6 +60,16 @@ test('options are explicit and reject unknown, duplicate and empty input', () =>
   for (const args of [['unknown'], ['affected', '--skip'], ['affected', '--base='],
     ['affected', '--base=a', '--base=b'], ['fast', '--fresh'], ['affected', '--ci-run=0']]) assert.throws(() => parseArguments(args));
   assert.equal(parseArguments(['affected', '--ci-run=42'])['ci-run'], '42');
+});
+test('shared-contract batches get a bounded window without extending single-suite timeouts', async t => {
+  const f = fixture(t), pkg = JSON.parse(readFileSync(join(f.root, 'package.json'), 'utf8'));
+  pkg.name = 'shared-contract-budget'; writeFileSync(join(f.root, 'package.json'), JSON.stringify(pkg));
+  const messages = [];
+  assert.equal(await runTests(['plan', '--base=HEAD'], { root: f.root, out: text => messages.push(text) }), 0);
+  const plan = JSON.parse(messages[0]);
+  assert.ok(plan.reasons.includes('shared-contract:package.json'));
+  assert.equal(plan.cost.timeBudgetMs, 1_200_000);
+  assert.equal(LIMITS.testMs, 540_000);
 });
 test('local concurrency is explicit, bounded and forbidden for fast/git', () => {
   assert.equal(parseArguments([]).concurrency, 4);
