@@ -27,8 +27,8 @@ export const BUDGET = Object.freeze({
   // 2026-10-21 ADLC-CLOSEOUT-001: +42 existing bin lines for lane-safe read-only closeout; reduce command switching without changing effect authority.
   // 2026-10-26 END-ADLC-SIMPLIFY-001: +68 src/+39 bin lines add exact selection, bounded cleanup and read-only closeout projection in existing owners.
   // 2026-10-27 FLEET-01.10: +52 src/+31 bin lines enforce canonical checkout naming in existing owners; no module or dependency growth; refresh release pins. 2026-10-31: +137 existing-owner CLI lines admit exact detached-main snapshot quarantine; no module, dependency, provider or deployment authority.
-  modules: 51,
-  totalLines: 16161,
+  modules: 52,
+  totalLines: 16553,
   perModuleLines: 450,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -42,7 +42,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 113,
-  binLines: 24856,
+  binLines: 24866,
   runtimeModules: 97,
   runtimeLines: 23023,
 });

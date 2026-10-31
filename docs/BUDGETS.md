@@ -31,9 +31,9 @@ count is secondary, and token estimates are advisory because tokenizers vary by 
 
 | Scope | Cap | Enforced by |
 |---|---|---|
-| Modules in `src/` | 51 | `bin/agentic-os-module-budget.mjs` |
-| Authored lines in `src/` | 16,041 | `bin/agentic-os-module-budget.mjs` |
-| Lines in one module | 400 | `bin/agentic-os-module-budget.mjs` |
+| Modules in `src/` | 52 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `src/` | 16,553 | `bin/agentic-os-module-budget.mjs` |
+| Lines in one module | 450 | `bin/agentic-os-module-budget.mjs` |
 
 The cap is the design constraint that keeps scenarios in the state table. A per-scenario quadruple of
 contract, controller, adapter, and evidence module multiplies: 76 scenarios becomes 304 modules and
