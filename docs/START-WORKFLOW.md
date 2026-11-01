@@ -12,3 +12,5 @@ archive, and mismatched checkouts; reserve disjoint paths.
 
 Lock/fetch protected ref before checks, including reuse/refusal. Failure stops before mutation; fetch updates tracking
 only, not local main or release authority. See [recertification](../guides/LANE-RECERTIFICATION.md).
+
+Batch full mobile/offline validation at stable candidate; see [economy guide](../guides/VALIDATION-ECONOMY.md).
