@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.8"
-date: "2026-10-31"
+version: "1.4.9"
+date: "2026-11-02"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.8"
-tad_revision: "1.4.8"
-adr_revision: "1.4.8"
+prd_revision: "1.4.9"
+tad_revision: "1.4.9"
+adr_revision: "1.4.9"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--detached-snapshot-cleanup"
+worktree_id: "device-0232231d4a19--reversible-clone-archive"
 agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "397ce86dbcf9606cace473f0e1f1e8beabb20197"
-mvp_revision: "1.4.8"
-gtm_revision: "1.4.8"
+reviewed_source_revision: "f2caf5a852348768b84bca9be3dc5cc511a9eb37"
+mvp_revision: "1.4.9"
+gtm_revision: "1.4.9"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -37,18 +37,22 @@ same-repository merged PR and selected successful GitHub Actions checks; equal c
 merge ancestry in clean, current main; exact target, inventory, peers, refs and object preservation;
 recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay. Before
 projection retirement, detect open descriptors and process current working directories under both retained
-trees; fail closed if the reader scan is incomplete.
+trees; fail closed if the reader scan is incomplete. Preserve an independent scratch clone as a whole
+directory move on the same filesystem; this remains separate from worktree cleanup and quarantine retirement.
 
 ## TAD: separate admission, shared preservation machinery
 
-`bin/agentic-os-cleanup-user.mjs` owns local admission, plans, authorization and receipts.
+`bin/agentic-os-cleanup-user.mjs` owns worktree cleanup admission, plans, authorization and receipts.
 `bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. The existing quarantine
 mechanics take an internal policy observer; protected cleanup never forwards caller-supplied policy
 overrides and still requires its authenticated integration/retirement joins. This is not a fallback.
 The cleanup command's reader guard uses recursive descriptor scans for files and one process-CWD snapshot
 for directories, including a working directory whose tree has already been unlinked. Missing caller
 evidence or scan errors block removal; canonical path resolution prevents symlink aliases from evading
-containment checks. The existing cleanup owner remains the only CLI/runtime module.
+containment checks. The CLI has no primary-clone archive plan/apply command. If an operator needs a scratch
+clone out of the active workspace while preserving it, use an operator-owned same-filesystem directory move
+and retain a separate authorization record and source/destination receipt. Do not route the primary clone
+through worktree cleanup or quarantine retirement.
 
 The progressive closeout pass uses cached lane state to try integrated, queued, then published lanes,
 with path order as the stable tie-breaker. It shares the pass deadline across eligible candidates;
@@ -97,6 +101,26 @@ links. Canonical targets, aliases, foreign clones and locked registrations are r
 
 Generate and apply one plan at a time: quarantining one peer changes the next target's inventory.
 Do not reuse a stale batch of plans. Remove opt-in with `git config --local --unset-all agentic-os.userCleanup`.
+
+## Preserve a scratch clone outside the active workspace
+
+An independent scratch clone is a primary clone, not a linked Git worktree. Preserve the whole directory to
+retain local branch refs, reflogs, objects, index state, working files, ignored data, and any cleanup
+quarantine. A same-filesystem directory rename is the lowest-I/O move: it transfers no file bytes,
+keeps the clone intact, and does not reclaim storage. A [Git bundle](https://git-scm.com/docs/git-bundle)
+covers refs and reachable objects, but it does not include the working tree, index, local config, hooks, or
+cleanup quarantine; use one only when that narrower backup is intended.
+
+The current `cleanup-user` CLI does not move primary clones. For a manual archive, stop writers, choose an
+existing archive parent outside the active clone, and verify that the source and archive parent are on the
+same filesystem. Move the exact `<repository-slug>-<role>-scratch` directory as a whole; do not use
+`git worktree remove` or the quarantine-retirement command. Record the original path, archive path, and move
+result together so the directory can be restored to its original location. Inspect `git status` first so
+dirty bytes are understood; the directory move preserves them as well.
+
+This operation only clears the clone from its active workspace location. It does not delete refs or reclaim
+disk space. Permanent disposal still needs a separate, explicitly authorized decision after the retained
+clone and its local-only data have been reviewed.
 
 ## Explicit recovery for profile-governed repositories
 
