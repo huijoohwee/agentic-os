@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40744, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40861, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -98,8 +98,9 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       '[recertification](../guides/LANE-RECERTIFICATION.md).',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      '`publish` follows checks; merge requires green checks. `promote plan|apply` binds the exact PR head.',
-      '`complete` waits for exact integration and keeps the lane mounted.',
+      '`start → checks → publish → protected review/merge → complete --ref=<lane>` is the default source path.',
+      'Use `complete-adlc --ref=<lane>` once for a final summary; follow only its next action. Load optional tools',
+      'only for enrolled scope or blockers. Reuse evidence until drift.',
       '`complete-adlc --worktrees=<dir> [--ref=<lane>]` reports source, delivery, and retention; exit `2` keeps END ADLC',
       'It cannot merge, deploy, or clean lanes. PRD snapshots preserve exact bytes and grant no effect authority.',
       'Delivery binds exact activation and paths; Dev and Prod readbacks use the same candidate.',
