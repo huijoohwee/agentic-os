@@ -71,14 +71,13 @@ function cmdReleaseCommonHelp({ advanced = false } = {}) {
       'agentic-os release-common',
       '',
       'Default source path:',
-      '  agentic-os release-common start <scope> --write=<paths> [--plan=<PRD-path>]',
-      '  Run repository checks: npm run check',
-      '  agentic-os release-common publish',
-      '  Complete required protected review, checks, and merge.',
+      '  npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
+      '  Work in the printed worktree; npm run land -- --message="feat: ..." runs affected checks, commits, and publishes its exact head.',
+      '  Complete protected PR review/checks, then merge.',
       '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]',
       '',
-      'For optional closeout, fleet, delivery, recovery, or cleanup workflows,',
-      'read docs/RELEASE-WORKFLOW.md or use `agentic-os release-common help --advanced`.',
+      'Load workspace context and specialized workflows only when needed.',
+      'Read docs/RELEASE-WORKFLOW.md or use `agentic-os release-common help --advanced`.',
     ].join('\n'));
     return 0;
   }
@@ -86,8 +85,8 @@ function cmdReleaseCommonHelp({ advanced = false } = {}) {
     [
       'agentic-os release-common',
       '',
-      'Default: start one lane, run npm run check, publish its exact head, wait for protected review/checks, then merge.',
-      '  agentic-os release-common start <scope> --write=<paths> [--plan=<PRD-path>]',
+      'Default: start one lane, run npm run land -- --message=<commit>, complete protected review/checks, merge, then record integration.',
+      '  npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
       '  agentic-os release-common publish | complete --ref=<lane>',
       '',
       'Optional commands, only when required: promote, scope-release, rebind, successor, lane-alignment,',

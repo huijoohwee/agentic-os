@@ -75,12 +75,15 @@ test('unconfigured startup performs no memory import and preserves normal lane a
   assert.equal(existsSync(join(s.source, '.git', 'agentic-os-memory')), false);
 });
 
-test('startup pins committed records, leaves dirty source untouched, and reuses an unchanged index', t => {
+test('startup defers memory, then an explicit request pins records and reuses its index', t => {
   const s = fixture(t), original = readFileSync(s.shard);
   writeFileSync(s.shard, 'dirty private bytes never indexed\n');
-  const result = s.invoke('start', 'with-memory', '--device=device-a', '--write=change.txt');
-  assert.equal(result.status, 0, result.stderr);
-  const first = JSON.parse(result.stdout.match(/^memory (.+)$/mu)[1]);
+  const started = s.invoke('start', 'with-memory', '--device=device-a', '--write=change.txt');
+  assert.equal(started.status, 0, started.stderr); assert.doesNotMatch(started.stdout, /^memory /mu);
+  const result = s.invoke('memory'); assert.equal(result.status, 0, result.stderr);
+  const memoryReceipt = result.stdout.match(/^memory (.+)$/mu);
+  assert.ok(memoryReceipt, `explicit memory command output: ${JSON.stringify(result.stdout)}`);
+  const first = JSON.parse(memoryReceipt[1]);
   assert.equal(first.status, 'ready'); assert.equal(first.entries, 1); assert.equal(first.grantsAuthority, false);
   const index = load(first), mtime = statSync(first.index).mtimeMs;
   assert.equal(index.source.revision, s.run(s.source, ['rev-parse', 'HEAD']));
@@ -90,7 +93,7 @@ test('startup pins committed records, leaves dirty source untouched, and reuses 
   assert.equal(statSync(first.index).mode & 0o777, 0o600);
   const second = s.hydrate(); assert.equal(second.reused, true); assert.equal(second.index, first.index);
   assert.equal(statSync(first.index).mtimeMs, mtime);
-  const lane = result.stdout.match(/^worktree (.+)$/mu)[1];
+  const lane = started.stdout.match(/^worktree (.+)$/mu)[1];
   const resumed = spawnSync(process.execPath, [CLI, 'memory', '--offline'], { cwd: lane, encoding: 'utf8' });
   assert.equal(resumed.status, 0, resumed.stderr); assert.match(resumed.stdout, /offline-cache/u);
 });
@@ -133,12 +136,14 @@ test('shared source lock refuses a second process before fetch or cache mutation
   assert.equal(s.hydrate().reused, true);
 });
 
-test('remote mismatch fails closed even with a usable cache and creates no lane', t => {
+test('remote mismatch is checked only when memory is requested', t => {
   const s = fixture(t); s.hydrate();
   s.run(s.source, ['remote', 'set-url', 'origin', '/wrong-remote']);
-  const result = s.invoke('start', 'bad-memory', '--device=device-a', '--write=change.txt');
+  const started = s.invoke('start', 'bad-memory', '--device=device-a', '--write=change.txt');
+  assert.equal(started.status, 0, started.stderr); assert.doesNotMatch(started.stdout, /^memory /mu);
+  assert.notEqual(s.run(s.root, ['rev-parse', '--verify', '--quiet', 'agent/device-a/bad-memory'], { allowFail: true }), null);
+  const result = s.invoke('memory');
   assert.equal(result.status, 1); assert.match(result.stderr, /blocked-memory-remote-identity/u);
-  assert.equal(s.run(s.root, ['rev-parse', '--verify', '--quiet', 'agent/device-a/bad-memory'], { allowFail: true }), null);
 });
 
 test('config comes from the protected commit, including after a local uncommitted edit', t => {
