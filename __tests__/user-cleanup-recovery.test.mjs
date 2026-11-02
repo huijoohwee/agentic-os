@@ -313,6 +313,8 @@ test('recovery ignores same-head push runs but still requires the selected pull-
     details_url: s.check.details_url.replace('/456/job/123', '/455/job/124') };
   s.runsById.set(455, { ...s.run, id: 455, event: 'push' });
   s.checks.check_runs.push(pushCheck); s.checks.total_count = 2;
+  assert.equal(inferMergedReviewWorkflow({ repository: 'example/GameXR', pr: 7,
+    requiredChecks: ['test'] }, s.options), s.input.workflow);
   const plan = s.plan();
   assert.equal(plan.review.checks[0].checkId, 123);
   assert.equal(plan.review.checks[0].runId, 456);
