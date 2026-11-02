@@ -21,7 +21,7 @@
       "financialModel": { "status": "not-recorded" },
       "source": {
         "path": "bin/agentic-os-workflow-observation.mjs",
-        "revision": "ac9ea610d8ad3771618caa4d528c703908611639",
+        "revision": "7ecf27659480ed408ea1e28686b2fd28853c18d8",
         "kind": "observation-contract"
       },
       "actuals": { "status": "unreported", "receiptRefs": [] },
