@@ -40,6 +40,9 @@ test('default help stays short and advanced help remains available on demand', (
     output = '';
     assert.equal(cmdHelp({ advanced: true }), 0);
     assert.match(output, /Underlying primitives and diagnostics/u);
+    assert.match(output, /npm run lane --/u);
+    assert.match(output, /npm run land --/u);
+    assert.doesNotMatch(output, /release:common -- start/u);
   } finally {
     process.stdout.write = originalWrite;
   }
@@ -55,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40863, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40843, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -111,34 +114,34 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'A below-quota usage view, budget alert, or owner-entered claim is not that receipt.',
     ]],
     ['docs/START-WORKFLOW.md', [
-      'Use `release:common start <scope> --write=<paths> --plan=<PRD-path>` for one task.',
-      'one explicit in-repo untracked regular non-symlink Markdown draft (≤128,000 B) absent from the fetched protected tree.',
-      'Bind repo, fetched base, relative path, and exact-byte SHA-256; store immutable bytes for resume/successors.',
-      'Changed plans rebind only one clean unpublished lane at fetched base with the same ref, path, and reservation; drift refuses.',
-      'A snapshot grants no effect authority.',
-      'At most five worktrees per repo; canonical excluded; no nesting; one lane per task. No plan/mission: use clone.',
-      'Accept canonical checkout or exact `<repository>-<role>-scratch` clone; lanes stay local.',
-      'Lock/fetch protected ref before checks, including reuse/refusal.',
-      'Failure stops before mutation; fetch updates tracking only, not local main or release authority.',
-      '[recertification](../guides/LANE-RECERTIFICATION.md).',
+      'npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
+      'Name exact relative paths. START locks and fetches',
+      'the protected ref, checks checkout and scope, then creates one local worktree. Make changes only there.',
+      'Use `--plan` for material requirement or design changes. Eligible plans are protected PRDs or untracked regular,',
+      'non-symlink Markdown drafts ≤128,000 B absent from the fetched protected tree.',
+      'START binds repo, base, path, and exact bytes; a plan grants no effect authority.',
+      'Use `--mission` to resume; recertify if a bound plan changes.',
+      'Workspace or memory context is on demand: run `node bin/agentic-os.mjs workspace` or `memory` when needed.',
+      'mobile/offline, recovery, cleanup, fleet, deployment, or rollback procedures only when the task or repo policy',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       '## Default source path',
-      '1. Start one lane: `npm run release:common -- start <scope> --write=<paths> [--plan=<PRD-path>]`.',
-      '2. Run `npm run check`.',
-      '3. Publish its exact head: `npm run release:common -- publish`.',
-      '4. Pass protected review/checks; merge the PR.',
-      '5. Record integration: `npm run release:common -- complete --ref=<lane>`.',
-      'A plan grants no effects. Completion is not delivery, cleanup, sync, or deployment.',
-      '## Optional paths',
-      'Load only when needed; reuse evidence until drift.',
-      '- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only (exit `2` = open).',
-      '- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only in scope.',
-      'Full closeout needs a receipt + absent path; ref deletion needs separate authority + receipt.',
-      'Cleanup removes only an empty parent (`selected: 0`), never lane/Git data.',
-      'Empty-lane retirement keeps refs, objects and registration.',
-      'Docs-only work needs an exact owner-bound reason.',
-      '[GOVERNANCE](GOVERNANCE.md) and [USER CLEANUP](../guides/USER-CLEANUP.md).',
+      '1. Start with `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`; work in its printed worktree.',
+      '2. Use `npm run check` while iterating when useful. For final publication, run',
+      '`npm run land -- --message="feat: ..."`; it runs affected checks, commits reserved paths, and publishes the exact',
+      'lane head.',
+      '3. Complete the repository\'s protected PR checks and review, then merge the PR.',
+      '4. Record source integration with `npm run release:common -- complete --ref=<lane>`.',
+      'Plans bind requirements and scope; they grant no effect authority.',
+      'Source completion is not product delivery, workspace cleanup, branch retirement, canonical sync, or deployment.',
+      '## On demand',
+      'Load only the workflow a lane needs and reuse evidence until its inputs drift.',
+      '- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only; exit `2` means open.',
+      '- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only for a delivery-bound scope.',
+      '- **Cleanup:** use the exact stopped target and its authorized receipt. See [USER CLEANUP](../guides/USER-CLEANUP.md).',
+      '- **Recovery or retirement:** use only the named AOS workflow when a concrete blocker requires it.',
+      'The release command never grants deployment or cleanup authority. See [GOVERNANCE](GOVERNANCE.md) for effect',
+      'boundaries.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',

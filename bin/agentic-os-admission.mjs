@@ -297,8 +297,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
         artifacts.allocation = allocation; artifacts.workflow = selected.path; artifacts.effectsRetained = true;
         selectedAgain(root, profile.repository, selected);
       }
-      const context = (await import('./agentic-os-workspace.mjs')).hydrateWorkspace(root, policy, { revision: baseSha });
-      if (context.status !== 'disabled') out(`${context.schema ? 'workspace' : 'memory'} ${JSON.stringify(context)}`);
       if (enrolled && selected) selectedAgain(root, profile.repository, selected);
       const created = effectReceipt('provision-worktree', provision({ ref, scope, device, baseSha, cwd: root }));
       Object.assign(artifacts, { worktree: created.path, provisioned: true, provisionReceipt: created, effectsRetained: true });

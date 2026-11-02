@@ -1,16 +1,15 @@
 # Start
 
-Use `release:common start <scope> --write=<paths> --plan=<PRD-path>` for one task. Plan: protected PRD or one
-explicit in-repo untracked regular non-symlink Markdown draft (≤128,000 B) absent from the fetched protected tree.
-Bind repo, fetched base, relative path, and exact-byte SHA-256; store immutable bytes for resume/successors. Changed
-plans rebind only one clean unpublished lane at fetched base with the same ref, path, and reservation; drift refuses.
-A snapshot grants no effect authority.
+## Default path
 
-At most five worktrees per repo; canonical excluded; no nesting; one lane per task. No plan/mission: use clone.
-Accept canonical checkout or exact `<repository>-<role>-scratch` clone; lanes stay local. Refuse auxiliary, worktree,
-archive, and mismatched checkouts; reserve disjoint paths.
+From the canonical checkout or approved `<repository>-<role>-scratch` clone, run
+`npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`. Name exact relative paths. START locks and fetches
+the protected ref, checks checkout and scope, then creates one local worktree. Make changes only there.
 
-Lock/fetch protected ref before checks, including reuse/refusal. Failure stops before mutation; fetch updates tracking
-only, not local main or release authority. See [recertification](../guides/LANE-RECERTIFICATION.md).
+Use `--plan` for material requirement or design changes. Eligible plans are protected PRDs or untracked regular,
+non-symlink Markdown drafts ≤128,000 B absent from the fetched protected tree. START binds repo, base, path, and
+exact bytes; a plan grants no effect authority. Use `--mission` to resume; recertify if a bound plan changes.
 
-Batch full mobile/offline validation at stable candidate; see [economy guide](../guides/VALIDATION-ECONOMY.md).
+Workspace or memory context is on demand: run `node bin/agentic-os.mjs workspace` or `memory` when needed. Load
+mobile/offline, recovery, cleanup, fleet, deployment, or rollback procedures only when the task or repo policy
+requires them. START provisions locally; it does not publish, deploy, or clean up.

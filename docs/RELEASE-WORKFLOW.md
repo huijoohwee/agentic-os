@@ -2,25 +2,25 @@
 
 ## Default source path
 
-1. Start one lane: `npm run release:common -- start <scope> --write=<paths> [--plan=<PRD-path>]`.
-2. Run `npm run check`.
-3. Publish its exact head: `npm run release:common -- publish`.
-4. Pass protected review/checks; merge the PR.
-5. Record integration: `npm run release:common -- complete --ref=<lane>`.
+1. Start with `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`; work in its printed worktree.
+2. Use `npm run check` while iterating when useful. For final publication, run
+   `npm run land -- --message="feat: ..."`; it runs affected checks, commits reserved paths, and publishes the exact
+   lane head.
+3. Complete the repository's protected PR checks and review, then merge the PR. Solo maintainers use PR plus
+   CI, set required approvals to zero, keep bypass off, and never self-approve.
+4. Record source integration with `npm run release:common -- complete --ref=<lane>`.
 
-A plan grants no effects. Completion is not delivery, cleanup, sync, or deployment.
-Solo maintainer: require PR+CI; set repo approvals=0, bypass off; never self-approve.
+Plans bind requirements and scope; they grant no effect authority.
+Source completion is not product delivery, workspace cleanup, branch retirement, canonical sync, or deployment.
 
-## Optional paths
+## On demand
 
-Load only when needed; reuse evidence until drift.
+Load only the workflow a lane needs and reuse evidence until its inputs drift.
 
-- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only (exit `2` =
-  open).
-- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only in scope. Bind exact activation/paths;
-  verify candidate. Missing activation is not “no deploy.” Docs-only work needs an exact owner-bound
-  reason.
-- **Close/clean:** closeout is read-only; cached refs are not live proof. Full closeout needs a
-  receipt + absent path; ref deletion needs separate authority + receipt. Cleanup removes only an
-  empty parent (`selected: 0`), never lane/Git data. Empty-lane retirement keeps refs, objects and
-  registration. See [GOVERNANCE](GOVERNANCE.md) and [USER CLEANUP](../guides/USER-CLEANUP.md).
+- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only; exit `2` means open.
+- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only for a delivery-bound scope.
+- **Cleanup:** use the exact stopped target and its authorized receipt. See [USER CLEANUP](../guides/USER-CLEANUP.md).
+- **Recovery or retirement:** use only the named AOS workflow when a concrete blocker requires it.
+
+The release command never grants deployment or cleanup authority. See [GOVERNANCE](GOVERNANCE.md) for effect
+boundaries.
