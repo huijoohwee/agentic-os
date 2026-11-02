@@ -65,6 +65,16 @@ async function cmdStart(root, argv, policy, profile) {
   return (await import('./agentic-os-admission.mjs')).cmdStart(root, argv, policy, profile,
     { out, err, projectCache, effectReceipt, remoteName, requireCanonical, enforceCheckoutName: true });
 }
+function cmdStartHelp() {
+  out([
+    'Start one local lane.',
+    '',
+    'Usage: npm run lane -- <scope> --write=<paths> [--plan=<PRD-path> | --mission=<manifest>]',
+    'Run from canonical main or an approved scratch clone. Edit only in the printed worktree.',
+    'START does not publish, deploy, or clean up.',
+  ].join('\n'));
+  return 0;
+}
 function cmdReleaseCommonHelp({ advanced = false } = {}) {
   if (!advanced) {
     out([
@@ -85,7 +95,7 @@ function cmdReleaseCommonHelp({ advanced = false } = {}) {
     [
       'agentic-os release-common',
       '',
-      'Default: start one lane, run npm run land -- --message=<commit>, complete protected review/checks, merge, then record integration.',
+      'Default: start one lane, run npm run land -- --message=<commit>, complete protected review/checks, merge, then record exact integration.',
       '  npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
       '  agentic-os release-common publish | complete --ref=<lane>',
       '',
@@ -339,6 +349,7 @@ async function main() {
     argv = dispatch.argv;
   }
   if (command === 'complete-adlc') { command = 'release-common'; argv = ['complete-adlc', ...argv]; }
+  if (command === 'start' && argv.length === 1 && ['--help', '-h'].includes(argv[0])) return cmdStartHelp();
   if (['cleanup-user', 'cleanup'].includes(command) && argv[0] === 'retire') return (await import('./agentic-os-cleanup-user.mjs')).runUserCleanup(repoRoot(process.cwd()), argv, out);
   const argumentError = command === 'branch-retirement' ? null
     : validateCommandArguments(command, argv);
