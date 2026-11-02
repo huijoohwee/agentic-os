@@ -25,7 +25,12 @@ still require repository scope. Such declarations must be reviewed when a check 
 only after the complete input-drift check passes. Reuse never extends a check's original validation time.
 The current candidate gets a new aggregate `last.json` receipt with timings and reuse decisions.
 
-Use `npm run check -- --fresh` to bypass reuse. CI, `--committed`, and explicit `all` always execute fresh.
+Use `npm run check -- --fresh` to bypass reuse. CI and explicit `all` always execute fresh. `--committed`
+first verifies that the complete working source equals `HEAD`; eligible local checks may then reuse a
+still-valid receipt when their exact input fingerprint matches. This lets a post-commit verification
+reuse checks already run against identical bytes. Repository-scoped evaluators remain bound to the
+current revision, and reused checks keep their original validation timestamp. This is local cost
+avoidance, not a fresh-execution claim or provider authority.
 `--ci-run=<id>` defers the local suite when that exact HEAD observation is running or passed; it is not
 merge authority. Local receipts are development optimizations, not provider merge authority. CI still validates its exact
 checkout against the event-bound baseline, and protected integration still requires successful checks.
