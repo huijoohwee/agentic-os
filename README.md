@@ -31,22 +31,23 @@ npm run check     # affected behavior and packaging, plus readiness, doc and mod
 Commit the repository's `.agentic-os.json` profile before any repository-bound command.
 Forking under a different owner starts at the [fork guide](guides/FORK.md).
 
-## Daily loop
+## Default source loop
 
 ```sh
-npm run release:common --help                                  # the full operator flow
 npm run release:common -- start <scope> --write=<path[,path...]>
 npm run release:common -- publish --message="feat: ..."
 npm run release:common -- complete --ref=<lane>               # wait for merge and report source closeout; keep the lane mounted
-npm run release:common -- complete --ref=<lane> --bundle=<json> --stopped
+npm run release:common -- complete-adlc --ref=<lane>           # one final status summary; follow its next action
 ```
 
-`complete` reports source integration and closeout while retaining the lane. Cleanup is a separate,
-explicit action: pass the exact authenticated cleanup bundle with `--bundle` and acknowledge stopped
-writers with `--stopped`. Profile settings alone never trigger lane quarantine.
+This is the normal path for a source change. Run the checks selected by the repository profile and use its
+protected review and merge rules. Reuse unchanged evidence. Load optional features, diagnostics, and extra
+validation only when the scope or a reported blocker requires them. Deployment and rollback use owner
+workflows only when those effects are enrolled. Cleanup remains exact and separately authorized; profile
+settings alone never trigger lane quarantine.
 
 `npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
-diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
+diagnostics; open one only when it answers the next blocker. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
 and the [deploy workflow](guides/DEPLOY-WORKFLOW.md) route the universal lifecycle grammar that the [ADLC guidelines](docs/adlc-guidelines.md) own;
 cleanup is globally required but repo-local in mechanics inside those stages. The
 [user cookbook](guides/USER-COOKBOOK.md) owns the smallest path for a direct edit.
