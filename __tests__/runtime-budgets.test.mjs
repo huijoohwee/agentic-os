@@ -19,6 +19,31 @@ import {
   violations as moduleViolations,
 } from '../bin/agentic-os-module-budget.mjs';
 import { workflowMergeGroupChecks } from '../src/queue.mjs';
+import { cmdHelp, validateCommandArguments } from '../bin/agentic-os-argv.mjs';
+
+test('default help stays short and advanced help remains available on demand', () => {
+  assert.equal(validateCommandArguments('help', []), null);
+  assert.equal(validateCommandArguments('help', ['--advanced']), null);
+  assert.match(validateCommandArguments('help', ['--cleanup']) ?? '', /unknown/u);
+  assert.equal(validateCommandArguments('release-common', ['help']), null);
+  assert.equal(validateCommandArguments('release-common', ['help', '--advanced']), null);
+  assert.match(validateCommandArguments('release-common', ['help', '--cleanup']) ?? '', /unknown/u);
+
+  const originalWrite = process.stdout.write;
+  let output = '';
+  process.stdout.write = (chunk) => { output += String(chunk); return true; };
+  try {
+    assert.equal(cmdHelp(), 0);
+    assert.match(output, /Default source path/u);
+    assert.match(output, /help --advanced/u);
+    assert.doesNotMatch(output, /Underlying primitives and diagnostics/u);
+    output = '';
+    assert.equal(cmdHelp({ advanced: true }), 0);
+    assert.match(output, /Underlying primitives and diagnostics/u);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
 
 test('this repository is inside its own documentation budget', (t) => {
   const root = fileURLToPath(new URL('..', import.meta.url));
@@ -30,7 +55,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40861, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40863, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -98,18 +123,22 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       '[recertification](../guides/LANE-RECERTIFICATION.md).',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      '`start → checks → publish → protected review/merge → complete --ref=<lane>` is the default source path.',
-      'Use `complete-adlc --ref=<lane>` once for a final summary; follow only its next action. Load optional tools',
-      'only for enrolled scope or blockers. Reuse evidence until drift.',
-      '`complete-adlc --worktrees=<dir> [--ref=<lane>]` reports source, delivery, and retention; exit `2` keeps END ADLC',
-      'It cannot merge, deploy, or clean lanes. PRD snapshots preserve exact bytes and grant no effect authority.',
-      'Delivery binds exact activation and paths; Dev and Prod readbacks use the same candidate.',
-      'Missing activation is not a no-deploy disposition; docs-only work needs an exact owner-bound reason.',
-      '`closeout --ref=<lane>` is read-only; local/cached refs do not prove live remote state.',
-      'Full closeout needs a workspace receipt and absent path. Ref deletion needs separate exact authority and a receipt.',
-      'Cleanup `--bundle --stopped` removes only an empty parent at `selected: 0`, never a lane or Git data.',
-      'Source closeout grants no cleanup, sync, or production authority.',
-      '`retire-empty-active` retains refs, objects, and registration.',
+      '## Default source path',
+      '1. Start one lane: `npm run release:common -- start <scope> --write=<paths> [--plan=<PRD-path>]`.',
+      '2. Run `npm run check`.',
+      '3. Publish its exact head: `npm run release:common -- publish`.',
+      '4. Pass protected review/checks; merge the PR.',
+      '5. Record integration: `npm run release:common -- complete --ref=<lane>`.',
+      'A plan grants no effects. Completion is not delivery, cleanup, sync, or deployment.',
+      '## Optional paths',
+      'Load only when needed; reuse evidence until drift.',
+      '- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only (exit `2` = open).',
+      '- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only in scope.',
+      'Full closeout needs a receipt + absent path; ref deletion needs separate authority + receipt.',
+      'Cleanup removes only an empty parent (`selected: 0`), never lane/Git data.',
+      'Empty-lane retirement keeps refs, objects and registration.',
+      'Docs-only work needs an exact owner-bound reason.',
+      '[GOVERNANCE](GOVERNANCE.md) and [USER CLEANUP](../guides/USER-CLEANUP.md).',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',

@@ -65,31 +65,35 @@ async function cmdStart(root, argv, policy, profile) {
   return (await import('./agentic-os-admission.mjs')).cmdStart(root, argv, policy, profile,
     { out, err, projectCache, effectReceipt, remoteName, requireCanonical, enforceCheckoutName: true });
 }
-function cmdReleaseCommonHelp() {
+function cmdReleaseCommonHelp({ advanced = false } = {}) {
+  if (!advanced) {
+    out([
+      'agentic-os release-common',
+      '',
+      'Default source path:',
+      '  agentic-os release-common start <scope> --write=<paths> [--plan=<PRD-path>]',
+      '  Run repository checks: npm run check',
+      '  agentic-os release-common publish',
+      '  Complete required protected review, checks, and merge.',
+      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]',
+      '',
+      'For optional closeout, fleet, delivery, recovery, or cleanup workflows,',
+      'read docs/RELEASE-WORKFLOW.md or use `agentic-os release-common help --advanced`.',
+    ].join('\n'));
+    return 0;
+  }
   out(
     [
       'agentic-os release-common',
       '',
-      'Default path:',
+      'Default: start one lane, run npm run check, publish its exact head, wait for protected review/checks, then merge.',
       '  agentic-os release-common start <scope> --write=<paths> [--plan=<PRD-path>]',
-      '  agentic-os release-common publish [--message="<message>"] [--title="<title>"] [--body-file=<file>]',
-      '  agentic-os release-common promote plan --ref=<lane> | apply --plan=<file> --authorize=<token> [--authority-head=<head>]',
-      '  agentic-os release-common scope-release plan --ref=<published-lane> --path=<exact-file> | apply --plan=<file> --authorize=agentic-os:scope-release:<digest> --stopped',
-      '  agentic-os release-common rebind plan|apply  repair one exact local lane identity; no provider or cleanup authority',
-      '    plan --ref=<lane> --mode=recertify --base=refs/remotes/origin/main --base-sha=<sha> --worktree=<path> --expected-head=<sha> [--pr=<n>]',
-      '    provider refresh: rebind plan --ref=<lane> --mode=provider-refresh --pr=<n> --expected-head=<sha> --expected-base=<sha>',
-      '    provider refresh apply: rebind apply --mode=provider-refresh --plan=<file> --authorize=agentic-os:provider-lane-rebind:<digest> --stopped',
-      '  node bin/agentic-os-lane-alignment.mjs --input=<json>  retain an unpublished source and transplant its exact small delta onto protected source',
-      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]   wait for exact integration and report closeout; cleanup runs only with an explicit bundle',
-      '  agentic-os release-common closeout --ref=<lane>   read-only closeout summary from the exact lane or canonical checkout',
-      '  agentic-os release-common allocation-release --ref=<lane> [--cleanup-receipt=<json>]   free one fully closed workflow allocation while retaining its history',
-      '  agentic-os release-common retire-empty-active --ref=<lane>   quarantine one clean active lane with no candidate commit',
-      '  agentic-os complete-adlc [--ref=<lane>] [--worktrees=<dir>] [--timeout-ms=<ms>] [--cleanup --stopped]   one lane or bounded directory pass; --ref narrows scans',
-      '  agentic-os release-common close --ref=<lane>   run finish, reap, then completion status',
-      '  agentic-os release-common finish --ref=<lane>   use the exact integration diagnostic path only when needed',
+      '  agentic-os release-common publish | complete --ref=<lane>',
       '',
-      'Exception path:',
-      '  agentic-os release-common successor <scope> --expected-head=<published-head> [--write=<paths>] [--reconcile-committed] [--message="<message>"]',
+      'Optional commands, only when required: promote, scope-release, rebind, successor, lane-alignment,',
+      '  closeout, close, finish, allocation-release, retire-empty-active, and complete-adlc.',
+      '',
+      'See docs/RELEASE-WORKFLOW.md for effect boundaries and docs/GOVERNANCE.md for exact command rules.',
     ].join('\n'),
   );
   return 0;
@@ -114,7 +118,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
     case 'help':
     case '--help':
     case '-h':
-      return cmdReleaseCommonHelp();
+      return cmdReleaseCommonHelp({ advanced: flag(rest, 'advanced') });
     case 'start': return cmdStart(root, rest, policy, profile);
     case 'publish':
       return cmdLand(cwd, rest, profile, policy);
@@ -343,9 +347,11 @@ async function main() {
     err(`blocked-invalid-arguments: ${command}: ${argumentError}`);
     return 1;
   }
-  if (command === 'help' || command === '--help') return cmdHelp();
+  if (command === 'help') return cmdHelp({ advanced: flag(argv, 'advanced') });
+  if (command === '--help') return cmdHelp();
   if (command === 'release-common' && argv.length === 0) return cmdReleaseCommonHelp();
-  if (command === 'release-common' && ['help', '--help', '-h'].includes(argv[0])) return cmdReleaseCommonHelp();
+  if (command === 'release-common' && argv[0] === 'help') return cmdReleaseCommonHelp({ advanced: flag(argv.slice(1), 'advanced') });
+  if (command === 'release-common' && ['--help', '-h'].includes(argv[0])) return cmdReleaseCommonHelp();
   if (command === 'run') return (await import('./agentic-os-run.mjs')).runAgentCommand(argv, out);
   if (command === 'design-check') return (await import('./agentic-os-design.mjs')).runDesignCheck(argv, out);
   if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);

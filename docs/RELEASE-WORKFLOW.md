@@ -1,19 +1,25 @@
 # Release workflow
 
-`start → checks → publish → protected review/merge → complete --ref=<lane>` is the default source path.
-Use `complete-adlc --ref=<lane>` once for a final summary; follow only its next action. Load optional tools
-only for enrolled scope or blockers. Reuse evidence until drift.
+## Default source path
 
-`complete-adlc --worktrees=<dir> [--ref=<lane>]` reports source, delivery, and retention; exit `2` keeps END ADLC
-open. It cannot merge, deploy, or clean lanes. PRD snapshots preserve exact bytes and grant no effect authority.
+1. Start one lane: `npm run release:common -- start <scope> --write=<paths> [--plan=<PRD-path>]`.
+2. Run `npm run check`.
+3. Publish its exact head: `npm run release:common -- publish`.
+4. Pass protected review/checks; merge the PR.
+5. Record integration: `npm run release:common -- complete --ref=<lane>`.
 
-Delivery binds exact activation and paths; Dev and Prod readbacks use the same candidate. Missing activation is not a
-no-deploy disposition; docs-only work needs an exact owner-bound reason. See [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
+A plan grants no effects. Completion is not delivery, cleanup, sync, or deployment.
 
-`closeout --ref=<lane>` is read-only; local/cached refs do not prove live remote state. Full closeout needs a
-workspace receipt and absent path. Ref deletion needs separate exact authority and a receipt.
+## Optional paths
 
-Cleanup `--bundle --stopped` removes only an empty parent at `selected: 0`, never a lane or Git data. Source closeout
-grants no cleanup, sync, or production authority. `retire-empty-active` retains refs, objects, and registration.
+Load only when needed; reuse evidence until drift.
 
-cleanup-user sweep is read-only; worktree plans; [branch-retirement plan|apply](GOVERNANCE.md).
+- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only (exit `2` =
+  open). Use `npm run reap -- --ref=<lane>` if integration is unclear.
+- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only in scope. Bind exact activation/paths;
+  read back the same candidate in Dev/Prod. Missing activation is not “no deploy.” Docs-only work
+  needs an exact owner-bound reason.
+- **Close/clean:** closeout is read-only; cached refs are not live proof. Full closeout needs a
+  receipt + absent path; ref deletion needs separate authority + receipt. Cleanup removes only an
+  empty parent (`selected: 0`), never lane/Git data. Empty-lane retirement keeps refs, objects and
+  registration. See [GOVERNANCE](GOVERNANCE.md) and [USER CLEANUP](../guides/USER-CLEANUP.md).
