@@ -87,7 +87,8 @@ export function validateCommandArguments(command, argv) {
         : 'workflow requires targets, collect, export, recommend, or trace';
     case 'pipeline': return exact(argv, { options: ['repo', 'run', 'head', 'attempt', 'timeout-ms'],
       requiredOptions: ['repo', 'run', 'head', 'attempt'] });
-    case 'help': case '--help': return exact(argv, {});
+    case 'help': return exact(argv, { flags: ['advanced'] });
+    case '--help': return exact(argv, {});
     case 'setup': case 'git-configure': case 'guard-install': case 'doctor':
       return exact(argv, {});
     case 'profile': return argv[0] === 'init'
@@ -123,7 +124,7 @@ export function validateCommandArguments(command, argv) {
       if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'closeout', 'complete', 'complete-adlc', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
         return 'release-common requires start, publish, finish, close, complete, or successor; closeout, retire-empty-active, allocation-release, scope-release, rebind and promote are also supported';
       if (argv.length === 0) return null;
-      if (action === 'help') return exact(argv, { min: 1, max: 1 });
+      if (action === 'help') return exact(argv.slice(1), { flags: ['advanced'] });
       if (action === '--help' || action === '-h')
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
       if (action === 'close') return exact(argv.slice(1), {
@@ -246,66 +247,48 @@ export function validateCommandArguments(command, argv) {
     default: return `unknown command ${JSON.stringify(command)}`;
   }
 }
-export function cmdHelp() {
+export function cmdHelp({ advanced = false } = {}) {
+  if (!advanced) {
+    process.stdout.write([
+      'agentic-os — ADLC harness',
+      '',
+      'Default source path:',
+      '  1. npm run release:common -- start <scope> --write=<paths> [--plan=<PRD-path>]',
+      '  2. Run repository checks: npm run check',
+      '  3. npm run release:common -- publish',
+      '  4. Complete required protected review, checks, and merge.',
+      '  5. npm run release:common -- complete --ref=<lane>',
+      '',
+      'Optional workflows run only when the lane or scope requires them.',
+      'Read docs/RELEASE-WORKFLOW.md; use `agentic-os help --advanced` for command groups.',
+    ].join('\n') + '\n');
+    return 0;
+  }
   process.stdout.write(
     [
       'agentic-os — ADLC harness',
       '',
-      '  Primary human release path:',
-      '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
-      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> --checkout-limit=<0..5> | --mission=<manifest>]  admit or reuse a lane',
-      '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
-      '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
-      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
-      '    agentic-os complete-adlc [--ref=<lane>] [--worktrees=<dir>] [--cleanup --stopped]  one lane or bounded directory END ADLC pass; --ref narrows scans',
-      '    npm run release:common -- closeout --ref=<lane>  one read-only local summary; works from that lane or canonical checkout',
-      '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --via-repository=<owner/repo> --via-checks=<names> --replaced=<exact,path> --reason=<text> --superseded --stopped  record reviewed cross-repository supersession without cleanup',
-      '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
-      '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
-      '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>] [--message=<text>]  continue after publish; message commits only reserved retained bytes',
+      '  Default release path: start -> checks -> publish -> protected review/merge -> complete.',
+      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> | --mission=<manifest>]',
+      '    npm run release:common -- publish [--title=<text>] [--body-file=<file>]',
+      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>]',
+      '  On-demand closeout: closeout, close, finish, complete-adlc, successor.',
+      '  Recovery/cleanup: promote, scope-release, rebind, allocation-release, retire-empty-active, lane-alignment.',
       '',
       '  Underlying primitives and diagnostics:',
-      '    npm run doctor            report harness and remote drift, change nothing',
-      '    npm run status            read-only lane projection and provider state',
-      '    npm run lane -- <scope> --write=<paths> [--mission=<manifest>]   use native START admission',
-      '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
-      '    npm run finish -- --ref=<lane>  record exact integration from the retained lane ref; retain cleanup separately',
-      '    npm run reap [-- --ref=<lane> | --refs=<comma-separated-exact-lanes>]  classify exact integration in batches of at most 256; never clean or retire authority',
+      '    npm run doctor | status | reap | finish   inspect repository, lane, and integration state',
+      '    npm run lane -- <scope> --write=<paths>   direct START admission',
+      '    npm run land -- [--title=<text>] [--body-file=<file>]   publish exact lane head',
       '',
       '  Other commands:',
-      '  agentic-os capabilities [--query=<text>] [--kind=<kind>] [--limit=10]  discover owner references; see FLEET.md',
-      '  agentic-os capabilities --id=<id> --root=<owner-root> --revision=<sha> [--include-content]  read one pinned source',
-      '  agentic-os profile init --repository=<host/owner/name>  print a fork profile; write no state',
-      '  agentic-os pin --consumer=<root> [--revision=<sha>]  check exact consumer pin drift',
-      '  npm run setup             write config and select packaged hooks without clobbering',
-      '  agentic-os workspace [--offline] [--source=memory|todo|artifacts]  observe enrolled shared sources',
-      '  agentic-os workspace sync [--offline]  refresh one committed workspace snapshot',
-      '  agentic-os workspace watch [--interval-ms=30000] [--duration-ms=28800000]  refresh during this session',
-      '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
-      '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
-      '  agentic-os context map|search|read --path=<source>  bounded native context; see guides/CONTEXT.md',
-      '  agentic-os source-evidence bundle --scope=<source> --id=<id> --label=<label> --output=<empty-directory>  create a reviewed immutable source bundle; no upload',
-      '  agentic-os collaborate status [--offline]  observe opt-in shared coordination; not authority',
-      '  agentic-os cleanup-user <plan|apply>  explicit local-consent quarantine; see guides/USER-CLEANUP.md',
-      '  agentic-os collaborate <get|submit|claim|renew|release|report|archive> --input=<json>  cooperative work/handoff',
-      '  agentic-os memory search --revision=<sha> --query=<text> [--path=<memory-file>]  bounded local-only lookup',
-      '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
-      '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
+      '    capabilities, profile, pin, and setup  repository discovery and configuration',
+      '    workspace and memory  optional shared-state observation, sync, and local lookup',
+      '    context and source-evidence  bounded source reads and immutable evidence bundles',
+      '    collaborate and cleanup-user  opt-in handoff and consent-bound local cleanup',
       '  Follow-up and diagnostics:',
-      '  agentic-os completion status --ref=<lane> [--preservation=<json>] [--cleanup-receipt=<json>] [--integration-receipt=<json> --retirement-receipt=<json>]  receipt pair requires preservation; read-only',
-      '  npm run completion:scaffold -- --ref=<lane> --derive  hydrate, plan, then apply with --confirm=<digest> --stopped',
-      '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
-      '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
-      '  npm run autonomy:class    compute the committed candidate promotion ceiling',
-      '  agentic-os pipeline --repo=<owner/repo> --run=<id> --head=<sha> --attempt=<n>  watch exact CI progress',
-      '  agentic-os flight plan|pre|in|post  preview all phase prerequisites, inspect drift and completion',
-      '  agentic-os flight gate --operation=<id> --context=<json>  run enrolled checks before an effect',
-      '  agentic-os workflow targets | collect --input=<manifest> | export --input=<stored-manifest> [--offset=32] | recommend --input=<stored-manifest>  local lifecycle evidence',
-      '  agentic-os observe        emit a shallow profile-bound repository observation',
-      '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
-      '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
-      '  npm run queue:show        inspect the required remote configuration',
-      '  npm run queue:apply -- --yes  fail closed; provider policy is repository-owned',
+      '    completion status/scaffold, sync:canonical, reconcile, autonomy:class',
+      '    pipeline, flight, workflow, observe, request, and queue commands',
+      '  Read docs/RELEASE-WORKFLOW.md for effect boundaries; load feature guides on demand.',
       '',
     ].join('\n'),
   );
