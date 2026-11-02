@@ -65,7 +65,8 @@ function binding(root, ref, profile, expected = null) {
   const head = headSha(`refs/heads/${ref}`, root);
   if (!record || record.ref !== ref || record.state !== 'active' || record.pr !== null
     || record.base !== profile.canonical.remoteRef || !record.baseSha || !record.worktree
-    || record.head !== head || !entry || entry.path !== record.worktree || entry.locked || entry.prunable
+    || (record.head !== undefined && record.head !== null && record.head !== head)
+    || !entry || entry.path !== record.worktree || entry.locked || entry.prunable
     || !head || !isAbsolute(entry.path) || resolve(entry.path) !== entry.path)
     fail('lane-binding', 'lane must be one exact active unpublished registered worktree');
   let path; try { path = realpathSync(record.worktree); } catch { fail('lane-path', 'lane worktree path is missing'); }

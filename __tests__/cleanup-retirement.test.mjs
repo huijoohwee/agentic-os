@@ -83,7 +83,7 @@ function apply(state, extra = {}) {
     authorization: state.authorization, stopped: true, discardRecovery: true,
     now: () => NOW + 1_000, probe: () => {}, ...extra });
 }
-function unpublishedDirtyLane(t) {
+function unpublishedDirtyLane(t, { recordHead = true } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-abandonment-'))), root = join(parent, 'repo'), target = join(parent, 'lane');
   t.after(() => rmSync(parent, { recursive: true, force: true })); mkdirSync(root);
   g(root, 'init', '--quiet', '--initial-branch=main'); g(root, 'config', 'user.name', 'Fixture'); g(root, 'config', 'user.email', 'fixture@example.invalid');
@@ -94,7 +94,7 @@ function unpublishedDirtyLane(t) {
   const ref = 'agent/device/unpublished-abandonment'; g(root, 'worktree', 'add', '--quiet', '-b', ref, target, 'main');
   writeFileSync(join(target, 'candidate.txt'), 'unreviewed candidate\n'); g(target, 'add', 'candidate.txt'); g(target, 'commit', '--quiet', '-m', 'local candidate');
   const head = g(target, 'rev-parse', 'HEAD'); writeFileSync(join(target, 'tracked.txt'), 'dirty tracked bytes\n'); writeFileSync(join(target, 'untracked.txt'), 'dirty untracked bytes\n');
-  put({ ...newRecord({ ref, device: 'device', scope: 'unpublished-abandonment', base: 'refs/remotes/origin/main', baseSha, worktree: target, writePaths: ['candidate.txt', 'tracked.txt'] }), state: 'active', head }, root);
+  put({ ...newRecord({ ref, device: 'device', scope: 'unpublished-abandonment', base: 'refs/remotes/origin/main', baseSha, worktree: target, writePaths: ['candidate.txt', 'tracked.txt'] }), state: 'active', ...(recordHead ? { head } : {}) }, root);
   return { root, target, ref, head, profile, publicationCheck: () => {} };
 }
 function interrupt(state) {
@@ -166,6 +166,19 @@ test('unpublished abandonment archives dirty projection and registration without
   assert.equal(status.closeout.sourceDisposition, 'abandoned'); assert.equal(status.closeout.sourceIntegrated, false);
   assert.equal(status.closeout.sourceSuperseded, false); assert.equal(status.closeout.missionState, 'source_complete');
   assert.equal(status.closeout.adlcState, 'complete'); assert.equal(status.closeout.cleanupSatisfied, true);
+});
+
+test('unpublished abandonment binds the live branch head for legacy active records without one', t => {
+  const state = unpublishedDirtyLane(t, { recordHead: false }), plan = planUnpublishedLaneAbandonment({ cwd: state.root,
+    ref: state.ref, reason: 'Retain this exact unpublished lane for later recovery.', now: () => NOW,
+    publicationCheck: state.publicationCheck });
+  assert.equal(plan.head, state.head);
+  const receipt = applyUnpublishedLaneAbandonment(plan, { cwd: state.root,
+    authorization: `agentic-os:unpublished-lane-abandonment:${plan.planDigest}`, stopped: true,
+    now: () => NOW + 1000, probe: () => {}, publicationCheck: state.publicationCheck });
+  assert.equal(receipt.sourceAbandoned, true);
+  assert.equal(receipt.plan.head, state.head);
+  assert.equal(readFileSync(join(receipt.projectionPath, 'candidate.txt'), 'utf8'), 'unreviewed candidate\n');
 });
 
 test('unpublished abandonment refuses dirty-byte drift before the quarantine effect', (t) => {
