@@ -28,29 +28,30 @@ npm run doctor    # report harness and remote drift, change nothing
 npm run check     # affected behavior and packaging, plus readiness, doc and module budgets
 ```
 
-Commit the repository's `.agentic-os.json` profile before any repository-bound command.
+The reviewed `.agentic-os.json` profile must be committed before `setup`, `doctor`, or lane work. Consumer
+repositories also commit the exact AOS package pin and lock. AOS's own checkout already includes its profile.
 Forking under a different owner starts at the [fork guide](guides/FORK.md).
 
 ## Default source loop
 
 ```sh
-npm run release:common -- start <scope> --write=<path[,path...]>
-npm run release:common -- publish --message="feat: ..."
-npm run release:common -- complete --ref=<lane>               # wait for merge and report source closeout; keep the lane mounted
-npm run release:common -- complete-adlc --ref=<lane>           # one final status summary; follow its next action
+npm run lane -- <scope> --write=<path[,path...]> [--plan=<PRD-path>]
+# edit only in the printed worktree
+npm run land -- --message="feat: ..."
+# finish the protected PR checks/review and merge
+npm run release:common -- complete --ref=<lane>
 ```
 
-This is the normal path for a source change. Run the checks selected by the repository profile and use its
-protected review and merge rules. Reuse unchanged evidence. Load optional features, diagnostics, and extra
-validation only when the scope or a reported blocker requires them. Deployment and rollback use owner
-workflows only when those effects are enrolled. Cleanup remains exact and separately authorized; profile
-settings alone never trigger lane quarantine.
+`complete` waits for and records exact source integration, then reports the lane's remaining ADLC actions. An open
+or blocked result keeps the lane open; follow its named next action. Source integration does not imply delivery
+or cleanup. For a batch, use `npm run release:common -- complete-adlc --worktrees=<registered-root>` on demand.
+Solo maintainers use a PR and green CI with required approvals set to zero, bypass off, and no self-approval.
+Load deployment, rollback, recovery, cleanup, diagnostics, or extra validation only when the lane scope or its
+reported next action requires them. Each effect retains its owner's authority and receipt.
 
-`npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
-diagnostics; open one only when it answers the next blocker. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
-and the [deploy workflow](guides/DEPLOY-WORKFLOW.md) route the universal lifecycle grammar that the [ADLC guidelines](docs/adlc-guidelines.md) own;
-cleanup is globally required but repo-local in mechanics inside those stages. The
-[user cookbook](guides/USER-COOKBOOK.md) owns the smallest path for a direct edit.
+First-time profile and hook setup is in [START-WORKFLOW](docs/START-WORKFLOW.md). [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md)
+owns source closeout; [ADLC guidelines](docs/adlc-guidelines.md) own lifecycle rules. Diagnostics and specialized
+workflows stay on demand. Use the [deploy workflow](guides/DEPLOY-WORKFLOW.md) only for a delivery-bound lane.
 
 ## Owners
 
