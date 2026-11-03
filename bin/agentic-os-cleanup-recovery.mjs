@@ -40,22 +40,36 @@ const planFields = (value, names) => {
 const samePlanValue = (left, right) => canonicalJson(left) === canonicalJson(right);
 const CURRENT_INTEGRATION_KINDS = new Set(['ancestor', 'ancestor-content-inclusion', 'exact-tree-projection']);
 
-export function deriveCurrentIntegrationBinding({ root, targetPath, ref, canonical, record: expectedRecord }) {
-  const observed = get(ref, root), head = headSha('HEAD', targetPath);
+function currentIntegrationRecord(observed, expectedRecord, targetPath) {
   const record = observed && { state: observed.state, head: observed.head, baseSha: observed.baseSha, pr: observed.pr };
   if (!record || !expectedRecord || !samePlanValue(record, expectedRecord)
     || !['published', 'queued', 'integrated'].includes(observed.state)
     || observed.worktree !== targetPath || observed.base !== 'refs/remotes/origin/main'
     || !/^[a-f0-9]{40}$/u.test(observed.head ?? '')
     || !/^[a-f0-9]{40}$/u.test(observed.baseSha ?? '')
-    || !Number.isSafeInteger(observed.pr) || observed.pr < 1
-    || currentBranch(targetPath) !== ref || head !== headSha(`refs/heads/${ref}`, root)
+    || !Number.isSafeInteger(observed.pr) || observed.pr < 1) refuse('recovery-lane-binding');
+  return record;
+}
+
+function currentIntegrationHead({ root, targetPath, ref, canonical, observed }) {
+  const head = headSha('HEAD', targetPath);
+  if (currentBranch(targetPath) !== ref || head !== headSha(`refs/heads/${ref}`, root)
     || !isAncestor(observed.head, head, root) || !isAncestor(observed.baseSha, canonical, root))
     refuse('recovery-lane-binding');
+  return head;
+}
 
+function exactCurrentIntegrationBinding(root, ref, head, canonical) {
   const proof = exactCurrentIntegrationProof('refs/heads/main', ref, { cwd: root });
   if (!proof || proof.head !== head || proof.baseHead !== canonical
     || !CURRENT_INTEGRATION_KINDS.has(proof.kind)) refuse('integration-not-current');
+  return proof;
+}
+
+export function deriveCurrentIntegrationBinding({ root, targetPath, ref, canonical, record: expectedRecord }) {
+  const observed = get(ref, root), record = currentIntegrationRecord(observed, expectedRecord, targetPath);
+  const head = currentIntegrationHead({ root, targetPath, ref, canonical, observed });
+  const proof = exactCurrentIntegrationBinding(root, ref, head, canonical);
   return { record: expectedRecord, proof };
 }
 
@@ -85,10 +99,13 @@ function validCurrentIntegrationBinding(plan) {
     && !plan.mergedProjection && !plan.historicalCheckGap;
 }
 
-export function validateUserCleanupPlan(input, reviewOptions) {
+function parseUserCleanupPlan(input) {
   const bytes = canonicalJson(input);
   if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
-  const plan = JSON.parse(bytes), localIntegration = Object.hasOwn(plan, 'currentIntegration');
+  return JSON.parse(bytes);
+}
+
+function validateUserCleanupPlanFields(plan) {
   const optionalFields = ['detachedHead', 'reviewedEquivalentCommit', 'successor',
     'mergedProjection', 'historicalCheckGap', 'changeClass'];
   const fields = ['schema', 'mode', 'root', 'repository', 'remoteUrl', 'pr', 'requiredChecks',
@@ -96,9 +113,12 @@ export function validateUserCleanupPlan(input, reviewOptions) {
     'inventoryContentEntries', 'policyDigest', 'observation', 'issuedAt', 'expiresAt', 'planDigest'];
   if (plan.mode === RECOVERY_MODE) fields.push('integration', 'recoveryPolicy');
   for (const field of optionalFields) if (Object.hasOwn(plan, field)) fields.push(field);
-  if (localIntegration) fields.push('currentIntegration');
+  if (Object.hasOwn(plan, 'currentIntegration')) fields.push('currentIntegration');
   planFields(plan, fields.join(','));
+}
 
+function validateUserCleanupReview(plan, reviewOptions) {
+  const localIntegration = Object.hasOwn(plan, 'currentIntegration');
   if (localIntegration) {
     if (!validCurrentIntegrationBinding(plan) || plan.mode !== RECOVERY_MODE || plan.workflow !== null
       || !Number.isSafeInteger(plan.pr) || plan.pr < 1 || !Array.isArray(plan.requiredChecks)
@@ -108,7 +128,10 @@ export function validateUserCleanupPlan(input, reviewOptions) {
       || JSON.stringify([...new Set(plan.requiredChecks)].sort()) !== JSON.stringify(plan.requiredChecks))
       refuse('plan-binding');
   } else reviewOptions(plan);
+}
 
+function validateUserCleanupPlanBinding(plan) {
+  const localIntegration = Object.hasOwn(plan, 'currentIntegration');
   const { planDigest, ...content } = plan;
   const validOptionalFields = (!Object.hasOwn(plan, 'detachedHead')
     || plan.mode === RECOVERY_MODE && /^[a-f0-9]{40}$/u.test(plan.detachedHead ?? ''))
@@ -139,7 +162,24 @@ export function validateUserCleanupPlan(input, reviewOptions) {
     || !validOptionalFields || !localIntegration
       && (plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch))
     refuse('plan-binding');
+}
+
+export function validateUserCleanupPlan(input, reviewOptions) {
+  const plan = parseUserCleanupPlan(input);
+  validateUserCleanupPlanFields(plan);
+  validateUserCleanupReview(plan, reviewOptions);
+  validateUserCleanupPlanBinding(plan);
   return plan;
+}
+
+export function prepareCurrentIntegrationReview({ root, targetPath, canonical, record, ref = null }) {
+  const branch = currentBranch(targetPath);
+  if (ref !== null && branch !== ref) refuse('recovery-lane-binding');
+  const binding = deriveCurrentIntegrationBinding({
+    root, targetPath, ref: branch, canonical, record,
+  });
+  return { binding, review: { kind: 'local-current-integration', branch,
+    head: headSha('HEAD', targetPath), merge: canonical } };
 }
 
 const snapshotRead = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options }); const snapshotSame = (left, right) => canonicalJson(left) === canonicalJson(right);

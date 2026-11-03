@@ -15,7 +15,7 @@ import { inferMergedReviewWorkflow, observeMergedReview, reviewOptions, refuse }
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, SCHEMA, MODE, NO_CI_MODE, recoveryPolicy, recoveryIntegration,
   SNAPSHOT_CLEANUP_SCHEMA, planDetachedMainSnapshotCleanup, applyDetachedMainSnapshotCleanup,
-  validateUserCleanupPlan, deriveCurrentIntegrationBinding } from './agentic-os-cleanup-recovery.mjs';
+  validateUserCleanupPlan, prepareCurrentIntegrationReview } from './agentic-os-cleanup-recovery.mjs';
 import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof,
   exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
 import { get } from '../src/lane-records.mjs';
@@ -102,13 +102,16 @@ function eligibility(plan) {
     sharedStateEntries: o.sharedStateEntries, evaluatedAt: new Date(plan.issuedAt).toISOString(),
     expiresAt: new Date(plan.expiresAt).toISOString() };
 }
-function mergedState(plan, options, observed = undefined) {
+function validateCleanupReview(plan, options, observed) {
   const review = plan.currentIntegration
-    ? observed?.proof ? observed : deriveCurrentIntegrationBinding({ root: plan.root,
-      targetPath: plan.targetPath, ref: plan.branch, canonical: plan.canonical,
-      record: plan.currentIntegration.record })
+    ? observed?.proof ? observed : prepareCurrentIntegrationReview({ root: plan.root,
+      targetPath: plan.targetPath, record: plan.currentIntegration.record,
+      canonical: plan.canonical, ref: plan.branch }).binding
     : observed ?? observeMergedReview(plan, { cwd: plan.root, ...options });
   if (!same(review, plan.currentIntegration ?? plan.review)) refuse(plan.currentIntegration ? 'integration-drift' : 'review-drift');
+}
+function mergedState(plan, options, observed = undefined) {
+  validateCleanupReview(plan, options, observed);
   if (plan.mode === RECOVERY_MODE) {
     if (!same(recoveryIntegration(plan, read), plan.integration)) refuse('integration-drift');
   } else if (plan.changeClass?.fastPath !== true
@@ -217,12 +220,11 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (currentIntegrationRecord && !same(requiredChecks, [...current.requiredChecks].sort())) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
-    const boundIntegration = currentIntegrationRecord ? deriveCurrentIntegrationBinding({ root, targetPath,
-      ref: currentBranch(targetPath), canonical: current.canonical,
-      record: currentIntegrationRecord }) : null;
-    const review = boundIntegration ? { kind: 'local-current-integration', branch: currentBranch(targetPath),
-      head: read(targetPath, ['rev-parse', '--verify', 'HEAD']), merge: current.canonical }
-      : observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
+    const currentReview = currentIntegrationRecord ? prepareCurrentIntegrationReview({ root,
+      targetPath, canonical: current.canonical, record: currentIntegrationRecord }) : null;
+    const boundIntegration = currentReview?.binding ?? null;
+    const review = currentReview?.review
+      ?? observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main',
       allowDetached: detached, maxContentEntries: options.maxContentEntries ?? (recovery ? RECOVERY_LIMITS : LIMITS).projectionEntryCeiling });
