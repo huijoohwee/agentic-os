@@ -51,15 +51,12 @@ function squashBinding(input, expected = null) {
   const refuse = () => { if (expected) fail('squash-lineage'); return null; };
   if (!link || record.ref !== input.ref || record.worktree !== input.cwd
     || !['active', 'planned'].includes(record.state) || record.base !== input.targetRef) return refuse();
-  const previous = get(link.predecessorRef, input.cwd), localRef = `refs/heads/${link.predecessorRef}`;
+  const previous = get(link.predecessorRef, input.cwd);
   if (!previous || previous.ref !== link.predecessorRef || previous.head !== link.predecessorHead
     || previous.worktree !== record.worktree || previous.base !== record.base
     || previous.baseSha !== record.baseSha || !['published', 'queued', 'integrated'].includes(previous.state)
-    || observeGit(['symbolic-ref', '--quiet', localRef], { cwd: input.cwd, allowFail: true }) !== null
-    || headSha(localRef, input.cwd) !== link.predecessorHead
+    // The immutable commit is the lineage anchor; its local and remote branch refs may be retired.
     || !isAncestor(link.predecessorHead, input.expectedHead, input.cwd)) return refuse();
-  const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd);
-  if (remoteRefSha(remote, link.predecessorRef, input.cwd, transport.fetchUrl) !== link.predecessorHead) return refuse();
   const tree = headSha(`${link.predecessorHead}^{tree}`, input.cwd);
   if (!SHA.test(tree ?? '') || tree !== headSha(`${input.expectedTarget}^{tree}`, input.cwd)) return refuse();
   const binding = { ref: link.predecessorRef, head: link.predecessorHead, tree };
@@ -67,7 +64,6 @@ function squashBinding(input, expected = null) {
   return binding;
 }
 function assertSquashBinding(plan) { if (plan.squashPredecessor) squashBinding(plan, plan.squashPredecessor); }
-function alignmentFences(plan) { return plan.squashPredecessor ? [[`refs/heads/${plan.squashPredecessor.ref}`, plan.squashPredecessor.head]] : []; }
 function noFilters(cwd, allPaths) {
   if (allPaths.some(path => path === '.gitattributes' || path.endsWith('/.gitattributes'))) fail('filters');
   const settings = observeGit(['config', '--get-regexp', '^(core\.autocrlf|core\.eol|merge\.default)$'], { cwd, allowFail: true }) ?? '';
@@ -256,7 +252,7 @@ export function prepareLaneAlignment(plan) {
   for (const [ref, oid] of [[plan.oldRef, plan.expectedHead], [plan.candidateRef, plan.candidateHead]]) {
     if (observeGit(['symbolic-ref', '--quiet', ref], { cwd: plan.cwd, allowFail: true }) !== null) fail('journal');
     const current = headSha(ref, plan.cwd); if (current && current !== oid) fail('journal');
-    if (!current) { artifacts.refPinWriteAttempted = true; artifacts.refPinWriteResultUnknown = true; artifacts.refPinAttempted = ref; atomicAdvanceRef(ref, oid, '0'.repeat(40), [[`refs/heads/${plan.ref}`, plan.expectedHead], [plan.targetRef, plan.expectedTarget], ...alignmentFences(plan)], plan.cwd); artifacts.refPinWriteResultUnknown = false; }
+    if (!current) { artifacts.refPinWriteAttempted = true; artifacts.refPinWriteResultUnknown = true; artifacts.refPinAttempted = ref; atomicAdvanceRef(ref, oid, '0'.repeat(40), [[`refs/heads/${plan.ref}`, plan.expectedHead], [plan.targetRef, plan.expectedTarget]], plan.cwd); artifacts.refPinWriteResultUnknown = false; }
   }
   return plan;
   } catch (error) {
@@ -278,7 +274,7 @@ export function applyLaneAlignment(input) {
       if (plan.squashPredecessor) assertSquashBinding(plan);
       else if (headSha(`${plan.mergeBase}^{tree}`, plan.cwd) !== headSha(`${plan.expectedTarget}^{tree}`, plan.cwd)) fail('postcondition');
       atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.candidateHead, plan.expectedHead,
-        [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead], [plan.candidateRef, plan.candidateHead], ...alignmentFences(plan)], plan.cwd);
+        [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead], [plan.candidateRef, plan.candidateHead]], plan.cwd);
       artifacts.refPublished = true;
       verifyCompleted(plan); return receipt(plan, plan.resume);
     } catch (error) {

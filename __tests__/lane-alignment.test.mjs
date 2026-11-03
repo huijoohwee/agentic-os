@@ -458,16 +458,21 @@ test('squash equivalence refuses missing or wrong native lineage, nonancestor an
   });
 });
 
-test('squash predecessor refs and lineage are reobserved during prepare, apply and completed replay', async t => {
+test('retired predecessor refs do not break exact squash lineage; successor lineage remains rechecked', async t => {
   for (const phase of ['prepare', 'apply', 'replay']) for (const drift of ['local', 'remote', 'lineage']) await t.test(`${phase}-${drift}`, sub => {
     const f = squashFixture(sub); let value = plan(f), expected = f.head;
     if (phase !== 'prepare') value = prepareLaneAlignment(value);
     if (phase === 'replay') expected = applyLaneAlignment(value).head;
-    if (drift === 'local') git(f.root, 'update-ref', `refs/heads/${f.predecessor}`, f.head);
-    if (drift === 'remote') git(f.root, 'push', '--quiet', 'origin', `${f.head}:refs/heads/${f.predecessor}`);
+    if (drift === 'local') git(f.root, 'update-ref', '-d', `refs/heads/${f.predecessor}`);
+    if (drift === 'remote') git(f.root, 'push', '--quiet', 'origin', `:refs/heads/${f.predecessor}`);
     if (drift === 'lineage') { const prior = get(f.ref, f.root), next = { ...prior }; delete next.handoff; putExact(next, prior, f.root); }
     const effect = phase === 'prepare' ? () => prepareLaneAlignment(value) : phase === 'apply' ? () => applyLaneAlignment(value) : () => plan(f);
-    assert.throws(effect, /blocked-lane-alignment-(?:squash-lineage|journal)/u); unchanged(f, expected);
+    if (drift === 'lineage') assert.throws(effect, /blocked-lane-alignment-(?:squash-lineage|journal)/u);
+    else {
+      let applied; assert.doesNotThrow(() => { applied = effect(); });
+      if (phase === 'apply') expected = applied.head;
+    }
+    unchanged(f, expected);
   });
 });
 
