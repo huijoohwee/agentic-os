@@ -13,16 +13,17 @@ import { privateDirectoryIdentity, legacyPrivateDirectoryIdentity, assertPrivate
   tightenLegacyPrivateDirectory } from '../src/file-integrity.mjs';
 import { inferMergedReviewWorkflow, observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
-import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryPolicy, recoveryIntegration, SNAPSHOT_CLEANUP_SCHEMA,
-  planDetachedMainSnapshotCleanup, applyDetachedMainSnapshotCleanup } from './agentic-os-cleanup-recovery.mjs';
-import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof, exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
+import { RECOVERY_MODE, RECOVERY_LIMITS, SCHEMA, MODE, NO_CI_MODE, recoveryPolicy, recoveryIntegration,
+  SNAPSHOT_CLEANUP_SCHEMA, planDetachedMainSnapshotCleanup, applyDetachedMainSnapshotCleanup,
+  validateUserCleanupPlan, prepareCurrentIntegrationReview } from './agentic-os-cleanup-recovery.mjs';
+import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof,
+  exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
 import { get } from '../src/lane-records.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
 import { validateGitHubTransitionPolicy, selectPreservationAdoption } from '../src/github-transition-policy.mjs';
 import { SUCCESSOR_PRESERVATION_SCHEMA, SUCCESSOR_PRESERVATION_PLAN_SCHEMA, CURRENT_QUARANTINE_SCHEMA, CURRENT_QUARANTINE_PLAN_SCHEMA, CURRENT_QUARANTINE_DISCARD_SCHEMA, CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA, validateRetentionDispositionPlan, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
-const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent';
-const NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 const KEY = 'agentic-os.userCleanup';
+const validatePlan = input => validateUserCleanupPlan(input, reviewOptions);
 const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projectionEntryCeiling: 10000,
   registrationByteCeiling: 16 * 1024 * 1024, registrationEntryCeiling: 10000,
   sharedStateByteCeiling: 256 * 1024 * 1024, sharedStateEntryCeiling: 100000 });
@@ -101,8 +102,15 @@ function eligibility(plan) {
     sharedStateEntries: o.sharedStateEntries, evaluatedAt: new Date(plan.issuedAt).toISOString(),
     expiresAt: new Date(plan.expiresAt).toISOString() };
 }
-function mergedState(plan, options, observed = observeMergedReview(plan, { cwd: plan.root, ...options })) {
-  if (!same(observed, plan.review)) refuse('review-drift');
+function validateCleanupReview(plan, options, observed) {
+  const review = plan.currentIntegration ? observed?.proof ? observed : prepareCurrentIntegrationReview({
+    root: plan.root, targetPath: plan.targetPath, record: plan.currentIntegration.record,
+    canonical: plan.canonical, ref: plan.branch }).binding
+    : observed ?? observeMergedReview(plan, { cwd: plan.root, ...options });
+  if (!same(review, plan.currentIntegration ?? plan.review)) refuse(plan.currentIntegration ? 'integration-drift' : 'review-drift');
+}
+function mergedState(plan, options, observed = undefined) {
+  validateCleanupReview(plan, options, observed);
   if (plan.mode === RECOVERY_MODE) {
     if (!same(recoveryIntegration(plan, read), plan.integration)) refuse('integration-drift');
   } else if (plan.changeClass?.fastPath !== true
@@ -113,41 +121,6 @@ function mergedState(plan, options, observed = observeMergedReview(plan, { cwd: 
   const advertisement = options.observeRemote ? options.observeRemote(plan)
     : read(plan.root, ['ls-remote', '--refs', '--', plan.remoteUrl, 'refs/heads/main']);
   if (advertisement !== `${plan.canonical}\trefs/heads/main`) refuse('remote-main-drift');
-}
-function validatePlan(input) {
-  const bytes = canonicalJson(input); if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
-  const plan = JSON.parse(bytes);
-  fields(plan, 'schema,mode,root,repository,remoteUrl,pr,requiredChecks,workflow,targetPath,branch,head,canonical,merge,review,inventoryDigest,inventoryContentEntries,policyDigest,observation,issuedAt,expiresAt,planDigest'
-    + (plan.mode === RECOVERY_MODE ? ',integration,recoveryPolicy' : '')
-    + (Object.hasOwn(plan, 'detachedHead') ? ',detachedHead' : '')
-    + (Object.hasOwn(plan, 'reviewedEquivalentCommit') ? ',reviewedEquivalentCommit' : '')
-    + (Object.hasOwn(plan, 'successor') ? ',successor' : '')
-    + (Object.hasOwn(plan, 'mergedProjection') ? ',mergedProjection' : '')
-    + (Object.hasOwn(plan, 'historicalCheckGap') ? ',historicalCheckGap' : '')
-    + (Object.hasOwn(plan, 'changeClass') ? ',changeClass' : ''));
-  reviewOptions(plan);
-  const { planDigest, ...content } = plan;
-  if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE, RECOVERY_MODE].includes(plan.mode) || governanceDigest(content) !== planDigest
-    || typeof plan.root !== 'string' || typeof plan.targetPath !== 'string' || plan.targetPath === plan.root
-    || !['head', 'canonical', 'merge'].every(k => /^[a-f0-9]{40}$/u.test(plan[k]))
-    || !['policyDigest', 'inventoryDigest', 'planDigest'].every(k => /^[a-f0-9]{64}$/u.test(plan[k]))
-    || !Number.isSafeInteger(plan.issuedAt) || !Number.isSafeInteger(plan.expiresAt)
-    || plan.issuedAt < 0 || plan.expiresAt <= plan.issuedAt || plan.expiresAt - plan.issuedAt > 900000
-    || (Object.hasOwn(plan, 'detachedHead') && (plan.mode !== RECOVERY_MODE
-      || typeof plan.detachedHead !== 'string' || !/^[a-f0-9]{40}$/u.test(plan.detachedHead)))
-    || (Object.hasOwn(plan, 'reviewedEquivalentCommit') && (plan.mode !== RECOVERY_MODE || !plan.detachedHead
-      || !/^[a-f0-9]{40}$/u.test(plan.reviewedEquivalentCommit)))
-    || (Object.hasOwn(plan, 'successor') && (plan.mode !== RECOVERY_MODE || plan.detachedHead
-      || !plan.successor || Object.keys(plan.successor).sort().join(',') !== 'predecessorHead,predecessorRef,replacedPaths'
-      || typeof plan.successor.predecessorRef !== 'string'
-      || !/^[a-f0-9]{40}$/u.test(plan.successor.predecessorHead)
-      || !Array.isArray(plan.successor.replacedPaths)))
-    || (Object.hasOwn(plan, 'mergedProjection') && (plan.mode !== RECOVERY_MODE || plan.detachedHead || plan.successor || !plan.mergedProjection || Object.keys(plan.mergedProjection).sort().join(',') !== 'branch,head' || !isLaneRef(plan.mergedProjection.branch) || plan.mergedProjection.branch === plan.branch || plan.mergedProjection.head !== plan.merge))
-    || (Object.hasOwn(plan, 'historicalCheckGap') && (!plan.historicalCheckGap || (!plan.mergedProjection && !(plan.detachedHead && plan.detachedHead === plan.head))
-      || !plan.review?.historicalCheckGap || plan.review.historicalCheckGap.checkRunsObserved !== 0 || !same(plan.review.historicalCheckGap.requiredChecks, plan.requiredChecks)))
-    || plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch)
-    refuse('plan-binding');
-  return plan;
 }
 function locked(root, operation) {
   const lock = acquireOperationLock('agentic-os-worktree-cleanup', root); if (!lock) refuse('busy');
@@ -219,7 +192,7 @@ export function applyQuarantineRetirement(plan, { cwd = process.cwd(), authoriza
 }
 export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredChecks, workflow,
   noCI = false, recovery = false, detached = false, mergedProjection = false, historicalCheckGap = false, changeClass = undefined, successor = undefined,
-  reviewedEquivalentCommit = undefined }, options = {}) {
+  reviewedEquivalentCommit = undefined, currentIntegrationRecord = undefined }, options = {}) {
   const policyResolver = options.resolvePolicy ?? null;
   if (noCI && recovery) refuse('incompatible-modes');
   if (typeof detached !== 'boolean' || detached && !recovery) refuse('detached-recovery-required');
@@ -230,16 +203,26 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
   if (successor && (!recovery || detached || typeof successor.predecessorRef !== 'string'
     || !/^[a-f0-9]{40}$/u.test(successor.predecessorHead ?? '')))
     refuse('successor-options');
+  if (currentIntegrationRecord && (!recovery || detached || mergedProjection || historicalCheckGap || successor
+    || reviewedEquivalentCommit || noCI || changeClass !== undefined || workflow !== null))
+    refuse('current-integration-options');
   if (changeClass !== undefined && !SUPPORTED_CHANGE_CLASSES.includes(changeClass)) refuse('unsupported-change-class');
   const root = realpathSync(repoRoot(cwd));
   const mode = recovery ? RECOVERY_MODE : noCI ? NO_CI_MODE : MODE;
-  reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode, historicalCheckGap });
+  if (currentIntegrationRecord) {
+    if (!Number.isSafeInteger(pr) || pr < 1 || !Array.isArray(requiredChecks)
+      || JSON.stringify([...new Set(requiredChecks)].sort()) !== JSON.stringify(requiredChecks)) refuse('review-options');
+  } else reviewOptions({ repository: 'placeholder/repository', pr, requiredChecks, workflow, mode, historicalCheckGap });
   return locked(root, () => {
     const current = resolvePolicy(root, mode, policyResolver, { changeClass }), targetPath = realpathSync(target);
     refuseUnknownLaneBytes(targetPath, root, { recovery });
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
+    if (currentIntegrationRecord && !same(requiredChecks, [...current.requiredChecks].sort())) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
-    const review = observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
+    const currentReview = currentIntegrationRecord && prepareCurrentIntegrationReview({ root, targetPath,
+      canonical: current.canonical, record: currentIntegrationRecord });
+    const boundIntegration = currentReview?.binding ?? null, review = currentReview?.review
+      ?? observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main',
       allowDetached: detached, maxContentEntries: options.maxContentEntries ?? (recovery ? RECOVERY_LIMITS : LIMITS).projectionEntryCeiling });
@@ -263,9 +246,10 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
         predecessorHead: successor.predecessorHead, replacedPaths: successor.replacedPaths } } : {}),
       ...(mergedProjection ? { mergedProjection: { branch: inventory.branch, head: inventory.headRevision } } : {}),
       ...(historicalCheckGap ? { historicalCheckGap: true } : {}),
+      ...(boundIntegration ? { currentIntegration: boundIntegration } : {}),
       ...(changeClassInfo.declared ? { changeClass: changeClassInfo } : {}) };
     if (recovery) Object.assign(plan, { integration: recoveryIntegration(plan, read), recoveryPolicy: current });
-    mergedState(plan, options, review);
+    mergedState(plan, options, boundIntegration ?? review);
     plan.observation = observeWorktreeCleanupTarget(mechanics(plan), { cwd: root,
       observePolicy: (configured, configuredRoot) => observePolicy(configured, configuredRoot,
         policyResolver, changeClassInfo.fastPath ? changeClassInfo.declared : undefined) });
@@ -281,10 +265,17 @@ export function planRecoveryCleanupFromLane({ cwd = process.cwd(), ref } = {}, o
     || typeof record.worktree !== 'string' || !/^[a-f0-9]{40}$/u.test(record.head ?? ''))
     refuse('recovery-lane-binding');
   let targetPath; try { targetPath = realpathSync(record.worktree); } catch { refuse('recovery-lane-target'); }
-  if (targetPath !== record.worktree || currentBranch(targetPath) !== ref || read(targetPath, ['rev-parse', '--verify', 'HEAD']) !== record.head) refuse('recovery-lane-binding');
-  const requiredChecks = [...current.requiredChecks].sort(), workflow = inferMergedReviewWorkflow({ repository: current.repository, pr: record.pr, requiredChecks }, { cwd: root, ...options });
-  const plan = planUserCleanup({ cwd: root, target: targetPath, pr: record.pr, requiredChecks, workflow, recovery: true }, options);
-  if (plan.targetPath !== targetPath || plan.pr !== record.pr || plan.branch !== ref || plan.head !== record.head) refuse('recovery-lane-binding');
+  if (targetPath !== record.worktree || currentBranch(targetPath) !== ref) refuse('recovery-lane-binding');
+  const requiredChecks = [...current.requiredChecks].sort();
+  const laneHead = read(targetPath, ['rev-parse', '--verify', 'HEAD']);
+  const currentIntegrationRecord = laneHead === record.head ? undefined
+    : { state: record.state, head: record.head, baseSha: record.baseSha, pr: record.pr };
+  const workflow = currentIntegrationRecord ? null
+    : inferMergedReviewWorkflow({ repository: current.repository, pr: record.pr, requiredChecks }, { cwd: root, ...options });
+  const plan = planUserCleanup({ cwd: root, target: targetPath, pr: record.pr, requiredChecks,
+    workflow, recovery: true, currentIntegrationRecord }, options);
+  if (plan.targetPath !== targetPath || plan.pr !== record.pr || plan.branch !== ref || plan.head !== laneHead)
+    refuse('recovery-lane-binding');
   return plan;
 }
 export function applyUserCleanup(input, { cwd = process.cwd(), authorization, stopped, now = Date.now, ...options } = {}) {
@@ -326,12 +317,13 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
     }
     return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
-      selectedChecksVerified: plan.mode !== NO_CI_MODE && !plan.historicalCheckGap, noCI: plan.mode === NO_CI_MODE,
+      selectedChecksVerified: plan.mode !== NO_CI_MODE && !plan.historicalCheckGap && !plan.currentIntegration, noCI: plan.mode === NO_CI_MODE,
       ...(plan.changeClass?.fastPath ? { changeClass: plan.changeClass, authorityTerminalState: 'local-consent' } : {}),
       ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy, integration: plan.integration,
         historicalIntegrationMethodProven: false, ...(plan.reviewedEquivalentCommit ? { sourceIntegrated: false, historicalDraft: 'superseded' } : {}) } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
-      review: plan.review, ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
+      review: plan.review, ...(plan.currentIntegration ? { currentIntegration: plan.currentIntegration } : {}),
+      ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
       ...(plan.mergedProjection ? { mergedProjection: plan.mergedProjection } : {}),
       ...(plan.historicalCheckGap ? { historicalCheckGap: { ...plan.review.historicalCheckGap, requiredChecks: [...plan.review.historicalCheckGap.requiredChecks] } } : {}),
       ...(plan.successor ? { successor: plan.successor } : {}),

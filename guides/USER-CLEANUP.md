@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.9"
-date: "2026-11-02"
+version: "1.4.10"
+date: "2026-11-03"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.9"
-tad_revision: "1.4.9"
-adr_revision: "1.4.9"
+prd_revision: "1.4.10"
+tad_revision: "1.4.10"
+adr_revision: "1.4.10"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "f2caf5a852348768b84bca9be3dc5cc511a9eb37"
-mvp_revision: "1.4.9"
-gtm_revision: "1.4.9"
+mvp_revision: "1.4.10"
+gtm_revision: "1.4.10"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -35,7 +35,10 @@ plan, publishing private content or fabricating provider-issued integration/reti
 Acceptance: local opt-in plus one exact plan authorization and stop acknowledgement; freshly observed
 same-repository merged PR and selected successful GitHub Actions checks; equal candidate/merge trees;
 merge ancestry in clean, current main; exact target, inventory, peers, refs and object preservation;
-recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay. Before
+recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay. A stale
+published lane cache may bind its clean current checkout only when the prior record, ref, path and ancestry
+match and a fresh exact integration proof against current protected main covers every lane change; the
+receipt records local proof and does not claim a merged PR or successful provider checks. Before
 projection retirement, detect open descriptors and process current working directories under both retained
 trees; fail closed if the reader scan is incomplete. Preserve an independent scratch clone as a whole
 directory move on the same filesystem; this remains separate from worktree cleanup and quarantine retirement.
@@ -124,7 +127,7 @@ clone and its local-only data have been reviewed.
 
 ## Explicit recovery for profile-governed repositories
 
-`USER-CLEANUP-001@1.2.1` also covers an operator-authorized, stopped, clean historical lane whose PR is
+`USER-CLEANUP-001@1.2.2` also covers an operator-authorized, stopped, clean historical lane whose PR is
 merged but whose historical authority records are unavailable. User authorization must cover the exact
 targets and recoverable cleanup; it may persist across turns. The caller selects this mode explicitly:
 
@@ -142,6 +145,14 @@ checks, content inclusion, inventory and remote main before emitting the same 15
 enrollment and the separate `apply --plan --authorize --stopped` confirmation remain required. Run from the
 surviving canonical checkout with the reviewed upstream CLI. Remove the clone-local opt-in after the selected
 batch. Never invoke code from a directory after it has been quarantined.
+
+When a published lane record's head is stale, `plan --recovery --ref=<lane>` may bind the current checkout
+if its exact path and branch match, its head strictly descends from the recorded head, the recorded base is
+retained by current clean `main`, and `exactCurrentIntegrationProof` proves the current lane changes are
+already in that `main`. This local projection plan binds the prior record, current head, integration proof,
+inventory and remote main. It reports `selectedChecksVerified=false` and `providerAuthority=false`; it does
+not represent a PR merge. Any record, path, ref, head, base or tree drift blocks planning or apply. The same
+exact authorization token and stopped-writer acknowledgement still govern quarantine.
 
 ## Exact detached main snapshot
 
@@ -369,7 +380,7 @@ Retain separate live merged/check, plan, consent, quarantine and final synchroni
 
 ## MVP — reference implementation
 
-`USER-CLEANUP-001@1.2.1` selects one stopped, clean reviewed or historically equivalent worktree quarantined through its explicitly selected local-consent mode. Historical equivalence is a local retirement decision, not source integration. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+`USER-CLEANUP-001@1.2.2` selects one stopped, clean reviewed, historically equivalent, or locally proven current-integration worktree quarantined through its explicitly selected local-consent mode. Historical equivalence is a local retirement decision, not source integration. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
 The 1.4.5 correction blocks projection removal when a process keeps the target as its working directory,
 even if no file descriptor below that directory is open. Verify it with `node --test __tests__/cleanup-retirement.test.mjs`
 and affected repository checks, preserving their exact source, result and authoring surface. The named command

@@ -1,13 +1,17 @@
 /** Explicit operator recovery policy; never provider authority or a merge-method choice. */
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef } from '../src/git-repository.mjs';
-import { exactTreeProjectionProof, reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
+import { exactCurrentIntegrationProof, exactTreeProjectionProof, reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 import { lstatSync, realpathSync } from 'node:fs';
-import { acquireOperationLock, commonDir, currentBranch, finishOperationLock, observeGit, remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
+import { acquireOperationLock, commonDir, currentBranch, finishOperationLock, headSha, isAncestor, observeGit, remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { classifyExistingWorktreeQuarantine, observeWorktreeCleanupTarget, quarantineWorktreeTarget } from '../src/cleanup-quarantine.mjs';
+import { get } from '../src/lane-records.mjs';
+import { isLaneRef } from '../src/lane-id.mjs';
 export const refuse = reason => { throw Object.assign(new Error(`blocked-user-cleanup-${reason}`), { reason }); };
 export const RECOVERY_MODE = 'explicit-local-user-consent-recovery';
+export const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent',
+  NO_CI_MODE = 'explicit-local-user-consent-no-ci';
 export const SNAPSHOT_CLEANUP_SCHEMA = 'agentic-os/detached-main-snapshot-cleanup-plan/v1';
 export const RECOVERY_LIMITS = Object.freeze({
   projectionByteCeiling: 4 * 1024 ** 3, projectionEntryCeiling: 250000,
@@ -27,6 +31,113 @@ export function recoveryPolicy(root, repository, { requireChecks = true } = {}) 
     || requireChecks && !profile.requiredChecks.length) refuse('recovery-profile-binding');
   return { repositoryProfileDigest: profile.profileDigest, requiredChecks: profile.requiredChecks,
     protectedCleanupPolicy: profile.cleanup, limits: RECOVERY_LIMITS };
+}
+const planFields = (value, names) => {
+  if (!value || Array.isArray(value) || typeof value !== 'object'
+    || Object.keys(value).sort().join(',') !== names.split(',').sort().join(',')) refuse('shape');
+};
+const samePlanValue = (left, right) => canonicalJson(left) === canonicalJson(right);
+const CURRENT_INTEGRATION_KINDS = new Set(['ancestor', 'ancestor-content-inclusion', 'exact-tree-projection']);
+function currentIntegrationRecord(observed, expectedRecord, targetPath) {
+  const record = observed && { state: observed.state, head: observed.head, baseSha: observed.baseSha, pr: observed.pr };
+  if (!record || !expectedRecord || !samePlanValue(record, expectedRecord)
+    || !['published', 'queued', 'integrated'].includes(observed.state)
+    || observed.worktree !== targetPath || observed.base !== 'refs/remotes/origin/main'
+    || !/^[a-f0-9]{40}$/u.test(observed.head ?? '')
+    || !/^[a-f0-9]{40}$/u.test(observed.baseSha ?? '')
+    || !Number.isSafeInteger(observed.pr) || observed.pr < 1) refuse('recovery-lane-binding'); return record;
+}
+function currentIntegrationHead({ root, targetPath, ref, canonical, observed }) {
+  const head = headSha('HEAD', targetPath);
+  if (currentBranch(targetPath) !== ref || head !== headSha(`refs/heads/${ref}`, root)
+    || !isAncestor(observed.head, head, root) || !isAncestor(observed.baseSha, canonical, root))
+    refuse('recovery-lane-binding'); return head;
+}
+function exactCurrentIntegrationBinding(root, ref, head, canonical) {
+  const proof = exactCurrentIntegrationProof('refs/heads/main', ref, { cwd: root });
+  if (!proof || proof.head !== head || proof.baseHead !== canonical
+    || !CURRENT_INTEGRATION_KINDS.has(proof.kind)) refuse('integration-not-current'); return proof;
+}
+export function deriveCurrentIntegrationBinding({ root, targetPath, ref, canonical, record: expectedRecord }) {
+  const observed = get(ref, root), record = currentIntegrationRecord(observed, expectedRecord, targetPath),
+    head = currentIntegrationHead({ root, targetPath, ref, canonical, observed });
+  return { record: expectedRecord, proof: exactCurrentIntegrationBinding(root, ref, head, canonical) };
+}
+function validCurrentIntegrationBinding(plan) {
+  const binding = plan.currentIntegration, record = binding?.record, proof = binding?.proof;
+  if (!binding || Object.keys(binding).sort().join(',') !== 'proof,record'
+    || !record || Object.keys(record).sort().join(',') !== 'baseSha,head,pr,state'
+    || !['published', 'queued', 'integrated'].includes(record.state)
+    || !/^[a-f0-9]{40}$/u.test(record.head ?? '')
+    || !/^[a-f0-9]{40}$/u.test(record.baseSha ?? '')
+    || !Number.isSafeInteger(record.pr) || record.pr < 1 || record.pr !== plan.pr
+    || !proof || !CURRENT_INTEGRATION_KINDS.has(proof.kind)) return false;
+
+  const proofFields = proof.kind === 'ancestor' ? 'baseHead,detail,head,kind,pending' : 'baseHead,detail,head,kind,pathCount,pending';
+  return Object.keys(proof).sort().join(',') === proofFields
+    && proof.head === plan.head && proof.baseHead === plan.canonical
+    && typeof proof.detail === 'string' && proof.detail.length > 0
+    && (proof.kind === 'ancestor' || Number.isSafeInteger(proof.pathCount) && proof.pathCount > 0)
+    && Array.isArray(proof.pending) && proof.pending.length === 0
+    && plan.review && Object.keys(plan.review).sort().join(',') === 'branch,head,kind,merge'
+    && plan.review?.kind === 'local-current-integration'
+    && plan.review.branch === plan.branch && plan.review.head === plan.head
+    && plan.review.merge === plan.canonical && plan.merge === plan.canonical
+    && isLaneRef(plan.branch) && !plan.detachedHead && !plan.successor
+    && !plan.mergedProjection && !plan.historicalCheckGap;
+}
+function validateCurrentIntegrationPlan(plan) {
+  const checks = plan.requiredChecks;
+  if (!validCurrentIntegrationBinding(plan) || plan.mode !== RECOVERY_MODE || plan.workflow !== null
+    || !Number.isSafeInteger(plan.pr) || plan.pr < 1 || !Array.isArray(checks) || !checks.length || checks.length > 8
+    || checks.some(check => typeof check !== 'string' || !check.trim() || Buffer.byteLength(check) > 128 || /[\x00-\x1f\x7f]/u.test(check))
+    || JSON.stringify([...new Set(checks)].sort()) !== JSON.stringify(checks)) refuse('plan-binding');
+}
+export function validateUserCleanupPlan(input, reviewOptions) {
+  const bytes = canonicalJson(input); if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
+  const plan = JSON.parse(bytes), localIntegration = Object.hasOwn(plan, 'currentIntegration');
+  const optionalFields = ['detachedHead', 'reviewedEquivalentCommit', 'successor', 'mergedProjection', 'historicalCheckGap', 'changeClass'];
+  const fields = ['schema', 'mode', 'root', 'repository', 'remoteUrl', 'pr', 'requiredChecks', 'workflow', 'targetPath', 'branch', 'head', 'canonical', 'merge', 'review', 'inventoryDigest', 'inventoryContentEntries', 'policyDigest', 'observation', 'issuedAt', 'expiresAt', 'planDigest'];
+  if (plan.mode === RECOVERY_MODE) fields.push('integration', 'recoveryPolicy');
+  for (const field of optionalFields) if (Object.hasOwn(plan, field)) fields.push(field);
+  if (localIntegration) fields.push('currentIntegration'); planFields(plan, fields.join(','));
+  if (localIntegration) validateCurrentIntegrationPlan(plan); else reviewOptions(plan);
+  const { planDigest, ...content } = plan;
+  const validOptionalFields = (!Object.hasOwn(plan, 'detachedHead')
+    || plan.mode === RECOVERY_MODE && /^[a-f0-9]{40}$/u.test(plan.detachedHead ?? ''))
+    && (!Object.hasOwn(plan, 'reviewedEquivalentCommit')
+      || plan.mode === RECOVERY_MODE && plan.detachedHead
+        && /^[a-f0-9]{40}$/u.test(plan.reviewedEquivalentCommit ?? ''))
+    && (!Object.hasOwn(plan, 'successor') || plan.mode === RECOVERY_MODE && !plan.detachedHead
+      && plan.successor && Object.keys(plan.successor).sort().join(',') === 'predecessorHead,predecessorRef,replacedPaths'
+      && typeof plan.successor.predecessorRef === 'string'
+      && /^[a-f0-9]{40}$/u.test(plan.successor.predecessorHead ?? '')
+      && Array.isArray(plan.successor.replacedPaths))
+    && (!Object.hasOwn(plan, 'mergedProjection') || plan.mode === RECOVERY_MODE && !plan.detachedHead
+      && !plan.successor && plan.mergedProjection
+      && Object.keys(plan.mergedProjection).sort().join(',') === 'branch,head'
+      && isLaneRef(plan.mergedProjection.branch) && plan.mergedProjection.branch !== plan.branch
+      && plan.mergedProjection.head === plan.merge)
+    && (!Object.hasOwn(plan, 'historicalCheckGap') || plan.historicalCheckGap
+      && (plan.mergedProjection || plan.detachedHead === plan.head)
+      && plan.review?.historicalCheckGap?.checkRunsObserved === 0
+      && samePlanValue(plan.review.historicalCheckGap.requiredChecks, plan.requiredChecks));
+  if (plan.schema !== SCHEMA || ![MODE, NO_CI_MODE, RECOVERY_MODE].includes(plan.mode)
+    || governanceDigest(content) !== planDigest || typeof plan.root !== 'string'
+    || typeof plan.targetPath !== 'string' || plan.targetPath === plan.root
+    || !['head', 'canonical', 'merge'].every(key => /^[a-f0-9]{40}$/u.test(plan[key]))
+    || !['policyDigest', 'inventoryDigest', 'planDigest'].every(key => /^[a-f0-9]{64}$/u.test(plan[key]))
+    || !Number.isSafeInteger(plan.issuedAt) || !Number.isSafeInteger(plan.expiresAt)
+    || plan.issuedAt < 0 || plan.expiresAt <= plan.issuedAt || plan.expiresAt - plan.issuedAt > 900000
+    || !validOptionalFields || !localIntegration
+      && (plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch))
+    refuse('plan-binding');
+  return plan;
+}
+export function prepareCurrentIntegrationReview({ root, targetPath, canonical, record, ref = null }) {
+  const branch = currentBranch(targetPath); if (ref !== null && branch !== ref) refuse('recovery-lane-binding');
+  const binding = deriveCurrentIntegrationBinding({ root, targetPath, ref: branch, canonical, record });
+  return { binding, review: { kind: 'local-current-integration', branch, head: headSha('HEAD', targetPath), merge: canonical } };
 }
 
 const snapshotRead = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options }); const snapshotSame = (left, right) => canonicalJson(left) === canonicalJson(right);
