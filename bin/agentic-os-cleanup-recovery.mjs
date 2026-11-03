@@ -32,14 +32,12 @@ export function recoveryPolicy(root, repository, { requireChecks = true } = {}) 
   return { repositoryProfileDigest: profile.profileDigest, requiredChecks: profile.requiredChecks,
     protectedCleanupPolicy: profile.cleanup, limits: RECOVERY_LIMITS };
 }
-
 const planFields = (value, names) => {
   if (!value || Array.isArray(value) || typeof value !== 'object'
     || Object.keys(value).sort().join(',') !== names.split(',').sort().join(',')) refuse('shape');
 };
 const samePlanValue = (left, right) => canonicalJson(left) === canonicalJson(right);
 const CURRENT_INTEGRATION_KINDS = new Set(['ancestor', 'ancestor-content-inclusion', 'exact-tree-projection']);
-
 function currentIntegrationRecord(observed, expectedRecord, targetPath) {
   const record = observed && { state: observed.state, head: observed.head, baseSha: observed.baseSha, pr: observed.pr };
   if (!record || !expectedRecord || !samePlanValue(record, expectedRecord)
@@ -47,32 +45,24 @@ function currentIntegrationRecord(observed, expectedRecord, targetPath) {
     || observed.worktree !== targetPath || observed.base !== 'refs/remotes/origin/main'
     || !/^[a-f0-9]{40}$/u.test(observed.head ?? '')
     || !/^[a-f0-9]{40}$/u.test(observed.baseSha ?? '')
-    || !Number.isSafeInteger(observed.pr) || observed.pr < 1) refuse('recovery-lane-binding');
-  return record;
+    || !Number.isSafeInteger(observed.pr) || observed.pr < 1) refuse('recovery-lane-binding'); return record;
 }
-
 function currentIntegrationHead({ root, targetPath, ref, canonical, observed }) {
   const head = headSha('HEAD', targetPath);
   if (currentBranch(targetPath) !== ref || head !== headSha(`refs/heads/${ref}`, root)
     || !isAncestor(observed.head, head, root) || !isAncestor(observed.baseSha, canonical, root))
-    refuse('recovery-lane-binding');
-  return head;
+    refuse('recovery-lane-binding'); return head;
 }
-
 function exactCurrentIntegrationBinding(root, ref, head, canonical) {
   const proof = exactCurrentIntegrationProof('refs/heads/main', ref, { cwd: root });
   if (!proof || proof.head !== head || proof.baseHead !== canonical
-    || !CURRENT_INTEGRATION_KINDS.has(proof.kind)) refuse('integration-not-current');
-  return proof;
+    || !CURRENT_INTEGRATION_KINDS.has(proof.kind)) refuse('integration-not-current'); return proof;
 }
-
 export function deriveCurrentIntegrationBinding({ root, targetPath, ref, canonical, record: expectedRecord }) {
-  const observed = get(ref, root), record = currentIntegrationRecord(observed, expectedRecord, targetPath);
-  const head = currentIntegrationHead({ root, targetPath, ref, canonical, observed });
-  const proof = exactCurrentIntegrationBinding(root, ref, head, canonical);
-  return { record: expectedRecord, proof };
+  const observed = get(ref, root), record = currentIntegrationRecord(observed, expectedRecord, targetPath),
+    head = currentIntegrationHead({ root, targetPath, ref, canonical, observed });
+  return { record: expectedRecord, proof: exactCurrentIntegrationBinding(root, ref, head, canonical) };
 }
-
 function validCurrentIntegrationBinding(plan) {
   const binding = plan.currentIntegration, record = binding?.record, proof = binding?.proof;
   if (!binding || Object.keys(binding).sort().join(',') !== 'proof,record'
@@ -83,9 +73,7 @@ function validCurrentIntegrationBinding(plan) {
     || !Number.isSafeInteger(record.pr) || record.pr < 1 || record.pr !== plan.pr
     || !proof || !CURRENT_INTEGRATION_KINDS.has(proof.kind)) return false;
 
-  const proofFields = proof.kind === 'ancestor'
-    ? 'baseHead,detail,head,kind,pending'
-    : 'baseHead,detail,head,kind,pathCount,pending';
+  const proofFields = proof.kind === 'ancestor' ? 'baseHead,detail,head,kind,pending' : 'baseHead,detail,head,kind,pathCount,pending';
   return Object.keys(proof).sort().join(',') === proofFields
     && proof.head === plan.head && proof.baseHead === plan.canonical
     && typeof proof.detail === 'string' && proof.detail.length > 0
@@ -98,40 +86,22 @@ function validCurrentIntegrationBinding(plan) {
     && isLaneRef(plan.branch) && !plan.detachedHead && !plan.successor
     && !plan.mergedProjection && !plan.historicalCheckGap;
 }
-
-function parseUserCleanupPlan(input) {
-  const bytes = canonicalJson(input);
-  if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
-  return JSON.parse(bytes);
+function validateCurrentIntegrationPlan(plan) {
+  const checks = plan.requiredChecks;
+  if (!validCurrentIntegrationBinding(plan) || plan.mode !== RECOVERY_MODE || plan.workflow !== null
+    || !Number.isSafeInteger(plan.pr) || plan.pr < 1 || !Array.isArray(checks) || !checks.length || checks.length > 8
+    || checks.some(check => typeof check !== 'string' || !check.trim() || Buffer.byteLength(check) > 128 || /[\x00-\x1f\x7f]/u.test(check))
+    || JSON.stringify([...new Set(checks)].sort()) !== JSON.stringify(checks)) refuse('plan-binding');
 }
-
-function validateUserCleanupPlanFields(plan) {
-  const optionalFields = ['detachedHead', 'reviewedEquivalentCommit', 'successor',
-    'mergedProjection', 'historicalCheckGap', 'changeClass'];
-  const fields = ['schema', 'mode', 'root', 'repository', 'remoteUrl', 'pr', 'requiredChecks',
-    'workflow', 'targetPath', 'branch', 'head', 'canonical', 'merge', 'review', 'inventoryDigest',
-    'inventoryContentEntries', 'policyDigest', 'observation', 'issuedAt', 'expiresAt', 'planDigest'];
+export function validateUserCleanupPlan(input, reviewOptions) {
+  const bytes = canonicalJson(input); if (Buffer.byteLength(bytes) > 64000) refuse('plan-size');
+  const plan = JSON.parse(bytes), localIntegration = Object.hasOwn(plan, 'currentIntegration');
+  const optionalFields = ['detachedHead', 'reviewedEquivalentCommit', 'successor', 'mergedProjection', 'historicalCheckGap', 'changeClass'];
+  const fields = ['schema', 'mode', 'root', 'repository', 'remoteUrl', 'pr', 'requiredChecks', 'workflow', 'targetPath', 'branch', 'head', 'canonical', 'merge', 'review', 'inventoryDigest', 'inventoryContentEntries', 'policyDigest', 'observation', 'issuedAt', 'expiresAt', 'planDigest'];
   if (plan.mode === RECOVERY_MODE) fields.push('integration', 'recoveryPolicy');
   for (const field of optionalFields) if (Object.hasOwn(plan, field)) fields.push(field);
-  if (Object.hasOwn(plan, 'currentIntegration')) fields.push('currentIntegration');
-  planFields(plan, fields.join(','));
-}
-
-function validateUserCleanupReview(plan, reviewOptions) {
-  const localIntegration = Object.hasOwn(plan, 'currentIntegration');
-  if (localIntegration) {
-    if (!validCurrentIntegrationBinding(plan) || plan.mode !== RECOVERY_MODE || plan.workflow !== null
-      || !Number.isSafeInteger(plan.pr) || plan.pr < 1 || !Array.isArray(plan.requiredChecks)
-      || !plan.requiredChecks.length || plan.requiredChecks.length > 8
-      || plan.requiredChecks.some(check => typeof check !== 'string' || !check.trim()
-        || Buffer.byteLength(check) > 128 || /[\x00-\x1f\x7f]/u.test(check))
-      || JSON.stringify([...new Set(plan.requiredChecks)].sort()) !== JSON.stringify(plan.requiredChecks))
-      refuse('plan-binding');
-  } else reviewOptions(plan);
-}
-
-function validateUserCleanupPlanBinding(plan) {
-  const localIntegration = Object.hasOwn(plan, 'currentIntegration');
+  if (localIntegration) fields.push('currentIntegration'); planFields(plan, fields.join(','));
+  if (localIntegration) validateCurrentIntegrationPlan(plan); else reviewOptions(plan);
   const { planDigest, ...content } = plan;
   const validOptionalFields = (!Object.hasOwn(plan, 'detachedHead')
     || plan.mode === RECOVERY_MODE && /^[a-f0-9]{40}$/u.test(plan.detachedHead ?? ''))
@@ -162,24 +132,12 @@ function validateUserCleanupPlanBinding(plan) {
     || !validOptionalFields || !localIntegration
       && (plan.head !== plan.review?.head || plan.merge !== plan.review?.merge || plan.branch !== plan.review?.branch))
     refuse('plan-binding');
-}
-
-export function validateUserCleanupPlan(input, reviewOptions) {
-  const plan = parseUserCleanupPlan(input);
-  validateUserCleanupPlanFields(plan);
-  validateUserCleanupReview(plan, reviewOptions);
-  validateUserCleanupPlanBinding(plan);
   return plan;
 }
-
 export function prepareCurrentIntegrationReview({ root, targetPath, canonical, record, ref = null }) {
-  const branch = currentBranch(targetPath);
-  if (ref !== null && branch !== ref) refuse('recovery-lane-binding');
-  const binding = deriveCurrentIntegrationBinding({
-    root, targetPath, ref: branch, canonical, record,
-  });
-  return { binding, review: { kind: 'local-current-integration', branch,
-    head: headSha('HEAD', targetPath), merge: canonical } };
+  const branch = currentBranch(targetPath); if (ref !== null && branch !== ref) refuse('recovery-lane-binding');
+  const binding = deriveCurrentIntegrationBinding({ root, targetPath, ref: branch, canonical, record });
+  return { binding, review: { kind: 'local-current-integration', branch, head: headSha('HEAD', targetPath), merge: canonical } };
 }
 
 const snapshotRead = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options }); const snapshotSame = (left, right) => canonicalJson(left) === canonicalJson(right);

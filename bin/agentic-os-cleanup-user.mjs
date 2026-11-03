@@ -103,10 +103,9 @@ function eligibility(plan) {
     expiresAt: new Date(plan.expiresAt).toISOString() };
 }
 function validateCleanupReview(plan, options, observed) {
-  const review = plan.currentIntegration
-    ? observed?.proof ? observed : prepareCurrentIntegrationReview({ root: plan.root,
-      targetPath: plan.targetPath, record: plan.currentIntegration.record,
-      canonical: plan.canonical, ref: plan.branch }).binding
+  const review = plan.currentIntegration ? observed?.proof ? observed : prepareCurrentIntegrationReview({
+    root: plan.root, targetPath: plan.targetPath, record: plan.currentIntegration.record,
+    canonical: plan.canonical, ref: plan.branch }).binding
     : observed ?? observeMergedReview(plan, { cwd: plan.root, ...options });
   if (!same(review, plan.currentIntegration ?? plan.review)) refuse(plan.currentIntegration ? 'integration-drift' : 'review-drift');
 }
@@ -220,10 +219,9 @@ export function planUserCleanup({ cwd = process.cwd(), target, pr, requiredCheck
     if (recovery && current.requiredChecks.some(name => !requiredChecks.includes(name))) refuse('profile-checks-missing');
     if (currentIntegrationRecord && !same(requiredChecks, [...current.requiredChecks].sort())) refuse('profile-checks-missing');
     if (targetPath !== target || targetPath === root || lstatSync(target).isSymbolicLink()) refuse('target-path');
-    const currentReview = currentIntegrationRecord ? prepareCurrentIntegrationReview({ root,
-      targetPath, canonical: current.canonical, record: currentIntegrationRecord }) : null;
-    const boundIntegration = currentReview?.binding ?? null;
-    const review = currentReview?.review
+    const currentReview = currentIntegrationRecord && prepareCurrentIntegrationReview({ root, targetPath,
+      canonical: current.canonical, record: currentIntegrationRecord });
+    const boundIntegration = currentReview?.binding ?? null, review = currentReview?.review
       ?? observeMergedReview({ ...current, pr, requiredChecks, workflow, historicalCheckGap }, { cwd: root, ...options });
     if (read(target, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
     const inventory = collectRecoveryInventory({ cwd: target, canonicalRef: 'refs/heads/main',
