@@ -6,9 +6,8 @@ import {
   configuredRemote, currentBranch, fetch as gitFetch, git, headSha, repoRoot, worktrees, refExists,
 } from '../src/git.mjs';
 import { assertDevice, deviceSegment, isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
-import { legalEvents } from '../src/lane-state.mjs';
+import { legalEvents, providerPolicy } from '../src/lane-state.mjs';
 import * as store from '../src/lane-records.mjs';
-import * as queue from '../src/queue.mjs';
 import {
   inspectRegistered,
   reapLaneBranches,
@@ -21,20 +20,7 @@ import { dispatchInvocation, isInvocationTuple, resolveInvocation } from './agen
 import { isBoundLane } from '../src/guard-main.mjs';
 import * as report from './agentic-os-report.mjs';
 import { REPOSITORY_PROFILE_FILENAME } from '../src/git-repository.mjs';
-import {
-  runAutonomyClass,
-  runCanonicalSync,
-  runReconcile,
-  runObserve, runFlight, cmdDoctor,
-  runRequest,
-  providerKind,
-  repositoryKind,
-  assertProfileCurrent,
-  trustedRepositoryProfile,
-} from './agentic-os-auxiliary.mjs';
-import { runHookSetup } from './agentic-os-hooks.mjs';
 import { validateCommandArguments, cmdHelp, flag, option, positional, parseReapRefBatch } from './agentic-os-argv.mjs';
-import { createWorkflowEffectGuard, rebindWorkflowCandidate, releaseWorkflowAllocation } from './agentic-os-workflow.mjs';
 const out = (text) => process.stdout.write(`${text}\n`);
 const err = (text) => process.stderr.write(`${text}\n`);
 function projectCache(record, root) {
@@ -110,16 +96,17 @@ function cmdReleaseCommonHelp({ advanced = false } = {}) {
 async function cmdLand(cwd, argv, profile, policy) {
   return (await import('./agentic-os-publication.mjs')).cmdLand(cwd, argv, profile, policy, { out, err, projectCache, effectReceipt, remoteName });
 }
-function cmdSuccessor(root, argv, policy, profile) {
+async function cmdSuccessor(root, argv, policy, profile) {
   const predecessorRef = currentBranch(root);
   if (!predecessorRef || !isLaneRef(predecessorRef) || !isBoundLane(predecessorRef, root)) return err('blocked-unbound-lane: successor requires a bound published lane worktree'), 1;
   const writeOption = option(argv, 'write'), expandedWritePaths = writeOption === null ? null : parseWritePaths(writeOption), message = option(argv, 'message'), reconcileCommitted = flag(argv, 'reconcile-committed');
   let committingReservedCandidate = false, beforeCommit = null, expectedDecision = null;
-  const workflowContext = () => { const registration = worktrees(root).find(row => row.path === root && row.branch === predecessorRef); if (!registration) throw new Error('blocked-successor-worktree-binding'); return { root, repository: profile.repository, phase: 'ci', ref: predecessorRef, worktreeId: basename(registration.path), revision: headSha('HEAD', root), dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) }; }, assertWorkflowCurrent = createWorkflowEffectGuard(workflowContext);
+  const workflow = message === null ? null : await import('./agentic-os-workflow.mjs');
+  const workflowContext = () => { const registration = worktrees(root).find(row => row.path === root && row.branch === predecessorRef); if (!registration) throw new Error('blocked-successor-worktree-binding'); return { root, repository: profile.repository, phase: 'ci', ref: predecessorRef, worktreeId: basename(registration.path), revision: headSha('HEAD', root), dirty: !committingReservedCandidate && Boolean(git(['status', '--porcelain', '--untracked-files=all'], { cwd: root })) }; }, assertWorkflowCurrent = workflow?.createWorkflowEffectGuard(workflowContext);
   if (message !== null) { committingReservedCandidate = true; try { beforeCommit = workflowContext(); expectedDecision = assertWorkflowCurrent('dependencies'); } finally { committingReservedCandidate = false; } }
   return runPublishedLaneSuccessor({ cwd: root, predecessorRef, scope: positional(argv)[0], explicitHead: option(argv, 'expected-head'),
     remote: remoteName(policy, root), protectedRef: policy.protectedRef, out, expandedWritePaths, message, reconcileCommitted,
-    onCommitted: beforeCommit === null ? null : ({ previousRevision, revision }) => { if (previousRevision !== beforeCommit.revision) throw new Error('blocked-successor-commit-drift'); rebindWorkflowCandidate({ root, repository: profile.repository, ref: predecessorRef, worktreeId: beforeCommit.worktreeId, expectedDecision, previousRevision, revision }); } });
+    onCommitted: beforeCommit === null ? null : ({ previousRevision, revision }) => { if (previousRevision !== beforeCommit.revision) throw new Error('blocked-successor-commit-drift'); workflow.rebindWorkflowCandidate({ root, repository: profile.repository, ref: predecessorRef, worktreeId: beforeCommit.worktreeId, expectedDecision, previousRevision, revision }); } });
 }
 async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, beforeClose = () => {}) {
   const [action = 'help', ...rest] = argv;
@@ -135,7 +122,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       return cmdFinishAndReap(root, rest, policy, profile);
     }
     case 'close': {
-      const status = cmdFinishAndReap(root, rest, policy, profile);
+      const status = await cmdFinishAndReap(root, rest, policy, profile);
       if (status !== 0) return status;
       return (await import('./agentic-os-completion-status.mjs'))
         .runCompletionStatus(root, option(rest, 'ref'), policy, profile, out, {
@@ -163,7 +150,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       });
       if (waitStatus !== 0) return waitStatus;
       beforeClose();
-      const status = cmdFinishAndReap(root, rest, policy, profile);
+      const status = await cmdFinishAndReap(root, rest, policy, profile);
       if (status !== 0) return status;
       const completionModule = await import('./agentic-os-completion-status.mjs');
       const completion = completionModule.inspectCompletionStatus(root, option(rest, 'ref'), policy, profile);
@@ -192,6 +179,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
         const completionModule = await import('./agentic-os-completion-status.mjs'), cleanupReceiptPath = option(rest, 'cleanup-receipt'), cleanupReceipt = cleanupReceiptPath === null ? null : (await import('./agentic-os-cleanup-user.mjs')).readUserCleanupJson(cleanupReceiptPath, 'cleanup-receipt');
         const ref = option(rest, 'ref'), status = completionModule.inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt });
         if (status.closeout.missionState !== 'source_complete' || status.closeout.cleanupSatisfied !== true || status.lane.mounted !== false) throw Object.assign(new Error('release requires an unmounted lane with current source-complete quarantine evidence'), { reason: 'blocked-allocation-release-closeout' });
+        const { releaseWorkflowAllocation } = await import('./agentic-os-workflow.mjs');
         out(JSON.stringify(releaseWorkflowAllocation(root, profile.repository, ref))); return 0;
       } catch (error) { err(`${error.reason ?? 'blocked-allocation-release'}: ${error.message}`); return 1; }
     }
@@ -214,11 +202,11 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       return cmdReleaseCommonHelp();
   }
 }
-function cmdFinishAndReap(root, argv, policy, profile) {
-  const status = cmdFinish(root, argv, policy, profile);
+async function cmdFinishAndReap(root, argv, policy, profile) {
+  const status = await cmdFinish(root, argv, policy, profile);
   return status !== 0 ? status : cmdReap(root, argv, policy, profile);
 }
-function cmdStatus(root, argv, profile, policy) {
+async function cmdStatus(root, argv, profile, policy) {
   const device = assertDevice(option(argv, 'device') ?? deviceSegment());
   const cachedRecords = store.load(root).lanes;
   const registrations = worktrees(root)
@@ -247,9 +235,10 @@ function cmdStatus(root, argv, profile, policy) {
       next: legalEvents(state),
     };
   });
+  const { providerKind } = await import('./agentic-os-auxiliary.mjs');
   const kind = providerKind(profile);
   const observed = kind === 'github'
-    ? queue.observe({ cwd: root, profile })
+    ? (await import('../src/queue.mjs')).observe({ cwd: root, profile })
     : kind === 'unsupported' ? { available: false, reason: 'unsupported' } : null;
   out(
     report.formatStatus({
@@ -260,10 +249,11 @@ function cmdStatus(root, argv, profile, policy) {
   );
   return 0;
 }
-function cmdReap(root, argv, policy, profile) {
+async function cmdReap(root, argv, policy, profile) {
   requireCanonical(root, policy);
   if (flag(argv, 'apply')) { err('blocked-authenticated-cleanup-required: reap is classification-only'); return 1; }
   const refs = option(argv, 'refs'), branches = refs === null ? reapLaneBranches(option(argv, 'ref'), root) : parseReapRefBatch(refs, root);
+  const { assertProfileCurrent } = await import('./agentic-os-auxiliary.mjs');
   effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
   const baseSha = assertProfileCurrent(root, policy, profile);
   if (!baseSha) { err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`); return 1; }
@@ -274,7 +264,7 @@ function cmdReap(root, argv, policy, profile) {
   if (survey.integrated.length > 0 || stale.length > 0) { out(''); out('classification only; authenticated retire(claim) and cleanup receipts remain required.'); }
   return 0;
 }
-function cmdFinish(root, argv, policy, profile) {
+async function cmdFinish(root, argv, policy, profile) {
   requireCanonical(root, policy);
   const ref = option(argv, 'ref');
   if (!ref || !isLaneRef(ref)) {
@@ -292,6 +282,7 @@ function cmdFinish(root, argv, policy, profile) {
     err(`blocked-dirty-lane: preserve and commit or remove authored bytes in ${lane.path}`);
     return 1;
   }
+  const { assertProfileCurrent } = await import('./agentic-os-auxiliary.mjs');
   effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
   const baseSha = assertProfileCurrent(root, policy, profile);
   if (!baseSha || !integrationProof(baseSha, laneHead, { cwd: root })) {
@@ -306,14 +297,16 @@ function cmdFinish(root, argv, policy, profile) {
     cleanupOwner: 'agentic-os/adapters/worktree-cleanup' }));
   return 0;
 }
-function cmdQueue(root, argv, profile) {
+async function cmdQueue(root, argv, profile) {
   const [action = 'show'] = positional(argv);
+  const { providerKind } = await import('./agentic-os-auxiliary.mjs');
   const kind = providerKind(profile);
   if (kind !== 'github') {
     err(`${kind === 'unsupported' ? 'blocked-provider-adapter-unsupported'
       : 'blocked-provider-adapter-unselected'}: queue commands require github adapter v1`);
     return 1;
   }
+  const queue = await import('../src/queue.mjs');
   if (action === 'show') {
     const observed = queue.observe({ cwd: root, profile });
     out(report.formatFindings('remote configuration', queue.audit(observed, profile)));
@@ -365,7 +358,7 @@ async function main() {
   if (command === 'run') return (await import('./agentic-os-run.mjs')).runAgentCommand(argv, out);
   if (command === 'design-check') return (await import('./agentic-os-design.mjs')).runDesignCheck(argv, out);
   if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);
-  if (command === 'request') return runRequest(argv);
+  if (command === 'request') return (await import('./agentic-os-auxiliary.mjs')).runRequest(argv);
   if (command === 'pipeline') return (await import('./agentic-os-pipeline.mjs')).runPipeline(argv);
   if (command === 'workspace' && argv[0] === 'check')
     return (await import('./agentic-os-workspace-check.mjs')).runWorkspaceCheck(argv, out);
@@ -383,27 +376,28 @@ async function main() {
   if (command === 'context') return (await import('./agentic-os-context.mjs')).runContext(root, argv, out);
   if (command === 'source-evidence') return (await import('./agentic-os-source-evidence.mjs')).runSourceEvidenceBundle(argv, out);
   const setupCommand = ['setup', 'git-configure', 'guard-install'].includes(command);
-  const trustedProfile = trustedRepositoryProfile(root, { allowUnanchored: setupCommand });
+  const profileSupport = await import('./agentic-os-auxiliary.mjs');
+  const trustedProfile = profileSupport.trustedRepositoryProfile(root, { allowUnanchored: setupCommand });
   const { profile } = trustedProfile;
   if (!profile) {
     err(`blocked-repository-profile-missing: commit ${REPOSITORY_PROFILE_FILENAME} before operation`);
     return 1;
   }
-  if (repositoryKind(profile) !== 'git') {
+  if (profileSupport.repositoryKind(profile) !== 'git') {
     err('blocked-repository-adapter-unsupported: operational commands require git adapter v1');
     return 1;
   }
-  const policy = queue.providerPolicy(profile);
+  const policy = providerPolicy(profile);
   switch (command) {
     case 'collaborate': return (await import('./agentic-os-collaboration-store.mjs'))
       .runCollaboration(root, policy, profile, argv, out);
     case 'setup':
     case 'git-configure':
     case 'guard-install':
-      return runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
-    case 'doctor': return cmdDoctor(root, profile, policy);
+      return (await import('./agentic-os-hooks.mjs')).runHookSetup(root, policy, profile, out, { allowTrustCreation: trustedProfile.trust === null });
+    case 'doctor': return (await import('./agentic-os-auxiliary.mjs')).cmdDoctor(root, profile, policy);
     case 'branch-retirement': {
-      const protectedRevision = assertProfileCurrent(root, policy, profile);
+      const protectedRevision = profileSupport.assertProfileCurrent(root, policy, profile);
       if (headSha(policy.protectedRef, root) !== protectedRevision)
         throw Object.assign(new Error('protected repository profile ref changed'), {
           reason: 'blocked-protected-ref-race',
@@ -425,13 +419,13 @@ async function main() {
         preservationPath: option(argv, 'preservation'), cleanupReceiptPath: option(argv, 'cleanup-receipt'),
         integrationReceiptPath: option(argv, 'integration-receipt'), retirementReceiptPath: option(argv, 'retirement-receipt'),
       });
-    case 'canonical-sync': return runCanonicalSync(root, argv, policy);
-    case 'reconcile': requireCanonical(root, policy); return runReconcile(root, argv, policy);
+    case 'canonical-sync': return (await import('./agentic-os-auxiliary.mjs')).runCanonicalSync(root, argv, policy);
+    case 'reconcile': requireCanonical(root, policy); return (await import('./agentic-os-auxiliary.mjs')).runReconcile(root, argv, policy);
     case 'queue': return cmdQueue(root, argv, profile);
-    case 'autonomy-class': return runAutonomyClass(root, argv, policy);
-    case 'flight': return runFlight(root, argv, profile);
+    case 'autonomy-class': return (await import('./agentic-os-auxiliary.mjs')).runAutonomyClass(root, argv, policy);
+    case 'flight': return (await import('./agentic-os-auxiliary.mjs')).runFlight(root, argv, profile);
     case 'workflow': return (await import('./agentic-os-workflow.mjs')).runWorkflow(root, argv, profile, out);
-    case 'observe': return runObserve(root, argv, profile);
+    case 'observe': return (await import('./agentic-os-auxiliary.mjs')).runObserve(root, argv, profile);
     default:
       err(`unknown command "${command}"`);
       cmdHelp();
