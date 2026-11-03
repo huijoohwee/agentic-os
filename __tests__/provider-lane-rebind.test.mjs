@@ -13,7 +13,7 @@ const write = (root, path, value) => {
   mkdirSync(dirname(join(root, path)), { recursive: true });
   writeFileSync(join(root, path), value);
 };
-function fixture(t, { collidingUntracked = false, wrongTree = false } = {}) {
+function fixture(t, { collidingUntracked = false, wrongTree = false, integratedCandidate = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'provider-rebind-'))), root = join(parent, 'repo'), lane = join(parent, 'lane');
   mkdirSync(root, { recursive: true });
   t.after(() => rmSync(parent, { recursive: true, force: true }));
@@ -26,6 +26,7 @@ function fixture(t, { collidingUntracked = false, wrongTree = false } = {}) {
   git(root, 'worktree', 'add', '--quiet', '-b', ref, lane, base0);
   write(lane, 'owned/feature.txt', 'feature\n'); git(lane, 'add', '--all'); git(lane, 'commit', '--quiet', '-m', 'published candidate');
   const oldHead = git(lane, 'rev-parse', 'HEAD');
+  if (integratedCandidate) git(root, 'merge', '--ff-only', ref);
   write(root, 'base.txt', 'advanced base\n');
   if (collidingUntracked) write(root, 'provider-added.txt', 'new base file\n');
   git(root, 'add', '--all'); git(root, 'commit', '--quiet', '-m', 'protected base update');
@@ -77,6 +78,20 @@ test('provider refresh verifies the exact PR merge, fast-forwards the mounted la
   assert.equal(readFileSync(join(f.lane, 'local-note.txt'), 'utf8'), 'leave in place\n');
   assert.equal(before.includes(`refs/heads/${f.ref} ${f.oldHead}`), true);
   assert.equal(git(f.root, 'rev-parse', `refs/heads/${f.ref}`), f.head);
+});
+
+test('provider refresh accepts an empty PR projection only when its merge tree exactly matches protected base', t => {
+  const f = fixture(t, { integratedCandidate: true });
+  const planValue = plan(f), planPath = save(f, planValue);
+  assert.deepEqual(planValue.sourcePaths, []);
+  assert.equal(git(f.root, 'rev-parse', `${planValue.head}^{tree}`), git(f.root, 'rev-parse', `${f.base1}^{tree}`));
+  const receipt = applyProviderLaneRefresh({ cwd: f.root, planPath, profile: f.profile,
+    provider: f.provider, remoteReader: f.remoteReader, authorization: `agentic-os:provider-lane-rebind:${planValue.digest}`, stopped: true });
+  assert.equal(receipt.providerVerified, true);
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(git(f.lane, 'rev-parse', 'HEAD'), f.head);
+  assert.equal(git(f.lane, 'rev-parse', 'HEAD^{tree}'), git(f.root, 'rev-parse', `${f.base1}^{tree}`));
+  assert.equal(get(f.ref, f.root).baseSha, f.base1);
 });
 
 test('provider refresh rejects a merge commit with a tree different from the exact local merge', t => {

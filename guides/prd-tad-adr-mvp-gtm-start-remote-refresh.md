@@ -1,16 +1,16 @@
 ---
 title: "START refreshes the protected base and recovers exact lineage"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.3.0"
+version: "1.5.0"
 date: "2026-11-03"
 lang: "en-US"
 owner: "Agentic OS runtime maintainers"
 continuity_id: "AGENTIC-OS-START-REMOTE-REFRESH-001"
-prd_revision: "1.3.0"
-tad_revision: "1.3.0"
-adr_revision: "1.3.0"
-mvp_revision: "1.3.0"
-gtm_revision: "1.3.0"
+prd_revision: "1.5.0"
+tad_revision: "1.5.0"
+adr_revision: "1.5.0"
+mvp_revision: "1.5.0"
+gtm_revision: "1.5.0"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
@@ -19,11 +19,11 @@ universal_scope: true
 load_policy: "on-demand"
 guideline_revision: "3.4.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/4e5227ad892f8b0125a31c83cf87e14dc3c2621c/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "30403ca136885ddf91b6a33731786161c321fed5"
+reviewed_source_revision: "6e8e7960f9075b36f2cc8328e908287fa2ba3581"
 worktree_id: "device-0232231d4a19--simplified-predecessor-lineage"
 agent_id: "codex-simplified-predecessor-lineage"
-verification_scope: "Allow overlapping squash-equivalent successor alignment after predecessor branch-ref retirement only when exact lane handoff, immutable predecessor SHA ancestry, and full protected-tree equality remain proven; retain integration and cleanup authority boundaries."
-budget: "Five existing paths: one runtime module, one existing test module, two planning documents, and the lane contract; 45 active minutes; zero new modules, dependencies, provider calls, paid services, or always-load bytes."
+verification_scope: "Allow an empty provider-lane projection only when the exact verified merge tree equals protected base; map the lazily loaded alignment route to its owner tests to reduce future affected-suite fanout; retain nonempty reservation, ref/parent/merge checks, collision checks, and separate integration/cleanup authority."
+budget: "Five existing paths: runtime module, two owner tests, the impact contract, and this plan; target at most 20 active minutes, four validation workers, a 1,200-second gate, and zero new modules, dependencies, provider calls, receipts, paid services, or always-load bytes."
 ---
 
 # START refreshes the protected base and recovers exact readmission
@@ -83,6 +83,18 @@ Missing lane identity or Git objects, changed trees, or broken ancestry continue
 | PR-06 | Permit exact squash-equivalent alignment with either predecessor branch ref absent when the immutable predecessor head, lane record, ancestry, and protected tree still bind. | Existing lane-alignment fixture removes the local ref and remote ref in separate prepare/apply/replay cases; the same alignment completes without changing dirty bytes. |
 | PR-07 | Keep provider integration, retirement, and cleanup authority separate from local alignment. | A missing record/object, altered lineage, unrelated predecessor, or nonmatching tree refuses before changing the lane; the alignment receipt grants no external effect authority. |
 
+### Exact-tree provider refresh
+
+A provider update can be an empty source projection when its exact two-parent merge commit has the
+same tree as the protected base: the PR's content is already present upstream. Refresh that lane
+only when the existing provider, ref, merge-parent, merge-tree, reservation, and local-byte checks
+pass and the candidate tree equals the protected-base tree. The lane still needs a nonempty declared
+reservation; the empty path list is accepted only for this exact tree equality. This advances the
+local lane head and base binding without claiming new source integration.
+
+| PR-08 | Permit an empty source projection only when the verified provider merge commit and exact protected base have identical Git trees; retain all existing provider/ref/parent/merge-tree, reservation, and collision gates. | `provider-lane-rebind.test.mjs` proves a branch already integrated into protected base can refresh with `sourcePaths=[]`; a merge with a different tree still refuses. |
+| PR-09 | Treat the lazily loaded lane-alignment CLI route as deferred and select its explicit route owners without pulling every general CLI consumer. | `test-impact.test.mjs` proves alignment selects lane alignment, provider rebind, and conservative release-completion coverage while excluding admission-economy coverage. |
+
 ## TAD
 
 The cmdStart function in bin/agentic-os-admission.mjs owns the ordering. It already owns the clone-wide start lock, protected fetch, fetch receipt, profile check, and worktree admission. Move that single fetch to immediately inside the lock and before the canonical guard; retain the receipt and remove the second fetch from the create-only branch. Its existing `--readmit` path also owns exact pending expansion retry. bin/agentic-os-workflow.mjs validates the new recovery lineage against the prior immutable allocation and current member commit.
@@ -96,11 +108,23 @@ predecessor refs. Keep the local alignment journal and target/candidate ref CAS.
 `lane-alignment.test.mjs` ref-drift contract to remove either predecessor ref and retain lineage,
 tree, and dirty-byte refusal coverage. Do not add a provider call or claim integration authority.
 
+For provider-lane refresh, keep the existing `planProviderLaneRefresh` owner and exact merge-tree
+verification. Permit `sourcePaths=[]` only when the candidate tree equals the protected-base tree;
+keep the reservation nonempty and continue checking all changed paths for untracked collisions. Add
+the integrated-candidate case to the existing `provider-lane-rebind.test.mjs`. Do not add a new
+command, provider call, checkout, or effect receipt.
+
+For affected-suite selection, declare the existing lazy CLI-to-alignment route in
+`test/impact-contracts.json` and bind it to `lane-alignment.test.mjs` plus conservative
+`release-common-complete.test.mjs` subprocess coverage. Keep direct provider-rebind imports covered
+by dependency discovery. Add assertions in the existing `test-impact.test.mjs`; do not weaken the
+other CLI consumer contracts.
+
 The existing admission-economy.test.mjs covers protected-ref ordering, lane reuse and pending allocation recovery; workflow-collection.test.mjs verifies descendant ancestry and rejects unrelated commits. Existing tests remain the contract owners. docs/START-WORKFLOW.md records the retry conditions. No browser or provider API is needed.
 
 ## ADR
 
-**Decision:** START always refreshes the profile-selected protected remote while holding its existing admission lock, before validating the canonical branch and reading mission state. A stale cached predecessor projection may be tolerated only as an ancestor of its exact handoff pin, with the existing exact remote-ref and successor-ancestry observations still required. For overlapping squash-equivalent alignment, use the immutable predecessor commit already reachable from the successor and require exact tree equality with the fetched protected target; predecessor branch refs may be absent because their names are mutable. This is local ancestry repair only, with no provider integration claim or new effect authority.
+**Decision:** START always refreshes the profile-selected protected remote while holding its existing admission lock, before validating the canonical branch and reading mission state. A stale cached predecessor projection may be tolerated only as an ancestor of its exact handoff pin, with the existing exact remote-ref and successor-ancestry observations still required. For overlapping squash-equivalent alignment, use the immutable predecessor commit already reachable from the successor and require exact tree equality with the fetched protected target; predecessor branch refs may be absent because their names are mutable. This is local ancestry repair only, with no provider integration claim or new effect authority. Provider-lane refresh may accept an empty source-path projection only when its verified merge candidate's Git tree is identical to the protected base; the nonempty lane reservation and collision checks remain in force.
 
 For pending readmit recovery, reuse the current `--readmit`, mission and expected-head inputs. The command validates the descendant, exact reservation and local unpublished identity, then emits one immutable workflow successor that moves pending to active and updates the child revision. Keep the recovery parent SHA as explicit lineage. For predecessor cache drift, retain the old cache bytes and handoff pin; accept only if ancestry reaches the pin and the existing live-ref observation still equals it.
 
@@ -110,7 +134,7 @@ The configured ref keeps the behavior neutral across remotes; the default produc
 
 ## MVP
 
-The original START/readmit slice and this cache-drift refinement retain the same owners. The combined plan remains capped at seven paths total: three existing runtime modules, two existing test modules, the START guide, and this planning record. This alignment refinement touches one existing runtime module, one existing test module, the lane guide, and this plan; it adds no module, dependency, provider call, paid service, or always-load bytes. Update the existing focused regression contract; required `npm run check` and protected CI remain release gates. Rollback is a protected source revert; immutable workflow roots, refs and authored files remain preserved.
+The original START/readmit slice and cache-drift/alignment refinements retain their existing owners. The combined admission plan remains capped at seven paths total. This follow-on touches five existing paths: one runtime module, two existing owner tests, the impact contract, and this planning record. It adds no modules, dependencies, provider calls, effect receipts, paid services, or always-load bytes. Validate the focused provider-rebind and impact-selector tests, then run the complete 258-suite affected gate with concurrency four and the existing 1,200-second cap; this broad one-time gate is required because the selector contract changed. Rollback is a protected source revert; immutable workflow roots, refs and authored files remain preserved.
 
 ## GTM
 
