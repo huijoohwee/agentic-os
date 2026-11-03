@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs'; import { isAbsolute, join } from 'node:path'; import { commonDir, currentBranch, headSha, isAncestor, observeGit, repoRoot, worktrees } from '../src/git.mjs'; import { privateDirectoryIdentity } from '../src/file-integrity.mjs'; import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs';
 import { isLaneRef } from '../src/lane-id.mjs'; import { successorLineage } from '../src/lane-state.mjs';
-import { integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
+import { exactCurrentIntegrationProof, integrationProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine, observeDiscardedQuarantineEvidence } from '../src/cleanup-quarantine.mjs';
 import { verifySuccessorPreservation, readUserCleanupJson } from './agentic-os-cleanup-user.mjs';
 import { validateGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
@@ -36,15 +36,61 @@ function classifyChangeClass(root, ref, protectedBranch) {
 }
 const APPLICABILITY = Object.freeze({ 'docs-only': { 'provider-authority-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent sufficient per cleanup-user --no-ci' }, 'cleanup-receipt-unverified': { applicable: false, reason: 'change-class: docs-only; local-consent cleanup path available' } } });
 const controlLedgerProof = row => row?.disposition === 'no-deploy' && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason);
-function localCleanupReceipt(cleanupReceipt, ref, laneHead, laneRecord) {
-  return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1' && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
-    && cleanupReceipt.review?.branch === ref && cleanupReceipt.targetPath === laneRecord?.worktree ? cleanupReceipt : null;
+function localCurrentIntegrationReceipt(receipt, root, ref, laneHead, laneRecord) {
+  const binding = receipt?.currentIntegration;
+  const record = binding?.record;
+  const proof = binding?.proof;
+  const proofKinds = ['ancestor', 'ancestor-content-inclusion', 'exact-tree-projection'];
+  if (!binding || Object.keys(binding).sort().join(',') !== 'proof,record'
+    || !record || Object.keys(record).sort().join(',') !== 'baseSha,head,pr,state'
+    || !proof || !proofKinds.includes(proof.kind)) return false;
+
+  const proofFields = proof.kind === 'ancestor'
+    ? 'baseHead,detail,head,kind,pending'
+    : 'baseHead,detail,head,kind,pathCount,pending';
+  const shapeValid = Object.keys(proof).sort().join(',') === proofFields
+    && /^[a-f0-9]{40}$/u.test(record.head ?? '')
+    && /^[a-f0-9]{40}$/u.test(record.baseSha ?? '')
+    && Number.isSafeInteger(record.pr) && record.pr === laneRecord?.pr
+    && ['published', 'queued', 'integrated'].includes(record.state)
+    && /^[a-f0-9]{40}$/u.test(proof.head ?? '')
+    && /^[a-f0-9]{40}$/u.test(proof.baseHead ?? '')
+    && typeof proof.detail === 'string' && proof.detail.length > 0
+    && (proof.kind === 'ancestor' || Number.isSafeInteger(proof.pathCount) && proof.pathCount > 0)
+    && Array.isArray(proof.pending) && proof.pending.length === 0
+    && record.state === laneRecord?.state && record.head === laneRecord?.head
+    && record.baseSha === laneRecord?.baseSha && proof.head === laneHead
+    && proof.baseHead === receipt.canonicalRevision
+    && receipt.review?.kind === 'local-current-integration'
+    && Object.keys(receipt.review).sort().join(',') === 'branch,head,kind,merge'
+    && receipt.review.branch === ref && receipt.review.head === laneHead
+    && receipt.review.merge === proof.baseHead
+    && receipt.selectedChecksVerified === false && receipt.providerAuthority === false
+    && receipt.protectionProven === false && receipt.claimRetired === false
+    && receipt.targetPath === laneRecord?.worktree
+    && /^[a-f0-9]{64}$/u.test(receipt.planDigest ?? '')
+    && record.head !== laneHead && isAncestor(record.baseSha, record.head, root)
+    && isAncestor(record.head, laneHead, root) && isAncestor(record.baseSha, proof.baseHead, root);
+  if (!shapeValid) return false;
+
+  const observed = exactCurrentIntegrationProof(proof.baseHead, ref, { cwd: root });
+  return Boolean(observed) && governanceDigest(observed) === governanceDigest(proof);
+}
+function localCleanupReceipt(cleanupReceipt, root, ref, laneHead, laneRecord) {
+  const validLocalProof = localCurrentIntegrationReceipt(cleanupReceipt, root, ref, laneHead, laneRecord);
+  const hasLocalProof = Object.hasOwn(cleanupReceipt ?? {}, 'currentIntegration');
+  return cleanupReceipt?.schema === 'agentic-os/user-cleanup-receipt/v1'
+    && cleanupReceipt.mode === 'explicit-local-user-consent-recovery'
+    && cleanupReceipt.review?.branch === ref
+    && (cleanupReceipt.review.kind === 'local-current-integration' ? validLocalProof : !hasLocalProof)
+    && cleanupReceipt.targetPath === laneRecord?.worktree ? cleanupReceipt : null;
 }
 const cleanupObserved = (root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef) => {
   return !laneHead ? false : cleanupReceipt?.schema === WORKTREE_CLEANUP_RECEIPT_SCHEMA
     ? cleanupReceipt.result === 'quarantined' && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest ?? '')
       && Boolean(observeRetainedQuarantineEvidence(root, ref, laneHead, cleanupReceipt.cleanupPlanDigest, { canonicalRef }))
-    : observeRetainedWorktreeQuarantine(root, ref, laneHead, localCleanupReceipt(cleanupReceipt, ref, laneHead, laneRecord), canonicalRef);
+    : observeRetainedWorktreeQuarantine(root, ref, laneHead,
+      localCleanupReceipt(cleanupReceipt, root, ref, laneHead, laneRecord), canonicalRef);
 };
 function withApplicability(findings, changeClass) {
   const table = APPLICABILITY[changeClass] ?? {};

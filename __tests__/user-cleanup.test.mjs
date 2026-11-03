@@ -5,7 +5,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readli
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { planUserCleanup, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+import { createRepositoryProfile } from '../src/governance.mjs';
+import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
+import { ensureRepositoryTrust } from '../src/git-repository.mjs';
+import { get, put } from '../src/lane-records.mjs';
+import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { observeMergedReview, reviewOptions } from '../bin/agentic-os-cleanup-review.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { acquireOperationLock, finishOperationLock } from '../src/git.mjs';
@@ -113,6 +117,85 @@ test('a held clone lock or partial journal is not bypassed or automatically repa
   const partial = join(s.root, '.git/agentic-os-cleanup-quarantine', plan.planDigest);
   mkdirSync(partial, { recursive: true, mode: 0o700 }); writeFileSync(join(partial, 'operation.json'), '{}');
   assert.throws(() => s.apply(plan), /metadata|quarantine|private directory/); assert.ok(existsSync(s.target));
+});
+
+function currentProjectionFixture(t) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-current-projection-')));
+  const root = join(parent, 'root'), target = join(parent, 'lane');
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  mkdirSync(root);
+  g(root, 'init', '--quiet', '--initial-branch=main');
+  g(root, 'config', 'user.name', 'Fixture');
+  g(root, 'config', 'user.email', 'fixture@example.invalid');
+
+  const repository = 'example/cleanup-projection';
+  const branch = 'agent/device-0232231d4a19/current-projection';
+  const pr = 19;
+  const profile = createRepositoryProfile({ repository: `github.com/${repository}`,
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
+    requiredChecks: ['Integration Gate'], capabilities: ['integration-method:squash'] });
+  writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
+  writeFileSync(join(root, 'source.txt'), 'base\n');
+  g(root, 'add', '.');
+  g(root, 'commit', '--quiet', '-m', 'base');
+  const base = g(root, 'rev-parse', 'HEAD');
+  g(root, 'update-ref', 'refs/remotes/origin/main', base);
+  g(root, 'remote', 'add', 'origin', `https://github.com/${repository}.git`);
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
+
+  g(root, 'worktree', 'add', '--quiet', '-b', branch, target);
+  writeFileSync(join(target, 'source.txt'), 'integrated bytes\n');
+  g(target, 'add', '.');
+  g(target, 'commit', '--quiet', '-m', 'lane source');
+  const priorHead = g(target, 'rev-parse', 'HEAD');
+  g(root, 'switch', '--quiet', 'main');
+  writeFileSync(join(root, 'source.txt'), 'integrated bytes\n');
+  g(root, 'add', '.');
+  g(root, 'commit', '--quiet', '-m', 'same source on main');
+
+  writeFileSync(join(target, 'second.txt'), 'also integrated\n');
+  g(target, 'add', '.');
+  g(target, 'commit', '--quiet', '-m', 'lane cache advanced');
+  const head = g(target, 'rev-parse', 'HEAD');
+  g(root, 'switch', '--quiet', 'main');
+  writeFileSync(join(root, 'second.txt'), 'also integrated\n');
+  g(root, 'add', '.');
+  g(root, 'commit', '--quiet', '-m', 'same second source on main');
+
+  const canonical = g(root, 'rev-parse', 'HEAD');
+  g(root, 'update-ref', 'refs/remotes/origin/main', canonical);
+  g(root, 'config', '--local', 'agentic-os.userCleanup', 'quarantine-recovery');
+  put({ ref: branch, state: 'published', base: 'refs/remotes/origin/main', baseSha: base,
+    worktree: target, pr, head: priorHead, writePaths: ['source.txt'] }, root);
+  return { root, target, profile, branch, base, canonical, head, priorHead,
+    options: { observeRemote: () => `${canonical}\trefs/heads/main` } };
+}
+test('stale published cache quarantines only exact current integration and preserves its record and refs', t => {
+  const s = currentProjectionFixture(t), refs = g(s.root, 'show-ref');
+  const plan = planRecoveryCleanupFromLane({ cwd: s.root, ref: s.branch }, s.options);
+  assert.equal(plan.head, s.head);
+  assert.equal(plan.currentIntegration.record.head, s.priorHead);
+  assert.equal(plan.currentIntegration.proof.kind, 'exact-tree-projection');
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.selectedChecksVerified, false);
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(existsSync(s.target), false);
+  assert.equal(g(s.root, 'show-ref'), refs);
+  assert.equal(get(s.branch, s.root).head, s.priorHead);
+  const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile,
+    { cleanupReceipt: receipt });
+  assert.equal(status.closeout.sourceIntegrated, true);
+  assert.equal(status.cleanupVerified, true);
+});
+test('stale published cache refuses an unrelated descendant checkout', t => {
+  const s = currentProjectionFixture(t);
+  g(s.target, 'reset', '--hard', s.base);
+  g(s.target, 'commit', '--allow-empty', '--quiet', '-m', 'unrelated checkout');
+  assert.throws(() => planRecoveryCleanupFromLane({ cwd: s.root, ref: s.branch }, s.options),
+    /recovery-lane-binding|integration-not-current/);
+  assert.ok(existsSync(s.target));
 });
 test('plan bytes and CLI arguments are closed; neither missing profile nor unknown options widen authority', t => {
   const s = fixture(t), plan = s.plan();

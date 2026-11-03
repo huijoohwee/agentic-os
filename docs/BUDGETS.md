@@ -34,7 +34,7 @@ count is secondary, and token estimates are advisory because tokenizers vary by 
 | Modules in `src/` | 52 | `bin/agentic-os-module-budget.mjs` |
 | Authored lines in `src/` | 16,572 | `bin/agentic-os-module-budget.mjs` |
 | CLI modules in `bin/` | 114 | `bin/agentic-os-module-budget.mjs` |
-| Authored lines in `bin/` | 25,153 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `bin/` | 25,300 | `bin/agentic-os-module-budget.mjs` |
 | Lines in one module | 450 | `bin/agentic-os-module-budget.mjs` |
 
 A per-scenario quadruple of contract, controller, adapter, and evidence module multiplies to 304 modules
@@ -45,7 +45,7 @@ New behavior belongs in the state table or an existing responsibility owner.
 
 ## Reading the failure
 
-Both checkers print the offending path, measured value, and cap. Caps do not rise under pressure. Fix
+Both checkers print the offending path, measured value, and cap. Caps change only with reviewed scope. Fix
 overruns by:
 
 - move detail out of the always-load set into a document that loads on demand;

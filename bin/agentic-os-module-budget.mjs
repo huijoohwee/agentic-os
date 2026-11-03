@@ -26,7 +26,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-19: one effect-cost owner validates scoped provider evidence before authority (+174 src lines).
   // 2026-10-21 ADLC-CLOSEOUT-001: +42 existing bin lines for lane-safe read-only closeout; reduce command switching without changing effect authority.
   // 2026-10-26 END-ADLC-SIMPLIFY-001: +68 src/+39 bin lines add exact selection, bounded cleanup and read-only closeout projection in existing owners.
-  // 2026-10-27 FLEET-01.10: +52 src/+31 bin lines enforce canonical checkout naming; refresh release pins. 2026-10-31: +137 CLI lines admit detached-main quarantine; +19 src/+296 bin lines add one lazy unpublished-abandonment command and status binding, preserving checkout bytes, refs, and objects with no provider, runtime, or dependency effect.
+  // 2026-10-27 FLEET-01.10: +52 src/+31 bin lines enforce canonical checkout naming; refresh release pins. 2026-10-31: +137 CLI lines admit detached-main quarantine; +19 src/+296 bin lines add one lazy unpublished-abandonment command and status binding, preserving checkout bytes, refs, and objects with no provider, runtime, or dependency effect. 2026-11-03 END-ADLC recovery: +147 existing-owner CLI lines bind stale published checkout cleanup to exact current-integration proof, skipping provider workflow inference; no new modules, dependencies, or always-load bytes.
   modules: 52,
   totalLines: 16572,
   perModuleLines: 450,
@@ -42,7 +42,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 114,
-  binLines: 25153,
+  binLines: 25300,
   runtimeModules: 97,
   runtimeLines: 23023,
 });
