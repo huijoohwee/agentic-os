@@ -72,6 +72,14 @@
         "composition-read-efficiency.test.mjs",
         "composition-runtime-check.test.mjs"
       ]
+    },
+    {
+      "importer": "bin/agentic-os.mjs",
+      "dependency": "bin/agentic-os-lane-alignment.mjs",
+      "tests": [
+        "lane-alignment.test.mjs",
+        "release-common-complete.test.mjs"
+      ]
     }
   ],
   "dependencies": {

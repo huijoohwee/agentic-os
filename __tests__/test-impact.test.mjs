@@ -181,6 +181,14 @@ test('reviewed lazy entrypoints select their route owners and bind deferred byte
   assert.ok(checkInputs(source.after, '__tests__/release-common-complete.test.mjs').paths
     .includes('bin/agentic-os-admission.mjs'));
 
+  const alignment = select(['bin/agentic-os-lane-alignment.mjs']);
+  assert.ok(paths(alignment).includes('__tests__/lane-alignment.test.mjs'));
+  assert.ok(paths(alignment).includes('__tests__/provider-lane-rebind.test.mjs'));
+  assert.ok(paths(alignment).includes('__tests__/release-common-complete.test.mjs'),
+    'CLI subprocess coverage stays conservative across the lazy route');
+  assert.ok(!paths(alignment).includes('__tests__/admission-economy.test.mjs'),
+    'the provider-refresh route must not pull every general CLI consumer');
+
   const docs = select(['docs/START-WORKFLOW.md']);
   assert.ok(paths(docs).includes('__tests__/runtime-budgets.test.mjs'));
   assert.ok(paths(docs).includes('__tests__/composition-runtime-check.test.mjs'));

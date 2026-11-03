@@ -417,14 +417,17 @@ export function planProviderLaneRefresh({ cwd = process.cwd(), ref, pr, expected
     throw providerRebindBlock('merge-shape', 'provider head must be the exact two-parent update merge of the old lane head and current base');
   const mergeTree = observeGit(['merge-tree', '--write-tree', record.head, expectedBase], { cwd: root, allowFail: true })
     ?.trim().split(/\s+/u)[0];
-  if (!/^[0-9a-f]{40}$/u.test(mergeTree ?? '') || headSha(`${expectedHead}^{tree}`, root) !== mergeTree)
+  const expectedHeadTree = headSha(`${expectedHead}^{tree}`, root);
+  if (!/^[0-9a-f]{40}$/u.test(mergeTree ?? '') || expectedHeadTree !== mergeTree)
     throw providerRebindBlock('merge-tree', 'provider merge tree does not equal the locally verified merge result');
   const reserved = [...new Set(record.writePaths ?? [])].sort();
   if (!reserved.length || reserved.length > 1_024) throw providerRebindBlock('reservation', 'published lane reservation is empty or exceeds its bound');
   const sourcePaths = providerPathRange(expectedBase, expectedHead, root);
   const changedPaths = providerPathRange(record.head, expectedHead, root);
   const covered = path => reserved.some(parent => path === parent || path.startsWith(`${parent}/`));
-  if (!sourcePaths.length || sourcePaths.some(path => !covered(path)))
+  const exactTreeNoop = sourcePaths.length === 0
+    && expectedHeadTree === headSha(`${expectedBase}^{tree}`, root);
+  if ((!sourcePaths.length && !exactTreeNoop) || sourcePaths.some(path => !covered(path)))
     throw providerRebindBlock('reservation', 'updated PR projection escapes the original lane reservation');
   const untracked = providerUntrackedPaths(worktree), overlaps = (left, right) => left === right
     || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
