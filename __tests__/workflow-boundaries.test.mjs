@@ -263,7 +263,7 @@ test('immutable successors retain execution constraints and partial allocation i
   assert.equal(checkoutCapacity(s.selected(), s.repository, []).consumed, 0);
   assert.throws(() => s.guard({ ref: successor.ref, phase: 'preparation' }), /allocation-released/);
   assert.throws(() => s.collect({ allocations: [{ ...successor, state: 'active' }] }), /allocation-release-lineage/);
-  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, successor.ref), /allocation-release-state/);
+  assert.deepEqual(releaseWorkflowAllocation(s.root, s.repository, successor.ref), { ...released, alreadyReleased: true });
   const nextId = 'device--next', current = s.selected();
   const nextMember = collectWorkflowValue(s.root, s.repository, { schema: 'agentic-os/workflow-observation-input/v1', id: nextId,
     source: { repository: s.repository, revision: s.revision, tree: s.git('rev-parse', 'HEAD^{tree}') },

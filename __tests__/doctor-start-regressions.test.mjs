@@ -110,7 +110,7 @@ test('unknown commands fail argument grammar before repository and trust access'
   });
   assert.equal(releaseCommonHelp.status, 0, releaseCommonHelp.stderr);
   assert.match(releaseCommonHelp.stdout, /agentic-os release-common/u);
-  assert.match(releaseCommonHelp.stdout, /release-common complete --ref=<lane>[\s\S]*--bundle=<json>[\s\S]*--stopped/u);
+  assert.match(releaseCommonHelp.stdout, /complete-adlc --apply --ref=<lane>[\s\S]*--expected-head=<sha>[\s\S]*--effects=merge,sync,cleanup --stopped/u);
   assert.equal(releaseCommonHelp.stderr, '');
   const releaseCommonInvalid = spawnSync(process.execPath, [CLI, 'release-common', 'typo'], {
     cwd: outside, encoding: 'utf8', env: { ...process.env },
@@ -392,7 +392,7 @@ test('a held clone-wide start lock refuses before branch or worktree mutation', 
   assert.equal(existsSync(lock), true, 'a refused contender must not remove another holder lock');
 });
 
-test('duplicate lane identity refuses after START refreshes the protected tracking ref', (t) => {
+test('unbound duplicate lane refuses after START refreshes the protected tracking ref', (t) => {
   const { parent, root, run } = fixture(t);
   const bare = join(parent, 'remote.git');
   git(['init', '--quiet', '--bare', bare], { cwd: parent });
@@ -411,7 +411,7 @@ test('duplicate lane identity refuses after START refreshes the protected tracki
     '--device=test-device'], { cwd: root, encoding: 'utf8' });
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /blocked-lane-already-exists/u);
+  assert.match(result.stderr, /blocked-admission-existing-identity/u);
   assert.equal(run(['rev-parse', 'refs/remotes/origin/main']), advanced,
     'START must refresh the protected ref before refusing duplicate lane identity');
   assert.equal(run(['--git-dir', bare, 'rev-parse', 'refs/heads/main']), advanced);

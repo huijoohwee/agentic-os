@@ -433,11 +433,11 @@ export async function runReleaseCommonLocalCleanup({
   out = (line) => process.stdout.write(`${line}\n`),
   err = (line) => process.stderr.write(`${line}\n`),
   now = Date.now,
-  api = githubRead,
+  api = githubRead, allowUntrackedCanonical = false,
 } = {}) {
   try {
-    const current = releaseCommonLocalCleanupPolicy(root, profile);
-    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile);
+    const current = releaseCommonLocalCleanupPolicy(root, profile, { allowUntrackedCanonical });
+    const status = inspectCompletionStatus(root, ref, { protectedBranch: 'main' }, profile, { allowUntrackedCanonical });
     if (status.findings.some(item => item.code === 'lane-dirty-state-unknown'))
       fail('blocked-release-common-lane-state-unknown', 'recover or disposition missing checkout bytes before closeout');
     const record = get(ref, root);

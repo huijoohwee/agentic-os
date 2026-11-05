@@ -22,8 +22,9 @@ ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
 - Global repo/worktree: USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.
 - Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
-- START/resume Mission binds current code/workflow; reuse evidence.
-- END ADLC: [RELEASE](RELEASE-WORKFLOW.md) then [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
+- Core: START → develop/LAND → END. Reuse one open PR and exact current evidence.
+- Bind a Mission for material or coordinated work; routine scoped work stays standalone.
+- END uses [RELEASE](RELEASE-WORKFLOW.md); load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) for selected delivery only.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
 - Reuse covered authority; preflight; never infer grants.
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.

@@ -69,8 +69,10 @@ function cmdReleaseCommonHelp({ advanced = false } = {}) {
       'Default source path:',
       '  npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
       '  Work in the printed worktree; npm run land -- --message="feat: ..." runs affected checks, commits, and publishes its exact head.',
-      '  Complete protected PR review/checks, then merge.',
-      '  agentic-os release-common complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]',
+      '  Correct the same open PR with another npm run land; prior commits remain intact.',
+      '  agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped',
+      '  Select only authorized effects. Authority-controlling source also needs --authority-head=<sha>.',
+      '  Retry the same END command after a wait; production release remains a separate selection.',
       '',
       'Load workspace context and specialized workflows only when needed.',
       'Read docs/RELEASE-WORKFLOW.md or use `agentic-os release-common help --advanced`.',
@@ -135,6 +137,10 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
       return (await import('./agentic-os-completion-status.mjs'))
         .runCloseoutSummary(root, option(rest, 'ref'), policy, profile, out);
     case 'complete-adlc': case 'complete': {
+      if (flag(rest, 'apply')) return (await import('./agentic-os-completion-close.mjs')).runCoreCloseout({
+        root, argv: rest, policy, profile, out, err,
+        integrate: () => cmdFinishAndReap(root, [`--ref=${option(rest, 'ref')}`], policy, profile),
+      });
       const completeModule = await import('./agentic-os-release-common-complete.mjs');
       if (action === 'complete-adlc' || option(rest, 'worktrees') !== null) return completeModule.runProgressiveCompletion({
         root, directory: option(rest, 'worktrees'), ref: option(rest, 'ref'),

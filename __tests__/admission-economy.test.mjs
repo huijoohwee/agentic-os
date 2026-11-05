@@ -91,7 +91,7 @@ test('new planned missions default to one without inheriting unrelated mission n
   const second = f.selected();
   assert.notEqual(first.manifest.id, second.manifest.id);
   assert.equal(second.manifest.execution.checkoutLimit, 1);
-  await assert.rejects(f.start('three'), new RegExp(`exhausted for workflow ${second.manifest.id} \\(1/1\\).*--plan=<PRD-path>`));
+  await assert.rejects(f.start('three'), /overlaps agent\/test-device\/one/); // Unrelated navigation is ignored; actual write conflicts still block.
 });
 
 test('CLI and native START reject declarations above five without effects', async t => {
@@ -271,12 +271,12 @@ test('two real START contenders cannot both consume one declared slot', async t 
   assert.equal(worktrees(f.root).length, 2); assert.equal(f.selected().manifest.allocations.length, 1);
 });
 
-test('absent cache and changed expected head cannot turn an existing lane into new authority', async t => {
+test('exact missing cache recovery adds no authority and changed expected heads still refuse', async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const selected = f.selected(), beforeEffects = f.effects.length;
   await assert.rejects(f.start('one', `--mission=${selected.path}`, `--expected-head=${'0'.repeat(40)}`), /expected head/);
   records.remove('agent/test-device/one', f.root);
-  await assert.rejects(f.start('one', `--mission=${selected.path}`), /live bound active unpublished lane/);
+  assert.equal(await f.start('one', `--mission=${selected.path}`), 0); assert.equal(records.get('agent/test-device/one', f.root).pr, null);
   assert.equal(worktrees(f.root).length, 2); assert.equal(f.effects.length, beforeEffects);
 });
 
@@ -555,7 +555,7 @@ test('historical larger allowances remain readable but effective admission is ca
   assert.equal(readFileSync(selected.path, 'utf8'), bytes);
 });
 
-test('START readmit restores only a missing cache row bound by its exact mission and preserves authored bytes', async t => {
+test('ordinary START restores only a missing cache row bound by its exact mission and preserves authored bytes', async t => {
   for (const outside of [false, true]) {
     const f = fixture(t);
     assert.equal(await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
@@ -563,7 +563,7 @@ test('START readmit restores only a missing cache row bound by its exact mission
     records.remove(row.ref, f.root);
     const owned = join(row.path, outside ? 'outside.txt' : 'owned.txt');
     writeFileSync(owned, 'keep this local edit\n');
-    const attempt = f.start('one', `--mission=${mission.path}`, '--readmit', `--expected-head=${row.baseRevision}`);
+    const attempt = f.start('one', `--mission=${mission.path}`);
     if (outside) {
       await assert.rejects(attempt, /Preserve authored bytes outside the current reservation/); assert.equal(records.get(row.ref, f.root), null);
       assert.equal(readFileSync(owned, 'utf8'), 'keep this local edit\n');

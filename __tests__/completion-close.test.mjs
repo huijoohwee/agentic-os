@@ -11,7 +11,8 @@ import { createGitHubTransitionInput } from '../src/github-transition-client.mjs
 import { integrationDraft, predecessorIssuance } from './lib/github-transition-fixture.mjs';
 import { validateCompletionCloseArguments, validateCompletionCloseBundle,
   applyCompletionClose, completionCloseBundleDigest,
-  materializeCompletionCloseBundle, deriveCompletionBundleFields } from '../bin/agentic-os-completion-close.mjs';
+  materializeCompletionCloseBundle, deriveCompletionBundleFields, runAuthorizedCloseout } from '../bin/agentic-os-completion-close.mjs';
+import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { buildCompletionBundleScaffold, validateCompletionScaffoldArguments } from '../bin/agentic-os-completion-scaffold.mjs';
 
 const REF = 'agent/device/feature';
@@ -284,4 +285,115 @@ test('completion scaffold keeps verifier policy as a placeholder when no committ
   assert.ok(scaffold.hydrationInputs.includes('integrationVerifier.repository'));
   assert.ok(scaffold.hydrationInputs.includes('retirementVerifier.repository'));
   assert.equal(scaffold.requiredPlaceholders.includes('integrationVerifier.policy'), true);
+});
+
+function coreFixture() {
+  const head = 'a'.repeat(40), receipts = new Map(), calls = [], summaries = [];
+  const state = { ref: REF, head, reviewHead: head, reviewState: 'OPEN', canonicalCurrent: false,
+    mounted: true, clean: true, cleanupSatisfied: false, deliveryState: 'pending' };
+  const input = { ref: REF, expectedHead: head, effects: ['merge', 'sync', 'cleanup'], stopped: true,
+    observe: () => ({ ...state }), readReceipt: name => receipts.get(name), saveReceipt: (name, value) => receipts.set(name, value),
+    promote: async () => { calls.push('merge'); state.reviewState = 'MERGED'; return { code: 0, receipt: { merged: head } }; },
+    synchronize: async () => { calls.push('sync'); state.canonicalCurrent = true; return { synced: head }; },
+    integrate: async () => { calls.push('classify'); },
+    cleanup: async () => { calls.push('cleanup'); state.mounted = false; state.cleanupSatisfied = true; return { code: 0, receipt: { quarantined: head } }; },
+    release: async () => { calls.push('release'); return { released: true }; }, out: line => summaries.push(JSON.parse(line)) };
+  return { input, state, calls, receipts, summaries };
+}
+test('END combines selected effects, keeps receipts separate, and leaves production pending', async () => {
+  const f = coreFixture(); assert.equal(await runAuthorizedCloseout(f.input), 0);
+  assert.deepEqual(f.calls, ['merge', 'sync', 'classify', 'cleanup', 'release']);
+  assert.deepEqual([...f.receipts.keys()], ['merge', 'sync', 'cleanup', 'allocation']);
+  assert.equal(f.summaries.at(-1).workspaceClosed, true); assert.equal(f.summaries.at(-1).nextAction, 'deploy-workflow');
+  f.calls.length = 0; assert.equal(await runAuthorizedCloseout(f.input), 0);
+  assert.deepEqual(f.calls, ['classify', 'release']); // Native release is idempotent; local receipts never authorize skipping proof.
+});
+test('END resumes after an interrupted sync without repeating the merged effect', async () => {
+  const f = coreFixture(), synchronize = f.input.synchronize;
+  f.input.synchronize = async () => { throw new Error('interrupted'); };
+  await assert.rejects(runAuthorizedCloseout(f.input), /interrupted/u);
+  assert.equal(f.state.reviewState, 'MERGED'); f.input.synchronize = synchronize;
+  assert.equal(await runAuthorizedCloseout(f.input), 0); assert.equal(f.calls.filter(call => call === 'merge').length, 1);
+});
+test('END never infers uncovered effects from checks, cached receipts, or elapsed time', async () => {
+  for (const missing of ['merge', 'sync', 'cleanup']) {
+    const f = coreFixture(); f.input.effects = f.input.effects.filter(value => value !== missing);
+    f.receipts.set(missing, { purportedSuccess: true });
+    assert.equal(await runAuthorizedCloseout(f.input), 2);
+    assert.equal(f.calls.includes(missing), false); assert.equal(f.calls.includes('release'), false);
+    assert.equal(f.summaries.at(-1).nextAction, `authorize-${missing}`);
+  }
+});
+test('END preserves dirty work and rejects head drift at every reobservation', async () => {
+  const dirty = coreFixture(); dirty.state.clean = false;
+  await assert.rejects(runAuthorizedCloseout(dirty.input), { reason: 'blocked-closeout-dirty' });
+  assert.equal(dirty.calls.includes('cleanup'), false);
+  const drift = coreFixture(); drift.input.promote = async () => { drift.state.head = 'b'.repeat(40); return { code: 0 }; };
+  await assert.rejects(runAuthorizedCloseout(drift.input), { reason: 'blocked-closeout-head-drift' });
+  assert.equal(drift.calls.includes('sync'), false);
+});
+test('END returns a bounded waiting state and recovers cleanup after its effect but before the receipt', async () => {
+  const waiting = coreFixture(); waiting.input.promote = async () => ({ code: 2 });
+  assert.equal(await runAuthorizedCloseout(waiting.input), 2); assert.deepEqual(waiting.calls, []);
+  const interrupted = coreFixture(); interrupted.state.reviewState = 'MERGED'; interrupted.state.canonicalCurrent = true;
+  interrupted.state.mounted = false; interrupted.receipts.set('cleanup-plan', { retained: true });
+  assert.equal(await runAuthorizedCloseout(interrupted.input), 0); assert.ok(interrupted.calls.includes('cleanup'));
+});
+test('END CLI requires exact selection and stopped writers; authority override must match the candidate', () => {
+  const argv = ['complete-adlc', '--apply', `--ref=${REF}`, `--expected-head=${'a'.repeat(40)}`, '--effects=merge,sync,cleanup', '--stopped'];
+  assert.equal(validateCommandArguments('release-common', argv), null);
+  assert.match(validateCommandArguments('release-common', argv.slice(0, -1)), /stopped/u);
+  assert.match(validateCommandArguments('release-common', [...argv, `--authority-head=${'b'.repeat(40)}`]), /match/u);
+  assert.match(validateCommandArguments('release-common', argv.map(value => value === '--effects=merge,sync,cleanup' ? '--effects=merge,merge' : value)), /unique/u);
+});
+
+// Real Git and native owners; provider and transport are isolated local fixtures.
+test('native END binds its plan, merges once, syncs, preserves user files and resumes', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, statSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const source = (await import('node:url')).fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/u, '');
+  const { runCoreCloseout } = await import(`${source}/bin/agentic-os-completion-close.mjs`);
+  const { createRepositoryProfile } = await import(`${source}/src/governance.mjs`);
+  const store = await import(`${source}/src/lane-records.mjs`);
+  const { integrationProof } = await import(`${source}/src/patch-identity.mjs`);
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'core-closeout-native-'))), root = join(parent, 'core'), lane = join(parent, 'lane'), bare = join(parent, 'remote.git'), support = join(parent, 'bin');
+  const realGit = execFileSync('/usr/bin/which', ['git'], { encoding: 'utf8' }).trim();
+  const git = (cwd, ...args) => execFileSync(realGit, args, { cwd, encoding: 'utf8' }).trim();
+  const ref = 'agent/device/core-e2e', url = 'https://github.com/example/core.git';
+  const profile = createRepositoryProfile({ repository: 'github.com/example/core', canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' }, adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } }, requiredChecks: ['test'] });
+  mkdirSync(root); mkdirSync(support);
+  const oldPath = process.env.PATH;
+  try {
+    git(root, 'init', '--quiet', '--initial-branch=main'); git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid'); git(root, 'config', 'commit.gpgsign', 'false');
+    writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile)); writeFileSync(join(root, 'business.txt'), 'base\n');
+    git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+    const base = git(root, 'rev-parse', 'HEAD');
+    git(root, 'init', '--bare', '--quiet', bare); git(root, 'remote', 'add', 'origin', url); git(root, 'push', '--quiet', bare, 'main'); git(root, 'update-ref', 'refs/remotes/origin/main', base);
+    git(root, 'worktree', 'add', '--quiet', '-b', ref, lane); writeFileSync(join(lane, 'business.txt'), 'updated\n'); git(lane, 'commit', '--quiet', '-am', 'change');
+    const head = git(lane, 'rev-parse', 'HEAD'); git(root, 'push', '--quiet', bare, ref);
+    store.put({ ...store.newRecord({ ref, device: 'device', scope: 'core-e2e', base: 'refs/remotes/origin/main', baseSha: base, worktree: lane, writePaths: ['business.txt'] }), state: 'published', head, pr: 1 }, root);
+    const statePath = join(parent, 'provider.json'); writeFileSync(statePath, JSON.stringify({ base, head, ref, bare, realGit, merged: false, merges: 0 }));
+    writeFileSync(join(support, 'git'), `#!/usr/bin/env node\nconst {execFileSync}=require('node:child_process');let a=process.argv.slice(2);a=a.map(v=>v===${JSON.stringify(url)}||v==='origin'&&a.some(x=>['fetch','push','ls-remote'].includes(x))?${JSON.stringify(bare)}:v);try{process.stdout.write(execFileSync(${JSON.stringify(realGit)},a,{encoding:'utf8',input:require('node:fs').readFileSync(0)}));}catch(e){process.stderr.write(String(e.stderr||e));process.exit(e.status||1);}\n`, { mode: 0o700 });
+    writeFileSync(join(support, 'gh'), `#!/usr/bin/env node
+  const fs=require('node:fs'),cp=require('node:child_process'),p=${JSON.stringify(statePath)},s=JSON.parse(fs.readFileSync(p,'utf8')),a=process.argv.slice(2);
+  const view={number:1,state:s.merged?'MERGED':'OPEN',url:'https://github.com/example/core/pull/1',headRefOid:s.head,headRefName:s.ref,baseRefName:'main',headRepository:{nameWithOwner:'example/core'},isCrossRepository:false,body:'Source-Head: '+s.head,autoMergeRequest:null};
+  let value;if(a[0]==='pr'&&a[1]==='list')value=[view];
+  else if(a[0]==='pr'&&a[1]==='merge'){if(a[a.indexOf('--match-head-commit')+1]!==s.head)process.exit(2);s.merged=true;s.merges++;cp.execFileSync(s.realGit,['--git-dir',s.bare,'update-ref','refs/heads/main',s.head]);fs.writeFileSync(p,JSON.stringify(s));process.exit(0);}
+  else if(a[0]==='api'&&a[1].endsWith('/pulls/1'))value={number:1,state:s.merged?'closed':'open',merged:s.merged,head:{sha:s.head,repo:{full_name:'example/core'}},base:{sha:s.base,ref:'main',repo:{full_name:'example/core'}},merge_commit_sha:s.merged?s.head:null};
+  else if(a[0]==='api'&&a[1].includes('/check-runs'))value={total_count:1,check_runs:[{name:'test',id:9,status:'completed',conclusion:'success',started_at:'2026-11-05T00:00:00Z',completed_at:'2026-11-05T00:01:00Z',app:{slug:'github-actions',id:15368}}]};
+  else {console.error('unexpected fixture provider call',a);process.exit(3);}process.stdout.write(JSON.stringify(value));
+  `, { mode: 0o700 });
+    process.env.PATH = `${support}:${oldPath}`;
+    const privatePath = join(root, 'private.txt'); writeFileSync(privatePath, 'retained user data\n'); const inode = statSync(privatePath).ino, outputs = [];
+    const input = { root, argv: ['--apply', `--ref=${ref}`, `--expected-head=${head}`, '--effects=merge,sync'], policy: { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' }, profile,
+      integrate: () => { assert.ok(integrationProof('refs/remotes/origin/main', head, { cwd: root })); return 0; }, out: line => outputs.push(line), err: line => outputs.push(line) };
+    assert.equal(await runCoreCloseout(input), 2); assert.equal(git(root, 'rev-parse', 'HEAD'), head);
+    assert.equal(JSON.parse(outputs.at(-1)).nextAction, 'authorize-cleanup'); assert.equal(statSync(privatePath).ino, inode);
+    assert.equal(await runCoreCloseout(input), 2); assert.equal(JSON.parse(readFileSync(statePath)).merges, 1);
+    const prior = store.get(ref, root); store.putExact({ ...prior, pr: 2 }, prior, root);
+    await assert.rejects(runCoreCloseout(input), { reason: 'blocked-closeout-review' });
+    assert.equal(JSON.parse(readFileSync(statePath)).merges, 1);
+  } finally { process.env.PATH = oldPath; rmSync(parent, { recursive: true, force: true }); }
 });

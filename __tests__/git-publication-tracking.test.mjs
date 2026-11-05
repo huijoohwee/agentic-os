@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bindPublishedUpstream, git, headSha, publishExactNewRef } from '../src/git.mjs';
+import { bindPublishedUpstream, git, headSha, publishExactNewRef, publishExactRef } from '../src/git.mjs';
 
 function fixture(t) {
   const parent=mkdtempSync(join(tmpdir(),'publication-tracking-')), root=join(parent,'repo'), bare=join(parent,'origin.git');
@@ -50,4 +50,16 @@ test('conflicting or symbolic tracking refs cannot be overwritten',t=>{
 test('remote candidate drift refuses local metadata repair',t=>{
   const f=fixture(t), trackingBeforeBind=publishedTrackingHead(f);f.run('--git-dir',f.bare,'update-ref',`refs/heads/${f.ref}`,f.base);
   assert.throws(f.bind,/tracking-drift/);assert.equal(headSha(f.tracking,f.root),trackingBeforeBind);
+});
+
+test('updates reject remote drift and history rewrites before push', t => {
+  const f = fixture(t);
+  assert.throws(() => publishExactRef('origin', f.ref, f.base, f.root, f.bare, f.head), /ancestry/);
+  writeFileSync(join(f.root, 'source.txt'), 'correction'); f.run('add', '.'); f.run('commit', '-m', 'fix');
+  const next = f.run('rev-parse', 'HEAD');
+  assert.throws(() => publishExactRef('origin', f.ref, next, f.root, f.bare, f.base), /remote ref changed/);
+  const receipt = publishExactRef('origin', f.ref, next, f.root, f.bare, f.head);
+  assert.equal(receipt.operation, 'publish-exact-fast-forward');
+  assert.equal(receipt.priorOid, f.head);
+  assert.equal(f.run('--git-dir', f.bare, 'rev-parse', `refs/heads/${f.ref}`), next);
 });

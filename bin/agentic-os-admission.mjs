@@ -10,6 +10,7 @@ import { DEFAULT_TASK_CHECKOUTS, MAX_TASK_CHECKOUTS, assertCheckoutPlacement } f
 import * as store from '../src/lane-records.mjs';
 import { draftPlanRebindAllowed, matchesAllocationCheckpointSuccessor, readmissionPredecessors } from '../src/lane-state.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
+import { assertOpenReviewUpdate } from '../src/github-provider.mjs';
 import { provision, assertProvisionable, assertDisjointReservation, committedLanePaths, lanePath, parseWritePaths } from '../src/worktree.mjs';
 import { recoverLaneRecordFromMission } from '../src/lane-cache-legacy.mjs';
 import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
@@ -96,8 +97,8 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
       repository: recovery.repository, writePaths: requested, root }, store.newRecord);
     record = restored.record; recoveryReceipt = restored.receipt;
   }
-  if (!registered || !record || record.state !== 'active' || record.worktree !== path || !isBoundLane(ref, path)
-    || currentBranch(path) !== ref || record.pr !== null) fail('existing-identity', 'Reuse requires one live bound active unpublished lane');
+  if (!registered || !record || !['active', 'published'].includes(record.state) || record.worktree !== path || !isBoundLane(ref, path)
+    || currentBranch(path) !== ref) fail('existing-identity', 'Reuse requires one live bound active or open published lane');
   const head = headSha('HEAD', path);
   if (expectedHead && head !== expectedHead) fail('head-drift', 'The active lane no longer has the expected head'); if (registered.head && registered.head !== head) fail('head-drift', 'Registered head changed');
   if (!record.baseSha || observeGit(['merge-base', '--is-ancestor', record.baseSha, head], { cwd: root, allowFail: true }) === null) fail('base-binding', 'The existing lane must retain its admitted source ancestry'); const reserved = parseWritePaths((record.writePaths ?? []).join(',')), authoredScope = readmit ? [...new Set([...reserved, ...requested])] : reserved;
@@ -107,7 +108,13 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   if (authored.some(file => !covered(file, authoredScope))) fail('unreserved-bytes', 'Preserve authored bytes outside the current reservation; do not adopt them');
   const remote = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   if (!remote) fail('remote', 'Protected remote binding is missing'); const transport = remoteTransport(remote, root);
-  if (remoteRefSha(remote, ref, root, transport.fetchUrl) !== null) fail('published', 'Published candidates are immutable; use the native successor operation'); assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
+  const remoteHead = remoteRefSha(remote, ref, root, transport.fetchUrl);
+  if (remoteHead !== null) {
+    if (record.head !== remoteHead || observeGit(['merge-base', '--is-ancestor', remoteHead, head], { cwd: root, allowFail: true }) === null)
+      fail('published-drift', 'Published head must match the retained source and remain an ancestor');
+    assertOpenReviewUpdate({ ref, expectedHead: remoteHead, expectedPr: record.pr, profile: recovery?.profile, cwd: root });
+  } else if (record.state === 'published') fail('published-missing', 'Published remote ref disappeared');
+  assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
   const lineage = readmissionPredecessors(record, store.load(root).lanes, allocation,
     (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null);
   if (lineage === false) fail('successor-lineage', 'Invalid retained successor identity'); if (lineage.some(link => remoteRefSha(remote, link.predecessorRef, root, transport.fetchUrl) !== link.predecessorHead
@@ -146,10 +153,17 @@ export async function cmdStart(root, argv, policy, profile, services) {
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
-    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || !planningPath || readmit) });
+    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || readmit) });
     if (selected && planningPath === selected.manifest.planning.path) planSnapshot = validateWorkflowPlanning(root, profile.repository, { revision: artifacts.fetchedProtectedSha, planningPath });
     if (!selected && planningPath && explicitLimit === null) explicitLimit = DEFAULT_TASK_CHECKOUTS; const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
     assertCheckoutPlacement(path, worktrees(root)); if (input && selected) selectedAgain(root, profile.repository, selected);
+    if (!enrolled && bound) {
+      const identity = observeExisting(root, ref, path, records[ref], expectedHead, requested, policy, null, false, { profile });
+      if (requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Existing lane scope does not cover the requested paths');
+      out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: 'reused', ref,
+        worktree: path, head: identity.head, writeDigest: scopeDigest(identity.reserved), workflow: null, created: false }));
+      result = 0;
+    }
     if (enrolled) {
       if (!selected?.manifest.execution && explicitLimit === null) fail('allowance-required', 'Declare the mission checkout limit before creation or explicit legacy adoption'); if (selected?.manifest.execution && explicitLimit !== null && selected.manifest.execution.checkoutLimit !== explicitLimit) fail('allowance-drift', 'A retry cannot reset or enlarge the existing mission allowance');
       if (selected && planningPath && selected.manifest.planning.path !== planningPath) fail('planning-drift', 'The selected mission binds a different plan'); if (!selected && !planningPath) fail('plan-required', 'A new declared mission requires a planning document'); let row = selected?.manifest.allocations?.find(item => item.worktreeId === worktreeId);
@@ -163,8 +177,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (alignment?.candidateHead) Object.assign(artifacts, { effectsRetained: true, worktree: path, alignmentReceipt: { phase: 'observed-preparation', journalPath: alignment.journalPath,
           oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         const reusePaths = refresh ? parseWritePaths((record?.writePaths ?? []).join(',')) : requested;
-        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead, reusePaths, policy, row, readmit,
-          { enabled: readmit && !refresh, selected, repository: profile.repository, artifacts });
+        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead ?? (!record ? row?.headRevision : null), reusePaths, policy, row, readmit,
+          { enabled: !refresh, selected, repository: profile.repository, profile, artifacts });
         if (selected && planSnapshot && planSnapshot.planning.digest !== selected.manifest.planning.digest) {
           const base = artifacts.fetchedProtectedSha, prior = row, member = selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository);
           if (!draftPlanRebindAllowed({ selected, prior, record: identity.record, identity, member, base, ref, path, scope: scopeDigest(identity.reserved), requestedExact: JSON.stringify(requested) === JSON.stringify(identity.reserved), protectedRef: policy.protectedRef, clean: git(['status', '--porcelain', '--untracked-files=all'], { cwd: path }) })) fail('draft-rebind', 'Changed plans require one clean active lane at the fetched base and its exact reservation');
@@ -212,7 +226,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head && !(alignment && row.headRevision === alignment.candidateHead) && !recoveringHeadAdvance && !recoveringSelectedSource || recoveringReadmit && !readmit)) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
-        if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
+        if (recertification) store.putExact({ ...record, head: record.state === 'published' ? record.head : identity.head, writePaths }, record, root);
         const recoveredSuccessorReadmit = Boolean(successorReadmit && readmit && row?.recoveredFromHead); let allocation;
         if (recoveredSuccessorReadmit) { allocation = { worktreeId, ref, path, baseRevision: row.baseRevision, headRevision: identity.head, writeDigest: nextDigest, state: 'pending', operation: 'readmit', previousWriteDigest: row.writeDigest, recoveredFromHead: row.recoveredFromHead, predecessorRef: row.ref }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
         else if (expectedHead && !(alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && row?.state === 'pending' && row.operation === 'readmit' && row.recoveredFromHead)) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
@@ -233,8 +247,8 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
-          observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true);
-          if (liveDigest !== nextDigest || record.head !== identity.head) { store.putExact({ ...record, head: identity.head, writePaths }, record, root); record.head = identity.head; record.writePaths = writePaths; }
+          observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true, { profile });
+          if (liveDigest !== nextDigest || record.state !== 'published' && record.head !== identity.head) { const cacheHead = record.state === 'published' ? record.head : identity.head; store.putExact({ ...record, head: cacheHead, writePaths }, record, root); record.head = cacheHead; record.writePaths = writePaths; }
           if (alignment) {
             const receipt = refreshMethods.apply(alignment);
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });

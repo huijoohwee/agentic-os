@@ -32,9 +32,9 @@ count is secondary, and token estimates are advisory because tokenizers vary by 
 | Scope | Cap | Enforced by |
 |---|---|---|
 | Modules in `src/` | 52 | `bin/agentic-os-module-budget.mjs` |
-| Authored lines in `src/` | 16,572 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `src/` | 16,636 | `bin/agentic-os-module-budget.mjs` |
 | CLI modules in `bin/` | 114 | `bin/agentic-os-module-budget.mjs` |
-| Authored lines in `bin/` | 25,300 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `bin/` | 25,556 | `bin/agentic-os-module-budget.mjs` |
 | Lines in one module | 450 | `bin/agentic-os-module-budget.mjs` |
 
 A per-scenario quadruple of contract, controller, adapter, and evidence module multiplies to 304 modules

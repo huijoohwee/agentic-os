@@ -58,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40848, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40811, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -94,7 +94,8 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.',
       'Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.',
       'Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.',
-      'START/resume Mission binds current code/workflow; reuse evidence.',
+      'Core: START → develop/LAND → END. Reuse one open PR and exact current evidence.',
+      'Bind a Mission for material or coordinated work; routine scoped work stays standalone.',
       'Minimize time-to-production: smallest useful diff; fix owners, remove replacements.',
       'Sprint: TTP ETA+time/byte/module caps; refresh on drift.',
       'refresh on drift. External: blocker/condition/recheck, no ETA.',
@@ -115,33 +116,23 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/START-WORKFLOW.md', [
       'npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
-      'Name exact relative paths. START locks and fetches',
-      'the protected ref, checks checkout and scope, then creates one local worktree. Make changes only there.',
-      'Use `--plan` for material requirement or design changes. Eligible plans are protected PRDs or untracked regular,',
-      'non-symlink Markdown drafts ≤128,000 B absent from the fetched protected tree.',
-      'START binds repo, base, path, and exact bytes; a plan grants no effect authority.',
-      'Use `--mission` to resume; recertify if a bound plan changes.',
-      'Workspace or memory context is on demand: run `node bin/agentic-os.mjs workspace` or `memory` when needed.',
-      'mobile/offline, recovery, cleanup, fleet, deployment, or rollback procedures only when the task or repo policy',
+      'START locks, fetches and checks exact scope; it reuses its matching worktree or creates one. Edit there.',
+      'Routine work needs no mission document; unrelated navigation never enrolls a task.',
+      'Resume an open, unqueued PR with its published history intact. Scope expansion remains explicit.',
+      'Bind repo/base/path/bytes; plans grant no effects.',
+      'A native allocation can recover a missing initial cache row; conflicts or unknown bytes require recovery.',
+      'Workspace, memory, fleet, recovery and deployment are on demand.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      '## Default source path',
-      '1. Start with `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`; work in its printed worktree.',
-      '2. Use `npm run check` while iterating when useful. For final publication, run',
-      '`npm run land -- --message="feat: ..."`; it runs affected checks, commits reserved paths, and publishes the exact',
-      'lane head.',
-      '3. Complete the repository\'s protected PR checks and review, then merge the PR.',
-      '4. Record source integration with `npm run release:common -- complete --ref=<lane>`.',
-      'Plans bind requirements and scope; they grant no effect authority.',
-      'Source completion is not product delivery, workspace cleanup, branch retirement, canonical sync, or deployment.',
-      '## On demand',
-      'Load only the workflow a lane needs and reuse evidence until its inputs drift.',
-      '- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only; exit `2` means open.',
-      '- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only for a delivery-bound scope.',
-      '- **Cleanup:** use the exact stopped target and its authorized receipt. See [USER CLEANUP](../guides/USER-CLEANUP.md).',
-      '- **Recovery or retirement:** use only the named AOS workflow when a concrete blocker requires it.',
-      'The release command never grants deployment or cleanup authority. See [GOVERNANCE](GOVERNANCE.md) for effect',
-      'boundaries.',
+      'npm run land -- --message="feat: ..."',
+      'Corrections fast-forward the same open, unqueued PR.',
+      'END from canonical, selecting only effects already authorized by the caller:',
+      'agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped',
+      'Authority-controlling source also requires `--authority-head=<sha>`. Required checks/reviews remain enforced.',
+      'Rerun after interruption; exit `2` names the next wait or uncovered effect. Receipts never grant authority.',
+      'Merge, sync, recoverable quarantine and allocation release keep separate proof. Refs/objects are retained.',
+      'Unrelated untracked files stay in place; tracked edits, collisions and identity drift require recovery.',
+      'Source closure never implies product delivery.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
@@ -163,9 +154,9 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/BUDGETS.md', [
       'Modules in `src/` | 52',
-      'Authored lines in `src/` | 16,572',
+      'Authored lines in `src/` | 16,636',
       'CLI modules in `bin/` | 114',
-      'Authored lines in `bin/` | 25,300',
+      'Authored lines in `bin/` | 25,556',
       'Lines in one module | 450',
       'Universal runtime prompt | 1,000 UTF-8 bytes',
       'states its projected byte delta and fits the configured budget',
@@ -303,8 +294,8 @@ test('this repository is inside its own module budget', () => {
   const { found, entries, total, surfaces } = moduleViolations();
   assert.deepEqual(found, [], `module budget violations: ${JSON.stringify(found, null, 2)}`);
   assert.deepEqual(MODULE_BUDGET, {
-    modules: 52, totalLines: 16_572, perModuleLines: 450,
-    binModules: 114, binLines: 25_300, runtimeModules: 97, runtimeLines: 23_023,
+    modules: 52, totalLines: 16_636, perModuleLines: 450,
+    binModules: 114, binLines: 25_556, runtimeModules: 97, runtimeLines: 23_023,
   });
   assert.ok(entries.length === 51 || entries.length === 52);
   if (entries.length === 52) {

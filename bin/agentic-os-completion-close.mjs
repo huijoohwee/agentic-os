@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /** Provider-authenticated closeout and native zero-candidate lane quarantine. */
-import { realpathSync } from 'node:fs'; import { pathToFileURL } from 'node:url'; import { TextDecoder } from 'node:util';
+import { realpathSync, mkdirSync, readdirSync } from 'node:fs'; import { join } from 'node:path'; import { pathToFileURL } from 'node:url'; import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
-import { repoRoot, currentBranch, headSha, isAncestor, observeGit, worktreeInventory, acquireOperationLock, finishOperationLock } from '../src/git.mjs';
+import { repoRoot, currentBranch, headSha, isAncestor, observeGit, worktreeInventory, acquireOperationLock, finishOperationLock, commonDir, fetch as gitFetch } from '../src/git.mjs';
 import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
 import { validateWorktreeCleanupPlan, assessWorktreeCleanupEligibility, executeWorktreeCleanup } from '../src/cleanup.mjs';
 import { createWorktreeCleanupPlan, deriveCleanupOwnerStateDigest, validateCleanupEvidenceReceipt } from '../src/cleanup-records.mjs';
@@ -14,7 +14,8 @@ import { classifyExistingWorktreeQuarantine, observeWorktreeCleanupTarget, quara
 import { createGitHubTransitionAuthorityVerifier } from '../src/github-transition-authority.mjs';
 import { deriveCompletionCleanupContinuation } from '../src/completion.mjs';
 import { trustedRepositoryProfile } from './agentic-os-auxiliary.mjs'; import { inspectCompletionStatus } from './agentic-os-completion-status.mjs';
-import { providerPolicy } from '../src/queue.mjs'; import { option } from './agentic-os-argv.mjs';
+import { providerPolicy } from '../src/queue.mjs'; import { option, flag } from './agentic-os-argv.mjs';
+import { privateDirectoryIdentity, assertPrivateDirectoryIdentity, readPrivateFile, writePrivateFileExclusive } from '../src/file-integrity.mjs';
 
 const PLAN_SCHEMA = 'agentic-os/completion-close-plan/v1';
 export const EMPTY_ACTIVE_LANE_RETIREMENT_PLAN = 'agentic-os/empty-active-lane-retirement-plan/v1';
@@ -132,6 +133,170 @@ function applyEmptyActiveLaneRetirement(plan, { root, profile, now = Date.now } 
 }
 function emptyLaneLocked(root, operation) { const lock = acquireOperationLock('agentic-os-empty-active-lane-retirement', root); if (!lock) fail('blocked-empty-active-lane-retirement-busy', 'another empty active lane retirement is in progress'); let result, error; try { result = operation(); } catch (caught) { error = caught; } return finishOperationLock(lock, { label: 'empty active lane retirement', result, error, artifacts: error?.operationArtifacts ?? null }); }
 export function runEmptyActiveLaneRetirement({ root, argv, profile, out = line => process.stdout.write(`${line}\n`), err = line => process.stderr.write(`${line}\n`), now = Date.now } = {}) { try { return emptyLaneLocked(root, () => { const plan = planEmptyActiveLaneRetirement({ root, ref: option(argv, 'ref'), profile, issuedAt: now() }); out(JSON.stringify(plan)); out(JSON.stringify(applyEmptyActiveLaneRetirement(plan, { root, profile, now }))); return 0; }); } catch (error) { err(`${error.reason ?? 'blocked-empty-active-lane-retirement'}: ${error.message}`); return 1; } }
+
+/** Run one explicitly selected closeout through existing owners; retries reobserve each effect. */
+export async function runAuthorizedCloseout({ ref, expectedHead, effects, stopped = false, authorityHead = null,
+  observe, promote, synchronize, integrate, cleanup, release, readReceipt, saveReceipt, out = () => {} }) {
+  if (!isLaneRef(ref) || !sha(expectedHead) || !Array.isArray(effects) || effects.length === 0
+    || new Set(effects).size !== effects.length || effects.some(effect => !['merge', 'sync', 'cleanup'].includes(effect))
+    || effects.includes('cleanup') && !stopped || authorityHead !== null && authorityHead !== expectedHead)
+    fail('blocked-closeout-selection', 'Select one exact head and authorized effects; cleanup requires stopped writers');
+  const selected = new Set(effects), completed = [];
+  const inspect = async () => {
+    const state = await observe();
+    if (state.ref !== ref || state.head !== expectedHead || state.reviewHead !== expectedHead)
+      fail('blocked-closeout-head-drift', 'Source or review head changed; retain work and reobserve');
+    return state;
+  };
+  const report = (state, code, nextAction) => {
+    out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false, event: 'summary',
+      ref, head: expectedHead, selectedEffects: effects, completedEffects: completed,
+      sourceComplete: state.sourceComplete === true, workspaceClosed: !state.mounted && state.cleanupSatisfied === true,
+      deliveryState: state.deliveryState ?? 'not-required', nextAction }));
+    return code;
+  };
+  let state = await inspect();
+  if (state.reviewState === 'OPEN') {
+    if (!selected.has('merge')) return report(state, 2, 'authorize-merge');
+    const result = await promote({ expectedHead, authorityHead });
+    if (result.receipt) await saveReceipt('merge', result.receipt);
+    state = await inspect();
+    if (result.code !== 0 || state.reviewState === 'OPEN') return report(state, result.code || 2, 'wait-required-review-checks');
+  }
+  if (state.reviewState !== 'MERGED') fail('blocked-closeout-review', 'Closeout requires the exact merged review');
+  completed.push('merge');
+  if (!state.canonicalCurrent) {
+    if (!selected.has('sync')) return report(state, 2, 'authorize-sync');
+    const receipt = await synchronize();
+    await saveReceipt('sync', receipt);
+    state = await inspect();
+    if (!state.canonicalCurrent) fail('blocked-closeout-sync', 'Canonical source did not reach the verified target');
+  }
+  completed.push('sync');
+  await integrate();
+  state = await inspect();
+  let receipt = await readReceipt('cleanup');
+  if (state.mounted || !state.cleanupSatisfied) {
+    if (!selected.has('cleanup')) return report(state, 2, 'authorize-cleanup');
+    if (state.mounted && !state.clean) fail('blocked-closeout-dirty', 'Preserve the dirty worktree; no cleanup was attempted');
+    const result = await cleanup({ stopped: true });
+    if (result.code !== 0) return report(await inspect(), result.code, 'cleanup-refused');
+    receipt = result.receipt;
+    if (!receipt) fail('blocked-closeout-cleanup-receipt', 'Cleanup returned without its owner receipt');
+    await saveReceipt('cleanup', receipt);
+    state = await inspect();
+  }
+  if (!state.cleanupSatisfied || state.mounted) return report(state, 2, 'verify-cleanup-receipt');
+  completed.push('cleanup');
+  await saveReceipt('allocation', await release(receipt));
+  return report(state, 0, state.deliveryState === 'pending' ? 'deploy-workflow' : null);
+}
+
+/** Bounded private evidence, never authority. Each retry reobserves native owners. */
+function closeoutEvidence(root, ref, head) {
+  const directory = join(commonDir(root), `agentic-os-closeout-${governanceDigest({ ref, head })}`);
+  try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+  const parent = privateDirectoryIdentity(directory), ceiling = 500_000;
+  const entries = () => { assertPrivateDirectoryIdentity(parent); const names = readdirSync(directory).sort();
+    if (names.length > 128 || names.some(name => !/^[a-z-]+-[0-9]{13}-[a-f0-9]{64}\.json$/u.test(name))) fail('blocked-closeout-evidence', 'Unexpected or excessive closeout evidence; retain it for inspection'); return names; };
+  const read = name => {
+    const file = entries().filter(entry => new RegExp(`^${name}-[0-9]{13}-`, 'u').test(entry)).at(-1); if (!file) return null;
+    const envelope = JSON.parse(readPrivateFile(join(directory, file), ceiling, 'closeout evidence', parent));
+    if (envelope.ref !== ref || envelope.head !== head || !file.endsWith(`-${governanceDigest(envelope)}.json`)) fail('blocked-closeout-evidence', 'Closeout evidence identity differs');
+    return envelope.value;
+  };
+  const save = (name, value) => {
+    if (!/^[a-z-]+$/u.test(name)) fail('blocked-closeout-evidence', 'Invalid effect name');
+    if (same(read(name), value)) return;
+    if (entries().length >= 128) fail('blocked-closeout-evidence', 'Closeout evidence limit reached');
+    const envelope = { ref, head, value }, path = join(directory, `${name}-${Date.now()}-${governanceDigest(envelope)}.json`);
+    assertPrivateDirectoryIdentity(parent); writePrivateFileExclusive(path, Buffer.from(canonicalJson(envelope)), { maxBytes: ceiling }); assertPrivateDirectoryIdentity(parent);
+    return path;
+  };
+  return { read, save, directory };
+}
+
+/** The default END composes existing owners; advanced providers remain lazy. */
+export async function runCoreCloseout({ root, argv, policy, profile, integrate, out = console.log, err = console.error }) {
+  const ref = option(argv, 'ref'), expectedHead = option(argv, 'expected-head'), effects = (option(argv, 'effects') ?? '').split(',');
+  if (!isLaneRef(ref) || !sha(expectedHead) || currentBranch(root) !== policy.protectedBranch)
+    fail('blocked-closeout-selection', 'END requires canonical source, one lane, and its exact head');
+  if (!profile.repository.startsWith('github.com/')) fail('blocked-closeout-provider', 'No default closeout adapter is registered for this provider');
+  const lock = acquireOperationLock('agentic-os-closeout', root); if (!lock) fail('blocked-closeout-concurrent', 'Another closeout owns this clone');
+  let result, error;
+  try {
+    const journal = closeoutEvidence(root, ref, expectedHead);
+    const remote = profile.canonical.remoteRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
+    if (!remote) fail('blocked-closeout-remote', 'Canonical remote is missing');
+    gitFetch(remote, root);
+    const { observeGitHubReview } = await import('../src/github-provider.mjs');
+    const complete = await import('./agentic-os-release-common-complete.mjs');
+    const [{ planCanonicalSync, applyCanonicalSync }, { applyUserCleanup }, { releaseCommonLocalCleanupPolicy }, workflow] = await Promise.all([
+      import('../src/canonical-sync.mjs'), import('./agentic-os-cleanup-user.mjs'), import('../src/cleanup.mjs'), import('./agentic-os-workflow.mjs')]);
+    const observe = () => {
+      const observed = observeGitHubReview({ ref, expectedHead, profile, cwd: root });
+      if (!observed.sourceHeadBound) fail('blocked-closeout-review', observed.reason);
+      if (get(ref, root)?.pr !== observed.review.number) fail('blocked-closeout-review', 'Cached PR identity differs from the live exact-head review');
+      const status = inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt: journal.read('cleanup'), allowUntrackedCanonical: true });
+      if (status.lane.head !== expectedHead || observed.review.headRefOid !== expectedHead)
+        fail('blocked-closeout-head-drift', 'Lane or review changed after selection');
+      return { ref, head: status.lane.head, reviewHead: observed.review.headRefOid, reviewState: observed.review.state,
+        canonicalCurrent: status.closeout.canonicalCurrent, mounted: status.lane.mounted, clean: status.lane.clean,
+        cleanupSatisfied: status.closeout.cleanupSatisfied, sourceComplete: status.closeout.sourceState === 'source_complete', deliveryState: status.closeout.deliveryState };
+    };
+    const capture = callback => line => { const value = JSON.parse(line); callback(value); out(line); };
+    result = await runAuthorizedCloseout({ ref, expectedHead, effects, stopped: flag(argv, 'stopped'), authorityHead: option(argv, 'authority-head'),
+      observe, readReceipt: journal.read, saveReceipt: journal.save, out,
+      promote: async ({ authorityHead }) => {
+        let planned, receipt;
+        const code = await complete.runSourcePromotion({ root, argv: ['plan', `--ref=${ref}`], profile, out: capture(value => { planned = value.plan; }) });
+        if (code !== 0) return { code };
+        if (planned?.head !== expectedHead) fail('blocked-closeout-head-drift', 'Promotion plan head differs');
+        journal.save('promotion-plan', planned);
+        // Native promotion reads a plan envelope; retain it separately from the audit envelope.
+        const planPath = join(journal.directory, `native-plan-${Date.now()}-${governanceDigest(planned)}.json`);
+        writePrivateFileExclusive(planPath, Buffer.from(JSON.stringify(planned)), { maxBytes: 65_536 });
+        const applied = await complete.runSourcePromotion({ root, argv: ['apply', `--plan=${planPath}`, `--authorize=sha256:${planned.digest}`,
+          ...(authorityHead ? [`--authority-head=${authorityHead}`] : [])], profile, out: capture(value => { receipt = value; }) });
+        if (applied === 0) gitFetch(remote, root);
+        return { code: applied, receipt };
+      },
+      synchronize: async () => {
+        gitFetch(remote, root);
+        const plan = planCanonicalSync({ cwd: root, branch: policy.protectedBranch, targetRef: profile.canonical.remoteRef, preserveUntracked: true });
+        if (plan.inventory.length) fail('blocked-closeout-dirty-canonical', 'Canonical authored bytes require the recovery workflow');
+        journal.save('sync-plan', plan);
+        return applyCanonicalSync(plan, { cwd: root, authorization: plan.authorization, exclusive: plan.exclusiveAuthorization });
+      },
+      integrate: async () => { if (await integrate() !== 0) fail('blocked-closeout-integration', 'Native integration classification refused'); },
+      cleanup: async () => {
+        let receipt;
+        if (!observe().mounted) {
+          const plan = journal.read('cleanup-plan'); if (!plan) fail('blocked-closeout-cleanup-receipt', 'No retained native cleanup plan; use recovery');
+          if (plan.head !== expectedHead || plan.branch !== ref) fail('blocked-closeout-head-drift', 'Retained cleanup plan differs from selection');
+          receipt = applyUserCleanup(plan, { cwd: root, authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true,
+            resolvePolicy: (cwd, mode) => { const selected = releaseCommonLocalCleanupPolicy(root, profile, { allowUntrackedCanonical: true }); if (cwd !== root || mode !== selected.mode) fail('blocked-closeout-policy', 'Cleanup binding changed'); return selected; } });
+          return { code: 0, receipt };
+        }
+        const code = await complete.runReleaseCommonLocalCleanup({ root, ref, profile, err, allowUntrackedCanonical: true, out: capture(value => {
+          if (value.schema === 'agentic-os/user-cleanup-plan/v1') {
+            if (value.head !== expectedHead || value.branch !== ref) fail('blocked-closeout-head-drift', 'Native cleanup plan differs from selection');
+            journal.save('cleanup-plan', value);
+          }
+          else if (value.schema === 'agentic-os/user-cleanup-receipt/v1') receipt = value;
+        }) });
+        return { code, receipt };
+      },
+      release: async receipt => {
+        const status = inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt: receipt, allowUntrackedCanonical: true });
+        if (status.closeout.missionState !== 'source_complete' || !status.closeout.cleanupSatisfied || status.lane.mounted)
+          fail('blocked-closeout-release', 'Native source and cleanup proof are incomplete');
+        return workflow.releaseWorkflowAllocation(root, profile.repository, ref);
+      },
+    });
+  } catch (caught) { error = caught; }
+  return finishOperationLock(lock, { label: 'closeout', result, error });
+}
 
 async function main() { const args = validateCompletionCloseArguments(process.argv.slice(2)), root = process.cwd(), bundle = jsonFile(args.bundle, 4_194_304, 'completion-bundle'), planned = args.mode === 'apply' ? args.confirm ? await planCompletionClose(root, args.ref, bundle) : jsonFile(args.plan, 65_536, 'completion-plan') : null, result = args.mode === 'plan' ? await planCompletionClose(root, args.ref, bundle) : await applyCompletionClose(root, args.ref, bundle, planned, args.confirm ?? args.authorize, { stopped: args.stopped }); process.stdout.write(`${canonicalJson(result)}\n`); }
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main().catch(error => { process.stderr.write(`completion-close: ${error.reason ?? 'error'}: ${error.message}\n`); process.exitCode = 1; });

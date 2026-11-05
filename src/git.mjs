@@ -181,18 +181,20 @@ export function remoteRefShas(remote, refs, cwd = process.cwd(), expectedUrl = n
     throw transportRace('Git remote changed during observation');
   return Object.freeze(Object.fromEntries(refs.map((ref, index) => [ref, observed.get(requested[index])])));
 }
-/** Create one remote ref at one captured OID; refuse if the ref already exists. */
-export function publishExactNewRef(remote, ref, oid, cwd = process.cwd(), expectedUrl = null) {
+/** Publish one captured OID with an exact lease; existing refs may only fast-forward. */
+export function publishExactRef(remote, ref, oid, cwd = process.cwd(), expectedUrl = null, expectedPreviousOid = null) {
   const transport = capturedTransport(remote, cwd, expectedUrl);
   const remoteRef = remoteBranchRef(ref, cwd);
   if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(oid ?? ''))
     throw new TypeError('remote publication requires one full object ID');
   const priorOid = remoteOidAtUrl(transport.fetchUrl, remoteRef, cwd);
-  if (priorOid !== null) throw Object.assign(new Error(
-    `remote ref already exists at ${priorOid}: ${remoteRef}`,
-  ), { reason: 'blocked-remote-ref-exists', remoteRef, currentOid: priorOid });
+  if (priorOid !== expectedPreviousOid) throw Object.assign(new Error(
+    `remote ref changed: expected ${expectedPreviousOid}, observed ${priorOid}: ${remoteRef}`,
+  ), { reason: expectedPreviousOid === null ? 'blocked-remote-ref-exists' : 'blocked-remote-ref-drift', remoteRef, currentOid: priorOid });
+  if (priorOid !== null && (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(priorOid) || !isAncestor(priorOid, oid, cwd)))
+    throw Object.assign(new Error('published updates must preserve prior ancestry'), { reason: 'blocked-remote-non-fast-forward' });
   const artifacts = {
-    effectsRetained: false, operation: 'publish-exact-new-ref', remote: transport.name,
+    effectsRetained: false, operation: priorOid === null ? 'publish-exact-new-ref' : 'publish-exact-fast-forward', remote: transport.name,
     url: transport.displayUrl, urlDigest: transport.urlDigest, remoteRef, candidateOid: oid, priorOid,
     publicationAttempted: true, pushCompleted: false, refPublished: false,
     writeResultUnknown: false, reobservationExact: false, remoteRefCurrentOid: null,
@@ -200,7 +202,7 @@ export function publishExactNewRef(remote, ref, oid, cwd = process.cwd(), expect
   try {
     git([
       'push',
-      `--force-with-lease=${remoteRef}:`,
+      `--force-with-lease=${remoteRef}:${priorOid ?? ''}`,
       '--',
       transport.fetchUrl,
       `${oid}:${remoteRef}`,
@@ -231,6 +233,10 @@ export function publishExactNewRef(remote, ref, oid, cwd = process.cwd(), expect
       'remote publication succeeded but its exact postcondition failed', cause, artifacts);
   }
   return Object.freeze({ schema: 'agentic-os/git-publication/v1', ...artifacts });
+}
+/** Compatibility entry point retains its create-only contract. */
+export function publishExactNewRef(remote, ref, oid, cwd = process.cwd(), expectedUrl = null) {
+  return publishExactRef(remote, ref, oid, cwd, expectedUrl);
 }
 export function refExists(ref, cwd = process.cwd()) {
   return observeGit(['rev-parse', '--verify', '--quiet', ref], {
@@ -332,7 +338,7 @@ export function commitsAhead(base, ref, cwd = process.cwd()) {
 }
 
 /** Bind local upstream after exact publication without replacing author configuration. */
-export function bindPublishedUpstream(remote, ref, oid, cwd, expectedUrl) {
+export function bindPublishedUpstream(remote, ref, oid, cwd, expectedUrl, previousOid = null) {
   const transport = remoteTransport(remote, cwd), branchRef = `refs/heads/${ref}`;
   const trackingRef = `refs/remotes/${remote}/${ref}`;
   const receipt = { schema: 'agentic-os/publication-tracking/v1', authority: false,
@@ -355,11 +361,11 @@ export function bindPublishedUpstream(remote, ref, oid, cwd, expectedUrl) {
   if (observeGit(['symbolic-ref', '--quiet', trackingRef], { cwd, allowFail: true }) !== null)
     fail('blocked-publication-tracking-symbolic');
   const old = headSha(trackingRef, cwd);
-  if (old && old !== oid) fail('blocked-publication-tracking-conflict');
+  if (old && old !== oid && (old !== previousOid || !isAncestor(old, oid, cwd))) fail('blocked-publication-tracking-conflict');
   try {
-    if (!old) {
-      atomicAdvanceRef(trackingRef, oid, '0'.repeat(oid.length), [[branchRef, oid]], cwd);
-      receipt.trackingCreated = true; receipt.effectsRetained = true;
+    if (old !== oid) {
+      atomicAdvanceRef(trackingRef, oid, old ?? '0'.repeat(oid.length), [[branchRef, oid]], cwd);
+      receipt.trackingCreated = old === null; receipt.effectsRetained = true;
     }
     verify(false);
     if (JSON.stringify(configuration()) !== JSON.stringify(before)) fail('blocked-publication-tracking-config-drift');

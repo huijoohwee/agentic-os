@@ -40,6 +40,17 @@ function exact(argv, {
   return null;
 }
 function progressiveArguments(argv, directoryRequired = false) {
+  if (flag(argv, 'apply')) {
+    const error = exact(argv, { min: 1, max: 1, options: ['ref', 'expected-head', 'effects', 'authority-head'],
+      flags: ['apply', 'stopped'], requiredOptions: ['ref', 'expected-head', 'effects'] });
+    if (error) return error;
+    const effects = option(argv, 'effects').split(',');
+    if (!isLaneRef(option(argv, 'ref')) || !/^[a-f0-9]{40}$/u.test(option(argv, 'expected-head'))
+      || new Set(effects).size !== effects.length || effects.some(value => !['merge', 'sync', 'cleanup'].includes(value)))
+      return 'apply requires one exact lane/head and unique merge,sync,cleanup effects';
+    if (option(argv, 'authority-head') !== null && option(argv, 'authority-head') !== option(argv, 'expected-head')) return 'authority-head must match expected-head';
+    return effects.includes('cleanup') && !flag(argv, 'stopped') ? 'cleanup effect requires --stopped' : null;
+  }
   const error = exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms', 'ref'], flags: ['cleanup', 'stopped'], requiredOptions: directoryRequired ? ['worktrees'] : [] }); if (error) return error;
   if (!directoryRequired && option(argv, 'worktrees') === null && option(argv, 'ref') === null) return 'complete-adlc requires --ref or --worktrees';
   return flag(argv, 'cleanup') ? flag(argv, 'stopped') ? null : '--cleanup requires --stopped' : flag(argv, 'stopped') ? '--stopped is only valid with --cleanup' : null;
@@ -178,6 +189,7 @@ export function validateCommandArguments(command, argv) {
           requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
           : 'scope-release requires plan or apply';
       if (action === 'complete') {
+        if (flag(argv, 'apply')) return progressiveArguments(argv);
         if (option(argv, 'worktrees') !== null) return progressiveArguments(argv, true);
         if (option(argv, 'via-pr') !== null)
           return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'via-repository', 'via-checks', 'replaced', 'reason'],
