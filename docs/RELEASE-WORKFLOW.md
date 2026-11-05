@@ -1,8 +1,9 @@
 # Release workflow
 
 1. START: `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`.
-2. Work in its printed worktree. `npm run land -- --message="feat: ..."` checks, commits and publishes.
-   Corrections fast-forward the same open, unqueued PR. Preserve history/prose; refresh checks for each SHA.
+2. Work in its printed worktree. `npm run land -- --message="feat: ..."` commits and publishes.
+   Required CI gates integration. Corrections fast-forward the same open, unqueued PR.
+   Preserve history/prose; refresh checks for each SHA.
 3. END from canonical, selecting only effects already authorized by the caller:
 
    ```sh

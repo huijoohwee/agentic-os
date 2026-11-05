@@ -68,7 +68,7 @@ function cmdReleaseCommonHelp({ advanced = false } = {}) {
       '',
       'Default source path:',
       '  npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
-      '  Work in the printed worktree; npm run land -- --message="feat: ..." runs affected checks, commits, and publishes its exact head.',
+      '  Work in the printed worktree; npm run land -- --message="feat: ..." commits and publishes; required CI gates integration.',
       '  Correct the same open PR with another npm run land; prior commits remain intact.',
       '  agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped',
       '  Select only authorized effects. Authority-controlling source also needs --authority-head=<sha>.',

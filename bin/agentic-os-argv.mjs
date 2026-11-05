@@ -266,7 +266,7 @@ export function cmdHelp({ advanced = false } = {}) {
       '',
       'Default source path:',
       '  1. npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
-      '  2. Work in the printed worktree; run npm run land -- --message="feat: ..." for checks, commit, and publish.',
+      '  2. Work in the printed worktree; run npm run land -- --message="feat: ..." to commit and publish; required CI gates integration.',
       '  3. Complete protected PR review/checks, then merge.',
       '  4. npm run release:common -- complete --ref=<lane>',
       '',

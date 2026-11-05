@@ -263,7 +263,7 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
       },
       synchronize: async () => {
         gitFetch(remote, root);
-        const plan = planCanonicalSync({ cwd: root, branch: policy.protectedBranch, targetRef: profile.canonical.remoteRef, preserveUntracked: true });
+        const plan = planCanonicalSync({ cwd: root, branch: policy.protectedBranch, targetRef: profile.canonical.remoteRef, preserveUntracked: true, fastForwardClean: true });
         if (plan.inventory.length) fail('blocked-closeout-dirty-canonical', 'Canonical authored bytes require the recovery workflow');
         journal.save('sync-plan', plan);
         return applyCanonicalSync(plan, { cwd: root, authorization: plan.authorization, exclusive: plan.exclusiveAuthorization });

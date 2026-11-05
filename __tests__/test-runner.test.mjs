@@ -96,24 +96,35 @@ test('serial execution reports its pool size and CI rejects reduced concurrency 
   assert.equal(await runTests(['plan', '--base=HEAD', '--concurrency=4'], { root: f.root, out: text => messages.push(text) }), 0);
   assert.equal(JSON.parse(messages[0]).cost.concurrency, 4);
 });
-test('bound CI covering HEAD defers the local suite; identity drift and failed CI do not', async t => {
-  const env = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
-  delete process.env.CI; delete process.env.GITHUB_ACTIONS;
-  t.after(() => { for (const [key, value] of Object.entries(env)) value === undefined ? delete process.env[key] : process.env[key] = value; });
+test('only committed, workflow-bound CI can replace local execution; pending stays pending', async t => {
+  localEnvironment(t);
   const f = fixture(t, { evaluator: 'node -e "process.exit(9)"' });
-  const observed = snapshot({ root: f.root, base: 'HEAD' });
-  const observation = { source: { revision: observed.identity.headRevision, tree: observed.identity.headTree },
-    status: 'running', ci: { runId: 42 }, coverage: { partial: true } };
-  assert.deepEqual(boundCiCoverage(observed.identity, observation), { runId: 42, status: 'running' });
-  assert.equal(boundCiCoverage(observed.identity, { ...observation, status: 'failed' }), null);
-  assert.throws(() => boundCiCoverage(observed.identity, { ...observation,
-    source: { revision: 'a'.repeat(40), tree: observed.identity.headTree } }), /blocked-ci-coverage-identity/u);
-  const messages = [];
-  assert.equal(await runTests(['affected', '--base=HEAD', '--ci-run=42'], {
-    root: f.root, out: text => messages.push(text), ciObservation: observation }), 0);
-  assert.ok(messages.some(message => message.startsWith('deferred local suite')));
+  const identity = snapshot({ root: f.root, base: 'HEAD' }).identity;
+  const observation = { source: { revision: identity.headRevision, tree: identity.headTree },
+    status: 'running', ci: { runId: 42 }, coverage: { scope: 'required-ci-checks',
+      workflowPath: '.github/workflows/ci.yml', workflowId: 7, attempt: 1,
+      checks: ['budgets', 'test'].map(name => ({ name, status: 'in_progress', conclusion: null })) } };
+  assert.deepEqual(boundCiCoverage(identity, observation), { runId: 42, status: 'running', workflowId: 7, attempt: 1 });
+  assert.equal(boundCiCoverage(identity, { ...observation, status: 'failed' }), null);
+  assert.equal(boundCiCoverage({ ...identity, sourceDigest: 'dirty' }, observation), null);
+  assert.equal(boundCiCoverage(identity, { ...observation, coverage: { scope: 'ci-workflow-timing' } }), null);
+  assert.equal(boundCiCoverage(identity, { ...observation, coverage: { ...observation.coverage, workflowPath: 'other.yml' } }), null);
+  assert.throws(() => boundCiCoverage(identity, { ...observation,
+    source: { revision: 'a'.repeat(40), tree: identity.headTree } }), /blocked-ci-coverage-identity/u);
+  const invoke = () => runTests(['affected', '--base=HEAD', '--ci-run=42'], {
+    root: f.root, out: text => f.messages.push(text), ciObservation: observation });
+  assert.equal(await invoke(), 2);
+  assert.equal(f.receipt().outcome, 'waiting'); assert.deepEqual(f.receipt().results, []);
+  assert.equal(f.receipt().cost.reused, 0);
+  observation.status = 'passed';
+  assert.equal(boundCiCoverage(identity, observation, ['__tests__/small.test.mjs']), null, 'timing and job labels are insufficient');
+  observation.coverage.validation = { source: identity, suites: ['__tests__/small.test.mjs'] };
+  observation.coverage.checks.forEach(check => Object.assign(check, { status: 'completed', conclusion: 'success' }));
+  assert.equal(await invoke(), 0);
   assert.ok(f.receipt().results.every(result => result.reusedFrom === 'bound-ci'));
-  assert.equal(f.receipt().results.some(result => result.name === 'evaluators'), true);
+  observation.coverage.checks[0].conclusion = 'failure';
+  assert.equal(boundCiCoverage(identity, observation), null);
+  observation.coverage.checks.pop(); assert.equal(boundCiCoverage(identity, observation), null);
 });
 
 test('public npm entrypoints forward baseline options before executing any checks', async () => {
@@ -332,6 +343,8 @@ test('dependency drift after planning blocks bound CI reuse under the receipt lo
   const f = declaredFixture(t, { evaluator: 'node -e "process.exit(19)"' });
   const source = snapshot({ root: f.root, base: 'HEAD' }).identity;
   const observation = { source: { revision: source.headRevision, tree: source.headTree }, ci: { runId: 42 },
+    coverage: { scope: 'required-ci-checks', workflowPath: '.github/workflows/ci.yml', workflowId: 7, attempt: 1,
+      checks: ['budgets', 'test'].map(name => ({ name, status: 'completed', conclusion: 'success' })) },
     get status() { f.block(); return 'passed'; } };
   assert.equal(await runTests(['affected', '--base=HEAD', '--ci-run=42'],
     { root: f.root, ciObservation: observation, out: text => f.messages.push(text) }), 1);

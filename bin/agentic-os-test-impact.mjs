@@ -171,7 +171,7 @@ function resolveCheckInputs(files, path, contracts, forward, opaque) {
   const isolated = contracts.isolated?.includes(path.replace('__tests__/', '')) === true;
   if (contracts.packaging.includes(path.replace('__tests__/', ''))) reasons.push('packaging');
   for (let index = 0; index < pending.length; index++) {
-    const consumer = pending[index], text = files.get(consumer)?.text ?? '';
+    const consumer = pending[index], text = /\.[cm]?js$/u.test(consumer) ? files.get(consumer)?.text ?? '' : '';
     if (opaque.has(consumer)) reasons.push(`opaque:${consumer}`);
     // Literal references alone cannot bound arbitrary directory scans, file reads or subprocesses.
     // Explicit dependency declarations make their input boundary reviewable.

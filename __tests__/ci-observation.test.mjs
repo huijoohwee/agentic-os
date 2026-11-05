@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ciTimingReceipt, ciObservationId } from '../bin/agentic-os-ci-observation.mjs';
+import { ciTimingReceipt, ciCheckCoverage, ciValidationProof, ciObservationId } from '../bin/agentic-os-ci-observation.mjs';
 import { validationObservation } from '../bin/agentic-os-validation-observation.mjs';
 import { validationArguments } from '../bin/agentic-os-validation.mjs';
 const source = { repository: 'github.com/example/project', revision: 'a'.repeat(40), tree: 'b'.repeat(40), dirty: null };
@@ -51,4 +51,28 @@ test('provider metadata refreshes do not retrain a completed attempt', () => {
   const receipt = ciTimingReceipt(run, source, 1, base + 16000);
   assert.equal(ciObservationId(receipt, 'ci-execution'), ciObservationId({ ...receipt, finishedAt: base + 16000 }, 'ci-execution'));
   assert.notEqual(ciObservationId(receipt, 'ci-execution'), ciObservationId({ ...receipt, ci: { ...receipt.ci, attempt: 2 } }, 'ci-execution'));
+});
+
+test('CI coverage binds the expected workflow and unique required jobs', () => {
+  const workflow = { id: 7, path: '.github/workflows/ci.yml', state: 'active' };
+  const value = { workflowDatabaseId: 7, attempt: 2, status: 'completed',
+    jobs: ['budgets', 'test'].map(name => ({ name, status: 'completed', conclusion: 'success' })) };
+  assert.equal(ciCheckCoverage(value, workflow).attempt, 2);
+  assert.throws(() => ciCheckCoverage(value, { ...workflow, id: 8 }), /blocked-ci-observation/);
+  assert.throws(() => ciCheckCoverage(value, { ...workflow, path: 'other.yml' }), /blocked-ci-observation/);
+  assert.throws(() => ciCheckCoverage({ ...value, jobs: value.jobs.slice(1) }, workflow), /blocked-ci-observation/);
+  assert.throws(() => ciCheckCoverage({ ...value, jobs: [...value.jobs, value.jobs[0]] }, workflow), /blocked-ci-observation/);
+});
+
+test('native CI proof binds the run attempt and committed source, and rejects ambiguity', () => {
+  const value = { databaseId: 42, attempt: 2 };
+  const proof = { schema: 'agentic-os/ci-check-proof/v1', runId: 42, attempt: 2,
+    source: { headRevision: 'a'.repeat(40), headTree: 'b'.repeat(40), sourceDigest: 'c'.repeat(64), committedSourceDigest: 'c'.repeat(64) },
+    suites: ['__tests__/test-runner.test.mjs'] };
+  const line = 'agentic-os-ci-proof:' + Buffer.from(JSON.stringify(proof)).toString('base64');
+  assert.deepEqual(ciValidationProof('timestamp test step ' + line, value), proof);
+  for (const log of ['', line + '\n' + line]) assert.throws(() => ciValidationProof(log, value), /ci-observation/);
+  assert.throws(() => ciValidationProof(line, { ...value, attempt: 3 }), /ci-observation/);
+  proof.source.sourceDigest = 'd'.repeat(64);
+  assert.throws(() => ciValidationProof('agentic-os-ci-proof:' + Buffer.from(JSON.stringify(proof)).toString('base64'), value), /ci-observation/);
 });
