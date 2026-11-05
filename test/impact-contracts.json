@@ -103,6 +103,7 @@
     "__tests__/setup-trust-ordering.test.mjs": ["bin/agentic-os-hooks.mjs"],
     "__tests__/public-api.test.mjs": ["package.json"],
     "__tests__/tracked-file-integrity.test.mjs": ["src/git-tracked.mjs"],
-    "__tests__/test-impact.test.mjs": ["bin/agentic-os-test-impact.mjs", "bin/agentic-os-test-inputs.mjs"]
+    "__tests__/test-impact.test.mjs": ["bin/agentic-os-test-impact.mjs", "bin/agentic-os-test-inputs.mjs"],
+    "src/catalog-input.mjs": ["src/catalog-input.mjs"]
   }
 }

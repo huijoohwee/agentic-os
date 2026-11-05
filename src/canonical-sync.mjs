@@ -2,7 +2,7 @@
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publishCanonicalIndex, removeStagedTree, stageTreeEntries } from './canonical-staging.mjs';
+import { advanceCleanCanonicalTree, cleanFastForwardEligible, abortCanonicalIndex, installStagedEntries, prepareCanonicalIndex, publishCanonicalIndex, removeStagedTree, stageTreeEntries } from './canonical-staging.mjs';
 import { captureCanonicalRecovery, CanonicalSyncError, createCanonicalArtifacts, finishCanonicalOperation, recordCanonicalFailureEffects, retainCanonicalEffect } from './canonical-recovery.mjs';
 import { assertCanonicalReconciliationPlan, assertIgnoredProjectionSafe, assertProjectionBudget, boundedCanonicalPlan, buildCleanRetirementProjection, buildDirtyQuarantineProjection, canonicalPlanBody, canonicalReconciliation, canonicalDeltaEntries, CanonicalResourceError, parseTreeEntries } from './canonical-resources.mjs';
 import { snapshotWorktreeEntry } from './file-integrity.mjs';
@@ -158,15 +158,15 @@ function observed(cwd, targetRef, expectedBranch, { integrationReceiptDigest = n
     ignoredPathsDigest: sha256(JSON.stringify(ignored)), ignoredPathCount: ignored.length };
 }
 export function planCanonicalSync({
-  cwd = process.cwd(), targetRef, branch, integrationReceiptDigest = null, preserveUntracked = false,
+  cwd = process.cwd(), targetRef, branch, integrationReceiptDigest = null, preserveUntracked = false, fastForwardClean = false,
 } = {}) {
   canonicalIdentity(branch, targetRef);
-  if (typeof preserveUntracked !== 'boolean') refuse('blocked-invalid-preservation-selection');
+  if (typeof preserveUntracked !== 'boolean' || typeof fastForwardClean !== 'boolean') refuse('blocked-invalid-preservation-selection');
   const state = observed(cwd, targetRef, branch, { integrationReceiptDigest, preserveUntracked });
   const inventoryDigest = sha256(JSON.stringify(state.inventory));
   const plan = {
     schema: PLAN_SCHEMA, repository: state.root, branch, targetRef,
-    expectedLocalSha: state.localSha, expectedTargetSha: state.targetSha,
+    expectedLocalSha: state.localSha, expectedTargetSha: state.targetSha, ...(fastForwardClean ? { fastForwardClean: true } : {}),
     inventoryDigest, inventory: state.inventory,
     ignoredPathsDigest: state.ignoredPathsDigest, ignoredPathCount: state.ignoredPathCount,
     relation: state.relation, reconciliation: state.reconciliation, ...(preserveUntracked ? { retainedUntracked: state.retainedUntracked } : {}),
@@ -263,7 +263,26 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
   try {
     assertUnchanged(plan, root);
     const targetTree = treeEntries(plan.expectedTargetSha, root);
-    const delta = canonicalDeltaEntries(treeEntries(plan.expectedLocalSha, root), targetTree);
+    const sourceTree = treeEntries(plan.expectedLocalSha, root);
+    const delta = canonicalDeltaEntries(sourceTree, targetTree);
+    if (cleanFastForwardEligible(plan, [sourceTree, targetTree], root)) {
+      advanceCleanCanonicalTree(plan, root, effect => {
+        if (effect.recoveryRefCreated) recovery = { commit: plan.expectedLocalSha, tree: git(['rev-parse', `${plan.expectedLocalSha}^{tree}`], { cwd: root }) };
+        retainCanonicalEffect(artifacts, effect);
+      });
+      const after = observed(root, plan.targetRef, plan.branch, { preserveUntracked: Object.hasOwn(plan, 'retainedUntracked') });
+      if (after.localSha !== plan.expectedTargetSha || after.targetSha !== plan.expectedTargetSha || after.inventory.length
+        || after.ignoredPathsDigest !== plan.ignoredPathsDigest || JSON.stringify(after.retainedUntracked) !== JSON.stringify(plan.retainedUntracked)
+        || git(['rev-parse', plan.recoveryRef], { cwd: root }) !== recovery.commit) refuse('blocked-postcondition');
+      result = { schema: RECEIPT_SCHEMA, mode: 'clean-fast-forward', planDigest: plan.planDigest,
+        repository: root, priorHead: plan.expectedLocalSha, targetHead: plan.expectedTargetSha,
+        inventoryDigest: plan.inventoryDigest, inventoryCount: 0, recoveryRef: plan.recoveryRef,
+        recoveryCommit: recovery.commit, recoveryTree: recovery.tree, recoveryRefObservedBeforeReceipt: true,
+        ignoredPathsDigest: after.ignoredPathsDigest, ignoredPathCount: after.ignoredPathCount,
+        copiedBytes: 0, quarantineEntryCount: 0, quarantinedUntracked: [], exclusiveContract: plan.exclusiveAuthorization,
+        visibleStatusClean: true, ignoredPathsPreservedInPlace: true,
+        ...(after.retainedUntracked ? { retainedUntracked: after.retainedUntracked, retainedUntrackedCount: after.retainedUntracked.length } : {}) };
+    } else {
     const preserved = resource(() => plan.inventory.length > 0
       ? buildDirtyQuarantineProjection(plan, CANONICAL_SYNC_LIMITS)
       : buildCleanRetirementProjection(
@@ -393,6 +412,7 @@ export function applyCanonicalSync(value, { cwd = process.cwd(), authorization =
       quarantineRemoved: false, stagingRemoved: true, visibleStatusClean: true,
       ignoredPathsPreservedInPlace: true,
     };
+    }
   } catch (error) {
     recordCanonicalFailureEffects(artifacts, error);
     if (canonicalIndex && !canonicalIndex.published) try { abortCanonicalIndex(canonicalIndex); }

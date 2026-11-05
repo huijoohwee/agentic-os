@@ -243,3 +243,13 @@ test('reviewed pure checks bind their dependency closure; package commands remai
   assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'repository');
   assert.throws(() => validateContracts({ ...f.contracts, isolated: ['missing.test.mjs'] }, f.after), /contracts/);
 });
+
+test('code examples in data assets bind bytes without pretending to execute discovery', () => {
+  const f = fixture();
+  f.after.set('src/a.mjs', file("export const doc = new URL('../docs/a.md', import.meta.url);"));
+  f.after.set('docs/a.md', file("Example: readFileSync(root); npm 'pack'; import 'node:fs';"));
+  const input = checkInputs(f.after, '__tests__/a.test.mjs');
+  assert.equal(input.scope, 'inputs'); assert.ok(input.paths.includes('docs/a.md'));
+  f.after.set('src/a.mjs', file("import 'node:fs'; export const doc = readFileSync(path);"));
+  assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'repository');
+});

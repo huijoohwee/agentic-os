@@ -163,7 +163,7 @@ export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed 
   const identity = { root, requestedBase, baseRevision, baseStrategy: directBase ? 'provider-event' : 'merge-base', headRevision,
     baseTree: readGit(root, ['rev-parse', `${baseRevision}^{tree}`]).trim(),
     headTree: readGit(root, ['rev-parse', `${headRevision}^{tree}`]).trim(),
-    sourceDigest: manifestDigest(after),
+    sourceDigest: manifestDigest(after), committedSourceDigest: manifestDigest(headFiles),
     indexDigest: hash(readGit(root, ['ls-files', '--stage', '-z'])),
     configurationDigest: hash(validationGitConfiguration(root)),
     refsDigest,

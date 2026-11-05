@@ -30,7 +30,7 @@ export const BUDGET = Object.freeze({
   // 2026-11-05 CORE-DEFAULT: +64 src/+256 bin ceiling for native END composition, exact-head PR updates, and metadata-only preservation.
   // Reuse existing owners; module, dependency, per-file and always-load ceilings stay fixed.
   modules: 52,
-  totalLines: 16636,
+  totalLines: 16700,
   perModuleLines: 450,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
@@ -44,7 +44,7 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
   binModules: 114,
-  binLines: 25556,
+  binLines: 25588,
   runtimeModules: 97,
   runtimeLines: 23023,
 });
