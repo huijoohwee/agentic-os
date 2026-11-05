@@ -1,26 +1,20 @@
 # Release workflow
 
-## Default source path
+1. START: `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`.
+2. Work in its printed worktree. `npm run land -- --message="feat: ..."` checks, commits and publishes.
+   Corrections fast-forward the same open, unqueued PR. Preserve history/prose; refresh checks for each SHA.
+3. END from canonical, selecting only effects already authorized by the caller:
 
-1. Start with `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`; work in its printed worktree.
-2. Use `npm run check` while iterating when useful. For final publication, run
-   `npm run land -- --message="feat: ..."`; it runs affected checks, commits reserved paths, and publishes the exact
-   lane head.
-3. Complete the repository's protected PR checks and review, then merge the PR. Solo maintainers use PR plus
-   CI, set required approvals to zero, keep bypass off, and never self-approve.
-4. Record source integration with `npm run release:common -- complete --ref=<lane>`.
+   ```sh
+   agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped
+   ```
 
-Plans bind requirements and scope; they grant no effect authority.
-Source completion is not product delivery, workspace cleanup, branch retirement, canonical sync, or deployment.
+Authority-controlling source also requires `--authority-head=<sha>`. Required checks/reviews remain enforced.
+Rerun after interruption; exit `2` names the next wait or uncovered effect. Receipts never grant authority.
+Merge, sync, recoverable quarantine and allocation release keep separate proof. Refs/objects are retained.
+Unrelated untracked files stay in place; tracked edits, collisions and identity drift require recovery.
 
-## On demand
-
-Load only the workflow a lane needs and reuse evidence until its inputs drift.
-
-- **Observe:** `agentic-os complete-adlc --worktrees=<registered-root>` is read-only; exit `2` means open.
-- **Deploy:** load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only for a delivery-bound scope.
-- **Cleanup:** use the exact stopped target and its authorized receipt. See [USER CLEANUP](../guides/USER-CLEANUP.md).
-- **Recovery or retirement:** use only the named AOS workflow when a concrete blocker requires it.
-
-The release command never grants deployment or cleanup authority. See [GOVERNANCE](GOVERNANCE.md) for effect
-boundaries.
+Load [cleanup/recovery](../guides/USER-CLEANUP.md) only for a concrete blocker. Read-only inventory:
+`agentic-os complete-adlc --worktrees=<registered-root>`. Legacy `release-common complete --ref=<lane>` remains.
+Production is separate: load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) for selected delivery, promote the verified
+Dev artifact, verify Prod identity and retain rollback evidence. Source closure never implies product delivery.

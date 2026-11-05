@@ -20,19 +20,21 @@ test('the recovered canonical predecessor is explicitly release-pinned', () => {
   assert.match(source, /v1-5c9e1df231a5133bdcba5cf0af0ffaf24aa51e8f0f5705e496a5c0299959271c/u);
 });
 
-for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context', 'pre-alignment']) test(released
+for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context', 'pre-alignment', 'pre-core']) test(released
   ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
+  const historicalGit = gunzipSync(Buffer.from(readFileSync(new URL('./fixtures/git-create-only.mjs.gz.b64', import.meta.url), 'utf8'), 'base64'));
+  assert.equal(digest(historicalGit), 'b4bb69f1953f6237927cba3e4d397613a5c79f269be3b025af4c6dd454efafc9');
   const historicalGovernance = gunzipSync(Buffer.from(readFileSync(new URL('./fixtures/governance-pre-branch-retirement.mjs.gz.b64', import.meta.url), 'utf8'), 'base64'));
   assert.equal(digest(historicalGovernance), 'ea91f7a577936590c13dac1a353ef02dbf445f86ac73b347084c9b74e38c5f10');
   const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes
     .toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync'));
   assert.equal(digest(quarantineBytes), '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
-  const predecessor = selected.files.map(file => released && file.path === 'src/git-repository.mjs'
+  const predecessor = selected.files.map(file => released === 'pre-core' ? file : released && file.path === 'src/git-repository.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-repository-pre-naming.mjs.txt', import.meta.url)) }
     : released && file.path === 'src/file-integrity.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)) }
@@ -42,7 +44,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
     : file.path === 'src/git-tracked.mjs'
       ? { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)) } : file);
   const altered = predecessor.map((file, index) => {
-    const bytes = ['pre-upstream', 'batch32', 'retained-context', 'pre-alignment'].includes(released)
+    const bytes = ['batch32', 'retained-context', 'pre-alignment', 'pre-core'].includes(released) && file.path === 'src/git.mjs'
+      ? historicalGit : released === 'pre-core' ? file.bytes : ['pre-upstream', 'batch32', 'retained-context', 'pre-alignment'].includes(released)
       && file.path === 'src/governance.mjs' ? historicalGovernance
       : ['batch32', 'retained-context', 'pre-alignment'].includes(released) ? file.bytes : released ? (file.path === 'src/git.mjs'
       ? readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url))
@@ -78,7 +81,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   chmodSync(manifestPath, 0o600);
 
   if (released) {
-    assert.equal(runtimeId, released === 'pre-alignment'
+    assert.equal(runtimeId, released === 'pre-core'
+      ? 'v1-61b0c08ae5a26367e69ec157e182819fbde328fee570a5cf59f11b1be72fad5f' : released === 'pre-alignment'
       ? 'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20' : released === 'retained-context'
       ? 'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171' : released === 'batch32'
       ? 'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58' : released === 'pre-upstream'

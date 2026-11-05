@@ -1,8 +1,9 @@
 /** Native exact-candidate publication; lazy-loaded by both CLI publication routes. */
 import { basename } from 'node:path';
-import { git, gitLines, repoRoot, currentBranch, remoteTransport, headSha, publishExactNewRef,
+import { git, gitLines, repoRoot, currentBranch, remoteTransport, headSha, publishExactRef,
   bindPublishedUpstream, remoteRefSha, fetch as gitFetch, worktrees, isAncestor } from '../src/git.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
+import { assertOpenReviewUpdate } from '../src/github-provider.mjs';
 import { providerAdapterRequired, successorLineage, transition } from '../src/lane-state.mjs';
 import * as store from '../src/lane-records.mjs';
 import * as queue from '../src/queue.mjs';
@@ -54,6 +55,15 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
   const writePaths = (record?.writePaths ?? []).flatMap((path) => parseWritePaths(path));
   const remote = remoteName(policy, root);
   const capturedRemote = remoteTransport(remote, root);
+  const kind = providerKind(profile);
+  const assertUpdate = (prior) => {
+    if (record?.state === 'queued') throw Object.assign(new Error('A queued candidate cannot be updated'), { reason: 'blocked-publication-review-update' });
+    if (!isAncestor(prior, headSha('HEAD', root), root))
+      throw Object.assign(new Error('Published source ancestry must be retained'), { reason: 'blocked-published-head-drift' });
+    if (kind === 'github' && policy.pullRequestRequired)
+      return assertOpenReviewUpdate({ ref, expectedHead: prior, expectedPr: record?.pr, profile, cwd: root });
+    if (providerAdapterRequired(policy)) throw new Error('blocked-publication-update-adapter');
+  };
   if (message !== null) {
     if (writePaths.length === 0) {
       err('blocked-write-scope-missing: autonomous land requires an admitted --write reservation');
@@ -62,10 +72,7 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     assertDisjointReservation({ cwd: root, ref, writePaths,
       protectedRef: policy.protectedRef, records: laneStore.lanes });
     const advertised = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
-    if (advertised && (advertised !== headSha('HEAD', root) || publicationByteRisks(root).blocked)) {
-      err(`blocked-published-head-drift: preserve changes; commit locally, then run npm run successor -- <scope> --expected-head=${advertised}`);
-      return 1;
-    }
+    if (advertised && (advertised !== headSha('HEAD', root) || publicationByteRisks(root).blocked)) assertUpdate(advertised);
     const committed = commitReservedChanges({ cwd: root, writePaths, message });
     if (committed) {
       out(`committed ${committed.head.slice(0, 9)} (${committed.paths.length} path(s))`);
@@ -73,7 +80,6 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
         previousRevision: beforeCommit.revision, revision: committed.head });
     }
   }
-  const kind = providerKind(profile);
   if (providerAdapterRequired(policy) && kind !== 'github') {
     err(`blocked-provider-adapter-${kind}: no landing adapter matches the selected profile policy`);
     return 1;
@@ -114,10 +120,8 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     err(`blocked-provider-observation-incomplete: ${providerBlockers.join(', ')}`);
     return 1;
   }
-  if (publishedHead && publishedHead !== laneHeadSha) {
-    err('blocked-published-head-drift: the exact remote lane revision is immutable');
-    return 1;
-  }
+  const updating = publishedHead !== null && publishedHead !== laneHeadSha;
+  if (updating) assertUpdate(publishedHead);
   const state = publishedHead ? 'published' : 'active';
   const publishFacts = {
     onCanonicalBranch: false, dirtyTracked: false, laneCommits: commits, pushed: false,
@@ -127,12 +131,13 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     err(report.formatRefusal(preflight, 'commit your work, then run npm run land again'));
     return 1;
   }
-  if (state === 'active') {
+  if (state === 'active' || updating) {
     assertFlightRequirements(root, 'in', configuredFlight);
     assertProtectedRefCurrent(root, policy.protectedRef, baseSha);
     assertWorkflowCurrent();
-    effectReceipt('publish-exact-new-ref',
-      publishExactNewRef(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl));
+    if (updating) assertUpdate(publishedHead);
+    effectReceipt(updating ? 'publish-exact-fast-forward' : 'publish-exact-new-ref',
+      publishExactRef(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl, publishedHead));
     out(`pushed ${ref} @ ${laneHeadSha.slice(0, 9)}`);
   }
   const postPublishRisks = publicationByteRisks(root);
@@ -155,7 +160,7 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
       return 1;
     }
   }
-  effectReceipt('publication-tracking', bindPublishedUpstream(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl));
+  effectReceipt('publication-tracking', bindPublishedUpstream(remote, ref, laneHeadSha, root, capturedRemote.fetchUrl, updating ? publishedHead : record?.head));
   projectCache({ ref, state: 'published', head: laneHeadSha }, root);
   if (kind !== 'github' || !policy.pullRequestRequired) {
     out('published exact lane ref; no pull-request integration capability selected');
@@ -180,6 +185,7 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     expectedHead: laneHeadSha,
     expectedRepository: observed.repo,
     baseBranch: policy.protectedBranch, preserveExistingText: bodyFile === null,
+    canAdvanceReviewHead: prior => prior !== laneHeadSha && isAncestor(prior, laneHeadSha, root),
     assertSourceHead: () => {
       assertWorkflowCurrent();
       assertFlightRequirements(root, 'in', configuredFlight);

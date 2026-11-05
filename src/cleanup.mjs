@@ -303,7 +303,7 @@ export async function executeWorktreeCleanup(input, options) {
   return finishOperationLock(lock, { label: 'worktree-cleanup', result, error, artifacts });
 }
 
-export function releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyChecks = false } = {}) {
+export function releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyChecks = false, allowUntrackedCanonical = false } = {}) {
   if (repoRoot(root) !== root || currentBranch(root) !== 'main')
     fail('blocked-release-common-local-cleanup-canonical', 'local cleanup runs from canonical main');
   const remoteUrl = remoteTransport('origin', root).fetchUrl;
@@ -313,7 +313,7 @@ export function releaseCommonLocalCleanupPolicy(root, profile, { allowEmptyCheck
   const canonical = observeGit(['rev-parse', '--verify', 'refs/heads/main^{commit}'], { cwd: root, maxBuffer: 65536 });
   if (observeGit(['rev-parse', '--verify', 'HEAD'], { cwd: root, maxBuffer: 65536 }) !== canonical
     || observeGit(['rev-parse', '--verify', 'refs/remotes/origin/main'], { cwd: root, maxBuffer: 65536 }) !== canonical
-    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root, maxBuffer: 65536 }) !== '')
+    || observeGit(['status', '--porcelain', `--untracked-files=${allowUntrackedCanonical ? 'no' : 'all'}`], { cwd: root, maxBuffer: 65536 }) !== '')
     fail('blocked-release-common-local-cleanup-canonical', 'canonical main must be current and clean before local cleanup');
   return { root, repository: remote, remoteUrl, canonical, localRef: 'refs/heads/main',
     mode: RECOVERY_MODE, enrollment: 'release-common-complete', ...recoveryPolicy(root, remote, { requireChecks: !allowEmptyChecks }),
