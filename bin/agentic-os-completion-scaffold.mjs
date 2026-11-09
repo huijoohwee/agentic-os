@@ -112,7 +112,8 @@ export function buildCompletionBundleScaffold(status, profile, committedState = 
         preservationReceiptDigest: placeholder('PRESERVATION_RECEIPT_DIGEST'),
         noRemainingValueReceiptDigest: placeholder('NO_REMAINING_VALUE_RECEIPT_DIGEST'),
         ...RECOVERY_LIMITS,
-        authorizedEffects: [...CLEANUP_EFFECTS],
+        authorizedEffects: CLEANUP_EFFECTS.filter((effect) =>
+          profile.cleanup?.worktreeProjection === 'remove-clean' || effect !== 'git-worktree-remove-clean'),
         retainedEffects: [...RETAINED_EFFECTS],
         expiresAt: placeholder('CLEANUP_EXPIRES_AT'),
       },
