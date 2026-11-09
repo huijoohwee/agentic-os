@@ -34,7 +34,9 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes
     .toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync'));
   assert.equal(digest(quarantineBytes), '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
-  const predecessor = selected.files.map(file => released === 'pre-core' ? file : released && file.path === 'src/git-repository.mjs'
+  const predecessor = selected.files.map(file => released === 'pre-core' && file.path === 'src/governance.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/governance-cleanup-predecessor.mjs.txt', import.meta.url)) }
+    : released === 'pre-core' ? file : released && file.path === 'src/git-repository.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-repository-pre-naming.mjs.txt', import.meta.url)) }
     : released && file.path === 'src/file-integrity.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)) }
