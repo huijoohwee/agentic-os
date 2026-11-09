@@ -29,6 +29,7 @@ import {
 import {
   classifyExistingWorktreeQuarantine, observeWorktreeCleanupTarget, quarantineWorktreeTarget,
 } from './cleanup-quarantine.mjs';
+import { removeCleanWorktreeTarget } from './cleanup-remove-clean.mjs';
 
 export * from './cleanup-records.mjs';
 export { observeQuarantineManifest } from './cleanup-quarantine.mjs';
@@ -188,7 +189,8 @@ function trustedClock(options, label) {
   return value;
 }
 
-function cleanupResult(applied, eligibility) {
+function cleanupResult(applied, eligibility, plan) {
+  const removedClean = applied.artifacts?.removalMode === 'git-worktree-remove-no-force';
   return { ...applied.result,
     projectionManifestDigest: eligibility.projectionManifestDigest,
     projectionBytes: eligibility.projectionBytes,
@@ -204,11 +206,14 @@ function cleanupResult(applied, eligibility) {
     objectInventoryDigest: eligibility.objectInventoryDigest,
     sharedStateBytes: eligibility.sharedStateBytes,
     sharedStateEntries: eligibility.sharedStateEntries,
+    expectedBranch: plan.expectedBranch,
+    expectedHeadRevision: plan.expectedHeadRevision,
+    cleanRemovalEligible: removedClean,
     registeredBefore: true, registeredAfter: false, targetPathExistsBefore: true,
-    targetPathExistsAfter: false, adminBytesRetained: true,
+    targetPathExistsAfter: false, adminBytesRetained: !removedClean,
     branchMutationAttempted: false, objectMutationAttempted: false,
-    directoryByteRemovalAttempted: false, operatingSystemExclusivityProven: false,
-    result: 'quarantined' };
+    directoryByteRemovalAttempted: removedClean, operatingSystemExclusivityProven: false,
+    result: removedClean ? 'removed-clean' : 'quarantined' };
 }
 
 export async function assessWorktreeCleanupEligibility(input, options) {
@@ -216,7 +221,7 @@ export async function assessWorktreeCleanupEligibility(input, options) {
   assertLaneBytesResolved(joined.plan.expectedBranch ?? joined.plan.branch, options.cwd); const evaluated = trustedClock(options, 'cleanup eligibility');
   if (evaluated >= Date.parse(joined.expiresAt))
     fail('blocked-cleanup-expired', 'cleanup plan is not current');
-  const observation = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd, reuseRecoveryInventory: true, now: () => evaluated });
+  const observation = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd, forceFreshRecoveryInventory: true, now: () => evaluated });
   return createWorktreeCleanupEligibility({ cleanupPlanDigest: joined.plan.planDigest,
     cleanupPlanByteDigest: worktreeCleanupPlanByteDigest(joined.plan),
     integrationReceiptDigest: joined.integration.receiptDigest,
@@ -285,17 +290,20 @@ export async function executeWorktreeCleanup(input, options) {
       const before = observeWorktreeCleanupTarget(joined.plan, { cwd: options.cwd, forceFreshRecoveryInventory: true });
       if (before.observationDigest !== eligibility.targetObservationDigest)
         fail('blocked-cleanup-observation-drift', 'cleanup target changed after eligibility');
-      applied = quarantineWorktreeTarget(joined.plan, before, { cwd: options.cwd, eligibility,
-        authorizeEffects() {
+      const authorizeEffects = () => {
           const executed = trustedClock(options, 'cleanup execution');
           if (executed < Date.parse(eligibility.evaluatedAt)
             || executed >= Date.parse(eligibility.expiresAt))
             fail('blocked-cleanup-expired', 'cleanup eligibility is not current');
           return new Date(executed).toISOString();
-        } });
+        };
+      applied = before.cleanupMode === 'remove-clean' && before.cleanRemovalEligible
+        ? removeCleanWorktreeTarget(joined.plan, before, { cwd: options.cwd, authorizeEffects })
+        : quarantineWorktreeTarget(joined.plan, before, { cwd: options.cwd, eligibility,
+          authorizeEffects });
     }
     artifacts = applied.artifacts;
-    result = createWorktreeCleanupReceipt({ ...cleanupResult(applied, eligibility),
+    result = createWorktreeCleanupReceipt({ ...cleanupResult(applied, eligibility, joined.plan),
       cleanupPlanDigest: joined.plan.planDigest,
       eligibilityDigest: eligibility.eligibilityDigest,
       integrationPlanByteDigest: joined.integrationPlanByteDigest });

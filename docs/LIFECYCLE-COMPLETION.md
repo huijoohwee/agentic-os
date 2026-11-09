@@ -66,27 +66,26 @@ The deterministic receipt advances the lease by exactly one and uses the CAS coo
 observation time is not hashed into the semantic receipt. Existing immutable winners can be reconstructed
 after expiry, but that replay authorizes no new effect.
 
-## Dirty worktree quarantine
+## Clean removal and dirty worktree quarantine
 
-Profiles retain every cleanup target by default. Quarantine is reachable only when the trusted committed
-profile selects it for both `worktreeProjection` and `worktreeRegistration`. Branches, recovery refs,
-reflogs, peer registrations, objects, and every other cleanup target remain retained.
+Profiles retain cleanup targets by default. A trusted profile may select paired `quarantine` or `remove-clean`
+modes. Clean removal requires a fresh inventory without modified, hidden, ignored, or untracked bytes and a
+complete open-file/process-CWD scan before no-force `git worktree remove`. Dirty or uncertain bytes use
+recoverable quarantine; active readers or incomplete scans block. Both modes retain branches, refs, reflogs,
+peer registrations, and objects.
 
-Preservation and no-value records are local structural observations, not independent provider credentials.
-Their exact digests are bound transitively by the live-authenticated retirement plan:
-`parametersDigest -> cleanup plan bytes -> evidence digests`. The eligibility digest is explicit local
-executor confirmation, not provider authority. Eligibility and execution both require immediate live replay
-of the exact integrate and retire CAS winners and byte-equality with the supplied deterministic receipts.
+Preservation and no-value digests bind through the live-authenticated retirement plan:
+`parametersDigest -> cleanup plan bytes -> evidence digests`. The eligibility digest is local executor
+confirmation, not provider authority. Eligibility and execution replay exact integrate and retire CAS winners
+and receipts.
 
-The observer rechecks trusted profile, canonical revision, dirty inventory, admin, peers, refs, reflogs, and
-objects. Alternates fail closed. Plans set byte and entry ceilings; no-follow reads recheck file identity.
+The observer binds profile and canonical revision and inventories the target, admin, peers, refs, reflogs, and
+objects. Alternates fail closed; bounded no-follow reads recheck file identity.
 
-Execution holds the clone-common operation lock and journals before effects. It renames the exact projection
-into clone-private quarantine, proves the now-missing projection registration is exactly prunable, then
-renames only that admin registration. These two renames are crash-recoverable, not atomic. The executor never
-starts the journal or first rename after expiry; after the first rename it finishes that bounded journaled
-operation or retains the partial coordinate. It never calls worktree remove/prune, updates refs, runs garbage
-collection, deletes bytes, or quarantines canonical.
+Under the clone-common lock, execution replays winners before effects. Clean removal rechecks inventory and
+proves the exact target/admin absent with refs, peers, and objects unchanged. Quarantine journals and renames
+only the projection and exact prunable admin registration; these two renames are crash-recoverable, not atomic.
+Neither mode prunes refs, alters branches, runs garbage collection, or targets canonical.
 
-Replay requires both quarantines and shared state to match. Partial or drifting coordinates stay retained and
-blocked. `operatingSystemExclusivityProven:false` disclaims exclusion of uncooperative same-user processes.
+Replay requires quarantine and shared state to match. Partial or drifting coordinates stay blocked.
+`operatingSystemExclusivityProven:false` disclaims uncooperative same-user process exclusion.

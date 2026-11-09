@@ -9,7 +9,7 @@ export const OPERATIONS = Object.freeze(['claim', 'continue', 'integrate', 'reti
 const PROFILE_CAPABILITIES = new Set((
   'deep-byte-audit-opt-in history:linear host-qualified-repository-pin integration-method:squash integration-method:squash-preferred ' +
   'protected-integration:pull-request read-only-repository-observation read-only-review-observation ' +
-  'governed-branch-retirement quarantine-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +
+  'governed-branch-retirement quarantine-worktree-cleanup-opt-in remove-clean-worktree-cleanup-opt-in required-check-policy:strict retain-all-cleanup ' +
   'shallow-observation-default tested-protected-ordering:merge-queue'
 ).split(' '));
 const PROVIDER_BOUND_CAPABILITIES = new Set((
@@ -116,11 +116,12 @@ function strings(value, label, { nonempty = false } = {}) {
 }
 function cleanup(value = RETAIN_ALL_CLEANUP) {
   exactKeys(value, CLEANUP_KEYS, 'cleanup');
-  const quarantineKeys = ['worktreeProjection', 'worktreeRegistration'];
+  const worktreeKeys = ['worktreeProjection', 'worktreeRegistration'];
   for (const key of CLEANUP_KEYS) if (value[key] !== 'retain'
-    && (!quarantineKeys.includes(key) || value[key] !== 'quarantine'))
+    && (!worktreeKeys.includes(key) || !['quarantine', 'remove-clean'].includes(value[key])))
     fail(`cleanup.${key} selects an unsupported effect`);
-  if ((value.worktreeProjection === 'quarantine') !== (value.worktreeRegistration === 'quarantine')) fail('cleanup quarantine requires exact projection and registration opt-in');
+  if (value.worktreeProjection !== value.worktreeRegistration)
+    fail('cleanup requires exact projection and registration policies to match');
   return { ...value };
 }
 function branchRetirement(value) {
@@ -367,13 +368,16 @@ function profilePayload(input) {
   const cleanupPolicy = cleanup(source.cleanup);
   const branchRetirementPolicy = branchRetirement(source.branchRetirement);
   const cleanupCapability = Object.values(cleanupPolicy).every((value) => value === 'retain')
-    ? 'retain-all-cleanup' : 'quarantine-worktree-cleanup-opt-in';
+    ? 'retain-all-cleanup'
+    : cleanupPolicy.worktreeProjection === 'remove-clean'
+      ? 'remove-clean-worktree-cleanup-opt-in' : 'quarantine-worktree-cleanup-opt-in';
   const requestedCapabilities = strings(source.capabilities ?? [], 'capabilities');
-  const conflicting = cleanupCapability === 'retain-all-cleanup'
-    ? 'quarantine-worktree-cleanup-opt-in' : 'retain-all-cleanup';
-  if (requestedCapabilities.includes(conflicting)) fail('cleanup capability conflicts with selected effects');
-  const capabilities = strings([...requestedCapabilities.filter((value) => value !== conflicting
-    && value !== cleanupCapability), cleanupCapability], 'capabilities');
+  const cleanupCapabilities = ['retain-all-cleanup', 'quarantine-worktree-cleanup-opt-in',
+    'remove-clean-worktree-cleanup-opt-in'];
+  if (requestedCapabilities.some((capability) => cleanupCapabilities.includes(capability)
+    && capability !== cleanupCapability)) fail('cleanup capability conflicts with selected effects');
+  const capabilities = strings([...requestedCapabilities.filter((value) =>
+    !cleanupCapabilities.includes(value)), cleanupCapability], 'capabilities');
   if (branchRetirementPolicy !== null
     && Object.entries(branchRetirementPolicy).some(([key, value]) => value !== 'retain')
     && !capabilities.includes('governed-branch-retirement'))

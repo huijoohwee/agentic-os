@@ -6,8 +6,9 @@ export const WORKTREE_CLEANUP_PLAN_SCHEMA = 'agentic-os/worktree-cleanup-plan/v1
 export const CLEANUP_EVIDENCE_SCHEMA = 'agentic-os/cleanup-evidence-receipt/v1';
 export const WORKTREE_CLEANUP_CONTINUATION_SCHEMA = 'agentic-os/worktree-cleanup-continuation/v1';
 export const WORKTREE_CLEANUP_ELIGIBILITY_SCHEMA = 'agentic-os/worktree-cleanup-eligibility/v1';
-export const WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v1';
-export const WORKTREE_CLEANUP_ADAPTER = Object.freeze({ id: 'git-worktree-quarantine', version: '1' });
+export const WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v2';
+export const LEGACY_WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v1';
+export const WORKTREE_CLEANUP_ADAPTER = Object.freeze({ id: 'git-worktree-cleanup', version: '1' });
 export const SUCCESSOR_PRESERVATION_SCHEMA = 'agentic-os/successor-preservation-receipt/v1';
 export const SUCCESSOR_PRESERVATION_PLAN_SCHEMA = 'agentic-os/successor-preservation-plan/v1';
 export const CURRENT_QUARANTINE_SCHEMA = 'agentic-os/current-quarantine-retention-receipt/v1';
@@ -17,12 +18,13 @@ export const CURRENT_QUARANTINE_RECONCILIATION_SCHEMA = 'agentic-os/current-quar
 export const UNPUBLISHED_LANE_ABANDONMENT_PLAN_SCHEMA = 'agentic-os/unpublished-lane-abandonment-plan/v1';
 export const UNPUBLISHED_LANE_ABANDONMENT_RECEIPT_SCHEMA = 'agentic-os/unpublished-lane-abandonment-receipt/v1';
 export const RECORD_ONLY_RETIREMENT_EFFECTS = Object.freeze(['record-retirement', 'retire-claim']);
-export const CLEANUP_EFFECTS = Object.freeze(['quarantine-worktree-projection', 'quarantine-worktree-registration']);
+export const CLEANUP_EFFECTS = Object.freeze(['git-worktree-remove-clean',
+  'quarantine-worktree-projection', 'quarantine-worktree-registration']);
 export const RETAINED_EFFECTS = Object.freeze(['delete-branch', 'delete-object', 'delete-ref',
   'delete-reflog', 'force-push', 'prune-peer-registration', 'remove-directory-bytes']);
 export const INTEGRATION_RECORD_EFFECTS = Object.freeze(['record-integration', 'verify-exact-integration']);
 export const INTEGRATION_RECORD_RETAINED_EFFECTS = Object.freeze(['cleanup', 'delete-branch',
-  'delete-object', 'delete-ref', 'delete-reflog', 'deploy', 'force-push', 'merge',
+  'delete-object', 'delete-ref', 'delete-reflog', 'deploy', 'force-push', 'git-worktree-remove-clean', 'merge',
   'prune-peer-registration', 'remove-directory-bytes']);
 export const RECORD_ONLY_RETIREMENT_RETAINED_EFFECTS = Object.freeze(
   [...new Set([...INTEGRATION_RECORD_RETAINED_EFFECTS, ...CLEANUP_EFFECTS])].sort());
@@ -50,6 +52,12 @@ const QUARANTINE_POSTCONDITIONS = Object.freeze({
   targetPathExistsAfter: false, adminBytesRetained: true, branchMutationAttempted: false,
   objectMutationAttempted: false, directoryByteRemovalAttempted: false,
   operatingSystemExclusivityProven: false, result: 'quarantined',
+});
+const REMOVE_CLEAN_POSTCONDITIONS = Object.freeze({
+  registeredBefore: true, registeredAfter: false, targetPathExistsBefore: true,
+  targetPathExistsAfter: false, adminBytesRetained: false, branchMutationAttempted: false,
+  objectMutationAttempted: false, directoryByteRemovalAttempted: true,
+  operatingSystemExclusivityProven: false, result: 'removed-clean',
 });
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
@@ -84,6 +92,9 @@ function absolute(value, label) {
   if (resolve(result) !== result || result === '/' || basename(result) === '')
     fail(`${label} must be one normalized absolute path`);
   return result;
+}
+function absoluteOrNull(value, label) {
+  return value === null ? null : absolute(value, label);
 }
 function bound(value, maximum, label) {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum)
@@ -248,7 +259,9 @@ export const validateWorktreeCleanupEligibility = value =>
   canonicalRecord(value, createWorktreeCleanupEligibility, 'worktree cleanup eligibility', 'cleanup eligibility is not canonical');
 export function createWorktreeCleanupReceipt(input) {
   const source = snap(input), keys = ['schema', 'adapter', 'cleanupPlanDigest', 'eligibilityDigest',
-    'integrationPlanByteDigest', 'targetPath', 'projectionQuarantinePath',
+    'integrationPlanByteDigest', 'targetPath', 'expectedBranch', 'expectedHeadRevision',
+    'cleanRemovalEligible',
+    'projectionQuarantinePath',
     'registrationQuarantinePath', 'projectionManifestDigest', 'projectionBytes', 'projectionEntries',
     'registrationManifestDigest', 'registrationBytes', 'registrationEntries',
     'recoveryInventoryDigest', 'profileDigest', 'canonicalRevision', 'recoveryInventoryContentEntries',
@@ -266,7 +279,12 @@ export function createWorktreeCleanupReceipt(input) {
     ...typedFields(source, 'cleanupPlanDigest eligibilityDigest integrationPlanByteDigest projectionManifestDigest ' +
       'registrationManifestDigest recoveryInventoryDigest profileDigest peerRegistrationDigest ' +
       'sharedRefDigest objectInventoryDigest', digest),
-    ...typedFields(source, 'targetPath projectionQuarantinePath registrationQuarantinePath', absolute),
+    targetPath: absolute(source.targetPath, 'targetPath'),
+    expectedBranch: text(source.expectedBranch, 'expectedBranch'),
+    expectedHeadRevision: revision(source.expectedHeadRevision, 'expectedHeadRevision'),
+    cleanRemovalEligible: source.cleanRemovalEligible,
+    projectionQuarantinePath: absoluteOrNull(source.projectionQuarantinePath, 'projectionQuarantinePath'),
+    registrationQuarantinePath: absoluteOrNull(source.registrationQuarantinePath, 'registrationQuarantinePath'),
     ...typedFields(source, 'projectionBytes sharedStateBytes', bounded(MAX_PROJECTION_BYTES)),
     projectionEntries: bound(source.projectionEntries, MAX_PROJECTION_ENTRIES,
       'projectionEntries'),
@@ -278,7 +296,13 @@ export function createWorktreeCleanupReceipt(input) {
     canonicalRevision: revision(source.canonicalRevision, 'canonicalRevision'),
     ...Object.fromEntries(Object.keys(QUARANTINE_POSTCONDITIONS).map(key => [key, source[key]])),
     executedAt: instant(source.executedAt, 'executedAt') };
-  if (Object.entries(QUARANTINE_POSTCONDITIONS).some(([key, expected]) => payload[key] !== expected))
+  const conditions = payload.result === 'removed-clean'
+    ? REMOVE_CLEAN_POSTCONDITIONS : QUARANTINE_POSTCONDITIONS;
+  if (Object.entries(conditions).some(([key, expected]) => payload[key] !== expected)
+    || payload.cleanRemovalEligible !== (payload.result === 'removed-clean')
+    || (payload.result === 'removed-clean'
+      ? payload.projectionQuarantinePath !== null || payload.registrationQuarantinePath !== null
+      : payload.projectionQuarantinePath === null || payload.registrationQuarantinePath === null))
     fail('cleanup receipt postconditions are invalid');
   return signedRecord(source, payload, 'receiptDigest', 'receiptDigest', 'cleanup receipt digest is invalid');
 }
