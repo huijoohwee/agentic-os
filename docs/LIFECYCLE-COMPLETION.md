@@ -68,29 +68,24 @@ after expiry, but that replay authorizes no new effect.
 
 ## Clean removal and dirty worktree quarantine
 
-Profiles retain every cleanup target by default. A trusted profile may select `quarantine` or prefer
-`remove-clean` for both `worktreeProjection` and `worktreeRegistration`. The clean route requires a fresh
-inventory with no modified, hidden, ignored, or untracked bytes and a complete open-file and process-CWD
-scan before it calls Git's `worktree remove` without `--force`. Local-only or uncertain bytes take the
-recoverable quarantine route; active readers or an incomplete reader scan block cleanup. Both routes retain
-branches, recovery refs, reflogs, peer registrations, objects, and every other cleanup target.
+Profiles retain cleanup targets by default. A trusted profile may select paired `quarantine` or `remove-clean`
+modes. Clean removal requires a fresh inventory without modified, hidden, ignored, or untracked bytes and a
+complete open-file/process-CWD scan before no-force `git worktree remove`. Dirty or uncertain bytes use
+recoverable quarantine; active readers or incomplete scans block. Both modes retain branches, refs, reflogs,
+peer registrations, and objects.
 
-Preservation and no-value records are local structural observations, not independent provider credentials.
-Their exact digests are bound transitively by the live-authenticated retirement plan:
-`parametersDigest -> cleanup plan bytes -> evidence digests`. The eligibility digest is explicit local
-executor confirmation, not provider authority. Eligibility and execution both require immediate live replay
-of the exact integrate and retire CAS winners and byte-equality with the supplied deterministic receipts.
+Preservation and no-value digests bind through the live-authenticated retirement plan:
+`parametersDigest -> cleanup plan bytes -> evidence digests`. The eligibility digest is local executor
+confirmation, not provider authority. Eligibility and execution replay exact integrate and retire CAS winners
+and receipts.
 
-The observer rechecks trusted profile, canonical revision, dirty inventory, admin, peers, refs, reflogs, and
-objects. Alternates fail closed. Plans set byte and entry ceilings; no-follow reads recheck file identity.
+The observer binds profile and canonical revision and inventories the target, admin, peers, refs, reflogs, and
+objects. Alternates fail closed; bounded no-follow reads recheck file identity.
 
-Execution holds the clone-common operation lock and replays the exact integrate and retire receipts before
-effects. Clean removal rechecks the inventory, then verifies the exact path and registration are gone while
-branch refs, shared refs, peers, and objects match their pre-effect manifests. Dirty or uncertain cleanup
-journals before renaming the exact projection into clone-private quarantine, then proves the missing
-projection registration is exactly prunable and renames only that admin registration. The two quarantine
-renames are crash-recoverable, not atomic. Neither route prunes worktrees, updates branch refs, runs garbage
-collection, or targets canonical.
+Under the clone-common lock, execution replays winners before effects. Clean removal rechecks inventory and
+proves the exact target/admin absent with refs, peers, and objects unchanged. Quarantine journals and renames
+only the projection and exact prunable admin registration; these two renames are crash-recoverable, not atomic.
+Neither mode prunes refs, alters branches, runs garbage collection, or targets canonical.
 
-Replay requires both quarantines and shared state to match. Partial or drifting coordinates stay retained and
-blocked. `operatingSystemExclusivityProven:false` disclaims exclusion of uncooperative same-user processes.
+Replay requires quarantine and shared state to match. Partial or drifting coordinates stay blocked.
+`operatingSystemExclusivityProven:false` disclaims uncooperative same-user process exclusion.

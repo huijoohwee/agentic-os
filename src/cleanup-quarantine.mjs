@@ -92,7 +92,7 @@ function trustedState(plan, cwd) {
     || profile.cleanup?.worktreeRegistration !== cleanupMode
     || Object.entries(profile.cleanup).some(([key, value]) =>
       !['worktreeProjection', 'worktreeRegistration'].includes(key) && value !== 'retain'))
-    fail('blocked-cleanup-profile', 'trusted profile does not select one supported worktree cleanup policy');
+    fail('blocked-cleanup-profile', 'trusted profile does not opt in to one supported worktree cleanup policy');
   return { root, trust, profile, canonicalRevision: observed.revision };
 }
 /** Observe the exact active projection, dirty recovery inventory, policy, refs, and admin bytes. */
