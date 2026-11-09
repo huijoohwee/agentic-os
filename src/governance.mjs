@@ -121,7 +121,7 @@ function cleanup(value = RETAIN_ALL_CLEANUP) {
     && (!worktreeKeys.includes(key) || !['quarantine', 'remove-clean'].includes(value[key])))
     fail(`cleanup.${key} selects an unsupported effect`);
   if (value.worktreeProjection !== value.worktreeRegistration)
-    fail('cleanup requires one matching projection and registration policy');
+    fail('cleanup requires exact projection and registration policies to match');
   return { ...value };
 }
 function branchRetirement(value) {
