@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
-import { canonicalJson, governanceDigest, RETAIN_ALL_CLEANUP } from './governance.mjs';
+import { canonicalJson, governanceDigest } from './governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef, resolveRepositoryRoot } from './git-repository.mjs';
 import { validateAuthenticatedTransitionOperationReceipt } from './completion.mjs';
 import { collectRecoveryInventory } from './recovery-inventory.mjs';
@@ -86,8 +86,13 @@ function trustedState(plan, cwd) {
   const observed = observeRepositoryProfileAtRef({ repository: root, ref: trust.canonical.localRef });
   const profile = observed.profile;
   if (!profile || trust.repository !== plan.repository || profile.repository !== plan.repository || trust.canonical.localRef !== plan.expectedCanonicalRef || profile.canonical.localRef !== plan.expectedCanonicalRef || profile.canonical.remoteRef !== trust.canonical.remoteRef || observed.revision !== plan.expectedCanonicalRevision || profile.profileDigest !== plan.profileDigest) fail('blocked-cleanup-profile', 'trusted repository, profile, or canonical ref changed');
-  const expectedCleanup = { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine', worktreeRegistration: 'quarantine' };
-  if (!same(profile.adapters.repository, { id: 'git', version: '1' }) || !same(profile.cleanup, expectedCleanup)) fail('blocked-cleanup-profile', 'trusted profile does not opt in to exact quarantine effects');
+  const cleanupMode = profile.cleanup?.worktreeProjection;
+  if (!same(profile.adapters.repository, { id: 'git', version: '1' })
+    || !['quarantine', 'remove-clean'].includes(cleanupMode)
+    || profile.cleanup?.worktreeRegistration !== cleanupMode
+    || Object.entries(profile.cleanup).some(([key, value]) =>
+      !['worktreeProjection', 'worktreeRegistration'].includes(key) && value !== 'retain'))
+    fail('blocked-cleanup-profile', 'trusted profile does not select one supported worktree cleanup policy');
   return { root, trust, profile, canonicalRevision: observed.revision };
 }
 /** Observe the exact active projection, dirty recovery inventory, policy, refs, and admin bytes. */
@@ -115,8 +120,35 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   const admin = adminFor(plan.targetPath, common, plan.sharedStateEntryCeiling);
   const projectionManifest = observeQuarantineManifest(plan.targetPath, { byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling, retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery' }), registrationManifest = observeRegistrationManifest(admin.adminPath, { byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling });
   const shared = sharedState(common, entries, admin.id, plan);
-  const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries, projectionManifest, registrationManifest, ...shared };
+  const cleanRemovalEligible = Boolean(recoveryInventory)
+    && observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: plan.targetPath }) === ''
+    && recoveryInventory.inventoryEntries.visibleUntracked === 0
+    && recoveryInventory.inventoryEntries.ignoredRuntime === 0
+    && recoveryInventory.inventoryEntries.hidden === 0;
+  const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, cleanupMode: trusted.profile.cleanup?.worktreeProjection ?? 'quarantine', cleanRemovalEligible, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries, projectionManifest, registrationManifest, ...shared };
   return frozen({ ...base, observationDigest: governanceDigest(base) });
+}
+
+/** Verify Git-native clean removal changed only the exact checkout and its admin registration. */
+export function verifyCleanWorktreeRemoval(plan, before, { cwd = process.cwd() } = {}) {
+  const controller = resolveRepositoryRoot(cwd), common = realpathSync(commonDir(controller));
+  if (common !== before.commonDirectory || !absent(plan.targetPath, 'clean-removal-target')
+    || !absent(before.adminPath, 'clean-removal-registration'))
+    fail('blocked-clean-removal-postcondition', 'Git did not remove only the exact worktree and registration');
+  const entries = worktreeInventory(controller), retainedHead = observeGit(
+    ['rev-parse', '--verify', `refs/heads/${plan.expectedBranch}^{commit}`],
+    { cwd: controller, allowFail: true });
+  if (entries.some((entry) => entry.path === plan.targetPath)
+    || retainedHead !== plan.expectedHeadRevision)
+    fail('blocked-clean-removal-postcondition', 'worktree registration or branch ref changed unexpectedly');
+  const shared = sharedState(common, entries, null, plan);
+  if (shared.peerRegistrationDigest !== before.peerRegistrationDigest
+    || shared.sharedRefDigest !== before.sharedRefDigest
+    || shared.objectInventoryDigest !== before.objectInventoryDigest
+    || shared.sharedStateBytes !== before.sharedStateBytes
+    || shared.sharedStateEntries !== before.sharedStateEntries)
+    fail('blocked-clean-removal-postcondition', 'peer registrations, shared refs, or Git objects changed');
+  return true;
 }
 function privateDirectory(path, label) { const stat = strictStat(path, label); if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`); }
 function readOperation(path, eligibility = null) {

@@ -66,11 +66,14 @@ The deterministic receipt advances the lease by exactly one and uses the CAS coo
 observation time is not hashed into the semantic receipt. Existing immutable winners can be reconstructed
 after expiry, but that replay authorizes no new effect.
 
-## Dirty worktree quarantine
+## Clean removal and dirty worktree quarantine
 
-Profiles retain every cleanup target by default. Quarantine is reachable only when the trusted committed
-profile selects it for both `worktreeProjection` and `worktreeRegistration`. Branches, recovery refs,
-reflogs, peer registrations, objects, and every other cleanup target remain retained.
+Profiles retain every cleanup target by default. A trusted profile may select `quarantine` or prefer
+`remove-clean` for both `worktreeProjection` and `worktreeRegistration`. The clean route requires a fresh
+inventory with no modified, hidden, ignored, or untracked bytes and a complete open-file and process-CWD
+scan before it calls Git's `worktree remove` without `--force`. Local-only or uncertain bytes take the
+recoverable quarantine route; active readers or an incomplete reader scan block cleanup. Both routes retain
+branches, recovery refs, reflogs, peer registrations, objects, and every other cleanup target.
 
 Preservation and no-value records are local structural observations, not independent provider credentials.
 Their exact digests are bound transitively by the live-authenticated retirement plan:
@@ -81,12 +84,13 @@ of the exact integrate and retire CAS winners and byte-equality with the supplie
 The observer rechecks trusted profile, canonical revision, dirty inventory, admin, peers, refs, reflogs, and
 objects. Alternates fail closed. Plans set byte and entry ceilings; no-follow reads recheck file identity.
 
-Execution holds the clone-common operation lock and journals before effects. It renames the exact projection
-into clone-private quarantine, proves the now-missing projection registration is exactly prunable, then
-renames only that admin registration. These two renames are crash-recoverable, not atomic. The executor never
-starts the journal or first rename after expiry; after the first rename it finishes that bounded journaled
-operation or retains the partial coordinate. It never calls worktree remove/prune, updates refs, runs garbage
-collection, deletes bytes, or quarantines canonical.
+Execution holds the clone-common operation lock and replays the exact integrate and retire receipts before
+effects. Clean removal rechecks the inventory, then verifies the exact path and registration are gone while
+branch refs, shared refs, peers, and objects match their pre-effect manifests. Dirty or uncertain cleanup
+journals before renaming the exact projection into clone-private quarantine, then proves the missing
+projection registration is exactly prunable and renames only that admin registration. The two quarantine
+renames are crash-recoverable, not atomic. Neither route prunes worktrees, updates branch refs, runs garbage
+collection, or targets canonical.
 
 Replay requires both quarantines and shared state to match. Partial or drifting coordinates stay retained and
 blocked. `operatingSystemExclusivityProven:false` disclaims exclusion of uncooperative same-user processes.

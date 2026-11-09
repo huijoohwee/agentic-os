@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.10"
-date: "2026-11-03"
+version: "1.4.11"
+date: "2026-11-09"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.10"
-tad_revision: "1.4.10"
-adr_revision: "1.4.10"
+prd_revision: "1.4.11"
+tad_revision: "1.4.11"
+adr_revision: "1.4.11"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -20,8 +20,8 @@ agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "f2caf5a852348768b84bca9be3dc5cc511a9eb37"
-mvp_revision: "1.4.10"
-gtm_revision: "1.4.10"
+mvp_revision: "1.4.11"
+gtm_revision: "1.4.11"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -45,10 +45,14 @@ directory move on the same filesystem; this remains separate from worktree clean
 
 ## TAD: separate admission, shared preservation machinery
 
-`bin/agentic-os-cleanup-user.mjs` owns worktree cleanup admission, plans, authorization and receipts.
-`bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. The existing quarantine
-mechanics take an internal policy observer; protected cleanup never forwards caller-supplied policy
-overrides and still requires its authenticated integration/retirement joins. This is not a fallback.
+`bin/agentic-os-cleanup-user.mjs` owns explicit local-consent cleanup admission, plans, authorization and
+receipts. `bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. Protected cleanup
+continues to require authenticated integration/retirement joins and reads only the committed profile. A
+profile may prefer `remove-clean`: if a fresh inventory has no modified, hidden, ignored, or untracked
+bytes, the shared owner scans for open files and process working directories, then calls `git worktree
+remove` without `--force`. An active reader or incomplete reader scan blocks cleanup; local-only bytes or an
+uncertain byte inventory use the existing recoverable quarantine. The receipt names the observed route.
+The explicit local-consent and historical-recovery modes remain quarantine-only.
 The cleanup command's reader guard uses recursive descriptor scans for files and one process-CWD snapshot
 for directories, including a working directory whose tree has already been unlinked. Missing caller
 evidence or scan errors block removal; canonical path resolution prevents symlink aliases from evading
@@ -344,11 +348,13 @@ This hashes retained Git objects for preservation proof; it is not a full behavi
 fail closed, not truncate or automatically raise limits. No dependencies or src modules are added.
 Always-load routing remains 40,632 bytes; the runtime prompt remains 999 bytes.
 
-The existing journal is written before the two recoverable renames: exact worktree projection, then its
-exact prunable admin registration. No `git worktree remove/prune`, branch/ref deletion, GC or byte deletion.
-Canonical files and ignored artifacts are untouched. Keep the returned projection and registration paths;
-these preserve original bytes, not a runnable relocated checkout. Restoration requires deliberate native
-recovery with backlinks and registrations reconciled, not blindly executing the quarantined directory.
+The explicit local-consent journal is written before the two recoverable renames: exact worktree projection,
+then its exact prunable admin registration. That mode never calls `git worktree remove/prune`, deletes a
+branch/ref, runs GC, or deletes bytes. Canonical files and ignored artifacts are untouched. Keep the returned
+projection and registration paths; they preserve original bytes, not a runnable relocated checkout.
+Restoration requires deliberate native recovery with backlinks and registrations reconciled, not blindly
+executing the quarantined directory. The profile-governed `remove-clean` route is separate and accepts only
+the exact clean inventory described above; branch refs and shared Git objects remain retained.
 
 On response loss, the identical plan/authorization can reobserve a fully completed coordinate while all
 bound state remains unchanged, even after expiry; this performs no new rename. Partial journals or drift
