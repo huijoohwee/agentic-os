@@ -15,9 +15,10 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-test('the recovered canonical predecessor is explicitly release-pinned', () => {
+test('known canonical predecessors are explicitly release-pinned', () => {
   const source = readFileSync(new URL('../bin/agentic-os-hook-runtime.mjs', import.meta.url), 'utf8');
   assert.match(source, /v1-5c9e1df231a5133bdcba5cf0af0ffaf24aa51e8f0f5705e496a5c0299959271c/u);
+  assert.match(source, /v1-7955e465f8ea0a23e179272df4ddadfd70ccb3baf0e2cd0893678e4943d2d171/u);
 });
 
 for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context', 'pre-alignment', 'pre-core']) test(released
