@@ -378,10 +378,23 @@ for (const invalid of [{ bytesDiffer: true }, { path: '../base.txt' }]) test(`re
   assert.equal(existsSync(subject.lane), true);
 });
 
-test('retire-empty-active refuses a handoff path still reserved by another active lane', t => {
+test('retire-empty-active ignores an unmounted stale reservation when releasing unchanged paths', t => {
   const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject);
   put({ ref: 'agent/test-device/other', device: 'test-device', scope: 'other', state: 'active', base: 'refs/remotes/origin/main',
     baseSha: subject.base, worktree: join(dirname(subject.lane), 'other'), pr: null, createdAt: new Date(0).toISOString(), writePaths: ['base.txt'] }, subject.root);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(subject.lane), false);
+});
+
+test('retire-empty-active refuses a handoff path still reserved by another mounted lane', t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject), otherRef = 'agent/test-device/other', otherLane = join(dirname(subject.lane), 'other');
+  git(['worktree', 'add', '--quiet', '-b', otherRef, otherLane, 'main'], { cwd: subject.root });
+  put({ ref: otherRef, device: 'test-device', scope: 'other', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: otherLane, pr: null, createdAt: new Date(0).toISOString(), writePaths: ['base.txt'] }, subject.root);
   put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
     baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
     writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
