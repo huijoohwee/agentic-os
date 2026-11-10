@@ -517,6 +517,10 @@ archive retention, no integration or supersession claim, and `cleanupSatisfied: 
 Then finish the enclosing wrapper with its own `complete-adlc --cleanup --stopped` plan and receipt. Abandonment
 does not authorize branch deletion or quarantine retirement.
 
+The streamed projection manifest is bounded by the existing recovery limits of 4 GiB and 250,000 entries. The
+registration manifest is bounded by 16 MiB and 20,000 entries, and shared-state observation remains bounded by
+256 MiB and 100,000 entries. Any exceeded bound blocks the operation; there is no per-run override.
+
 ### Auto-derive placeholders (`completion:scaffold --derive`)
 
 Pre-fills the lane inventory and a 15-minute expiry. Fill the listed evidence fields: integration and retirement operation inputs, workflow run records, transition receipts, and preservation/no-value receipts. If the authority repository or transition policy is not already known locally, the scaffold also lists those verifier fields.
