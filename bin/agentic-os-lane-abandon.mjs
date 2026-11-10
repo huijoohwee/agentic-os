@@ -21,12 +21,16 @@ import { privateDirectoryIdentity, assertPrivateDirectoryIdentity, readPrivateFi
   writePrivateFileExclusive } from '../src/file-integrity.mjs';
 import { createUnpublishedLaneAbandonmentPlan, createUnpublishedLaneAbandonmentReceipt,
   validateUnpublishedLaneAbandonmentPlan, validateUnpublishedLaneAbandonmentReceipt } from '../src/cleanup-records.mjs';
+import { RECOVERY_LIMITS } from './agentic-os-cleanup-recovery.mjs';
 
 const PLAN_SCHEMA = 'agentic-os/unpublished-lane-abandonment-plan/v1';
 const RECEIPT_DIRECTORY = 'agentic-os-unpublished-lane-abandonments';
 const MODE = 'explicit-local-user-consent-recovery';
-const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 ** 2, projectionEntryCeiling: 10_000,
-  registrationByteCeiling: 16 * 1024 ** 2, registrationEntryCeiling: 10_000,
+const LIMITS = Object.freeze({
+  projectionByteCeiling: RECOVERY_LIMITS.projectionByteCeiling,
+  projectionEntryCeiling: RECOVERY_LIMITS.projectionEntryCeiling,
+  registrationByteCeiling: RECOVERY_LIMITS.registrationByteCeiling,
+  registrationEntryCeiling: RECOVERY_LIMITS.registrationEntryCeiling,
   sharedStateByteCeiling: 256 * 1024 ** 2, sharedStateEntryCeiling: 100_000 });
 const SHA256 = value => createHash('sha256').update(value).digest('hex');
 const same = (a, b) => canonicalJson(a) === canonicalJson(b);

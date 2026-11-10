@@ -2,7 +2,7 @@
 schema: agentic-os/prd-tad-adr-mvp-gtm/v1
 title: Unpublished lane abandonment with recoverable quarantine
 doc_type: PRD-TAD-ADR-MVP-GTM
-version: 1.0.0
+version: 1.1.0
 owner: agentic-os
 ---
 # Unpublished lane abandonment
@@ -24,6 +24,9 @@ let closeout release the workflow allocation only after it verifies the archive 
   a stopped-writer scan, and a receipt.
 - Move projection and registration into the clone-private quarantine. Preserve dirty, untracked, ignored, and indexed
   bytes; change no Git refs, object database, provider state, or deployment state.
+- Reuse the established recovery bounds for projection (4 GiB/250,000 entries) and registration
+  (16 MiB/20,000 entries). Keep shared-state observation bounded at 256 MiB/100,000 entries; stream manifests and
+  fail closed at each limit. Do not add per-invocation cap overrides.
 - Raise only the existing lane-cache aggregate-string ceiling to 415,000 bytes so the current 399,770-byte cache
   can admit its exact lane record. Keep string interning and all entry/file limits unchanged; add no cache eviction.
 - Verify the retained quarantine and exact branch ref before closeout reports abandonment complete. Keep
