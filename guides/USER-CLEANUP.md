@@ -464,6 +464,10 @@ agentic-os cleanup-user sweep --stale-older-than=<days> [--merged] [--no-active-
 
 Each candidate still requires explicit `--authorize=<plan-digest>` and `--stopped` to apply, same as individual `cleanup-user plan/apply`.
 
+### Retire an empty active lane with released paths
+
+From clean, current canonical `main`, run `agentic-os release-common retire-empty-active --ref=<lane>` only after its writer has stopped. The lane must still equal its admitted base with no candidate or PR. A prior reservation handoff is accepted only when every release is exact, digest-valid, unchanged at that base, and disjoint from remaining paths; the receipt binds the release-list digest. Checkout files and refs remain recoverable, and this grants no review, integration, provider, deployment, branch-deletion or claim-retirement authority.
+
 ### Verified workflow allocation release
 
 After `completion status` reports `missionState: source_complete`, `cleanupSatisfied: true`, and an unmounted

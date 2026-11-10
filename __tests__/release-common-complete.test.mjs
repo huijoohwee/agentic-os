@@ -10,7 +10,7 @@ import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
-import { createRepositoryProfile } from '../src/governance.mjs';
+import { createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
 import { removeInactiveProgressiveCompletionTarget } from '../src/cleanup.mjs';
 import {
   resolveProgressiveCleanupRequest,
@@ -228,6 +228,14 @@ function retireEmptyActive(subject) {
   });
 }
 
+function exactReservationRelease(subject, overrides = {}) {
+  const [mode, type, oid] = git(['ls-tree', '--format=%(objectmode) %(objecttype) %(objectname)', subject.base, '--', 'base.txt'], { cwd: subject.root }).split(' ');
+  const entry = { mode, type, oid }, body = { schema: 'agentic-os/reservation-path-release/v1', path: 'base.txt',
+    laneHead: subject.base, protectedHead: subject.base, lanePathEntry: entry, protectedPathEntry: { ...entry }, bytesDiffer: false, ...overrides };
+  const { digest: _ignored, ...unsigned } = body;
+  return { ...body, digest: governanceDigest(unsigned) };
+}
+
 test('watch reports changed review progress and succeeds on merge', async () => {
   const timer = clock();
   const states = ['OPEN', 'OPEN', 'MERGED'];
@@ -346,6 +354,40 @@ test('retire-empty-active accepts a recorded head that exactly equals its admitt
   const result = retireEmptyActive(subject);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(existsSync(subject.lane), false);
+});
+
+test('retire-empty-active accepts only unchanged, exact handoff releases and records their digest', t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = result.stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line))
+    .find(value => value.schema === 'agentic-os/empty-active-lane-retirement-receipt/v1');
+  assert.equal(receipt.reservationReleaseDigest, governanceDigest([evidence]));
+});
+
+for (const invalid of [{ bytesDiffer: true }, { path: '../base.txt' }]) test(`retire-empty-active rejects invalid release evidence ${JSON.stringify(invalid)}`, t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject, invalid);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 1); assert.match(result.stderr, /blocked-empty-active-lane-retirement-handoff/u);
+  assert.equal(existsSync(subject.lane), true);
+});
+
+test('retire-empty-active refuses a handoff path still reserved by another active lane', t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject);
+  put({ ref: 'agent/test-device/other', device: 'test-device', scope: 'other', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: join(dirname(subject.lane), 'other'), pr: null, createdAt: new Date(0).toISOString(), writePaths: ['base.txt'] }, subject.root);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 1); assert.match(result.stderr, /blocked-empty-active-lane-retirement-handoff/u);
+  assert.equal(existsSync(subject.lane), true);
 });
 
 for (const mutation of ['candidate', 'dirty']) test(`retire-empty-active refuses a ${mutation} lane without cleanup`, (t) => {

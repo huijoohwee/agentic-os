@@ -308,18 +308,20 @@ test('workflow inference shares the pre-merge recovery boundary and ignores post
   s.pull.merged_at = '2026-09-13T00:00:00Z'; s.check.app.id = 999;
   assert.throws(infer, /check-ambiguous-or-missing/);
 });
-test('recovery ignores same-head push runs but still requires the selected pull-request run', t => {
+test('recovery ignores unrelated same-head runs but still requires the exact pull-request run', t => {
   const s = fixture(t), pushCheck = { ...s.check, id: 124, completed_at: '2026-09-12T23:59:30Z',
-    details_url: s.check.details_url.replace('/456/job/123', '/455/job/124') };
+    details_url: s.check.details_url.replace('/456/job/123', '/455/job/124') }, oldBranchCheck = { ...s.check, id: 125,
+    completed_at: '2026-09-12T23:59:20Z', details_url: s.check.details_url.replace('/456/job/123', '/457/job/125') };
   s.runsById.set(455, { ...s.run, id: 455, event: 'push' });
-  s.checks.check_runs.push(pushCheck); s.checks.total_count = 2;
+  s.runsById.set(457, { ...s.run, id: 457, head_branch: `${s.branch}-superseded` });
+  s.checks.check_runs.push(pushCheck, oldBranchCheck); s.checks.total_count = 3;
   assert.equal(inferMergedReviewWorkflow({ repository: 'example/GameXR', pr: 7,
     requiredChecks: ['test'] }, s.options), s.input.workflow);
   const plan = s.plan();
   assert.equal(plan.review.checks[0].checkId, 123);
   assert.equal(plan.review.checks[0].runId, 456);
 
-  s.checks.check_runs = [pushCheck]; s.checks.total_count = 1;
+  s.checks.check_runs = [pushCheck, oldBranchCheck]; s.checks.total_count = 2;
   assert.throws(s.plan, /check-not-successful/);
   assert.equal(existsSync(s.target), true);
 });
