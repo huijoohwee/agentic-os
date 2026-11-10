@@ -384,8 +384,10 @@ deployment, or historical authority.
 PRD E01: a clean lane that never acquired a candidate commit must have a native
 closure path so it does not remain mounted solely because publication requires a
 candidate. TAD E02: the route accepts only the exact active cache record with no
-head, PR, handoff or unresolved byte state; the mounted branch must equal its
-admitted base, and that base must remain in clean current canonical source. ADR
+head, PR or unresolved byte state. A handoff is accepted only when it contains
+solely exact unchanged reservation-path release evidence from the admitted base;
+released paths must be disjoint from live reservations. The mounted branch must
+equal its admitted base, retained in clean current canonical source. ADR
 E03: reuse the existing bounded quarantine mechanism for both projection and
 registration, preserving branch and object bytes; record a digest-bound local
 receipt and do not manufacture review, provider, integration, deployment or
