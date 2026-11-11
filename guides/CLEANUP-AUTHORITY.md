@@ -848,6 +848,24 @@ Budget: one exact v1 enrollment, one existing transition-workflow test, and this
 existing files changed, zero runtime modules, dependencies, or always-load bytes. Revert the protected
 policy update to remove this PR enrollment; source history and prior enrollments stay intact.
 
+## Current recovery enrollment — agentic-base PR #64 — 2026-11-11
+
+This enrollment records exact current facts for `github.com/huijoohwee/agentic-base`: base
+`8527c39363b01244d9d2586dbbb49ea2b1f2e2a7`, reviewed head
+`2a63790cc87dfd54e624c3a4bbb4de10c7cccdbb`, merge
+`1a756dc933cafb2b9590bb5ed7c84042aaed61ed`, and equal head/merge tree
+`ea64f8fc44294a6014d09af992f886ecd72ae0d5`. The exact review is
+<https://github.com/huijoohwee/agentic-base/pull/64>; its successful check context is `check`.
+
+The distinct scope is `recovery/current-historical-content/pr-64`. Historical protection,
+required-check policy, Ruleset Suite, and merge-method authority remain unproven. This enrollment
+creates no provider, integration, retirement, cleanup, sync, deployment, or rollback authority; each
+effect still requires its own exact plan, authorization, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow expectation, and this owner record;
+three existing files changed, under 3 KiB added, zero runtime modules, dependencies, or always-load
+bytes. Revert this exact enrollment while preserving source history and prior receipts.
+
 ## Current recovery enrollment — agentic-commerce-os PR #133 — 2026-10-16
 
 This enrollment binds repository `github.com/huijoohwee/agentic-commerce-os`, base
