@@ -6,6 +6,7 @@ START/RELEASE/DEPLOY workflow only.
 
 - Preserve authored bytes and live evidence; never infer authority from projections or passing checks.
 - Keep canonical read-only; use disjoint scoped lanes; never rebase a published lane.
+- Cross-repo tasks follow `docs/RELEASE-WORKFLOW.md`; AOS SSOT governs consumers without copied variants.
 - Compute integration with `npm run reap`; retirement and each cleanup effect need separate receipts.
 - Fix the owning source, remove replacements, honor budgets, and keep only contract-bound shims.
 
