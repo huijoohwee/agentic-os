@@ -1,9 +1,5 @@
 # Release workflow
 
-## Multi-repo
-Preflight once; one lane/PR/repo; batch checks and exact effect asks; merge deps first.
-Sync/cleanup once/repo; wait on exact events; recheck affected repo on drift.
-
 1. START: `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`.
 2. Work in its printed worktree. `npm run land -- --message="feat: ..."` commits and publishes.
    Required CI gates integration. Corrections fast-forward the same open, unqueued PR.
