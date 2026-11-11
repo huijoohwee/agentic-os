@@ -11,7 +11,7 @@ Guides: [authority](../guides/CLEANUP-AUTHORITY.md), [local](../guides/USER-CLEA
 - `agentic-os/adapters/github-transition-client` validates read-only Actions inputs and run names.
 - `agentic-os/adapters/github-transition-authority` prepares proof, publishes CAS, and replays winners.
 - `agentic-os/adapters/github-transition-policy` validates the committed exact-target policy.
-- `agentic-os/adapters/worktree-cleanup` assesses and executes quarantine-only cleanup.
+- `agentic-os/adapters/worktree-cleanup` assesses and executes exact worktree cleanup.
 
 Effect plans bind target, candidate, snapshot, predecessor, authority, closed effects and parameters.
 Requests cite `effect-plan:sha256:<planByteDigest>` once. Only live adapters authenticate GitHub with bound policy.
@@ -68,11 +68,10 @@ after expiry, but that replay authorizes no new effect.
 
 ## Clean removal and dirty worktree quarantine
 
-Profiles retain cleanup targets by default. A trusted profile may select paired `quarantine` or `remove-clean`
-modes. Clean removal requires a fresh inventory without modified, hidden, ignored, or untracked bytes and a
-complete open-file/process-CWD scan before no-force `git worktree remove`. Dirty or uncertain bytes use
-recoverable quarantine; active readers or incomplete scans block. Both modes retain branches, refs, reflogs,
-peer registrations, and objects.
+The Agentic OS profile selects paired `remove-clean`, retaining refs, reflogs, and objects. Cleanup remains
+separately authorized: fresh inventory and reader scans permit no-force removal only when clean; captured
+dirty bytes are quarantined, while uncertain state, active readers, or incomplete scans block. Cleanup runs
+no garbage collection; use incremental Git maintenance separately.
 
 Preservation and no-value digests bind through the live-authenticated retirement plan:
 `parametersDigest -> cleanup plan bytes -> evidence digests`. The eligibility digest is local executor
