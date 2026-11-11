@@ -361,6 +361,45 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   assert.equal(cleanup.nextAction.id, 'release-common-complete');
 });
 
+test('an exact no-op lane does not inherit the repository deployment obligation', () => {
+  const base = {
+    sourceIntegrated: true, canonicalCurrent: true, laneMounted: false, laneClean: null,
+    laneHead: true, quarantineProfile: true, quarantineObserved: true, deployBound: true,
+    changeClass: 'empty', localPolicyCandidate: false, findingCodes: [],
+  };
+  const empty = deriveCloseoutVerdict({ ...base, noSourceChanges: true });
+  assert.equal(empty.deliveryState, 'not-required');
+  assert.equal(empty.completionScope, 'source-only');
+  assert.equal(empty.adlcState, 'complete');
+  assert.equal(empty.nextAction, null);
+  assert.equal(empty.authorizesEffects, false);
+
+  const unproven = deriveCloseoutVerdict(base);
+  assert.equal(unproven.deliveryState, 'pending');
+  assert.equal(unproven.completionScope, 'delivery-bound');
+  assert.equal(unproven.adlcState, 'delivery_pending');
+});
+
+test('integrated source paths remain bound to the lane base after main advances', (t) => {
+  const subject = fixture(t), baseSha = subject.git(subject.root, 'rev-parse', 'HEAD');
+  writeFileSync(join(subject.lane, 'source.txt'), 'source change\n');
+  subject.git(subject.lane, 'add', '.'); subject.git(subject.lane, 'commit', '--quiet', '-m', 'source change');
+  const laneHead = subject.git(subject.lane, 'rev-parse', 'HEAD');
+  put({ ref: REF, state: 'integrated', base: 'refs/remotes/origin/main', baseSha,
+    head: laneHead, worktree: subject.lane, writePaths: ['source.txt'] }, subject.root);
+  subject.git(subject.root, 'merge', '--ff-only', REF);
+  writeFileSync(join(subject.root, '.agentic-os-flight.json'), '{"operations":["production-activation"]}\n');
+  subject.git(subject.root, 'add', '.agentic-os-flight.json');
+  subject.git(subject.root, 'commit', '--quiet', '-m', 'bind production activation');
+  subject.git(subject.root, 'update-ref', 'refs/remotes/origin/main', subject.git(subject.root, 'rev-parse', 'HEAD'));
+
+  const report = subject.status();
+  assert.equal(report.changeClass, 'mixed');
+  assert.equal(report.closeout.deliveryState, 'pending');
+  assert.equal(report.closeout.adlcState, 'delivery_pending');
+  assert.equal(report.authorizesEffects, false);
+});
+
 test('completion status records branch policy separately from local ref observations', (t) => {
   const subject = fixture(t), disposition = subject.status().closeout.branchDisposition;
   assert.equal(disposition.schema, 'agentic-os/branch-disposition/v1');
