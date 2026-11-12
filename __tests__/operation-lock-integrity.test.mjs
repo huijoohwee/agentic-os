@@ -331,7 +331,7 @@ test('provider handoff retention bounds provider-controlled strings and keeps co
 test('start retains a created lane and foreign lock bytes when finalization fails', (t) => {
   const { parent, root, run } = fixture(t);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
@@ -487,7 +487,7 @@ test('config response loss plus failed restoration retains an explicit unknown r
 test('partial provision failure reports exact retained branch and worktree artifacts', (t) => {
   const { parent, root, run } = fixture(t);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
@@ -538,7 +538,7 @@ test('partial provision failure reports exact retained branch and worktree artif
 test('canonical-sync CLI emits its retained success receipt when lock finalization fails', (t) => {
   const { parent, root, run } = fixture(t);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
