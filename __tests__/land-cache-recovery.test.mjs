@@ -25,7 +25,7 @@ function fixture(t, scope = 'cache-recovery', { withLane = true } = {}) {
   run(['config', 'user.name', 'Fixture']);
   run(['config', 'user.email', 'fixture@example.invalid']);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
