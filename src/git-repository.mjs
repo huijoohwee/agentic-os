@@ -105,10 +105,8 @@ function linkedWorktreeRoot(root) {
 export function repositoryCheckoutLocation(repository, profile) {
   const root = resolveRepositoryRoot(repository), name = basename(root);
   const identity = profile?.repository;
-  const identityPath = typeof identity === 'string'
-    ? identity.trim().replace(/[?#].*$/u, '').replace(/\.git$/u, '') : '';
-  const pathQualified = identityPath.includes('/') || identityPath.includes('@');
-  const slug = pathQualified ? identityPath.split(/[/:]/u).filter(Boolean).at(-1) ?? null : null;
+  const identityPath = typeof identity === 'string' ? identity.trim().replace(/[?#].*$/, '').replace(/\.git$/, '') : '';
+  const slug = /[\/@]/u.test(identityPath) ? identityPath.split(/[/:]/u).filter(Boolean).at(-1) : null;
   if (!slug || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(slug)) {
     return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: false,
       startAllowed: false });
@@ -136,10 +134,8 @@ export function assertStartCheckout(repository, profile) {
   const location = repositoryCheckoutLocation(repository, profile);
   if (location.mode === 'archive') blocked('private archive checkouts are frozen and cannot start source lanes', 'blocked-private-archive');
   if (location.mode === 'not-applicable') blocked(
-    'START requires a path-qualified repository identity to confirm the primary canonical checkout',
-    'blocked-checkout-identity-missing');
-  if (location.mode !== 'canonical') blocked(
-    `START requires the primary canonical checkout for ${location.expectedName}; found ${location.name} (${location.mode})`,
+    'START requires path-qualified identity', 'blocked-checkout-identity-missing');
+  if (location.mode !== 'canonical') blocked(`START needs canonical ${location.expectedName}; found ${location.name} (${location.mode})`,
     location.mode === 'mismatch' ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
   return location;
 }
