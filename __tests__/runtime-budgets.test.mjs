@@ -117,10 +117,10 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ['docs/START-WORKFLOW.md', [
       'npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
       'START locks, fetches and checks scope; it reuses or creates a registered worktree under `.worktrees/<repo>/<device>--<lane>` (or configured root). Edit there.',
-      'Routine work needs no mission document; unrelated navigation never enrolls a task.',
-      'Resume an open, unqueued PR with its published history intact. Scope expansion remains explicit.',
+      'Routine work needs no mission; navigation never enrolls a task.',
+      'Resume an open, unqueued PR with history intact. Scope expansion is explicit.',
       'Bind repo/base/path/bytes; plans grant no effects.',
-      'A native allocation can recover a missing initial cache row; conflicts or unknown bytes require recovery.',
+      'A native allocation can recover a missing cache row; conflicts or unknown bytes need recovery.',
       'Workspace, memory, fleet, recovery and deployment are on demand.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
