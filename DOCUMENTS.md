@@ -149,9 +149,9 @@ for this asset. Document checks establish source consistency only.
 [conventions]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/conventions-and-syntax-guidelines.md
 [frontmatter]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/runtime-frontmatter-guidelines.md
 [prd]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
-[semantics]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/roles-actions-outcomes-schema.jsonld
+[semantics]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/agentic-rag/roles-actions-outcomes-schema.jsonld
 [guidelines]: https://github.com/huijoohwee/huijoohwee.github.io/tree/main/guidelines
-[guideline-map]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/agenticrag-guidelines-and-surfaces-map.graph.jsonld
+[guideline-map]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/agentic-rag/agenticrag-guidelines-and-surfaces-map.graph.jsonld
 [commerce]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/README.md
 [gtm]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/prd-tad-adr-mvp-gtm-handoff.md
 [commerce-runtime]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/production-runtime.md
