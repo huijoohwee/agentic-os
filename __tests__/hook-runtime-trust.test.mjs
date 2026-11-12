@@ -72,7 +72,7 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
     '  return location;',
     '}',
   ].join('\n');
-  prePolicySource = prePolicySource.slice(0, admissionStart) + priorAdmission
+  prePolicySource = prePolicySource.slice(0, admissionStart) + priorAdmission + '\n'
     + prePolicySource.slice(admissionEnd);
   const prePolicyRepository = Buffer.from(prePolicySource);
   assert.equal(digest(prePolicyRepository), '0f19dd78cedf92839fe0fdd3df5cb36c65ebe888adfe41df1bb268fe4bbd3206');
