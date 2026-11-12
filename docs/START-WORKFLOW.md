@@ -1,8 +1,11 @@
 # Start
 
-From canonical or an approved `<repository>-<role>-scratch` clone:
+Run START from the primary canonical checkout only:
 `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`.
-START locks, fetches and checks exact scope; it reuses its matching worktree or creates one. Edit there.
+START locks, fetches and checks exact scope; it reuses its matching registered worktree or creates one under
+`.worktrees/<repository>/<device>--<lane>` (or the configured worktree root). Edit only there. Do not create a
+separate repository clone for a lane; it adds another clone state and lane registry, while the linked
+worktree reuses the canonical repository's Git data.
 Routine work needs no mission document; unrelated navigation never enrolls a task. Resume an open, unqueued PR
 with its published history intact. Scope expansion remains explicit.
 

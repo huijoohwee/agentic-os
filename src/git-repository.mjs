@@ -105,11 +105,12 @@ function linkedWorktreeRoot(root) {
 export function repositoryCheckoutLocation(repository, profile) {
   const root = resolveRepositoryRoot(repository), name = basename(root);
   const identity = profile?.repository;
-  const slug = typeof identity === 'string' && identity.startsWith('github.com/')
-    ? identity.slice('github.com/'.length).split('/').at(-1) : null;
+  const identityPath = typeof identity === 'string'
+    ? identity.trim().replace(/[?#].*$/u, '').replace(/\.git$/u, '') : '';
+  const slug = identityPath.split(/[/:]/u).filter(Boolean).at(-1) ?? null;
   if (!slug || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(slug)) {
-    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: true,
-      startAllowed: true });
+    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: false,
+      startAllowed: false });
   }
   if (linkedWorktreeRoot(root)) {
     return Object.freeze({ mode: 'worktree', name, expectedName: slug, ok: true,
@@ -119,7 +120,7 @@ export function repositoryCheckoutLocation(repository, profile) {
   const scratch = scratchRole.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*-scratch$/u.test(scratchRole);
   if (name === slug || scratch) return Object.freeze({ mode: slug.endsWith('-private-archive') ? 'archive'
     : scratch ? 'scratch' : 'canonical', name, expectedName: slug, ...(scratch ? { role: scratchRole } : {}),
-  ok: true, startAllowed: !slug.endsWith('-private-archive') });
+  ok: true, startAllowed: !scratch && !slug.endsWith('-private-archive') });
   const role = name.startsWith(slug + '--') ? name.slice(slug.length + 2) : '';
   if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(role) && role.length <= 64) {
     return Object.freeze({ mode: 'auxiliary', name, expectedName: slug, role, ok: true,
@@ -129,12 +130,15 @@ export function repositoryCheckoutLocation(repository, profile) {
     startAllowed: false });
 }
 
-/** Refuse lane admission from auxiliary, worktree, mismatched, or private-archive checkouts. */
+/** Admit new source lanes only from the primary canonical checkout. */
 export function assertStartCheckout(repository, profile) {
   const location = repositoryCheckoutLocation(repository, profile);
   if (location.mode === 'archive') blocked('private archive checkouts are frozen and cannot start source lanes', 'blocked-private-archive');
-  if (!['not-applicable', 'canonical', 'scratch'].includes(location.mode)) blocked(
-    `START requires the canonical checkout or an explicit -scratch clone for ${location.expectedName}; found ${location.name} (${location.mode})`,
+  if (location.mode === 'not-applicable') blocked(
+    'START requires a path-qualified repository identity to confirm the primary canonical checkout',
+    'blocked-checkout-identity-missing');
+  if (location.mode !== 'canonical') blocked(
+    `START requires the primary canonical checkout for ${location.expectedName}; found ${location.name} (${location.mode})`,
     location.mode === 'mismatch' ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
   return location;
 }

@@ -22,10 +22,14 @@ Managed lanes use one parent registry and two isolation levels:
 <registry>/<repository>/<device>--<lane>/
 ```
 
-The default registry is `.worktrees` beside the repository. Set `AGENTIC_OS_WORKTREE_ROOT` only to move
-that parent; the repository directory is always retained. Do not store that parent inside the `agentic-os`
-clone. Every lane directory is a Git-registered worktree, not a loose file copy. Edit the owning file in
-that lane and let protected integration update canonical. Fleet `releaseCommon` and `worktreeCleanup` are
+The default layout is `.worktrees/<repository>/<device>--<lane>` beside the primary canonical checkout.
+Set `AGENTIC_OS_WORKTREE_ROOT` only to move that parent; the repository directory is always retained.
+Do not store that parent inside the `agentic-os` clone. Start from the primary canonical checkout; do not
+create a separate repository clone for a task. Every lane directory is a Git-registered worktree, not a
+loose file copy. Linked worktrees share Git objects and most refs; each keeps its own index and checked-out
+files, so history storage is reused while source/build files still occupy per-lane space. Edit the owning
+file in that lane and let protected integration update canonical. Fleet
+`releaseCommon` and `worktreeCleanup` are
 declared in [`test/repositories.json`](../test/repositories.json); each clone still owns `.agentic-os.json`.
 
 Keep review identifiers and timestamps in lane records; do not rename a live worktree when either changes.

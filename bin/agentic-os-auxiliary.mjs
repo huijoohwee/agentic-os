@@ -528,13 +528,13 @@ export async function cmdDoctor(root, profile, policy) {
   const configEntries = hookDoctorEntries(root, entries);
   const local = observeLocalHealth(root, policy, profile, entries);
   const checkout = repositoryCheckoutLocation(root, profile),
-    checkoutOk = ['canonical', 'scratch', 'not-applicable'].includes(checkout.mode);
+    checkoutOk = checkout.mode === 'canonical';
   out(report.formatConfig(configEntries)); out('');
   out(report.formatLocal(local));
   out('');
   const checkoutDetail = checkout.mode === 'canonical'
     ? 'canonical checkout name matches repository slug ' + checkout.expectedName
-    : checkout.mode === 'scratch' ? 'explicit scratch clone for ' + checkout.expectedName + '; START keeps its lane local to this clone'
+    : checkout.mode === 'scratch' ? 'independent scratch clone for ' + checkout.expectedName + '; START requires the primary canonical checkout'
     : checkout.mode === 'archive'
       ? 'archive checkout name matches ' + checkout.expectedName + '; START is disabled'
       : checkout.mode === 'auxiliary'
@@ -543,10 +543,12 @@ export async function cmdDoctor(root, profile, policy) {
           ? 'registered Git worktree ' + checkout.name + '; lane names are exempt'
           : checkout.mode === 'mismatch'
             ? 'checkout is named ' + checkout.name + '; expected ' + checkout.expectedName
-            : 'repository identity has no GitHub checkout-name rule';
+            : 'repository identity does not provide a canonical checkout name';
   out(report.formatFindings('repository checkout naming', [{
     id: 'checkout-name', ok: checkoutOk, detail: checkoutDetail,
-    remedy: checkoutOk ? null : 'use the canonical clone or an explicit -scratch clone of ' + checkout.expectedName,
+    remedy: checkoutOk ? null : checkout.mode === 'not-applicable'
+      ? 'use a path-qualified repository identity in the committed profile'
+      : 'run START from the primary canonical clone for ' + checkout.expectedName,
   }]));
   out('');
   const kind = providerKind(profile);
