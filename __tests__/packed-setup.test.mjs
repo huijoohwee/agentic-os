@@ -285,7 +285,7 @@ test('published files contain public JSON and adapters without deleted deep impo
 });
 test('packed setup is canonical, durable, integrity-bound, and no-clobber', async (t) => {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-installed-consumer-'));
-  const repository = join(parent, 'repository');
+  const repository = join(parent, 'consumer');
   const lane = join(parent, 'lane');
   const packed = join(parent, 'packed');
   mkdirSync(repository); mkdirSync(packed);
