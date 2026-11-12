@@ -39,7 +39,7 @@ export function fixture(t, enrolled = true) {
     symlinkSync(root, join(container, `.${role}`), 'dir');
   }
   const root = init(join(parent, 'repo'));
-  const profile = createRepositoryProfile({ repository: 'local:workspace-test',
+  const profile = createRepositoryProfile({ repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
     cleanup: { worktreeProjection: 'retain', worktreeRegistration: 'retain', remoteTrackingRef: 'retain',

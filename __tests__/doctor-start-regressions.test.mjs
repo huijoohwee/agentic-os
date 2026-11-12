@@ -24,7 +24,7 @@ import {
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
-function fixture(t, { profile = true, directory = 'repo', repository = 'local:fixture' } = {}) {
+function fixture(t, { profile = true, directory = 'repo', repository = 'github.com/example/repo' } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-doctor-start-'));
   const root = join(parent, directory);
   mkdirSync(root);
@@ -53,13 +53,13 @@ function commit(run, root, path, contents, message) {
   return run(['rev-parse', 'HEAD']);
 }
 
-function commitProfile(run, root, repository = 'local:fixture') {
+function commitProfile(run, root, repository = 'github.com/example/repo') {
   const profile = fixtureProfile(repository);
   commit(run, root, '.agentic-os.json', `${JSON.stringify(profile, null, 2)}\n`, 'profile');
   ensureRepositoryTrust(root, profile, { allowCreate: true });
 }
 
-function fixtureProfile(repository = 'local:fixture') {
+function fixtureProfile(repository = 'github.com/example/repo') {
   return createRepositoryProfile({
     repository,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
@@ -445,7 +445,7 @@ test('canonical sync apply rejects an anchored canonical profile disappearance',
   assert.equal(run(['for-each-ref', '--format=%(refname) %(objectname)']), before);
 });
 
-test('checkout names follow repository identity and START admits explicit scratch clones only', async (t) => {
+test('checkout names follow repository identity and START admits canonical checkouts only', async (t) => {
   const slug = 'agentic-design-system';
   const profile = fixtureProfile(`github.com/example/${slug}`);
   for (const [directory, mode, role] of [
@@ -460,21 +460,22 @@ test('checkout names follow repository identity and START admits explicit scratc
       const location = repositoryCheckoutLocation(root, profile);
       assert.equal(location.mode, mode);
       assert.equal(location.role, role);
-      if (mode === 'canonical' || mode === 'scratch') {
+      if (mode === 'canonical') {
         assert.equal(assertStartCheckout(root, profile).startAllowed, true);
         return;
       }
+      assert.equal(location.startAllowed, false);
+      const reason = mode === 'mismatch'
+        ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout';
       assert.throws(() => assertStartCheckout(root, profile), (error) => {
-        assert.equal(error.reason, mode === 'mismatch'
-          ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
+        assert.equal(error.reason, reason);
         return true;
       });
       let fetched = false;
       await assert.rejects(cmdStart(root, ['scope', '--write=base.txt'], {}, profile, {
         out() {}, err() {}, enforceCheckoutName: true,
         remoteName() { fetched = true; return 'origin'; },
-      }), (error) => error.reason === (mode === 'mismatch'
-        ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout'));
+      }), (error) => error.reason === reason);
       assert.equal(fetched, false, 'START must refuse before remote effects');
     });
   }
@@ -503,7 +504,7 @@ test('doctor reports checkout naming mismatches and registered worktrees are exe
   });
   const scratchResult = doctor(scratch.root, scratch.support);
   assert.match(scratchResult.stdout,
-    /ok\s+checkout-name\s+explicit scratch clone for agentic-design-system; START keeps its lane local to this clone/u);
+    /FAIL\s+checkout-name\s+independent scratch clone for agentic-design-system; START requires the primary canonical checkout/u);
 
   const canonical = fixture(t, { directory: slug, repository: profile.repository });
   const worktree = join(canonical.parent, 'lane-device--naming');

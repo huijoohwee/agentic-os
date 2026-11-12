@@ -35,9 +35,51 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes
     .toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync'));
   assert.equal(digest(quarantineBytes), '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
+  // Reconstruct the exact pre-policy adapter so this release fixture stays stable as the source moves.
+  const replaceOnce = (source, current, previous) => {
+    assert.notEqual(source.indexOf(current), -1);
+    assert.equal(source.indexOf(current), source.lastIndexOf(current));
+    return source.replace(current, previous);
+  };
+  let prePolicySource = selected.files.find(file => file.path === 'src/git-repository.mjs')
+    .bytes.toString('utf8');
+  prePolicySource = replaceOnce(prePolicySource,
+    "  const identityPath = typeof identity === 'string' ? identity.trim().replace(/[?#].*$/, '').replace(/\\.git$/, '') : '';\n" +
+      "  const slug = /[\\/@]/u.test(identityPath) ? identityPath.split(/[/:]/u).filter(Boolean).at(-1) : null;",
+    "  const slug = typeof identity === 'string' && identity.startsWith('github.com/')\n" +
+      "    ? identity.slice('github.com/'.length).split('/').at(-1) : null;");
+  prePolicySource = replaceOnce(prePolicySource,
+    "    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: false,\n" +
+      "      startAllowed: false });",
+    "    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: true,\n" +
+      "      startAllowed: true });");
+  prePolicySource = replaceOnce(prePolicySource,
+    "ok: true, startAllowed: !scratch && !slug.endsWith('-private-archive') });",
+    "ok: true, startAllowed: !slug.endsWith('-private-archive') });");
+  const admissionStart = prePolicySource.indexOf('/** Admit new source lanes only from the primary canonical checkout. */');
+  const admissionEnd = prePolicySource.indexOf('\nfunction hiddenPaths', admissionStart);
+  assert.ok(admissionStart >= 0 && admissionEnd > admissionStart);
+  const priorAdmission = [
+    '/** Refuse lane admission from auxiliary, worktree, mismatched, or private-archive checkouts. */',
+    'export function assertStartCheckout(repository, profile) {',
+    '  const location = repositoryCheckoutLocation(repository, profile);',
+    "  if (location.mode === 'archive') blocked('private archive checkouts are frozen and cannot start source lanes', 'blocked-private-archive');",
+    "  if (!['not-applicable', 'canonical', 'scratch'].includes(location.mode)) blocked(",
+    "    " + String.fromCharCode(96) + 'START requires the canonical checkout or an explicit -scratch clone for '
+      + '$' + '{location.expectedName}; found ' + '$' + '{location.name} (' + '$' + '{location.mode})'
+      + String.fromCharCode(96) + ',',
+    "    location.mode === 'mismatch' ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');",
+    '  return location;',
+    '}',
+  ].join('\n');
+  prePolicySource = prePolicySource.slice(0, admissionStart) + priorAdmission + '\n'
+    + prePolicySource.slice(admissionEnd);
+  const prePolicyRepository = Buffer.from(prePolicySource);
+  assert.equal(digest(prePolicyRepository), '0f19dd78cedf92839fe0fdd3df5cb36c65ebe888adfe41df1bb268fe4bbd3206');
   const predecessor = selected.files.map(file => released === 'pre-core' && file.path === 'src/governance.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/governance-cleanup-predecessor.mjs.txt', import.meta.url)) }
-    : released === 'pre-core' ? file : released && file.path === 'src/git-repository.mjs'
+    : released === 'pre-core' && file.path === 'src/git-repository.mjs'
+    ? { ...file, bytes: prePolicyRepository } : released === 'pre-core' ? file : released && file.path === 'src/git-repository.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/git-repository-pre-naming.mjs.txt', import.meta.url)) }
     : released && file.path === 'src/file-integrity.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)) }

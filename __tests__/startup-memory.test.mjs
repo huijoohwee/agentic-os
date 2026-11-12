@@ -48,7 +48,7 @@ function fixture(t, { enrolled = true, records = true } = {}) {
   run(source, ['push', '--quiet', '-u', 'origin', 'main']);
   const config = { schema: 'agentic-os/memory-source/v1', remote: bare, branch: 'main', directory: 'records' };
   writeFileSync(join(root, '.agentic-os-memory.json'), JSON.stringify(config));
-  const profile = createRepositoryProfile({ repository: 'local:memory-test',
+  const profile = createRepositoryProfile({ repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
     cleanup: { worktreeProjection: 'retain', worktreeRegistration: 'retain', remoteTrackingRef: 'retain',

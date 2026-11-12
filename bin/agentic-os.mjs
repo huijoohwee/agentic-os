@@ -56,7 +56,7 @@ function cmdStartHelp() {
     'Start one local lane.',
     '',
     'Usage: npm run lane -- <scope> --write=<paths> [--plan=<PRD-path> | --mission=<manifest>]',
-    'Run from canonical main or an approved scratch clone. Edit only in the printed worktree.',
+    'Run from the primary canonical checkout. Edit only in the printed registered worktree.',
     'START does not publish, deploy, or clean up.',
   ].join('\n'));
   return 0;

@@ -58,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40938, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40954, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -77,13 +77,13 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 989);
+  assert.equal([...prompt].length, 987);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
   assert.equal(bytes.at(-1), 0x0a);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'edfab6a19768c47508e7a6110d59216af9752821787129387826f4a2f1fc294f');
+    '4fd309f6040766668494d38fd8f249a8e74325ad7ca4a2b0b4c38ba9b60873e8');
 });
 
 test('ADLC binds lean time-to-production, budgets, and diff-only integration at every runtime boundary', () => {
@@ -116,11 +116,11 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/START-WORKFLOW.md', [
       'npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
-      'START locks, fetches and checks exact scope; it reuses its matching worktree or creates one. Edit there.',
-      'Routine work needs no mission document; unrelated navigation never enrolls a task.',
-      'Resume an open, unqueued PR with its published history intact. Scope expansion remains explicit.',
+      'START locks, fetches and checks scope; it reuses or creates a registered worktree under `.worktrees/<repo>/<device>--<lane>` (or configured root). Edit there.',
+      'Routine work needs no mission; navigation never enrolls a task.',
+      'Resume an open, unqueued PR with history intact. Scope expansion is explicit.',
       'Bind repo/base/path/bytes; plans grant no effects.',
-      'A native allocation can recover a missing initial cache row; conflicts or unknown bytes require recovery.',
+      'A native allocation can recover a missing cache row; conflicts or unknown bytes need recovery.',
       'Workspace, memory, fleet, recovery and deployment are on demand.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
@@ -136,16 +136,16 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',
-      '$0; FOSS/free; no paid/add-ons/overages;',
-      'provider hard cap $0 for billing;',
+      '$0; FOSS; no paid/add-ons/overages; deny quota',
+      'Provider hard cap $0;',
       'quota≠proof; unknown cost/headroom blocks.',
-      'No guesses/detours/duplicate checks;',
-      'Fix owner; reuse/remove; contract-only shims.',
+      'No guesses/detours/duplicate checks',
+      'fix owner; reuse/remove; contract-only shims.',
       'Sprint: ETA+time/byte/module caps;',
       'lazy-load; drift refresh.',
-      '1 owner/candidate/effect; event wait; bounded recheck.',
-      'PRD-TAD-ADR-MVP-GTM: batch material changes; no per-turn.',
-      'cleanup global/local; green proof+authority/effect/receipt.',
+      '1 owner/candidate/effect; event wait; bounded recheck',
+      'PRD-TAD-ADR-MVP-GTM: batch; no per-turn',
+      'cleanup global/local; green proof+authority/effect/receipt',
     ]],
     ['AGENTS.md', [
       'Continuously obey the global `guides/SYSTEM-PROMPT-RUNTIME.md`',
