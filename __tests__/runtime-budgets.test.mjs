@@ -77,7 +77,7 @@ test('the portable runtime system prompt is exact and within its native byte con
   assert.equal(bytes.byteLength, 999, 'update this exact cost to expose every prompt byte delta');
   assert.ok(bytes.byteLength <= 1_000);
   const prompt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal([...prompt].length, 989);
+  assert.equal([...prompt].length, 987);
   assert.ok([...prompt].length <= 1_000);
   assert.ok(prompt.split('\n').every((line) => [...line].length <= DOC_BUDGET.maxLineChars));
   assert.equal(bytes.includes(0x0d), false);
@@ -116,7 +116,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/START-WORKFLOW.md', [
       'npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
-      'START locks, fetches and checks exact scope; it reuses its matching worktree or creates one. Edit there.',
+      'START locks, fetches and checks scope; it reuses or creates a registered worktree under `.worktrees/<repo>/<device>--<lane>` (or configured root). Edit there.',
       'Routine work needs no mission document; unrelated navigation never enrolls a task.',
       'Resume an open, unqueued PR with its published history intact. Scope expansion remains explicit.',
       'Bind repo/base/path/bytes; plans grant no effects.',
