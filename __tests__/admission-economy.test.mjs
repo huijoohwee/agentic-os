@@ -129,7 +129,13 @@ test('same mission reuses dirty owned work and refuses another checkout at capac
   assert.equal(f.effects.length, previousEffects);
   assert.equal(readFileSync(join(target, 'owned.txt'), 'utf8'), 'unfinished owner bytes\n');
   assert.equal(f.selected().digest, first.digest);
-  await assert.rejects(f.start('two', `--mission=${first.path}`), /allowance(?: is)? exhausted/);
+  await assert.rejects(f.start('two', `--mission=${first.path}`), error => {
+    assert.equal(error.reason, 'blocked-admission-capacity');
+    assert.match(error.message, /distinct scope and --plan=<PRD-path>/);
+    assert.match(error.message, /protected PRD or untracked Markdown draft/);
+    assert.match(error.message, /workflow's limit cannot be raised/);
+    return true;
+  });
   await assert.rejects(f.start('two', `--mission=${first.path}`, '--checkout-limit=2'), /cannot reset or enlarge/);
   assert.equal(f.effects.length, previousEffects); assert.equal(worktrees(f.root).length, 2);
   assert.equal(readFileSync(first.path, 'utf8'), firstBytes);
