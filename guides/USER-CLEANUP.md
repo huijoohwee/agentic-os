@@ -111,9 +111,7 @@ Do not reuse a stale batch of plans. Remove opt-in with `git config --local --un
 
 ## Preserve a scratch clone outside the active workspace
 
-An independent scratch clone is a primary clone, not a linked Git worktree, and cannot start a new source
-lane. New tasks start from the primary canonical clone and use its registered worktree under
-`.worktrees/<repository>/<device>--<lane>`. Preserve an existing scratch clone as a whole directory to
+An independent scratch clone is a primary clone, not a linked Git worktree. Preserve the whole directory to
 retain local branch refs, reflogs, objects, index state, working files, ignored data, and any cleanup
 quarantine. A same-filesystem directory rename is the lowest-I/O move: it transfers no file bytes,
 keeps the clone intact, and does not reclaim storage. A [Git bundle](https://git-scm.com/docs/git-bundle)

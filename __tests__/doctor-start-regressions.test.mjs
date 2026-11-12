@@ -24,7 +24,7 @@ import {
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
-function fixture(t, { profile = true, directory = 'repo', repository = 'local:fixture' } = {}) {
+function fixture(t, { profile = true, directory = 'repo', repository = 'github.com/example/repo' } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-doctor-start-'));
   const root = join(parent, directory);
   mkdirSync(root);
@@ -53,13 +53,13 @@ function commit(run, root, path, contents, message) {
   return run(['rev-parse', 'HEAD']);
 }
 
-function commitProfile(run, root, repository = 'local:fixture') {
+function commitProfile(run, root, repository = 'github.com/example/repo') {
   const profile = fixtureProfile(repository);
   commit(run, root, '.agentic-os.json', `${JSON.stringify(profile, null, 2)}\n`, 'profile');
   ensureRepositoryTrust(root, profile, { allowCreate: true });
 }
 
-function fixtureProfile(repository = 'local:fixture') {
+function fixtureProfile(repository = 'github.com/example/repo') {
   return createRepositoryProfile({
     repository,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },

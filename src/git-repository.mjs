@@ -107,7 +107,8 @@ export function repositoryCheckoutLocation(repository, profile) {
   const identity = profile?.repository;
   const identityPath = typeof identity === 'string'
     ? identity.trim().replace(/[?#].*$/u, '').replace(/\.git$/u, '') : '';
-  const slug = identityPath.split(/[/:]/u).filter(Boolean).at(-1) ?? null;
+  const pathQualified = identityPath.includes('/') || identityPath.includes('@');
+  const slug = pathQualified ? identityPath.split(/[/:]/u).filter(Boolean).at(-1) ?? null : null;
   if (!slug || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(slug)) {
     return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: false,
       startAllowed: false });
