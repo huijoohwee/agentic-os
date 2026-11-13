@@ -58,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40954, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40956, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -102,12 +102,18 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.',
       'Declare always-load deltas; replace/lazy-load/reject.',
       'Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.',
+      'Pinned Design System only for shared UI; no local panel variants.',
       'On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md`',
       'Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.',
       'separate receipt per proof, retire, cleanup, sync, deploy and rollback.',
     ]],
     ['docs/LIFECYCLE-COMPLETION.md', [
       'Effect plan v4 requires current provider-verified cost evidence; details: [COSTS](../guides/COSTS.md).',
+    ]],
+    ['guides/DESIGN-SYSTEM-PANEL-OWNERSHIP.md', [
+      '`site/icons.json` is the sole role map',
+      'Product consumers',
+      'local panel shell',
     ]],
     ['guides/COSTS.md', [
       'An effect plan binds the provider, billing mode, evidence digest, exact effect scope and evidence expiry.',
@@ -173,6 +179,10 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     assert.doesNotMatch(compact(path), /bounded active-work ETA/u,
       `${path} must reference rather than fork the global prompt rule`);
   }
+  const sharedUiContract = compact('guides/DESIGN-SYSTEM-PANEL-OWNERSHIP.md');
+  for (const role of ['search', 'pin', 'apply', 'reset', 'minimize', 'restore', 'close']) {
+    assert.ok(sharedUiContract.includes(`\`${role}\``), `shared panel role missing: ${role}`);
+  }
 });
 
 test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
@@ -188,7 +198,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.4.4', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.4.5', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',
