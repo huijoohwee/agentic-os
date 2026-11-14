@@ -375,7 +375,51 @@ function validateAllocations(allocations = [], members, previous = [], root) {
   if (!Array.isArray(allocations) || allocations.length > 32) fail('allocation-budget');
   const keys = ['worktreeId', 'ref', 'path', 'baseRevision', 'headRevision', 'writeDigest', 'state', 'operation'];
   const recoveryKeys = ['planDigest', 'priorAllocationHead', 'schema', 'selectedPaths', 'sourceBase', 'sourceHead', 'targetHead'];
+  const reconciliationKeys = ['base', 'baseSha', 'planDigest', 'pr', 'preservedRef', 'priorMemberRevision',
+    'priorAllocationHead', 'priorWriteDigest', 'schema', 'selectedPaths', 'targetHead', 'writeDigest'];
+  const allocationExtraKeys = ['previousWriteDigest', 'predecessorRef', 'recoveredFromHead', 'selectedSourceRecovery', 'headReconciliation'];
   const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  const reconciliationValid = (value, before, row, member) => {
+    if (!value || Object.keys(value).sort().join(',') !== [...reconciliationKeys].sort().join(',')
+      || value.schema !== 'agentic-os/workflow-published-head-reconciliation/v1'
+      || !/^[a-f0-9]{64}$/u.test(value.planDigest ?? '')
+      || !/^[a-f0-9]{40}$/u.test(value.priorAllocationHead ?? '')
+      || !/^[a-f0-9]{40}$/u.test(value.priorMemberRevision ?? '')
+      || !/^[a-f0-9]{40}$/u.test(value.targetHead ?? '')
+      || !/^[a-f0-9]{40}$/u.test(value.baseSha ?? '')
+      || !/^[a-f0-9]{64}$/u.test(value.priorWriteDigest ?? '')
+      || !/^[a-f0-9]{64}$/u.test(value.writeDigest ?? '')
+      || !Number.isSafeInteger(value.pr) || value.pr < 1
+      || typeof value.base !== 'string' || !/^refs[/]remotes[/][A-Za-z0-9][A-Za-z0-9._-]{0,127}[/]main$/u.test(value.base)
+      || !/^refs[/]agentic-os[/]recovery[/]published-head[/][a-f0-9]{24}$/u.test(value.preservedRef ?? '')
+      || !Array.isArray(value.selectedPaths) || value.selectedPaths.length < 1 || value.selectedPaths.length > 1024
+      || value.selectedPaths.some(path => typeof path !== 'string' || path.length < 1 || path.length > 4096
+        || path.includes(',') || [...path].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127))
+      || !same(value.selectedPaths, [...new Set(value.selectedPaths)].sort())
+      || Buffer.byteLength(value.selectedPaths.join(',')) > 64000
+      || hash(JSON.stringify(value.selectedPaths)) !== value.writeDigest
+      || !before || !row || !member || !root) return false;
+    const first = before.headReconciliation === undefined;
+    const stable = before.state === row.state || before.state === 'active' && row.state === 'released';
+    const lineage = first
+      ? before.headRevision === value.priorAllocationHead && row.headRevision === value.targetHead
+        && before.writeDigest === value.priorWriteDigest && row.writeDigest === value.writeDigest
+      : same(before.headReconciliation, value)
+        && observeGit(['merge-base', '--is-ancestor', value.targetHead, before.headRevision], { cwd: root, allowFail: true }) !== null
+        && observeGit(['merge-base', '--is-ancestor', before.headRevision, row.headRevision], { cwd: root, allowFail: true }) !== null;
+    return lineage && stable && (before.state === 'active' || before.state === 'released' && row.state === 'released')
+      && before.ref === row.ref && before.worktreeId === row.worktreeId && before.path === row.path
+      && before.baseRevision === value.baseSha && row.baseRevision === value.baseSha
+      && (first ? before.writeDigest === value.priorWriteDigest : before.writeDigest === value.writeDigest)
+      && row.writeDigest === value.writeDigest && before.operation === row.operation
+      && before.previousWriteDigest === row.previousWriteDigest
+      && member.child.context.worktreeId === row.worktreeId && member.child.source.revision === row.headRevision
+      && observeGit(['rev-parse', '--verify', value.preservedRef], { cwd: root }) === value.priorAllocationHead
+      && observeGit(['cat-file', '-t', value.priorMemberRevision], { cwd: root }) === 'commit'
+      && observeGit(['merge-base', '--is-ancestor', value.priorAllocationHead, value.priorMemberRevision], { cwd: root, allowFail: true }) !== null
+      && observeGit(['cat-file', '-t', value.targetHead], { cwd: root }) === 'commit'
+      && observeGit(['merge-base', '--is-ancestor', value.targetHead, value.priorAllocationHead], { cwd: root, allowFail: true }) !== null;
+  };
   const recoveryValid = value => value && Object.keys(value).sort().join(',') === recoveryKeys.join(',')
     && value.schema === 'agentic-os/workflow-selected-source-recovery/v1'
     && /^[a-f0-9]{64}$/u.test(value.planDigest ?? '')
@@ -386,7 +430,7 @@ function validateAllocations(allocations = [], members, previous = [], root) {
   const identities = ['worktreeId', 'ref', 'path'], seen = identities.map(() => new Set());
   for (const row of allocations) {
     if (!row || !keys.every(key => Object.hasOwn(row, key))
-      || Object.keys(row).some(key => !keys.includes(key) && !['previousWriteDigest', 'predecessorRef', 'recoveredFromHead', 'selectedSourceRecovery'].includes(key))
+      || Object.keys(row).some(key => !keys.includes(key) && !allocationExtraKeys.includes(key))
       || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(row.worktreeId ?? '') || !isLaneRef(row.ref)
       || typeof row.path !== 'string' || row.path.length > 4096 || /[\x00-\x1f]/u.test(row.path)
       || !isAbsolute(row.path) || resolve(row.path) !== row.path
@@ -398,6 +442,9 @@ function validateAllocations(allocations = [], members, previous = [], root) {
       || Object.hasOwn(row, 'selectedSourceRecovery') && (row.operation !== 'readmit' || Object.hasOwn(row, 'recoveredFromHead') || !recoveryValid(row.selectedSourceRecovery))
       || row.state === 'released' && !previous.some(before => before.worktreeId === row.worktreeId)) fail('allocation-binding');
     identities.forEach((key, index) => { if (seen[index].has(row[key])) fail('allocation-duplicate'); seen[index].add(row[key]); }); const before = previous.find(item => item.worktreeId === row.worktreeId);
+    const member = members.find(item => item.child.context.worktreeId === row.worktreeId);
+    if (row.headReconciliation !== undefined && !reconciliationValid(row.headReconciliation, before, row, member)) fail('allocation-head-reconciliation');
+    if (before?.headReconciliation !== undefined && !same(before.headReconciliation, row.headReconciliation)) fail('allocation-head-reconciliation-lineage');
     if (row.recoveredFromHead !== undefined) { const member = members.find(item => item.child.context.worktreeId === row.worktreeId);
       if (!root || !before || !member || member.child.source.revision !== row.headRevision || observeGit(['cat-file', '-t', row.recoveredFromHead], { cwd: root }) !== 'commit' || observeGit(['merge-base', '--is-ancestor', row.recoveredFromHead, row.headRevision], { cwd: root, allowFail: true }) === null) fail('allocation-recovery-source');
       if ((before.recoveredFromHead === undefined || before.recoveredFromHead !== row.recoveredFromHead) && !(before.state === 'pending' && before.operation === 'readmit' && row.state === 'active' && row.operation === 'readmit' && before.headRevision === row.recoveredFromHead && before.headRevision !== row.headRevision && before.writeDigest === row.writeDigest && before.previousWriteDigest !== undefined && row.previousWriteDigest === undefined)) fail('allocation-recovery-lineage');
@@ -434,7 +481,9 @@ function validateAllocations(allocations = [], members, previous = [], root) {
     } else if (before.selectedSourceRecovery !== undefined && !same(before.selectedSourceRecovery, after.selectedSourceRecovery)) fail('allocation-selected-source-lineage');
     if (before.state === 'active' && after.state === 'pending') {
       if (after.previousWriteDigest !== before.writeDigest) fail('allocation-scope-proof');
-    } else if (before.writeDigest !== after.writeDigest || before.operation !== after.operation
+    } else if (before.writeDigest !== after.writeDigest
+      && !(before.headReconciliation === undefined && after.headReconciliation !== undefined)
+      || before.operation !== after.operation
       || before.state === 'pending' && before.headRevision !== after.headRevision && after.recoveredFromHead !== before.headRevision && !selectedSourceRecovery
       || before.state === 'pending' && before.operation === 'readmit' && (
         before.previousWriteDigest === undefined || after.state === 'pending' && after.previousWriteDigest !== before.previousWriteDigest
@@ -466,6 +515,15 @@ function assertGroupSuccessor(root, manifest, older, members, load, checkSequenc
   for (const ref of older.members) {
     const before = load(ref).manifest, after = load(members.find(next => next.id === ref.id)).manifest;
     if (before.source.repository !== after.source.repository || before.context.worktreeId !== after.context.worktreeId) fail('previous-member-binding');
+  }
+  for (const row of manifest.allocations ?? []) {
+    const before = older.allocations?.find(value => value.worktreeId === row.worktreeId);
+    if (row.headReconciliation && !before?.headReconciliation) {
+      const priorRef = older.members.find(value => load(value).manifest.context.worktreeId === row.worktreeId);
+      const nextRef = members.find(value => load(value).manifest.context.worktreeId === row.worktreeId);
+      if (!priorRef || !nextRef || load(priorRef).manifest.source.revision !== row.headReconciliation.priorMemberRevision
+        || load(nextRef).manifest.source.revision !== row.headRevision) fail('allocation-head-reconciliation-source');
+    }
   }
   const resolvedMembers = members.map(ref => ({ ref, child: load(ref).manifest })); validateWorkflowExecution(manifest.execution, resolvedMembers, older.execution); validateAllocations(manifest.allocations, resolvedMembers, older.allocations, root);
 }

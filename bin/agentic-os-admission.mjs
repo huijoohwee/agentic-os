@@ -242,6 +242,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit || recertification ? row.writeDigest : liveDigest } : {}),
           ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}),
           ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
+          ...(row?.headReconciliation ? { headReconciliation: row.headReconciliation } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
         if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' && row?.recoveredFromHead ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
