@@ -14,8 +14,9 @@ const MANIFEST_NAME = 'runtime-manifest.json';
 const MAX_RUNTIME_BYTES = 500_000;
 const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
-// Future releases must explicitly pin each previously shipped runtime identity before migrating it.
+// Includes exact 13-file closure from 89acc7a; every prior runtime stays explicitly pinned.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-d62b55457b7eccf5a852344e87e7f4fde0abdfe7f982a4813f2bc0c5c207d115',
   'v1-61b0c08ae5a26367e69ec157e182819fbde328fee570a5cf59f11b1be72fad5f',
   'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20',
   'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171',
@@ -90,7 +91,6 @@ const FILES = Object.freeze([
 export const REQUIRED_HOOKS = Object.freeze(FILES
   .filter((file) => file.path.startsWith('.githooks/'))
   .map(({ path, sha256 }) => Object.freeze({ path, sha256 })));
-
 /** Any runtime entry means this clone passed or partially entered managed setup before. */
 export function hasHookRuntimeState(cwd) {
   const path = join(commonDir(repoRoot(cwd)), 'agentic-os', 'hook-runtimes');
