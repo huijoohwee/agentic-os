@@ -27,7 +27,7 @@ const CACHE_LOCK_WAIT_MS = 30_000;
 const CACHE_LOCK_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const RECORD_FIELDS = new Set(['ref', 'device', 'scope', 'state', 'base', 'baseSha',
-  'worktree', 'pr', 'createdAt', 'head', 'handoff', 'mode', 'writePaths', 'recovery']);
+  'worktree', 'pr', 'createdAt', 'head', 'handoff', 'mode', 'writePaths', 'recovery', 'reconciliation']);
 const RECORD_STATES = new Set(['planned', 'active', 'published', 'queued', 'integrated']);
 const STRING_FIELDS = new Set(['device', 'scope', 'base', 'baseSha', 'worktree',
   'createdAt', 'head', 'mode']);
