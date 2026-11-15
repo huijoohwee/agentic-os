@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { collectWorkflow, collectWorkflowValue, WORKFLOW_PHASES, readSelectedWorkflow, readWorkflowManifestPage,
+import { assertWorkflowEffect, collectWorkflow, collectWorkflowValue, WORKFLOW_PHASES, readSelectedWorkflow, readWorkflowManifestPage,
   startWorkflow, validateWorkflowPlanning } from '../bin/agentic-os-workflow.mjs';
 import { readmissionPredecessors, successorRecordPlan } from '../src/lane-state.mjs';
 
@@ -235,6 +235,9 @@ test('published-head reconciliation follows only a bound successor readmit trans
  const nextRef='agent/device/reconciled-successor-next',nextRow={...activated,ref:nextRef,predecessorRef,state:'pending',
   previousWriteDigest:expandedDigest,headRevision:nextHead},memberRef={...member.ref,file:nextMember.manifest,digest:nextMember.digest};
  const nextInput={...beforeHeadAdvance.manifest,members:[memberRef],previous:{file:beforeHeadAdvance.path,digest:beforeHeadAdvance.digest}};
+ assert.equal(assertWorkflowEffect({root,repository,phase:'preparation',worktreeId,revision,ref}).status,'eligible');
+ assert.throws(()=>assertWorkflowEffect({root,repository,phase:'preparation',worktreeId,revision:nextHead,ref:nextRef}),
+  /candidate-revision-drift/);
  assert.throws(()=>collectWorkflowValue(root,repository,{...nextInput,allocations:[activated]},join(base,'split-successor-input.json')),
   /allocation-head-reconciliation/);
  const atomic=collectWorkflowValue(root,repository,{...nextInput,allocations:[nextRow]},join(base,'atomic-successor-input.json'));
@@ -243,4 +246,5 @@ test('published-head reconciliation follows only a bound successor readmit trans
  assert.equal(current.manifest.allocations[0].headRevision,nextHead);
  assert.deepEqual(current.manifest.allocations[0].headReconciliation,reconciliation);
  assert.equal(current.members[0].child.source.revision,nextHead);
+ assert.equal(assertWorkflowEffect({root,repository,phase:'preparation',worktreeId,revision:nextHead,ref:nextRef}).status,'eligible');
 });
