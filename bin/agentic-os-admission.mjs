@@ -244,7 +244,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
           ...(row?.headReconciliation ? { headReconciliation: row.headReconciliation } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
-        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' && row?.recoveredFromHead ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation);
+        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
         if (readmit) {
           selectedAgain(root, profile.repository, selected);

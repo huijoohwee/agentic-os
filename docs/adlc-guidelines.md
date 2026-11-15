@@ -29,7 +29,7 @@ Consumers own product/deploy/rollback/authority.
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
 - One owner/candidate/effect; disjoint work; reuse proof/event waits.
   Bounded stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
-- Pinned Design System only for shared UI; no local panel variants.
+- Shared UI: [ownership](../guides/DESIGN-SYSTEM-OWNERSHIP.md).
 - Batch material PRD/TAD/ADR/MVP/GTM updates; no per-turn records.
 - Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.
 - Declare always-load deltas; replace/lazy-load/reject.

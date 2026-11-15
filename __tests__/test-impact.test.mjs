@@ -24,7 +24,7 @@ test('expanded suite receipts retain all results inside the unchanged byte cap',
 const file = text => ({ text, digest: text, mode: '100644' });
 function fixture() {
   const contracts = { schema: 'agentic-os/test-impact-contracts/v1',
-    sentinels: ['safety.test.mjs'], packaging: ['package.test.mjs'], broad: ['package.json', 'test/impact-contracts.json'],
+    sentinels: ['safety.test.mjs'], packaging: ['package.test.mjs'], broad: ['package.json', 'test/impact-contracts.json', 'docs/adlc-guidelines.md'],
     rules: [{ id: 'documents', inputs: ['docs/'], tests: ['docs.test.mjs'] }], dependencies: {} };
   const entries = {
     'package.json': JSON.stringify({ exports: { './public': './src/a.mjs' } }),
@@ -87,6 +87,12 @@ test('documents use explicit contracts and changed tests run directly', () => {
   const f = fixture();
   const plan = selectTests({ ...f, changed: ['docs/a.md', '__tests__/isolated.test.mjs'] });
   assert.deepEqual(paths(plan), ['__tests__/docs.test.mjs', '__tests__/isolated.test.mjs', '__tests__/safety.test.mjs']);
+});
+test('universal ADLC contract changes use the shared-contract gate', () => {
+  const f = fixture(), plan = selectTests({ ...f, changed: ['docs/adlc-guidelines.md'] });
+  assert.equal(plan.mode, 'broad');
+  assert.ok(plan.reasons.includes('shared-contract:docs/adlc-guidelines.md'));
+  assert.equal(plan.suites.length, plan.available);
 });
 test('unmapped paths, shared configuration and opaque affected code broaden with a reason', () => {
   for (const changed of [['new.dat'], ['package.json']]) {

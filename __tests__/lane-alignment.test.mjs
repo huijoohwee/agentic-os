@@ -236,7 +236,7 @@ test('alignment input rejects unknown keys instead of silently accepting a forge
 });
 
 test('dedicated CLI reuses the native successor allocation and completes workflow binding; overlap has no effects', async t => {
-  for (const mode of ['native completion', 'overlap refusal', 'interrupted START resume', 'owner-updated cache completion', 'squash completion', 'squash interrupted START resume']) await t.test(mode, async sub => {
+  for (const mode of ['native completion', 'overlap refusal', 'interrupted START resume', 'reconciled completion', 'owner-updated cache completion', 'squash completion', 'squash interrupted START resume']) await t.test(mode, async sub => {
     const overlapping = mode === 'overlap refusal', squash = mode.startsWith('squash');
     const f = fixture(sub), policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
     const profile = createRepositoryProfile({ repository: 'github.com/example/alignment', canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef }, adapters: { repository: { id: 'git', version: '1' }, provider: null } });
@@ -257,7 +257,31 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
       assert.notEqual(target, head, 'native squash integration must differ from its predecessor');
       assert.equal(git(f.root, 'rev-parse', `${target}^{tree}`), git(f.root, 'rev-parse', `${head}^{tree}`));
     }
-    const before = readSelectedWorkflow(f.root, profile.repository, { required: true }), count = worktrees(f.root).length, cache = JSON.stringify(load(f.root));
+    let before = readSelectedWorkflow(f.root, profile.repository, { required: true }), reconciliation = null;
+    const worktreeId = before.manifest.allocations[0].worktreeId;
+    if (mode.startsWith('reconciled')) {
+      const selectedPaths = ['native-owned.txt'], writeDigest = hash(JSON.stringify(selectedPaths));
+      const allocation = { worktreeId, ref: predecessor, path: lane, baseRevision: prior.baseSha,
+        headRevision: head, writeDigest, state: 'active', operation: 'readmit' };
+      const initial = startWorkflow(f.root, profile.repository, { revision: head,
+        planningPath: 'prd-tad-adr-mvp-gtm.md', worktreeId,
+        execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } }, allocation }).manifest;
+      before = readSelectedWorkflow(f.root, profile.repository, { input: initial, required: true });
+      const member = before.members.find(row => row.child.context.worktreeId === allocation.worktreeId);
+      const preservedRef = `refs/agentic-os/recovery/published-head/${'b'.repeat(24)}`;
+      reconciliation = { schema: 'agentic-os/workflow-published-head-reconciliation/v1', base: 'refs/remotes/origin/main',
+        baseSha: allocation.baseRevision, planDigest: 'c'.repeat(64), pr: 1, preservedRef,
+        priorAllocationHead: allocation.headRevision, priorMemberRevision: member.child.source.revision,
+        priorWriteDigest: allocation.writeDigest, selectedPaths, targetHead: allocation.headRevision,
+        writeDigest };
+      git(f.root, 'update-ref', preservedRef, allocation.headRevision);
+      const reconciled = collectWorkflowValue(f.root, profile.repository, { ...before.manifest,
+        members: before.members.map(row => ({ ...row.ref, file: row.path })),
+        allocations: [{ ...allocation, headReconciliation: reconciliation }],
+        previous: { file: before.path, digest: before.digest } }, join(f.root, 'reconciled-workflow-input.json'));
+      before = readSelectedWorkflow(f.root, profile.repository, { input: reconciled.manifest, required: true });
+    }
+    const count = worktrees(f.root).length, cache = JSON.stringify(load(f.root));
     const input = join(dirname(f.root), 'alignment-input.json'); writeFileSync(input, JSON.stringify({ schema: 'agentic-os/lane-alignment-input/v1', scope: 'native-next', device: 'test-device', mission: before.path, expectedHead: head, expectedTarget: target, stopped: true }));
     const invoke = () => execFileSync(process.execPath, [fileURLToPath(new URL('../bin/agentic-os-lane-alignment.mjs', import.meta.url)), `--input=${input}`], { cwd: f.root, encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
     if (overlapping) {
@@ -274,6 +298,7 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
         const start = mission => cmdStart(f.root, ['native-next', '--device=test-device', `--mission=${mission}`, `--expected-head=${head}`, '--readmit'], policy, profile,
           { ...services, refresh: { expectedTarget: target, stopped: true, owner } });
         await assert.rejects(start(before.path), error => { caught = error; return true; });
+        const candidate = receipt.head;
         assert.equal(caught.operationArtifacts.alignmentReceipt.head, receipt.head);
         assert.equal(caught.operationArtifacts.provisionReceipt, null);
         assert.equal(git(lane, 'rev-parse', 'HEAD'), receipt.head);
@@ -282,8 +307,26 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
         assert.equal(pending.manifest.allocations.length, 1);
         assert.equal(pending.manifest.allocations[0].state, 'pending');
         assert.equal(pending.manifest.allocations[0].headRevision, receipt.head);
-        const candidate = receipt.head; rmSync(lock); owner.applyLaneAlignment = applyLaneAlignment;
+        if (reconciliation) {
+          assert.equal(pending.members.find(row => row.child.context.worktreeId === worktreeId).child.source.revision, candidate);
+          assert.deepEqual(pending.manifest.allocations[0].headReconciliation, reconciliation);
+        }
+        rmSync(lock); owner.applyLaneAlignment = applyLaneAlignment;
         assert.equal(await start(pending.path), 0); assert.equal(git(lane, 'rev-parse', 'HEAD'), candidate);
+      } else if (mode === 'reconciled completion') {
+        let pendingVerified = false;
+        const owner = { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment(value) {
+          const pending = readSelectedWorkflow(f.root, profile.repository, { required: true });
+          const row = pending.manifest.allocations[0], member = pending.members.find(item => item.child.context.worktreeId === worktreeId);
+          assert.equal(row.state, 'pending'); assert.equal(row.headRevision, value.candidateHead);
+          assert.equal(member.child.source.revision, value.candidateHead);
+          assert.deepEqual(row.headReconciliation, reconciliation); pendingVerified = true;
+          return applyLaneAlignment(value);
+        } };
+        assert.equal(await cmdStart(f.root, ['native-next', '--device=test-device', `--mission=${before.path}`,
+          `--expected-head=${head}`, '--readmit'], policy, profile,
+          { ...services, refresh: { expectedTarget: target, stopped: true, owner } }), 0);
+        assert.equal(pendingVerified, true);
       } else if (mode === 'owner-updated cache completion') {
         const owner = { planLaneAlignment, prepareLaneAlignment, applyLaneAlignment(value) {
           const receipt = applyLaneAlignment(value), current = get('agent/test-device/native-next', f.root);
@@ -298,6 +341,10 @@ test('dedicated CLI reuses the native successor allocation and completes workflo
       assert.equal(after.manifest.allocations[0].ref, 'agent/test-device/native-next');
       assert.equal(after.manifest.allocations[0].headRevision, git(lane, 'rev-parse', 'HEAD'));
       assert.equal(after.manifest.allocations[0].state, 'active');
+      if (reconciliation) {
+        assert.deepEqual(after.manifest.allocations[0].headReconciliation, reconciliation);
+        assert.equal(after.members.find(row => row.child.context.worktreeId === worktreeId).child.source.revision, git(lane, 'rev-parse', 'HEAD'));
+      }
       assert.equal(after.members[0].child.source.revision, git(lane, 'rev-parse', 'HEAD'));
       assert.notEqual(after.manifest.allocations[0].headRevision, head);
       assert.equal(get('agent/test-device/native-next', f.root).head, git(lane, 'rev-parse', 'HEAD'));

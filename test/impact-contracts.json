@@ -5,7 +5,7 @@
   "packaging": ["clonability.test.mjs", "packed-setup.test.mjs", "space-path-entrypoints.test.mjs", "setup-trust-ordering.test.mjs", "public-api.test.mjs"],
   "broad": [
     "package.json", "package-lock.json", ".npmrc", ".gitignore", ".gitattributes", ".agentic-os.json",
-    ".github/", ".githooks/", "test/impact-contracts.json", "bin/agentic-os-test", "bin/agentic-os-tests.mjs",
+    ".github/", ".githooks/", "test/impact-contracts.json", "docs/adlc-guidelines.md", "bin/agentic-os-test", "bin/agentic-os-tests.mjs",
     "src/git.mjs", "src/git-tracked.mjs", "src/governance.mjs", "src/lane-state.mjs", "src/worktree.mjs",
     "src/git-repository.mjs", "src/guard-main.mjs", "src/catalog-input.mjs"
   ],
