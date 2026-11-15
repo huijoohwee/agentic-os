@@ -58,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40956, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40952, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -102,7 +102,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.',
       'Declare always-load deltas; replace/lazy-load/reject.',
       'Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.',
-      'Pinned Design System only for shared UI; no local panel variants.',
+      'Shared UI: [ownership](../guides/DESIGN-SYSTEM-OWNERSHIP.md).',
       'On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md`',
       'Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.',
       'separate receipt per proof, retire, cleanup, sync, deploy and rollback.',

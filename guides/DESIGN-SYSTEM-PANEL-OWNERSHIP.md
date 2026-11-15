@@ -9,32 +9,37 @@ load_policy: on-demand
 lifecycle_status: active
 ---
 
-# Shared panel and control ownership
+# Panel conformance under shared ownership
 
-This contract applies to `agentic-design-system`, `agentic-base`, `agentic-graph`,
-`agentic-commerce-os`, `agentic-canvas-os`, and related consumers. Its purpose is one
-maintained source for panel visuals and semantics across products.
+This panel-specific contract extends
+[`DESIGN-SYSTEM-OWNERSHIP.md`](DESIGN-SYSTEM-OWNERSHIP.md) for `agentic-design-system`,
+`agentic-base`, `agentic-graph`, `agentic-commerce-os`, `agentic-canvas-os`, and related
+consumers. It defines the shared panel roles and conformance details.
 
 ## Ownership
 
 | Owner | Owns | Consumer boundary |
 |---|---|---|
-| `agentic-design-system` | Canonical design tokens, theme values, icon glyphs, semantic panel-control map, accessibility labels, panel surface visuals, hover/focus/disabled states, and placement defaults. `site/icons.json`, `site/toolbar.css`, and `site/floating-panel.css` are the source artifacts. | Versioned source for projections; changes update the Design System release and its consumer pins. |
-| `agentic-base` | React and native adapters, panel lifecycle mechanics, and projection/build validation. | Adapts the canonical profile without redefining role-to-icon/label mappings or styling values. |
-| Product consumers | Panel content, view state, feature availability, and action callbacks. | Use the pinned Base/Design System adapter. They do not add local panel shells, control glyphs, labels, tokens, or visual overrides. |
+| `agentic-design-system` | Canonical panel tokens and themes, semantic roles, icon glyphs, accessible labels, surface visuals, hover/focus/disabled/selected states, placement defaults, native and React adapters, panel lifecycle mechanics, and projection/build validation. | Owns the source and versioned projections. Changes ship from an exact Design System revision. |
+| Product consumers, including `agentic-base`, `agentic-graph`, `agentic-commerce-os`, and `agentic-canvas-os` | Panel content, product view state, feature availability, and action callbacks. | Import and use the pinned Design System implementation directly. They do not add forwarding adapter layers, local panel shells, control glyphs, labels, tokens, state rules, adapters, or visual overrides. |
 
-A product-specific interaction must first be added to the Design System contract and
-projected through Base. A local fallback, copied map, or CSS override is not a valid
-compatibility path.
+`agentic-base` is a consumer, not a shared adapter owner. A clean cutover removes its
+consumer-owned panel adapter imports and implementations; product consumers import the
+versioned Design System API directly.
+
+A product-specific interaction that uses a shared role must first be added to the Design
+System contract and projected in its adapter. A local fallback, copied map, or CSS
+override is not a valid compatibility path.
 
 ## Semantic panel controls
 
-`site/icons.json` is the sole role map for `search`, `pin`, `apply`, `reset`, `minimize`,
-`restore`, and `close`. Its canonical glyphs and neutral accessible labels are Search,
-Pin, Check/Apply, RotateCcw/Reset, Minimize2/Minimize, History/Restore, and X/Close.
+`site/icons.json` is the sole role map for panel actions within the broader Design System
+semantic control map: `search`, `pin`, `apply`, `reset`, `minimize`, `restore`, and
+`close`. Its canonical glyphs and neutral accessible labels are Search, Pin, Check/Apply,
+RotateCcw/Reset, Minimize2/Minimize, History/Restore, and X/Close.
 Consumers bind actions and pressed/disabled state to these roles through the shared
-adapter. A role may be omitted when it is inapplicable to a panel; the role definition
-and its visual treatment are still singular.
+Design System adapter. A role may be omitted when it is inapplicable to a panel; the role
+definition and its visual treatment are still singular.
 
 MainPanel, FloatingPanel, and BottomPanel share one visual profile and responsive
 placement rules. Their content and supported lifecycle actions may differ. Minimized
@@ -52,9 +57,9 @@ Each owner change that affects this contract must:
    Restore, and Close. Product source must not map these roles to local icons, SVGs, or
    labels, or override their shared hover, focus, disabled, size, color, surface, or
    placement rules.
-3. Keep panel-specific availability and callbacks in the consumer while the shared
-   adapter owns rendering, accessible names, and state visuals. Reject a second panel
-   shell or conflicting token/profile definition in the consumer's conformance checks.
+3. Keep panel-specific availability and callbacks in the consumer while the Design
+   System adapter owns rendering, lifecycle, accessible names, and state visuals. Reject
+   a second panel shell or conflicting token/profile definition in conformance checks.
 4. Verify MainPanel, FloatingPanel, and BottomPanel at mobile and desktop widths in
    light and dark themes. Check hover, keyboard focus, disabled state, minimize/restore
    cycles, and that the active title and actions remain visible without overlapping or
