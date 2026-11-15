@@ -461,6 +461,40 @@ for (const hops of [1, 2, 3]) test(`${hops} published successors reuse the retai
   await assert.rejects(f.start('two', `--mission=${after.path}`), /allowance(?: is)? exhausted/);
 });
 
+test('reconciled successor readmit checks prerequisites before atomically advancing its member', async t => {
+  const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
+  const target = lanePath('one', 'test-device', f.root), predecessorRef = 'agent/test-device/one';
+  let selected = f.selected(), head = headSha('HEAD', target);
+  assert.equal(await cmdStart(f.root, ['one', '--device=test-device', '--write=additional.txt',
+    `--mission=${selected.path}`, '--readmit', `--expected-head=${head}`], f.policy, f.profile, f.services), 0);
+  selected = f.selected();
+  const previousAllocation = selected.manifest.allocations[0], writePaths = records.get(predecessorRef, f.root).writePaths;
+  const reconciliation = { schema: 'agentic-os/workflow-published-head-reconciliation/v1',
+    base: f.policy.protectedRef, baseSha: previousAllocation.baseRevision, planDigest: 'a'.repeat(64), pr: 1,
+    preservedRef: `refs/agentic-os/recovery/published-head/${'b'.repeat(24)}`,
+    priorAllocationHead: head, priorMemberRevision: head, priorWriteDigest: previousAllocation.writeDigest,
+    selectedPaths: writePaths, targetHead: head, writeDigest: hash(JSON.stringify(writePaths)) };
+  f.run('update-ref', reconciliation.preservedRef, head);
+  selected = changeRoot(f, { allocations: [{ ...previousAllocation, headReconciliation: reconciliation }] });
+  const predecessor = records.get(predecessorRef, f.root);
+  f.run('push', '--quiet', 'origin', `refs/heads/${predecessorRef}:refs/heads/${predecessorRef}`);
+  records.putExact({ ...predecessor, state: 'published', head,
+    handoff: { schema: 'agentic-os-provider-handoff/v1', provider: 'github-gh' } }, predecessor, f.root);
+  writeFileSync(join(target, 'owned.txt'), 'successor candidate\n');
+  assert.equal(runPublishedLaneSuccessor({ cwd: target, predecessorRef, scope: 'next', explicitHead: head,
+    remote: 'origin', protectedRef: f.policy.protectedRef, out: () => {}, message: 'commit successor candidate' }), 0);
+  const nextRef = 'agent/test-device/next', nextHead = headSha('HEAD', target);
+  assert.equal(records.get(nextRef, f.root).head, nextHead);
+  assert.equal(await cmdStart(f.root, ['next', '--device=test-device', '--write=additional.txt',
+    `--mission=${selected.path}`, '--readmit', `--expected-head=${nextHead}`], f.policy, f.profile, f.services), 0);
+  selected = f.selected();
+  assert.equal(selected.manifest.allocations[0].ref, nextRef);
+  assert.equal(selected.manifest.allocations[0].predecessorRef, predecessorRef);
+  assert.equal(selected.manifest.allocations[0].headRevision, nextHead);
+  assert.deepEqual(selected.manifest.allocations[0].headReconciliation, reconciliation);
+  assert.equal(selected.members[0].child.source.revision, nextHead);
+});
+
 test('multi-hop readmission refuses a missing older remote without changing the mission or reservation', async t => {
   const f = fixture(t); await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1');
   const target = lanePath('one', 'test-device', f.root), cachedHead = headSha('HEAD', target);
