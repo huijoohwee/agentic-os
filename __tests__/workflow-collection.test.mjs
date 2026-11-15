@@ -248,3 +248,38 @@ test('published-head reconciliation follows only a bound successor readmit trans
  assert.equal(current.members[0].child.source.revision,nextHead);
  assert.equal(assertWorkflowEffect({root,repository,phase:'preparation',worktreeId,revision:nextHead,ref:nextRef}).status,'eligible');
 });
+
+test('published-head reconciliation permits a bound same-ref alignment readmit', t => {
+ const base=realpathSync(mkdtempSync(join(tmpdir(),'workflow-alignment-reconciliation-'))),root=join(base,'repo');mkdirSync(root);
+ t.after(()=>rmSync(base,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
+ git('init','--quiet','--initial-branch=main');git('config','user.name','Test');git('config','user.email','test@example.invalid');
+ const planningPath='adlc-plan.md';writeFileSync(join(root,planningPath),'---\ndoc_type: PRD-TAD-ADR-MVP-GTM\n---\n# Native plan\n');
+ writeFileSync(join(root,'owned.txt'),'initial');git('add','.');git('-c','commit.gpgsign=false','commit','--quiet','-m','base');
+ const repository='github.com/example/alignment-reconciliation',worktreeId='device--same-ref',revision=git('rev-parse','HEAD'),
+  execution={version:1,checkoutLimit:1,dependencies:{version:1,edges:[]}},ref='agent/device/same-ref',predecessorRef='agent/device/previous',
+  paths=['owned.txt'],writeDigest=createHash('sha256').update(JSON.stringify(paths)).digest('hex'),lane=join(base,'lane');
+ startWorkflow(root,repository,{revision,planningPath,worktreeId,execution});
+ const selected=()=>readSelectedWorkflow(root,repository,{required:true}),collect=(allocations,members=null)=>{
+  const current=selected();return collectWorkflowValue(root,repository,{...current.manifest,
+   members:members??current.members.map(row=>({...row.ref,file:row.path})),allocations,
+   previous:{file:current.path,digest:current.digest}},join(base,'workflow-input.json'));
+ };
+ const active={worktreeId,ref,path:lane,baseRevision:revision,headRevision:revision,writeDigest,state:'active',operation:'readmit',predecessorRef};
+ collect([active]);
+ const reconciliation={schema:'agentic-os/workflow-published-head-reconciliation/v1',base:'refs/remotes/origin/main',
+  baseSha:revision,planDigest:'a'.repeat(64),pr:1,preservedRef:`refs/agentic-os/recovery/published-head/${'c'.repeat(24)}`,
+  priorAllocationHead:revision,priorMemberRevision:revision,priorWriteDigest:writeDigest,selectedPaths:paths,targetHead:revision,writeDigest};
+ git('update-ref',reconciliation.preservedRef,revision);const reconciled={...active,headReconciliation:reconciliation};collect([reconciled]);
+ writeFileSync(join(root,'aligned.txt'),'protected advance');git('add','aligned.txt');git('-c','commit.gpgsign=false','commit','--quiet','-m','alignment candidate');
+ const candidate=git('rev-parse','HEAD'),before=selected(),member=before.members[0];
+ const updated=collectWorkflowValue(root,repository,{schema:'agentic-os/workflow-observation-input/v1',id:member.child.id,
+  source:{repository,revision:candidate,tree:git('rev-parse','HEAD^{tree}')},context:member.child.context,expected:WORKFLOW_PHASES,phases:[]},join(base,'member-input.json'));
+ const pending={...reconciled,headRevision:candidate,state:'pending',previousWriteDigest:writeDigest},memberRef={...member.ref,file:updated.manifest,digest:updated.digest};
+ assert.throws(()=>collect([pending]),/allocation-head-reconciliation/);
+ collect([pending],[memberRef]);const prepared=selected();
+ assert.equal(prepared.manifest.allocations[0].state,'pending');assert.equal(prepared.manifest.allocations[0].headRevision,candidate);
+ assert.deepEqual(prepared.manifest.allocations[0].headReconciliation,reconciliation);assert.equal(prepared.members[0].child.source.revision,candidate);
+ const {previousWriteDigest,...completed}=pending;completed.state='active';collect([completed],[memberRef]);
+ assert.equal(selected().manifest.allocations[0].state,'active');assert.equal(selected().members[0].child.source.revision,candidate);
+});
