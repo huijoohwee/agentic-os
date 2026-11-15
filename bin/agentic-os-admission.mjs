@@ -227,9 +227,9 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
         if (recertification) store.putExact({ ...record, head: record.state === 'published' ? record.head : identity.head, writePaths }, record, root);
-        const recoveredSuccessorReadmit = Boolean(successorReadmit && readmit && row?.recoveredFromHead); let allocation;
+        const recoveredSuccessorReadmit = Boolean(successorReadmit && readmit && row?.recoveredFromHead), bindReconciledSuccessor = Boolean(successorReadmit && readmit && row?.headReconciliation); let allocation;
         if (recoveredSuccessorReadmit) { allocation = { worktreeId, ref, path, baseRevision: row.baseRevision, headRevision: identity.head, writeDigest: nextDigest, state: 'pending', operation: 'readmit', previousWriteDigest: row.writeDigest, recoveredFromHead: row.recoveredFromHead, predecessorRef: row.ref }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
-        else if (expectedHead && !(alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && row?.state === 'pending' && row.operation === 'readmit' && row.recoveredFromHead)) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+        else if (expectedHead && !bindReconciledSuccessor && !(alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && row?.state === 'pending' && row.operation === 'readmit' && row.recoveredFromHead)) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
         assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
         if (alignment) {
           alignment = refreshMethods.prepare(alignment);
@@ -244,7 +244,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
           ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
           ...(row?.headReconciliation ? { headReconciliation: row.headReconciliation } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
-        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation);
+        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' || bindReconciledSuccessor ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation);
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
         if (readmit) {
           selectedAgain(root, profile.repository, selected);

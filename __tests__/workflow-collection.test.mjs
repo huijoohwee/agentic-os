@@ -227,4 +227,20 @@ test('published-head reconciliation follows only a bound successor readmit trans
  assert.equal(selected().manifest.allocations[0].ref,predecessorRef);
  assert.equal(selected().manifest.allocations[0].writeDigest,expandedDigest);
  assert.deepEqual(selected().manifest.allocations[0].headReconciliation,reconciliation);
+ const beforeHeadAdvance=selected(),member=beforeHeadAdvance.members[0];
+ writeFileSync(join(root,'next-owned.txt'),'next candidate');git('add','next-owned.txt');git('-c','commit.gpgsign=false','commit','--quiet','-m','successor candidate');
+ const nextHead=git('rev-parse','HEAD'),nextMember=collectWorkflowValue(root,repository,{schema:'agentic-os/workflow-observation-input/v1',
+  id:member.child.id,source:{repository,revision:nextHead,tree:git('rev-parse',`${nextHead}^{tree}`)},context:member.child.context,
+  expected:WORKFLOW_PHASES,phases:[]},join(base,'successor-member-input.json'));
+ const nextRef='agent/device/reconciled-successor-next',nextRow={...activated,ref:nextRef,predecessorRef,state:'pending',
+  previousWriteDigest:expandedDigest,headRevision:nextHead},memberRef={...member.ref,file:nextMember.manifest,digest:nextMember.digest};
+ const nextInput={...beforeHeadAdvance.manifest,members:[memberRef],previous:{file:beforeHeadAdvance.path,digest:beforeHeadAdvance.digest}};
+ assert.throws(()=>collectWorkflowValue(root,repository,{...nextInput,allocations:[activated]},join(base,'split-successor-input.json')),
+  /allocation-head-reconciliation/);
+ const atomic=collectWorkflowValue(root,repository,{...nextInput,allocations:[nextRow]},join(base,'atomic-successor-input.json'));
+ const current=readSelectedWorkflow(root,repository,{input:atomic.manifest,required:true});
+ assert.equal(current.manifest.allocations[0].ref,nextRef);
+ assert.equal(current.manifest.allocations[0].headRevision,nextHead);
+ assert.deepEqual(current.manifest.allocations[0].headReconciliation,reconciliation);
+ assert.equal(current.members[0].child.source.revision,nextHead);
 });
