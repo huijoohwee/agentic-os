@@ -219,8 +219,12 @@ test('published-head reconciliation follows only a bound successor readmit trans
  const reconciled={...active,headReconciliation:reconciliation};collect([reconciled]);
  const invalid={...reconciled,ref:predecessorRef,predecessorRef:'agent/device/unrelated',state:'pending',previousWriteDigest:writeDigest};
  assert.throws(()=>collect([invalid]),/allocation-head-reconciliation/);
- const successor={...reconciled,ref:predecessorRef,predecessorRef:ref,state:'pending',previousWriteDigest:writeDigest};collect([successor]);
+ const expandedPaths=[...paths,'additional-owned-file.txt'],expandedDigest=createHash('sha256').update(JSON.stringify(expandedPaths)).digest('hex');
+ const invalidDigest={...reconciled,ref:predecessorRef,predecessorRef:ref,state:'pending',previousWriteDigest:'c'.repeat(64),writeDigest:expandedDigest};
+ assert.throws(()=>collect([invalidDigest]),/allocation-head-reconciliation/);
+ const successor={...reconciled,ref:predecessorRef,predecessorRef:ref,state:'pending',previousWriteDigest:writeDigest,writeDigest:expandedDigest};collect([successor]);
  const {previousWriteDigest:_previous,...activated}=successor;activated.state='active';collect([activated]);
  assert.equal(selected().manifest.allocations[0].ref,predecessorRef);
+ assert.equal(selected().manifest.allocations[0].writeDigest,expandedDigest);
  assert.deepEqual(selected().manifest.allocations[0].headReconciliation,reconciliation);
 });
