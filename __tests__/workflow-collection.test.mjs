@@ -190,3 +190,37 @@ test('successor lineage rejects missing, mismatched, cyclic and over-budget ance
     assert.equal(readmissionPredecessors(record, published, { ...allocation, ...patch }), false);
   }
 });
+
+test('published-head reconciliation follows only a bound successor readmit transition', t => {
+ const base=realpathSync(mkdtempSync(join(tmpdir(),'workflow-reconciliation-'))),root=join(base,'repo');mkdirSync(root);
+ t.after(()=>rmSync(base,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
+ git('init','--quiet','--initial-branch=main');git('config','user.name','Test');git('config','user.email','test@example.invalid');
+ const planningPath='adlc-plan.md';writeFileSync(join(root,planningPath),'---\ndoc_type: "PRD-TAD-ADR-MVP-GTM"\n---\n# Native plan\n');
+ git('add','.');git('-c','commit.gpgsign=false','commit','--quiet','-m','base');
+ const repository='github.com/example/reconciliation',worktreeId='device--reconciled',revision=git('rev-parse','HEAD'),
+  execution={version:1,checkoutLimit:1,dependencies:{version:1,edges:[]}};
+ startWorkflow(root,repository,{revision,planningPath,worktreeId,execution});
+ const selected=()=>readSelectedWorkflow(root,repository,{required:true}),collect=allocations=>{
+  const current=selected();return collectWorkflowValue(root,repository,{...current.manifest,
+   members:current.members.map(row=>({...row.ref,file:row.path})),allocations,
+   previous:{file:current.path,digest:current.digest}},join(base,'workflow-input.json'));
+ };
+ const paths=['owned.txt'],writeDigest=createHash('sha256').update(JSON.stringify(paths)).digest('hex'),
+  ref='agent/device/reconciled',predecessorRef='agent/device/reconciled-successor',
+  pending={worktreeId,ref,path:join(base,'existing-lane'),baseRevision:revision,headRevision:revision,
+   writeDigest,state:'pending',operation:'readmit',previousWriteDigest:writeDigest};
+ collect([pending]);const {previousWriteDigest,...active}=pending;active.state='active';collect([active]);
+ const reconciliation={schema:'agentic-os/workflow-published-head-reconciliation/v1',base:'refs/remotes/origin/main',
+  baseSha:revision,planDigest:'a'.repeat(64),pr:1,preservedRef:`refs/agentic-os/recovery/published-head/${'b'.repeat(24)}`,
+  priorAllocationHead:revision,priorMemberRevision:revision,priorWriteDigest:writeDigest,selectedPaths:paths,
+  targetHead:revision,writeDigest};
+ git('update-ref',reconciliation.preservedRef,revision);
+ const reconciled={...active,headReconciliation:reconciliation};collect([reconciled]);
+ const invalid={...reconciled,ref:predecessorRef,predecessorRef:'agent/device/unrelated',state:'pending',previousWriteDigest:writeDigest};
+ assert.throws(()=>collect([invalid]),/allocation-head-reconciliation/);
+ const successor={...reconciled,ref:predecessorRef,predecessorRef:ref,state:'pending',previousWriteDigest:writeDigest};collect([successor]);
+ const {previousWriteDigest:_previous,...activated}=successor;activated.state='active';collect([activated]);
+ assert.equal(selected().manifest.allocations[0].ref,predecessorRef);
+ assert.deepEqual(selected().manifest.allocations[0].headReconciliation,reconciliation);
+});
