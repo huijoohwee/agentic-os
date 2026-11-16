@@ -206,20 +206,29 @@ test('retained lane records can exceed the former node ceiling while the new cei
   assert.throws(() => save(over, root), /node budget exceeded/u);
 });
 
-test('repeated cache strings share the bounded pool while unique strings and blob bytes remain bounded', (t) => {
+test('cache strings use the documented aggregate budget and still reject overflow before publication', (t) => {
   const root = repository(t), value = { schema: SCHEMA, lanes: {} };
   const shared = 'scope/'.repeat(800);
   for (let index = 0; index < 90; index++) {
     const ref = `agent/device/intern-${index}`;
     value.lanes[ref] = { ref, state: 'published', writePaths: [shared] };
   }
-  assert(Buffer.byteLength(shared) * 90 > CACHE_LIMITS.aggregateStringBytes);
+  assert(Buffer.byteLength(shared) * 90 > 420_000);
+  assert(Buffer.byteLength(shared) * 90 < CACHE_LIMITS.aggregateStringBytes);
   assert(Buffer.byteLength(JSON.stringify(value)) < CACHE_LIMITS.bytes);
   save(value, root);
   assert.deepEqual(JSON.parse(JSON.stringify(load(root))), value);
-  const current = runGit(root, 'rev-parse', CACHE_REF), bytes = runGit(root, 'cat-file', 'blob', current);
+  let current = runGit(root, 'rev-parse', CACHE_REF), bytes = runGit(root, 'cat-file', 'blob', current);
   for (const [index, record] of Object.values(value.lanes).entries()) record.writePaths[0] = `${index}/${shared}`;
-  assert.throws(() => save(value, root), /aggregate string byte budget exceeded/u);
+  save(value, root);
+  current = runGit(root, 'rev-parse', CACHE_REF); bytes = runGit(root, 'cat-file', 'blob', current);
+  const over = { schema: SCHEMA, lanes: {} };
+  for (let lane = 0; lane < 19; lane += 1) {
+    const ref = `agent/device/overflow-${lane}`;
+    over.lanes[ref] = { ref, state: 'published', writePaths: Array.from({ length: 30 }, (_, path) =>
+      `${lane}-${path}-${'x'.repeat(14_990)}`) };
+  }
+  assert.throws(() => save(over, root), /aggregate string byte budget exceeded/u);
   assert.equal(runGit(root, 'rev-parse', CACHE_REF), current);
   assert.equal(runGit(root, 'cat-file', 'blob', current), bytes);
 });

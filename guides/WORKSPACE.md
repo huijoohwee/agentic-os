@@ -41,7 +41,8 @@ fail closed on the new index. Changing or removing enrollment also fails closed;
 original workspace and records. This is local storage, not multi-device claim authority.
 
 Each record and index stays below 500,000 bytes, with at most 1,024 records and 8 MB total payload;
-existing schema, node, string and array limits still apply. Records use exclusive private writes
+the aggregate unique-string budget matches that payload cap, while per-string, schema, node and array
+limits still apply. Records use exclusive private writes
 and exact digest verification; unchanged records are reused. Concurrent updates reuse the existing
 clone lock and Git CAS. No record eviction, automatic garbage collection, network sync or public
 publication is added. Missing, altered, aliased or mismatched records reject the observation.

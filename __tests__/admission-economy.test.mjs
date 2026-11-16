@@ -616,6 +616,27 @@ test('ordinary START restores only a missing cache row bound by its exact missio
   }
 });
 
+test('mission recovery preserves untracked Markdown drafts and rejects tracked canonical edits', async t => {
+  for (const state of ['planning-draft', 'tracked-edit']) {
+    const f = fixture(t);
+    assert.equal(await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), 0);
+    const mission = f.selected(), row = mission.manifest.allocations[0];
+    records.remove(row.ref, f.root);
+    const retainedPath = state === 'planning-draft' ? join(f.root, 'retained-plan.md') : join(f.root, 'owned.txt');
+    const retainedBytes = state === 'tracked-edit' ? 'preserve tracked local edit\n' : 'preserve authored planning bytes\n';
+    writeFileSync(retainedPath, retainedBytes);
+    const attempt = f.start('one', `--mission=${mission.path}`);
+    if (state === 'planning-draft') {
+      assert.equal(await attempt, 0);
+      assert.equal(records.get(row.ref, f.root).state, 'active');
+    } else {
+      await assert.rejects(attempt);
+      assert.equal(records.get(row.ref, f.root), null);
+    }
+    assert.equal(readFileSync(retainedPath, 'utf8'), retainedBytes);
+  }
+});
+
 test('mounted lane rebind restores one missing cache row from exact authored bytes at the protected base', async t => {
   const f = fixture(t);
   assert.equal(await f.start('one', `--plan=${f.plan}`, '--checkout-limit=1'), 0);

@@ -20,7 +20,7 @@ export const CACHE_LIMITS = Object.freeze({
   depth: 20,
   nodes: 100_000,
   stringBytes: 16_384,
-  aggregateStringBytes: 420_000, // Interned strings; occurrences retain node/blob bounds.
+  aggregateStringBytes: 8_000_000, // The workspace cache already caps aggregate record payload at 8 MB.
 });
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const CACHE_LOCK_WAIT_MS = 30_000;
