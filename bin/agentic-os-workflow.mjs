@@ -444,7 +444,7 @@ export function releaseWorkflowAllocation(root, repository, ref) {
     workflow: null, workflowDigest: null, released: false };
   if (!selected?.manifest.execution) fail('allocation-release-selection');
   const allocation = selected.manifest.allocations?.find(row => row.ref === ref); if (!allocation || !['active', 'released'].includes(allocation.state)) fail('allocation-release-state');
-  if (worktreeInventory(root).some(row => row.branch === ref || row.path === allocation.path || basename(row.path) === allocation.worktreeId)) fail('allocation-release-mounted');
+  if (worktreeInventory(root).some(row => row.branch === ref || row.path === allocation.path)) fail('allocation-release-mounted');
   if (readSelectedWorkflow(root, repository, { input: selected.path, required: true }).digest !== selected.digest) fail('selection-drift');
   if (allocation.state === 'released') return { schema: 'agentic-os/workflow-allocation-release/v1', authority: false, ref,
     worktreeId: allocation.worktreeId, allocationHead: allocation.headRevision, workflow: selected.path, workflowDigest: selected.digest, released: true, alreadyReleased: true };
