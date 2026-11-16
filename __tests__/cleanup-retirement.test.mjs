@@ -115,7 +115,7 @@ test('lane cache admits bounded records above the previous aggregate-string ceil
   save({ schema: 'agentic-os/lanes/v1', lanes: {
     [ref]: { ref, state: 'planned', writePaths },
   } }, root);
-  assert.equal(CACHE_LIMITS.aggregateStringBytes, 420_000);
+  assert.equal(CACHE_LIMITS.aggregateStringBytes, 8_000_000);
   assert.equal(load(root).lanes[ref].writePaths.length, writePaths.length);
 });
 
