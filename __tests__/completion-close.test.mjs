@@ -397,3 +397,89 @@ test('native END binds its plan, merges once, syncs, preserves user files and re
     assert.equal(JSON.parse(readFileSync(statePath)).merges, 1);
   } finally { process.env.PATH = oldPath; rmSync(parent, { recursive: true, force: true }); }
 });
+
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { git } from '../src/git.mjs';
+import { put } from '../src/lane-records.mjs';
+import { createRepositoryProfile } from '../src/governance.mjs';
+import { projectProgressiveCloseout } from '../src/completion.mjs';
+import { runProgressiveCompletion } from '../bin/agentic-os-release-common-complete.mjs';
+
+const target = { path: '/repo/lanes/task', branch: 'agent/device/task', head: 'a'.repeat(40) };
+const record = { ref: target.branch, worktree: target.path, state: 'active', pr: null };
+const observation = clean => ({
+  ref: target.branch, authorizesEffects: false,
+  lane: { path: target.path, head: target.head, mounted: true, clean },
+  canonicalClean: true, canonicalRevision: 'b'.repeat(40), remoteTrackingRevision: 'b'.repeat(40),
+  closeout: { schema: 'agentic-os/closeout-verdict/v1', observationOnly: true,
+    authorizesEffects: false, canonicalCurrent: true, sourceState: 'continuable' },
+});
+
+for (const clean of [false, true]) test(`unfinished admitted lane names LAND, clean=${clean}`, () => {
+  // Active records need not bind a head until LAND; clean committed work still needs publication.
+  const result = projectProgressiveCloseout(target, observation(clean), record);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'finish-and-publish');
+  assert.equal(result.nextAction.owner, 'lane-owner');
+  assert.match(result.nextAction.command, /affected checks.*agentic-os land/u);
+});
+
+test('empty integrated source retains its existing closeout action', () => {
+  const observed = observation(true);
+  Object.assign(observed.closeout, { sourceState: 'source_complete', sourceIntegrated: true,
+    adlcState: 'cleanup_pending', nextAction: { id: 'workspace-cleanup' } });
+  assert.equal(projectProgressiveCloseout(target, observed, record).nextAction.id, 'workspace-cleanup');
+});
+
+test('finish-and-publish requires exact admitted identity and observable current source', () => {
+  for (const [selected, observed, bound] of [
+    [{ ...target, branch: null }, null, null],
+    [target, observation(true), null],
+    [target, observation(true), { ...record, worktree: '/other' }],
+    [target, observation(true), { ...record, state: 'published', pr: 1 }],
+    [target, observation(true), { ...record, recovery: { dirtyState: 'unobservable-at-missing-path' } }],
+    [target, { ...observation(true), canonicalClean: false }, record],
+    [target, { ...observation(true), lane: { ...observation(true).lane, head: 'c'.repeat(40) } }, record],
+    [target, observation(null), record],
+    [{ ...target, locked: true }, observation(true), record],
+  ]) assert.notEqual(projectProgressiveCloseout(selected, observed, bound).nextAction?.id, 'finish-and-publish');
+});
+
+for (const committed of [false, true]) test(`batch END preserves real unpublished source, committed=${committed}`, async t => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-unpublished-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'repo'), directory = join(parent, 'lanes'), path = join(directory, 'task');
+  mkdirSync(root); mkdirSync(directory);
+  const run = (args, cwd = root) => git(args, { cwd });
+  run(['init', '--quiet', '--initial-branch=main']);
+  run(['config', 'user.name', 'Fixture']); run(['config', 'user.email', 'fixture@example.invalid']);
+  const profile = createRepositoryProfile({ repository: 'github.com/owner/repo',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
+    requiredChecks: ['test'] });
+  writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
+  run(['add', '.']); run(['commit', '--quiet', '-m', 'base']);
+  const baseSha = run(['rev-parse', 'HEAD']);
+  run(['update-ref', 'refs/remotes/origin/main', baseSha]);
+  run(['worktree', 'add', '--quiet', '-b', target.branch, path, baseSha]);
+  put({ ...record, base: 'refs/remotes/origin/main', baseSha, worktree: path,
+    writePaths: ['source.txt'] }, root);
+  writeFileSync(join(path, 'source.txt'), 'unfinished source\n');
+  if (committed) { run(['add', '.'], path); run(['commit', '--quiet', '-m', 'unpublished'], path); }
+  const selected = { ...target, path, head: run(['rev-parse', 'HEAD'], path) };
+  const events = [];
+  let effects = 0;
+  const code = await runProgressiveCompletion({ root, directory,
+    policy: { protectedBranch: 'main' }, profile, out: line => events.push(JSON.parse(line)),
+    inventory: () => [selected],
+    complete: async () => { effects++; return 0; },
+  });
+  assert.equal(code, 1);
+  assert.equal(effects, 0);
+  assert.equal(events.at(-1).sourceComplete, 0);
+  assert.equal(events.at(-1).completed, 0);
+  assert.equal(events.at(-1).nextActions[0].id, 'finish-and-publish');
+  assert.equal(events.at(-1).authority, false);
+});

@@ -36,14 +36,15 @@ Forking under a different owner starts at the [fork guide](guides/FORK.md).
 
 ```sh
 npm run lane -- <scope> --write=<path[,path...]> [--plan=<PRD-path>]
-# edit only in the printed worktree
+# finish authorized work and affected checks in the printed worktree
 npm run land -- --message="feat: ..."
-# finish the protected PR checks/review and merge
-npm run release:common -- complete --ref=<lane>
+# from canonical, select only authorized effects; required checks/review gate merge
+npm run release:common -- complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped
 ```
 
-`complete` waits for and records exact source integration, then reports the lane's remaining ADLC actions. An open
-or blocked result keeps the lane open; follow its named next action. Source integration does not imply delivery
+END follows finish → check → LAND/publish → protected integration → sync → cleanup. Cleanliness alone does not
+prove publication: inspect unpublished commits too. An open or blocked result keeps the lane open; follow its
+named next action and reuse covered grants. Source integration does not imply delivery
 or cleanup. For a batch, use `npm run release:common -- complete-adlc --worktrees=<registered-root>` on demand.
 Solo maintainers use a PR and green CI with required approvals set to zero, bypass off, and no self-approval.
 Load deployment, rollback, recovery, cleanup, diagnostics, or extra validation only when the lane scope or its

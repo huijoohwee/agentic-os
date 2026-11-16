@@ -332,28 +332,28 @@ export function validateDeliveryDispositionSet(value, expected) {
   } catch (error) { if (error?.reason?.startsWith('blocked-delivery-disposition-')) throw error; deliveryFail('invalid'); }
 }
 /** Project only an exact, current, read-only closeout when a lane is already settled or still pending. */
-export function projectProgressiveCloseout(target, observed) {
-  const closeout = observed?.closeout, base = { path: target.path, ref: target.branch,
-    head: target.head, status: 'blocked' };
+export function projectProgressiveCloseout(target, observed, record = null) {
+  const closeout = observed?.closeout, base = { path: target.path, ref: target.branch, head: target.head, status: 'blocked' };
   const exact = observed?.ref === target.branch && observed?.authorizesEffects === false
-    && observed?.lane?.path === target.path && observed?.lane?.head === target.head
-    && observed?.lane?.mounted === true && observed?.lane?.clean === true
-    && observed?.canonicalClean === true
-    && observed?.canonicalRevision === observed?.remoteTrackingRevision
+    && observed?.lane?.path === target.path && observed?.lane?.head === target.head && observed?.lane?.mounted === true
+    && observed?.canonicalClean === true && observed?.canonicalRevision === observed?.remoteTrackingRevision
     && closeout?.schema === 'agentic-os/closeout-verdict/v1'
-    && closeout?.observationOnly === true && closeout?.authorizesEffects === false
-    && closeout?.canonicalCurrent === true
+    && closeout?.observationOnly === true && closeout?.authorizesEffects === false && closeout?.canonicalCurrent === true
     && (closeout?.sourceState !== 'source_complete' || closeout?.sourceIntegrated === true);
-  if (!exact) return { ...base, reason: 'requires-published-lane' };
+  if (exact && !target.locked && !target.prunable && record?.state === 'active'
+    && record.ref === target.branch && record.worktree === target.path && record.pr === null
+    && record.recovery?.dirtyState !== 'unobservable-at-missing-path' && typeof observed.lane.clean === 'boolean'
+    && (observed.lane.clean === false || closeout.sourceState !== 'source_complete'))
+    return { ...base, reason: 'finish-and-publish', nextAction: { id: 'finish-and-publish', owner: 'lane-owner',
+      command: 'Finish authorized work in this lane, run affected checks, then run agentic-os land --message="...". Return to END after publication; do not park or abandon work without an explicit owner decision.' } };
+  if (!exact || observed.lane.clean !== true) return { ...base, reason: 'requires-published-lane' };
   const adlcState = closeout.adlcState ?? (closeout.missionState === 'source_complete' ? 'complete' : null);
   const fields = { sourceState: closeout.sourceState, missionState: closeout.missionState ?? null,
     adlcState, retentionState: closeout.retentionState ?? null,
     deliveryState: closeout.deliveryState ?? null, completionScope: closeout.completionScope ?? null, branchDisposition: closeout.branchDisposition ?? null,
     nextAction: closeout.nextAction ?? null };
-  if (closeout.sourceState !== 'source_complete') return { ...base, ...fields,
-    reason: closeout.nextAction?.id ?? 'source-not-complete' };
-  const settled = ['complete', 'source_complete', 'cleanup_pending', 'delivery_pending',
-    'delivery_scope_pending', 'retirement_pending'].includes(adlcState) ? adlcState : null;
+  if (closeout.sourceState !== 'source_complete') return { ...base, ...fields, reason: closeout.nextAction?.id ?? 'source-not-complete' };
+  const settled = ['complete', 'source_complete', 'cleanup_pending', 'delivery_pending', 'delivery_scope_pending', 'retirement_pending'].includes(adlcState) ? adlcState : null;
   return { ...base, ...fields, status: settled ?? 'blocked', adlcState: settled,
     reason: settled && ['complete', 'source_complete'].includes(settled) ? null : 'closeout-incomplete' };
 }

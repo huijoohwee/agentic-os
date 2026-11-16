@@ -21,7 +21,7 @@ Consumers own product/deploy/rollback/authority.
 - Global repo/worktree: USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.
 - Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
-- Core: START → develop/LAND → END. Reuse one open PR and exact current evidence.
+- Core: START → finish authorized work → check → LAND/publish → END. Reuse one PR and exact current evidence.
 - Bind a Mission for material or coordinated work; routine scoped work stays standalone.
 - END uses [RELEASE](RELEASE-WORKFLOW.md); load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) for selected delivery only.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
