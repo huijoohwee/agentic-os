@@ -91,14 +91,14 @@ export function checkoutCapacity(selected, repository, inventory, explicitLimit 
 }
 function observeExisting(root, ref, path, record, expectedHead, requested, policy, allocation, readmit = false, recovery = null) {
   const registered = worktrees(root).find(row => row.branch === ref && row.path === path);
-  let recoveryReceipt = null; if (!record && (!recovery?.enabled || !allocation || !recovery.selected)) fail('record-recovery-required', `Lane record absent; use npm run release:common -- rebind plan --ref=${ref} --mode=recertify with exact base/head/worktree (guides/LANE-RECERTIFICATION.md).`);
+  if (!registered || !isBoundLane(ref, path) || currentBranch(path) !== ref) fail('existing-identity', 'Reuse requires one live bound active or open published lane');
+  let recoveryReceipt = null; if (!record && (!recovery?.enabled || !allocation || !recovery.selected)) fail('existing-identity', `Lane record absent; use npm run release:common -- rebind plan --ref=${ref} --mode=recertify with exact base/head/worktree (guides/LANE-RECERTIFICATION.md).`);
   if (!record && recovery?.enabled) {
     const restored = recoverLaneRecordFromMission({ ref, path, expectedHead, policy, allocation, selected: recovery.selected,
       repository: recovery.repository, writePaths: requested, root }, store.newRecord);
     record = restored.record; recoveryReceipt = restored.receipt;
   }
-  if (!registered || !record || !['active', 'published'].includes(record.state) || record.worktree !== path || !isBoundLane(ref, path)
-    || currentBranch(path) !== ref) fail('existing-identity', 'Reuse requires one live bound active or open published lane');
+  if (!record || !['active', 'published'].includes(record.state) || record.worktree !== path) fail('existing-identity', 'Reuse requires one live bound active or open published lane');
   const head = headSha('HEAD', path);
   if (expectedHead && head !== expectedHead) fail('head-drift', 'The active lane no longer has the expected head'); if (registered.head && registered.head !== head) fail('head-drift', 'Registered head changed');
   if (!record.baseSha || observeGit(['merge-base', '--is-ancestor', record.baseSha, head], { cwd: root, allowFail: true }) === null) fail('base-binding', 'The existing lane must retain its admitted source ancestry'); const reserved = parseWritePaths((record.writePaths ?? []).join(',')), authoredScope = readmit ? [...new Set([...reserved, ...requested])] : reserved;

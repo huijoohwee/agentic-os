@@ -228,7 +228,7 @@ test('missing lane evidence names the existing recovery owner, then the same lan
   assert.doesNotMatch(status.stdout, /author, publish, integrate/u);
   assert.match(status.stdout, /recover lane record/u);
   for (const flags of [[], ['--plan=native-prd-tad-adr-mvp-gtm.md']]) {
-    await assert.rejects(f.start(...flags), error => error.reason === 'blocked-admission-record-recovery-required'
+    await assert.rejects(f.start(...flags), error => error.reason === 'blocked-admission-existing-identity'
       && error.message.includes(`rebind plan --ref=${f.ref} --mode=recertify`));
     assert.equal(records.get(f.ref, f.root), null);
   }
