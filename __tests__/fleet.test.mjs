@@ -192,6 +192,17 @@ const fleetObservations = () => [
 ];
 const ownershipCodes = (p, o) => evaluateFleetOwnership(p, o).findings.map(f => f.code);
 
+test('ownership catalog admits the ninth source owner and refuses a tenth', () => {
+  const policy = fleetPolicy();
+  for (let index = policy.repositories.length; index < 9; index++) {
+    policy.repositories.push({ id: `example.org/owner/repo-${index}`, directory: `repo-${index}`,
+      role: 'source', planningRoots: ['docs'] });
+  }
+  assert.equal(validateOwnershipPolicy(policy).repositories.length, 9);
+  policy.repositories.push({ id: 'example.org/owner/repo-9', directory: 'repo-9', role: 'source', planningRoots: ['docs'] });
+  assert.throws(() => validateOwnershipPolicy(policy), /at most 9/u);
+});
+
 test('fleet policy has one owner per responsibility and covers every observed repository', () => {
   const p = fleetPolicy(), o = fleetObservations();
   assert.equal(evaluateFleetOwnership(p, o).ok, true);

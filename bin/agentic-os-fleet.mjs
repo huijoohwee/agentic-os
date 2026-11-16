@@ -162,7 +162,7 @@ export function runFleetCli(argv, io = console) {
   } catch (error) { io.error(`fleet allocation: ${error.message}`); return 1; }
 }
 
-export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 8, artifacts: 2048,
+export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 9, artifacts: 2048,
   fileBytes: 500_000, totalBytes: 32_000_000, milliseconds: 10_000, findings: 128 });
 const POLICY_PATH = fileURLToPath(new URL('../catalog/fleet-ownership.json', import.meta.url));
 const CAPABILITY_KINDS = ['catalog', 'prompt', 'agent', 'skill', 'command', 'contract', 'runtime', 'guide', 'projection', 'reference'];

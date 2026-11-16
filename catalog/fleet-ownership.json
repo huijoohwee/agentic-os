@@ -2,6 +2,12 @@
   "schema": "agentic-os/fleet-ownership-policy/v1",
   "repositories": [
     {
+      "id": "github.com/huijoohwee/agentic-geo",
+      "directory": "agentic-geo",
+      "role": "source",
+      "planningRoots": ["docs"]
+    },
+    {
       "id": "github.com/huijoohwee/agentic-os",
       "directory": "agentic-os",
       "role": "source",
@@ -68,6 +74,20 @@
     }
   ],
   "responsibilities": [
+    {
+      "id": "geo-longitude-core",
+      "owner": "github.com/huijoohwee/agentic-geo",
+      "source": "src/core.mjs",
+      "consumers": [
+        "github.com/huijoohwee/agentic-graph",
+        "github.com/huijoohwee/agentic-commerce-os"
+      ],
+      "discovery": {
+        "kinds": ["contract"],
+        "summary": "Portable longitude normalization, shortest wrapped span and unwrapping; product policy and maps remain with consumers.",
+        "transport": "source"
+      }
+    },
     {
       "id": "lifecycle-governance",
       "owner": "github.com/huijoohwee/agentic-os",
