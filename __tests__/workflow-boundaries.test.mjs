@@ -96,6 +96,27 @@ function executionFixture(t) {
   return { base, root, git, repository, revision, worktreeId, execution, selected, collect, guard };
 }
 
+test('allocation release uses exact path or branch, not a shared checkout folder name', t => {
+  const s = executionFixture(t), ref = 'agent/device/checkout', worktreeId = 'repo';
+  const path = join(s.base, 'task', worktreeId), peer = join(s.base, 'retained', worktreeId);
+  startWorkflow(s.root, s.repository, { revision: s.revision,
+    planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } },
+    allocation: { worktreeId, ref, path, baseRevision: s.revision, headRevision: s.revision,
+      writeDigest: 'a'.repeat(64), state: 'active', operation: 'create' } });
+  s.git('worktree', 'add', '-b', ref, path, s.revision);
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, ref), /allocation-release-mounted/);
+  s.git('-C', path, 'checkout', '--detach');
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, ref), /allocation-release-mounted/);
+  s.git('worktree', 'remove', path);
+  s.git('worktree', 'add', peer, ref);
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, ref), /allocation-release-mounted/);
+  s.git('-C', peer, 'checkout', '--detach');
+  const released = releaseWorkflowAllocation(s.root, s.repository, ref);
+  assert.equal(released.released, true, 'canonical and retained peer may share the unmounted task basename');
+  assert.equal(releaseWorkflowAllocation(s.root, s.repository, ref).alreadyReleased, true);
+});
+
 test('allocation release stays standalone when no workflow selection was ever retained', t => {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-allocation-standalone-'))), root = join(base, 'repo'); mkdirSync(root);
   t.after(() => rmSync(base, { recursive: true, force: true }));
