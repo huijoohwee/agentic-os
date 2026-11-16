@@ -557,7 +557,7 @@ export async function runProgressiveCompletion({ root, directory = null, ref = n
   const deadline = now() + timeoutMs, results = []; for (const { target, bound } of targets) {
     let result = { path: target.path, ref: target.branch, head: target.head, status: 'blocked', reason: null }; try {
       const remaining = Math.ceil(deadline - now());
-      if (!bound || !COMPLETE_STATES.has(bound.state)) result = (await import('../src/completion.mjs')).projectProgressiveCloseout(target, target.branch ? status(root, target.branch, policy, profile) : null);
+      if (!bound || !COMPLETE_STATES.has(bound.state)) result = (await import('../src/completion.mjs')).projectProgressiveCloseout(target, target.branch ? status(root, target.branch, policy, profile) : null, bound);
       else if (bound.recovery?.dirtyState === 'unobservable-at-missing-path') result.reason = 'lane-dirty-state-unknown';
       else if (target.locked || target.prunable || bound.head !== target.head || bound.worktree !== target.path)
         result.reason = target.locked || target.prunable ? 'worktree-not-completable' : 'lane-binding-drift';

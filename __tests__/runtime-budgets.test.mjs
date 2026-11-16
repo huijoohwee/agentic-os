@@ -58,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40952, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40954, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -94,7 +94,7 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.',
       'Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.',
       'Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.',
-      'Core: START → develop/LAND → END. Reuse one open PR and exact current evidence.',
+      'Core: START → finish authorized work → check → LAND/publish → END. Reuse one PR and exact current evidence.',
       'Bind a Mission for material or coordinated work; routine scoped work stays standalone.',
       'Minimize time-to-production: smallest useful diff; fix owners, remove replacements.',
       'Sprint: TTP ETA+time/byte/module caps; refresh on drift.',
@@ -131,13 +131,16 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
       'npm run land -- --message="feat: ..."',
-      'Corrections fast-forward the same open, unqueued PR.',
-      'END from canonical, selecting only effects already authorized by the caller:',
+      'Finish authorized work and affected checks in the lane;',
+      'Clean worktrees can contain unpublished commits.',
+      'Parking/abandonment requires an explicit owner decision.',
+      'Corrections fast-forward the same open, unqueued PR;',
+      'END from canonical selects only caller-authorized effects:',
       'agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped',
-      'Authority-controlling source also requires `--authority-head=<sha>`. Required checks/reviews remain enforced.',
-      'Rerun after interruption; exit `2` names the next wait or uncovered effect. Receipts never grant authority.',
-      'Merge, sync, recoverable quarantine and allocation release keep separate proof. Refs/objects are retained.',
-      'Unrelated untracked files stay in place; tracked edits, collisions and identity drift require recovery.',
+      'Authority-controlling source also needs `--authority-head=<sha>`. Required checks/reviews gate integration.',
+      'Reuse covered grants; rerun after interruption. Exit `2` names a wait or uncovered effect; receipts grant no authority.',
+      'Merge, sync, recoverable cleanup and allocation release retain separate proof. Refs/objects and unrelated bytes stay.',
+      'Tracked edits, collisions or identity drift require recovery.',
       'Source closure never implies product delivery.',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [

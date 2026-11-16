@@ -1,7 +1,7 @@
 ---
 title: "Coordinated repository work without repeated closeout"
 doc_type: PRD-TAD-ADR-MVP-GTM
-version: 0.1.0
+version: 0.2.0
 continuity_id: AGENTIC-OS-CROSS-REPO-ECONOMY-001
 owner: agentic-os
 date: 2026-11-11
@@ -31,6 +31,10 @@ together, and limits drift rechecks to the affected repo.
 - Sync each repo's canonical branch once after its final merge; perform one cleanup pass after merges,
   retaining every native per-effect receipt and user-authored byte.
 - Keep protected checks, exact authority, effect separation, delivery gates and fail-closed behavior.
+- Finish authorized unfinished source and affected checks, LAND/publish, then END. Clean but unpublished
+  commits remain unfinished; parking or abandonment requires a separate explicit owner decision.
+- Batch END names finish-and-publish for an exact admitted unfinished lane. It never performs those
+  source edits, invents authority, or treats detached/unmanaged recovery checkouts as admitted lanes.
 
 ## TAD and ADR
 
@@ -41,8 +45,8 @@ runtime prompt is the sole universal rule; consumers use it instead of copying v
 
 ## MVP and resource cap
 
-Update AOS agent instructions and release workflow only. Keep the always-loaded prompt at its existing
-999-byte contract and total authored change below 5 KiB. Use required repo-owned
+Update existing AOS instructions, release guidance and the native closeout projection with affected tests.
+Keep the always-loaded prompt at its existing 999-byte contract and authored additions below 15 KiB. Use required repo-owned
 checks once on final source; do not add or run broad suites for unchanged repos. No new module,
 dependency, paid capacity or background observer.
 
