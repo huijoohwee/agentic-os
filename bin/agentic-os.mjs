@@ -220,7 +220,7 @@ async function cmdStatus(root, argv, profile, policy) {
   const lanes = registrations.map((registration) => {
     const { branch: ref, path } = registration;
     const record = cachedRecords[ref] ?? null;
-    const state = record?.state ?? 'active';
+    const state = record?.state ?? 'unregistered';
     if (!existsSync(path)) return {
       ref, path, state, commits: '-', untracked: 0, next: [], stale: true,
     };
@@ -238,7 +238,7 @@ async function cmdStatus(root, argv, profile, policy) {
       state,
       commits: observedLane.commits,
       untracked: observedLane.untracked.length,
-      next: legalEvents(state),
+      next: record ? legalEvents(state) : ['recover lane record (guides/LANE-RECERTIFICATION.md)'],
     };
   });
   const { providerKind } = await import('./agentic-os-auxiliary.mjs');

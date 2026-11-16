@@ -91,7 +91,7 @@ export function checkoutCapacity(selected, repository, inventory, explicitLimit 
 }
 function observeExisting(root, ref, path, record, expectedHead, requested, policy, allocation, readmit = false, recovery = null) {
   const registered = worktrees(root).find(row => row.branch === ref && row.path === path);
-  let recoveryReceipt = null;
+  let recoveryReceipt = null; if (!record && (!recovery?.enabled || !allocation || !recovery.selected)) fail('record-recovery-required', `Lane record absent; use npm run release:common -- rebind plan --ref=${ref} --mode=recertify with exact base/head/worktree (guides/LANE-RECERTIFICATION.md).`);
   if (!record && recovery?.enabled) {
     const restored = recoverLaneRecordFromMission({ ref, path, expectedHead, policy, allocation, selected: recovery.selected,
       repository: recovery.repository, writePaths: requested, root }, store.newRecord);
@@ -400,7 +400,7 @@ function laneDirtyEvidence(path) {
 function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, mounted: suppliedMounted = false, createdAt: suppliedCreatedAt = null }) {
   if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
   const root = repoRoot(cwd), identity = parseLaneRef(ref);
-  if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root }) !== '')
+  if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=no'], { cwd: root }) !== '')
     throw rebindBlock('canonical', 'recertification must run from clean canonical main');
   if (store.get(ref, root)) throw rebindBlock('record', 'recertification requires the exact lane record to be absent');
   if (typeof base !== 'string' || !/^refs\/remotes\/[^/]+\/main$/u.test(base)
