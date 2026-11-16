@@ -7,7 +7,7 @@ authority unproven.
 
 ## Preconditions
 
-- Run from a clean canonical `main` whose commit exactly matches the selected remote tracking `main`.
+- Run from canonical `main` with clean tracked source and a commit matching the selected remote tracking `main`. Unrelated untracked files remain in place.
 - Confirm the lane's local ref and live remote branch point to the same exact commit.
 - Select the exact base SHA from trusted release evidence. For a PR lane, inspect the PR's base commit;
   do not infer the admitted base from the current merge base.
@@ -29,6 +29,19 @@ The plan binds the exact lane ref, protected base, base SHA, head, live remote h
 reservation. Apply recomputes these observations under a clone-common operation lock. It mounts the
 existing branch without advancing or deleting refs and verifies the new checkout is clean. Cache
 publication uses exact absent-record compare-and-swap.
+
+## Mounted unpublished lane
+
+The same `recertify` plan/apply commands also accept the exact existing registered worktree
+when its lane record is absent and its remote branch is unpublished. Bind its trusted base
+SHA, current head and existing path. The planner inventories committed and local authored
+paths, checks disjoint scope, and apply rechecks those exact bytes before restoring the cache
+row. It preserves the worktree, index, unrelated canonical drafts and all refs. A mounted
+receipt reports `restoredDirtyState: exact-local-inventory`; it does not invent missing bytes.
+
+`status` reports a missing record as `unregistered` without suggesting publication events.
+START reuses exact mission recovery when its evidence exists; otherwise it names this rebind
+owner. After rebind, continue the same lane and its reserved work through LAND and END.
 
 ## Limits and closeout
 

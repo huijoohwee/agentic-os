@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyLaneRebind, cmdStart, planLaneRebind } from '../bin/agentic-os-admission.mjs';
+import { git, headSha, worktrees } from '../src/git.mjs';
+import * as records from '../src/lane-records.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { CACHE_LIMITS, load, save, SCHEMA } from '../src/lane-records.mjs';
@@ -184,4 +187,76 @@ test('an unsupported selected provider retains local status and reports UNKNOWN'
   assert.match(rendered, /agent\/test\/lane/u);
   assert.match(rendered, /provider observation UNKNOWN\/unsupported/u);
   assert.match(rendered, /merge queue UNKNOWN/u);
+});
+
+function mountedRecoveryFixture(t) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'mounted-lane-recovery-'))), root = join(parent, 'repo');
+  t.after(() => rmSync(parent, { recursive: true, force: true })); mkdirSync(root);
+  const run = (...args) => git(args, { cwd: root });
+  run('init', '--quiet', '--initial-branch=main');
+  run('config', 'user.name', 'Fixture'); run('config', 'user.email', 'fixture@example.invalid');
+  const policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
+  const profile = createRepositoryProfile({ repository: 'example.invalid/owner/repo',
+    canonical: { localRef: 'refs/heads/main', remoteRef: policy.protectedRef },
+    adapters: { repository: { id: 'git', version: '1' }, provider: null } });
+  writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
+  writeFileSync(join(root, 'owned.txt'), 'base\n');
+  writeFileSync(join(root, 'native-prd-tad-adr-mvp-gtm.md'), '# Recovery plan\n');
+  run('add', '.'); run('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'base');
+  const remote = join(parent, 'remote.git'); run('init', '--quiet', '--bare', remote);
+  run('remote', 'add', 'origin', remote); run('push', '--quiet', '-u', 'origin', 'main');
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
+  const ref = 'agent/test/retained', lane = join(parent, 'test--retained');
+  run('worktree', 'add', '--quiet', '-b', ref, lane, 'main');
+  const head = headSha('HEAD', root), authored = 'retained authored bytes\n';
+  writeFileSync(join(lane, 'owned.txt'), authored);
+  const events = [], services = { out: line => events.push(line), err: line => events.push(line),
+    effectReceipt: (_operation, receipt) => receipt, projectCache: records.put,
+    remoteName: () => 'origin', requireCanonical: () => assert.equal(run('branch', '--show-current'), 'main') };
+  const start = (...flags) => cmdStart(root, ['retained', '--device=test', '--write=owned.txt', ...flags], policy, profile, services);
+  const plan = () => planLaneRebind({ cwd: root, ref, mode: 'recertify', base: policy.protectedRef,
+    baseSha: head, targetPath: lane, expectedHead: head });
+  return { root, parent, ref, lane, head, authored, run, start, plan };
+}
+
+test('missing lane evidence names the existing recovery owner, then the same lane resumes with bytes preserved', async t => {
+  const f = mountedRecoveryFixture(t), draft = join(f.root, 'retained-draft.md'), draftBytes = '# User planning bytes\n';
+  writeFileSync(draft, draftBytes);
+  const status = spawnSync(process.execPath, [CLI, 'status', '--device=test'], { cwd: f.root, encoding: 'utf8' });
+  assert.equal(status.status, 0, status.stderr);
+  assert.match(status.stdout, /agent\/test\/retained\s+unregistered/u);
+  assert.doesNotMatch(status.stdout, /author, publish, integrate/u);
+  assert.match(status.stdout, /recover lane record/u);
+  for (const flags of [[], ['--plan=native-prd-tad-adr-mvp-gtm.md']]) {
+    await assert.rejects(f.start(...flags), error => error.reason === 'blocked-admission-existing-identity'
+      && error.message.includes(`rebind plan --ref=${f.ref} --mode=recertify`));
+    assert.equal(records.get(f.ref, f.root), null);
+  }
+  const plan = f.plan(), planPath = join(f.parent, 'rebind-plan.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  const receipt = applyLaneRebind({ cwd: f.root, planPath,
+    authorization: `agentic-os:lane-rebind:${plan.digest}`, stopped: true });
+  assert.equal(receipt.authoredBytesPreserved, true);
+  assert.equal(receipt.restoredDirtyState, 'exact-local-inventory');
+  assert.equal(await f.start(), 0);
+  assert.deepEqual(records.get(f.ref, f.root).writePaths, ['owned.txt']);
+  assert.equal(readFileSync(draft, 'utf8'), draftBytes);
+  assert.equal(readFileSync(join(f.lane, 'owned.txt'), 'utf8'), f.authored);
+  assert.equal(headSha(`refs/heads/${f.ref}`, f.root), f.head);
+  assert.equal(worktrees(f.root).length, 2);
+});
+
+test('mounted recovery still rejects tracked canonical edits and drift after planning', t => {
+  const f = mountedRecoveryFixture(t);
+  writeFileSync(join(f.root, 'owned.txt'), 'preserve tracked canonical edit\n');
+  assert.throws(f.plan, /recertification must run from clean canonical main/u);
+  assert.equal(records.get(f.ref, f.root), null);
+  f.run('restore', 'owned.txt');
+  const plan = f.plan(), planPath = join(f.parent, 'rebind-plan.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  writeFileSync(join(f.lane, 'owned.txt'), 'changed after planning\n');
+  assert.throws(() => applyLaneRebind({ cwd: f.root, planPath,
+    authorization: `agentic-os:lane-rebind:${plan.digest}`, stopped: true }), /changed after planning/u);
+  assert.equal(records.get(f.ref, f.root), null);
+  assert.equal(readFileSync(join(f.lane, 'owned.txt'), 'utf8'), 'changed after planning\n');
 });
