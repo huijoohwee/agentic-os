@@ -1,7 +1,7 @@
 ---
 schema: agentic-os/design-system-ownership/v1
 doc_type: contract
-title: Shared Design System ownership
+title: Shared ownership of reusable components
 version: 1.0.0
 owner: agentic-os
 design_system_owner: agentic-design-system
@@ -9,7 +9,7 @@ load_policy: on-demand
 lifecycle_status: active
 ---
 
-# Shared Design System ownership
+# Shared ownership of reusable components
 
 This contract applies to `agentic-design-system`, `agentic-base`, `agentic-graph`,
 `agentic-commerce-os`, `agentic-canvas-os`, and related consumers. It defines one
