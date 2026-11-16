@@ -6,7 +6,7 @@ START/RELEASE/DEPLOY workflow only.
 - Keep authored bytes/evidence; checks/projections lack authority.
 - Agentic Design System owns shared UI tokens; pin exact revisions/digests; no forks/overrides/duplicates.
 - Batch disjoint repo work/checks; merge by dependency; recheck drift only.
-- END: finish authorized work, check, LAND/publish, follow RELEASE; park only by explicit owner decision.
+- END: finish authorized work, check, LAND/publish, RELEASE; park only by explicit owner decision.
 - Canonical read-only; scoped lanes; no published rebases.
 - `npm run reap` proves integration; separate cleanup/retire receipts.
 - Fix owners; remove replacements; honor budgets; contract-only shims.
