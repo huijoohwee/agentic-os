@@ -24,12 +24,12 @@ Consumers own product/deploy/rollback/authority.
 - Core: START → develop/LAND → END. Reuse one open PR and exact current evidence.
 - Bind a Mission for material or coordinated work; routine scoped work stays standalone.
 - END uses [RELEASE](RELEASE-WORKFLOW.md); load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) for selected delivery only.
-- Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
+- Minimize TTP: smallest diff; fix owners, remove replacements.
 - Reuse covered authority; preflight; never infer grants.
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
 - One owner/candidate/effect; disjoint work; reuse proof/event waits.
   Bounded stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
-- Shared UI: [ownership](../guides/DESIGN-SYSTEM-OWNERSHIP.md).
+- Shared UI: [pinned Design System only](../guides/DESIGN-SYSTEM-OWNERSHIP.md).
 - Batch material PRD/TAD/ADR/MVP/GTM updates; no per-turn records.
 - Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.
 - Declare always-load deltas; replace/lazy-load/reject.
