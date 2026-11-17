@@ -10,10 +10,11 @@ The four root operations construct unsigned Coordination Requests. They perform 
 lease, move no ref, call no provider, and grant no runtime, release, integration, retirement, or cleanup authority.
 
 `createAuthorityTransitionReceiptEnvelope` and `validateAuthorityTransitionReceiptEnvelope` create and
-check a structural JSON envelope only. Their local SHA-256 digests prove canonical byte integrity,
-not actor identity or authority. `isExactReplay` and `findExactReplay` prove exact request-to-envelope
-linkage, not authentication. An embedding must verify the operation receipt with its authenticated,
-fenced compare-and-swap authority before treating an Authority Transition Receipt as evidence.
+check a structural JSON envelope only.
+Their local SHA-256 digests prove canonical byte integrity, not actor identity or authority.
+`isExactReplay` and `findExactReplay` prove exact request-to-envelope linkage, not authentication.
+An embedding must verify the operation receipt with its authenticated, fenced compare-and-swap authority
+before treating an Authority Transition Receipt as evidence.
 A locally created or merely schema-valid envelope is never sufficient to integrate, retire, delete, or clean anything.
 
 ## Stable records
