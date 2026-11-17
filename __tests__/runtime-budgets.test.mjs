@@ -58,7 +58,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40954, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40886, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -201,7 +201,7 @@ test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   assert.equal(new Set(entries.map(([key]) => key)).size, entries.length);
   assert.deepEqual(Object.fromEntries(entries), {
     schema: 'agentic-os/adlc-guidelines/v1', title: 'ADLC Guidelines', doc_type: 'guidelines',
-    version: '1.4.5', owner: 'agentic-os', universal_scope: 'true',
+    version: '1.4.6', owner: 'agentic-os', universal_scope: 'true',
     supersedes: 'agentic-sdlc', runtime_contract: 'enforced',
     runtime_evaluator: 'npm run evals', execution_policy: 'lean-time-bound-budget-driven-sprints',
     load_policy: 'lazy-beyond-always-load', integration_policy: 'minimal-diff-protected-merge',

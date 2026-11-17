@@ -3,7 +3,6 @@
  * Always-loaded documentation budget in bytes, which track context cost.
  * A line-only cap hides oversized paragraphs; also bound line length for review.
  */
-
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -11,7 +10,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { workflowMergeGroupChecks } from '../src/protected-workflows.mjs';
-
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
@@ -48,7 +46,7 @@ const RUNTIME_FRONTMATTER_CONTRACT = Object.freeze({
   schema: 'agentic-os/adlc-guidelines/v1',
   title: 'ADLC Guidelines',
   doc_type: 'guidelines',
-  version: '1.4.5',
+  version: '1.4.6',
   owner: 'agentic-os',
   universal_scope: 'true',
   supersedes: 'agentic-sdlc',

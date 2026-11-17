@@ -195,11 +195,13 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
 export function assertWorkflowEffect({ root, repository, phase, worktreeId, revision, dirty = false, ref = null, mode = 'effect' }) {
   if (!WORKFLOW_PHASES.includes(phase) || !/^[a-f0-9]{40}$/u.test(revision ?? '')
     || !['effect', 'dependencies'].includes(mode)) fail('effect-binding');
-  const selected = readSelectedWorkflow(root, repository, { worktreeId, ref });
-  const standalone = { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' };
+  const selected = readSelectedWorkflow(root, repository, { worktreeId, ref }),
+    standalone = { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' };
   if (!selected || selected.manifest.execution === undefined) return standalone;
+  const worktreeAllocations = selected.manifest.allocations?.filter(row => row.worktreeId === worktreeId) ?? [];
   const allocation = ref && selected.manifest.allocations?.find(row => row.ref === ref);
   if (allocation?.state === 'released') fail('allocation-released');
+  if (!allocation && worktreeAllocations.length > 0 && worktreeAllocations.every(row => row.state === 'released')) return standalone;
   const member = selected.members.find(row => row.child.source.repository === repository
     && row.child.context.worktreeId === (allocation?.worktreeId ?? worktreeId));
   if (allocation && !member) fail('allocation-member-binding');

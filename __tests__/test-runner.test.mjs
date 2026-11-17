@@ -9,7 +9,7 @@ import { parseArguments, runTests, validationChecks, runCheckPool, boundCiCovera
 import { LIMITS, snapshot } from '../bin/agentic-os-test-inputs.mjs';
 import { executeCommand, lockReceipts, receiptDirectory, previousCheck, writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
-import { collectWorkflowValue, readSelectedWorkflow, startWorkflow, workflowPaths } from '../bin/agentic-os-workflow.mjs';
+import { collectWorkflowValue, readSelectedWorkflow, releaseWorkflowAllocation, startWorkflow, workflowPaths } from '../bin/agentic-os-workflow.mjs';
 
 function fixture(t, { evaluator = 'node -e "process.exit(0)"', body = '', workflow = false } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), workflow ? 'workflow-runner-' : 'test runner ')));
@@ -429,6 +429,19 @@ test('removing shared navigation does not unenroll an indexed lane or erase its 
   const blocked = declaredFixture(t, { blocked: true });
   blocked.git('config', '--local', '--unset', 'agentic-os.workflowManifest');
   await assert.rejects(blocked.invoke(), /blocked-workflow-dependencies/);
+});
+
+test('released allocations do not keep canonical checks enrolled without an exact ref binding', async t => {
+  localEnvironment(t);
+  const f = fixture(t, { workflow: true }), repository = 'github.com/example/test-runner';
+  const worktreeId = basename(f.root), revision = f.git('rev-parse', 'HEAD'), ref = 'agent/device/released';
+  startWorkflow(f.root, repository, { revision, planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } },
+    allocation: { worktreeId, ref, path: join(f.root, '..', 'released-lane'), baseRevision: revision,
+      headRevision: revision, writeDigest: 'a'.repeat(64), state: 'active', operation: 'create' } });
+  assert.equal(releaseWorkflowAllocation(f.root, repository, ref).released, true);
+  assert.equal(await f.invoke(), 0);
+  assert.equal(f.receipt().outcome, 'passed');
 });
 
 test('invalid selected evidence fails closed without enrolling a legacy repository', async t => {
