@@ -2,7 +2,7 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.4.5
+version: 1.4.6
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
@@ -16,16 +16,15 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-Consumers own product/deploy/rollback/authority.
-- Exact PRD/TAD/ADR ID+revision binds scope, acceptance, design and decision; stale joins block.
 - Global repo/worktree: USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.
 - Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
 - Core: START → finish authorized work → check → LAND/publish → END. Reuse one PR and exact current evidence.
 - Bind a Mission for material or coordinated work; routine scoped work stays standalone.
-- END uses [RELEASE](RELEASE-WORKFLOW.md); load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) for selected delivery only.
+- END uses [RELEASE](RELEASE-WORKFLOW.md); load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only for selected delivery.
+- Under canonical-dev, END requires protected remote integration proof plus explicit `sync`;
+  local merge or cleanup alone is not END ADLC.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
-- Reuse covered authority; preflight; never infer grants.
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
 - One owner/candidate/effect; disjoint work; reuse proof/event waits.
   Bounded stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
@@ -34,8 +33,6 @@ Consumers own product/deploy/rollback/authority.
 - Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.
 - Declare always-load deltas; replace/lazy-load/reject.
 - Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.
-- On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md` and `../guides/PRD-TAD-ADR-MVP-GTM.md`.
-- Website `guidelines/adlc-artifact-continuity.md` owns post-release Maintain.
+- On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md`.
 - Exact candidate; separate receipt per proof, retire, cleanup, sync, deploy and rollback.
 - Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.
-- Cleanup: exact global/local targets, no wildcards; prove bytes/paths/refs.

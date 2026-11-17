@@ -11,9 +11,12 @@
    agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped
    ```
 
+END ADLC means remote-integrated plus canonical-synced. Local merge or cleanup alone is not END ADLC.
 Authority-controlling source also needs `--authority-head=<sha>`. Required checks/reviews gate integration.
 Reuse covered grants; rerun after interruption. Exit `2` names a wait or uncovered effect; receipts grant no authority.
 Merge, sync, recoverable cleanup and allocation release retain separate proof. Refs/objects and unrelated bytes stay.
+`merge` proves canonical remote inclusion; `sync` realigns the canonical checkout to the fetched canonical revision
+that `npm run dev` requires.
 Tracked edits, collisions or identity drift require recovery.
 For blockers load [recovery](../guides/USER-CLEANUP.md).
 Batch: `agentic-os complete-adlc --worktrees=<registered-root>`.
