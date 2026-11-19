@@ -158,6 +158,23 @@ inventory and remote main. It reports `selectedChecksVerified=false` and `provid
 not represent a PR merge. Any record, path, ref, head, base or tree drift blocks planning or apply. The same
 exact authorization token and stopped-writer acknowledgement still govern quarantine.
 
+## Integrated lane with an on-disk Git origin
+
+For a Git-only profile with `retain-all-cleanup`, an owner can authorize quarantine for one
+registered lane at its exact integrated head. Run both steps from the surviving canonical checkout.
+
+```sh
+agentic-os cleanup plan --mode=local-integrated --ref=<lane> --target=<absolute-worktree-path> --expected-head=<full-sha>
+agentic-os cleanup apply --plan=<saved-json> --authorize=agentic-os:local-integrated-cleanup:<planDigest> --stopped
+```
+
+The plan verifies the committed profile, clone trust, lane record and matching main and lane refs in
+the clone, remote-tracking namespace and on-disk bare origin. Stop readers and writers before apply.
+Apply checks for open files and working directories, preserves ignored files, and moves the checkout
+and its registration into the quarantine paths in the receipt. Keep the plan and receipt outside
+the quarantine directory. Use `agentic-os completion status --ref=<lane>` to verify closeout.
+The committed retention policy and Git refs continue to apply to every lane.
+
 ## Exact detached main snapshot
 
 The unified `cleanup` command supports a clean detached worktree that is an exact snapshot of the

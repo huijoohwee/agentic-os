@@ -3,6 +3,7 @@ import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef } from '../src/git-repository.mjs';
 import { exactCurrentIntegrationProof, exactTreeProjectionProof, reviewedEquivalentTransitionProof, successorIntegrationProof } from '../src/patch-identity.mjs';
 import { lstatSync, realpathSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { acquireOperationLock, commonDir, currentBranch, finishOperationLock, headSha, isAncestor, observeGit, remoteTransport, repoRoot, worktrees } from '../src/git.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { classifyExistingWorktreeQuarantine, observeWorktreeCleanupTarget, quarantineWorktreeTarget } from '../src/cleanup-quarantine.mjs';
@@ -12,6 +13,7 @@ export const refuse = reason => { throw Object.assign(new Error(`blocked-user-cl
 export const RECOVERY_MODE = 'explicit-local-user-consent-recovery';
 export const SCHEMA = 'agentic-os/user-cleanup-plan/v1', MODE = 'explicit-local-user-consent',
   NO_CI_MODE = 'explicit-local-user-consent-no-ci';
+export const INTEGRATED_CLEANUP_SCHEMA = 'agentic-os/local-integrated-cleanup-plan/v1';
 export const SNAPSHOT_CLEANUP_SCHEMA = 'agentic-os/detached-main-snapshot-cleanup-plan/v1';
 export const RECOVERY_LIMITS = Object.freeze({
   projectionByteCeiling: 4 * 1024 ** 3, projectionEntryCeiling: 250000,
@@ -32,7 +34,7 @@ export function recoveryPolicy(root, repository, { requireChecks = true } = {}) 
   return { repositoryProfileDigest: profile.profileDigest, requiredChecks: profile.requiredChecks,
     protectedCleanupPolicy: profile.cleanup, limits: RECOVERY_LIMITS };
 }
-const planFields = (value, names) => {
+export const planFields = (value, names) => {
   if (!value || Array.isArray(value) || typeof value !== 'object'
     || Object.keys(value).sort().join(',') !== names.split(',').sort().join(',')) refuse('shape');
 };
@@ -139,10 +141,26 @@ export function prepareCurrentIntegrationReview({ root, targetPath, canonical, r
   const binding = deriveCurrentIntegrationBinding({ root, targetPath, ref: branch, canonical, record });
   return { binding, review: { kind: 'local-current-integration', branch, head: headSha('HEAD', targetPath), merge: canonical } };
 }
-
-const snapshotRead = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options }); const snapshotSame = (left, right) => canonicalJson(left) === canonicalJson(right);
+const snapshotRead = (cwd, args, options = {}) => observeGit(args, { cwd, maxBuffer: 65536, ...options });
 const SNAPSHOT_TTL = 900_000;
-function snapshotPolicy(root, expectedHead, options = {}) {
+function localOriginProof(root, transport, ref, head, targetPath, profile) {
+  const origin = transport.fetchUrl;
+  if (profile.adapters.provider !== null || profile.requiredChecks.length || !profile.capabilities.includes('retain-all-cleanup')
+    || !isAbsolute(origin) || realpathSync(origin) !== origin
+    || snapshotRead(root, [`--git-dir=${origin}`, 'rev-parse', '--is-bare-repository']) !== 'true'
+    || snapshotRead(root, [`--git-dir=${origin}`, 'rev-parse', '--absolute-git-dir']) !== origin) refuse('integrated-local-origin');
+  const record = get(ref, root);
+  if (record?.ref !== ref || record.worktree !== targetPath || record.head !== head || record.pr !== null
+    || record.base !== 'refs/remotes/origin/main' || !['published', 'integrated'].includes(record.state)
+    || record.recovery?.dirtyState === 'unobservable-at-missing-path'
+    || !isAncestor(record.baseSha, head, root)) refuse('integrated-lane-binding');
+  for (const refname of ['refs/heads/main', `refs/heads/${ref}`])
+    if (headSha(refname, origin) !== head) refuse('integrated-origin-ref-drift');
+  for (const refname of [`refs/heads/${ref}`, `refs/remotes/origin/${ref}`])
+    if (headSha(refname, root) !== head) refuse('integrated-lane-ref-drift');
+  return { ref, targetPath, state: record.state, baseSha: record.baseSha, origin, head };
+}
+function snapshotPolicy(root, expectedHead, options = {}, ref = null, targetPath = null) {
   if (realpathSync(repoRoot(root)) !== root || currentBranch(root) !== 'main') refuse('snapshot-controller');
   const canonical = snapshotRead(root, ['rev-parse', '--verify', 'refs/heads/main^{commit}']);
   if (canonical !== expectedHead || snapshotRead(root, ['rev-parse', '--verify', 'HEAD']) !== canonical
@@ -153,37 +171,40 @@ function snapshotPolicy(root, expectedHead, options = {}) {
     || profile.canonical.localRef !== 'refs/heads/main' || profile.canonical.remoteRef !== 'refs/remotes/origin/main'
     || profile.adapters.repository?.id !== 'git' || profile.adapters.repository.version !== '1') refuse('snapshot-profile-binding');
   const repository = profile.repository;
-  const remoteMain = options.observeRemote ? options.observeRemote({ root, canonical, remoteUrl: transport.fetchUrl })
+  const integration = ref === null ? null : localOriginProof(root, transport, ref, canonical, targetPath, profile);
+  const remoteMain = integration ? `${canonical}\trefs/heads/main` : options.observeRemote ? options.observeRemote({ root, canonical, remoteUrl: transport.fetchUrl })
     : snapshotRead(root, ['ls-remote', '--refs', '--', transport.fetchUrl, 'refs/heads/main']);
   if (remoteMain !== `${canonical}\trefs/heads/main`) refuse('snapshot-remote-main-drift');
   const cleanup = profile.cleanup;
+  const disposition = integration ? 'retain' : 'quarantine';
   if (!cleanup || cleanup.localBranch !== 'retain' || cleanup.remoteBranch !== 'retain'
     || cleanup.remoteTrackingRef !== 'retain' || cleanup.unreachableObjects !== 'retain'
-    || cleanup.worktreeProjection !== 'quarantine' || cleanup.worktreeRegistration !== 'quarantine') refuse('snapshot-cleanup-policy');
-  return { schema: 'agentic-os/detached-main-snapshot-cleanup-policy/v1', root, repository,
+    || cleanup.worktreeProjection !== disposition || cleanup.worktreeRegistration !== disposition) refuse('snapshot-cleanup-policy');
+  return { schema: integration ? 'agentic-os/local-integrated-cleanup-policy/v1' : 'agentic-os/detached-main-snapshot-cleanup-policy/v1',
+    ...(integration ? { integration } : {}), root, repository,
     remoteUrlDigest: transport.urlDigest, remoteMain, canonical, repositoryProfileDigest: profile.profileDigest,
     cleanup, limits: RECOVERY_LIMITS };
 }
 function snapshotMechanics(plan) {
   return { ...RECOVERY_LIMITS, mode: RECOVERY_MODE, repository: plan.repository,
-    targetPath: plan.targetPath, expectedBranch: null, expectedHeadRevision: plan.snapshotHead,
-    detachedRecovery: true, expectedCanonicalRef: 'refs/heads/main', expectedCanonicalRevision: plan.canonical,
+    targetPath: plan.targetPath, expectedBranch: plan.ref ?? null, expectedHeadRevision: plan.snapshotHead,
+    detachedRecovery: !plan.ref, expectedCanonicalRef: 'refs/heads/main', expectedCanonicalRevision: plan.canonical,
     profileDigest: governanceDigest(plan.policy), recoveryInventoryDigest: plan.inventoryDigest,
     recoveryInventoryContentEntries: plan.inventoryContentEntries, expiresAt: new Date(plan.expiresAt).toISOString(),
     planDigest: plan.planDigest };
 }
 function snapshotObserver(plan, options = {}) {
   return (mechanics, root) => {
-    const current = snapshotPolicy(realpathSync(repoRoot(root)), plan.canonical, options);
-    if (!snapshotSame(current, plan.policy) || current.root !== plan.root) refuse('snapshot-policy-drift');
+    const current = snapshotPolicy(realpathSync(repoRoot(root)), plan.canonical, options, plan.ref ?? null, plan.targetPath);
+    if (!samePlanValue(current, plan.policy) || current.root !== plan.root) refuse('snapshot-policy-drift');
     return { root, canonicalRevision: current.canonical,
       profile: { profileDigest: governanceDigest(current), canonical: { localRef: 'refs/heads/main' } } };
   };
 }
-function snapshotEligibility(plan) {
+export function cleanupEligibility(plan, profileDigest = plan.policyDigest) {
   const observation = plan.observation;
   return { schema: 'agentic-os/user-cleanup-eligibility/v1', planDigest: plan.planDigest,
-    profileDigest: governanceDigest(plan.policy), canonicalRevision: plan.canonical,
+    profileDigest, canonicalRevision: plan.canonical,
     projectionManifestDigest: observation.projectionManifest.digest, projectionBytes: observation.projectionManifest.bytes,
     projectionEntries: observation.projectionManifest.entries, registrationManifestDigest: observation.registrationManifest.digest,
     registrationBytes: observation.registrationManifest.bytes, registrationEntries: observation.registrationManifest.entries,
@@ -192,31 +213,34 @@ function snapshotEligibility(plan) {
     sharedStateEntries: observation.sharedStateEntries, evaluatedAt: new Date(plan.issuedAt).toISOString(),
     expiresAt: new Date(plan.expiresAt).toISOString() };
 }
-function withSnapshotLock(root, operation) {
+export function withCleanupLock(root, operation, label = 'user-cleanup') {
   const lock = acquireOperationLock('agentic-os-worktree-cleanup', root); if (!lock) refuse('busy');
   let result, error;
   try { result = operation(); } catch (caught) { error = caught; }
-  return finishOperationLock(lock, { label: 'detached-main-snapshot-cleanup', result, error,
+  return finishOperationLock(lock, { label, result, error,
     artifacts: error?.operationArtifacts ?? null });
 }
-export function planDetachedMainSnapshotCleanup({ cwd = process.cwd(), target, expectedHead, now = Date.now } = {}, options = {}) {
+export const planDetachedMainSnapshotCleanup = (input, options) => planLocalWorktreeCleanup({ ...input, mode: 'local-snapshot', ref: null }, options);
+export function planLocalWorktreeCleanup({ cwd = process.cwd(), target, expectedHead, mode, ref = null, now = Date.now } = {}, options = {}) {
+  const integrated = mode === 'local-integrated';
+  if (integrated ? !isLaneRef(ref) : mode !== 'local-snapshot' || ref !== null) refuse('local-cleanup-mode');
   const root = realpathSync(repoRoot(cwd));
   if (typeof target !== 'string' || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(expectedHead ?? '')) refuse('snapshot-target-arguments');
   let targetPath; try { targetPath = realpathSync(target); } catch { refuse('snapshot-target-path'); }
   const pathStat = lstatSync(target, { throwIfNoEntry: false });
   if (!pathStat?.isDirectory() || pathStat.isSymbolicLink() || targetPath !== target || targetPath === root) refuse('snapshot-target-path');
-  return withSnapshotLock(root, () => {
-    const policy = snapshotPolicy(root, expectedHead, options), rows = worktrees(root).filter(row => row.path === targetPath);
-    if (rows.length !== 1 || !rows[0].detached || rows[0].branch !== null
+  return withCleanupLock(root, () => {
+    const policy = snapshotPolicy(root, expectedHead, options, ref, targetPath), rows = worktrees(root).filter(row => row.path === targetPath);
+    if (rows.length !== 1 || rows[0].detached !== !integrated || rows[0].branch !== ref
       || snapshotRead(targetPath, ['rev-parse', '--verify', 'HEAD']) !== expectedHead
       || realpathSync(commonDir(targetPath)) !== realpathSync(commonDir(root))) refuse('snapshot-target-registration');
     if (snapshotRead(targetPath, ['status', '--porcelain', '--untracked-files=all'])) refuse('snapshot-target-dirty');
-    const inventory = collectRecoveryInventory({ cwd: targetPath, canonicalRef: 'refs/heads/main', allowDetached: true,
+    const inventory = collectRecoveryInventory({ cwd: targetPath, canonicalRef: 'refs/heads/main', allowDetached: !integrated,
       maxContentEntries: RECOVERY_LIMITS.projectionEntryCeiling });
-    if (inventory.headRevision !== expectedHead || inventory.canonicalRevision !== expectedHead || inventory.branch !== null
+    if (inventory.headRevision !== expectedHead || inventory.canonicalRevision !== expectedHead || inventory.branch !== ref
       || inventory.inventoryEntries.hidden || inventory.inventoryEntries.visibleUntracked) refuse('snapshot-inventory');
     const issuedAt = now(); if (!Number.isSafeInteger(issuedAt)) refuse('snapshot-clock');
-    const plan = { schema: SNAPSHOT_CLEANUP_SCHEMA, mode: 'local-snapshot', authority: 'explicit-local-user-consent',
+    const plan = { schema: integrated ? INTEGRATED_CLEANUP_SCHEMA : SNAPSHOT_CLEANUP_SCHEMA, mode, ...(integrated ? { ref } : {}), authority: 'explicit-local-user-consent',
     root, repository: policy.repository, targetPath, canonical: policy.canonical,
       snapshotHead: expectedHead, policy, inventoryDigest: governanceDigest(inventory),
       inventoryContentEntries: inventory.inventoryEntries.content, observation: null,
@@ -225,40 +249,54 @@ export function planDetachedMainSnapshotCleanup({ cwd = process.cwd(), target, e
     plan.observation = observeWorktreeCleanupTarget(mechanics, { cwd: root, observePolicy, now });
     delete plan.planDigest;
     return { ...plan, planDigest: governanceDigest(plan) };
-  });
+  }, integrated ? mode : 'detached-main-snapshot-cleanup');
 }
-export function applyDetachedMainSnapshotCleanup(plan, { cwd = process.cwd(), authorization, stopped, now = Date.now } = {}, options = {}) {
-  const expected = 'authority,canonical,expiresAt,inventoryContentEntries,inventoryDigest,issuedAt,mode,observation,policy,planDigest,repository,root,schema,snapshotHead,targetPath';
+export function applyDetachedMainSnapshotCleanup(plan, input, options) {
+  if (plan?.schema !== SNAPSHOT_CLEANUP_SCHEMA) refuse('snapshot-plan-shape');
+  return applyLocalWorktreeCleanup(plan, input, options);
+}
+export function applyLocalWorktreeCleanup(plan, { cwd = process.cwd(), authorization, stopped, now = Date.now } = {}, options = {}) {
+  const integrated = plan?.schema === INTEGRATED_CLEANUP_SCHEMA;
+  const expected = (integrated ? 'ref,' : '') + 'authority,canonical,expiresAt,inventoryContentEntries,inventoryDigest,issuedAt,mode,observation,policy,planDigest,repository,root,schema,snapshotHead,targetPath';
   if (!plan || Array.isArray(plan) || typeof plan !== 'object' || Object.keys(plan).sort().join(',') !== expected.split(',').sort().join(',')) refuse('snapshot-plan-shape');
   const { planDigest, ...body } = plan, root = realpathSync(repoRoot(cwd));
-  if (body.schema !== SNAPSHOT_CLEANUP_SCHEMA || body.mode !== 'local-snapshot' || body.authority !== 'explicit-local-user-consent'
+  if ((integrated ? body.mode !== 'local-integrated' || !isLaneRef(body.ref) : body.schema !== SNAPSHOT_CLEANUP_SCHEMA || body.mode !== 'local-snapshot') || body.authority !== 'explicit-local-user-consent'
     || !/^[a-f0-9]{64}$/u.test(planDigest ?? '') || governanceDigest(body) !== planDigest || body.root !== root
-    || authorization !== `agentic-os:local-snapshot-cleanup:${planDigest}` || stopped !== true
+    || authorization !== `agentic-os:${body.mode}-cleanup:${planDigest}` || stopped !== true
     || !Number.isSafeInteger(body.issuedAt) || !Number.isSafeInteger(body.expiresAt) || body.expiresAt - body.issuedAt !== SNAPSHOT_TTL
     || typeof body.repository !== 'string' || typeof body.targetPath !== 'string' || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(body.snapshotHead ?? '') || body.snapshotHead !== body.canonical) refuse('snapshot-authorization');
-  return withSnapshotLock(root, () => {
-    const policy = snapshotPolicy(root, body.canonical, options);
-    if (!snapshotSame(policy, body.policy) || body.repository !== policy.repository) refuse('snapshot-policy-drift');
-    const mechanics = snapshotMechanics(plan), eligible = snapshotEligibility(plan), observePolicy = snapshotObserver(plan, options);
+  return withCleanupLock(root, () => {
+    const policy = snapshotPolicy(root, body.canonical, options, body.ref ?? null, body.targetPath);
+    if (!samePlanValue(policy, body.policy) || body.repository !== policy.repository) refuse('snapshot-policy-drift');
+    const mechanics = snapshotMechanics(plan), eligible = cleanupEligibility(plan, governanceDigest(plan.policy)), observePolicy = snapshotObserver(plan, options);
     let applied = classifyExistingWorktreeQuarantine(mechanics, eligible, { cwd: root, observePolicy });
     if (!applied) {
       const time = now(); if (!Number.isSafeInteger(time) || time < body.issuedAt || time >= body.expiresAt) refuse('snapshot-expired');
       if (snapshotRead(body.targetPath, ['status', '--porcelain', '--untracked-files=all'])) refuse('snapshot-target-dirty');
       const before = observeWorktreeCleanupTarget(mechanics, { cwd: root, observePolicy, now });
-      if (!snapshotSame(before, body.observation)) refuse('snapshot-observation-drift');
+      if (!samePlanValue(before, body.observation)) refuse('snapshot-observation-drift');
       try { applied = quarantineWorktreeTarget(mechanics, before, { cwd: root, eligibility: eligible, observePolicy,
-        authorizeEffects() { const observedAt = now(); if (observedAt < body.issuedAt || observedAt >= body.expiresAt) refuse('snapshot-expired');
-          snapshotPolicy(root, body.canonical, options); return new Date(observedAt).toISOString(); } }); }
+        authorizeEffects() {
+          observePolicy(mechanics, root);
+          if (integrated) {
+            if (!options.createReaderProbe) refuse('integrated-reader-probe');
+            const probe = options.createReaderProbe();
+            [body.targetPath, before.adminPath].forEach(probe);
+          }
+          const authorizedAt = now();
+          if (authorizedAt < body.issuedAt || authorizedAt >= body.expiresAt) refuse('snapshot-expired');
+          return new Date(authorizedAt).toISOString(); } }); }
       catch (error) { Object.assign(error, { operationArtifacts: { ...error.operationArtifacts, planDigest,
         targetPath: body.targetPath, mode: body.mode, effectsRetained: true } }); throw error; }
     }
-    const receipt = { schema: 'agentic-os/detached-main-snapshot-cleanup-receipt/v1', planDigest,
+    const receipt = { schema: integrated ? 'agentic-os/local-integrated-cleanup-receipt/v1' : 'agentic-os/detached-main-snapshot-cleanup-receipt/v1',
+      ...(integrated ? { ref: body.ref, repositoryProfileDigest: policy.repositoryProfileDigest } : {}), planDigest,
       authority: 'explicit-local-user-consent', targetPath: body.targetPath, snapshotHead: body.snapshotHead,
       canonicalRevision: body.canonical, ...applied.result, ...applied.artifacts, result: 'quarantined',
       replayed: Boolean(applied.artifacts.replayed), stoppedAcknowledged: true, bytesDeleted: false,
       branchRefsMutated: false, objectDatabaseMutated: false, providerAuthority: false, deploymentAuthority: false };
     return { ...receipt, receiptDigest: governanceDigest(receipt) };
-  });
+  }, integrated ? body.mode : 'detached-main-snapshot-cleanup');
 }
 
 function contentInclusion(plan, head, read) {

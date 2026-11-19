@@ -63,33 +63,24 @@ export function validateCommandArguments(command, argv) {
     case 'capabilities': return exact(argv, {
       options: ['query', 'kind', 'limit', 'id', 'root', 'revision'], flags: ['include-content'],
     });
-    case 'cleanup-user': return argv[0] === 'preservation-plan'
-      ? exact(argv, { min: 1, max: 1, options: ['adoption', 'policy-root', 'workflow'], requiredOptions: ['adoption', 'policy-root', 'workflow'] })
-      : argv[0] === 'preservation-apply'
-        ? exact(argv, { min: 1, max: 1, options: ['plan', 'authorize'], flags: ['stopped'], requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
-      : argv[0] === 'plan' && option(argv, 'ref') !== null
-      ? exact(argv, { min: 1, options: ['ref'], flags: ['recovery'], requiredOptions: ['ref'], requiredFlags: ['recovery'] })
-      : argv[0] === 'plan'
-      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'], flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
-        requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
-      : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
-        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
-      : argv[0] === 'sweep' ? exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] })
-        : 'cleanup-user requires plan, apply, or sweep';
-    case 'cleanup': return argv[0] === 'plan' && option(argv, 'ref') !== null
-      ? option(argv, 'mode') === 'recovery'
-        ? exact(argv, { min: 1, options: ['mode', 'ref'], requiredOptions: ['mode', 'ref'] })
-        : 'cleanup --ref requires --mode=recovery'
-      : argv[0] === 'plan' && option(argv, 'mode') === 'local-snapshot'
-      ? exact(argv, { min: 1, options: ['mode', 'target', 'expected-head'],
-        requiredOptions: ['mode', 'target', 'expected-head'] })
-      : argv[0] === 'plan'
-      ? exact(argv, { min: 1, options: ['mode', 'target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'], flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
-        requiredOptions: ['target', 'pr'] })
-      : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
-        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
-      : argv[0] === 'sweep' ? exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] })
-        : 'cleanup requires plan, apply, or sweep';
+    case 'cleanup-user': case 'cleanup': {
+      const unified = command === 'cleanup', action = argv[0], mode = option(argv, 'mode');
+      const required = (options, flags = []) => exact(argv, { min: 1, options, requiredOptions: options, flags, requiredFlags: flags });
+      if (action === 'apply' || !unified && action === 'preservation-apply') return required(['plan', 'authorize'], ['stopped']);
+      if (!unified && action === 'preservation-plan') return required(['adoption', 'policy-root', 'workflow']);
+      if (action === 'sweep') return exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] });
+      if (action !== 'plan') return `${command} requires plan, apply, or sweep`;
+      if (unified && mode === 'local-integrated') return required(['mode', 'ref', 'target', 'expected-head']);
+      if (unified && mode === 'local-snapshot') return required(['mode', 'target', 'expected-head']);
+      if (option(argv, 'ref') !== null) {
+        if (!unified) return required(['ref'], ['recovery']);
+        return mode === 'recovery' ? required(['mode', 'ref']) : 'cleanup --ref requires --mode=recovery or --mode=local-integrated';
+      }
+      const options = ['target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'];
+      if (unified) options.push('mode');
+      return exact(argv, { min: 1, options, flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
+        requiredOptions: unified ? ['target', 'pr'] : ['target', 'pr', 'checks', 'workflow'] });
+    }
     case 'collaborate': return argv[0] === 'status' ? exact(argv, { min: 1, flags: ['offline'] })
       : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
         ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';
