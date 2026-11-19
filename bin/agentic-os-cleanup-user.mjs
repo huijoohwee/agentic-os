@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { TextDecoder } from 'node:util';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
-import { currentBranch, observeGit, repoRoot, remoteTransport, acquireOperationLock, finishOperationLock, observeGitLines, worktrees, commonDir, isAncestor } from '../src/git.mjs';
+import { currentBranch, observeGit, repoRoot, remoteTransport, observeGitLines, worktrees, commonDir, isAncestor } from '../src/git.mjs';
 import { loadRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget, observeRetainedQuarantineEvidence, observeDiscardedQuarantineEvidence, observeQuarantineManifest, retirementEligibility } from '../src/cleanup-quarantine.mjs';
@@ -14,8 +14,8 @@ import { privateDirectoryIdentity, legacyPrivateDirectoryIdentity, assertPrivate
 import { inferMergedReviewWorkflow, observeMergedReview, reviewOptions, refuse } from './agentic-os-cleanup-review.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { RECOVERY_MODE, RECOVERY_LIMITS, SCHEMA, MODE, NO_CI_MODE, recoveryPolicy, recoveryIntegration,
-  SNAPSHOT_CLEANUP_SCHEMA, planDetachedMainSnapshotCleanup, applyDetachedMainSnapshotCleanup,
-  validateUserCleanupPlan, prepareCurrentIntegrationReview } from './agentic-os-cleanup-recovery.mjs';
+  SNAPSHOT_CLEANUP_SCHEMA, INTEGRATED_CLEANUP_SCHEMA, planLocalWorktreeCleanup, applyLocalWorktreeCleanup,
+  validateUserCleanupPlan, prepareCurrentIntegrationReview, cleanupEligibility as eligibility, withCleanupLock as locked, planFields as fields } from './agentic-os-cleanup-recovery.mjs';
 import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegrationProof,
   exactCurrentIntegrationProof } from '../src/patch-identity.mjs';
 import { get } from '../src/lane-records.mjs';
@@ -43,10 +43,6 @@ function resolveChangeClass(declared, observed) {
     refuse('change-class-mismatch', `declared --change-class=docs-only but observed ${observed}`);
   return { declared, observed, fastPath };
 }
-const fields = (value, names) => {
-  if (!value || Array.isArray(value) || typeof value !== 'object'
-    || Object.keys(value).sort().join(',') !== names.split(',').sort().join(',')) refuse('shape');
-};
 function policy(root, mode = MODE, { changeClass = undefined } = {}) {
   if (realpathSync(repoRoot(root)) !== root || read(root, ['symbolic-ref', '--quiet', 'HEAD']) !== 'refs/heads/main')
     refuse('canonical-controller');
@@ -90,18 +86,6 @@ function mechanics(plan) {
     recoveryInventoryDigest: plan.inventoryDigest, recoveryInventoryContentEntries: plan.inventoryContentEntries,
     planDigest: plan.planDigest };
 }
-function eligibility(plan) {
-  const o = plan.observation;
-  return { schema: 'agentic-os/user-cleanup-eligibility/v1', planDigest: plan.planDigest,
-    profileDigest: plan.policyDigest, canonicalRevision: plan.canonical,
-    projectionManifestDigest: o.projectionManifest.digest, projectionBytes: o.projectionManifest.bytes,
-    projectionEntries: o.projectionManifest.entries, registrationManifestDigest: o.registrationManifest.digest,
-    registrationBytes: o.registrationManifest.bytes, registrationEntries: o.registrationManifest.entries,
-    peerRegistrationDigest: o.peerRegistrationDigest, sharedRefDigest: o.sharedRefDigest,
-    objectInventoryDigest: o.objectInventoryDigest, sharedStateBytes: o.sharedStateBytes,
-    sharedStateEntries: o.sharedStateEntries, evaluatedAt: new Date(plan.issuedAt).toISOString(),
-    expiresAt: new Date(plan.expiresAt).toISOString() };
-}
 function validateCleanupReview(plan, options, observed) {
   const review = plan.currentIntegration ? observed?.proof ? observed : prepareCurrentIntegrationReview({
     root: plan.root, targetPath: plan.targetPath, record: plan.currentIntegration.record,
@@ -121,12 +105,6 @@ function mergedState(plan, options, observed = undefined) {
   const advertisement = options.observeRemote ? options.observeRemote(plan)
     : read(plan.root, ['ls-remote', '--refs', '--', plan.remoteUrl, 'refs/heads/main']);
   if (advertisement !== `${plan.canonical}\trefs/heads/main`) refuse('remote-main-drift');
-}
-function locked(root, operation) {
-  const lock = acquireOperationLock('agentic-os-worktree-cleanup', root); if (!lock) refuse('busy');
-  let result, error;
-  try { result = operation(); } catch (caught) { error = caught; }
-  return finishOperationLock(lock, { label: 'user-cleanup', result, error, artifacts: error?.operationArtifacts ?? null });
 }
 const RETIRE_SCHEMA = 'agentic-os/quarantine-retirement-plan/v3', RETIRE_RESUME_SCHEMA = 'agentic-os/quarantine-retirement-plan/v4';
 function retirementPrivateDirectory(path, label) { const id = pathIdentity(path, label), mode = Number(id.mode & 0o7777n), checked = mode === 0o700 ? privateDirectoryIdentity(path, label) : mode === 0o755 ? legacyPrivateDirectoryIdentity(path, label) : null; if (id.kind !== 'directory' || typeof process.getuid === 'function' && id.uid !== BigInt(process.getuid()) || !checked || checked.dev !== id.dev || checked.ino !== id.ino || checked.uid !== id.uid || checked.mode !== id.mode) refuse('retirement-registration'); return [String(id.dev), String(id.ino), String(id.uid), mode]; } function retirementResumeFacts(root, common, coordinate, op, record, e, projection, registration, names) {
@@ -331,60 +309,53 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
   });
 }
-const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [], 'local-snapshot': [] });
+const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [], 'local-snapshot': [], 'local-integrated': [] });
 export function runUnifiedCleanup(root, argv, out = console.log) {
   if (!['plan', 'apply', 'sweep', 'retire'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep|retire> [options]');
   return runUserCleanup(root, argv, out, { unified: true });
 }
 export function runUserCleanup(root, argv, out = console.log, { unified = false } = {}) {
+  const emit = result => { out(canonicalJson(result)); return 0; };
+  const arg = key => option(argv, key);
+  const consent = { cwd: root, authorization: arg('authorize'), stopped: argv.includes('--stopped') };
   if (argv[0] === 'retire') {
-    if (argv[1] === 'plan' && argv.length === 3 && argv[2].startsWith('--coordinate=')) out(canonicalJson(planQuarantineRetirement({ cwd: root, coordinate: option(argv, 'coordinate') })));
-    else if (argv[1] === 'apply' && argv.length === 6 && argv[2].startsWith('--plan=') && argv[3].startsWith('--authorize=') && argv[4] === '--stopped' && argv[5] === '--discard-recovery') out(canonicalJson(applyQuarantineRetirement(readUserCleanupJson(option(argv, 'plan'), 'retirement-plan'), { cwd: root, authorization: option(argv, 'authorize'), stopped: true, discardRecovery: true })));
+    if (argv[1] === 'plan' && argv.length === 3 && argv[2].startsWith('--coordinate=')) out(canonicalJson(planQuarantineRetirement({ cwd: root, coordinate: arg('coordinate') })));
+    else if (argv[1] === 'apply' && argv.length === 6 && argv[2].startsWith('--plan=') && argv[3].startsWith('--authorize=') && argv[4] === '--stopped' && argv[5] === '--discard-recovery') out(canonicalJson(applyQuarantineRetirement(readUserCleanupJson(arg('plan'), 'retirement-plan'), { cwd: root, authorization: arg('authorize'), stopped: true, discardRecovery: true })));
     else refuse('retirement-arguments', 'usage: cleanup-user retire plan --coordinate=<digest> | apply --plan=<file> --authorize=<token> --stopped --discard-recovery');
     return 0;
   }
   if (['preservation-plan', 'preservation-apply'].includes(argv[0])) {
     const planning = argv[0] === 'preservation-plan';
-    const input = readUserCleanupJson(option(argv, planning ? 'adoption' : 'plan'), planning ? 'preservation-adoption' : 'preservation-plan');
+    const input = readUserCleanupJson(arg(planning ? 'adoption' : 'plan'), planning ? 'preservation-adoption' : 'preservation-plan');
     if (planning && input.adoption) fields(input, 'adoption,originalReceipt');
-    const result = planning ? planSuccessorPreservation({ cwd: root, adoption: input.adoption ?? input,
-      originalReceipt: input.originalReceipt, policyRoot: option(argv, 'policy-root'), workflow: option(argv, 'workflow') })
-      : applySuccessorPreservation(input, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') });
-    out(canonicalJson(result)); return 0;
+    return emit(planning ? planSuccessorPreservation({ cwd: root, adoption: input.adoption ?? input,
+      originalReceipt: input.originalReceipt, policyRoot: arg('policy-root'), workflow: arg('workflow') })
+      : applySuccessorPreservation(input, consent));
   }
   if (argv[0] === 'sweep') return runUserCleanupSweep(root, argv, out);
   if (argv[0] === 'plan') {
-    const modeFlag = unified ? option(argv, 'mode') || 'local-consent' : null;
+    const modeFlag = unified ? arg('mode') || 'local-consent' : null;
     if (unified && !Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
-    if (unified && modeFlag === 'local-snapshot') {
-      out(canonicalJson(planDetachedMainSnapshotCleanup({ cwd: root, target: option(argv, 'target'), expectedHead: option(argv, 'expected-head') })));
-      return 0;
-    }
+    if (['local-snapshot', 'local-integrated'].includes(modeFlag))
+      return emit(planLocalWorktreeCleanup({ cwd: root, mode: modeFlag, ref: arg('ref'), target: arg('target'), expectedHead: arg('expected-head') }));
     const recovery = modeFlag === 'recovery' || (!unified && argv.includes('--recovery'));
-    const ref = option(argv, 'ref');
-    if (ref !== null) {
-      if (!recovery) refuse('recovery-lane-mode');
-      out(canonicalJson(planRecoveryCleanupFromLane({ cwd: root, ref })));
-      return 0;
-    }
-    const noCI = modeFlag === 'no-ci', pr = Number(option(argv, 'pr'));
-    const changeClass = option(argv, 'change-class') || undefined;
-    const plan = planUserCleanup({ cwd: root, target: option(argv, 'target'), pr,
-      requiredChecks: noCI ? [] : unified && !option(argv, 'checks') ? [] : option(argv, 'checks').split(','),
-      workflow: noCI ? null : option(argv, 'workflow'), noCI,
+    const ref = arg('ref');
+    if (ref !== null && !recovery) refuse('recovery-lane-mode');
+    if (ref !== null) return emit(planRecoveryCleanupFromLane({ cwd: root, ref }));
+    const noCI = modeFlag === 'no-ci';
+    return emit(planUserCleanup({ cwd: root, target: arg('target'), pr: Number(arg('pr')),
+      requiredChecks: noCI ? [] : unified && !arg('checks') ? [] : arg('checks').split(','),
+      workflow: noCI ? null : arg('workflow'), noCI,
       recovery, detached: argv.includes('--detached'),
       mergedProjection: argv.includes('--merged-projection'),
       historicalCheckGap: argv.includes('--historical-check-gap'),
-      reviewedEquivalentCommit: option(argv, 'reviewed-equivalent-commit') || undefined,
-      changeClass });
-    out(canonicalJson(plan)); return 0;
+      reviewedEquivalentCommit: arg('reviewed-equivalent-commit') || undefined,
+      changeClass: arg('change-class') || undefined }));
   }
-  const plan = readUserCleanupJson(option(argv, 'plan'), 'user-cleanup-plan');
-  const receipt = unified && plan.schema === SNAPSHOT_CLEANUP_SCHEMA
-    ? applyDetachedMainSnapshotCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') })
-    : applyUserCleanup(plan, { cwd: root, authorization: option(argv, 'authorize'), stopped: argv.includes('--stopped') });
-  out(canonicalJson(receipt));
-  return 0;
+  const plan = readUserCleanupJson(arg('plan'), 'user-cleanup-plan');
+  if (unified && [SNAPSHOT_CLEANUP_SCHEMA, INTEGRATED_CLEANUP_SCHEMA].includes(plan.schema))
+    return emit(applyLocalWorktreeCleanup(plan, consent, { createReaderProbe: createRetirementOpenReaderProbe }));
+  return emit(applyUserCleanup(plan, consent));
 }
 const SWEEP_SCHEMA = 'agentic-os/user-cleanup-sweep/v1';
 const SWEEP_LIMIT = 256;
