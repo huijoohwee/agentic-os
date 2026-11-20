@@ -16,7 +16,7 @@ import {
   parseWritePaths, runPublishedLaneSuccessor,
 } from '../src/worktree.mjs';
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
-import { dispatchInvocation, isInvocationTuple, resolveInvocation } from './agentic-os-invocation.mjs';
+import { dispatchInvocation, isInvocationTuple, readPortableSkill, resolveInvocation } from './agentic-os-invocation.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
 import * as report from './agentic-os-report.mjs';
 import { REPOSITORY_PROFILE_FILENAME } from '../src/git-repository.mjs';
@@ -361,6 +361,11 @@ async function main() {
   if (command === 'release-common' && argv.length === 0) return cmdReleaseCommonHelp();
   if (command === 'release-common' && argv[0] === 'help') return cmdReleaseCommonHelp({ advanced: flag(argv.slice(1), 'advanced') });
   if (command === 'release-common' && ['--help', '-h'].includes(argv[0])) return cmdReleaseCommonHelp();
+  if (command === 'skill') {
+    const result = readPortableSkill(argv[0], option(argv, 'skill'));
+    out(JSON.stringify(result));
+    return result.ok ? 0 : 1;
+  }
   if (command === 'run') return (await import('./agentic-os-run.mjs')).runAgentCommand(argv, out);
   if (command === 'design-check') return (await import('./agentic-os-design.mjs')).runDesignCheck(argv, out);
   if (command === 'capabilities') return (await import('./agentic-os-fleet.mjs')).runCapabilityCli(argv);
