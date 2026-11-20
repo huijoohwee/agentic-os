@@ -3,7 +3,6 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TextDecoder } from 'node:util';
 import { readBoundedFile, snapshotCatalogInput } from '../src/catalog-input.mjs';
 import { PREFIX_KINDS, parseInvocationToken } from '../src/invocation.mjs';
 import { memoryArguments } from './agentic-os-argv.mjs';
@@ -25,6 +24,8 @@ function deepFreeze(value) {
 }
 
 export const ENTRY_CONTRACTS = deepFreeze({
+  ...Object.fromEntries(['discover', 'load'].map(operation =>
+    [`/skill.${operation}`, { kind: 'command', action: 'skill', argv: [operation], semantic: 'read-only', accepts: ['skill'], requires: operation === 'load' ? ['skill'] : [] }])),
   '/design.check': { kind: 'command', action: 'design-check', argv: [], semantic: 'read-only', accepts: ['input'], requires: ['input'] },
   '/setup': { kind: 'command', action: 'setup', argv: [], semantic: 'mutating', accepts: [], requires: [] },
   '/doctor': { kind: 'command', action: 'doctor', argv: [], semantic: 'read-only', accepts: [], requires: [] },
@@ -45,12 +46,10 @@ export const ENTRY_CONTRACTS = deepFreeze({
     [`/run.${operation}`, { kind: 'command', action: 'run', argv: [operation], semantic: ['status', 'query', 'trace', 'compare'].includes(operation) ? 'read-only' : 'mutating', accepts: ['input'], requires: ['input'] }])),
   '/memory.search': { kind: 'command', action: 'memory', argv: ['search'], semantic: 'read-only', accepts: ['agent', 'memory-store', 'operator', 'input'], requires: ['agent', 'memory-store', 'operator', 'input'] },
   ...Object.fromEntries(['memory-search', 'truth', 'vcc'].map(name => [`#${name}`, { kind: 'semantic', value: 'read-only' }])),
-  ...Object.fromEntries(['agent', 'memory-store', 'operator'].map(name => [`@${name}:`, { kind: 'binding', name, mode: 'option' }])),
+  ...Object.fromEntries(['agent', 'memory-store', 'operator', 'device', 'input', 'skill'].map(name => [`@${name}:`, { kind: 'binding', name, mode: 'option' }])),
   '#read-only': { kind: 'semantic', value: 'read-only' },
   '#mutating': { kind: 'semantic', value: 'mutating' },
   '@scope:': { kind: 'binding', name: 'scope', mode: 'positional' },
-  '@device:': { kind: 'binding', name: 'device', mode: 'option' },
-  '@input:': { kind: 'binding', name: 'input', mode: 'option' },
 });
 
 function canonical(value) {
@@ -62,8 +61,7 @@ function canonical(value) {
 export function catalogDigest(input) {
   const snapshot = snapshotCatalogInput(input);
   if (!snapshot.ok) throw new TypeError('invocation catalog entries are invalid');
-  const entries = snapshot.value;
-  const ordered = [...entries].sort((left, right) => String(left?.token ?? '').localeCompare(String(right?.token ?? '')));
+  const ordered = snapshot.value.sort((left, right) => String(left?.token ?? '').localeCompare(String(right?.token ?? '')));
   return `sha256:${createHash('sha256').update(JSON.stringify(canonical(ordered))).digest('hex')}`;
 }
 
@@ -72,6 +70,23 @@ export function loadCatalog(path = CATALOG_PATH) {
   let text;
   try { text = UTF8.decode(bytes); } catch { throw new TypeError('invocation catalog must be UTF-8'); }
   return JSON.parse(text);
+}
+
+/** Select the packaged descriptor without loading its source until requested. */
+export function readPortableSkill(operation, id) {
+  const catalog = loadCatalog();
+  if (!validateCatalog(catalog).ok) return { ok: false, code: 'catalog-invalid' };
+  const descriptor = catalog.entries.find(entry => entry.token === '@skill:').descriptor;
+  if (id !== descriptor.id && !(operation === 'discover' && id === null)) return { ok: false, code: 'skill-unavailable' };
+  const result = { ok: true, authority: false, descriptor, costRecords: [zeroCost('/skill.' + operation)] };
+  if (operation === 'discover') return result;
+  if (operation !== 'load') return { ok: false, code: 'skill-operation-unsupported' };
+  try {
+    const bytes = readBoundedFile(fileURLToPath(import.meta.resolve('agentic-os/skills/trading/SKILL.md')), 8191, 'portable skill');
+    if ('sha256:' + createHash('sha256').update(bytes).digest('hex') !== descriptor.digest)
+      return { ok: false, code: 'skill-digest-mismatch' };
+    return { ...result, content: UTF8.decode(bytes) };
+  } catch { return { ok: false, code: 'skill-source-unavailable' }; }
 }
 
 function parseToken(token, declaration = false) {
@@ -134,8 +149,14 @@ export function validateCatalog(input) {
       if (entry.token !== `@${entry.name}:`) findings.push({ code: 'binding-name-drift', token: entry.token });
       if (!['positional', 'option'].includes(entry.mode)) findings.push({ code: 'binding-mode-invalid', token: entry.token });
     }
-    const matches = [...(seen.get(entry?.token) ?? []), entry];
-    seen.set(entry?.token, matches);
+    if (entry.token === '@skill:') {
+      const skill = entry.descriptor;
+      if (!skill || skill.id !== 'trading'
+        || skill.name !== skill.id || skill.owner !== 'agentic-os' || typeof skill.description !== 'string'
+        || !skill.description.trim() || skill.source !== `agentic-os/skills/${skill.id}/SKILL.md`
+        || typeof skill.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(skill.digest)) findings.push({ code: 'skill-descriptor-invalid' });
+    }
+    seen.set(entry.token, (seen.get(entry.token) ?? 0) + 1);
 
     const expected = ENTRY_CONTRACTS[entry.token];
     if (!expected) findings.push({ code: 'unsupported-entry', token: entry.token });
@@ -147,8 +168,8 @@ export function validateCatalog(input) {
       }
     }
   }
-  for (const [token, matches] of seen) {
-    if (matches.length > 1) findings.push({ code: 'ambiguous-entry', token, count: matches.length });
+  for (const [token, count] of seen) {
+    if (count > 1) findings.push({ code: 'ambiguous-entry', token, count });
   }
   for (const token of Object.keys(ENTRY_CONTRACTS)) {
     if (!seen.has(token)) findings.push({ code: 'entry-missing', token });
@@ -162,25 +183,12 @@ function normalize(input) {
   return input.trim() ? input.trim().split(/\s+/) : [];
 }
 
-const zeroCost = (token) => ({
-  token,
-  modelIdentity: null,
-  promptTokens: 0,
-  completionTokens: 0,
-  estimatedCostUsd: 0,
-});
+const zeroCost = token => ({ token, modelIdentity: null, promptTokens: 0, completionTokens: 0, estimatedCostUsd: 0 });
 
-function rejected(tokens, code, detail = {}) {
-  return {
-    schema: RESOLUTION_SCHEMA,
-    ok: false,
-    status: 'rejected',
-    code,
-    tokens,
-    detail,
-    costRecords: tokens.map(zeroCost),
-  };
+function resolutionRecord(tokens, outcome) {
+  return { schema: RESOLUTION_SCHEMA, tokens, costRecords: tokens.map(zeroCost), ...outcome };
 }
+const rejected = (tokens, code, detail = {}) => resolutionRecord(tokens, { ok: false, status: 'rejected', code, detail });
 
 export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   const tokens = normalize(input);
@@ -201,18 +209,10 @@ export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   if (memory && new Set(parsed.map(token => token.canonical)).size !== parsed.length)
     return rejected(tokens, 'duplicate-token');
 
-  const resolved = parsed.map((token) => ({
-    ...token,
-    matches: catalog.entries.filter((entry) => entry.token === token.canonical),
-  }));
-  const missing = resolved.find((entry) => entry.matches.length === 0);
-  if (missing) {
-    return { ...rejected(tokens, 'unresolved', { token: missing.token }), status: 'unresolved' };
-  }
-  const multiple = resolved.find((entry) => entry.matches.length > 1);
-  if (multiple) return rejected(tokens, 'ambiguous-entry', { token: multiple.token });
-
-  const entries = resolved.map(({ matches, ...token }) => ({ ...token, entry: matches[0] }));
+  // validateCatalog has already fenced duplicate tokens.
+  const entries = parsed.map(token => ({ ...token, entry: catalog.entries.find(entry => entry.token === token.canonical) }));
+  const missing = entries.find(token => !token.entry);
+  if (missing) return { ...rejected(tokens, 'unresolved', { token: missing.token }), status: 'unresolved' };
   if (memory) {
     const expected = ['/memory.search', '#memory-search', '#truth', '#vcc', '@agent:', '@memory-store:', '@operator:', '@input:'];
     if (entries.length !== expected.length || entries.some(entry => !expected.includes(entry.canonical)))
@@ -237,14 +237,7 @@ export function resolveInvocation(input, { catalog = loadCatalog() } = {}) {
   const required = (command.requires ?? []).find((name) => !supplied.includes(name));
   if (required) return rejected(tokens, 'binding-required', { binding: required });
 
-  return {
-    schema: RESOLUTION_SCHEMA,
-    ok: true,
-    status: 'resolved',
-    tokens,
-    entries,
-    costRecords: tokens.map(zeroCost),
-  };
+  return resolutionRecord(tokens, { ok: true, status: 'resolved', entries });
 }
 
 export function isInvocationTuple(input) {

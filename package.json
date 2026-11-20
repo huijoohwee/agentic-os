@@ -13,6 +13,7 @@
     "./DOCUMENTS.md": "./DOCUMENTS.md",
     "./FLEET.md": "./FLEET.md",
     "./skills/canvas/SKILL.md": "./skills/canvas/SKILL.md",
+    "./skills/trading/SKILL.md": "./skills/trading/SKILL.md",
     "./skills/software-forensics/SKILL.md": "./skills/software-forensics/SKILL.md",
     "./integration-policy": "./src/lane-state.mjs",
     "./records": "./src/governance.mjs",

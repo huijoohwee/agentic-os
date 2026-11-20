@@ -57,6 +57,8 @@ function progressiveArguments(argv, directoryRequired = false) {
 }
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'skill': return ['discover', 'load'].includes(argv[0])
+      ? exact(argv, { min: 1, max: 1, options: ['skill'], requiredOptions: argv[0] === 'load' ? ['skill'] : [] }) : 'skill requires discover or load';
     case 'design-check': return exact(argv, { options: ['input'], requiredOptions: ['input'] });
     case 'run': return ['start', 'status', 'cancel', 'retry'].includes(argv[0])
       ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'run requires start, status, cancel or retry';
