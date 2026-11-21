@@ -58,6 +58,9 @@ test('the offline package export and standalone skill resolve without repository
   assert.ok(Buffer.byteLength(loaded.content) <= 8191);
   assert.ok(loaded.content.split('\n').length < 500);
   assert.equal(loaded.authority, false);
+  for (const capability of ['watchlist', 'indicator presets', 'depth and tape', 'market/limit/stop',
+    'single domain guard', 'journal CSV', 'Strategy experiments', 'prediction records', 'dispatch authority', 'UNSUPPORTED'])
+    assert.ok(loaded.content.includes(capability), capability);
   assert.match(description, /provider-neutral API\/MCP/u);
   assert.match(loaded.content, /API and MCP must share the same domain admission,/u);
   assert.match(loaded.content, /never forward incoming tokens/u);
