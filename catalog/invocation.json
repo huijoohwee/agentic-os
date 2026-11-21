@@ -1,7 +1,7 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
   "entryCount": 39,
-  "digest": "sha256:0c89392314bed9b4bf875e1da4d40aab2cd4c9a90a747fa246f81dee96ca849b",
+  "digest": "sha256:fb951885c75934c2845ac443b411e95c9529a3b77442c4ede2fe3dacac9164ab",
   "entries": [
     {
       "token": "/setup",
@@ -278,6 +278,6 @@
     {"token":"/design.check","kind":"command","action":"design-check","semantic":"read-only","accepts":["input"],"requires":["input"],"summary":"Check a local design adoption record against pinned policy and supplied source bytes; no runtime or release authority."},
     {"token":"/skill.discover","kind":"command","action":"skill","argv":["discover"],"semantic":"read-only","accepts":["skill"],"summary":"Read pinned portable skill metadata offline."},
     {"token":"/skill.load","kind":"command","action":"skill","argv":["load"],"semantic":"read-only","accepts":["skill"],"requires":["skill"],"summary":"Read the verified portable skill instructions offline."},
-    {"token":"@skill:","kind":"binding","name":"skill","mode":"option","summary":"Select a portable skill by its published identity.","descriptor":{"id":"trading","name":"trading","owner":"agentic-os","description":"Discover read-only trading capabilities and rehearse a paper workflow against documented market data or a local fixture.","source":"agentic-os/skills/trading/SKILL.md","digest":"sha256:3c623704643a1c309916e3c964d8f83640947f0eaa93199448fc6c3f826b93a4"}}
+    {"token":"@skill:","kind":"binding","name":"skill","mode":"option","summary":"Select a portable skill by its published identity.","descriptor":{"id":"trading","name":"trading","owner":"agentic-os","description":"Set up provider-neutral API/MCP trading workflows for research, paper-account review, packaging, schedules, dashboards and independent risk review. Use for read-only gateway checks or guarded paper rehearsal, never live orders.","source":"agentic-os/skills/trading/SKILL.md","digest":"sha256:337c959a376f35267318c74d570df40974a875c8e26cab350cab1f9c079039be"}}
   ]
 }

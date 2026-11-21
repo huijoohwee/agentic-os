@@ -54,6 +54,20 @@ test('the offline package export and standalone skill resolve without repository
   assert.equal(source, 'agentic-os/skills/trading/SKILL.md');
   assert.equal(digest, 'sha256:' + createHash('sha256').update(loaded.content).digest('hex'));
   assert.deepEqual(loaded.content.split('\n').slice(0, 4), ['---', 'name: ' + name, 'description: ' + description, '---']);
+  assert.ok(description.length <= 1024 && !/[\r\n]/u.test(description));
+  assert.ok(Buffer.byteLength(loaded.content) <= 8191);
+  assert.ok(loaded.content.split('\n').length < 500);
+  assert.equal(loaded.authority, false);
+  assert.match(description, /provider-neutral API\/MCP/u);
+  assert.match(loaded.content, /API and MCP must share the same domain admission,/u);
+  assert.match(loaded.content, /never forward incoming tokens/u);
+  assert.doesNotMatch(loaded.content, /https?:\/\/|\/Users\/|\bTODO\b|\bnpx\b/iu);
+  assert.deepEqual([...loaded.content.matchAll(/^## (.+)$/gmu)].map(match => match[1]), [
+    'Establish the boundary', 'Verify a read-only workflow', 'Install and package native instructions',
+    'Bind collaboration and paper rehearsal', 'Schedule, deliver and observe', 'Regress, restore and report',
+  ]);
+  assert.deepEqual([...loaded.content.matchAll(/^- (EV-\d+):/gmu)].map(match => match[1]),
+    ['EV-01', 'EV-02', 'EV-03', 'EV-04']);
   assert.ok(loaded.costRecords.every(record => record.promptTokens === 0 && record.completionTokens === 0 && record.estimatedCostUsd === 0));
   const unavailable = code => error => error.status === 1 && JSON.parse(error.stdout).code === code;
   assert.throws(() => invoke('load', '../other'), unavailable('skill-unavailable'));
