@@ -1,0 +1,80 @@
+{
+  "schema": "agentic-os/design-consumer-matrix/v1",
+  "owner": "github.com/huijoohwee/agentic-os",
+  "designSystemOwner": "github.com/huijoohwee/agentic-design-system",
+  "alignment": {
+    "policy": "unified-release-with-bounded-value-equivalent-skew",
+    "targetRevision": "c870d3463b97d446f7ff94e6decc348ef85bd69c",
+    "sharedUiSourceSha256": "sha256:bab5811bcd4aa82065d4671d7876c6d9085a25f1c10e63932f8b81a53255bdb3",
+    "sharedUiProjectionSha256": "sha256:ba95bb2de809f84c35aec409c89f305442b536741cbd0987d43ff8ecc6bf9e17",
+    "convergence": "next-design-system-release",
+    "note": "Target is the lane-A candidate. Until it is published, active consumers stay on their current published registry revisions under registered value-equivalent skew: the delivered shared-ui projection bytes must equal the target projection. Per-asset revision pins are legitimate when their bytes verify against the owner at that revision; they are not forced to a single revision when bytes differ."
+  },
+  "consumers": [
+    {
+      "repository": "github.com/huijoohwee/agentic-base",
+      "kind": "installed-package",
+      "pinPath": "package.json",
+      "registryRevision": "5e3b04e8510d05923d43a0ebac40a583544ec857",
+      "alignment": "value-equivalent-skew",
+      "sharedUiProjectionPath": "site/vendor/shared-ui-profile.css",
+      "ownedStylesheets": []
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-commerce-os",
+      "kind": "vendored-pin",
+      "pinPath": "config/shared-ui-profile.pin.json",
+      "registryRevision": "cb062fec5d0923f8da74a9fae3dcabb73e608aa1",
+      "alignment": "value-equivalent-skew",
+      "sharedUiProjectionPath": "site/vendor/shared-ui-profile.css",
+      "ownedStylesheets": ["public/local-first/workspace-shell.css"]
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-sheets",
+      "kind": "vendored-pin",
+      "pinPath": "design/shared-ui-profile.pin.json",
+      "registryRevision": "cb062fec5d0923f8da74a9fae3dcabb73e608aa1",
+      "alignment": "value-equivalent-skew",
+      "sharedUiProjectionPath": "site/vendor/shared-ui-profile.css",
+      "ownedStylesheets": ["sheets/styles.css"]
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-graph",
+      "kind": "vendored-pin",
+      "pinPath": "canvas/src/styles/shared-ui-profile.pin.json",
+      "registryRevision": "5e3b04e8510d05923d43a0ebac40a583544ec857",
+      "alignment": "value-equivalent-skew",
+      "sharedUiProjectionPath": "site/vendor/shared-ui-profile.css",
+      "ownedStylesheets": ["canvas/src/index.css"],
+      "intentPalette": {
+        "ownerPath": "site/ui-intent-palette.json",
+        "projectionPath": "grph-shared/src/ui/ui-intent-palette.json",
+        "pinPath": "grph-shared/src/ui/ui-intent-palette.pin.json",
+        "derivationPath": "grph-shared/src/ui/intentTokens.ts",
+        "forbiddenLiteral": "text-blue-600"
+      }
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-trading-platform",
+      "kind": "exact-snapshot",
+      "pinPath": "scripts/build.mjs",
+      "registryRevision": "83de261f8f3ddf66ed41e5370b6811f498788b40",
+      "alignment": "value-equivalent-skew",
+      "sharedUiProjectionPath": "site/vendor/shared-ui-profile.css",
+      "ownedStylesheets": ["web/desk.css", "web/trading.css", "web/journal.css"]
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-canvas-os",
+      "kind": "indirect",
+      "via": "github.com/huijoohwee/agentic-graph",
+      "consumptionPath": "web/build.mjs",
+      "consumptionMarker": "agentic-graph/observability-build/v1",
+      "legacyStylesheet": {
+        "path": "web/styles.css",
+        "active": false,
+        "reachabilityEvidence": "No committed web HTML, module, or build script references web/styles.css; the active builder consumes verified native Graph output (web/build.mjs). Disposal requires separate cleanup authorization."
+      },
+      "ownedStylesheets": []
+    }
+  ]
+}

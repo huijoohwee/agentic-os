@@ -35,8 +35,10 @@ override is not a valid compatibility path.
 
 `site/icons.json` is the sole role map for panel actions within the broader Design System
 semantic control map: `search`, `pin`, `apply`, `reset`, `minimize`, `restore`, and
-`close`. Its canonical glyphs and neutral accessible labels are Search, Pin, Check/Apply,
-RotateCcw/Reset, Minimize2/Minimize, History/Restore, and X/Close.
+`close`. Canonical glyphs and neutral accessible labels are defined only in that owner map
+and its shared contract; this guide does not restate role-to-glyph or role-to-label pairs.
+Panel `restore` uses the maximize icon, while history restoration is a distinct action that
+is never mapped to the panel `restore` role.
 Consumers bind actions and pressed/disabled state to these roles through the shared
 Design System adapter. A role may be omitted when it is inapplicable to a panel; the role
 definition and its visual treatment are still singular.
