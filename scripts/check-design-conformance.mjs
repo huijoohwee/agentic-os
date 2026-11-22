@@ -162,7 +162,14 @@ export function checkDesignConformance(workspace, overrides = {}) {
       }, label);
       projectionDigest = `sha256:${digest(projection)}`;
     }
-    if (entry.alignment === 'aligned') need(entry.registryRevision === target.targetRevision, `${label} declared aligned but not on target`);
+    if (entry.alignment === 'aligned') {
+      // A consumer may pin the exact target revision or the catalog-release sub-revision within it
+      // (Commerce derives registryRevision from the last catalog.json change); both reference the
+      // same registry release when their catalog.json bytes equal the target's.
+      const sameRelease = entry.registryRevision === target.targetRevision
+        || owner.blob('site/catalog.json', entry.registryRevision).equals(owner.blob('site/catalog.json', target.targetRevision));
+      need(sameRelease, `${label} declared aligned but not on the target registry release`);
+    }
     checkValueEquivalence(projectionDigest, target.sharedUiProjectionSha256, label);
     if (entry.intentPalette) checkPaletteDerivation(owner, consumer, entry.intentPalette, target.targetRevision, label);
     checkNoCentralOverrides(consumer, entry.ownedStylesheets, centralVars, label);

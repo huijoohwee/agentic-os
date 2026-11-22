@@ -24,7 +24,7 @@
       "repository": "github.com/huijoohwee/agentic-commerce-os",
       "kind": "vendored-pin",
       "pinPath": "config/shared-ui-profile.pin.json",
-      "registryRevision": "d60b569179c23a14418616abc265d22f2da00e30",
+      "registryRevision": "d870b2f02a7e8c8ccd1fe788ad892385b22d49af",
       "alignment": "aligned",
       "sharedUiProjectionPath": "site/vendor/shared-ui-profile.css",
       "ownedStylesheets": [
