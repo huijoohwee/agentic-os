@@ -14,6 +14,16 @@ function sameNode(left, right) {
     && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
 
+// An operation lock is an empty directory whose identity is its device/inode/mode. Timestamps
+// (mtimeNs/ctimeNs), link count and size are not identity for the lock directory: on some
+// filesystems (e.g. APFS) they drift between acquire and finish even when the lock is unchanged,
+// which previously caused spurious lock-integrity failures and stale lock residue. Nonempty locks
+// still fail to remove, and replaced locks still differ by inode/mode.
+function sameLockNode(left, right) {
+  return Boolean(right) && left.dev === right.dev && left.ino === right.ino
+    && left.mode === right.mode;
+}
+
 function identitySnapshot(stat, path) {
   return Object.freeze({
     path, dev: stat.dev, ino: stat.ino, mode: stat.mode, nlink: stat.nlink,
@@ -338,7 +348,7 @@ export function finishOperationLock(
   let lockError = null;
   try {
     observed = lstatSync(lock.path, { bigint: true, throwIfNoEntry: false });
-    if (!observed?.isDirectory() || observed.isSymbolicLink() || !sameNode(lock, observed))
+    if (!observed?.isDirectory() || observed.isSymbolicLink() || !sameLockNode(lock, observed))
       throw new Error('operation lock identity changed');
     rmdirSync(lock.path);
   } catch (caught) { lockError = caught; }
