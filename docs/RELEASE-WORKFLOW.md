@@ -22,3 +22,17 @@ For blockers load [recovery](../guides/USER-CLEANUP.md).
 Batch: `agentic-os complete-adlc --worktrees=<registered-root>`.
 Delivery: [DEPLOY](../guides/DEPLOY-WORKFLOW.md) requires Dev/Prod identity and rollback proof.
 Source closure never implies product delivery.
+
+## GitHub consumer enforcement
+
+GitHub consumer repositories must commit a governed repository profile before release closeout is considered healthy:
+
+- `adapters.provider` must select `github/1`
+- `capabilities` must include `protected-integration:pull-request`
+- `requiredChecks` must be non-empty
+- each declared required check must match an exact GitHub workflow job `name:`
+- `cleanup.worktreeProjection` and `cleanup.worktreeRegistration` must both be `remove-clean`
+- `package.json` must expose `doctor`, `lane`, `land`, `release:common`, and `sync:canonical`
+
+`agentic-os doctor` evaluates the trusted committed profile at the canonical protected ref. Uncommitted local edits do not
+change release authority or satisfy consumer enforcement until those bytes are committed and fetched as the trusted profile.
