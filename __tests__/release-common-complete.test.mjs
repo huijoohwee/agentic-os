@@ -643,7 +643,7 @@ test('progressive completion does not count deploy-bound source closeout as end-
   assert.equal(events.at(-1).deliveryPending, 1);
   assert.equal(events.at(-1).schema, 'agentic-os/progressive-completion/v2');
   assert.deepEqual(events.at(-1).nextActions, [{ path: join(directory, 'delivery'), ref,
-    adlcState: 'delivery_pending', completionScope: 'delivery-bound', id: 'deploy-workflow',
+    adlcState: 'delivery_pending', completionScope: 'delivery-bound', residueDisposition: null, id: 'deploy-workflow',
     owner: 'product-owner', command: 'Follow guides/DEPLOY-WORKFLOW.md.' }]);
 });
 

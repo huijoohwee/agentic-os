@@ -51,7 +51,7 @@ const files = Object.freeze({
     '.github/workflows/adlc-authority.yml': 'workflow_dispatch: authority_input_digest:',
   },
   'agentic-graph': {
-    '.agentic-os.json': 'agentic-os/repository-profile/v1 github.com/huijoohwee/agentic-graph Integration Gate quarantine-worktree-cleanup-opt-in',
+    '.agentic-os.json': 'agentic-os/repository-profile/v1 github.com/huijoohwee/agentic-graph Integration Gate remove-clean-worktree-cleanup-opt-in',
     'package.json': harnessManifest(githubPin),
     'docs/collaboration-runtime-contract.md': 'informational current-device projection delete_branch_on_merge:false',
     'cloudflare/workers/commerce-provider-contract.ts': 'commerce.discovery-provider/v1 commerce.checkout-provider/v1 commerce.marketplace-provider/v1 commerce.upstream-runtime-evidence/v1 x-commerce-provider-binding-digest AUTHORING_MUTATION_HEADER_NAMES x-authoring-reserved-at-ms agentic-graph-authoring-mutation-permit/v2 authoring_fence_atomic',

@@ -150,6 +150,15 @@ enrollment and the separate `apply --plan --authorize --stopped` confirmation re
 surviving canonical checkout with the reviewed upstream CLI. Remove the clone-local opt-in after the selected
 batch. Never invoke code from a directory after it has been quarantined.
 
+When the lane record is still exact, prefer the default operator path:
+
+```sh
+agentic-os cleanup auto --ref=<lane>
+```
+
+Use the explicit `cleanup-user plan --recovery ...` forms above only when you need to inspect or override the
+exact recovery planner inputs directly.
+
 When a published lane record's head is stale, `plan --recovery --ref=<lane>` may bind the current checkout
 if its exact path and branch match, its head strictly descends from the recorded head, the recorded base is
 retained by current clean `main`, and `exactCurrentIntegrationProof` proves the current lane changes are

@@ -349,7 +349,7 @@ export function projectProgressiveCloseout(target, observed, record = null) {
   if (!exact || observed.lane.clean !== true) return { ...base, reason: 'requires-published-lane' };
   const adlcState = closeout.adlcState ?? (closeout.missionState === 'source_complete' ? 'complete' : null);
   const fields = { sourceState: closeout.sourceState, missionState: closeout.missionState ?? null,
-    adlcState, retentionState: closeout.retentionState ?? null,
+    adlcState, retentionState: closeout.retentionState ?? null, residueDisposition: closeout.residueDisposition ?? null,
     deliveryState: closeout.deliveryState ?? null, completionScope: closeout.completionScope ?? null, branchDisposition: closeout.branchDisposition ?? null,
     nextAction: closeout.nextAction ?? null };
   if (closeout.sourceState !== 'source_complete') return { ...base, ...fields, reason: closeout.nextAction?.id ?? 'source-not-complete' };
