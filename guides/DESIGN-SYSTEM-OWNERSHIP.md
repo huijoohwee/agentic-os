@@ -102,6 +102,15 @@ exports, Base, Sheets and Commerce projections, Graph entry points and Trading r
 checkout, duplicate route shell, conflicting import or changed projection fails the check.
 Use the product's browser tests to verify navigation, active state, focus, narrow views and offline use.
 
+Run `node scripts/check-design-conformance.mjs WORKSPACE` for the fleet token gate. It reads
+`catalog/design-consumer-matrix.json`, verifies each active consumer's shared-ui pin against
+authentic owner bytes, and enforces one alignment policy: a unified Design System release, or a
+registered value-equivalent skew whose delivered projection bytes equal the target and which converges
+at the next Design System release. It also proves Graph derives the central intent palette (no local
+re-authoring), Canvas consumes verified Graph output with its legacy stylesheet inactive, and no
+consumer redeclares centrally owned shared-ui variables. `--self-check` validates the matrix without
+sibling checkouts. Different registry revisions alone are not a conflict; delivered value drift is.
+
 ## Conformance
 
 Every affected repository must reject duplicate or conflicting semantic maps, adapter
