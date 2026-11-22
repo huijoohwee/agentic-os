@@ -297,6 +297,7 @@ test('consumer release enforcement flags weak GitHub consumer profiles', (t) => 
     'consumer-protected-integration',
     'consumer-required-checks',
     'consumer-cleanup-policy',
+    'consumer-script-successor',
     'consumer-script-release:common',
     'consumer-script-sync:canonical',
   ]);
@@ -307,6 +308,7 @@ test('consumer release enforcement accepts a fully governed GitHub consumer prof
     doctor: 'agentic-os doctor',
     lane: 'agentic-os start',
     land: 'agentic-os land',
+    successor: 'agentic-os successor',
     'release:common': 'agentic-os release-common',
     'sync:canonical': 'agentic-os canonical-sync',
   });
@@ -350,6 +352,7 @@ test('consumer release enforcement requires workflow jobs to match required chec
     doctor: 'agentic-os doctor',
     lane: 'agentic-os start',
     land: 'agentic-os land',
+    successor: 'agentic-os successor',
     'release:common': 'agentic-os release-common',
     'sync:canonical': 'agentic-os canonical-sync',
   });

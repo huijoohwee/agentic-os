@@ -349,7 +349,6 @@ its own exact plan, authority, and receipt.
 Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving the merged PR and its recorded current-facts authority evidence.
-
 ## Current recovery enrollment — agentic-trading-platform PR #2 — 2026-11-22
 
 Under the owner's authorization to continue receipt-bound recovery, this record binds repository
