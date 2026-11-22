@@ -87,6 +87,21 @@ identifiers, and declared revisions with that source. A consumer does not patch 
 generated projection to change shared behavior; it updates its pin after the Design
 System release contains the change.
 
+## Navigation shared by multiple routes
+
+A product owns one toolbar template or component for its shared destinations and one application
+base stylesheet. Each participating route imports those owners. Bind the active destination
+with `aria-current="page"`. Page styles may describe product content. Design System owns toolbar
+presentation, the FloatingPanel shell and the Skills & Commands controls. Import its pinned
+toolbar or panel stylesheet directly or seal a byte-identical offline projection.
+
+Run `node scripts/check-shared-toolbar.mjs WORKSPACE` against the seven sibling checkouts before
+integrating shared navigation changes. A `repo=checkout` argument selects a candidate worktree.
+The command reads committed Git objects and reports their revisions. It checks the Design System
+exports, Base, Sheets and Commerce projections, Graph entry points and Trading routes. A missing
+checkout, duplicate route shell, conflicting import or changed projection fails the check.
+Use the product's browser tests to verify navigation, active state, focus, narrow views and offline use.
+
 ## Conformance
 
 Every affected repository must reject duplicate or conflicting semantic maps, adapter

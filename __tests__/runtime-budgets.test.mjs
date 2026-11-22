@@ -188,6 +188,19 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
   }
 });
 
+test('shared navigation checks reject a second shell, stylesheet or modified owner projection', async () => {
+  const { checkProjection, checkRouteEntries } = await import('../scripts/check-shared-toolbar.mjs');
+  const entry = '<!-- toolbar --><link href="./base.css">';
+  const check = source => checkRouteEntries([['desk', source], ['journal', entry]],
+    '<!-- toolbar -->', /class="agentic-toolbar"/u, 'href="./base.css"');
+  check(entry);
+  for (const invalid of [entry + entry, entry.replace('base.css', 'local.css'), entry + '<nav class="agentic-toolbar">'])
+    assert.throws(() => check(invalid));
+  const bytes = Buffer.from('shared'), pin = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
+  checkProjection('toolbar.css', bytes, Buffer.from(bytes), pin);
+  assert.throws(() => checkProjection('toolbar.css', bytes, Buffer.from('fork'), pin));
+});
+
 test('the universal ADLC guideline has exact agent-runtime frontmatter', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const text = readFileSync(join(root, 'docs/adlc-guidelines.md'), 'utf8');
