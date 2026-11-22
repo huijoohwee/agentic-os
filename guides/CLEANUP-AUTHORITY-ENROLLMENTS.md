@@ -328,3 +328,24 @@ its own exact plan, authority, and receipt.
 Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving the merged PR and its original quarantine evidence.
+
+## Current recovery enrollment — agentic-trading-platform PR #2 — 2026-11-22
+
+Under the owner's authorization to continue receipt-bound recovery, this record binds repository
+`github.com/huijoohwee/agentic-trading-platform`: base
+`5b4760019d7a3c443527a6db8b376667995bf1df`, reviewed head
+`30c31f76e7f08dc66ba55746f8eeb71591936e78`, merge
+`2fd76e67309a7a0a181baeb47053dda95cdb8d67`, and equal source/merge tree
+`47d623b935a3b46de58d80416cc43de2b363c065`. The exact review is
+<https://github.com/huijoohwee/agentic-trading-platform/pull/2>; its recorded required check is
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-2`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This enrollment does not establish provider checks, issue integration or retirement
+receipts, or authorize cleanup, synchronization, deployment, or rollback. Each later effect needs
+its own exact plan, authority, and receipt.
+
+Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving the merged PR and its original quarantine evidence.
