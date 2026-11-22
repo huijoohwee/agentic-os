@@ -13,6 +13,15 @@ function need(condition, label) { if (!condition) throw new Error(label); }
 function once(source, literal, label) {
   need(source.split(literal).length === 2, label + ' must include exactly one ' + literal);
 }
+// Read only stylesheet directives and static module imports in the supported entry files.
+function importPaths(source, css = false) {
+  const pattern = css ? /(?:^|;)\s*@import\s+["']([^"']+)["']/gmu
+    : /(?:^|;)\s*import\s+(?:\{[^}]*\}\s+from\s+)?["']([^"']+)["']/gmu;
+  return Array.from(source.matchAll(pattern), match => match[1]);
+}
+function requireImport(paths, path, label) {
+  need(paths.filter(item => item === path).length === 1, label + ' must import exactly one ' + path);
+}
 export function checkProjection(label, ownerBytes, consumerBytes, pin) {
   need(digest(ownerBytes) === pin && ownerBytes.equals(consumerBytes), label + ' differs from pinned owner bytes');
 }
@@ -38,7 +47,7 @@ export function checkWorkspace(workspace, overrides = {}) {
   const owner = repos['agentic-design-system'];
   const entry = owner.json('package.json').exports;
   need(entry['./toolbar.css'] === './site/toolbar.css' && entry['./panels.css'] === './site/panels.css', 'Design System CSS exports');
-  once(owner.text('site/panels.css'), '@import "./toolbar.css";', 'Design System panel bundle');
+  requireImport(importPaths(owner.text('site/panels.css'), true), './toolbar.css', 'Design System panel bundle');
   const projections = [];
   function verify(repo, local, revision, source, hash) {
     const label = repo + '/' + local;
@@ -66,8 +75,7 @@ export function checkWorkspace(workspace, overrides = {}) {
   }
   const commerce = repos['agentic-commerce-os'];
   for (const file of ['workspace-pack.js', 'workspace-navigation.js']) {
-    const imports = commerce.text('public/local-first/' + file).split(/\r?\n/u).filter(line => line.startsWith('import ')).join('\n');
-    once(imports, "from './commerce-toolbar.js'", file);
+    requireImport(importPaths(commerce.text('public/local-first/' + file)), './commerce-toolbar.js', file);
   }
   const graph = repos['agentic-graph'];
   const spec = graph.json('canvas/package.json').dependencies['agentic-design-system'];
@@ -75,12 +83,15 @@ export function checkWorkspace(workspace, overrides = {}) {
   need(spec === 'github:huijoohwee/agentic-design-system#' + pin && oid.test(pin), 'Graph Design System revision');
   need(graph.json('package.json').dependencies?.['agentic-design-system'] === spec ||
     graph.json('package.json').devDependencies?.['agentic-design-system'] === spec, 'Graph root Design System pin drift');
-  once(owner.blob('site/panels.css', pin).toString(), '@import "./toolbar.css";', 'Graph pinned panel bundle');
-  const graphEntry = graph.text('canvas/src/index.css');
-  once(graphEntry, "@import 'agentic-design-system/panels.css';", 'Graph shared stylesheet');
+  requireImport(importPaths(owner.blob('site/panels.css', pin).toString(), true), './toolbar.css', 'Graph pinned panel bundle');
+  const graphEntry = importPaths(graph.text('canvas/src/index.css'), true);
+  requireImport(graphEntry, 'agentic-design-system/panels.css', 'Graph shared stylesheet');
   need(!graphEntry.includes('@agentic-base/views-react/toolbar.css'), 'Graph redirects toolbar ownership through Base');
-  checkRouteEntries(['main', 'observability'].map(file => [file, graph.text('canvas/src/' + file + '.tsx')]),
-    "import './index.css'", /import\s+['"][^'"]*(?:profile|toolbar|panels)\.css['"]/u);
+  for (const file of ['main', 'observability']) {
+    const imports = importPaths(graph.text('canvas/src/' + file + '.tsx'));
+    requireImport(imports, './index.css', file);
+    need(!imports.some(path => /(?:profile|toolbar|panels)\.css$/u.test(path)), file + ' imports a second toolbar stylesheet');
+  }
   const trading = repos['agentic-trading-platform'];
   const pages = ['desk', 'index'].map(file => [file, trading.text('web/' + file + '.html')]);
   checkRouteEntries(pages, '<!-- trading-toolbar -->', /class\s*=\s*["'][^"']*\bagentic-toolbar\b/iu, 'href="./trading.css"');
