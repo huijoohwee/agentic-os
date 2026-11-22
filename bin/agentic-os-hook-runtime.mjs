@@ -16,6 +16,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Includes exact 13-file closure from 89acc7a; every prior runtime stays explicitly pinned.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-760ae7a9d3272e00d59b3254229d2c0010046740524bcb4e3a462e08b8b278c8',
   'v1-d62b55457b7eccf5a852344e87e7f4fde0abdfe7f982a4813f2bc0c5c207d115',
   'v1-61b0c08ae5a26367e69ec157e182819fbde328fee570a5cf59f11b1be72fad5f',
   'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20',

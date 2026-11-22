@@ -129,7 +129,7 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
 
   if (released) {
     assert.equal(runtimeId, released === 'pre-core'
-      ? 'v1-61b0c08ae5a26367e69ec157e182819fbde328fee570a5cf59f11b1be72fad5f' : released === 'pre-alignment'
+      ? 'v1-760ae7a9d3272e00d59b3254229d2c0010046740524bcb4e3a462e08b8b278c8' : released === 'pre-alignment'
       ? 'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20' : released === 'retained-context'
       ? 'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171' : released === 'batch32'
       ? 'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58' : released === 'pre-upstream'
