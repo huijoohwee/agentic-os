@@ -259,24 +259,15 @@ export function planRecoveryCleanupFromLane({ cwd = process.cwd(), ref } = {}, o
 export function planAutoUserCleanup({ cwd = process.cwd(), ref = null, target = null } = {}, options = {}) {
   if ((ref === null) === (target === null)) refuse('auto-target');
   if (ref !== null) return planRecoveryCleanupFromLane({ cwd, ref }, options);
-  let targetPath;
-  try { targetPath = realpathSync(target); } catch { refuse('auto-target'); }
-  const branch = currentBranch(targetPath), head = read(targetPath, ['rev-parse', '--verify', 'HEAD']),
-    clean = read(targetPath, ['status', '--porcelain', '--untracked-files=all']) === '';
-  if (clean && branch && isLaneRef(branch)) try {
-    return planLocalWorktreeCleanup({ cwd, mode: 'local-integrated', ref: branch, target: targetPath, expectedHead: head });
-  } catch { /* Fall through to recovery planning when local-integrated cleanup is not exact. */ }
-  if (clean && branch === null) try {
-    return planLocalWorktreeCleanup({ cwd, mode: 'local-snapshot', target: targetPath, expectedHead: head });
-  } catch { /* Fall through to the exact auto-target refusal below. */ }
-  if (branch && isLaneRef(branch)) return planRecoveryCleanupFromLane({ cwd, ref: branch }, options);
+  let targetPath; try { targetPath = realpathSync(target); } catch { refuse('auto-target'); }
+  const branch = currentBranch(targetPath), head = read(targetPath, ['rev-parse', '--verify', 'HEAD']), clean = read(targetPath, ['status', '--porcelain', '--untracked-files=all']) === '';
+  if (clean && branch === null) try { return planLocalWorktreeCleanup({ cwd, mode: 'local-snapshot', target: targetPath, expectedHead: head }, options); } catch {}
+  if (branch && isLaneRef(branch)) { if (clean) try { return planLocalWorktreeCleanup({ cwd, mode: 'local-integrated', ref: branch, target: targetPath, expectedHead: head }, options); } catch {} return planRecoveryCleanupFromLane({ cwd, ref: branch }, options); }
   refuse('auto-target');
 }
 export function applyUserCleanup(input, { cwd = process.cwd(), authorization, stopped, now = Date.now, ...options } = {}) {
-  const plan = validatePlan(input), root = realpathSync(repoRoot(cwd));
-  const policyResolver = options.resolvePolicy ?? null;
-  if (root !== plan.root || authorization !== `agentic-os:user-cleanup:${plan.planDigest}` || stopped !== true)
-    refuse('explicit-authorization-required');
+  const plan = validatePlan(input), root = realpathSync(repoRoot(cwd)), policyResolver = options.resolvePolicy ?? null;
+  if (root !== plan.root || authorization !== `agentic-os:user-cleanup:${plan.planDigest}` || stopped !== true) refuse('explicit-authorization-required');
   return locked(root, () => {
     refuseUnknownLaneBytes(plan.targetPath, root, { recovery: plan.mode === RECOVERY_MODE });
     const m = mechanics(plan), eligible = eligibility(plan);
@@ -401,8 +392,7 @@ export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, 
     const isMerged = merged.has(branch), mounted = active.has(branch);
     const stale = staleDays > 0 ? commitMs < staleThreshold : true;
     if (!stale) continue;
-    candidates.push({ branch, head, merged: isMerged, stale, mounted, cleanupCommand: `agentic-os cleanup auto --ref=${branch}`,
-      commitTime: new Date(commitMs).toISOString() });
+    candidates.push({ branch, head, merged: isMerged, stale, mounted, cleanupCommand: `agentic-os cleanup auto --ref=${branch}`, commitTime: new Date(commitMs).toISOString() });
   }
   if (mergedBranches.some(branch => !seen.has(branch))) refuse('sweep-ref-drift');
   return candidates;

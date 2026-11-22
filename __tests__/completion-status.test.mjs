@@ -327,6 +327,7 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
   assert.equal(complete.completionScope, 'source-only');
   assert.equal(complete.cleanupSatisfied, false);
   assert.equal(complete.retentionState, 'retained');
+  assert.equal(complete.residueDisposition, 'deliberate-retained');
   assert.equal(complete.adlcState, 'cleanup_pending');
   assert.equal(complete.nextAction.id, 'workspace-cleanup');
   const sync = deriveCloseoutVerdict({
@@ -358,7 +359,11 @@ test('closeout ranks canonical-sync and deploy without granting those effects', 
     ...base, quarantineProfile: true, findingCodes: ['cleanup-receipt-unverified'],
   });
   assert.equal(cleanup.laneDisposition, 'awaiting-cleanup');
+  assert.equal(cleanup.residueDisposition, 'stale-mounted');
   assert.equal(cleanup.nextAction.id, 'release-common-complete');
+  assert.equal(deriveCloseoutVerdict({
+    ...base, laneMounted: false, laneClean: null, quarantineProfile: true, quarantineObserved: false,
+  }).residueDisposition, 'stale-unmounted');
 });
 
 test('an exact no-op lane does not inherit the repository deployment obligation', () => {

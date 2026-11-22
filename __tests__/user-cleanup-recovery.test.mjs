@@ -9,7 +9,7 @@ import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
 import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
   createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
-import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
+import { planUserCleanup, planRecoveryCleanupFromLane, planAutoUserCleanup, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { CLEANUP_EFFECTS, RETAINED_EFFECTS, createWorktreeCleanupEligibility,
   validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
@@ -158,6 +158,18 @@ test('recovery planning derives the exact target, PR, profile checks and merged 
   assert.equal(plan.branch, s.branch);
   assert.equal(plan.head, s.head);
   assert.throws(() => planRecoveryCleanupFromLane({ cwd: s.root, ref: 'agent/device-0232231d4a19/missing' }, s.options), /recovery-lane-binding/);
+});
+
+test('cleanup-user auto validates and resolves an exact recovery lane by ref', t => {
+  const s = fixture(t);
+  assert.equal(validateCommandArguments('cleanup-user', ['auto', `--ref=${s.branch}`]), null);
+  assert.match(validateCommandArguments('cleanup-user', ['auto']), /exactly one/u);
+  assert.match(validateCommandArguments('cleanup-user', ['auto', `--ref=${s.branch}`, `--target=${s.target}`]), /exactly one/u);
+  const plan = planAutoUserCleanup({ cwd: s.root, ref: s.branch }, s.options);
+  assert.equal(plan.mode, RECOVERY_MODE);
+  assert.equal(plan.branch, s.branch);
+  assert.equal(plan.targetPath, s.target);
+  assert.equal(plan.pr, s.input.pr);
 });
 
 test('local cleanup refuses a recertified lane before provider review when checkout bytes are unknown', t => {
