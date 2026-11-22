@@ -338,7 +338,7 @@ export function finishOperationLock(
   let lockError = null;
   try {
     observed = lstatSync(lock.path, { bigint: true, throwIfNoEntry: false });
-    if (!observed?.isDirectory() || observed.isSymbolicLink() || !sameNode(lock, observed))
+    if (!observed?.isDirectory() || observed.isSymbolicLink() || lock.dev !== observed.dev || lock.ino !== observed.ino || lock.mode !== observed.mode)
       throw new Error('operation lock identity changed');
     rmdirSync(lock.path);
   } catch (caught) { lockError = caught; }

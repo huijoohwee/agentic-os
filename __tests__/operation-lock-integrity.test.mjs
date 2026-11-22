@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync,
-  writeFileSync,
+  utimesSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -79,6 +79,19 @@ test('lock finalization retains nonempty and replaced locks with exact outcomes'
   assert.throws(() => finishOperationLock(replaced, { label: 'test', result }),
     { reason: 'blocked-test-lock-integrity' });
   assert.equal(existsSync(replaced.path), true);
+});
+
+test('lock finalization succeeds when only the lock directory timestamps drift', (t) => {
+  const { root } = fixture(t);
+  const result = Object.freeze({ receipt: 'timestamp-drift-success' });
+  const lock = acquireOperationLock('timestamp-drift-test', root);
+  // Simulate APFS mtime/ctime drift on the unchanged empty lock directory: same device/inode/mode,
+  // different timestamps. Finalization must still remove the exact lock and return the result.
+  const past = new Date(Date.now() - 60_000);
+  utimesSync(lock.path, past, past);
+  const returned = finishOperationLock(lock, { label: 'test', result });
+  assert.equal(returned, result);
+  assert.equal(existsSync(lock.path), false);
 });
 
 test('lock finalization retains the exact original error instead of masking it', (t) => {

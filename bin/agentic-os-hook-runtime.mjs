@@ -16,6 +16,7 @@ const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 // Includes exact 13-file closure from 89acc7a; every prior runtime stays explicitly pinned.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-760ae7a9d3272e00d59b3254229d2c0010046740524bcb4e3a462e08b8b278c8',
   'v1-d62b55457b7eccf5a852344e87e7f4fde0abdfe7f982a4813f2bc0c5c207d115',
   'v1-61b0c08ae5a26367e69ec157e182819fbde328fee570a5cf59f11b1be72fad5f',
   'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20',
@@ -78,7 +79,7 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/catalog-input.mjs', mode: 0o644,
     sha256: '89276893b78148da2b67e88902ab22f6b4908a723dc4bb7ff038fe6174100219' }),
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,
-    sha256: 'ce0a72635965be4d1ae48cb82f67f6a39492f456c53df022e714d85dbb7e18de' }),
+    sha256: 'a91e2a858a2bedb26bd1e0067b83c9b7c8a9fc8debda0813eb6096920ab6d38a' }),
   Object.freeze({ path: 'src/governance.mjs', mode: 0o644,
     sha256: 'e3c73b3f48ef2626d76e563a021bb9f0b31184159a3f8ca70d66ec55a4f02c43' }),
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
