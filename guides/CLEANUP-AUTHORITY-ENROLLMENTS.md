@@ -329,6 +329,26 @@ Budget: one exact v1 enrollment, one update to the existing transition-workflow 
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving the merged PR and its original quarantine evidence.
 
+## Current recovery enrollment — huijoohwee PR #106 — 2026-11-22
+
+Under the owner's authorization to continue receipt-bound recovery, this record binds repository
+`github.com/huijoohwee/huijoohwee`: base
+`7f896658b591b1cd52d3fa9847a832d6c2715542`, reviewed head
+`dd6d620ee142adf226ea128348085c138d6a8d2c`, merge
+`4258858c612b60e052e3769955c41e019cd3db2d`, and equal source/merge tree
+`7410f1cc906dfe956566c09ce06edc4d067e5ac8`. The exact review is
+<https://github.com/huijoohwee/huijoohwee/pull/106>; its recorded required check is
+`Runtime Readiness Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-106`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This enrollment does not establish provider checks, issue integration or retirement
+receipts, or authorize cleanup, synchronization, deployment, or rollback. Each later effect needs
+its own exact plan, authority, and receipt.
+
+Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving the merged PR and its recorded current-facts authority evidence.
 ## Current recovery enrollment — agentic-trading-platform PR #2 — 2026-11-22
 
 Under the owner's authorization to continue receipt-bound recovery, this record binds repository
