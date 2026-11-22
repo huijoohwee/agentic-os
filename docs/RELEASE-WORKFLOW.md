@@ -34,5 +34,7 @@ GitHub consumer repositories must commit a governed repository profile before re
 - `cleanup.worktreeProjection` and `cleanup.worktreeRegistration` must both be `remove-clean`
 - `package.json` must expose `doctor`, `lane`, `land`, `release:common`, and `sync:canonical`
 
-`agentic-os doctor` evaluates the trusted committed profile at the canonical protected ref. Uncommitted local edits do not
-change release authority or satisfy consumer enforcement until those bytes are committed and fetched as the trusted profile.
+`agentic-os doctor` evaluates the trusted committed profile at the canonical
+protected ref. Uncommitted local edits do not change release authority or
+satisfy consumer enforcement until those bytes are committed and fetched as the
+trusted profile.

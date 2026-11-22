@@ -18,6 +18,7 @@ import {
 import { integrationProof, surveyLanes } from '../src/patch-identity.mjs';
 import { dispatchInvocation, isInvocationTuple, readPortableSkill, resolveInvocation } from './agentic-os-invocation.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
+import { providerKind } from '../lib/consumer-release-enforcement.mjs';
 import * as report from './agentic-os-report.mjs';
 import { REPOSITORY_PROFILE_FILENAME } from '../src/git-repository.mjs';
 import { validateCommandArguments, cmdHelp, flag, option, positional, parseReapRefBatch } from './agentic-os-argv.mjs';
@@ -241,7 +242,6 @@ async function cmdStatus(root, argv, profile, policy) {
       next: record ? legalEvents(state) : ['recover lane record (guides/LANE-RECERTIFICATION.md)'],
     };
   });
-  const { providerKind } = await import('./agentic-os-auxiliary.mjs');
   const kind = providerKind(profile);
   const observed = kind === 'github'
     ? (await import('../src/queue.mjs')).observe({ cwd: root, profile })
@@ -305,7 +305,6 @@ async function cmdFinish(root, argv, policy, profile) {
 }
 async function cmdQueue(root, argv, profile) {
   const [action = 'show'] = positional(argv);
-  const { providerKind } = await import('./agentic-os-auxiliary.mjs');
   const kind = providerKind(profile);
   if (kind !== 'github') {
     err(`${kind === 'unsupported' ? 'blocked-provider-adapter-unsupported'
