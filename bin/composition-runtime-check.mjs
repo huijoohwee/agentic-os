@@ -62,7 +62,7 @@ const CONTRACT = Object.freeze({
   ]),
   'agentic-graph': Object.freeze([
     requirement('.agentic-os.json', ['agentic-os/repository-profile/v1',
-      `github.com/${REPOSITORY_IDENTITIES['agentic-graph']}`, 'Integration Gate', 'quarantine-worktree-cleanup-opt-in']),
+      `github.com/${REPOSITORY_IDENTITIES['agentic-graph']}`, 'Integration Gate', 'remove-clean-worktree-cleanup-opt-in']),
     requirement('package.json', ['"land": "agentic-os land"', '"status": "agentic-os status"',
       '"reap": "agentic-os reap"'],
     { checkAgenticOsPin: true }),

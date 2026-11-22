@@ -9,11 +9,12 @@ import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { newRecord, put } from '../src/lane-records.mjs';
 import { observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { applyDetachedMainSnapshotCleanup, planDetachedMainSnapshotCleanup, planLocalWorktreeCleanup, applyLocalWorktreeCleanup } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { SNAPSHOT_CLEANUP_SCHEMA, applyDetachedMainSnapshotCleanup, planDetachedMainSnapshotCleanup, planLocalWorktreeCleanup, applyLocalWorktreeCleanup } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { planAutoUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 
 const NOW = Date.parse('2026-10-31T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-function fixture(t, { local = false } = {}) {
+function fixture(t, { local = false, detached = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-snapshot-cleanup-'))), root = join(parent, 'root'), target = join(parent, 'snapshot');
   mkdirSync(root);
   git(root, 'init', '--quiet', '--initial-branch=main'); git(root, 'config', 'user.name', 'Fixture');
@@ -33,7 +34,7 @@ function fixture(t, { local = false } = {}) {
   git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'canonical main');
   const head = git(root, 'rev-parse', 'HEAD'); git(root, 'update-ref', 'refs/remotes/origin/main', head);
   ensureRepositoryTrust(root, profile, { allowCreate: true });
-  if (local) {
+  if (local && !detached) {
     git(root, 'worktree', 'add', '--quiet', '-b', ref, target, head);
     git(root, 'push', 'origin', 'main', ref);
     const record = newRecord({ ref, device: 'fixture', scope: 'schedule', base: 'refs/remotes/origin/main', baseSha: head, worktree: target });
@@ -87,6 +88,42 @@ test('plan and apply argument contracts keep local snapshots on the unified clea
   assert.equal(validateCommandArguments('cleanup', ['plan', '--mode=local-snapshot', '--target=/tmp/snapshot', `--expected-head=${'a'.repeat(40)}`]), null);
   assert.ok(validateCommandArguments('cleanup-user', ['plan', '--mode=local-snapshot', '--target=/tmp/snapshot', `--expected-head=${'a'.repeat(40)}`]));
   assert.ok(validateCommandArguments('cleanup', ['plan', '--mode=local-snapshot', '--target=/tmp/snapshot']));
+  assert.equal(validateCommandArguments('cleanup', ['auto', '--target=/tmp/snapshot']), null);
+  assert.match(validateCommandArguments('cleanup', ['auto']), /exactly one/u);
+  assert.match(validateCommandArguments('cleanup', ['auto', '--ref=agent/fixture/schedule', '--target=/tmp/snapshot']), /exactly one/u);
+});
+
+test('cleanup auto resolves a detached canonical snapshot target', t => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-cleanup-auto-snapshot-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const origin = join(parent, 'origin.git'), root = join(parent, 'root'), target = join(parent, 'snapshot');
+  mkdirSync(origin); mkdirSync(root);
+  git(origin, 'init', '--quiet', '--bare');
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Fixture');
+  git(root, 'config', 'user.email', 'fixture@example.invalid');
+  const profile = createRepositoryProfile({ repository: 'github.com/example/GameXR',
+    canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
+    adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
+    cleanup: {
+      localBranch: 'retain', remoteBranch: 'retain', remoteTrackingRef: 'retain',
+      unreachableObjects: 'retain', worktreeProjection: 'quarantine', worktreeRegistration: 'quarantine',
+    },
+    capabilities: ['quarantine-worktree-cleanup-opt-in'],
+  });
+  writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
+  writeFileSync(join(root, 'base.txt'), 'base\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '--quiet', '-m', 'base');
+  git(root, 'remote', 'add', 'origin', origin);
+  git(root, 'push', '--quiet', 'origin', 'main:main');
+  git(root, 'fetch', '--quiet', 'origin', 'main:refs/remotes/origin/main');
+  ensureRepositoryTrust(root, profile, { allowCreate: true });
+  git(root, 'worktree', 'add', '--quiet', '--detach', target, 'HEAD');
+  const plan = planAutoUserCleanup({ cwd: root, target });
+  assert.equal(plan.schema, SNAPSHOT_CLEANUP_SCHEMA);
+  assert.equal(plan.mode, 'local-snapshot');
+  assert.equal(plan.targetPath, target);
 });
 
 function localFixture(t) {

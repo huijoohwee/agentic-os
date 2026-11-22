@@ -643,8 +643,52 @@ test('progressive completion does not count deploy-bound source closeout as end-
   assert.equal(events.at(-1).deliveryPending, 1);
   assert.equal(events.at(-1).schema, 'agentic-os/progressive-completion/v2');
   assert.deepEqual(events.at(-1).nextActions, [{ path: join(directory, 'delivery'), ref,
-    adlcState: 'delivery_pending', completionScope: 'delivery-bound', id: 'deploy-workflow',
+    adlcState: 'delivery_pending', completionScope: 'delivery-bound', residueDisposition: null, id: 'deploy-workflow',
     owner: 'product-owner', command: 'Follow guides/DEPLOY-WORKFLOW.md.' }]);
+});
+
+test('progressive completion summary separates stale cleanup debt from deliberate retention', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const events = [];
+  const rows = [
+    { path: join(directory, 'stale'), branch: 'agent/test-device/stale', head: 'a'.repeat(40) },
+    { path: join(directory, 'retained'), branch: 'agent/test-device/retained', head: 'b'.repeat(40) },
+  ];
+  for (const row of rows) mkdirSync(row.path);
+  const closeouts = {
+    'agent/test-device/stale': {
+      missionState: 'source_complete',
+      sourceState: 'source_complete',
+      adlcState: 'cleanup_pending',
+      retentionState: 'cleanup-pending',
+      residueDisposition: 'stale-mounted',
+      cleanupSatisfied: false,
+      completionScope: 'source-only',
+      nextAction: { id: 'workspace-cleanup', owner: 'cleanup-operator', command: 'agentic-os cleanup auto --ref=agent/test-device/stale' },
+    },
+    'agent/test-device/retained': {
+      missionState: 'source_complete',
+      sourceState: 'source_complete',
+      adlcState: 'cleanup_pending',
+      retentionState: 'retained',
+      residueDisposition: 'deliberate-retained',
+      cleanupSatisfied: false,
+      completionScope: 'source-only',
+      nextAction: { id: 'workspace-cleanup', owner: 'cleanup-operator', command: 'Stop writers and apply the retained policy.' },
+    },
+  };
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: s.root, branch: 'main', head: 'c'.repeat(40) }, ...rows],
+    record: ref => ({ state: 'published', head: rows.find(row => row.branch === ref).head, worktree: rows.find(row => row.branch === ref).path }),
+    complete: async () => 0,
+    status: (_root, ref) => ({ closeout: closeouts[ref] }),
+    out: line => events.push(JSON.parse(line)) });
+  assert.equal(code, 2);
+  assert.deepEqual(events.slice(0, 2).map(event => event.residueDisposition).sort(), ['deliberate-retained', 'stale-mounted']);
+  assert.equal(events.at(-1).cleanupPending, 1);
+  assert.equal(events.at(-1).deliberateRetained, 1);
+  assert.deepEqual(events.at(-1).nextActions.map(event => event.residueDisposition).sort(), ['deliberate-retained', 'stale-mounted']);
 });
 
 test('progressive cleanup removes one inactive exact directory after a selected-zero pass', async t => {

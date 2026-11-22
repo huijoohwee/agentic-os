@@ -256,11 +256,18 @@ export function planRecoveryCleanupFromLane({ cwd = process.cwd(), ref } = {}, o
     refuse('recovery-lane-binding');
   return plan;
 }
+export function planAutoUserCleanup({ cwd = process.cwd(), ref = null, target = null } = {}, options = {}) {
+  if ((ref === null) === (target === null)) refuse('auto-target');
+  if (ref !== null) return planRecoveryCleanupFromLane({ cwd, ref }, options);
+  let targetPath; try { targetPath = realpathSync(target); } catch { refuse('auto-target'); }
+  const branch = currentBranch(targetPath), head = read(targetPath, ['rev-parse', '--verify', 'HEAD']), clean = read(targetPath, ['status', '--porcelain', '--untracked-files=all']) === '';
+  if (clean && branch === null) try { return planLocalWorktreeCleanup({ cwd, mode: 'local-snapshot', target: targetPath, expectedHead: head }, options); } catch {}
+  if (branch && isLaneRef(branch)) { if (clean) try { return planLocalWorktreeCleanup({ cwd, mode: 'local-integrated', ref: branch, target: targetPath, expectedHead: head }, options); } catch {} return planRecoveryCleanupFromLane({ cwd, ref: branch }, options); }
+  refuse('auto-target');
+}
 export function applyUserCleanup(input, { cwd = process.cwd(), authorization, stopped, now = Date.now, ...options } = {}) {
-  const plan = validatePlan(input), root = realpathSync(repoRoot(cwd));
-  const policyResolver = options.resolvePolicy ?? null;
-  if (root !== plan.root || authorization !== `agentic-os:user-cleanup:${plan.planDigest}` || stopped !== true)
-    refuse('explicit-authorization-required');
+  const plan = validatePlan(input), root = realpathSync(repoRoot(cwd)), policyResolver = options.resolvePolicy ?? null;
+  if (root !== plan.root || authorization !== `agentic-os:user-cleanup:${plan.planDigest}` || stopped !== true) refuse('explicit-authorization-required');
   return locked(root, () => {
     refuseUnknownLaneBytes(plan.targetPath, root, { recovery: plan.mode === RECOVERY_MODE });
     const m = mechanics(plan), eligible = eligibility(plan);
@@ -311,7 +318,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
 }
 const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [], 'local-snapshot': [], 'local-integrated': [] });
 export function runUnifiedCleanup(root, argv, out = console.log) {
-  if (!['plan', 'apply', 'sweep', 'retire'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|apply|sweep|retire> [options]');
+  if (!['plan', 'auto', 'apply', 'sweep', 'retire'].includes(argv[0])) refuse('cleanup-arguments', 'usage: cleanup <plan|auto|apply|sweep|retire> [options]');
   return runUserCleanup(root, argv, out, { unified: true });
 }
 export function runUserCleanup(root, argv, out = console.log, { unified = false } = {}) {
@@ -333,6 +340,7 @@ export function runUserCleanup(root, argv, out = console.log, { unified = false 
       : applySuccessorPreservation(input, consent));
   }
   if (argv[0] === 'sweep') return runUserCleanupSweep(root, argv, out);
+  if (argv[0] === 'auto') return emit(planAutoUserCleanup({ cwd: root, ref: arg('ref'), target: arg('target') }));
   if (argv[0] === 'plan') {
     const modeFlag = unified ? arg('mode') || 'local-consent' : null;
     if (unified && !Object.hasOwn(UNIFIED_MODE_FLAGS, modeFlag)) refuse('cleanup-arguments', `unknown mode ${modeFlag}`);
@@ -384,8 +392,7 @@ export function projectUserCleanupSweep({ refs, mergedBranches, activeBranches, 
     const isMerged = merged.has(branch), mounted = active.has(branch);
     const stale = staleDays > 0 ? commitMs < staleThreshold : true;
     if (!stale) continue;
-    candidates.push({ branch, head, merged: isMerged, stale, mounted,
-      commitTime: new Date(commitMs).toISOString() });
+    candidates.push({ branch, head, merged: isMerged, stale, mounted, cleanupCommand: `agentic-os cleanup auto --ref=${branch}`, commitTime: new Date(commitMs).toISOString() });
   }
   if (mergedBranches.some(branch => !seen.has(branch))) refuse('sweep-ref-drift');
   return candidates;
@@ -412,7 +419,7 @@ function runUserCleanupSweep(root, argv, out = console.log) {
   out(canonicalJson({ schema: SWEEP_SCHEMA, observationOnly: true, authorizesEffects: false, repository: current.repository,
     canonicalRevision: current.canonical, staleOlderThanDays: staleDays, requireMerged, requireNoActiveWorktree,
     candidateCount: candidates.length, candidates, authority: 'explicit-local-user-consent', providerAuthority: false,
-    nextAction: candidates.length ? 'For each candidate, run cleanup-user plan --target=<worktree-path> --change-class=<class> then apply with --authorize=<plan-digest> --stopped' : 'no stale lane refs match the sweep criteria' }));
+    nextAction: candidates.length ? 'For each exact stale lane, prefer agentic-os cleanup auto --ref=<lane>; if the lane no longer has an exact local binding, preserve or reap it explicitly.' : 'no stale lane refs match the sweep criteria' }));
   return 0;
 }
 function preservationPolicy(root) {

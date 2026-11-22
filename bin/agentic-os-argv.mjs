@@ -71,7 +71,10 @@ export function validateCommandArguments(command, argv) {
       if (action === 'apply' || !unified && action === 'preservation-apply') return required(['plan', 'authorize'], ['stopped']);
       if (!unified && action === 'preservation-plan') return required(['adoption', 'policy-root', 'workflow']);
       if (action === 'sweep') return exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] });
-      if (action !== 'plan') return `${command} requires plan, apply, or sweep`;
+      if (action === 'auto') return exact(argv, { min: 1, options: ['ref', 'target'] })
+        ?? ((option(argv, 'ref') === null) === (option(argv, 'target') === null)
+          ? `${command} auto requires exactly one of --ref or --target` : null);
+      if (action !== 'plan') return `${command} requires plan, auto, apply, or sweep`;
       if (unified && mode === 'local-integrated') return required(['mode', 'ref', 'target', 'expected-head']);
       if (unified && mode === 'local-snapshot') return required(['mode', 'target', 'expected-head']);
       if (option(argv, 'ref') !== null) {
