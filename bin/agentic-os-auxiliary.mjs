@@ -24,6 +24,7 @@ import { canonicalJson, governance, OPERATIONS } from '../src/governance.mjs';
 import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { integrationProof } from '../src/patch-identity.mjs';
 import { laneBranchSummary, staleWorktrees } from '../src/worktree.mjs';
+import { consumerReleaseEnforcementFindings, providerKind } from '../lib/consumer-release-enforcement.mjs';
 import { providerAdapterRequired } from '../src/lane-state.mjs';
 import * as report from './agentic-os-report.mjs';
 const MAX_REQUEST_INPUT_BYTES = 500_000, UTF8 = new TextDecoder('utf-8', { fatal: true });
@@ -35,12 +36,6 @@ const option = (argv, name, fallback = null) => {
   return hit ? hit.slice(name.length + 3) : fallback;
 };
 const positional = (argv) => argv.filter((arg) => !arg.startsWith('--'));
-
-export function providerKind(profile) {
-  const selected = profile?.adapters.provider;
-  if (selected === null || selected === undefined) return 'none';
-  return selected.id === 'github' && selected.version === '1' ? 'github' : 'unsupported';
-}
 
 export function repositoryKind(profile) {
   const selected = profile?.adapters.repository;
@@ -551,6 +546,9 @@ export async function cmdDoctor(root, profile, policy) {
       : 'run START from the primary canonical clone for ' + checkout.expectedName,
   }]));
   out('');
+  const consumerFindings = consumerReleaseEnforcementFindings(root, profile, policy);
+  out(report.formatFindings('consumer release enforcement', consumerFindings));
+  out('');
   const kind = providerKind(profile);
   const providerRequired = providerAdapterRequired(policy);
   const providerSkipped = kind === 'github' && !providerRequired
@@ -571,6 +569,7 @@ export async function cmdDoctor(root, profile, policy) {
   out(report.formatFindings('remote configuration', findings));
   const failures =
     prerequisiteFailures + configEntries.filter((entry) => !entry.ok).length +
+    consumerFindings.filter((finding) => !finding.ok).length +
     findings.filter((finding) => !finding.ok).length +
     (checkoutOk ? 0 : 1) +
     (local.canonicalDirty ? 1 : 0) +

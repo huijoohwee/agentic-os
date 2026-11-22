@@ -204,6 +204,7 @@
     ".agentic-os.json",
     ".githooks",
     "bin",
+    "lib",
     "src",
     "runtime",
     "catalog",
