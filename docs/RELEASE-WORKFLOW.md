@@ -5,6 +5,8 @@
    commits/publishes. Clean worktrees can contain unpublished commits.
    Parking/abandonment requires an explicit owner decision.
    Corrections fast-forward the same open, unqueued PR; preserve history and refresh checks.
+   After a lane is already published, follow-up work should move through `npm run successor -- <scope>`
+   instead of continuing ad hoc edits in the old published worktree.
 3. END from canonical selects only caller-authorized effects:
 
    ```sh
@@ -32,7 +34,7 @@ GitHub consumer repositories must commit a governed repository profile before re
 - `requiredChecks` must be non-empty
 - each declared required check must match an exact GitHub workflow job `name:`
 - `cleanup.worktreeProjection` and `cleanup.worktreeRegistration` must both be `remove-clean`
-- `package.json` must expose `doctor`, `lane`, `land`, `release:common`, and `sync:canonical`
+- `package.json` must expose `doctor`, `lane`, `land`, `successor`, `release:common`, and `sync:canonical`
 
 `agentic-os doctor` evaluates the trusted committed profile at the canonical
 protected ref. Uncommitted local edits do not change release authority or
