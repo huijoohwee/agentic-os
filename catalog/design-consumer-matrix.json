@@ -4,11 +4,11 @@
   "designSystemOwner": "github.com/huijoohwee/agentic-design-system",
   "alignment": {
     "policy": "unified-release-with-bounded-value-equivalent-skew",
-    "targetRevision": "c870d3463b97d446f7ff94e6decc348ef85bd69c",
+    "targetRevision": "d60b569179c23a14418616abc265d22f2da00e30",
     "sharedUiSourceSha256": "sha256:bab5811bcd4aa82065d4671d7876c6d9085a25f1c10e63932f8b81a53255bdb3",
     "sharedUiProjectionSha256": "sha256:ba95bb2de809f84c35aec409c89f305442b536741cbd0987d43ff8ecc6bf9e17",
     "convergence": "next-design-system-release",
-    "note": "Target is the lane-A candidate. Until it is published, active consumers stay on their current published registry revisions under registered value-equivalent skew: the delivered shared-ui projection bytes must equal the target projection. Per-asset revision pins are legitimate when their bytes verify against the owner at that revision; they are not forced to a single revision when bytes differ."
+    "note": "Target is the published Design System release d60b569 (squash of lane-A candidate c870d34). The central intent palette is consumed from this release. Active consumers stay on their current published registry revisions under registered value-equivalent skew: the delivered shared-ui projection bytes must equal the target projection. Full per-consumer release adoption is a separate verified step because it bundles evolved non-token assets (floating-panel, collection-layout); per-asset revision pins are legitimate when their bytes verify against the owner at that revision and are not forced when bytes differ."
   },
   "consumers": [
     {
