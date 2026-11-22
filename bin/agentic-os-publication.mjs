@@ -10,9 +10,10 @@ import * as queue from '../src/queue.mjs';
 import { assertDisjointReservation, commitReservedChanges, parseWritePaths } from '../src/worktree.mjs';
 import { integrationProof } from '../src/patch-identity.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
+import { providerKind } from '../lib/consumer-release-enforcement.mjs';
 import * as report from './agentic-os-report.mjs';
 import { assertPublicationPreflight, classifyPromotion, publicationByteRisks, assertFlightRequirements,
-  pullRequestText, validateReviewBody, providerKind, assertProfileCurrent, assertProtectedRefCurrent } from './agentic-os-auxiliary.mjs';
+  pullRequestText, validateReviewBody, assertProfileCurrent, assertProtectedRefCurrent } from './agentic-os-auxiliary.mjs';
 import { option } from './agentic-os-argv.mjs';
 import { createWorkflowEffectGuard, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
 export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, effectReceipt, remoteName }) {

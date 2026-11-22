@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   AUTHORITY_TRANSITION_RECEIPT_SCHEMA,
   COORDINATION_REQUEST_SCHEMA,
@@ -21,6 +24,8 @@ import {
   validateCoordinationRequest,
   validateRepositoryProfile,
 } from '../src/governance.mjs';
+import { consumerReleaseEnforcementFindings } from '../lib/consumer-release-enforcement.mjs';
+import { providerPolicy } from '../src/lane-state.mjs';
 
 const FENCE = 'f'.repeat(64);
 const NEXT_FENCE = 'e'.repeat(64);
@@ -256,6 +261,133 @@ test('exact replay bounds its dense aggregate without rejecting identical duplic
     largeRequest,
     new Array(126).fill(largeReceipt),
   ), /byte budget/);
+});
+
+function consumerFixture(t, scripts) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-consumer-enforcement-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'package.json'),
+    `${JSON.stringify({ name: 'fixture', private: true, scripts }, null, 2)}\n`);
+  return root;
+}
+
+test('consumer release enforcement flags weak GitHub consumer profiles', (t) => {
+  const root = consumerFixture(t, {
+    doctor: 'agentic-os doctor',
+    lane: 'agentic-os start',
+    land: 'agentic-os land',
+  });
+  const profile = createRepositoryProfile({
+    repository: 'github.com/example/weak-consumer',
+    canonical: {
+      localRef: 'refs/heads/main',
+      remoteRef: 'refs/remotes/origin/main',
+    },
+    adapters: {
+      repository: { id: 'git', version: '1' },
+      provider: null,
+    },
+    requiredChecks: [],
+    capabilities: [],
+  });
+  const findings = consumerReleaseEnforcementFindings(root, profile, providerPolicy(profile));
+  const failed = findings.filter((entry) => !entry.ok).map((entry) => entry.id);
+  assert.deepEqual(failed, [
+    'consumer-provider-adapter',
+    'consumer-protected-integration',
+    'consumer-required-checks',
+    'consumer-cleanup-policy',
+    'consumer-script-release:common',
+    'consumer-script-sync:canonical',
+  ]);
+});
+
+test('consumer release enforcement accepts a fully governed GitHub consumer profile', (t) => {
+  const root = consumerFixture(t, {
+    doctor: 'agentic-os doctor',
+    lane: 'agentic-os start',
+    land: 'agentic-os land',
+    'release:common': 'agentic-os release-common',
+    'sync:canonical': 'agentic-os canonical-sync',
+  });
+  const profile = createRepositoryProfile({
+    repository: 'github.com/example/strong-consumer',
+    canonical: {
+      localRef: 'refs/heads/main',
+      remoteRef: 'refs/remotes/origin/main',
+    },
+    adapters: {
+      repository: { id: 'git', version: '1' },
+      provider: { id: 'github', version: '1' },
+    },
+    requiredChecks: ['Integration Gate'],
+    capabilities: ['protected-integration:pull-request'],
+    cleanup: {
+      localBranch: 'retain',
+      remoteBranch: 'retain',
+      remoteTrackingRef: 'retain',
+      unreachableObjects: 'retain',
+      worktreeProjection: 'remove-clean',
+      worktreeRegistration: 'remove-clean',
+    },
+  });
+  mkdirSync(join(root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(root, '.github/workflows/integration.yml'), `name: CI
+on: [push]
+jobs:
+  integration:
+    name: Integration Gate
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+`);
+  const findings = consumerReleaseEnforcementFindings(root, profile, providerPolicy(profile));
+  assert.equal(findings.every((entry) => entry.ok), true);
+});
+
+test('consumer release enforcement requires workflow jobs to match required checks', (t) => {
+  const root = consumerFixture(t, {
+    doctor: 'agentic-os doctor',
+    lane: 'agentic-os start',
+    land: 'agentic-os land',
+    'release:common': 'agentic-os release-common',
+    'sync:canonical': 'agentic-os canonical-sync',
+  });
+  const profile = createRepositoryProfile({
+    repository: 'github.com/example/misaligned-consumer',
+    canonical: {
+      localRef: 'refs/heads/main',
+      remoteRef: 'refs/remotes/origin/main',
+    },
+    adapters: {
+      repository: { id: 'git', version: '1' },
+      provider: { id: 'github', version: '1' },
+    },
+    requiredChecks: ['Integration Gate'],
+    capabilities: ['protected-integration:pull-request'],
+    cleanup: {
+      localBranch: 'retain',
+      remoteBranch: 'retain',
+      remoteTrackingRef: 'retain',
+      unreachableObjects: 'retain',
+      worktreeProjection: 'remove-clean',
+      worktreeRegistration: 'remove-clean',
+    },
+  });
+  mkdirSync(join(root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(root, '.github/workflows/integration.yml'), `name: CI
+on: [push]
+jobs:
+  smoke:
+    name: Smoke Gate
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+`);
+  const findings = consumerReleaseEnforcementFindings(root, profile, providerPolicy(profile));
+  const jobFinding = findings.find((entry) => entry.id === 'consumer-required-check-bindings');
+  assert.equal(jobFinding.ok, false);
+  assert.match(jobFinding.detail, /do not declare/i);
 });
 
 test('exact replay rejects structurally valid but request-inapplicable receipts', () => {
