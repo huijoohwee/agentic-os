@@ -51,7 +51,7 @@ test('packed historical proof is an explicit data asset with unchanged bytes', t
 
 test('fleet discovery resolves transferred capabilities to their existing native source owner', () => {
   const policy = JSON.parse(read('catalog/fleet-ownership.json'));
-  for (const id of ['agent-facade', 'chat-prompt-presets', 'skills-catalog']) {
+  for (const id of ['agent-facade', 'skills-catalog']) {
     const entries = policy.responsibilities.filter(entry => entry.id === id);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].owner, 'github.com/huijoohwee/agentic-os');

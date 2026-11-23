@@ -209,6 +209,7 @@
     "runtime",
     "catalog",
     "templates",
+    "scripts/sync-prompt-presets.mjs",
     "skills",
     "guides",
     "docs",
@@ -219,6 +220,8 @@
     "FLEET.md"
   ],
   "scripts": {
+    "presets:check": "node scripts/sync-prompt-presets.mjs",
+    "presets:sync": "node scripts/sync-prompt-presets.mjs --sync",
     "setup": "node bin/agentic-os.mjs setup",
     "doctor": "node bin/agentic-os.mjs doctor",
     "lane": "node bin/agentic-os.mjs start",

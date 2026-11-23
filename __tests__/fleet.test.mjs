@@ -1,9 +1,10 @@
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { FLEET_SCHEMA, FLEET_LIMITS, evaluateFleetAllocation, runFleetCli } from '../bin/agentic-os-fleet.mjs';
 
 const repository = 'example.org/owner/project';
@@ -192,15 +193,15 @@ const fleetObservations = () => [
 ];
 const ownershipCodes = (p, o) => evaluateFleetOwnership(p, o).findings.map(f => f.code);
 
-test('ownership catalog admits the ninth source owner and refuses a tenth', () => {
+test('ownership catalog admits the tenth source owner and refuses an eleventh', () => {
   const policy = fleetPolicy();
-  for (let index = policy.repositories.length; index < 9; index++) {
+  for (let index = policy.repositories.length; index < 10; index++) {
     policy.repositories.push({ id: `example.org/owner/repo-${index}`, directory: `repo-${index}`,
       role: 'source', planningRoots: ['docs'] });
   }
-  assert.equal(validateOwnershipPolicy(policy).repositories.length, 9);
-  policy.repositories.push({ id: 'example.org/owner/repo-9', directory: 'repo-9', role: 'source', planningRoots: ['docs'] });
-  assert.throws(() => validateOwnershipPolicy(policy), /at most 9/u);
+  assert.equal(validateOwnershipPolicy(policy).repositories.length, 10);
+  policy.repositories.push({ id: 'example.org/owner/repo-10', directory: 'repo-10', role: 'source', planningRoots: ['docs'] });
+  assert.throws(() => validateOwnershipPolicy(policy), /at most 10/u);
 });
 
 test('fleet policy has one owner per responsibility and covers every observed repository', () => {
@@ -389,4 +390,17 @@ test('native discovery works without a caller profile and rejects mixed or empty
     ['--id=adlc-prompt', '--query=mixed'], ['--root=/tmp'], ['--limit=21']]) {
     assert.equal(runCapabilityCli(argv, io), 1);
   }
+});
+
+test('the existing package export matches the gateway pin and fleet discovery names its author', () => {
+  const root = new URL('../', import.meta.url);
+  const read = path => JSON.parse(readFileSync(new URL(path, root)));
+  const pin = read('catalog/prompt-preset-source.json');
+  assert.equal(read('package.json').exports['./agent-docs/PROMPT-PRESETS.md'], './' + pin.compatibilityPath);
+  const record = discoverCapabilities(read('catalog/fleet-ownership.json'), {kind: 'prompt'}).entries
+    .find(entry => entry.id === 'chat-prompt-presets');
+  assert.equal(record.owner, pin.repository);
+  assert.equal(record.path, pin.path);
+  const script = fileURLToPath(new URL('scripts/sync-prompt-presets.mjs', root));
+  assert.match(execFileSync(process.execPath, [script], {encoding: 'utf8'}), /Verified/);
 });

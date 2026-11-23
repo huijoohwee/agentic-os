@@ -75,7 +75,7 @@ Central navigation remains in `DOCUMENTS.md`; moving files does not make simulta
 
 Apply the [repository checkout naming policy](guides/REPOSITORY-NAMING.md): the primary clone directory matches the committed repository slug, private archives use their own full -private-archive slug, auxiliary clones use a --purpose suffix, and registered task worktrees retain lane names. The GitHub profile and Git metadata remain the only identity inputs; do not add a second workspace path registry. doctor diagnoses checkout naming, while START is the enforcement boundary that refuses a mismatch, an auxiliary clone, or an archive before lane creation.
 
-The [fleet ownership policy](catalog/fleet-ownership.json) is the sole machine-readable registry for the eight selected repositories and their declared responsibilities. Each responsibility has one source owner; consumer and generated-projection relationships carry no authoring authority. Keep lifecycle governance in Agentic OS, planning rules in the website, product implementations in their named repositories, and generated production content in the existing protected mirror workflow. Launch Copilot’s existing `docs/documents/launch-copilot-prd-tad-adr-mvp-gtm.md` plan and `docs/launch-copilot.md` runbook belong to Graph; the standalone repository remains a reference. GameXR owns its frontend and consumes the Graph spatial core.
+The [fleet ownership policy](catalog/fleet-ownership.json) is the sole machine-readable registry for the selected repositories and their declared responsibilities. Each responsibility has one source owner; consumer and generated-projection relationships carry no authoring authority. Keep lifecycle governance in Agentic OS, planning rules in the website, product implementations in their named repositories, and generated production content in the existing protected mirror workflow. Launch Copilot’s existing `docs/documents/launch-copilot-prd-tad-adr-mvp-gtm.md` plan and `docs/launch-copilot.md` runbook belong to Graph; the standalone repository remains a reference. GameXR owns its frontend and consumes the Graph spatial core.
 
 Before cross-repository authoring and before publication, run the existing fleet checker in ownership mode with one explicit JSON mapping from each registered repository identity to its absolute checkout path:
 
@@ -106,8 +106,10 @@ Invoke the installed, pinned OS CLI, or the selected OS checkout directly:
 ```sh
 node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --kind=prompt --limit=5
 node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --query=81rv10
-node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --id=chat-prompt-presets --root=/absolute/path/to/agentic-os --revision=<exact-commit> --include-content
+node /absolute/path/to/agentic-os/bin/agentic-os.mjs capabilities --id=chat-prompt-presets --root=/absolute/path/to/agentic-gateway --revision=<exact-commit> --include-content
 ```
+
+Edit shared presets in the gateway. The OS package retains its existing Markdown export. To refresh it, update `catalog/prompt-preset-source.json` to a protected gateway commit and its SHA-256, then run `npm run presets:sync -- --source-root=/path/to/agentic-gateway`. Run `npm run presets:check` offline to verify the packaged bytes.
 
 The existing stdio MCP server exposes the read-only `capabilities` tool with equivalent `{query, kind, limit}` discovery or `{id, root, revision, includeContent}` resolution arguments. Discovery returns `agentic-os/capability-discovery/v1`, at most 20 references (default 10), with an index digest and truncation indicator. It does no repository traversal, fetch, provider call or asset-body loading. Search is deterministic lexical filtering, not model inference. Narrow by kind or query when truncated.
 
