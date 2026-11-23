@@ -2,6 +2,12 @@
   "schema": "agentic-os/fleet-ownership-policy/v1",
   "repositories": [
     {
+      "id": "github.com/huijoohwee/agentic-gateway",
+      "directory": "agentic-gateway",
+      "role": "source",
+      "planningRoots": []
+    },
+    {
       "id": "github.com/huijoohwee/agentic-geo",
       "directory": "agentic-geo",
       "role": "source",
@@ -295,9 +301,9 @@
     },
     {
       "id": "chat-prompt-presets",
-      "owner": "github.com/huijoohwee/agentic-os",
-      "source": "runtime/agents/docs/PROMPT-PRESETS.md",
-      "consumers": [],
+      "owner": "github.com/huijoohwee/agentic-gateway",
+      "source": "catalog/PROMPT-PRESETS.md",
+      "consumers": ["github.com/huijoohwee/agentic-os", "github.com/huijoohwee/agentic-graph"],
       "discovery": {
         "kinds": [
           "catalog",
