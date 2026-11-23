@@ -5,6 +5,7 @@ import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { checkWorkflowContract, readOwnerSource } from '../scripts/check-fleet-reuse.mjs';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { parseWritePaths, pathsOverlap } from '../src/worktree.mjs';
@@ -151,6 +152,9 @@ export function evaluateFleetAllocation(value) {
 
 export function runFleetCli(argv, io = console) {
   try {
+    if (argv.length === 1 && argv[0] === '--contract') {
+      io.log(JSON.stringify(checkWorkflowContract(validateOwnershipPolicy(readJson(POLICY_PATH))))); return 0;
+    }
     if (argv[0] === '--discover') return runCapabilityCli(argv.slice(1), io);
     if (argv.some(arg => arg.startsWith('--ownership='))) return runOwnershipCli(argv, io);
     if (argv.length !== 1 || !argv[0].startsWith('--input=') || argv[0] === '--input=')
@@ -162,7 +166,7 @@ export function runFleetCli(argv, io = console) {
   } catch (error) { io.error(`fleet allocation: ${error.message}`); return 1; }
 }
 
-export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 10, artifacts: 2048,
+export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 14, artifacts: 2048,
   fileBytes: 500_000, totalBytes: 32_000_000, milliseconds: 10_000, findings: 128 });
 const POLICY_PATH = fileURLToPath(new URL('../catalog/fleet-ownership.json', import.meta.url));
 const CAPABILITY_KINDS = ['catalog', 'prompt', 'agent', 'skill', 'command', 'contract', 'runtime', 'guide', 'projection', 'reference'];
@@ -187,11 +191,20 @@ export function validateOwnershipPolicy(value) {
   const repos = new Set(policy.repositories.map(r => r.id));
   list(policy.responsibilities, 64, 'responsibilities', true);
   for (const item of policy.responsibilities) {
-    exact(item, ['id', 'owner', 'source', 'consumers', ...('discovery' in item ? ['discovery'] : [])], 'responsibility');
+    exact(item, ['id', 'owner', 'source', 'consumers', ...('discovery' in item ? ['discovery'] : []), ...('reuse' in item ? ['reuse'] : [])], 'responsibility');
     id(item.id, 'responsibility.id'); relativePath(item.source, 'responsibility.source');
     if (!repos.has(item.owner)) fail('unknown responsibility owner');
     list(item.consumers, OWNERSHIP_LIMITS.repositories, 'consumers'); unique(item.consumers, 'consumers');
     if (item.consumers.some(r => !repos.has(r) || r === item.owner)) fail('unknown or recursive consumer');
+    if ('reuse' in item) {
+      const proof = item.reuse;
+      if (!proof || !item.consumers.includes(proof.consumer) || !item.discovery) fail('unbound consumer proof');
+      const pairs = [['manifest','package'], ['pin','projection'], ['entry','specifier']];
+      const fields = pairs.filter(([left,right]) => left in proof || right in proof).flat();
+      exact(proof, ['consumer', ...fields], 'consumer proof');
+      if (!proof.manifest && !proof.pin || proof.entry && !proof.manifest) fail('missing consumer pin');
+      for (const field of fields) relativePath(proof[field], field);
+    }
     if ('discovery' in item) {
       exact(item.discovery, ['kinds', 'summary', 'transport'], 'capability discovery');
       list(item.discovery.kinds, CAPABILITY_KINDS.length, 'capability kinds', true);
@@ -235,29 +248,7 @@ export function resolveCapability(policyValue, { capabilityId, root, revision, i
   const role = policy.responsibilities.find(r => r.id === capabilityId && r.discovery);
   if (!role || typeof root !== 'string' || !isAbsolute(root) || !SHA.test(revision ?? '')
     || typeof includeContent !== 'boolean') fail('resolution requires a known id, absolute root and immutable revision');
-  const actualRoot = realpathSync(root);
-  const git = args => {
-    const remaining = OWNERSHIP_LIMITS.milliseconds - (Date.now() - started);
-    if (remaining <= 0) fail('capability resolution time budget exceeded');
-    return execFileSync('git', ['--no-optional-locks', ...args], { cwd: actualRoot,
-      timeout: Math.min(2000, remaining), maxBuffer: OWNERSHIP_LIMITS.fileBytes });
-  };
-  if (realpathSync(decode(git(['rev-parse', '--show-toplevel'])).trim()) !== actualRoot
-    || remoteRepositoryIdentity(decode(git(['config', '--get', 'remote.origin.url'])).trim())?.repository.toLowerCase() !== role.owner)
-    fail('capability repository identity mismatch');
-  if (decode(git(['rev-parse', '--verify', `${revision}^{commit}`])).trim() !== revision)
-    fail('capability revision must name an exact commit');
-  const entry = decode(git(['ls-tree', '--format=%(objectmode) %(objecttype) %(objectname)', revision, '--', role.source])).trim();
-  const match = entry.match(/^(100644|100755) blob ([a-f0-9]{40}|[a-f0-9]{64})$/u);
-  if (!match) fail('capability source must be one regular Git blob');
-  const size = Number(decode(git(['cat-file', '-s', match[2]])).trim());
-  if (!Number.isSafeInteger(size) || size < 0 || size > OWNERSHIP_LIMITS.fileBytes) fail('capability source exceeds byte budget');
-  const bytes = git(['cat-file', 'blob', match[2]]);
-  if (bytes.length !== size) fail('capability source size mismatch');
-  const source = { repository: role.owner, revision, path: role.source, blob: match[2],
-    sha256: digestBytes(bytes), bytes: size,
-    url: role.owner.startsWith('github.com/')
-      ? `https://${role.owner}/blob/${revision}/${role.source.split('/').map(encodeURIComponent).join('/')}` : null };
+  const { source, bytes } = readOwnerSource(root, role, revision, OWNERSHIP_LIMITS, started);
   return { schema: 'agentic-os/capability-resource/v1', ok: true, authority: false, executable: false,
     policyDigest: governanceDigest(policy), id: role.id, ...role.discovery, source,
     ...(includeContent ? { content: decode(bytes) } : {}) };

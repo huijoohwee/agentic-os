@@ -193,15 +193,15 @@ const fleetObservations = () => [
 ];
 const ownershipCodes = (p, o) => evaluateFleetOwnership(p, o).findings.map(f => f.code);
 
-test('ownership catalog admits the tenth source owner and refuses an eleventh', () => {
+test('ownership catalog admits the fourteen registered repositories and bounds expansion', () => {
   const policy = fleetPolicy();
-  for (let index = policy.repositories.length; index < 10; index++) {
+  for (let index = policy.repositories.length; index < 14; index++) {
     policy.repositories.push({ id: `example.org/owner/repo-${index}`, directory: `repo-${index}`,
       role: 'source', planningRoots: ['docs'] });
   }
-  assert.equal(validateOwnershipPolicy(policy).repositories.length, 10);
-  policy.repositories.push({ id: 'example.org/owner/repo-10', directory: 'repo-10', role: 'source', planningRoots: ['docs'] });
-  assert.throws(() => validateOwnershipPolicy(policy), /at most 10/u);
+  assert.equal(validateOwnershipPolicy(policy).repositories.length, 14);
+  policy.repositories.push({ id: 'example.org/owner/repo-14', directory: 'repo-14', role: 'source', planningRoots: ['docs'] });
+  assert.throws(() => validateOwnershipPolicy(policy), /at most 14/u);
 });
 
 test('fleet policy has one owner per responsibility and covers every observed repository', () => {
@@ -403,4 +403,72 @@ test('the existing package export matches the gateway pin and fleet discovery na
   assert.equal(record.path, pin.path);
   const script = fileURLToPath(new URL('scripts/sync-prompt-presets.mjs', root));
   assert.match(execFileSync(process.execPath, [script], {encoding: 'utf8'}), /Verified/);
+});
+
+test('registered reuse accepts pinned offline inputs and rejects altered consumer candidates', async t => {
+  const { checkFleetReuse, checkWorkflowContract } = await import('../scripts/check-fleet-reuse.mjs');
+  const { createHash } = await import('node:crypto');
+  const scratch = mkdtempSync(join(tmpdir(), 'fleet-reuse-'));
+  t.after(() => rmSync(scratch, { recursive: true, force: true }));
+  const actual = validateOwnershipPolicy(JSON.parse(readFileSync(new URL('../catalog/fleet-ownership.json', import.meta.url))));
+  const contract = checkWorkflowContract(actual);
+  assert.equal(contract.registered, 14);
+  assert.deepEqual([...contract.proofs].sort(), ['chat-prompt-presets','gateway-resolution','geo-longitude-core']);
+  for (const name of ['gateway','design-system','sheets','base','geo']) {
+    assert.ok(actual.responsibilities.some(row => row.owner === 'github.com/huijoohwee/agentic-' + name));
+  }
+  for (const path of ['docs/START-WORKFLOW.md','docs/adlc-guidelines.md']) {
+    assert.match(readFileSync(new URL('../' + path, import.meta.url),'utf8'), /fleet-registry\.md#operator-rules\)/u);
+  }
+  const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding:'utf8'}).trim();
+  const make = name => {
+    const root = join(scratch, name);
+    mkdirSync(root); git(root,'init','-q');
+    git(root,'config','user.email','fixture@example.invalid'); git(root,'config','user.name','fixture');
+    git(root,'config','core.hooksPath','/dev/null'); git(root,'config','commit.gpgsign','false');
+    git(root,'remote','add','origin','https://github.com/huijoohwee/' + name + '.git');
+    return root;
+  };
+  const put = (root, path, value) => {
+    mkdirSync(join(root,path,'..'), {recursive:true});
+    writeFileSync(join(root,path), typeof value === 'string' ? value : JSON.stringify(value));
+  };
+  const commit = root => { git(root,'add','-A'); git(root,'commit','-qm','fixture'); return git(root,'rev-parse','HEAD'); };
+  const gateway = make('agentic-gateway'), os = make('agentic-os'), graph = make('agentic-graph');
+  const osRole = actual.responsibilities.find(role => role.id === 'chat-prompt-presets');
+  const graphRole = actual.responsibilities.find(role => role.id === 'gateway-resolution');
+  const copy = 'shared body\n', hash = content => createHash('sha256').update(content).digest('hex');
+  put(gateway,osRole.source,copy); put(gateway,graphRole.source,'export const valid = true;\n');
+  const ownerHead = commit(gateway);
+  git(gateway,'update-ref','refs/remotes/origin/main',ownerHead);
+  const pin = {repository:osRole.owner,revision:ownerHead,path:osRole.source,sha256:hash(copy),
+    compatibilityPath:osRole.reuse.projection};
+  put(os,osRole.reuse.pin,pin); put(os,osRole.reuse.projection,copy);
+  const clean = commit(os);
+  const inspect = (root, role, revision, extra = {}) => checkFleetReuse({root,repository:role.reuse.consumer,
+    revision,ownerRoot:gateway,...extra});
+  assert.deepEqual(inspect(os,osRole,clean).checked,[osRole.id]);
+  put(os,osRole.reuse.projection,copy + 'x'); const edited = commit(os);
+  assert.throws(() => inspect(os,osRole,edited,{base:clean}),/edited projection/u);
+  assert.equal(inspect(os,osRole,edited,{base:edited,writePaths:[osRole.reuse.projection]}).repairs.length,1);
+  assert.deepEqual(inspect(os,osRole,edited,{base:edited,writePaths:['README.md']}).repairs,[]);
+  put(os,osRole.reuse.pin,{...pin,sha256:hash(copy+'x')});
+  assert.throws(() => inspect(os,osRole,commit(os),{base:clean}),/differs from pinned owner/u);
+  const bind = graphRole.reuse, archive = 'https://codeload.github.com/huijoohwee/agentic-gateway/tar.gz/' + ownerHead;
+  const manifest = {dependencies:{'agentic-gateway':archive}};
+  const resolution = {resolved:archive,integrity:'sha512-'+'A'.repeat(86)+'=='};
+  put(graph,'package.json',{}); put(graph,bind.manifest,manifest);
+  put(graph,'package-lock.json',{packages:{canvas:manifest,'canvas/node_modules/agentic-gateway':resolution}});
+  const statement = "import { importHyperframesHtml } from '" + bind.specifier + "';\n";
+  put(graph,bind.entry,statement); const baseline = commit(graph);
+  assert.deepEqual(inspect(graph,graphRole,baseline).checked,[graphRole.id]);
+  put(graph,bind.entry,'/*\n' + statement + '*/\n' + statement.replace(bind.specifier,'./local-copy.mjs'));
+  assert.throws(() => inspect(graph,graphRole,commit(graph),{base:baseline}),/static import missing/u);
+  put(graph,bind.entry,statement); put(graph,bind.manifest,{dependencies:{'agentic-gateway':'github:other/fork#'+ownerHead}});
+  assert.throws(() => inspect(graph,graphRole,commit(graph),{base:baseline}),/fork, floating revision/u);
+  put(graph,bind.manifest,manifest); put(graph,'package.json',{overrides:{'agentic-gateway':'file:local'}});
+  assert.throws(() => inspect(graph,graphRole,commit(graph),{base:baseline}),/consumer override/u);
+  put(graph,'package.json',{}); put(graph,'package-lock.json',{packages:{canvas:manifest,
+    'canvas/node_modules/agentic-gateway':{...resolution,resolved:'https://example.org/fork#'+ownerHead}}});
+  assert.throws(() => inspect(graph,graphRole,commit(graph),{base:baseline}),/unverified resolved package/u);
 });

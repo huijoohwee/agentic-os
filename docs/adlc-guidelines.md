@@ -21,13 +21,13 @@ lifecycle_status: active
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
 - Core: START → finish authorized work → check → LAND/publish → END. Reuse one PR and exact current evidence.
 - Bind a Mission for material or coordinated work; routine scoped work stays standalone.
-- END uses [RELEASE](RELEASE-WORKFLOW.md); load [DEPLOY](../guides/DEPLOY-WORKFLOW.md) only for selected delivery.
-- Under canonical-dev, END requires protected remote integration proof plus explicit `sync`;
-  local merge or cleanup alone is not END ADLC.
+- END uses [RELEASE](RELEASE-WORKFLOW.md). Selected delivery uses [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
+- Canonical-dev END requires protected remote integration proof and explicit `sync`.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
+- Reject forks and overrides per [fleet rules](../guides/prd-tad-adr-mvp-gtm-fleet-registry.md#operator-rules).
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
 - One owner/candidate/effect; disjoint work; reuse proof/event waits.
-  Bounded stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
+  Stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
 - Shared UI: [ownership](../guides/DESIGN-SYSTEM-OWNERSHIP.md).
 - Batch material PRD/TAD/ADR/MVP/GTM updates; no per-turn records.
 - Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.

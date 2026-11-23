@@ -150,6 +150,10 @@ export async function cmdStart(root, argv, policy, profile, services) {
     artifacts.effectsRetained ||= fetched.effectsRetained;
     if (enforceCheckoutName) assertStartCheckout(root, profile);
     requireCanonical(root, policy);
+    const {checkFleetReuse} = await import('../scripts/check-fleet-reuse.mjs');
+    const reuse = checkFleetReuse({root, repository: profile.repository, revision: artifacts.fetchedProtectedSha,
+      base: artifacts.fetchedProtectedSha, writePaths: requested});
+    for (const repair of reuse.repairs) err(repair);
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
