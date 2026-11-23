@@ -455,7 +455,23 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   const inspect = (root, role, revision, extra = {}) => checkFleetReuse({root,repository:role.reuse.consumer,
     revision,ownerRoot:gateway,...extra});
   assert.deepEqual(inspect(os,osRole,clean).checked,[osRole.id]);
+  const checker = fileURLToPath(new URL('../scripts/check-fleet-reuse.mjs', import.meta.url));
+  const qualify = (...args) => spawnSync(process.execPath, [checker, '--qualify', '--root=' + os,
+    '--owner-root=' + gateway, ...args], {encoding:'utf8'});
+  const accepted = qualify('--expected-revision=' + clean, '--expected-repository=' + osRole.reuse.consumer);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const receipt = JSON.parse(accepted.stdout);
+  assert.deepEqual(receipt.accepted, [osRole.id]);
+  assert.equal(receipt.refused[0].reason, 'edited projection ' + osRole.reuse.projection);
+  assert.equal(receipt.refused[0].candidate, JSON.parse(qualify().stdout).refused[0].candidate);
+  assert.equal(git(os,'rev-parse','HEAD'), clean);
+  assert.equal(git(os,'status','--porcelain'), '');
+  assert.match(qualify('--expected-revision=' + ownerHead).stderr, /candidate revision mismatch/u);
+  assert.match(qualify('--expected-repository=' + osRole.owner).stderr, /candidate repository mismatch/u);
   put(os,osRole.reuse.projection,copy + 'x'); const edited = commit(os);
+  const rejected = qualify('--expected-revision=' + edited);
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /edited projection/u);
   assert.throws(() => inspect(os,osRole,edited,{base:clean}),/edited projection/u);
   assert.equal(inspect(os,osRole,edited,{base:edited,writePaths:[osRole.reuse.projection]}).repairs.length,1);
   assert.deepEqual(inspect(os,osRole,edited,{base:edited,writePaths:['README.md']}).repairs,[]);

@@ -1,14 +1,14 @@
 ---
 title: "Fleet registry and shared capability ownership"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.0"
-revision: "1.0.0"
+version: "1.0.1"
+revision: "1.0.1"
 continuity_id: "fleet-registry"
-prd_revision: "1.0.0"
-tad_revision: "1.0.0"
-adr_revision: "1.0.0"
-mvp_revision: "1.0.0"
-gtm_revision: "1.0.0"
+prd_revision: "1.0.1"
+tad_revision: "1.0.1"
+adr_revision: "1.0.1"
+mvp_revision: "1.0.1"
+gtm_revision: "1.0.1"
 date: "2026-11-23"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -68,7 +68,7 @@ The registry owns capability ID, source identity, consumers and optional proof b
 | Package | Consumer manifest, resolved lock entry, canonical origin, exact commit and integrity field agree. The explicit audit also locates the registered source in the canonical owner checkout. | The native installer verifies the archive. Actual behavior needs the consumer fixture. |
 | Projection | Registered source path and revision, declared digest and delivered file match. Verify a new pin against cached owner bytes. | An unchanged protected pin can be reused for an affected candidate. The explicit audit reads the owner bytes again. |
 | Product entry | The registered direct import remains present and the consumer runs its established product test. | Static inspection detects a known substitution. It cannot prove a retained import is used, detect every alias, or authorize provider access. |
-| Lifecycle | START checks relevant declared paths against the fetched baseline, reports drift and allows repair. LAND checks touched enrolled inputs at the committed candidate before pushing. | Independent pushes and consumers on older tool versions require a protected CI gate for equivalent coverage. |
+| Lifecycle | START checks relevant declared paths against the fetched baseline, reports drift and allows repair. LAND checks touched enrolled inputs at the committed candidate before pushing. | The required CI job audits every enrolled binding at the event revision and rejects an isolated substitution for each. |
 
 **Diagram FR-1** · Class: user workflow · Notation: flowchart LR · Surface: 2d canvas · Version: 1 — 2026-11-23
 
@@ -139,7 +139,7 @@ Revisit when a new format or repeated substitution escapes a check. Revert a che
 
 ### Evidence and reproduction — reference implementation
 
-Run from `agentic-os`. The audit reads committed HEAD and cached owner origin/main. Graph’s TypeScript check uses Node 22.13+ without executing the module.
+Run from `agentic-os` on Node 22.13+. The offline audit reads committed HEAD and cached owner origin/main. Add `--qualify` to reproduce the protected check and its deterministic negative commits.
 
 ```sh
 node bin/agentic-os-fleet.mjs --discover --query=gateway
@@ -152,14 +152,14 @@ npm run evals
 
 | VCC | Evidence at this authoring handoff | Remaining proof |
 |---|---|---|
-| V1 | Fleet discovery tests exercise distinct registered owners. The required OS budgets workflow runs `npm run evals`, including the workflow-link and registry check. | A released consumer must adopt the corresponding OS revision. |
+| V1 | Discovery resolves five source owners. OS budgets runs the registry and workflow-link contract. | Recheck after a role or workflow changes. |
 | V2 | Explicit audit accepted OS presets at consumer `0a6192b64` and Commerce Geo at `0fb7efbcc`. The sealed projection regression changes one byte in an isolated candidate. | Recheck authenticated source when a pin changes. |
 | V3 | Explicit audit accepted Graph’s declared dependency, lock and route at `efa485ec9`. Fork and route replacement fixtures exercise refusal. The [Graph browser fixture](https://github.com/huijoohwee/agentic-graph/pull/2070) covers preview and decoded export. | Run product behavior again on any changed route. |
-| V4 | Design-token conformance passed for the six entries in its existing matrix. The new audit covered the three bindings above. | Protected negative results from independently pinned consumers and clean-session timing are outstanding. |
+| V4 | The shared CI action checks event repository and SHA, authenticates upstream source, and records accepted roles, refused fixture commits, paths and reasons. Local qualification passed for OS, Commerce and Graph. | Each protected consumer run supplies its own receipt. Uncoached timing is open. |
 
-Local checks passed for 30 fleet tests and 11 runtime-budget tests. Both diagrams projected (10 nodes, 9 edges). Net startup-document growth was zero bytes.
+The OS source job qualifies its candidate directly. Consumers pin the released action in their required integration job. The action uses temporary Git objects and leaves the consumer checkout intact. Net startup-document growth is zero.
 
-The [full inventory](../FLEET.md#cross-repository-source-ownership) stopped on existing missing planning identity in both predecessor and candidate. Finding `artifact-naming-noncompliant` · major · operator-rules#1 · `guides/DESIGN-SYSTEM-PANEL-OWNERSHIP.md` · missing `continuity_id` · documentation owner must classify or complete its frontmatter and rerun the inventory. The three pilot audits are independently reproducible.
+The separate [full inventory](../FLEET.md#cross-repository-source-ownership) now recognizes the panel ownership guide as a contract. It next reports missing role revisions in `guides/prd-tad-adr-mvp-gtm-coordinated-repo-closeout.md`. The planning owner must reconcile that record before claiming fleet-wide inventory coverage.
 
 ## GTM
 
@@ -171,7 +171,7 @@ The [full inventory](../FLEET.md#cross-repository-source-ownership) stopped on e
 
 ## Coverage and decision record
 
-All dispositions join `fleet-registry@1.0.0`. Each role owns its next evidence. Deferred items reopen on the stated trigger.
+All dispositions join `fleet-registry@1.0.1`. Each role owns its next evidence. Deferred items reopen on the stated trigger.
 
 | ID | Disposition | Evidence or reason · owner and trigger |
 |---|---|---|
@@ -192,4 +192,4 @@ All dispositions join `fleet-registry@1.0.0`. Each role owns its next evidence. 
 | C15 | Not applicable | No external audience requested a deck, plan or financial model · Product on audience request |
 | C16 | Covered | Seven-day decision window and stop condition · Product |
 
-Next, the release owner must verify a negative candidate in each consumer’s protected gate. Record source, delivery and payment separately.
+For each enrollment, retain the required run URL, candidate SHA and refusal receipt. Track source integration, user timing and payment separately.

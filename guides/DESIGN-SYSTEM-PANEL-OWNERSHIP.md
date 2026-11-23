@@ -1,6 +1,6 @@
 ---
 schema: agentic-os/shared-ui-ownership/v1
-doc_type: PRD-TAD-ADR-MVP-GTM
+doc_type: contract
 title: Shared panel and control ownership
 version: 1.0.0
 owner: agentic-os
