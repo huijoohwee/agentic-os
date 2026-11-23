@@ -1,3 +1,4 @@
+import { checkFleetReuse } from '../scripts/check-fleet-reuse.mjs';
 /** Native exact-candidate publication; lazy-loaded by both CLI publication routes. */
 import { basename } from 'node:path';
 import { git, gitLines, repoRoot, currentBranch, remoteTransport, headSha, publishExactRef,
@@ -96,6 +97,7 @@ export function cmdLand(cwd, argv, profile, policy, { out, err, projectCache, ef
     return 1;
   }
   assertWorkflowCurrent();
+  checkFleetReuse({root, repository: profile.repository, revision: laneHeadSha, base: baseSha});
   const publishedHead = remoteRefSha(remote, ref, root, capturedRemote.fetchUrl);
   // An existing published revision remains immutable and recoverable. Only a new
   // publication must include the protected base just fetched by its native owner.

@@ -2,6 +2,30 @@
   "schema": "agentic-os/fleet-ownership-policy/v1",
   "repositories": [
     {
+      "id": "github.com/huijoohwee/agentic-base",
+      "directory": "agentic-base",
+      "role": "source",
+      "planningRoots": []
+    },
+    {
+      "id": "github.com/huijoohwee/agentic-design-system",
+      "directory": "agentic-design-system",
+      "role": "source",
+      "planningRoots": []
+    },
+    {
+      "id": "github.com/huijoohwee/agentic-sheets",
+      "directory": "agentic-sheets",
+      "role": "source",
+      "planningRoots": []
+    },
+    {
+      "id": "github.com/huijoohwee/agentic-trading-platform",
+      "directory": "agentic-trading-platform",
+      "role": "source",
+      "planningRoots": []
+    },
+    {
       "id": "github.com/huijoohwee/agentic-gateway",
       "directory": "agentic-gateway",
       "role": "source",
@@ -81,7 +105,88 @@
   ],
   "responsibilities": [
     {
+      "id": "gateway-resolution",
+      "reuse": {
+        "consumer": "github.com/huijoohwee/agentic-graph",
+        "manifest": "canvas/package.json",
+        "package": "agentic-gateway",
+        "entry": "canvas/src/features/html-video-renderer/htmlVideoFlowNode.ts",
+        "specifier": "agentic-gateway/connectors/hyperframes"
+      },
+      "owner": "github.com/huijoohwee/agentic-gateway",
+      "source": "resolver.mjs",
+      "consumers": [
+        "github.com/huijoohwee/agentic-graph",
+        "github.com/huijoohwee/agentic-trading-platform"
+      ],
+      "discovery": {
+        "kinds": [
+          "contract"
+        ],
+        "summary": "Local capability discovery and resolution. Host grants and native handlers stay with the product.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "shared-ui-profile",
+      "owner": "github.com/huijoohwee/agentic-design-system",
+      "source": "site/tokens/shared-ui-profile.json",
+      "consumers": [
+        "github.com/huijoohwee/agentic-base",
+        "github.com/huijoohwee/agentic-commerce-os",
+        "github.com/huijoohwee/agentic-graph",
+        "github.com/huijoohwee/agentic-sheets",
+        "github.com/huijoohwee/agentic-trading-platform",
+        "github.com/huijoohwee/agentic-canvas-os"
+      ],
+      "discovery": {
+        "kinds": [
+          "contract"
+        ],
+        "summary": "Shared UI profile. The existing design consumer matrix qualifies delivered tokens and alignment.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "workbook-calculation",
+      "owner": "github.com/huijoohwee/agentic-sheets",
+      "source": "sheets/formula.mjs",
+      "consumers": [
+        "github.com/huijoohwee/agentic-base"
+      ],
+      "discovery": {
+        "kinds": [
+          "contract"
+        ],
+        "summary": "Workbook formula calculations. Embedded editors and compatibility exports pin the owner release.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "base-record-engine",
+      "owner": "github.com/huijoohwee/agentic-base",
+      "source": "src/engine.mjs",
+      "consumers": [
+        "github.com/huijoohwee/agentic-graph",
+        "github.com/huijoohwee/agentic-commerce-os"
+      ],
+      "discovery": {
+        "kinds": [
+          "contract"
+        ],
+        "summary": "Base-owned records and their operations. Consumer data, authorization and product policy stay local.",
+        "transport": "source"
+      }
+    },
+    {
       "id": "geo-longitude-core",
+      "reuse": {
+        "consumer": "github.com/huijoohwee/agentic-commerce-os",
+        "manifest": "package.json",
+        "package": "agentic-geo",
+        "pin": "config/agentic-geo-core.pin.json",
+        "projection": "public/local-first/agentic-geo-core.mjs"
+      },
       "owner": "github.com/huijoohwee/agentic-geo",
       "source": "src/core.mjs",
       "consumers": [
@@ -301,6 +406,11 @@
     },
     {
       "id": "chat-prompt-presets",
+      "reuse": {
+        "consumer": "github.com/huijoohwee/agentic-os",
+        "pin": "catalog/prompt-preset-source.json",
+        "projection": "runtime/agents/docs/PROMPT-PRESETS.md"
+      },
       "owner": "github.com/huijoohwee/agentic-gateway",
       "source": "catalog/PROMPT-PRESETS.md",
       "consumers": ["github.com/huijoohwee/agentic-os", "github.com/huijoohwee/agentic-graph"],
