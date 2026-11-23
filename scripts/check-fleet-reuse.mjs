@@ -184,20 +184,6 @@ export function checkFleetReuse({root,repository,revision,base,writePaths,ownerR
   return {repository, revision, checked, repairs};
 }
 
-export function checkWorkflowContract(policy, root = fileURLToPath(new URL('../', import.meta.url))) {
-  const plan = 'guides/prd-tad-adr-mvp-gtm-fleet-registry.md';
-  const text = path => decode(readBoundedFile(join(root,path), 50000, 'fleet workflow contract'));
-  const link = '(../' + plan + '#operator-rules)';
-  for (const file of ['docs/START-WORKFLOW.md','docs/adlc-guidelines.md']) {
-    if (!text(file).includes(link)) fail('missing fleet workflow binding in ' + file);
-  }
-  const document = text(plan);
-  if (!/^## Operator rules$/mu.test(document)) fail('missing fleet rules anchor');
-  const bindings = policy.responsibilities.filter(role => role.reuse);
-  if (!bindings.length) fail('no enrolled fleet proofs');
-  return {registered: policy.repositories.length, proofs: bindings.map(role => role.id)};
-}
-
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const {values} = parseArgs({options:{root:{type:'string'},'owner-root':{type:'string'}}});

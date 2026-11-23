@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { checkWorkflowContract, readOwnerSource } from '../scripts/check-fleet-reuse.mjs';
+import { readOwnerSource } from '../scripts/check-fleet-reuse.mjs';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { parseWritePaths, pathsOverlap } from '../src/worktree.mjs';
@@ -152,9 +152,6 @@ export function evaluateFleetAllocation(value) {
 
 export function runFleetCli(argv, io = console) {
   try {
-    if (argv.length === 1 && argv[0] === '--contract') {
-      io.log(JSON.stringify(checkWorkflowContract(validateOwnershipPolicy(readJson(POLICY_PATH))))); return 0;
-    }
     if (argv[0] === '--discover') return runCapabilityCli(argv.slice(1), io);
     if (argv.some(arg => arg.startsWith('--ownership='))) return runOwnershipCli(argv, io);
     if (argv.length !== 1 || !argv[0].startsWith('--input=') || argv[0] === '--input=')

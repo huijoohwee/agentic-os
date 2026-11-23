@@ -259,7 +259,7 @@
     "composition:admission:probe": "node bin/composition-admission-probe.mjs",
     "docs:check": "node bin/agentic-os-doc-budget.mjs",
     "modules:check": "node bin/agentic-os-module-budget.mjs",
-    "preevals": "node bin/agentic-os-fleet.mjs --contract && npm run presets:check",
+    "preevals": "node --test --test-name-pattern=fleet-workflow-contract __tests__/fleet.test.mjs && npm run presets:check",
     "evals": "npm run readiness:check && npm run docs:check && npm run modules:check",
     "test": "node bin/agentic-os-tests.mjs affected",
     "check": "node bin/agentic-os-tests.mjs affected",

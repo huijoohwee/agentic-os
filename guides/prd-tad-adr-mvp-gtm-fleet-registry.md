@@ -157,7 +157,7 @@ npm run evals
 | V3 | Explicit audit accepted Graph’s declared dependency, lock and route at `efa485ec9`. Fork and route replacement fixtures exercise refusal. The [Graph browser fixture](https://github.com/huijoohwee/agentic-graph/pull/2070) covers preview and decoded export. | Run product behavior again on any changed route. |
 | V4 | Design-token conformance passed for the six entries in its existing matrix. The new audit covered the three bindings above. | Protected negative results from independently pinned consumers and clean-session timing are outstanding. |
 
-Local checks passed for 29 fleet tests and 11 runtime-budget tests. Both diagrams projected (10 nodes, 9 edges). Net startup-document growth was zero bytes.
+Local checks passed for 30 fleet tests and 11 runtime-budget tests. Both diagrams projected (10 nodes, 9 edges). Net startup-document growth was zero bytes.
 
 The [full inventory](../FLEET.md#cross-repository-source-ownership) stopped on existing missing planning identity in both predecessor and candidate. Finding `artifact-naming-noncompliant` · major · operator-rules#1 · `guides/DESIGN-SYSTEM-PANEL-OWNERSHIP.md` · missing `continuity_id` · documentation owner must classify or complete its frontmatter and rerun the inventory. The three pilot audits are independently reproducible.
 

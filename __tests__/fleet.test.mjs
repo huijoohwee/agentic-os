@@ -405,21 +405,28 @@ test('the existing package export matches the gateway pin and fleet discovery na
   assert.match(execFileSync(process.execPath, [script], {encoding: 'utf8'}), /Verified/);
 });
 
+test('fleet-workflow-contract binds START and ADLC to the registered authority', () => {
+  const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+  const actual = validateOwnershipPolicy(JSON.parse(read('catalog/fleet-ownership.json')));
+  assert.equal(actual.repositories.length, 14);
+  const pilot = actual.responsibilities.filter(role => role.reuse).map(role => role.id);
+  assert.deepEqual(pilot.sort(), ['chat-prompt-presets','gateway-resolution','geo-longitude-core']);
+  for (const name of ['gateway','design-system','sheets','base','geo']) {
+    assert.ok(actual.responsibilities.some(row => row.owner === 'github.com/huijoohwee/agentic-' + name));
+  }
+  const plan = 'guides/prd-tad-adr-mvp-gtm-fleet-registry.md';
+  for (const path of ['docs/START-WORKFLOW.md','docs/adlc-guidelines.md']) {
+    assert.ok(read(path).includes('(../' + plan + '#operator-rules)'), 'missing fleet workflow binding in ' + path);
+  }
+  assert.match(read(plan), /^## Operator rules$/mu);
+});
+
 test('registered reuse accepts pinned offline inputs and rejects altered consumer candidates', async t => {
-  const { checkFleetReuse, checkWorkflowContract } = await import('../scripts/check-fleet-reuse.mjs');
+  const { checkFleetReuse } = await import('../scripts/check-fleet-reuse.mjs');
   const { createHash } = await import('node:crypto');
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-reuse-'));
   t.after(() => rmSync(scratch, { recursive: true, force: true }));
   const actual = validateOwnershipPolicy(JSON.parse(readFileSync(new URL('../catalog/fleet-ownership.json', import.meta.url))));
-  const contract = checkWorkflowContract(actual);
-  assert.equal(contract.registered, 14);
-  assert.deepEqual([...contract.proofs].sort(), ['chat-prompt-presets','gateway-resolution','geo-longitude-core']);
-  for (const name of ['gateway','design-system','sheets','base','geo']) {
-    assert.ok(actual.responsibilities.some(row => row.owner === 'github.com/huijoohwee/agentic-' + name));
-  }
-  for (const path of ['docs/START-WORKFLOW.md','docs/adlc-guidelines.md']) {
-    assert.match(readFileSync(new URL('../' + path, import.meta.url),'utf8'), /fleet-registry\.md#operator-rules\)/u);
-  }
   const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding:'utf8'}).trim();
   const make = name => {
     const root = join(scratch, name);
