@@ -76,10 +76,15 @@ A failed check routes the change back for repair.
 
 ```mermaid
 flowchart LR
-  Change["Maintainer · change"] -->|resolve| Owner["Registry · owner"]
-  Owner -->|select export| Candidate["Consumer · pinned candidate"]
-  Candidate -->|compare| Check["Evaluator · evidence"]
-  Check -->|pass| Release["Release owner · review"]
+  Change["Maintainer · change"]
+  Owner["Registry · owner"]
+  Candidate["Consumer · pinned candidate"]
+  Check["Evaluator · evidence"]
+  Release["Release owner · review"]
+  Change -->|resolve| Owner
+  Owner -->|select export| Candidate
+  Candidate -->|compare| Check
+  Check -->|pass| Release
   Check -->|repair| Change
 ```
 
@@ -89,10 +94,15 @@ Evidence stays local to the evaluator.
 
 ```mermaid
 flowchart TB
-  Registry["Registry · capability"] -->|owner and paths| Verify["Evaluator · compare"]
-  Source["Source owner · immutable bytes"] -->|revision and digest| Verify
-  Product["Product · lock or projection"] -->|candidate bytes| Verify
-  Verify -->|result and revision| Review["Release owner · evidence"]
+  Registry["Registry · capability"]
+  Verify["Evaluator · compare"]
+  Source["Source owner · immutable bytes"]
+  Product["Product · lock or projection"]
+  Review["Release owner · evidence"]
+  Registry -->|owner and paths| Verify
+  Source -->|revision and digest| Verify
+  Product -->|candidate bytes| Verify
+  Verify -->|result and revision| Review
 ```
 
 FR-1 covers journey and workflow. FR-2 covers data flow and topology. Agent orchestration is inapplicable to a deterministic checker. Evidence contains repository, revision, path and digest. Credentials and product data stay local.
@@ -146,6 +156,8 @@ npm run evals
 | V2 | Explicit audit accepted OS presets at consumer `0a6192b64` and Commerce Geo at `0fb7efbcc`. The sealed projection regression changes one byte in an isolated candidate. | Recheck authenticated source when a pin changes. |
 | V3 | Explicit audit accepted Graph’s declared dependency, lock and route at `efa485ec9`. Fork and route replacement fixtures exercise refusal. The [Graph browser fixture](https://github.com/huijoohwee/agentic-graph/pull/2070) covers preview and decoded export. | Run product behavior again on any changed route. |
 | V4 | Design-token conformance passed for the six entries in its existing matrix. The new audit covered the three bindings above. | Protected negative results from independently pinned consumers and clean-session timing are outstanding. |
+
+Local checks passed for 29 fleet tests and 11 runtime-budget tests. Both diagrams projected (10 nodes, 9 edges). Net startup-document growth was zero bytes.
 
 The [full inventory](../FLEET.md#cross-repository-source-ownership) stopped on existing missing planning identity in both predecessor and candidate. Finding `artifact-naming-noncompliant` · major · operator-rules#1 · `guides/DESIGN-SYSTEM-PANEL-OWNERSHIP.md` · missing `continuity_id` · documentation owner must classify or complete its frontmatter and rerun the inventory. The three pilot audits are independently reproducible.
 
