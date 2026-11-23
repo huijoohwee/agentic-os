@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Qualify fleet reuse on the event candidate
+        uses: ./.github/actions/fleet-reuse
       - name: Hydrate exact event baseline
         shell: bash
         run: |

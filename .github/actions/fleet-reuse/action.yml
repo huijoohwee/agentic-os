@@ -1,0 +1,18 @@
+name: Qualify registered fleet reuse
+description: Audit the checked-out candidate and require rejection of each enrolled substitution.
+inputs:
+  checkout:
+    description: Candidate checkout relative to the workflow workspace.
+    required: false
+    default: "."
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        CANDIDATE_CHECKOUT: ${{ inputs.checkout }}
+      run: |
+        set -euo pipefail
+        node "$GITHUB_ACTION_PATH/../../../scripts/check-fleet-reuse.mjs" \
+          --root="$GITHUB_WORKSPACE/$CANDIDATE_CHECKOUT" --qualify --fetch-owners \
+          --expected-repository="github.com/$GITHUB_REPOSITORY" --expected-revision="$GITHUB_SHA"

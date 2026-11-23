@@ -127,7 +127,7 @@ never register a proposed artifact before it exists or assign planning authority
 
 ## Bounded verification and completion
 
-Ownership inspection runs once across at most eight explicit roots, 2,048 files, 500,000 bytes per file, 32 MB total and ten seconds. It starts no model, network, build, test, nested fleet command, recursive directory crawler or background poller. A bound or conflict ends the invocation with a nonzero result; fix the named owning source before trying again.
+Ownership inspection covers at most 14 explicit roots, 2,048 files, 500,000 bytes per file, 32 MB total and ten seconds. It runs locally and stops on a conflict or exceeded bound. Repair the named owning source before trying again.
 
 A prior report may be supplied with `--previous=/absolute/path/to/report.json`. The result binds policy, repository revisions and artifact digests. An unchanged successful input returns `reuse-passed-evidence`; an unchanged conflicting input returns `stop-unchanged-input`. Those dispositions grant no authority and do not skip current file observation. Reuse existing input-bound test receipts; rerun only the checks invalidated by a source, environment or evidence change. After three mechanical repair attempts without a new observation, preserve the concrete blocker and continue independent useful work instead of repeating the same command. Green required checks and exact integration are completion conditions; do not expand review into unrelated low-value work.
 

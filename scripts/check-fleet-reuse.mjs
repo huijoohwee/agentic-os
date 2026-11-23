@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readBoundedFile } from '../src/catalog-input.mjs';
@@ -41,8 +42,8 @@ export function readOwnerSource(root, role, revision, limits, started = Date.now
   return {source, bytes};
 }
 
-const git = (root, args) => execFileSync('git', ['--no-optional-locks', ...args], {
-  cwd: root, timeout: 2500, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+const git = (root, args, input, env) => execFileSync('git', ['--no-optional-locks', ...args], {
+  cwd: root, input, env, timeout: 2500, maxBuffer: 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'],
 });
 const gitText = (root, args) => decode(git(root, args)).trim();
 const overlaps = (a,b) => a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
@@ -121,6 +122,11 @@ function checkPackage(role, read) {
   return {revision, resolved: resolved.resolved, integrity: resolved.integrity};
 }
 
+function siblingOwner(root, role) {
+  const common = gitText(root,['rev-parse','--path-format=absolute','--git-common-dir']);
+  return join(dirname(dirname(common)),role.owner.split('/').at(-1));
+}
+
 function verify(role, root, revision, base, ownerRoot) {
   const proof = role.reuse;
   const read = path => readCandidate(root, revision, path);
@@ -155,24 +161,27 @@ function verify(role, root, revision, base, ownerRoot) {
     }
     if (sameProjectionPin && samePackage) return;
   }
-  const common = gitText(root,['rev-parse','--path-format=absolute','--git-common-dir']);
-  const sourceRoot = ownerRoot ?? join(dirname(dirname(common)),role.owner.split('/').at(-1));
+  const sourceRoot = ownerRoot ?? siblingOwner(root, role);
   const {source} = readOwnerSource(sourceRoot,role,ownerRevision,limits);
   git(sourceRoot,['merge-base','--is-ancestor',ownerRevision,'refs/remotes/origin/main']);
   if (expected && expected !== source.sha256) fail('projection differs from pinned owner source ' + role.source);
 }
 
-// Both workflow hooks and the explicit audit inspect Git objects. No candidate code executes.
-export function checkFleetReuse({root,repository,revision,base,writePaths,ownerRoot}) {
+function enrolledBindings(repository) {
   const policy = JSON.parse(readBoundedFile(fileURLToPath(policyFile), limits.fileBytes, 'fleet policy'));
-  const bindings = policy.responsibilities.filter(role => role.reuse?.consumer === repository);
+  return policy.responsibilities.filter(role => role.reuse?.consumer === repository);
+}
+
+// Both workflow hooks and the explicit audit inspect Git objects. No candidate code executes.
+export function checkFleetReuse({root,repository,revision,base,writePaths,ownerRoot,ownerRoots}) {
+  const bindings = enrolledBindings(repository);
   const checked = [], repairs = [];
   for (const role of bindings) {
     const paths = proofPaths(role.reuse);
     if (writePaths && !writePaths.some(write => paths.some(path => overlaps(write,path)))) continue;
     if (!writePaths && base && !gitText(root,['diff','--name-only',base,revision,'--',...paths])) continue;
     try {
-      verify(role, root, revision, base, ownerRoot);
+      verify(role, root, revision, base, ownerRoots?.get(role.owner) ?? ownerRoot);
       checked.push(role.id);
     } catch (error) {
       const detail = 'fleet-reuse: ' + role.id + ' requires ' + role.owner + ' (' + paths.join(', ') + '): ' + error.message;
@@ -184,13 +193,93 @@ export function checkFleetReuse({root,repository,revision,base,writePaths,ownerR
   return {repository, revision, checked, repairs};
 }
 
+// Write fixture objects and the index only in a disposable repository. Its object
+// alternate makes even a large consumer tree available without a working copy.
+function qualificationFixture(root, revision, role, fixture) {
+  const path = role.reuse.projection ?? role.reuse.entry;
+  if (!path) fail('missing refusal fixture for ' + role.id);
+  const before = readCandidate(root, revision, path);
+  let after, reason;
+  if (role.reuse.projection) {
+    after = Buffer.concat([before, Buffer.from('\n')]);
+    reason = 'edited projection ' + path;
+  } else {
+    const source = decode(before);
+    const replaced = source.replaceAll(role.reuse.specifier, './fleet-refusal-fixture');
+    if (source === replaced) fail('fixture has no registered import to replace');
+    after = Buffer.from(replaced);
+    reason = 'registered static import missing from ' + path;
+  }
+  git(fixture, ['read-tree', revision]);
+  const mode = gitText(root, ['ls-tree', '--format=%(objectmode)', revision, '--', path]);
+  const blob = decode(git(fixture, ['hash-object', '-w', '--stdin'], after)).trim();
+  git(fixture, ['update-index', '--cacheinfo', [mode, blob, path].join(',')]);
+  const tree = gitText(fixture, ['write-tree']);
+  const name = 'Fleet fixture', email = 'fixture@example.invalid', date = '2000-01-01T00:00:00Z';
+  const candidate = decode(git(fixture, ['-c', 'commit.gpgsign=false', 'commit-tree', tree, '-p', revision,
+    '-m', 'Qualification of ' + role.id], undefined, {...process.env, GIT_AUTHOR_NAME:name,
+    GIT_COMMITTER_NAME:name, GIT_AUTHOR_EMAIL:email, GIT_COMMITTER_EMAIL:email, GIT_AUTHOR_DATE:date,
+    GIT_COMMITTER_DATE:date})).trim();
+  return {candidate, path, reason};
+}
+
+function qualify({root, repository, revision, ownerRoot, fetchOwners}) {
+  const roles = enrolledBindings(repository);
+  if (!roles.length) fail('no enrolled reuse bindings for ' + repository);
+  const scratch = mkdtempSync(join(tmpdir(), 'fleet-qualification-'));
+  const ownerRoots = new Map();
+  try {
+    if (fetchOwners) {
+      if (ownerRoot) fail('select cached or fetched owner sources');
+      for (const owner of new Set(roles.map(role => role.owner))) {
+        if (!/^github\.com\/[a-z0-9-]+\/[a-z0-9._-]+$/u.test(owner)) fail('unsupported owner origin');
+        const checkout = join(scratch, 'owner-' + ownerRoots.size);
+        execFileSync('git', ['clone', '--quiet', '--no-checkout', '--single-branch', '--branch', 'main',
+          '--no-tags', 'https://' + owner + '.git', checkout], {timeout: 60000, stdio: ['ignore','pipe','pipe'],
+          env: {...process.env, GIT_TERMINAL_PROMPT: '0'}});
+        ownerRoots.set(owner, checkout);
+      }
+    } else {
+      for (const role of roles) ownerRoots.set(role.owner, ownerRoot ?? siblingOwner(root, role));
+    }
+    const options = {root, repository, revision, ownerRoot, ownerRoots};
+    const accepted = checkFleetReuse(options);
+    const fixture = join(scratch, 'fixture');
+    git(scratch, ['init', '--quiet', fixture]);
+    const objects = gitText(root, ['rev-parse', '--path-format=absolute', '--git-path', 'objects']);
+    if (/[\r\n]/u.test(objects)) fail('unsupported Git object directory');
+    writeFileSync(join(fixture, '.git/objects/info/alternates'), objects + '\n');
+    const refused = roles.map(role => {
+      const {candidate, path, reason} = qualificationFixture(root, revision, role, fixture);
+      try {
+        checkFleetReuse({...options, root: fixture, revision: candidate});
+      } catch (error) {
+        if (!error.message.startsWith('fleet-reuse: ' + role.id + ' requires ' + role.owner + ' (') ||
+            !error.message.endsWith('): ' + reason)) throw error;
+        return {capability: role.id, owner: role.owner, candidate, path, reason};
+      }
+      fail('accepted substituted candidate for ' + role.id);
+    });
+    return {repository, revision, accepted: accepted.checked, refused};
+  } finally {
+    rmSync(scratch, {recursive: true, force: true});
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    const {values} = parseArgs({options:{root:{type:'string'},'owner-root':{type:'string'}}});
+    const {values} = parseArgs({options:{root:{type:'string'},'owner-root':{type:'string'},
+      qualify:{type:'boolean'},'fetch-owners':{type:'boolean'},'expected-repository':{type:'string'},
+      'expected-revision':{type:'string'}}});
     const root = resolve(values.root ?? '.');
     const repository = remoteRepositoryIdentity(gitText(root,['remote','get-url','origin']))?.repository.toLowerCase();
     if (!repository) fail('unrecognized repository origin');
-    const result = checkFleetReuse({root, repository, revision:gitText(root,['rev-parse','HEAD']), ownerRoot:values['owner-root']});
+    const revision = gitText(root,['rev-parse','HEAD']);
+    const options = {root, repository, revision, ownerRoot:values['owner-root']};
+    if (values['expected-repository'] !== undefined && repository !== values['expected-repository'].toLowerCase()) fail('candidate repository mismatch');
+    if (values['expected-revision'] !== undefined && revision !== values['expected-revision']) fail('candidate revision mismatch');
+    if (values['fetch-owners'] && !values.qualify) fail('--fetch-owners requires --qualify');
+    const result = values.qualify ? qualify({...options, fetchOwners:values['fetch-owners']}) : checkFleetReuse(options);
     console.log(JSON.stringify(result));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
