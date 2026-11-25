@@ -1,0 +1,34 @@
+name: Enforce owner reuse
+description: Check the committed candidate against verified owner sources and the consumer's audited baseline.
+inputs:
+  baseline:
+    description: Full audited consumer commit
+    required: true
+  checkout:
+    description: Checkout relative to the workspace
+    default: "."
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AUDITED_BASE: ${{ inputs.baseline }}
+        CONSUMER_PATH: ${{ inputs.checkout }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        FETCH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE/$CONSUMER_PATH"
+        [[ "$AUDITED_BASE" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$GITHUB_REPOSITORY" =~ ^huijoohwee/[A-Za-z0-9.-]+$ ]]
+        candidate=$(git rev-parse HEAD)
+        [[ "$candidate" = "$GITHUB_SHA" || "$candidate" = "$PR_HEAD" ]]
+        if ! git cat-file -e "$AUDITED_BASE^{commit}" 2>/dev/null; then
+          auth=$(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 | tr -d '\n')
+          GIT_AUTH_HEADER="AUTHORIZATION: basic $auth" git -c http.https://github.com/.extraheader= --config-env=http.https://github.com/.extraheader=GIT_AUTH_HEADER \
+            fetch --quiet --depth=1 --no-tags --no-recurse-submodules \
+            "https://github.com/$GITHUB_REPOSITORY.git" "$AUDITED_BASE"
+        fi
+        unset FETCH_TOKEN auth
+        node "$GITHUB_ACTION_PATH/../../../scripts/check-owner-reuse.mjs" --root=. \
+          --repo="${GITHUB_REPOSITORY#*/}" --base="$AUDITED_BASE" --revision="$candidate"
