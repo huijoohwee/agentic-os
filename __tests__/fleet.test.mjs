@@ -410,7 +410,16 @@ test('fleet-workflow-contract binds START and ADLC to the registered authority',
   const actual = validateOwnershipPolicy(JSON.parse(read('catalog/fleet-ownership.json')));
   assert.equal(actual.repositories.length, 14);
   const pilot = actual.responsibilities.filter(role => role.reuse).map(role => role.id);
-  assert.deepEqual(pilot.sort(), ['chat-prompt-presets','gateway-resolution','geo-longitude-core']);
+  assert.deepEqual(pilot.sort(), ['base-record-engine','chat-prompt-presets','gateway-resolution','geo-longitude-core',
+    'lifecycle-governance','shared-ui-profile','trading-provider-coverage','trading-skill','workbook-calculation']);
+  // An empty check list proves no adoption: each audited product enrolls every owner it pins.
+  const enrolled = name => new Set(actual.responsibilities.flatMap(role => [role.reuse ?? []].flat()
+    .filter(proof => proof.consumer === 'github.com/huijoohwee/agentic-' + name).map(() => role.owner.split('/').at(-1))));
+  assert.deepEqual([...enrolled('commerce-os')].sort(), ['agentic-base','agentic-geo','agentic-os']);
+  assert.deepEqual([...enrolled('trading-platform')].sort(),
+    ['agentic-base','agentic-design-system','agentic-gateway','agentic-os','agentic-sheets']);
+  assert.deepEqual([...enrolled('graph')].sort(), ['agentic-base','agentic-design-system','agentic-gateway',
+    'agentic-geo','agentic-os','agentic-trading-platform']);
   for (const name of ['gateway','design-system','sheets','base','geo']) {
     assert.ok(actual.responsibilities.some(row => row.owner === 'github.com/huijoohwee/agentic-' + name));
   }
@@ -422,7 +431,7 @@ test('fleet-workflow-contract binds START and ADLC to the registered authority',
 });
 
 test('registered reuse accepts pinned offline inputs and rejects altered consumer candidates', async t => {
-  const { checkFleetReuse } = await import('../scripts/check-fleet-reuse.mjs');
+  const { checkFleetReuse, fleetBindings } = await import('../scripts/check-fleet-reuse.mjs');
   const { createHash } = await import('node:crypto');
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-reuse-'));
   t.after(() => rmSync(scratch, { recursive: true, force: true }));
@@ -443,7 +452,7 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   const commit = root => { git(root,'add','-A'); git(root,'commit','-qm','fixture'); return git(root,'rev-parse','HEAD'); };
   const gateway = make('agentic-gateway'), os = make('agentic-os'), graph = make('agentic-graph');
   const osRole = actual.responsibilities.find(role => role.id === 'chat-prompt-presets');
-  const graphRole = actual.responsibilities.find(role => role.id === 'gateway-resolution');
+  const graphRole = fleetBindings('github.com/huijoohwee/agentic-graph').find(role => role.id === 'gateway-resolution');
   const copy = 'shared body\n', hash = content => createHash('sha256').update(content).digest('hex');
   put(gateway,osRole.source,copy); put(gateway,graphRole.source,'export const valid = true;\n');
   const ownerHead = commit(gateway);
@@ -453,7 +462,7 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   put(os,osRole.reuse.pin,pin); put(os,osRole.reuse.projection,copy);
   const clean = commit(os);
   const inspect = (root, role, revision, extra = {}) => checkFleetReuse({root,repository:role.reuse.consumer,
-    revision,ownerRoot:gateway,...extra});
+    revision,ownerRoot:gateway,only:role,...extra});
   assert.deepEqual(inspect(os,osRole,clean).checked,[osRole.id]);
   const checker = fileURLToPath(new URL('../scripts/check-fleet-reuse.mjs', import.meta.url));
   const qualify = (...args) => spawnSync(process.execPath, [checker, '--qualify', '--root=' + os,
@@ -468,6 +477,11 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   assert.equal(git(os,'status','--porcelain'), '');
   assert.match(qualify('--expected-revision=' + ownerHead).stderr, /candidate revision mismatch/u);
   assert.match(qualify('--expected-repository=' + osRole.owner).stderr, /candidate repository mismatch/u);
+  // An enrolled consumer cannot add an owner dependency that no binding names.
+  put(os,'package.json',{dependencies:{'agentic-geo':'github:huijoohwee/agentic-geo#' + ownerHead}});
+  assert.throws(() => checkFleetReuse({root:os,repository:osRole.reuse.consumer,revision:commit(os),ownerRoot:gateway}),
+    /unregistered owner dependency agentic-geo in package\.json; enroll it/u);
+  rmSync(join(os,'package.json')); commit(os);
   put(os,osRole.reuse.projection,copy + 'x'); const edited = commit(os);
   const rejected = qualify('--expected-revision=' + edited);
   assert.equal(rejected.status, 1);
@@ -494,4 +508,32 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   put(graph,'package.json',{}); put(graph,'package-lock.json',{packages:{canvas:manifest,
     'canvas/node_modules/agentic-gateway':{...resolution,resolved:'https://example.org/fork#'+ownerHead}}});
   assert.throws(() => inspect(graph,graphRole,commit(graph),{base:baseline}),/unverified resolved package/u);
+  // One consumer selects one protected revision of each owner, as a package or a snapshot.
+  const trading = make('agentic-trading-platform');
+  const [lifecycle, skill] = ['lifecycle-governance','trading-skill'].map(id =>
+    fleetBindings('github.com/huijoohwee/agentic-trading-platform').find(role => role.id === id));
+  put(os,lifecycle.source,'#!/usr/bin/env node\n'); put(os,skill.source,'skill\n');
+  const first = commit(os); git(os,'update-ref','refs/remotes/origin/main',first);
+  const pinTrading = (packaged, snapshot = packaged) => {
+    const spec = 'https://codeload.github.com/huijoohwee/agentic-os/tar.gz/' + packaged;
+    const development = {devDependencies:{'agentic-os':spec}};
+    put(trading,'package.json',development); put(trading,skill.reuse.snapshot,{'agentic-os':snapshot});
+    put(trading,'package-lock.json',{packages:{'':development,'node_modules/agentic-os':{...resolution,resolved:spec}}});
+    return commit(trading);
+  };
+  const audit = (role, revision, extra = {}) => checkFleetReuse({root:trading,repository:role.reuse.consumer,
+    revision,ownerRoot:os,only:role,...extra});
+  const aligned = pinTrading(first);
+  assert.deepEqual(audit(lifecycle,aligned).checked,[lifecycle.id]);
+  assert.deepEqual(audit(skill,aligned),{repository:skill.reuse.consumer,revision:aligned,checked:[skill.id],repairs:[],stale:[]});
+  put(os,skill.source,'skill v2\n'); const second = commit(os); git(os,'update-ref','refs/remotes/origin/main',second);
+  assert.deepEqual(audit(lifecycle,aligned).stale,[]);
+  assert.deepEqual(audit(skill,aligned).stale,[{capability:skill.id,owner:skill.owner,revision:first,
+    source:skill.source,path:skill.reuse.snapshot}]);
+  assert.throws(() => audit(skill,aligned,{fresh:true}),/stale pin [a-f0-9]{40}: skills\/trading\/SKILL\.md changed/u);
+  assert.throws(() => audit(lifecycle,pinTrading(first,second)),
+    /conflicting agentic-os revisions in package\.json and scripts\/owner-revisions\.json/u);
+  assert.throws(() => audit(skill,pinTrading(first,'main')),/floating snapshot revision/u);
+  put(os,skill.source,'unmerged\n'); const unmerged = pinTrading(commit(os));
+  for (const role of [skill, lifecycle]) assert.throws(() => audit(role,unmerged),/is not on the owner protected branch/u);
 });

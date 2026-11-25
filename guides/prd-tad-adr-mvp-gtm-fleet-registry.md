@@ -1,15 +1,15 @@
 ---
 title: "Fleet registry and shared capability ownership"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.1"
-revision: "1.0.1"
+version: "1.0.2"
+revision: "1.0.2"
 continuity_id: "fleet-registry"
-prd_revision: "1.0.1"
-tad_revision: "1.0.1"
-adr_revision: "1.0.1"
-mvp_revision: "1.0.1"
-gtm_revision: "1.0.1"
-date: "2026-11-23"
+prd_revision: "1.0.2"
+tad_revision: "1.0.2"
+adr_revision: "1.0.2"
+mvp_revision: "1.0.2"
+gtm_revision: "1.0.2"
+date: "2026-11-25"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Lifecycle governance"
@@ -39,7 +39,7 @@ These artifact-bearing rules apply from admission to rollback. Each row names it
 | ID | When and who | Required action and evidence | On failure |
 |---|---|---|---|
 | operator-rules#1 | START · change author | Resolve the capability and source owner in the existing fleet registry. Record the owner, export or source path, consumer use and affected write scope in the existing plan or review. For unregistered shared behavior, resolve ownership before adding a shared implementation. | Report a missing or competing owner. Admit scoped investigation or repair. |
-| operator-rules#2 | Implementation · source owner and consumer | Change shared semantics upstream. Consume an exact owner revision through a public export, or a read-only offline projection tied to owner bytes. The consumer may supply supported configuration, callbacks, authorization, view state and native execution. | Reject a forked origin, floating runtime pin, second implementation, conflicting semantic map, package override or hand-edited projection. |
+| operator-rules#2 | Implementation · source owner and consumer | Change shared semantics upstream. Consume an exact owner revision through a public export, or a read-only offline projection tied to owner bytes. The consumer may supply supported configuration, callbacks, authorization, view state and native execution. | Reject a forked origin, floating or unmerged pin, second owner revision, unenrolled dependency, second implementation, conflicting semantic map, package override or hand-edited projection. |
 | operator-rules#3 | LAND and review · evaluator | Bind applicable proof to the candidate. Check actual resolution or projection bytes and exercise the consuming entry point with an owner fixture. Name the capability, expected owner, affected path and repair. Re-run affected checks after drift. | Stop publication on failed enrolled checks. Withhold promotion when required behavioral proof is missing. Resolve semantic ambiguity through owner review. |
 | operator-rules#4 | Release and rollback · release owner | Integrate the verified upstream first, then advance consumer pins under their own required checks. Revert an incompatible consumer to its last verified canonical revision and matching projection. Retain exact source and release receipts. | Keep the last verified delivery active. Recheck when owner bytes, pin, route, policy or candidate changes. |
 
@@ -65,7 +65,8 @@ The registry owns capability ID, source identity, consumers and optional proof b
 
 | Surface | Positive proof | Remaining boundary |
 |---|---|---|
-| Package | Consumer manifest, resolved lock entry, canonical origin, exact commit and integrity field agree. The explicit audit also locates the registered source in the canonical owner checkout. | The native installer verifies the archive. Actual behavior needs the consumer fixture. |
+| Package | Consumer manifest, resolved lock entry, canonical origin, exact commit and integrity field agree. The audit locates the source at that commit. | The native installer verifies the archive. Actual behavior needs the consumer fixture. |
+| Consumer | Each pin or snapshot is merged on the owner’s protected branch. One revision per owner. Every owner dependency is enrolled. | `stale` lists outdated pins. `--fresh` refuses them. |
 | Projection | Registered source path and revision, declared digest and delivered file match. Verify a new pin against cached owner bytes. | An unchanged protected pin can be reused for an affected candidate. The explicit audit reads the owner bytes again. |
 | Product entry | The registered direct import remains present and the consumer runs its established product test. | Static inspection detects a known substitution. It cannot prove a retained import is used, detect every alias, or authorize provider access. |
 | Lifecycle | START checks relevant declared paths against the fetched baseline, reports drift and allows repair. LAND checks touched enrolled inputs at the committed candidate before pushing. | The required CI job audits every enrolled binding at the event revision and rejects an isolated substitution for each. |
@@ -139,13 +140,13 @@ Revisit when a new format or repeated substitution escapes a check. Revert a che
 
 ### Evidence and reproduction — reference implementation
 
-Run from `agentic-os` on Node 22.13+. The offline audit reads committed HEAD and cached owner origin/main. Add `--qualify` to reproduce the protected check and its deterministic negative commits.
+Run from `agentic-os` on Node 22.13+. The offline audit reads committed HEAD and sibling owners’ cached origin/main. Add `--qualify` for the protected check and its negative commits.
 
 ```sh
 node bin/agentic-os-fleet.mjs --discover --query=gateway
-node scripts/check-fleet-reuse.mjs --root=/workspace/agentic-os --owner-root=/workspace/agentic-gateway
-node scripts/check-fleet-reuse.mjs --root=/workspace/agentic-commerce-os --owner-root=/workspace/agentic-geo
-node scripts/check-fleet-reuse.mjs --root=/workspace/agentic-graph --owner-root=/workspace/agentic-gateway
+for repo in os commerce-os graph trading-platform; do
+  node scripts/check-fleet-reuse.mjs --root=/workspace/agentic-$repo
+done
 node --test __tests__/fleet.test.mjs
 npm run evals
 ```
@@ -155,11 +156,11 @@ npm run evals
 | V1 | Discovery resolves five source owners. OS budgets runs the registry and workflow-link contract. | Recheck after a role or workflow changes. |
 | V2 | Explicit audit accepted OS presets at consumer `0a6192b64` and Commerce Geo at `0fb7efbcc`. The sealed projection regression changes one byte in an isolated candidate. | Recheck authenticated source when a pin changes. |
 | V3 | Explicit audit accepted Graph’s declared dependency, lock and route at `efa485ec9`. Fork and route replacement fixtures exercise refusal. The [Graph browser fixture](https://github.com/huijoohwee/agentic-graph/pull/2070) covers preview and decoded export. | Run product behavior again on any changed route. |
-| V4 | The shared CI action checks event repository and SHA, authenticates upstream source, and records accepted roles, refused fixture commits, paths and reasons. Local qualification passed for OS, Commerce and Graph. | Each protected consumer run supplies its own receipt. Uncoached timing is open. |
+| V4 | The shared CI action checks event repository and SHA, authenticates upstream source, and records accepted roles, refused fixture commits, paths and reasons. Qualification passed for OS, Commerce (3 bindings) and Graph (10). Trading `fca69b4` is refused: unmerged Gateway pin, two OS revisions. | Trading repairs both and adopts the action. Each protected consumer run supplies its own receipt. Uncoached timing is open. |
 
 The OS source job qualifies its candidate directly. Consumers pin the released action in their required integration job. The action uses temporary Git objects and leaves the consumer checkout intact. Net startup-document growth is zero.
 
-The separate [full inventory](../FLEET.md#cross-repository-source-ownership) now recognizes the panel ownership guide as a contract. It next reports missing role revisions in `guides/prd-tad-adr-mvp-gtm-coordinated-repo-closeout.md`. The planning owner must reconcile that record before claiming fleet-wide inventory coverage.
+The [full inventory](../FLEET.md#cross-repository-source-ownership) reports missing role revisions in the [closeout plan](prd-tad-adr-mvp-gtm-coordinated-repo-closeout.md). The planning owner must reconcile it before claiming fleet-wide coverage.
 
 ## GTM
 
@@ -171,7 +172,7 @@ The separate [full inventory](../FLEET.md#cross-repository-source-ownership) now
 
 ## Coverage and decision record
 
-All dispositions join `fleet-registry@1.0.1`. Each role owns its next evidence. Deferred items reopen on the stated trigger.
+All dispositions join `fleet-registry@1.0.2`. Each role owns its next evidence. Deferred items reopen on the stated trigger.
 
 | ID | Disposition | Evidence or reason · owner and trigger |
 |---|---|---|

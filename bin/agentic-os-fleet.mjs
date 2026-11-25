@@ -193,13 +193,12 @@ export function validateOwnershipPolicy(value) {
     if (!repos.has(item.owner)) fail('unknown responsibility owner');
     list(item.consumers, OWNERSHIP_LIMITS.repositories, 'consumers'); unique(item.consumers, 'consumers');
     if (item.consumers.some(r => !repos.has(r) || r === item.owner)) fail('unknown or recursive consumer');
-    if ('reuse' in item) {
-      const proof = item.reuse;
+    if ('reuse' in item) for (const proof of [item.reuse].flat()) {
       if (!proof || !item.consumers.includes(proof.consumer) || !item.discovery) fail('unbound consumer proof');
-      const pairs = [['manifest','package'], ['pin','projection'], ['entry','specifier']];
-      const fields = pairs.filter(([left,right]) => left in proof || right in proof).flat();
+      const pairs = [['manifest','package'], ['pin','projection'], ['entry','specifier'], ['snapshot']];
+      const fields = pairs.filter(pair => pair.some(key => key in proof)).flat();
       exact(proof, ['consumer', ...fields], 'consumer proof');
-      if (!proof.manifest && !proof.pin || proof.entry && !proof.manifest) fail('missing consumer pin');
+      if (!proof.manifest && !proof.pin && !proof.snapshot || proof.entry && !proof.manifest) fail('missing consumer pin');
       for (const field of fields) relativePath(proof[field], field);
     }
     if ('discovery' in item) {
