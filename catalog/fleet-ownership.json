@@ -131,6 +131,27 @@
       }
     },
     {
+      "id": "gateway-references",
+      "owner": "github.com/huijoohwee/agentic-gateway",
+      "source": "references.mjs",
+      "consumers": [
+        "github.com/huijoohwee/agentic-os",
+        "github.com/huijoohwee/agentic-commerce-os"
+      ],
+      "reuse": [{
+        "consumer": "github.com/huijoohwee/agentic-commerce-os",
+        "manifest": "package.json",
+        "package": "agentic-gateway",
+        "entry": "scripts/project-guideline-sources.mjs",
+        "specifier": "agentic-gateway/references"
+      }],
+      "discovery": {
+        "kinds": ["contract"],
+        "summary": "Resolve pinned owner files and verify selected bytes offline.",
+        "transport": "source"
+      }
+    },
+    {
       "id": "shared-ui-profile",
       "reuse": [
         { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "package.json", "package": "agentic-design-system" },

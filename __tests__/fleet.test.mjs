@@ -410,12 +410,12 @@ test('fleet-workflow-contract binds START and ADLC to the registered authority',
   const actual = validateOwnershipPolicy(JSON.parse(read('catalog/fleet-ownership.json')));
   assert.equal(actual.repositories.length, 14);
   const pilot = actual.responsibilities.filter(role => role.reuse).map(role => role.id);
-  assert.deepEqual(pilot.sort(), ['base-record-engine','chat-prompt-presets','gateway-resolution','geo-longitude-core',
+  assert.deepEqual(pilot.sort(), ['base-record-engine','chat-prompt-presets','gateway-references','gateway-resolution','geo-longitude-core',
     'lifecycle-governance','shared-ui-profile','trading-provider-coverage','trading-skill','workbook-calculation']);
   // An empty check list proves no adoption: each audited product enrolls every owner it pins.
   const enrolled = name => new Set(actual.responsibilities.flatMap(role => [role.reuse ?? []].flat()
     .filter(proof => proof.consumer === 'github.com/huijoohwee/agentic-' + name).map(() => role.owner.split('/').at(-1))));
-  assert.deepEqual([...enrolled('commerce-os')].sort(), ['agentic-base','agentic-geo','agentic-os']);
+  assert.deepEqual([...enrolled('commerce-os')].sort(), ['agentic-base','agentic-gateway','agentic-geo','agentic-os']);
   assert.deepEqual([...enrolled('trading-platform')].sort(),
     ['agentic-base','agentic-design-system','agentic-gateway','agentic-os','agentic-sheets']);
   assert.deepEqual([...enrolled('graph')].sort(), ['agentic-base','agentic-design-system','agentic-gateway',
