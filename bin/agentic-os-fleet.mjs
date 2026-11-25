@@ -195,6 +195,13 @@ export function validateOwnershipPolicy(value) {
     if (item.consumers.some(r => !repos.has(r) || r === item.owner)) fail('unknown or recursive consumer');
     if ('reuse' in item) for (const proof of [item.reuse].flat()) {
       if (!proof || !item.consumers.includes(proof.consumer) || !item.discovery) fail('unbound consumer proof');
+      if ('document' in proof) {
+        exact(proof, ['consumer', 'document', 'referenceIds'], 'document proof');
+        relativePath(proof.document, 'document');
+        unique(list(proof.referenceIds, 32, 'reference IDs', true), 'reference IDs');
+        if (proof.referenceIds.some(id => typeof id !== 'string' || !/^guideline\/[a-z0-9-]+$/u.test(id))) fail('invalid guideline ID');
+        continue;
+      }
       const pairs = [['manifest','package'], ['pin','projection'], ['entry','specifier'], ['snapshot']];
       const fields = pairs.filter(pair => pair.some(key => key in proof)).flat();
       exact(proof, ['consumer', ...fields], 'consumer proof');

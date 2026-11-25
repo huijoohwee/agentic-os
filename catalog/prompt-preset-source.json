@@ -1,6 +1,6 @@
 {
   "repository": "github.com/huijoohwee/agentic-gateway",
-  "revision": "0a2470352b49fb0c682191d1aee912d81abfcf0f",
+  "revision": "cdb000925729a729732206a32de36e6bc7db011c",
   "path": "catalog/PROMPT-PRESETS.md",
   "sha256": "f591419b291c489e70cb2b7d61bdc90993f9598a982c892da7bb866a1b903adf",
   "compatibilityPath": "runtime/agents/docs/PROMPT-PRESETS.md"
