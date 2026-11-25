@@ -98,7 +98,8 @@ toolbar or panel stylesheet directly or seal a byte-identical offline projection
 Run `node scripts/check-shared-toolbar.mjs WORKSPACE` against the seven sibling checkouts before
 integrating shared navigation changes. A `repo=checkout` argument selects a candidate worktree.
 The command reads committed Git objects and reports their revisions. It checks the Design System
-exports, Base, Sheets and Commerce projections, Graph entry points and Trading routes. A missing
+exports, Base, Sheets and Commerce projections, Graph entry points, the Trading desk and the
+shared page template for the journal and OpenAPI coverage. A missing
 checkout, duplicate route shell, conflicting import or changed projection fails the check.
 Use the product's browser tests to verify navigation, active state, focus, narrow views and offline use.
 
