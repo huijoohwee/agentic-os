@@ -1,4 +1,20 @@
 {
+  "baselines": {
+    "agentic-base": "d3d0b43533384eb6652c1d3d4c7d6c68cab26f8caea53ec762102e6f24ca8704",
+    "agentic-design-system": "1fec5f8f3112e7a3527e7924fc4e7fb5144b7ede491fe263861ced2f60513996",
+    "agentic-sheets": "58122aafeb2385718f0feef8a29a6812ad94f3f690c08c5f8f6de250cdd7801b",
+    "agentic-trading-platform": "e5f9083d2e29e9c63b02e8a87b1a20ea234fde5780e6779bf113c549f036f24b",
+    "agentic-gateway": "c0add7ddb36eb6df5a04c904b92f0b1e3ab3a4a54449f1429c39386ef1b69061",
+    "agentic-geo": "f05a1d76fa4c06781c78bdee3000e63b8a90883863464cc732ab91d4a5630a48",
+    "agentic-os": "f933b1086413d023338f09be77b17634797420c758c3d551434275cbf75539c5",
+    "huijoohwee.github.io": "9ab60cef9e3a382f0540791f82399e537524d5e8a78170135faeb632fc6c0a64",
+    "agentic-commerce-os": "9ae10a5926f5da822562f5de0fa1562643ac4f66c77b375daaf05ab394a18c56",
+    "agentic-canvas-os": "755f1ab6a261e0ffa29a66e5fac18095fb5147371e2bd8c8d27df6e3919e16a0",
+    "huijoohwee": "6fda740d99cba0a1a7172effc816ec7951728c27b3f6679eb91e3589ca1f5b43",
+    "agentic-graph": "eba6f4a0544f499a4b21353ea036fc50680d486a9a42e09cc741225ada5657e3",
+    "81rv10": "d024826b3cae9971de4d20f617bb58317a7d149beb1dc9b77f514298a0da170f",
+    "GameXR": "0a263867dfa13472efa454b2b4f8e4669151662bb6dd3bb7a7fc710ea2be03df"
+  },
   "pins": {
     "agentic-gateway": "cdb000925729a729732206a32de36e6bc7db011c",
     "agentic-design-system": "efb6c8e3b19898ccfe48b060a9ecc99c24a4000e",

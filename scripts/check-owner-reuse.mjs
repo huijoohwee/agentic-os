@@ -30,7 +30,7 @@ function tree(cwd, rev) {
 }
 const regular = entry => ['100644', '100755'].includes(entry?.mode);
 const read = (root, rev, path) => git(root, ['show', rev + ':' + path]);
-function catalog(workspace, pins) {
+function catalog(workspace, {pins, baselines}) {
   const gateway = join(workspace, 'agentic-gateway'), revision = pins['agentic-gateway'];
   const index = read(gateway, revision, 'references/index.json');
   if (createHash('sha256').update(index).digest('hex') !== JSON.parse(read(gateway, revision, 'references/pin.json')).indexDigest) throw Error('Gateway index digest mismatch');
@@ -55,19 +55,25 @@ function catalog(workspace, pins) {
     if (createHash('sha256').update(read(root, revision, path)).digest('hex') !== digest) throw Error('Invalid Gateway body: ' + path);
     assets.push([owner, path, git(root, ['rev-parse', revision + ':' + path]).trim()]);
   }
-  return { pins, references: refs.map(({id, owner, path}) => ({id, owner, path})), assets };
+  return { baselines, pins, references: refs.map(({id, owner, path}) => ({id, owner, path})), assets };
 }
 function serialize(policy) {
-  return JSON.stringify({pins: policy.pins, references: policy.references}, null, 2).slice(0, -2) +
+  return JSON.stringify({baselines: policy.baselines, pins: policy.pins, references: policy.references}, null, 2).slice(0, -2) +
     ',\n  "assets": [\n' + policy.assets.map(row => '    ' + JSON.stringify(row)).join(',\n') + '\n  ]\n}\n';
 }
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-function directReferences(root, rev, repo, policy) {
+function directReferences(root, rev, repo, policy, paths) {
   // Gateway describes the owner index. An owner can cite its own published sources.
   const refs = policy.references.filter(ref => ref.owner !== repo);
   if (!refs.length) return new Map();
   const pattern = refs.map(({owner, path}) => escape(owner) + '([/@:]((blob|raw|tree)/)?[[:alnum:]_.-]+)?[/:]' + escape(path)).join('|');
-  const result = spawnSync('git', ['--no-replace-objects','grep','-IzoE',pattern,rev,'--'], {cwd:root,encoding:'utf8',maxBuffer:bound,timeout:60000});
+  if (paths && !paths.length) return new Map();
+  if (paths?.length > 128) {
+    const counts = new Map();
+    for (let i = 0; i < paths.length; i += 128) for (const [k,v] of directReferences(root, rev, repo, policy, paths.slice(i,i+128))) counts.set(k,v);
+    return counts;
+  }
+  const result = spawnSync('git', ['--no-replace-objects','--literal-pathspecs','grep','-IzoE',pattern,rev,'--',...(paths ?? [])], {cwd:root,encoding:'utf8',maxBuffer:bound,timeout:60000});
   if (result.error || ![0,1].includes(result.status)) throw result.error ?? Error(result.stderr);
   const counts = new Map();
   for (const match of result.stdout.matchAll(/([^\0]+)\0([^\n]+)\n/g)) {
@@ -131,6 +137,9 @@ function checkPackages(root, revision, files, errors) {
 }
 export function audit(root, repo, baseline, revision, policy = readPolicy()) {
   if (![baseline, revision].every(value => oid.test(value))) throw Error('Expected full Git commit IDs');
+  if (policy.baselines && createHash('sha256').update(repo + '@' + baseline).digest('hex') !== policy.baselines[repo]) {
+    throw Error('Unknown repository or unapproved consumer baseline');
+  }
   const previous = tree(root, baseline), candidate = tree(root, revision), errors = [];
   const byHash = new Map();
   for (const [owner,path,...hashes] of policy.assets) for (const hash of hashes) {
@@ -162,15 +171,16 @@ export function audit(root, repo, baseline, revision, policy = readPolicy()) {
       }
     }
   }
-  const existing = directReferences(root, baseline, repo, policy);
-  const current = baseline === revision ? existing : directReferences(root, revision, repo, policy);
+  const changed = baseline === revision ? undefined : [...candidate.keys()].filter(path => previous.get(path)?.hash !== candidate.get(path).hash);
+  const existing = directReferences(root, baseline, repo, policy, changed);
+  const current = baseline === revision ? existing : directReferences(root, revision, repo, policy, changed);
   for (const [key, count] of current) if (count > (existing.get(key) ?? 0)) errors.push(key.replace('\0', ': ') + ' must resolve through Gateway references');
   checkPackages(root, revision, candidate, errors);
-  return { repo, baseline, revision, files: candidate.size, projections: copies, directReferences: [...current.values()].reduce((a,b) => a+b, 0), errors };
+  return { repo, baseline, revision, files: candidate.size, projections: copies, referenceScope: changed ? 'changed files' : 'full tree', directReferences: [...current.values()].reduce((a,b) => a+b, 0), errors };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const {values} = parseArgs({options:Object.fromEntries(['build','root','repo','base','revision'].map(key => [key,{type:'string'}]))});
-  if (values.build) writeFileSync(policyFile, serialize(catalog(values.build, readPolicy().pins)));
+  if (values.build) writeFileSync(policyFile, serialize(catalog(values.build, readPolicy())));
   else {
     const result = audit(values.root ?? '.', values.repo, values.base, values.revision);
     console.log(JSON.stringify(result));
