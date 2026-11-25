@@ -48,10 +48,14 @@ const git = (root, args, input, env) => execFileSync('git', ['--no-optional-lock
 const gitText = (root, args) => decode(git(root, args)).trim();
 const overlaps = (a,b) => a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
 const manifestLock = 'package-lock.json';
+const short = owner => owner.split('/').at(-1);
+const primary = proof => proof.snapshot ?? proof.pin ?? proof.manifest;
+// A consumer declares each owner package once, as a runtime or a development dependency.
+const declaredIn = (pkg, name) => [pkg?.dependencies?.[name], pkg?.devDependencies?.[name]].filter(spec => spec !== undefined);
 
 function proofPaths(proof) {
-  return [proof.pin, proof.projection, proof.manifest, proof.manifest && 'package.json',
-    proof.manifest && manifestLock, proof.entry].filter(Boolean);
+  return [...new Set([proof.pin, proof.projection, proof.manifest, proof.manifest && 'package.json',
+    proof.manifest && manifestLock, proof.entry, proof.snapshot].filter(Boolean))];
 }
 
 function readCandidate(root, rev, path) {
@@ -99,13 +103,14 @@ function checkPackage(role, read) {
   }
   const lock = JSON.parse(read(manifestLock));
   const context = dirname(manifest) === '.' ? '' : dirname(manifest);
-  const declared = project.dependencies?.[name];
+  const specs = declaredIn(project, name), declared = specs[0];
   const prefix = role.owner.replace(/^github\.com\//u, '');
   const archive = 'https://codeload.github.com/' + prefix + '/tar.gz/';
   const hosted = 'github:' + prefix + '#';
   const base = [archive, hosted].find(value => typeof declared === 'string' && declared.startsWith(value));
   const revision = base && declared.slice(base.length);
-  if (!oid.test(revision ?? '') || lock.packages?.[context]?.dependencies?.[name] !== declared) {
+  const locked = declaredIn(lock.packages?.[context], name);
+  if (specs.length !== 1 || !oid.test(revision ?? '') || locked.length !== 1 || locked[0] !== declared) {
     fail('fork, floating revision or lock disagreement in ' + manifest);
   }
   const keys = [context && context + '/node_modules/' + name, 'node_modules/' + name].filter(Boolean);
@@ -122,14 +127,30 @@ function checkPackage(role, read) {
   return {revision, resolved: resolved.resolved, integrity: resolved.integrity};
 }
 
+// A snapshot names one exact owner revision: a flat owner map or a consumer artifact source record.
+function snapshotRevision(role, read) {
+  const value = JSON.parse(read(role.reuse.snapshot));
+  return value?.source?.repository === role.owner ? value.source.revision : value?.[short(role.owner)];
+}
+
+// The declared owner revision of one binding, without validating it.
+function pinnedRevision(role, read) {
+  const proof = role.reuse;
+  try {
+    if (proof.snapshot) return snapshotRevision(role, read);
+    if (proof.pin) return JSON.parse(read(proof.pin)).revision;
+    return (declaredIn(JSON.parse(read(proof.manifest)), proof.package)[0] ?? '').match(/[#/]([a-f0-9]{40})$/u)?.[1];
+  } catch { return undefined; }
+}
+
 function siblingOwner(root, role) {
   const common = gitText(root,['rev-parse','--path-format=absolute','--git-common-dir']);
   return join(dirname(dirname(common)),role.owner.split('/').at(-1));
 }
 
-function verify(role, root, revision, base, ownerRoot) {
+// Returns the pinned owner revision when the registered source later changed on the protected branch.
+function verify(role, root, revision, base, ownerRoot, read) {
   const proof = role.reuse;
-  const read = path => readCandidate(root, revision, path);
   const dependency = proof.manifest && checkPackage(role, read);
   let expected = null, ownerRevision = dependency?.revision;
   if (proof.pin) {
@@ -142,10 +163,15 @@ function verify(role, root, revision, base, ownerRoot) {
     if (pin.sha256 !== expected) fail('edited projection ' + proof.projection);
     ownerRevision = pin.revision;
   }
+  if (proof.snapshot) {
+    ownerRevision = snapshotRevision(role, read);
+    if (!oid.test(ownerRevision ?? '')) fail('floating snapshot revision in ' + proof.snapshot);
+  }
   // An unchanged protected pin is already a trusted input to candidate verification.
   // Explicit audit and changed pins additionally authenticate bytes in the offline owner checkout.
   if (base) {
-    const sameProjectionPin = !proof.pin || !gitText(root,['diff','--name-only',base,revision,'--',proof.pin]);
+    const unchanged = path => !path || !gitText(root,['diff','--name-only',base,revision,'--',path]);
+    const sameProjectionPin = unchanged(proof.pin) && unchanged(proof.snapshot);
     let samePackage = !dependency;
     if (dependency) {
       let previous;
@@ -159,30 +185,76 @@ function verify(role, root, revision, base, ownerRoot) {
       }
       samePackage = previous?.revision === dependency.revision && previous.resolved === dependency.resolved;
     }
-    if (sameProjectionPin && samePackage) return;
+    if (sameProjectionPin && samePackage) return null;
   }
   const sourceRoot = ownerRoot ?? siblingOwner(root, role);
   const {source} = readOwnerSource(sourceRoot,role,ownerRevision,limits);
-  git(sourceRoot,['merge-base','--is-ancestor',ownerRevision,'refs/remotes/origin/main']);
+  // A lane or fork commit can carry identical bytes yet disappear with its branch.
+  try { git(sourceRoot,['merge-base','--is-ancestor',ownerRevision,'refs/remotes/origin/main']); }
+  catch { fail('pinned revision ' + ownerRevision + ' is not on the owner protected branch'); }
   if (expected && expected !== source.sha256) fail('projection differs from pinned owner source ' + role.source);
+  let current = null;
+  try { current = gitText(sourceRoot,['rev-parse','--verify','refs/remotes/origin/main:' + role.source]); } catch { /* moved or removed */ }
+  return current === source.blob ? null : ownerRevision;
 }
 
-function enrolledBindings(repository) {
-  const policy = JSON.parse(readBoundedFile(fileURLToPath(policyFile), limits.fileBytes, 'fleet policy'));
-  return policy.responsibilities.filter(role => role.reuse?.consumer === repository);
+const readPolicy = () => JSON.parse(readBoundedFile(fileURLToPath(policyFile), limits.fileBytes, 'fleet policy'));
+
+// One responsibility may enroll several consumer proofs. Each binding carries exactly one.
+export function fleetBindings(repository, policy = readPolicy()) {
+  return policy.responsibilities.flatMap(role => [role.reuse ?? []].flat()
+    .filter(proof => proof.consumer === repository).map(reuse => ({...role, reuse})));
+}
+
+// An enrolled consumer may not carry an owner dependency that no binding names.
+function checkCoverage(policy, bindings, repository, root, revision, read) {
+  const packages = new Set(policy.responsibilities.flatMap(role => [role.reuse ?? []].flat())
+    .map(proof => proof.package).filter(Boolean));
+  const owners = policy.repositories.map(entry => entry.id)
+    .filter(id => id !== repository && id.startsWith('github.com/'))
+    .map(id => [id, new RegExp('(?:github\\.com[/:]|^github:)' + id.slice(11).replace(/[.]/gu, '\\.') + '(?:\\.git)?(?:[#/]|$)', 'iu')]);
+  const manifests = decode(execFileSync('git', ['--no-optional-locks','ls-tree','-r','--name-only',revision],
+    {cwd: root, timeout: 5000, maxBuffer: 16 * 1024 * 1024})).split('\n')
+    .filter(path => /(?:^|\/)package\.json$/u.test(path) && !/(?:^|\/)node_modules\//u.test(path));
+  if (manifests.length > 64) fail('manifest budget exceeded');
+  for (const manifest of manifests) {
+    let project;
+    try { project = JSON.parse(read(manifest)); } catch { continue; }
+    for (const [name, spec] of ['dependencies','devDependencies','optionalDependencies']
+      .flatMap(section => Object.entries(project?.[section] ?? {}))) {
+      const owner = owners.find(([, origin]) => origin.test(String(spec)))?.[0];
+      if (!owner && !packages.has(name)) continue;
+      if (!bindings.some(role => role.reuse.manifest === manifest && role.reuse.package === name
+        && (!owner || role.owner === owner))) fail('unregistered owner dependency ' + name + ' in ' + manifest);
+    }
+  }
 }
 
 // Both workflow hooks and the explicit audit inspect Git objects. No candidate code executes.
-export function checkFleetReuse({root,repository,revision,base,writePaths,ownerRoot,ownerRoots}) {
-  const bindings = enrolledBindings(repository);
-  const checked = [], repairs = [];
-  for (const role of bindings) {
+// `only` restricts the audit to one binding; `fresh` refuses a pin whose registered source moved on.
+export function checkFleetReuse({root,repository,revision,base,writePaths,ownerRoot,ownerRoots,fresh,only}) {
+  const policy = readPolicy(), bindings = fleetBindings(repository, policy);
+  const cache = new Map();
+  const read = path => cache.get(path) ?? cache.set(path, readCandidate(root, revision, path)).get(path);
+  const checked = [], repairs = [], stale = [];
+  const explicit = !writePaths && !base && !only;
+  if (explicit && bindings.length) {
+    try { checkCoverage(policy, bindings, repository, root, revision, read); }
+    catch (error) { throw new Error('fleet-reuse: ' + error.message + '; enroll it in catalog/fleet-ownership.json'); }
+  }
+  for (const role of only ? [only] : bindings) {
     const paths = proofPaths(role.reuse);
     if (writePaths && !writePaths.some(write => paths.some(path => overlaps(write,path)))) continue;
     if (!writePaths && base && !gitText(root,['diff','--name-only',base,revision,'--',...paths])) continue;
     try {
-      verify(role, root, revision, base, ownerRoots?.get(role.owner) ?? ownerRoot);
-      checked.push(role.id);
+      const behind = verify(role, root, revision, base, ownerRoots?.get(role.owner) ?? ownerRoot, read);
+      // One consumer candidate selects one revision of each owner.
+      const mine = pinnedRevision(role, read);
+      const rival = bindings.find(other => other.owner === role.owner && pinnedRevision(other, read) !== mine);
+      if (rival) fail('conflicting ' + short(role.owner) + ' revisions in ' + primary(role.reuse) + ' and ' + primary(rival.reuse));
+      if (behind && fresh) fail('stale pin ' + behind + ': ' + role.source + ' changed on the owner protected branch');
+      if (behind) stale.push({capability: role.id, owner: role.owner, revision: behind, source: role.source, path: primary(role.reuse)});
+      checked.push(bindings.filter(other => other.id === role.id).length > 1 ? role.id + '@' + primary(role.reuse) : role.id);
     } catch (error) {
       const detail = 'fleet-reuse: ' + role.id + ' requires ' + role.owner + ' (' + paths.join(', ') + '): ' + error.message;
       // A scoped repair lane may open. Publication rechecks the committed candidate.
@@ -190,19 +262,30 @@ export function checkFleetReuse({root,repository,revision,base,writePaths,ownerR
       repairs.push(detail);
     }
   }
-  return {repository, revision, checked, repairs};
+  return {repository, revision, checked, repairs, stale};
 }
 
 // Write fixture objects and the index only in a disposable repository. Its object
 // alternate makes even a large consumer tree available without a working copy.
 function qualificationFixture(root, revision, role, fixture) {
-  const path = role.reuse.projection ?? role.reuse.entry;
-  if (!path) fail('missing refusal fixture for ' + role.id);
+  const proof = role.reuse, path = proof.projection ?? proof.entry ?? primary(proof);
   const before = readCandidate(root, revision, path);
   let after, reason;
-  if (role.reuse.projection) {
+  if (proof.projection) {
     after = Buffer.concat([before, Buffer.from('\n')]);
     reason = 'edited projection ' + path;
+  } else if (!proof.entry) {
+    const value = JSON.parse(decode(before));
+    if (proof.snapshot) {
+      if (value.source?.repository === role.owner) value.source.revision = 'main'; else value[short(role.owner)] = 'main';
+      reason = 'floating snapshot revision in ' + path;
+    } else {
+      for (const section of ['dependencies','devDependencies']) {
+        if (value[section]?.[proof.package]) value[section][proof.package] = 'github:fleet-refusal/fixture#' + '0'.repeat(40);
+      }
+      reason = 'fork, floating revision or lock disagreement in ' + path;
+    }
+    after = Buffer.from(JSON.stringify(value));
   } else {
     const source = decode(before);
     const replaced = source.replaceAll(role.reuse.specifier, './fleet-refusal-fixture');
@@ -223,8 +306,8 @@ function qualificationFixture(root, revision, role, fixture) {
   return {candidate, path, reason};
 }
 
-function qualify({root, repository, revision, ownerRoot, fetchOwners}) {
-  const roles = enrolledBindings(repository);
+function qualify({root, repository, revision, ownerRoot, fetchOwners, fresh}) {
+  const roles = fleetBindings(repository);
   if (!roles.length) fail('no enrolled reuse bindings for ' + repository);
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-qualification-'));
   const ownerRoots = new Map();
@@ -242,7 +325,7 @@ function qualify({root, repository, revision, ownerRoot, fetchOwners}) {
     } else {
       for (const role of roles) ownerRoots.set(role.owner, ownerRoot ?? siblingOwner(root, role));
     }
-    const options = {root, repository, revision, ownerRoot, ownerRoots};
+    const options = {root, repository, revision, ownerRoot, ownerRoots, fresh};
     const accepted = checkFleetReuse(options);
     const fixture = join(scratch, 'fixture');
     git(scratch, ['init', '--quiet', fixture]);
@@ -252,7 +335,7 @@ function qualify({root, repository, revision, ownerRoot, fetchOwners}) {
     const refused = roles.map(role => {
       const {candidate, path, reason} = qualificationFixture(root, revision, role, fixture);
       try {
-        checkFleetReuse({...options, root: fixture, revision: candidate});
+        checkFleetReuse({...options, root: fixture, revision: candidate, only: role});
       } catch (error) {
         if (!error.message.startsWith('fleet-reuse: ' + role.id + ' requires ' + role.owner + ' (') ||
             !error.message.endsWith('): ' + reason)) throw error;
@@ -260,7 +343,7 @@ function qualify({root, repository, revision, ownerRoot, fetchOwners}) {
       }
       fail('accepted substituted candidate for ' + role.id);
     });
-    return {repository, revision, accepted: accepted.checked, refused};
+    return {repository, revision, accepted: accepted.checked, refused, stale: accepted.stale};
   } finally {
     rmSync(scratch, {recursive: true, force: true});
   }
@@ -269,16 +352,19 @@ function qualify({root, repository, revision, ownerRoot, fetchOwners}) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const {values} = parseArgs({options:{root:{type:'string'},'owner-root':{type:'string'},
-      qualify:{type:'boolean'},'fetch-owners':{type:'boolean'},'expected-repository':{type:'string'},
+      qualify:{type:'boolean'},'fetch-owners':{type:'boolean'},fresh:{type:'boolean'},'expected-repository':{type:'string'},
       'expected-revision':{type:'string'}}});
     const root = resolve(values.root ?? '.');
     const repository = remoteRepositoryIdentity(gitText(root,['remote','get-url','origin']))?.repository.toLowerCase();
     if (!repository) fail('unrecognized repository origin');
     const revision = gitText(root,['rev-parse','HEAD']);
-    const options = {root, repository, revision, ownerRoot:values['owner-root']};
+    const options = {root, repository, revision, ownerRoot:values['owner-root'], fresh:values.fresh};
     if (values['expected-repository'] !== undefined && repository !== values['expected-repository'].toLowerCase()) fail('candidate repository mismatch');
     if (values['expected-revision'] !== undefined && revision !== values['expected-revision']) fail('candidate revision mismatch');
     if (values['fetch-owners'] && !values.qualify) fail('--fetch-owners requires --qualify');
+    if (options.ownerRoot && new Set(fleetBindings(repository).map(role => role.owner)).size > 1) {
+      fail('--owner-root serves one owner; use sibling owner checkouts or --fetch-owners');
+    }
     const result = values.qualify ? qualify({...options, fetchOwners:values['fetch-owners']}) : checkFleetReuse(options);
     console.log(JSON.stringify(result));
   } catch (error) { console.error(error.message); process.exitCode = 1; }

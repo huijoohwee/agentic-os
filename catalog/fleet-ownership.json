@@ -106,13 +106,16 @@
   "responsibilities": [
     {
       "id": "gateway-resolution",
-      "reuse": {
-        "consumer": "github.com/huijoohwee/agentic-graph",
-        "manifest": "canvas/package.json",
-        "package": "agentic-gateway",
-        "entry": "canvas/src/features/html-video-renderer/htmlVideoFlowNode.ts",
-        "specifier": "agentic-gateway/connectors/hyperframes"
-      },
+      "reuse": [
+        {
+          "consumer": "github.com/huijoohwee/agentic-graph",
+          "manifest": "canvas/package.json",
+          "package": "agentic-gateway",
+          "entry": "canvas/src/features/html-video-renderer/htmlVideoFlowNode.ts",
+          "specifier": "agentic-gateway/connectors/hyperframes"
+        },
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "manifest": "package.json", "package": "agentic-gateway" }
+      ],
       "owner": "github.com/huijoohwee/agentic-gateway",
       "source": "resolver.mjs",
       "consumers": [
@@ -129,6 +132,11 @@
     },
     {
       "id": "shared-ui-profile",
+      "reuse": [
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "package.json", "package": "agentic-design-system" },
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "canvas/package.json", "package": "agentic-design-system" },
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "snapshot": "scripts/owner-revisions.json" }
+      ],
       "owner": "github.com/huijoohwee/agentic-design-system",
       "source": "site/tokens/shared-ui-profile.json",
       "consumers": [
@@ -149,10 +157,14 @@
     },
     {
       "id": "workbook-calculation",
+      "reuse": [
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "snapshot": "scripts/owner-revisions.json" }
+      ],
       "owner": "github.com/huijoohwee/agentic-sheets",
       "source": "sheets/formula.mjs",
       "consumers": [
-        "github.com/huijoohwee/agentic-base"
+        "github.com/huijoohwee/agentic-base",
+        "github.com/huijoohwee/agentic-trading-platform"
       ],
       "discovery": {
         "kinds": [
@@ -164,11 +176,18 @@
     },
     {
       "id": "base-record-engine",
+      "reuse": [
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "package.json", "package": "@agentic-base/views-react" },
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "canvas/package.json", "package": "@agentic-base/views-react" },
+        { "consumer": "github.com/huijoohwee/agentic-commerce-os", "snapshot": "config/agentic-base-data-view.json" },
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "snapshot": "scripts/owner-revisions.json" }
+      ],
       "owner": "github.com/huijoohwee/agentic-base",
       "source": "src/engine.mjs",
       "consumers": [
         "github.com/huijoohwee/agentic-graph",
-        "github.com/huijoohwee/agentic-commerce-os"
+        "github.com/huijoohwee/agentic-commerce-os",
+        "github.com/huijoohwee/agentic-trading-platform"
       ],
       "discovery": {
         "kinds": [
@@ -180,13 +199,18 @@
     },
     {
       "id": "geo-longitude-core",
-      "reuse": {
-        "consumer": "github.com/huijoohwee/agentic-commerce-os",
-        "manifest": "package.json",
-        "package": "agentic-geo",
-        "pin": "config/agentic-geo-core.pin.json",
-        "projection": "public/local-first/agentic-geo-core.mjs"
-      },
+      "reuse": [
+        {
+          "consumer": "github.com/huijoohwee/agentic-commerce-os",
+          "manifest": "package.json",
+          "package": "agentic-geo",
+          "pin": "config/agentic-geo-core.pin.json",
+          "projection": "public/local-first/agentic-geo-core.mjs"
+        },
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "canvas/package.json", "package": "agentic-geo" },
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "grph-shared/package.json", "package": "agentic-geo" },
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "gympgrph/package.json", "package": "agentic-geo" }
+      ],
       "owner": "github.com/huijoohwee/agentic-geo",
       "source": "src/core.mjs",
       "consumers": [
@@ -201,6 +225,11 @@
     },
     {
       "id": "lifecycle-governance",
+      "reuse": [
+        { "consumer": "github.com/huijoohwee/agentic-commerce-os", "manifest": "package.json", "package": "agentic-os" },
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "package.json", "package": "agentic-os" },
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "manifest": "package.json", "package": "agentic-os" }
+      ],
       "owner": "github.com/huijoohwee/agentic-os",
       "source": "bin/agentic-os.mjs",
       "consumers": [
@@ -208,7 +237,8 @@
         "github.com/huijoohwee/agentic-commerce-os",
         "github.com/huijoohwee/agentic-canvas-os",
         "github.com/huijoohwee/huijoohwee",
-        "github.com/huijoohwee/agentic-graph"
+        "github.com/huijoohwee/agentic-graph",
+        "github.com/huijoohwee/agentic-trading-platform"
       ],
       "discovery": {
         "kinds": [
@@ -478,6 +508,34 @@
         ],
         "summary": "Pinned shared workspace memory search, read and reviewed capture proposals; no source write or implicit refresh.",
         "transport": "mcp"
+      }
+    },
+    {
+      "id": "trading-skill",
+      "reuse": [
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "snapshot": "scripts/owner-revisions.json" }
+      ],
+      "owner": "github.com/huijoohwee/agentic-os",
+      "source": "skills/trading/SKILL.md",
+      "consumers": ["github.com/huijoohwee/agentic-trading-platform"],
+      "discovery": {
+        "kinds": ["skill"],
+        "summary": "Portable trading skill and invocation catalog; the desk serves the exact pinned owner bytes.",
+        "transport": "source"
+      }
+    },
+    {
+      "id": "trading-provider-coverage",
+      "reuse": [
+        { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "canvas/package.json", "package": "agentic-trading-platform" }
+      ],
+      "owner": "github.com/huijoohwee/agentic-trading-platform",
+      "source": "src/provider-coverage.mjs",
+      "consumers": ["github.com/huijoohwee/agentic-graph"],
+      "discovery": {
+        "kinds": ["contract"],
+        "summary": "Trading provider coverage summary; Graph renders the owner result without deriving its own.",
+        "transport": "module"
       }
     }
   ],
