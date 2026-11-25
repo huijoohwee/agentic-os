@@ -57,18 +57,18 @@ export function checkWorkspace(workspace, overrides = {}) {
   for (const [repo, pins, files] of [
     ['agentic-base', ['packages/views-react/src/controls/toolbar.pin.json', 'packages/views-react/src/panels/floatingPanelShell.pin.json'],
       ['packages/views-react/src/controls/toolbar.css', 'packages/views-react/src/panels/floatingPanelShell.css']],
-    ['agentic-commerce-os', ['config/toolbar.pin.json', 'config/floating-panel.pin.json'],
-      ['public/local-first/toolbar.css', 'public/local-first/floating-panel.css']],
+    ['agentic-commerce-os', ['config/toolbar.pin.json', 'config/floating-panel.pin.json', 'config/collection-layout.pin.json'],
+      ['public/local-first/toolbar.css', 'public/local-first/floating-panel.css', 'public/local-first/collection-layout.css']],
   ]) {
     pins.forEach((file, i) => {
-      const pin = repos[repo].json(file), source = i ? 'site/floating-panel.css' : 'site/toolbar.css';
+      const pin = repos[repo].json(file), source = ['site/toolbar.css', 'site/floating-panel.css', 'site/collection-layout.css'][i];
       need(pin.owner === ownerId && pin.path === source, repo + ' owner mismatch at ' + file);
       verify(repo, files[i], pin.revision, source, pin.sha256);
     });
   }
   const sheets = repos['agentic-sheets'].json('design/shared-ui-profile.pin.json');
   need(sheets.profile.owner === ownerId, 'Sheets owner mismatch');
-  for (const [key, file] of [['toolbar', 'toolbar.css'], ['floatingPanelStyles', 'floating-panel.css'], ['skillsCommandsStyles', 'skills-commands.css']]) {
+  for (const [key, file] of [['toolbar', 'toolbar.css'], ['collectionLayoutStyles', 'collection-layout.css'], ['floatingPanelStyles', 'floating-panel.css'], ['skillsCommandsStyles', 'skills-commands.css']]) {
     const pin = sheets[key];
     need(pin.sourcePath === 'site/' + file, 'Sheets owner path for ' + key);
     verify('agentic-sheets', 'design/' + file, pin.registryRevision ?? sheets.profile.registryRevision, pin.sourcePath, pin.sha256);
@@ -93,12 +93,14 @@ export function checkWorkspace(workspace, overrides = {}) {
     need(!imports.some(path => /(?:profile|toolbar|panels)\.css$/u.test(path)), file + ' imports a second toolbar stylesheet');
   }
   const trading = repos['agentic-trading-platform'];
-  const pages = ['desk', 'index'].map(file => [file, trading.text('web/' + file + '.html')]);
+  const pages = ['desk', 'dashboard-page'].map(file => [file, trading.text('web/' + file + '.html')]);
   checkRouteEntries(pages, '<!-- trading-toolbar -->', /class\s*=\s*["'][^"']*\bagentic-toolbar\b/iu, 'href="./trading.css"');
   for (const [label, html] of pages) once(html, 'href="./owners/design/site/toolbar.css"', label);
   const template = trading.text('web/trading-toolbar.html');
   once(template, 'id="trading-toolbar"', 'Trading toolbar');
-  for (const href of ['./desk.html', './']) once(template, 'href="' + href + '"', 'Trading toolbar');
+  const journalContent = trading.text('web/index.html');
+  need(!/<!-- trading-toolbar -->|id=["']trading-toolbar["']/u.test(journalContent), 'Journal content must use the shared dashboard shell');
+  for (const href of ['./desk.html', './', './coverage.html']) once(template, 'href="' + href + '"', 'Trading toolbar');
   const os = repos['agentic-os'];
   need(os.text('guides/DESIGN-SYSTEM-OWNERSHIP.md').includes('scripts/check-shared-toolbar.mjs'), 'OS contract must identify executable conformance check');
   return { scope: 'committed toolbar source and projections', revisions: Object.fromEntries(names.map(name => [name, repos[name].head])), projections };

@@ -148,10 +148,9 @@ export function checkDesignConformance(workspace, overrides = {}) {
       need(spec === `github:huijoohwee/agentic-design-system#${entry.registryRevision}` && oid.test(revision), `${label} installed package pin drift`);
       projectionDigest = `sha256:${digest(owner.blob(entry.sharedUiProjectionPath, revision))}`;
     } else if (entry.kind === 'exact-snapshot') {
-      const source = consumer.text(entry.pinPath);
-      const match = /repo: 'agentic-design-system', prefix: 'design', revision: '([0-9a-f]{40})'/u.exec(source);
-      need(match && match[1] === entry.registryRevision, `${label} exact-snapshot Design System pin drift`);
-      projectionDigest = `sha256:${digest(owner.blob(entry.sharedUiProjectionPath, match[1]))}`;
+      const revision = consumer.json(entry.pinPath)[repoName(matrix.designSystemOwner)];
+      need(oid.test(revision ?? '') && revision === entry.registryRevision, `${label} exact-snapshot Design System pin drift`);
+      projectionDigest = `sha256:${digest(owner.blob(entry.sharedUiProjectionPath, revision))}`;
     } else {
       const pin = consumer.json(entry.pinPath);
       need(pin.profile.owner === ownerId, `${label} pin owner`);
