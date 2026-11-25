@@ -1,14 +1,14 @@
 ---
 title: "Fleet registry and shared capability ownership"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.0.2"
-revision: "1.0.2"
+version: "1.0.3"
+revision: "1.0.3"
 continuity_id: "fleet-registry"
-prd_revision: "1.0.2"
-tad_revision: "1.0.2"
-adr_revision: "1.0.2"
-mvp_revision: "1.0.2"
-gtm_revision: "1.0.2"
+prd_revision: "1.0.3"
+tad_revision: "1.0.3"
+adr_revision: "1.0.3"
+mvp_revision: "1.0.3"
+gtm_revision: "1.0.3"
 date: "2026-11-25"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -154,11 +154,11 @@ npm run evals
 | VCC | Evidence at this authoring handoff | Remaining proof |
 |---|---|---|
 | V1 | Discovery resolves five source owners. OS budgets runs the registry and workflow-link contract. | Recheck after a role or workflow changes. |
-| V2 | Explicit audit accepted OS presets at consumer `0a6192b64` and Commerce Geo at `0fb7efbcc`. The sealed projection regression changes one byte in an isolated candidate. | Recheck authenticated source when a pin changes. |
-| V3 | Explicit audit accepted Graph’s declared dependency, lock and route at `efa485ec9`. Fork and route replacement fixtures exercise refusal. The [Graph browser fixture](https://github.com/huijoohwee/agentic-graph/pull/2070) covers preview and decoded export. | Run product behavior again on any changed route. |
-| V4 | The shared CI action checks event repository and SHA, authenticates upstream source, and records accepted roles, refused fixture commits, paths and reasons. Qualification passed for OS, Commerce (3 bindings) and Graph (10). Trading `fca69b4` is refused: unmerged Gateway pin, two OS revisions. | Trading repairs both and adopts the action. Each protected consumer run supplies its own receipt. Uncoached timing is open. |
+| V2 | Audit accepted OS presets (`0a6192b64`) and Commerce Geo (`0fb7efbcc`). A one-byte projection edit is refused. | Recheck when a pin changes. |
+| V3 | Audit accepted Graph’s dependency, lock and route (`efa485ec9`). Fork and route fixtures are refused. The [Graph browser fixture](https://github.com/huijoohwee/agentic-graph/pull/2070) covers preview and decoded export. | Rerun product behavior on a changed route. |
+| V4 | The CI action checks event repository and SHA, authenticates upstream source, and records accepted roles and refused fixtures. Qualification passed for OS, Commerce (3 bindings) and Graph (10). | Each protected consumer run supplies its own receipt. Uncoached timing is open. |
 
-The OS source job qualifies its candidate directly. Consumers pin the released action in their required integration job. The action uses temporary Git objects and leaves the consumer checkout intact. Net startup-document growth is zero.
+**Enforcement status.** Partial. Before 1.0.2 only 3 of 23 responsibilities had bindings, and Trading’s audit passed vacuously. Commerce (3 bindings) and Graph (10) now pass. Trading `fca69b4` is refused for an unmerged Gateway pin and two OS revisions. Consumers gain these rules on pinning the action. Gateway, Design System, Base, Sheets, Geo and OS reuse is byte-checked; Canvas OS and the planning site are citation-only. Copied code lacking a dependency and unmerged design pins go undetected.
 
 The [full inventory](../FLEET.md#cross-repository-source-ownership) reports missing role revisions in the [closeout plan](prd-tad-adr-mvp-gtm-coordinated-repo-closeout.md). The planning owner must reconcile it before claiming fleet-wide coverage.
 
@@ -172,7 +172,7 @@ The [full inventory](../FLEET.md#cross-repository-source-ownership) reports miss
 
 ## Coverage and decision record
 
-All dispositions join `fleet-registry@1.0.2`. Each role owns its next evidence. Deferred items reopen on the stated trigger.
+All dispositions join `fleet-registry@1.0.3`. Each role owns its next evidence. Deferred items reopen on the stated trigger.
 
 | ID | Disposition | Evidence or reason · owner and trigger |
 |---|---|---|
