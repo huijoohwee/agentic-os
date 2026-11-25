@@ -49,13 +49,13 @@ const gitText = (root, args) => decode(git(root, args)).trim();
 const overlaps = (a,b) => a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
 const manifestLock = 'package-lock.json';
 const short = owner => owner.split('/').at(-1);
-const primary = proof => proof.snapshot ?? proof.pin ?? proof.manifest;
+const primary = proof => proof.document ?? proof.snapshot ?? proof.pin ?? proof.manifest;
 // A consumer declares each owner package once, as a runtime or a development dependency.
 const declaredIn = (pkg, name) => [pkg?.dependencies?.[name], pkg?.devDependencies?.[name]].filter(spec => spec !== undefined);
 
 function proofPaths(proof) {
   return [...new Set([proof.pin, proof.projection, proof.manifest, proof.manifest && 'package.json',
-    proof.manifest && manifestLock, proof.entry, proof.snapshot].filter(Boolean))];
+    proof.manifest && manifestLock, proof.entry, proof.snapshot, proof.document].filter(Boolean))];
 }
 
 function readCandidate(root, rev, path) {
@@ -133,10 +133,30 @@ function snapshotRevision(role, read) {
   return value?.source?.repository === role.owner ? value.source.revision : value?.[short(role.owner)];
 }
 
+// Read the governed links from the visible Shared concerns table and its pinned definition.
+function documentRevision(role, read) {
+  const {document, referenceIds} = role.reuse;
+  const markdown = decode(read(document)).replace(/<!--[\s\S]*?(?:-->|$)/gu, '')
+    .replace(/^( {0,3})(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\2[ \t]*$/gmu, '');
+  const definitions = markdown.split('\n').filter(line => /^ {0,3}\[gateway\]:/iu.test(line));
+  const url = definitions[0]?.trim().replace(/^\[gateway\]:[ \t]*/iu, '') ?? '';
+  const revision = url.split('/').at(-3);
+  if (definitions.length !== 1 || !oid.test(revision ?? '') ||
+      url !== 'https://' + role.owner + '/blob/' + revision + '/references/README.md') fail('invalid Gateway index pin in ' + document);
+  const section = markdown.split(/^## Shared concerns[ \t]*$/mu)[1]?.split(/^## /mu)[0] ?? '';
+  const links = section.split('\n').filter(line => line.startsWith('|') && line.endsWith('|'))
+    .flatMap(line => [...line.matchAll(/(?:^|[ |,(])\[`(guideline\/[a-z0-9-]+)`\]\[gateway\](?=[ ,)|.]|$)/gu)].map(match => match[1]));
+  for (const id of referenceIds) {
+    if (links.filter(link => link === id).length !== 1) fail('expected one Gateway link for ' + id + ' in ' + document);
+  }
+  return revision;
+}
+
 // The declared owner revision of one binding, without validating it.
 function pinnedRevision(role, read) {
   const proof = role.reuse;
   try {
+    if (proof.document) return documentRevision(role, read);
     if (proof.snapshot) return snapshotRevision(role, read);
     if (proof.pin) return JSON.parse(read(proof.pin)).revision;
     return (declaredIn(JSON.parse(read(proof.manifest)), proof.package)[0] ?? '').match(/[#/]([a-f0-9]{40})$/u)?.[1];
@@ -163,6 +183,7 @@ function verify(role, root, revision, base, ownerRoot, read) {
     if (pin.sha256 !== expected) fail('edited projection ' + proof.projection);
     ownerRevision = pin.revision;
   }
+  if (proof.document) ownerRevision = documentRevision(role, read);
   if (proof.snapshot) {
     ownerRevision = snapshotRevision(role, read);
     if (!oid.test(ownerRevision ?? '')) fail('floating snapshot revision in ' + proof.snapshot);
@@ -171,7 +192,7 @@ function verify(role, root, revision, base, ownerRoot, read) {
   // Explicit audit and changed pins additionally authenticate bytes in the offline owner checkout.
   if (base) {
     const unchanged = path => !path || !gitText(root,['diff','--name-only',base,revision,'--',path]);
-    const sameProjectionPin = unchanged(proof.pin) && unchanged(proof.snapshot);
+    const sameProjectionPin = unchanged(proof.pin) && unchanged(proof.snapshot) && unchanged(proof.document);
     let samePackage = !dependency;
     if (dependency) {
       let previous;
@@ -192,6 +213,15 @@ function verify(role, root, revision, base, ownerRoot, read) {
   // A lane or fork commit can carry identical bytes yet disappear with its branch.
   try { git(sourceRoot,['merge-base','--is-ancestor',ownerRevision,'refs/remotes/origin/main']); }
   catch { fail('pinned revision ' + ownerRevision + ' is not on the owner protected branch'); }
+  if (proof.document) {
+    const ownerFile = path => readOwnerSource(sourceRoot, {...role, source:path}, ownerRevision, limits).bytes;
+    const entries = JSON.parse(ownerFile('references/index.json')).entries;
+    const headings = decode(ownerFile('references/README.md')).split('\n');
+    for (const id of proof.referenceIds) {
+      if (entries.filter(row => row.id === id && row.kind === 'guideline').length !== 1 || !headings.includes('### ' + id))
+        fail('missing pinned Gateway guideline ' + id);
+    }
+  }
   if (expected && expected !== source.sha256) fail('projection differs from pinned owner source ' + role.source);
   let current = null;
   try { current = gitText(sourceRoot,['rev-parse','--verify','refs/remotes/origin/main:' + role.source]); } catch { /* moved or removed */ }
@@ -271,7 +301,11 @@ function qualificationFixture(root, revision, role, fixture) {
   const proof = role.reuse, path = proof.projection ?? proof.entry ?? primary(proof);
   const before = readCandidate(root, revision, path);
   let after, reason;
-  if (proof.projection) {
+  if (proof.document) {
+    const id = proof.referenceIds[0], label = '[`' + id + '`]';
+    after = Buffer.from(decode(before).replace(label + '[gateway]', label + '(./local-guideline.md)'));
+    reason = 'expected one Gateway link for ' + id + ' in ' + path;
+  } else if (proof.projection) {
     after = Buffer.concat([before, Buffer.from('\n')]);
     reason = 'edited projection ' + path;
   } else if (!proof.entry) {

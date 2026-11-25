@@ -451,15 +451,25 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   };
   const commit = root => { git(root,'add','-A'); git(root,'commit','-qm','fixture'); return git(root,'rev-parse','HEAD'); };
   const gateway = make('agentic-gateway'), os = make('agentic-os'), graph = make('agentic-graph');
-  const osRole = actual.responsibilities.find(role => role.id === 'chat-prompt-presets');
+  const osBindings = fleetBindings('github.com/huijoohwee/agentic-os', actual);
+  const osRole = osBindings.find(role => role.id === 'chat-prompt-presets');
+  const docRole = osBindings.find(role => role.id === 'gateway-references');
+  const ids = docRole.reuse.referenceIds;
   const graphRole = fleetBindings('github.com/huijoohwee/agentic-graph').find(role => role.id === 'gateway-resolution');
   const copy = 'shared body\n', hash = content => createHash('sha256').update(content).digest('hex');
   put(gateway,osRole.source,copy); put(gateway,graphRole.source,'export const valid = true;\n');
+  put(gateway,docRole.source,'export const references = true;');
+  put(gateway,'references/index.json',{entries: ids.map(id => ({id, kind:'guideline'}))});
+  put(gateway,'references/README.md',ids.map(id => '### ' + id).join('\n'));
   const ownerHead = commit(gateway);
   git(gateway,'update-ref','refs/remotes/origin/main',ownerHead);
   const pin = {repository:osRole.owner,revision:ownerHead,path:osRole.source,sha256:hash(copy),
     compatibilityPath:osRole.reuse.projection};
   put(os,osRole.reuse.pin,pin); put(os,osRole.reuse.projection,copy);
+  const document = '## Shared concerns\n\n| Need | Entry |\n|---|---|\n' +
+    ids.map(id => '| Planning | [`' + id + '`][gateway] |').join('\n') +
+    '\n\n[gateway]: https://' + docRole.owner + '/blob/' + ownerHead + '/references/README.md\n';
+  put(os,docRole.reuse.document,document);
   const clean = commit(os);
   const inspect = (root, role, revision, extra = {}) => checkFleetReuse({root,repository:role.reuse.consumer,
     revision,ownerRoot:gateway,only:role,...extra});
@@ -470,13 +480,19 @@ test('registered reuse accepts pinned offline inputs and rejects altered consume
   const accepted = qualify('--expected-revision=' + clean, '--expected-repository=' + osRole.reuse.consumer);
   assert.equal(accepted.status, 0, accepted.stderr);
   const receipt = JSON.parse(accepted.stdout);
-  assert.deepEqual(receipt.accepted, [osRole.id]);
-  assert.equal(receipt.refused[0].reason, 'edited projection ' + osRole.reuse.projection);
+  assert.deepEqual(receipt.accepted, [docRole.id, osRole.id]);
+  assert.match(receipt.refused[0].reason, /expected one Gateway link for guideline\/prd-tad-adr-mvp-gtm/u);
+  assert.equal(receipt.refused[1].reason, 'edited projection ' + osRole.reuse.projection);
   assert.equal(receipt.refused[0].candidate, JSON.parse(qualify().stdout).refused[0].candidate);
   assert.equal(git(os,'rev-parse','HEAD'), clean);
   assert.equal(git(os,'status','--porcelain'), '');
   assert.match(qualify('--expected-revision=' + ownerHead).stderr, /candidate revision mismatch/u);
   assert.match(qualify('--expected-repository=' + osRole.owner).stderr, /candidate repository mismatch/u);
+  for (const invalid of [document.replace(ownerHead, 'main'), document + '[GATEWAY]: https://example.org\n']) {
+    put(os,docRole.reuse.document,invalid);
+    assert.throws(() => inspect(os,docRole,commit(os),{base:clean}),/invalid Gateway index pin/u);
+  }
+  put(os,docRole.reuse.document,document);
   // An enrolled consumer cannot add an owner dependency that no binding names.
   put(os,'package.json',{dependencies:{'agentic-geo':'github:huijoohwee/agentic-geo#' + ownerHead}});
   assert.throws(() => checkFleetReuse({root:os,repository:osRole.reuse.consumer,revision:commit(os),ownerRoot:gateway}),

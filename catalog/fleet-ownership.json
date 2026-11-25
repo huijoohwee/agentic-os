@@ -114,7 +114,8 @@
           "entry": "canvas/src/features/html-video-renderer/htmlVideoFlowNode.ts",
           "specifier": "agentic-gateway/connectors/hyperframes"
         },
-        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "manifest": "package.json", "package": "agentic-gateway" }
+        { "consumer": "github.com/huijoohwee/agentic-trading-platform", "manifest": "package.json", "package": "agentic-gateway",
+          "entry": "runtime/portable-quote.mjs", "specifier": "agentic-gateway" }
       ],
       "owner": "github.com/huijoohwee/agentic-gateway",
       "source": "resolver.mjs",
@@ -144,6 +145,9 @@
         "package": "agentic-gateway",
         "entry": "scripts/project-guideline-sources.mjs",
         "specifier": "agentic-gateway/references"
+      }, {
+        "consumer": "github.com/huijoohwee/agentic-os", "document": "DOCUMENTS.md",
+        "referenceIds": ["guideline/prd-tad-adr-mvp-gtm", "guideline/adlc", "guideline/pd-bp-fm", "guideline/lean-startup", "guideline/pitch-deck", "guideline/business-plan", "guideline/financial-model"]
       }],
       "discovery": {
         "kinds": ["contract"],
@@ -457,11 +461,14 @@
     },
     {
       "id": "chat-prompt-presets",
-      "reuse": {
+      "reuse": [{
         "consumer": "github.com/huijoohwee/agentic-os",
         "pin": "catalog/prompt-preset-source.json",
         "projection": "runtime/agents/docs/PROMPT-PRESETS.md"
-      },
+      }, {
+        "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "canvas/package.json", "package": "agentic-gateway",
+        "entry": "canvas/src/features/chat/gatewayPresetCatalog.ts", "specifier": "agentic-gateway/presets"
+      }],
       "owner": "github.com/huijoohwee/agentic-gateway",
       "source": "catalog/PROMPT-PRESETS.md",
       "consumers": ["github.com/huijoohwee/agentic-os", "github.com/huijoohwee/agentic-graph"],

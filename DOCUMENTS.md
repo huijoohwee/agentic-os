@@ -27,10 +27,10 @@ Use the [Gateway reference index][gateway] for pinned planning guidelines, the J
 | Markdown validation and template maintenance plan | [Documentation-management PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-documentation-management.md) |
 | Native design enforcement plan behind the design export | [Design-enforcement PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-design-enforcement.md) |
 | Completed spatial stabilization slice | [Spatial-stabilization PRD/TAD/ADR/MVP/GTM](guides/spatial-stabilization-prd-tad-adr-mvp-gtm.md) |
-| CID, RAO, SVO and specification fields | [Gateway reference index][gateway] (`guideline/prd-tad-adr-mvp-gtm`), [shared semantic schema][semantics] |
+| CID, RAO, SVO and specification fields | [`guideline/prd-tad-adr-mvp-gtm`][gateway], [shared semantic schema][semantics] |
 | `/`, `#`, `@` dictionary definitions and consumption | [Invocation dictionary owner](guides/INVOCATION-DICTIONARIES.md) |
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
-| Global development lifecycle | [ADLC runtime profile](docs/adlc-guidelines.md), [Gateway reference index][gateway] (`guideline/adlc`) |
+| Global development lifecycle | [ADLC runtime profile](docs/adlc-guidelines.md), [`guideline/adlc`][gateway] |
 | Public-source archive handling | [Private archive policy](guides/PRIVATE-ARCHIVE-POLICY.md) |
 | Start, release, deploy, or cleanup work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md), [deploy](guides/DEPLOY-WORKFLOW.md) — global protocol, repo-local mechanics |
 | Shared workspace startup, source freshness and offline retrieval | [Workspace routine](guides/WORKSPACE.md), [memory format](guides/MEMORY.md) |
@@ -41,8 +41,8 @@ Use the [Gateway reference index][gateway] for pinned planning guidelines, the J
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
 | Past, current and future product features | [Central roadmap register](catalog/feature-roadmap.json), [derived views](guides/FEATURES.md) |
-| Feature cost and budget continuity | [Cost register](catalog/costs.json), [portfolio cost view](guides/COSTS.md), [Gateway reference index][gateway] (`guideline/pd-bp-fm`) |
-| Validated learning and audience projections | [Gateway reference index][gateway] under `guideline/lean-startup`, `guideline/pitch-deck`, `guideline/business-plan` and `guideline/financial-model` |
+| Feature cost and budget continuity | [Cost register](catalog/costs.json), [portfolio cost view](guides/COSTS.md), [`guideline/pd-bp-fm`][gateway] |
+| Validated learning and audience projections | [`guideline/lean-startup`][gateway], [`guideline/pitch-deck`][gateway], [`guideline/business-plan`][gateway] and [`guideline/financial-model`][gateway] |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
 | Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 
