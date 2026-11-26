@@ -315,6 +315,15 @@ test('same-head retention enrolls the exact merged review and retains only its c
   assert.equal(git(s.root, 'rev-parse', s.nextRef), s.reviewedHead);
   assert.equal(git(s.root, 'rev-parse', s.retainedRef), s.reviewedHead);
   assert.equal(validateRetentionDispositionReceipt(receipt).receiptDigest, receipt.receiptDigest);
+  for (const ref of [s.nextRef, s.retainedRef]) {
+    const observed = inspectCompletionStatus(s.root, ref, { protectedBranch: 'main' }, s.profile,
+      { preservationReceipt: receipt });
+    assert.equal(observed.preservationDispositionVerified, true);
+    assert.equal(observed.closeout.missionState, 'source_complete');
+    assert.equal(observed.closeout.adlcState, 'retirement_pending');
+  }
+  assert.throws(() => inspectCompletionStatus(s.root, s.oldRef,
+    { protectedBranch: 'main' }, s.profile, { preservationReceipt: receipt }), /preservation does not bind this lane/);
 });
 
 test('same-head retention rejects mounted review refs and retained-head drift', t => {
