@@ -16,6 +16,7 @@ runs:
         CONSUMER_PATH: ${{ inputs.checkout }}
         PR_HEAD: ${{ github.event.pull_request.head.sha }}
         FETCH_TOKEN: ${{ github.token }}
+        AOS_ACTION_REF: ${{ github.action_ref }}
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/$CONSUMER_PATH"
@@ -50,7 +51,7 @@ runs:
         node "$GITHUB_ACTION_PATH/../../../scripts/check-owner-reuse.mjs" --root=. \
           --repo="${GITHUB_REPOSITORY#*/}" --base="$AUDITED_BASE" --revision="$candidate"
         if [[ "$GITHUB_REPOSITORY" != "huijoohwee/agentic-os" ]]; then
-          action_revision="${GITHUB_ACTION_REF:-}"
+          action_revision="${AOS_ACTION_REF:-}"
           [[ "$action_revision" =~ ^[0-9a-f]{40}$ ]]
           node "$GITHUB_ACTION_PATH/../../../scripts/check-consumer-release.mjs" --root=. \
             --base="$protected_base" --revision="$candidate" --repository="$GITHUB_REPOSITORY" \
