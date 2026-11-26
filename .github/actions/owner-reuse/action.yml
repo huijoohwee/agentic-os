@@ -15,20 +15,42 @@ runs:
         AUDITED_BASE: ${{ inputs.baseline }}
         CONSUMER_PATH: ${{ inputs.checkout }}
         PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        ACTION_REVISION: ${{ github.action_ref }}
         FETCH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/$CONSUMER_PATH"
         [[ "$AUDITED_BASE" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$ACTION_REVISION" =~ ^[0-9a-f]{40}$ ]]
         [[ "$GITHUB_REPOSITORY" =~ ^huijoohwee/[A-Za-z0-9.-]+$ ]]
         candidate=$(git rev-parse HEAD)
         [[ "$candidate" = "$GITHUB_SHA" || "$candidate" = "$PR_HEAD" ]]
-        if ! git cat-file -e "$AUDITED_BASE^{commit}" 2>/dev/null; then
-          auth=$(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 | tr -d '\n')
-          GIT_AUTH_HEADER="AUTHORIZATION: basic $auth" git -c http.https://github.com/.extraheader= --config-env=http.https://github.com/.extraheader=GIT_AUTH_HEADER \
-            fetch --quiet --depth=1 --no-tags --no-recurse-submodules \
-            "https://github.com/$GITHUB_REPOSITORY.git" "$AUDITED_BASE"
-        fi
-        unset FETCH_TOKEN auth
+        protected_base=$(node --input-type=module <<'NODE'
+        import { readFileSync } from 'node:fs';
+        const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+        const value = process.env.GITHUB_EVENT_NAME === 'pull_request' ? event.pull_request?.base?.sha
+          : process.env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group?.base_sha
+            : process.env.GITHUB_EVENT_NAME === 'push' ? event.before : process.env.GITHUB_SHA;
+        const revision = /^[a-f0-9]{40}$/.test(value ?? '') && !/^0+$/.test(value) ? value : process.env.GITHUB_SHA;
+        if (!/^[a-f0-9]{40}$/.test(revision) || /^0+$/.test(revision)) process.exit(1);
+        process.stdout.write(revision);
+        NODE
+        )
+        fetch_commit() {
+          local revision="$1"
+          if ! git cat-file -e "$revision^{commit}" 2>/dev/null; then
+            auth=$(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 | tr -d '\n')
+            GIT_AUTH_HEADER="AUTHORIZATION: basic $auth" git -c http.https://github.com/.extraheader= --config-env=http.https://github.com/.extraheader=GIT_AUTH_HEADER \
+              fetch --quiet --depth=1 --no-tags --no-recurse-submodules \
+              "https://github.com/$GITHUB_REPOSITORY.git" "$revision"
+          fi
+          git cat-file -e "$revision^{commit}"
+        }
+        fetch_commit "$AUDITED_BASE"
+        fetch_commit "$protected_base"
+        unset FETCH_TOKEN auth GIT_AUTH_HEADER
         node "$GITHUB_ACTION_PATH/../../../scripts/check-owner-reuse.mjs" --root=. \
           --repo="${GITHUB_REPOSITORY#*/}" --base="$AUDITED_BASE" --revision="$candidate"
+        node "$GITHUB_ACTION_PATH/../../../scripts/check-consumer-release.mjs" --root=. \
+          --base="$protected_base" --revision="$candidate" --repository="$GITHUB_REPOSITORY" \
+          --aos-revision="$ACTION_REVISION"
