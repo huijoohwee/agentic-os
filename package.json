@@ -214,6 +214,7 @@
     "catalog",
     "templates",
     "scripts/sync-prompt-presets.mjs",
+    "scripts/check-content-security-policy.mjs",
     "scripts/check-fleet-reuse.mjs",
     "skills",
     "guides",
