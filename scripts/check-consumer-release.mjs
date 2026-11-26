@@ -27,7 +27,9 @@ function run() {
   const parents = git(['show', '-s', '--format=%P', revision]).split(/\s+/u).filter(Boolean);
   if (!parents.includes(base)) {
     try { execFileSync('git', ['--no-replace-objects', 'merge-base', '--is-ancestor', base, revision], { cwd: root }); }
-    catch { throw new Error('protected policy base is not an ancestor of the CI candidate'); }
+    catch {
+      throw new Error(`protected policy base ${base} is not an ancestor of CI candidate ${revision}; direct parents: ${parents.join(',') || 'none'}`);
+    }
   }
 
   const profilePath = '.agentic-os.json';
