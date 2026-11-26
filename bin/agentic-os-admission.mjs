@@ -401,7 +401,7 @@ function laneDirtyEvidence(path) {
   const status = observeGit(['status', '--porcelain=v2', '-z', '--untracked-files=all'], { cwd: path, binary: true });
   return { entries, indexSha256: rebindHash(index), statusSha256: rebindHash(status), bytes: total };
 }
-function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, mounted: suppliedMounted = false, createdAt: suppliedCreatedAt = null }) {
+function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, acceptUnrecoverable = false, mounted: suppliedMounted = false, createdAt: suppliedCreatedAt = null }) {
   if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
   const root = repoRoot(cwd), identity = parseLaneRef(ref);
   if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=no'], { cwd: root }) !== '')
@@ -415,6 +415,7 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || resolve(targetPath) !== targetPath) throw rebindBlock('restore-path', 'recertification target must be an exact absolute path');
   const targetStat = lstatSync(targetPath, { throwIfNoEntry: false }), registrations = worktrees(root),
     mounted = suppliedMounted || Boolean(targetStat), entry = registrations.find(row => row.branch === ref);
+  if (typeof acceptUnrecoverable !== 'boolean' || acceptUnrecoverable && mounted) throw rebindBlock('disposition', '--accept-unrecoverable applies only when recertifying an absent checkout');
   if (mounted ? !targetStat?.isDirectory() || targetStat.isSymbolicLink() || entry?.path !== targetPath
     || realpathSync(targetPath) !== targetPath || currentBranch(targetPath) !== ref
     : targetStat || entry || registrations.some(row => row.path === targetPath))
@@ -441,13 +442,14 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
   catch (error) { throw rebindBlock('path-overlap', error.message); }
   const createdAt = suppliedCreatedAt ?? new Date().toISOString();
   if (typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt)) || new Date(createdAt).toISOString() !== createdAt) throw rebindBlock('request', 'recertification timestamp must be an exact ISO timestamp');
+  const recovery = { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path', ...(acceptUnrecoverable ? { disposition: { schema: 'agentic-os/lane-recovery-disposition/v1', outcome: 'unrecoverable-accepted', ref, head, worktree: targetPath, decision: 'accept-missing-checkout-bytes-as-unrecoverable', recordedAt: createdAt, preserveCheckout: true, preserveRef: true, cleanupAuthorized: false, deploymentAuthorized: false } } : {}) };
   const updatedRecord = mounted
     ? { ref, device: identity.device, scope: identity.scope, state: 'active', base, baseSha, worktree: targetPath, pr: null, createdAt, writePaths }
-    : { ref, device: identity.device, scope: identity.scope, state: 'published', base, baseSha, worktree: targetPath, pr, createdAt, head, writePaths, recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path' } };
+    : { ref, device: identity.device, scope: identity.scope, state: 'published', base, baseSha, worktree: targetPath, pr, createdAt, head, writePaths, recovery };
   const body = { schema: REBIND_SCHEMA, mode: mounted ? 'mounted' : 'recertify', ref, root, targetPath, previousRecordSha256: rebindDigest(null), previousHead: null, head,
     protectedRef: base, protectedHead, baseSha, remoteHead, expectedHead, pr, refsSha256: refInventoryDigest(root), writePathsBefore: [], writePathsAfter: writePaths,
     addedPaths: writePaths, dirty, restoredDirtyState: mounted ? 'exact-local-inventory' : 'unobservable-at-missing-path', updatedRecord,
-    request: { base, baseSha, targetPath, expectedHead, pr, ...(mounted ? { mounted: true } : {}), createdAt } };
+    request: { base, baseSha, targetPath, expectedHead, pr, ...(acceptUnrecoverable ? { acceptUnrecoverable: true } : {}), ...(mounted ? { mounted: true } : {}), createdAt } };
   return { ...body, digest: rebindDigest(body) };
 }
 function planLaneRebindCore({ cwd = process.cwd(), ref, mode, ...request }) {
@@ -519,6 +521,7 @@ function laneRebindReceipt(plan, resumed) {
   return { schema: 'agentic-os/lane-rebind-receipt/v1', ref: plan.ref, mode: plan.mode,
     worktree: plan.targetPath, previousHead: plan.previousHead, head: plan.head,
     addedPaths: plan.addedPaths, restoredDirtyState: plan.restoredDirtyState,
+    recoveryDisposition: plan.updatedRecord?.recovery?.disposition ?? null,
     refsPreserved: true, committedBytesPreserved: true, authoredBytesPreserved: plan.mode === 'mounted',
     providerAuthority: false, integrationProof: false, cleanupAuthority: false, resumed };
 }
@@ -556,9 +559,7 @@ export function runLaneRebind(root, argv, out) {
   try {
     if (positional(argv)[0] === 'plan') {
       const mode = option(argv, 'mode');
-      const request = mode === 'recertify' ? { base: option(argv, 'base'), baseSha: option(argv, 'base-sha'),
-        targetPath: option(argv, 'worktree'), expectedHead: option(argv, 'expected-head'),
-        pr: option(argv, 'pr') === null ? null : Number(option(argv, 'pr')) } : {};
+      const request = mode === 'recertify' ? { base: option(argv, 'base'), baseSha: option(argv, 'base-sha'), targetPath: option(argv, 'worktree'), expectedHead: option(argv, 'expected-head'), pr: option(argv, 'pr') === null ? null : Number(option(argv, 'pr')), acceptUnrecoverable: flag(argv, 'accept-unrecoverable') } : {};
       const plan = planLaneRebindCore({ cwd: root, ref: option(argv, 'ref'), mode, ...request });
       out(JSON.stringify({ ...plan, authorization: `agentic-os:lane-rebind:${plan.digest}` }));
       return 0;
