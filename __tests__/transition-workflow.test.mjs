@@ -35,6 +35,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     'https://github.com/huijoohwee/agentic-commerce-os/pull/133',
     'https://github.com/huijoohwee/agentic-graph/pull/1492',
     'https://github.com/huijoohwee/agentic-graph/pull/1504',
+    'https://github.com/huijoohwee/agentic-trading-platform/pull/17',
     'https://github.com/huijoohwee/agentic-trading-platform/pull/2',
     'https://github.com/huijoohwee/huijoohwee.github.io/pull/297',
     'https://github.com/huijoohwee/agentic-design-system/pull/4',
@@ -95,6 +96,7 @@ test('committed transition workflow is bound to the canonical authority policy',
     ['https://github.com/huijoohwee/joohwee/pull/10', ['check']],
     ['https://github.com/huijoohwee/huijoohwee/pull/106', ['Runtime Readiness Gate']],
     ['https://github.com/huijoohwee/agentic-trading-platform/pull/2', ['Integration Gate']],
+    ['https://github.com/huijoohwee/agentic-trading-platform/pull/17', ['Integration Gate']],
     ['https://github.com/huijoohwee/agentic-os/pull/425', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/438', ['budgets', 'test']],
     ['https://github.com/huijoohwee/agentic-os/pull/441', ['budgets', 'test']],
@@ -235,6 +237,18 @@ test('committed transition workflow is bound to the canonical authority policy',
     adoptionScope: ['recovery/current-historical-content/pr-2'],
     rationale: 'Current recording of PR #2 merge content with historical protection, required-check policy, rule-suite and method authority unproven.',
   });
+  assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/17')), {
+    schema: 'agentic-os/historical-content-enrollment/v1',
+    repository: 'github.com/huijoohwee/agentic-trading-platform',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-trading-platform/pull/17',
+    baseRevision: 'e4ffbe8a7c6202a0f49c51051f987a3ff6c202cd',
+    headRevision: '1e77a6a7a3731a7bd1ea4a4fc414bb93730986b0',
+    mergeRevision: 'f5bb1c9de69b5b3537049fed93481d0f3fcf408a',
+    treeRevision: '6f5f12edabd143b5858026e083b1a0d151cb3a15',
+    checkContexts: ['Integration Gate'],
+    adoptionScope: ['recovery/current-historical-content/pr-17'],
+    rationale: 'Owner-authorized current recording of PR #17 merge content; historical protection, required-check policy, Ruleset Suite and merge-method authority remain unproven.',
+  });
   assert.deepEqual(policy.historicalIntegrations.find(entry => entry.reviewLocator.endsWith('/pull/297')), {
     schema: 'agentic-os/historical-content-enrollment/v1',
     repository: 'github.com/huijoohwee/huijoohwee.github.io',
@@ -337,6 +351,15 @@ test('committed transition workflow is bound to the canonical authority policy',
     });
   }
   assert.deepEqual(policy.preservationAdoptions, [{
+    schema: 'agentic-os/same-head-lane-retention-adoption/v1',
+    repository: 'github.com/huijoohwee/agentic-trading-platform',
+    reviewedRef: 'agent/device-0232231d4a19/moomoo-hosted-n3',
+    retainedRef: 'agent/device-0232231d4a19/moomoo-stream-recovery',
+    headRevision: '1e77a6a7a3731a7bd1ea4a4fc414bb93730986b0',
+    merge: 'f5bb1c9de69b5b3537049fed93481d0f3fcf408a',
+    reviewLocator: 'https://github.com/huijoohwee/agentic-trading-platform/pull/17',
+    historicalSuccessionAuthorityProven: false,
+  }, {
     schema: 'agentic-os/successor-preservation-adoption/v1',
     repository: 'github.com/huijoohwee/agentic-os',
     predecessorRef: 'agent/device-0232231d4a19/joohwee-authority-enrollment',
@@ -379,6 +402,14 @@ test('committed transition workflow is bound to the canonical authority policy',
     quarantineCoordinate: 'ef0317e48e484a527fb1a06ba957f34e3136d48c2f8ffdedb89cd7a7bf694881',
     historicalSuccessionAuthorityProven: false,
   }]);
+  const sameHead = policy.preservationAdoptions.find(entry => entry.schema === 'agentic-os/same-head-lane-retention-adoption/v1');
+  const digest = 'a'.repeat(64);
+  assert.deepEqual(selectPreservationAdoption(policy, { ...sameHead, integrationReceiptDigest: digest }), sameHead);
+  assert.throws(() => selectPreservationAdoption(policy,
+    { ...sameHead, integrationReceiptDigest: digest, retainedRef: 'agent/device-0232231d4a19/other-lane' }),
+  /not exactly enrolled/);
+  assert.throws(() => selectPreservationAdoption(policy, { ...sameHead, integrationReceiptDigest: 'invalid' }),
+    /integration receipt is invalid/);
   const closeoutTargets = new Set([
     'agent/device-0232231d4a19/agentic-base-prd-plan',
     'agent/device-0232231d4a19/closeout-explicit-cleanup',

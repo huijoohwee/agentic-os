@@ -1,5 +1,5 @@
 /** Committed policy for one GitHub transition evidence workflow and target set. */
-import { freezeCleanupRecord as freeze, STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA } from './cleanup-records.mjs';
+import { freezeCleanupRecord as freeze, STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA, SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA } from './cleanup-records.mjs';
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { parseGitHubRepositoryIdentity } from './github-authority.mjs';
 
@@ -174,12 +174,10 @@ function historicalEnrollment(source) {
   return result;
 }
 function preservationAdoption(source) {
-  const retained = source?.schema === 'agentic-os/current-quarantine-adoption/v1';
-  fields(source, retained ? ['schema', 'repository', 'targetRef', 'targetHead', 'merge', 'reviewLocator',
-    'quarantineCoordinate', 'originalReceiptDigest', 'historicalQuarantineAuthorityProven'] : ['schema', 'repository', 'predecessorRef', 'predecessorHead', 'successorRef',
-    'successorHead', 'merge', 'reviewLocator', 'replacedPaths', 'quarantineCoordinate',
-    'historicalSuccessionAuthorityProven'], 'preservation adoption');
+  const retained = source?.schema === 'agentic-os/current-quarantine-adoption/v1', sameHead = source?.schema === SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA;
+  fields(source, sameHead ? ['schema', 'repository', 'reviewedRef', 'retainedRef', 'headRevision', 'merge', 'reviewLocator', 'historicalSuccessionAuthorityProven'] : retained ? ['schema', 'repository', 'targetRef', 'targetHead', 'merge', 'reviewLocator', 'quarantineCoordinate', 'originalReceiptDigest', 'historicalQuarantineAuthorityProven'] : ['schema', 'repository', 'predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'merge', 'reviewLocator', 'replacedPaths', 'quarantineCoordinate', 'historicalSuccessionAuthorityProven'], 'preservation adoption');
   const target = repository(source.repository, 'preservation adoption repository');
+  if (sameHead) { if (source.historicalSuccessionAuthorityProven !== false || source.reviewedRef === source.retainedRef) fail('same-head retention identity is invalid'); for (const [key, check] of [['reviewedRef', ref], ['retainedRef', ref], ['headRevision', oid], ['merge', oid]]) check(key.includes('Ref') ? `refs/heads/${source[key]}` : source[key], key); return { ...source, repository: target, reviewLocator: review(source.reviewLocator, target) }; }
   if (retained) {
     if (source.historicalQuarantineAuthorityProven !== false || !/^[0-9a-f]{64}$/u.test(source.originalReceiptDigest)
       || !/^[0-9a-f]{64}$/u.test(source.quarantineCoordinate)) fail('retained adoption schema or basis is invalid');
@@ -197,8 +195,10 @@ function preservationAdoption(source) {
 }
 export function selectPreservationAdoption(policyValue, receiptOrEntry) {
   const policy = validateGitHubTransitionPolicy(policyValue), entry = receiptOrEntry.adoption ?? receiptOrEntry;
+  const sameHead = entry.schema === SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA;
   const entries = entry.schema === STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA ? [entry] : entry.schema === 'agentic-os/current-quarantine-adoption/v1' ? policy.retentionAdoptions : policy.preservationAdoptions;
-  const selected = entries?.find((value) => canonicalJson(value) === canonicalJson(entry));
+  const { integrationReceiptDigest, ...sameHeadIdentity } = sameHead ? entry : {};
+  if (sameHead && !/^[0-9a-f]{64}$/u.test(integrationReceiptDigest ?? '')) fail('same-head retention integration receipt is invalid'); const selected = entries?.find((value) => canonicalJson(value) === canonicalJson(sameHead ? sameHeadIdentity : entry));
   if (!selected) fail('preservation adoption is not exactly enrolled in committed policy');
   return selected;
 }

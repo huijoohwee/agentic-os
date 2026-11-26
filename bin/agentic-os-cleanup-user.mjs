@@ -21,7 +21,7 @@ import { classifyLaneChangeClass, SUPPORTED_CHANGE_CLASSES, successorIntegration
 import { get } from '../src/lane-records.mjs';
 import { isLaneRef } from '../src/lane-id.mjs';
 import { validateGitHubTransitionPolicy, selectPreservationAdoption } from '../src/github-transition-policy.mjs';
-import { SUCCESSOR_PRESERVATION_SCHEMA, SUCCESSOR_PRESERVATION_PLAN_SCHEMA, CURRENT_QUARANTINE_SCHEMA, CURRENT_QUARANTINE_PLAN_SCHEMA, CURRENT_QUARANTINE_DISCARD_SCHEMA, CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA, validateRetentionDispositionPlan, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
+import { SUCCESSOR_PRESERVATION_SCHEMA, SUCCESSOR_PRESERVATION_PLAN_SCHEMA, CURRENT_QUARANTINE_SCHEMA, CURRENT_QUARANTINE_PLAN_SCHEMA, CURRENT_QUARANTINE_DISCARD_SCHEMA, CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA, SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA, validateRetentionDispositionPlan, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
 const KEY = 'agentic-os.userCleanup';
 const validatePlan = input => validateUserCleanupPlan(input, reviewOptions);
 const LIMITS = Object.freeze({ projectionByteCeiling: 16 * 1024 * 1024, projectionEntryCeiling: 10000,
@@ -440,18 +440,16 @@ function preservationObservation(root, adoption, policyRoot, workflow, options =
   const current = policy(root, RECOVERY_MODE), authority = preservationPolicy(policyRoot);
   selectPreservationAdoption(authority.policy, adoption);
   if (adoption.repository !== `github.com/${current.repository}`) refuse('preservation-repository');
-  const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1', standalone = adoption.schema === 'agentic-os/standalone-lane-retention-adoption/v1';
-  const refs = retained || standalone ? [adoption.targetRef, adoption.targetRef] : [adoption.predecessorRef, adoption.successorRef];
-  if (refs.some(ref => !isLaneRef(ref)) || !retained && !standalone && refs[0] === refs[1]) refuse('preservation-refs');
-  const peers = worktrees(root), lane = standalone && peers.find(peer => peer.branch === refs[1]), cacheDigest = governanceDigest(refs.map(ref => get(ref, root)));
-  if (standalone ? !lane || read(lane.path, ['status', '--porcelain', '--untracked-files=all']) || read(lane.path, ['rev-parse', '--verify', 'HEAD']) !== adoption.targetHead : peers.some(peer => refs.includes(peer.branch))) refuse('preservation-mounted');
+  const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1', standalone = adoption.schema === 'agentic-os/standalone-lane-retention-adoption/v1', sameHead = adoption.schema === SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA, mountedRetention = standalone || sameHead;
+  const refs = sameHead ? [adoption.reviewedRef, adoption.retainedRef] : retained || standalone ? [adoption.targetRef, adoption.targetRef] : [adoption.predecessorRef, adoption.successorRef];
+  if (refs.some(ref => !isLaneRef(ref)) || !retained && !mountedRetention && refs[0] === refs[1]) refuse('preservation-refs');
+  const peers = worktrees(root), lane = mountedRetention && peers.find(peer => peer.branch === refs[1]), cacheDigest = governanceDigest(refs.map(ref => get(ref, root)));
+  if (mountedRetention ? !lane || sameHead && peers.some(peer => peer.branch === refs[0]) || read(lane.path, ['status', '--porcelain', '--untracked-files=all']) || read(lane.path, ['rev-parse', '--verify', 'HEAD']) !== (sameHead ? adoption.headRevision : adoption.targetHead) : peers.some(peer => refs.includes(peer.branch))) refuse('preservation-mounted');
   const heads = refs.map(ref => read(root, ['rev-parse', '--verify', `refs/heads/${ref}^{commit}`]));
-  if (heads[0] !== (retained || standalone ? adoption.targetHead : adoption.predecessorHead)
-    || heads[1] !== (retained || standalone ? adoption.targetHead : adoption.successorHead))
+  if (heads[0] !== (sameHead ? adoption.headRevision : retained || standalone ? adoption.targetHead : adoption.predecessorHead)
+    || heads[1] !== (sameHead ? adoption.headRevision : retained || standalone ? adoption.targetHead : adoption.successorHead))
     refuse('preservation-head-drift');
-  const direct = retained || standalone ? exactCurrentIntegrationProof(adoption.merge, heads[0], { cwd: root }) : null;
-  const integration = retained || standalone ? direct && { kind: standalone ? 'standalone-lane-retained' : 'current-quarantined', predecessorHead: heads[0], reviewedHead: heads[1],
-    merge: adoption.merge, pathCount: direct.pathCount, replacements: [] }
+  const integration = retained || mountedRetention ? ((direct) => direct && { kind: standalone || sameHead ? 'standalone-lane-retained' : 'current-quarantined', predecessorHead: heads[0], reviewedHead: heads[1], merge: adoption.merge, pathCount: direct.pathCount, replacements: [] })(exactCurrentIntegrationProof(adoption.merge, heads[0], { cwd: root }))
     : successorIntegrationProof(adoption.merge, heads[0], heads[1], adoption.replacedPaths, { cwd: root });
   if (!integration || read(root, ['merge-base', '--is-ancestor', adoption.merge, current.canonical], { allowFail: true }) === null)
     refuse('preservation-integration');
@@ -459,16 +457,16 @@ function preservationObservation(root, adoption, policyRoot, workflow, options =
     pr: Number(adoption.reviewLocator.split('/').at(-1)), requiredChecks: current.requiredChecks,
     workflow, mode: RECOVERY_MODE }, { cwd: root, ...options });
   if (review.url !== adoption.reviewLocator || review.head !== heads[1]
-    || review.branch !== refs[1] || review.merge !== adoption.merge) refuse('preservation-review');
+    || review.branch !== (sameHead ? adoption.reviewedRef : refs[1]) || review.merge !== adoption.merge) refuse('preservation-review');
   const discarded = retained && options.originalReceipt?.schema === 'agentic-os/quarantine-retirement-receipt/v2' && options.originalReceipt.bytesDeleted === true && options.originalReceipt.recoveryBytesDiscarded === true;
-  const observed = standalone ? null : discarded ? observeDiscardedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate, { originalReceipt: options.originalReceipt })
+  const observed = mountedRetention ? null : discarded ? observeDiscardedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate, { originalReceipt: options.originalReceipt })
     : observeRetainedQuarantineEvidence(root, refs[1], heads[1], adoption.quarantineCoordinate, retained ? { originalReceipt: options.originalReceipt, canonicalRef: current.localRef } : {});
-  const retention = standalone ? { branchRef: refs[1], retainedHead: heads[1], worktreePath: lane.path, worktreeClean: true, integrationReceiptDigest: adoption.integrationReceiptDigest } : observed && retained ? { ...observed, originalReceipt: options.originalReceipt } : observed;
+  const retention = mountedRetention ? { branchRef: refs[1], retainedHead: heads[1], worktreePath: lane.path, worktreeClean: true, integrationReceiptDigest: adoption.integrationReceiptDigest } : observed && retained ? { ...observed, originalReceipt: options.originalReceipt } : observed;
   if (!retention) refuse('preservation-retention');
   if (retained && retention.originalReceiptDigest !== adoption.originalReceiptDigest) refuse('preservation-original-receipt');
   if (!same(current, policy(root, RECOVERY_MODE)) || !same(authority, preservationPolicy(policyRoot)) || !same(peers, worktrees(root))
     || cacheDigest !== governanceDigest(refs.map(ref => get(ref, root))) || refs.some((ref, index) => read(root, ['rev-parse', `refs/heads/${ref}`]) !== heads[index])
-    || standalone && (read(lane.path, ['rev-parse', '--verify', 'HEAD']) !== heads[1] || read(lane.path, ['status', '--porcelain', '--untracked-files=all'])))
+    || mountedRetention && (read(lane.path, ['rev-parse', '--verify', 'HEAD']) !== heads[1] || read(lane.path, ['status', '--porcelain', '--untracked-files=all']) || sameHead && worktrees(root).some(peer => peer.branch === refs[0])))
     refuse('preservation-observation-race');
   const state = { root, policyRoot: authority.root, policyRevision: authority.revision,
     policyRepository: authority.repository, workflow, predecessorHead: heads[0], successorHead: heads[1],
@@ -479,7 +477,7 @@ function preservationObservation(root, adoption, policyRoot, workflow, options =
 }
 export function planSuccessorPreservation({ cwd = process.cwd(), adoption, originalReceipt, policyRoot, workflow }, options = {}) {
   const root = realpathSync(repoRoot(cwd)), issued = (options.now ?? Date.now)();
-  const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1', standalone = adoption.schema === 'agentic-os/standalone-lane-retention-adoption/v1';
+  const retained = adoption.schema === 'agentic-os/current-quarantine-adoption/v1', standalone = adoption.schema === 'agentic-os/standalone-lane-retention-adoption/v1' || adoption.schema === SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA;
   const facts = preservationObservation(root, adoption, policyRoot, workflow, { ...options, originalReceipt });
   const discarded = retained && facts.retention.projectionRetained === false;
   const payload = { schema: discarded ? CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : retained ? CURRENT_QUARANTINE_PLAN_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA,
