@@ -9,7 +9,7 @@
   "consumers": [
     {
       "repository": "github.com/huijoohwee/agentic-design-system",
-      "productionSurfaces": ["site/index.html", "src/design-system-edge/index.mjs"],
+      "productionSurfaces": ["site/index.html"],
       "developmentSurface": "scripts/dev.mjs",
       "gate": {
         "workflow": ".github/workflows/integration.yml",
@@ -34,7 +34,7 @@
       "gate": {
         "workflow": ".github/workflows/integration.yml",
         "job": "Integration Gate",
-        "command": "policy.pagesHeaders.agenticGraphReportOnlyCsp.omitsIgnoredUpgradeDirective"
+        "command": "npm -C canvas run test:ci:unit -- policy.pagesHeaders.agenticGraphReportOnlyCsp.omitsIgnoredUpgradeDirective"
       }
     }
   ]

@@ -20,11 +20,14 @@ for (const consumer of manifest.consumers) {
     || !consumer.developmentSurface || !consumer.gate?.workflow || !consumer.gate?.job || !consumer.gate?.command) {
     fail(`consumer_gate_incomplete:${consumer.repository}`)
   }
+  if (new Set(consumer.productionSurfaces).size !== consumer.productionSurfaces.length) {
+    fail(`consumer_surface_duplicate:${consumer.repository}`)
+  }
 }
 const prompt = read('guides/SYSTEM-PROMPT-RUNTIME.md')
 if (!prompt.includes('Prod HTML CSP on; Dev Report-Only→enforce pre-Prod; scoped-owner exceptions')) fail('runtime_prompt_drift')
 const guide = read('guides/CONTENT-SECURITY-POLICY.md')
-for (const required of ['Production and pre-production HTML', 'Content-Security-Policy-Report-Only', 'agentic-os/content-security-policy']) {
+for (const required of ['one enforced CSP delivery', 'Content-Security-Policy-Report-Only', 'agentic-os/content-security-policy', 'required owner gates']) {
   if (!guide.includes(required)) fail(`guide_missing:${required}`)
 }
 process.stdout.write(`${JSON.stringify({ schema: manifest.schema, consumers: manifest.consumers.length, modes: manifest.modes })}\n`)
