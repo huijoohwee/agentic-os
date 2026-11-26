@@ -19,6 +19,40 @@ import {
 
 const ROOT = resolve(import.meta.dirname, '..');
 
+test('content-security-policy public subpath exports shared mode helpers', async () => {
+  const policyApi = await import('agentic-os/content-security-policy');
+  for (const name of [
+    'assertContentSecurityPolicy', 'contentSecurityPolicyHeaderName',
+    'formatContentSecurityPolicyHeader', 'setContentSecurityPolicy',
+    'validateContentSecurityPolicy',
+  ]) assert.equal(typeof policyApi[name], 'function');
+});
+
+test('content-security-policy delivery keeps exactly one enforced or report-only header', async () => {
+  const { assertContentSecurityPolicy, setContentSecurityPolicy } =
+    await import('agentic-os/content-security-policy');
+  const policy = "default-src 'self'; script-src 'self'; style-src 'self'";
+  for (const mode of ['enforce', 'report-only']) {
+    const headers = new Headers({ 'content-security-policy': 'default-src *' });
+    setContentSecurityPolicy(headers, { mode, policy });
+    assert.equal(assertContentSecurityPolicy(headers, { mode, policy }), policy);
+    assert.equal(headers.has(mode === 'enforce'
+      ? 'content-security-policy-report-only' : 'content-security-policy'), false);
+  }
+});
+
+test('content-security-policy rejects missing, conflicting, duplicate and unsupported policies', async () => {
+  const { assertContentSecurityPolicy, setContentSecurityPolicy, validateContentSecurityPolicy } =
+    await import('agentic-os/content-security-policy');
+  const policy = "default-src 'self'; script-src 'self'; style-src 'self'";
+  const headers = new Headers({ 'content-security-policy-report-only': policy });
+  assert.throws(() => assertContentSecurityPolicy(headers, { mode: 'enforce', policy }), /header_mismatch/u);
+  headers.set('content-security-policy', policy);
+  assert.throws(() => assertContentSecurityPolicy(headers, { mode: 'enforce', policy }), /conflicting/u);
+  assert.throws(() => validateContentSecurityPolicy("default-src 'self'; DEFAULT-SRC *"), /duplicate/u);
+  assert.throws(() => setContentSecurityPolicy(new Headers(), { mode: 'dev', policy }), /unsupported/u);
+});
+
 function providerRepository(
   t, origin = 'https://github.com/owner/repo.git', remote = 'origin',
 ) {

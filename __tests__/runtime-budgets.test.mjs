@@ -231,7 +231,7 @@ test('required CI continuously evaluates the root-owned ADLC contract', () => {
   assert.equal(packageDocument.scripts.check, 'node bin/agentic-os-tests.mjs affected');
   assert.equal(packageDocument.scripts['check:ci'], 'node bin/agentic-os-test-ci.mjs');
   assert.equal(packageDocument.scripts.evals,
-    'npm run readiness:check && npm run docs:check && npm run modules:check');
+    'npm run readiness:check && npm run docs:check && npm run modules:check && npm run csp:check');
   const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
   assert.equal(ciBudgetsJobIsExact(workflow), true);
   assert.deepEqual(workflowMergeGroupChecks(workflow), ['test', 'budgets']);
