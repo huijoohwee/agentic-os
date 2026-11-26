@@ -158,7 +158,7 @@ export function validateCommandArguments(command, argv) {
             ...(providerRefresh ? ['pr', 'expected-head', 'expected-base'] : [])];
           const required = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head'] : []),
             ...(providerRefresh ? ['pr', 'expected-head', 'expected-base'] : [])];
-          const error = exact(argv.slice(1), { min: 1, max: 1, options: fields, requiredOptions: required });
+          const error = exact(argv.slice(1), { min: 1, max: 1, options: fields, flags: recertify ? ['accept-unrecoverable'] : [], requiredOptions: required });
           if (error) return error;
           if (!['mounted', 'restore', 'recertify', 'provider-refresh'].includes(mode)) return 'rebind mode must be mounted, restore, recertify or provider-refresh';
           if (recertify && (!/^[0-9a-f]{40}$/u.test(option(argv, 'base-sha'))

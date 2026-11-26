@@ -20,10 +20,16 @@ authority unproven.
 npm run release:common -- rebind plan \
   --ref=<lane> --mode=recertify --base=refs/remotes/origin/main \
   --base-sha=<trusted-base-sha> --worktree=<absent-absolute-path> \
-  --expected-head=<exact-40-character-sha> [--pr=<number>]
+  --expected-head=<exact-40-character-sha> [--pr=<number>] [--accept-unrecoverable]
 npm run release:common -- rebind apply --plan=<saved-plan.json> \
   --authorize=agentic-os:lane-rebind:<plan-digest> --stopped
 ```
+
+Select `--accept-unrecoverable` only after the owner accepts that bytes from the missing checkout cannot be
+recovered. It binds that decision into the same recertification plan and receipt, while preserving the
+reconstructed checkout and refs. It grants no cleanup or deployment authority. Without the flag, the
+record stays `unobservable-at-missing-path` and cleanup remains blocked until the bytes are recovered or
+separately dispositioned.
 
 The plan binds the exact lane ref, protected base, base SHA, head, live remote head, destination, and
 reservation. Apply recomputes these observations under a clone-common operation lock. It mounts the
@@ -54,6 +60,9 @@ or ignored bytes that existed only in the missing checkout. The cache record the
 bytes `unobservable-at-missing-path`; completion, release-common closeout, and both cleanup paths block
 while the marker remains. Recover the missing files and obtain an owner-reviewed disposition before
 any closeout. Never claim the restored clean checkout proves the missing checkout was clean.
+After recovery, return to the single `complete-adlc --apply` END path. For routine closeout and status,
+`npm run release:common -- close --ref=<lane>` runs finish, bounded `reap` classification, and completion
+status together. Do not immediately run `npm run reap` again for that lane.
 
 ## Provider-verified refresh after a strict-base update
 

@@ -210,8 +210,7 @@ async function cmdReleaseCommon(cwd, root, argv, policy, profile, once = false, 
   }
 }
 async function cmdFinishAndReap(root, argv, policy, profile) {
-  const status = await cmdFinish(root, argv, policy, profile);
-  return status !== 0 ? status : cmdReap(root, argv, policy, profile);
+  return cmdFinish(root, argv, policy, profile, true);
 }
 async function cmdStatus(root, argv, profile, policy) {
   const device = assertDevice(option(argv, 'device') ?? deviceSegment());
@@ -255,13 +254,13 @@ async function cmdStatus(root, argv, profile, policy) {
   );
   return 0;
 }
-async function cmdReap(root, argv, policy, profile) {
+async function cmdReap(root, argv, policy, profile, fetchedBaseSha = undefined) {
   requireCanonical(root, policy);
   if (flag(argv, 'apply')) { err('blocked-authenticated-cleanup-required: reap is classification-only'); return 1; }
   const refs = option(argv, 'refs'), branches = refs === null ? reapLaneBranches(option(argv, 'ref'), root) : parseReapRefBatch(refs, root);
   const { assertProfileCurrent } = await import('./agentic-os-auxiliary.mjs');
-  effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
-  const baseSha = assertProfileCurrent(root, policy, profile);
+  if (fetchedBaseSha === undefined) effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
+  const baseSha = fetchedBaseSha ?? assertProfileCurrent(root, policy, profile);
   if (!baseSha) { err(`blocked-base-not-fetched: ${policy.protectedRef} is unavailable after fetch`); return 1; }
   const survey = surveyLanes(baseSha, branches, { cwd: root });
   const stale = staleWorktrees(root).map((entry) => entry.path);
@@ -270,7 +269,7 @@ async function cmdReap(root, argv, policy, profile) {
   if (survey.integrated.length > 0 || stale.length > 0) { out(''); out('classification only; authenticated retire(claim) and cleanup receipts remain required.'); }
   return 0;
 }
-async function cmdFinish(root, argv, policy, profile) {
+async function cmdFinish(root, argv, policy, profile, includeReap = false) {
   requireCanonical(root, policy);
   const ref = option(argv, 'ref');
   if (!ref || !isLaneRef(ref)) {
@@ -301,7 +300,7 @@ async function cmdFinish(root, argv, policy, profile) {
     cleanupDisposition: profile.cleanup.worktreeProjection === 'retain'
       ? 'retained' : 'authenticated-cleanup-required',
     cleanupOwner: 'agentic-os/adapters/worktree-cleanup' }));
-  return 0;
+  return includeReap ? cmdReap(root, argv, policy, profile, baseSha) : 0;
 }
 async function cmdQueue(root, argv, profile) {
   const [action = 'show'] = positional(argv);
