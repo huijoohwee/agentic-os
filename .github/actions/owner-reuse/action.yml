@@ -15,13 +15,11 @@ runs:
         AUDITED_BASE: ${{ inputs.baseline }}
         CONSUMER_PATH: ${{ inputs.checkout }}
         PR_HEAD: ${{ github.event.pull_request.head.sha }}
-        ACTION_REVISION: ${{ github.action_ref }}
         FETCH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/$CONSUMER_PATH"
         [[ "$AUDITED_BASE" =~ ^[0-9a-f]{40}$ ]]
-        [[ "$ACTION_REVISION" =~ ^[0-9a-f]{40}$ ]]
         [[ "$GITHUB_REPOSITORY" =~ ^huijoohwee/[A-Za-z0-9.-]+$ ]]
         candidate=$(git rev-parse HEAD)
         [[ "$candidate" = "$GITHUB_SHA" || "$candidate" = "$PR_HEAD" ]]
@@ -51,6 +49,10 @@ runs:
         unset FETCH_TOKEN auth GIT_AUTH_HEADER
         node "$GITHUB_ACTION_PATH/../../../scripts/check-owner-reuse.mjs" --root=. \
           --repo="${GITHUB_REPOSITORY#*/}" --base="$AUDITED_BASE" --revision="$candidate"
-        node "$GITHUB_ACTION_PATH/../../../scripts/check-consumer-release.mjs" --root=. \
-          --base="$protected_base" --revision="$candidate" --repository="$GITHUB_REPOSITORY" \
-          --aos-revision="$ACTION_REVISION"
+        if [[ "$GITHUB_REPOSITORY" != "huijoohwee/agentic-os" ]]; then
+          action_revision="${GITHUB_ACTION_REF:-}"
+          [[ "$action_revision" =~ ^[0-9a-f]{40}$ ]]
+          node "$GITHUB_ACTION_PATH/../../../scripts/check-consumer-release.mjs" --root=. \
+            --base="$protected_base" --revision="$candidate" --repository="$GITHUB_REPOSITORY" \
+            --aos-revision="$action_revision"
+        fi
