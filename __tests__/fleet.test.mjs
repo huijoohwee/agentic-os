@@ -415,7 +415,7 @@ test('fleet-workflow-contract binds START and ADLC to the registered authority',
   // An empty check list proves no adoption: each audited product enrolls every owner it pins.
   const enrolled = name => new Set(actual.responsibilities.flatMap(role => [role.reuse ?? []].flat()
     .filter(proof => proof.consumer === 'github.com/huijoohwee/agentic-' + name).map(() => role.owner.split('/').at(-1))));
-  assert.deepEqual([...enrolled('commerce-os')].sort(), ['agentic-base','agentic-gateway','agentic-geo','agentic-os']);
+  assert.deepEqual([...enrolled('commerce-os')].sort(), ['agentic-base','agentic-design-system','agentic-gateway','agentic-geo','agentic-os']);
   assert.deepEqual([...enrolled('trading-platform')].sort(),
     ['agentic-base','agentic-design-system','agentic-gateway','agentic-os','agentic-sheets']);
   assert.deepEqual([...enrolled('graph')].sort(), ['agentic-base','agentic-design-system','agentic-gateway',

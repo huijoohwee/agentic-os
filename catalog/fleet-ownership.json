@@ -160,6 +160,7 @@
       "reuse": [
         { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "package.json", "package": "agentic-design-system" },
         { "consumer": "github.com/huijoohwee/agentic-graph", "manifest": "canvas/package.json", "package": "agentic-design-system" },
+        { "consumer": "github.com/huijoohwee/agentic-commerce-os", "manifest": "package.json", "package": "agentic-design-system" },
         { "consumer": "github.com/huijoohwee/agentic-trading-platform", "snapshot": "scripts/owner-revisions.json" }
       ],
       "owner": "github.com/huijoohwee/agentic-design-system",
