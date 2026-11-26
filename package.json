@@ -263,7 +263,7 @@
     "composition:admission:probe": "node bin/composition-admission-probe.mjs",
     "docs:check": "node bin/agentic-os-doc-budget.mjs",
     "modules:check": "node bin/agentic-os-module-budget.mjs",
-    "csp:check": "node --test __tests__/content-security-policy.test.mjs && node scripts/check-content-security-policy.mjs",
+    "csp:check": "node --test --test-name-pattern=content-security-policy __tests__/public-api.test.mjs && node scripts/check-content-security-policy.mjs",
     "preevals": "node --test --test-name-pattern=fleet-workflow-contract __tests__/fleet.test.mjs && npm run presets:check",
     "evals": "npm run readiness:check && npm run docs:check && npm run modules:check && npm run csp:check",
     "test": "node bin/agentic-os-tests.mjs affected",
