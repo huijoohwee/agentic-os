@@ -237,6 +237,22 @@ test('mixed no-deploy dispositions bind exact excluded paths to committed eviden
   const accepted = validateDeliveryDispositionSet(set, expected);
   assert.equal(accepted.scopeRule, 'mixed-path-artifact-exclusion');
   assert.equal(accepted.authorizesEffects, false);
+
+  const boundedRows = count => Array.from({ length: count }, (_, index) => ({
+    ...row,
+    ref: `agent/device-123/delivery-${String(index).padStart(2, '0')}`,
+    laneHead: createHash('sha1').update(`delivery-${index}`).digest('hex'),
+    paths: [...row.paths],
+  })).sort((left, right) => left.ref.localeCompare(right.ref));
+  const rows64 = boundedRows(64), set64Body = { ...setBody, dispositions: rows64 };
+  const accepted64 = validateDeliveryDispositionSet({ ...set64Body, receiptDigest: governanceDigest(set64Body) }, {
+    ...expected, ref: rows64[0].ref, laneHead: rows64[0].laneHead,
+  });
+  assert.equal(accepted64.ref, rows64[0].ref);
+  const rows65Body = { ...setBody, dispositions: boundedRows(65) };
+  assert.throws(() => validateDeliveryDispositionSet({ ...rows65Body, receiptDigest: governanceDigest(rows65Body) }, expected),
+    error => error.reason === 'blocked-delivery-disposition-set-identity');
+
   const unsupported = { ...row, reason: 'The test file is excluded from the product artifact.' };
   const unsupportedBody = { ...setBody, dispositions: [unsupported] };
   assert.throws(() => validateDeliveryDispositionSet({ ...unsupportedBody, receiptDigest: governanceDigest(unsupportedBody) }, expected),
