@@ -13,8 +13,8 @@ import { effectPlanByteDigest, encodeEffectPlan, replayAuthenticatedTransitionOp
 import { createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { GITHUB_RETROSPECTIVE_CONTENT_MODE, GITHUB_RETROSPECTIVE_INTEGRATION_MODE, GITHUB_SUCCESSOR_PREDECESSOR_SCHEMA, createGitHubTransitionInput, deriveGitHubTransitionCoordinate, deriveGitHubTransitionInputDigest, deriveGitHubTransitionRunName, encodeGitHubTransitionInput, validateGitHubTransitionDispatchEvent } from '../src/github-transition-client.mjs';
 import { createGitHubTransitionAuthorityVerifier, prepareGitHubIntegrationProviderProof, publishGitHubTransitionAuthority } from '../src/github-transition-authority.mjs';
-import { GITHUB_TRANSITION_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
-import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS } from '../src/cleanup-records.mjs';
+import { GITHUB_HISTORICAL_CONTENT_MODE, GITHUB_TRANSITION_POLICY_SCHEMA, GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA, encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
+import { CLEANUP_EFFECTS, INTEGRATION_RECORD_EFFECTS, INTEGRATION_RECORD_RETAINED_EFFECTS, RETAINED_EFFECTS, RECORD_ONLY_RETIREMENT_EFFECTS, RECORD_ONLY_RETIREMENT_RETAINED_EFFECTS } from '../src/cleanup-records.mjs';
 import { hex, EVIDENCE_BASE, INITIAL_WORKFLOW, CANDIDATE, TARGET_BASE, TRANSITION_BASE, MERGE, LATER, INITIAL_PUBLICATION, INITIAL_TREE, INITIAL_BASE_TREE, INITIAL_BLOB, TRANSITION_BASE_TREE, STARTED, COMMITTED, NOW, WORKFLOW_PATH, TRANSITION_POLICY, POLICY_CONTEXT, rule, canonicalRuleRows, targetRuleRows, evidenceRuleRows, classicProtection, projection, predecessorIssuance, integrationDraft, successorPredecessorAuthority, workflowRun, response, commit, checkRun, apiFixture, integrationFixture, successorFixture, inputWithExpiry, historicalSquash } from './lib/github-transition-fixture.mjs';
 
 test('read-only transition CLI validates canonical committed policy and Actions identity', async (t) => {
@@ -318,6 +318,83 @@ test('retire accepts a fresh successor predecessor authority window', async () =
   const verify = createGitHubTransitionAuthorityVerifier(common);
   const retired = await replayAuthenticatedTransitionOperationReceipt({ request, planBytes }, verify);
   assert.equal(retired.transitionReceipt.resultState, 'retired');
+  assert.equal(fixture.api.publications.size, 2);
+});
+
+test('record-only retirement accepts the enrolled same-head retention identity', async () => {
+  const scope = ['recovery/current-historical-content/pr-7'];
+  const adoption = { schema: 'agentic-os/same-head-lane-retention-adoption/v1',
+    repository: 'github.com/example/target', reviewedRef: 'agent/device/recovery',
+    retainedRef: 'agent/device/recovery-retained', headRevision: CANDIDATE,
+    merge: MERGE, reviewLocator: 'https://github.com/example/target/pull/7',
+    historicalSuccessionAuthorityProven: false };
+  const policy = { ...TRANSITION_POLICY, schema: GITHUB_TRANSITION_RECOVERY_POLICY_SCHEMA,
+    historicalIntegrations: [{ schema: 'agentic-os/historical-content-enrollment/v1',
+      repository: adoption.repository, reviewLocator: adoption.reviewLocator,
+      baseRevision: TARGET_BASE, headRevision: CANDIDATE, mergeRevision: MERGE,
+      treeRevision: hex('a', 40), checkContexts: ['Integration Gate'], adoptionScope: scope,
+      rationale: 'Record exact reviewed content while historical authority remains unproven.' }],
+    preservationAdoptions: [adoption] };
+  const fixture = await integrationFixture(state => { historicalSquash(state);
+    state.targetMergeMethods = ['squash', 'rebase']; state.ruleSuiteRowsEmpty = true;
+    state.transitionPolicy = policy; }, { initialReviewState: 'merged',
+    integrationMode: GITHUB_HISTORICAL_CONTENT_MODE, scope });
+  await publishGitHubTransitionAuthority(fixture.common);
+  fixture.api.state.transitionStatus = 'completed';
+  const integration = await replayAuthenticatedTransitionOperationReceipt({
+    request: fixture.final.request, planBytes: fixture.final.planBytes,
+  }, createGitHubTransitionAuthorityVerifier(fixture.common));
+  const selectedAdoption = { ...adoption, integrationReceiptDigest: integration.receiptDigest };
+  const signed = payload => ({ ...payload, receiptDigest: governanceDigest(payload) });
+  const preservation = signed({ schema: 'agentic-os/successor-preservation-receipt/v1',
+    disposition: 'standalone-lane-retained', adoption: selectedAdoption,
+    adoptionDigest: governanceDigest(selectedAdoption), repository: adoption.repository,
+    canonicalRevision: MERGE, profileDigest: hex('1'), policyDigest: governanceDigest(policy),
+    review: { repository: 'example/target', pr: 7, url: adoption.reviewLocator,
+      branch: adoption.reviewedRef, head: CANDIDATE, merge: MERGE,
+      mergedAt: '2026-09-02T00:04:30.000Z', checks: [{ name: 'Integration Gate',
+        checkId: 701, runId: 201, attempt: 1, workflow: 'Integration', conclusion: 'success',
+        completedAt: '2026-09-02T00:04:00.000Z',
+        url: 'https://github.com/example/target/actions/runs/201/job/701' }],
+      protectionProven: false, authority: 'observation-only' },
+    integration: { kind: 'standalone-lane-retained', predecessorHead: CANDIDATE,
+      reviewedHead: CANDIDATE, merge: MERGE, pathCount: 0, replacements: [] },
+    retention: { branchRef: adoption.retainedRef, retainedHead: CANDIDATE,
+      worktreePath: '/exact/target/worktree', worktreeClean: true,
+      integrationReceiptDigest: integration.receiptDigest },
+    state: { root: '/exact/target', policyRoot: '/exact/evidence', policyRevision: TRANSITION_BASE,
+      policyRepository: 'github.com/example/evidence', workflow: 'Integration',
+      predecessorHead: CANDIDATE, successorHead: CANDIDATE, peerRegistrationDigest: hex('7'),
+      cacheDigest: hex('8'), planDigest: hex('9'), planIssuedAt: '2026-09-02T00:21:15.000Z' },
+    issuedAt: '2026-09-02T00:21:30.000Z', expiresAt: '2026-09-02T00:36:15.000Z',
+    physicalCleanupPerformed: false, providerAuthority: false, claimRetired: false,
+    historicalSuccessionAuthorityProven: false });
+  const prior = integration.transitionReceipt;
+  const plan = createEffectPlan({ target: { repository: adoption.repository,
+    resource: adoption.reviewLocator, immutableRevision: MERGE }, authority: {
+    requestedTransition: 'retire', authoritySubject: 'github-user:42', ownerSubject: 'github-user:42',
+    claimId: prior.resultClaimId, leaseEpoch: prior.resultLeaseEpoch,
+    fenceRevision: prior.resultFenceRevision, writeSetDigest: governanceDigest(scope),
+    reviewLocator: null, predecessorDigest: integration.receiptDigest },
+    candidateDigest: fixture.final.plan.candidateDigest, snapshotDigest: fixture.final.plan.snapshotDigest,
+    effectClass: 'claim-retirement-record-only', allowedEffects: RECORD_ONLY_RETIREMENT_EFFECTS,
+    forbiddenEffects: RECORD_ONLY_RETIREMENT_RETAINED_EFFECTS,
+    parametersDigest: governanceDigest({ schema: 'agentic-os/record-only-retirement-parameters/v1',
+      preservationReceiptDigest: preservation.receiptDigest, adoptionDigest: preservation.adoptionDigest }) });
+  const planBytes = encodeEffectPlan(plan), planByteDigest = effectPlanByteDigest(planBytes);
+  const request = retire({ repository: adoption.repository, authoritySubject: 'github-user:42',
+    ownerSubject: 'github-user:42', scope, claimId: prior.resultClaimId,
+    leaseEpoch: prior.resultLeaseEpoch, fenceRevision: prior.resultFenceRevision,
+    immutableRevision: MERGE, dependentWork: [`effect-plan:sha256:${planByteDigest}`],
+    observedAt: '2026-09-02T00:22:00.000Z', expiresAt: '2026-09-02T00:36:15.000Z' });
+  const operationInput = createGitHubTransitionInput({ request, plan, planByteDigest,
+    predecessorIssuance: null, preservationDisposition: preservation });
+  fixture.api.state.currentDigest = deriveGitHubTransitionInputDigest(operationInput);
+  const common = { ...fixture.common, workflowRun: workflowRun('202'), operationInput };
+  const retired = await publishGitHubTransitionAuthority(common);
+  assert.equal(retired.stored.providerProof.preservationReceiptDigest, preservation.receiptDigest);
+  assert.equal(retired.stored.providerProof.physicalCleanupPerformed, false);
+  assert.equal(retired.stored.providerProof.historicalSuccessionAuthorityProven, false);
   assert.equal(fixture.api.publications.size, 2);
 });
 

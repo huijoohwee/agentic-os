@@ -331,8 +331,8 @@ export function createGitHubTransitionRestProvider({ repository: identity,
           || disposition.policyDigest !== governanceDigest(adoptedPolicy)
           || disposition.state.policyRepository !== repo.repository || disposition.state.policyRevision !== workflowRevision
           || observedProof.reviewLocator !== disposition.adoption.reviewLocator
-          || observedProof.candidateBranch !== (disposition.adoption.successorRef ?? disposition.adoption.targetRef) || observedProof.mergeRevision !== disposition.adoption.merge
-          || observedProof.candidateHeadRevision !== (disposition.adoption.successorHead ?? disposition.adoption.targetHead)
+          || observedProof.candidateBranch !== (disposition.adoption.reviewedRef ?? disposition.adoption.successorRef ?? disposition.adoption.targetRef) || observedProof.mergeRevision !== disposition.adoption.merge
+          || observedProof.candidateHeadRevision !== (disposition.adoption.headRevision ?? disposition.adoption.successorHead ?? disposition.adoption.targetHead)
           || !same(disposition.review.checks.map(check => [String(check.checkId), check.name]).sort(),
             verifiedChecks.map(check => [check.checkRunId, check.context]).sort()))
           fail('record-only retirement does not bind the adopted provider integration');
