@@ -1,0 +1,41 @@
+{
+  "schema": "agentic-os/content-security-policy-consumers/v1",
+  "owner": "github.com/huijoohwee/agentic-os",
+  "modes": {
+    "development": "report-only",
+    "preproduction": "enforce",
+    "production": "enforce"
+  },
+  "consumers": [
+    {
+      "repository": "github.com/huijoohwee/agentic-design-system",
+      "productionSurfaces": ["site/index.html", "src/design-system-edge/index.mjs"],
+      "developmentSurface": "scripts/dev.mjs",
+      "gate": {
+        "workflow": ".github/workflows/integration.yml",
+        "job": "Integration Gate",
+        "command": "node scripts/check-public-release.mjs"
+      }
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-commerce-os",
+      "productionSurfaces": ["src/local-first/worker.ts", "src/design-system-edge/index.mjs", "src/edge/dashboard.ts"],
+      "developmentSurface": "src/local-first/worker.ts",
+      "gate": {
+        "workflow": ".github/workflows/local-first-release.yml",
+        "job": "release",
+        "command": "npm run check:local-first"
+      }
+    },
+    {
+      "repository": "github.com/huijoohwee/agentic-graph",
+      "productionSurfaces": ["cloudflare/pages/agentic-graph-agent-ready.mjs", "scripts/pages-mirror-headers.mjs"],
+      "developmentSurface": "canvas/vite.config.ts",
+      "gate": {
+        "workflow": ".github/workflows/integration.yml",
+        "job": "Integration Gate",
+        "command": "policy.pagesHeaders.agenticGraphReportOnlyCsp.omitsIgnoredUpgradeDirective"
+      }
+    }
+  ]
+}
