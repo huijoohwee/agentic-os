@@ -24,8 +24,11 @@ function run() {
   }).trimEnd();
   if (git(['rev-parse', 'HEAD']) !== revision) throw new Error('checked-out consumer revision does not match the CI candidate');
   if (git(['status', '--porcelain', '--untracked-files=all'])) throw new Error('consumer checkout is not clean');
-  try { execFileSync('git', ['--no-replace-objects', 'merge-base', '--is-ancestor', base, revision], { cwd: root }); }
-  catch { throw new Error('protected policy base is not an ancestor of the CI candidate'); }
+  const parents = git(['show', '-s', '--format=%P', revision]).split(/\s+/u).filter(Boolean);
+  if (!parents.includes(base)) {
+    try { execFileSync('git', ['--no-replace-objects', 'merge-base', '--is-ancestor', base, revision], { cwd: root }); }
+    catch { throw new Error('protected policy base is not an ancestor of the CI candidate'); }
+  }
 
   const profilePath = '.agentic-os.json';
   const trusted = validateRepositoryProfile(JSON.parse(git(['show', `${base}:${profilePath}`])));
