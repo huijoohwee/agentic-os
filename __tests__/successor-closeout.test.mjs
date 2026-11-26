@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRepositoryProfile, RETAIN_ALL_CLEANUP, governanceDigest, canonicalJson } from '../src/governance.mjs';
 import { validateSuccessorPreservationReceipt, validateRetentionDispositionReceipt } from '../src/cleanup-records.mjs';
+import { encodeGitHubTransitionPolicy } from '../src/github-transition-policy.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import * as laneRecords from '../src/lane-records.mjs';
 import { successorIntegrationProof, createReservationScopeReleasePlan, applyReservationScopeRelease } from '../src/patch-identity.mjs';
@@ -268,6 +269,64 @@ function preservedFixture(t) {
     authorization: `agentic-os:successor-preservation:${plan.planDigest}`, stopped: true, ...overrides });
   return { ...s, adoption, physical, plan, options, apply };
 }
+
+function sameHeadFixture(t) {
+  const s = fixture(t), retainedRef = 'agent/device/moomoo-stream-recovery';
+  mkdirSync(join(s.root, '.git/agentic-os-cleanup-quarantine'), { mode: 0o700 });
+  git(s.root, 'branch', retainedRef, s.reviewedHead);
+  git(s.root, 'worktree', 'remove', s.next);
+  git(s.root, 'worktree', 'add', '--quiet', s.next, retainedRef);
+  mkdirSync(join(s.root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(s.root, '.github/workflows/ci.yml'), 'name: CI\n');
+  git(s.root, 'add', '.github'); git(s.root, 'commit', '--quiet', '-m', 'record current workflow');
+  const adoption = { schema: 'agentic-os/same-head-lane-retention-adoption/v1',
+    repository: `github.com/${s.input.repository ?? 'example/GameXR'}`,
+    reviewedRef: s.nextRef, retainedRef, headRevision: s.reviewedHead,
+    merge: s.merge, reviewLocator: 'https://github.com/example/GameXR/pull/12',
+    historicalSuccessionAuthorityProven: false };
+  const policy = { schema: 'agentic-os/github-transition-policy/v3',
+    authorityRepository: 'github.com/example/GameXR', authorityRef: 'refs/heads/main',
+    workflowPath: '.github/workflows/adlc-transition.yml', targetRepositories: ['github.com/example/GameXR'],
+    evidenceRefPrefix: 'refs/heads/adlc/authority/', historicalIntegrations: [],
+    preservationAdoptions: [adoption], retentionAdoptions: [] };
+  mkdirSync(join(s.root, '.agentic-os'), { recursive: true });
+  writeFileSync(join(s.root, '.agentic-os/github-transition-policy.json'), encodeGitHubTransitionPolicy(policy));
+  git(s.root, 'add', '.agentic-os'); git(s.root, 'commit', '--quiet', '-m', 'enroll same-head retention');
+  const canonical = git(s.root, 'rev-parse', 'HEAD');
+  git(s.root, 'update-ref', 'refs/remotes/origin/main', canonical);
+  const digest = 'a'.repeat(64), selected = { ...adoption, integrationReceiptDigest: digest };
+  const options = { ...s.options, observeRemote: () => `${canonical}\trefs/heads/main` };
+  const plan = planSuccessorPreservation({ cwd: s.root, adoption: selected, policyRoot: s.root,
+    workflow: '.github/workflows/ci.yml' }, options);
+  const apply = overrides => applySuccessorPreservation(plan, { cwd: s.root, ...options,
+    authorization: `agentic-os:successor-preservation:${plan.planDigest}`, stopped: true, ...overrides });
+  return { ...s, retainedRef, selected, digest, plan, options, apply };
+}
+
+test('same-head retention enrolls the exact merged review and retains only its clean mounted alias', t => {
+  const s = sameHeadFixture(t), receipt = s.apply();
+  assert.equal(receipt.disposition, 'standalone-lane-retained');
+  assert.equal(receipt.review.branch, s.nextRef);
+  assert.equal(receipt.retention.branchRef, s.retainedRef);
+  assert.equal(receipt.retention.retainedHead, s.reviewedHead);
+  assert.equal(receipt.retention.integrationReceiptDigest, s.digest);
+  for (const name of ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', 'historicalSuccessionAuthorityProven'])
+    assert.equal(receipt[name], false);
+  assert.equal(git(s.root, 'rev-parse', s.nextRef), s.reviewedHead);
+  assert.equal(git(s.root, 'rev-parse', s.retainedRef), s.reviewedHead);
+  assert.equal(validateRetentionDispositionReceipt(receipt).receiptDigest, receipt.receiptDigest);
+});
+
+test('same-head retention rejects mounted review refs and retained-head drift', t => {
+  const mounted = sameHeadFixture(t);
+  git(mounted.root, 'worktree', 'add', '--quiet', join(mounted.root, '..', 'reviewed'), mounted.nextRef);
+  assert.throws(() => planSuccessorPreservation({ cwd: mounted.root, adoption: mounted.selected,
+    policyRoot: mounted.root, workflow: '.github/workflows/ci.yml' }, mounted.options), /preservation-mounted/);
+
+  const drifted = sameHeadFixture(t);
+  git(drifted.next, 'commit', '--allow-empty', '--quiet', '-m', 'retained alias drift');
+  assert.throws(() => drifted.apply(), /preservation-mounted|preservation-head-drift|preservation-observation-race/);
+});
 
 test('current adoption preserves an unmounted predecessor without inventing physical cleanup or historical authority', t => {
   const s = preservedFixture(t), receipt = s.apply();

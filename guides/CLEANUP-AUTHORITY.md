@@ -117,6 +117,25 @@ Rollback: revert the standalone adoption handling and its guide sections. Existi
 and quarantine flows remain available. No deployment, provider write, cleanup, or integration receipt is
 created by this source change.
 
+### Same-head successor alias retention — Trading PR #17 recovery
+
+Trading PR #17 merged reviewed ref `agent/device-0232231d4a19/moomoo-hosted-n3` at
+`1e77a6a7a3731a7bd1ea4a4fc414bb93730986b0` as `f5bb1c9de69b5b3537049fed93481d0f3fcf408a`.
+The active mounted lane is `agent/device-0232231d4a19/moomoo-stream-recovery` at that identical
+commit. This enrollment binds those two refs, the exact merged review and merge; it does not claim
+that the successor was historically authorized or separately reviewed. Historical protection,
+required-check authority beyond the recorded Integration Gate, provider authority, retirement and
+physical cleanup remain unproven.
+
+The same-head retention path requires both refs to resolve to the enrolled commit, the review ref to
+be unmounted, and the retained ref to be mounted, clean and at that commit. It uses the existing
+preservation plan and receipt, bound to a separately produced integration receipt digest. Any ref,
+worktree, review or merge drift fails closed. Record-only retirement and physical cleanup still need
+their own authority and receipts. The two untracked Trading plan documents are preserved as user data.
+
+Rollback: remove this exact enrollment and record and revert the same-head alias handling. No refs,
+worktrees, plan documents or recovery bytes are changed by rollback.
+
 ### Current recovery enrollment — agentic-os PR #487 — 2026-10-17
 
 The owner delegated autonomous completion of this END ADLC mission. This exact enrollment records
