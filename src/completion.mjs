@@ -287,7 +287,7 @@ export function bindRetirementOperationReceipts(integrationValue, retirementValu
 export const DELIVERY_DISPOSITION_SET_PATH = '.agentic-os-delivery-dispositions.json', DELIVERY_DISPOSITION_SET_SCHEMA = 'agentic-os/delivery-disposition-set/v1';
 const DELIVERY_ROW_SCHEMA = 'agentic-os/delivery-disposition/v1', DELIVERY_SET_KEYS = ['schema', 'repository', 'dispositions', 'receiptDigest'];
 const DELIVERY_ROW_KEYS = ['schema', 'ref', 'laneHead', 'paths', 'disposition', 'candidateRevision', 'candidateDigest', 'sourceReleaseReceiptDigest', 'deploymentReceiptDigest', 'runtimeVerificationReceiptDigest', 'evidencePath', 'evidenceDigest', 'decisionRef', 'reason'];
-const DELIVERY_SHA1 = /^[0-9a-f]{40}$/u, DELIVERY_SHA256 = /^[0-9a-f]{64}$/u;
+const DELIVERY_DISPOSITION_LIMIT = 64, DELIVERY_SHA1 = /^[0-9a-f]{40}$/u, DELIVERY_SHA256 = /^[0-9a-f]{64}$/u;
 const deliveryFail = reason => { throw Object.assign(new TypeError('delivery disposition is invalid'), { reason: `blocked-delivery-disposition-${reason}` }); };
 function deliveryPath(value, label) {
   text(value, label);
@@ -317,7 +317,7 @@ const mixedNoDeployExclusion = (row, expected, evidence) => row.evidencePath !==
 export function validateDeliveryDispositionSet(value, expected) {
   try {
     const set = snapshot(value); exact(set, DELIVERY_SET_KEYS, 'delivery disposition set');
-    if (set.schema !== DELIVERY_DISPOSITION_SET_SCHEMA || set.repository !== expected.repository || !Array.isArray(set.dispositions) || !set.dispositions.length || set.dispositions.length > 32 || !DELIVERY_SHA256.test(set.receiptDigest ?? '')) deliveryFail('set-identity');
+    if (set.schema !== DELIVERY_DISPOSITION_SET_SCHEMA || set.repository !== expected.repository || !Array.isArray(set.dispositions) || !set.dispositions.length || set.dispositions.length > DELIVERY_DISPOSITION_LIMIT || !DELIVERY_SHA256.test(set.receiptDigest ?? '')) deliveryFail('set-identity');
     const { receiptDigest, ...body } = set;
     if (governanceDigest(body) !== receiptDigest) deliveryFail('set-digest'); const rows = set.dispositions.map(deliveryRow), refs = rows.map(row => row.ref);
     if (new Set(refs).size !== refs.length || canonicalJson(refs) !== canonicalJson([...refs].sort())) deliveryFail('set-order');
