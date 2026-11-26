@@ -12,9 +12,10 @@ lifecycle_status: active
 # Shared ownership of reusable components
 
 This contract applies to `agentic-design-system`, `agentic-base`, `agentic-graph`,
-`agentic-commerce-os`, `agentic-canvas-os`, and related consumers. It defines one
-source of truth for centrally reusable UI components and controls, including shared
-tokens, themes, icons, interaction meaning, implementation, and presentation. The
+`agentic-commerce-os`, `agentic-canvas-os`, `agentic-sheets`, `agentic-geo`, and related
+consumers. It defines one source of truth for centrally reusable UI components and
+controls, including shared tokens, themes, icons, interaction meaning, implementation,
+and presentation. The
 panel-specific contract below extends this ownership model with MainPanel, FloatingPanel,
 BottomPanel, and their controls.
 
@@ -23,7 +24,8 @@ BottomPanel, and their controls.
 | Owner | Owns | Consumer boundary |
 |---|---|---|
 | `agentic-design-system` | Canonical design tokens and theme values; the semantic control map and accessible labels; icon glyphs; shared surface visuals, state visuals, and placement defaults; native and React adapter implementations and canonical package exports; shared control and panel lifecycle mechanics; and projection, pin, and build validation. | Publishes versioned source and projections. A behavior or appearance change is made here first and released at an exact revision. |
-| Product consumers, including `agentic-base`, `agentic-graph`, `agentic-commerce-os`, and `agentic-canvas-os` | Product content, feature availability, product-owned view state, and action callbacks. | Pass approved semantic roles and callbacks to the pinned Design System adapter. They do not copy shared implementations or introduce visual overrides. |
+| Product/UI consumers, including `agentic-base`, `agentic-graph`, `agentic-commerce-os`, `agentic-canvas-os`, and `agentic-sheets` | Product content, feature availability, product-owned view state, and action callbacks. | Pass approved semantic roles and callbacks to the pinned Design System adapter. They do not copy shared implementations or introduce visual overrides. |
+| Headless libraries, including `agentic-geo` | Domain algorithms and data contracts without a page or renderer. | Keep the core free of DOM globals and Design System runtime dependencies. Any UI consumer owns visible page targets and the shared rendered-page assertion. |
 
 `agentic-base` is a product consumer, like Graph, Commerce, and Canvas. The supported
 native and React integration APIs, including their canonical public entry points, belong
@@ -33,7 +35,8 @@ forwarding or re-export layer. Base does not own framework integration rules, li
 mechanics, semantic mappings, or visual rules.
 
 The shared UI dependency graph has `agentic-design-system` as the direct upstream for
-`agentic-base`, `agentic-graph`, `agentic-commerce-os`, and `agentic-canvas-os`. These
+`agentic-base`, `agentic-graph`, `agentic-commerce-os`, `agentic-canvas-os`, and
+`agentic-sheets` when it consumes shared UI exports. These
 product repositories consume the same exact Design System release as peers; shared panel
 or control ownership does not pass through another product repository.
 
@@ -56,6 +59,31 @@ Consumers provide feature-specific content and callbacks. They may omit an inapp
 role or select among approved roles; they do not substitute a local glyph, accessible
 name, state rule, or interaction for the same semantic action. Product-specific wording
 and controls belong to the product when they do not claim a shared role.
+
+## Annotation targets
+
+`agentic-design-system` owns the `data-selection-target` marker format, its selector,
+and the shared `assertAnnotationTargets(document)` audit. Each product owns the semantic
+elements and unique, stable marker values on its page. The existing
+`data-agentic-annotation-target="true"` state controls a shared visual outline; it does
+not register a selectable target. Mark only a visible native control or semantic landmark
+that a person or browser selection tool can identify. Targets need a non-empty accessible
+name, visible bounds, and at least one unobstructed `elementFromPoint` hit. Hidden, inert,
+`aria-hidden`, `pointer-events:none`, generic `div`/`span`, and presentation-role targets
+fail the contract. Use semantic links or buttons for actions and semantic landmarks for
+content regions.
+
+Consumers must not add an alternate marker attribute, selector, audit, release assertion,
+or visual override. Each product that ships a browser page calls the shared assertion from
+its rendered-page release check and requires at least one target on surfaces expected to
+support annotation. Import it from the exact pinned Design System release; do not copy the
+implementation into consumer repositories. The assertion is self-contained so browser
+automation can run the same function in page context. It verifies DOM exposure and
+hit-testing; it does not promise behavior of a particular browser's annotation overlay.
+Until a consumer's exact Design System pin contains this export, source markers alone do
+not satisfy the rendered-page release check. Headless libraries such as `agentic-geo` add
+no DOM, renderer, or Design System runtime dependency; their UI consumers own page targets
+and the shared assertion.
 
 ## Shared implementations
 
