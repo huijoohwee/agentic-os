@@ -5,7 +5,7 @@
   "packaging": ["clonability.test.mjs", "packed-setup.test.mjs", "space-path-entrypoints.test.mjs", "setup-trust-ordering.test.mjs", "public-api.test.mjs"],
   "broad": [
     "package.json", "package-lock.json", ".npmrc", ".gitignore", ".gitattributes", ".agentic-os.json",
-    ".github/", ".githooks/", "test/impact-contracts.json", "bin/agentic-os-test", "bin/agentic-os-tests.mjs",
+    ".github/", ".githooks/", "test/impact-contracts.json", "docs/adlc-guidelines.md", "bin/agentic-os-test", "bin/agentic-os-tests.mjs",
     "src/git.mjs", "src/git-tracked.mjs", "src/governance.mjs", "src/lane-state.mjs", "src/worktree.mjs",
     "src/git-repository.mjs", "src/guard-main.mjs", "src/catalog-input.mjs"
   ],
@@ -72,6 +72,14 @@
         "composition-read-efficiency.test.mjs",
         "composition-runtime-check.test.mjs"
       ]
+    },
+    {
+      "importer": "bin/agentic-os.mjs",
+      "dependency": "bin/agentic-os-lane-alignment.mjs",
+      "tests": [
+        "lane-alignment.test.mjs",
+        "release-common-complete.test.mjs"
+      ]
     }
   ],
   "dependencies": {
@@ -89,10 +97,13 @@
     "__tests__/check-discovery.test.mjs": ["bin/agentic-os-checks.mjs", "test/repositories.json"],
     "__tests__/clonability.test.mjs": ["bin/agentic-os-hooks.mjs", "bin/composition-runtime-check.mjs"],
     "__tests__/lean-sprint-completion.test.mjs": ["bin/agentic-os.mjs", "src/lane-records.mjs"],
+    "__tests__/doctor-start-regressions.test.mjs": ["src/git-repository.mjs", "bin/agentic-os-admission.mjs", "bin/agentic-os-auxiliary.mjs"],
+    "__tests__/fleet.test.mjs": ["bin/agentic-os-fleet.mjs"],
     "__tests__/packed-setup.test.mjs": ["src/governance.mjs", "bin/agentic-os-hook-runtime.mjs", "__tests__/fixtures/"],
     "__tests__/setup-trust-ordering.test.mjs": ["bin/agentic-os-hooks.mjs"],
     "__tests__/public-api.test.mjs": ["package.json"],
     "__tests__/tracked-file-integrity.test.mjs": ["src/git-tracked.mjs"],
-    "__tests__/test-impact.test.mjs": ["bin/agentic-os-test-impact.mjs", "bin/agentic-os-test-inputs.mjs"]
+    "__tests__/test-impact.test.mjs": ["bin/agentic-os-test-impact.mjs", "bin/agentic-os-test-inputs.mjs"],
+    "src/catalog-input.mjs": ["src/catalog-input.mjs"]
   }
 }

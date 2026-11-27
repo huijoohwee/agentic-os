@@ -40,8 +40,9 @@ Attribute changes intentionally rematerialize affected content. Quarantine now u
 and per-entry identities, with complete namespace and content verification at phase boundaries. This
 removes repeated scans of the growing directory while preserving recovery bytes and race refusals.
 
-Finish focused corrections and upstream pin updates before publishing an immutable candidate. After
-publication, follow the existing successor workflow for new changes; do not rebase published lanes.
+Each published commit is immutable. Scoped corrections may fast-forward the same open, unqueued PR;
+refresh checks for its new SHA and preserve authored review text. Never rebase a published lane.
+After a review is merged or closed, begin a new task. Load successor recovery only for an actual recovery need.
 Consumer repositories must adopt the affected planner/contracts to replace their own broad runners;
 this source change alone does not alter another repository's validation commands.
 

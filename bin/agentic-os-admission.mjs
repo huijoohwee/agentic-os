@@ -8,11 +8,14 @@ import { snapshotWorktreeEntry } from '../src/file-integrity.mjs';
 import { assertDevice, deviceSegment, isLaneRef, laneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { DEFAULT_TASK_CHECKOUTS, MAX_TASK_CHECKOUTS, assertCheckoutPlacement } from '../src/canonical-resources.mjs';
 import * as store from '../src/lane-records.mjs';
-import { readmissionPredecessors } from '../src/lane-state.mjs';
+import { draftPlanRebindAllowed, matchesAllocationCheckpointSuccessor, readmissionPredecessors, successorLineage } from '../src/lane-state.mjs';
 import { isBoundLane } from '../src/guard-main.mjs';
+import { assertOpenReviewUpdate } from '../src/github-provider.mjs';
+import { integrationProof } from '../src/patch-identity.mjs';
 import { provision, assertProvisionable, assertDisjointReservation, committedLanePaths, lanePath, parseWritePaths } from '../src/worktree.mjs';
 import { recoverLaneRecordFromMission } from '../src/lane-cache-legacy.mjs';
 import { assertProfileCurrent } from './agentic-os-auxiliary.mjs';
+import { assertStartCheckout } from '../src/git-repository.mjs';
 import { option, positional, flag } from './agentic-os-argv.mjs';
 import { hash } from './agentic-os-test-inputs.mjs';
 import { startWorkflow, readSelectedWorkflow, collectWorkflowValue, assertWorkflowEffect, workflowPaths, validateWorkflowPlanning, WORKFLOW_PHASES } from './agentic-os-workflow.mjs';
@@ -68,16 +71,13 @@ function successor(root, repository, selected, changes) {
   const collected = collectWorkflowValue(root, repository, value, resolve(root, 'workflow-input.json'));
   return readSelectedWorkflow(root, repository, { input: collected.manifest, required: true });
 }
-function withMember(root, repository, selected, worktreeId, revision) {
-  const member = selected.members.find(row => row.child.context.worktreeId === worktreeId && row.child.source.repository === repository);
-  if (member?.child.source.revision === revision) return selected;
-  const child = collectWorkflowValue(root, repository, { schema: 'agentic-os/workflow-observation-input/v1',
-    id: worktreeId, source: { repository, revision, tree: headSha(`${revision}^{tree}`, root) },
-    context: { workflowId: selected.manifest.id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, resolve(root, 'workflow-input.json'));
-  const replacement = { id: member?.ref.id ?? worktreeId, file: child.manifest, digest: child.digest };
-  const members = selected.members.map(row => row === member ? replacement : { ...row.ref, file: row.path });
-  if (!member) members.push(replacement);
-  return successor(root, repository, selected, { members });
+function withMember(root, repository, selected, worktreeId, revision, allocation = null) {
+  const member = selected.members.find(row => row.child.context.worktreeId === worktreeId && row.child.source.repository === repository); if (member?.child.source.revision === revision && !allocation) return selected;
+  let members = selected.members.map(row => ({ ...row.ref, file: row.path })); if (member?.child.source.revision !== revision) {
+    const child = collectWorkflowValue(root, repository, { schema: 'agentic-os/workflow-observation-input/v1', id: worktreeId, source: { repository, revision, tree: headSha(`${revision}^{tree}`, root) }, context: { workflowId: selected.manifest.id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, resolve(root, 'workflow-input.json'));
+    const replacement = { id: member?.ref.id ?? worktreeId, file: child.manifest, digest: child.digest }; members = selected.members.map(row => row === member ? replacement : { ...row.ref, file: row.path }); if (!member) members.push(replacement);
+  }
+  const changes = { members }; if (allocation) changes.allocations = [...(selected.manifest.allocations ?? []).filter(row => row.worktreeId !== allocation.worktreeId), allocation]; return successor(root, repository, selected, changes);
 }
 function recordAllocation(root, repository, selected, allocation) {
   const allocations = (selected.manifest.allocations ?? []).filter(row => row.worktreeId !== allocation.worktreeId);
@@ -92,14 +92,14 @@ export function checkoutCapacity(selected, repository, inventory, explicitLimit 
 }
 function observeExisting(root, ref, path, record, expectedHead, requested, policy, allocation, readmit = false, recovery = null) {
   const registered = worktrees(root).find(row => row.branch === ref && row.path === path);
-  let recoveryReceipt = null;
+  if (!registered || !isBoundLane(ref, path) || currentBranch(path) !== ref) fail('existing-identity', 'Reuse requires one live bound active or open published lane');
+  let recoveryReceipt = null; if (!record && (!recovery?.enabled || !allocation || !recovery.selected)) fail('existing-identity', `Lane record absent; use npm run release:common -- rebind plan --ref=${ref} --mode=recertify with exact base/head/worktree (guides/LANE-RECERTIFICATION.md).`);
   if (!record && recovery?.enabled) {
     const restored = recoverLaneRecordFromMission({ ref, path, expectedHead, policy, allocation, selected: recovery.selected,
       repository: recovery.repository, writePaths: requested, root }, store.newRecord);
     record = restored.record; recoveryReceipt = restored.receipt;
   }
-  if (!registered || !record || record.state !== 'active' || record.worktree !== path || !isBoundLane(ref, path)
-    || currentBranch(path) !== ref || record.pr !== null) fail('existing-identity', 'Reuse requires one live bound active unpublished lane');
+  if (!record || !['active', 'published'].includes(record.state) || record.worktree !== path) fail('existing-identity', 'Reuse requires one live bound active or open published lane');
   const head = headSha('HEAD', path);
   if (expectedHead && head !== expectedHead) fail('head-drift', 'The active lane no longer has the expected head'); if (registered.head && registered.head !== head) fail('head-drift', 'Registered head changed');
   if (!record.baseSha || observeGit(['merge-base', '--is-ancestor', record.baseSha, head], { cwd: root, allowFail: true }) === null) fail('base-binding', 'The existing lane must retain its admitted source ancestry'); const reserved = parseWritePaths((record.writePaths ?? []).join(',')), authoredScope = readmit ? [...new Set([...reserved, ...requested])] : reserved;
@@ -109,9 +109,16 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   if (authored.some(file => !covered(file, authoredScope))) fail('unreserved-bytes', 'Preserve authored bytes outside the current reservation; do not adopt them');
   const remote = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   if (!remote) fail('remote', 'Protected remote binding is missing'); const transport = remoteTransport(remote, root);
-  if (remoteRefSha(remote, ref, root, transport.fetchUrl) !== null) fail('published', 'Published candidates are immutable; use the native successor operation'); assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
-  const lineage = readmissionPredecessors(record, store.load(root).lanes, allocation,
-    (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null);
+  const remoteHead = remoteRefSha(remote, ref, root, transport.fetchUrl);
+  if (remoteHead !== null) {
+    if (record.head !== remoteHead || observeGit(['merge-base', '--is-ancestor', remoteHead, head], { cwd: root, allowFail: true }) === null)
+      fail('published-drift', 'Published head must match the retained source and remain an ancestor');
+    assertOpenReviewUpdate({ ref, expectedHead: remoteHead, expectedPr: record.pr, profile: recovery?.profile, cwd: root });
+  } else if (record.state === 'published') fail('published-missing', 'Published remote ref disappeared');
+  const records = store.load(root).lanes, link = successorLineage(record), previous = link && records[link.predecessorRef], proof = previous && previous.head !== link.predecessorHead && integrationProof(policy.protectedRef, previous.head, { cwd: root });
+  if (proof?.pending?.length === 0 && (!recovery?.expectedTarget || proof.baseHead === recovery.expectedTarget)) records[link.predecessorRef] = { ...previous, head: link.predecessorHead };
+  assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records });
+  const lineage = readmissionPredecessors(record, records, allocation, (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null);
   if (lineage === false) fail('successor-lineage', 'Invalid retained successor identity'); if (lineage.some(link => remoteRefSha(remote, link.predecessorRef, root, transport.fetchUrl) !== link.predecessorHead
     || observeGit(['merge-base', '--is-ancestor', link.predecessorHead, head], { cwd: root, allowFail: true }) === null))
     fail('successor-lineage', 'Retained successor needs exact published predecessor and preserved ancestry');
@@ -119,9 +126,11 @@ function observeExisting(root, ref, path, record, expectedHead, requested, polic
   return { head, reserved, lineage, record, recoveryReceipt };
 }
 export async function cmdStart(root, argv, policy, profile, services) {
-  const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null } = services;
+  const { out, err, projectCache, effectReceipt, remoteName, requireCanonical, refresh = null,
+    enforceCheckoutName = false } = services;
   const [scope] = positional(argv), device = assertDevice(option(argv, 'device') ?? deviceSegment());
   if (!scope) { err('usage: start <scope> --write=<paths>'); return 1; }
+  if (enforceCheckoutName) assertStartCheckout(root, profile);
   const ref = laneRef(scope, device);
   let path = lanePath(scope, device, root), worktreeId = basename(path);
   const requested = option(argv, 'write') === null ? [] : parseWritePaths(option(argv, 'write'));
@@ -130,34 +139,41 @@ export async function cmdStart(root, argv, policy, profile, services) {
   const readmit = flag(argv, 'readmit'), expectedHead = option(argv, 'expected-head');
   if (expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)) fail('head', 'expected-head must be an exact commit SHA');
   if (readmit && (!input || !expectedHead)) fail('readmit-binding', 'readmit requires an exact mission and expected-head');
-  const refreshMethods = refresh?.owner ? { plan: refresh.owner.plan ?? refresh.owner.planLaneAlignment,
-    prepare: refresh.owner.prepare ?? refresh.owner.prepareLaneAlignment,
-    apply: refresh.owner.apply ?? refresh.owner.applyLaneAlignment } : null;
-  if (refresh && (!readmit || refresh.stopped !== true || !/^[a-f0-9]{40}$/u.test(refresh.expectedTarget ?? '')
-    || ['plan', 'prepare', 'apply'].some(key => typeof refreshMethods?.[key] !== 'function')))
-    fail('refresh-binding', 'Refresh requires stopped-writer readmission and one exact protected target');
+  const refreshMethods = refresh?.owner ? { plan: refresh.owner.plan ?? refresh.owner.planLaneAlignment, prepare: refresh.owner.prepare ?? refresh.owner.prepareLaneAlignment, apply: refresh.owner.apply ?? refresh.owner.applyLaneAlignment } : null;
+  if (refresh && (!readmit || refresh.stopped !== true || !/^[a-f0-9]{40}$/u.test(refresh.expectedTarget ?? '') || ['plan', 'prepare', 'apply'].some(key => typeof refreshMethods?.[key] !== 'function'))) fail('refresh-binding', 'Refresh requires stopped-writer readmission and one exact protected target');
   const lock = acquireOperationLock('agentic-os-start', root);
   if (!lock) { err('blocked-concurrent-start: another lane admission owns the clone-wide start lock'); return 1; }
-  let result, error, selected, allocation;
+  let result, error, selected, allocation, planSnapshot;
   const artifacts = { effectsRetained: false, ref, worktree: null, baseSha: null, protectedRef: policy.protectedRef, fetchedProtectedSha: null, fetchCompleted: false,
     provisioned: false, branchSha: null, registeredWorktree: null, pathExists: false, fetchReceipt: null, provisionReceipt: null, alignmentReceipt: null, allocation: null, workflow: null };
   try {
     const fetched = effectReceipt('fetch', gitFetch(remoteName(policy, root), root));
     Object.assign(artifacts, { fetchReceipt: fetched, fetchCompleted: true, fetchedProtectedSha: headSha(policy.protectedRef, root) });
     artifacts.effectsRetained ||= fetched.effectsRetained;
+    if (enforceCheckoutName) assertStartCheckout(root, profile);
     requireCanonical(root, policy);
+    const {checkFleetReuse} = await import('../scripts/check-fleet-reuse.mjs');
+    const reuse = checkFleetReuse({root, repository: profile.repository, revision: artifacts.fetchedProtectedSha,
+      base: artifacts.fetchedProtectedSha, writePaths: requested});
+    for (const repair of reuse.repairs) err(repair);
     const records = store.load(root).lanes;
     const bound = worktrees(root).find(row => row.branch === ref);
     if (bound) { path = bound.path; worktreeId = basename(path); }
-    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || !planningPath || readmit) });
-    if (!selected && planningPath && explicitLimit === null) explicitLimit = DEFAULT_TASK_CHECKOUTS;
-    const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
-    assertCheckoutPlacement(path, worktrees(root));
-    if (input && selected) selectedAgain(root, profile.repository, selected);
+    selected = readSelectedWorkflow(root, profile.repository, { input, required: input !== null, worktreeId, ref, navigation: Boolean(input || readmit) });
+    if (selected && planningPath === selected.manifest.planning.path) planSnapshot = validateWorkflowPlanning(root, profile.repository, { revision: artifacts.fetchedProtectedSha, planningPath });
+    if (!selected && planningPath && explicitLimit === null) explicitLimit = DEFAULT_TASK_CHECKOUTS; const enrolled = Boolean(selected?.manifest.execution || input || planningPath || explicitLimit !== null || readmit);
+    assertCheckoutPlacement(path, worktrees(root)); if (input && selected) selectedAgain(root, profile.repository, selected);
+    if (!enrolled && bound) {
+      const identity = observeExisting(root, ref, path, records[ref], expectedHead, requested, policy, null, false, { profile });
+      if (requested.some(file => !covered(file, identity.reserved))) fail('scope-expansion', 'Existing lane scope does not cover the requested paths');
+      out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: 'reused', ref,
+        worktree: path, head: identity.head, writeDigest: scopeDigest(identity.reserved), workflow: null, created: false }));
+      result = 0;
+    }
     if (enrolled) {
       if (!selected?.manifest.execution && explicitLimit === null) fail('allowance-required', 'Declare the mission checkout limit before creation or explicit legacy adoption'); if (selected?.manifest.execution && explicitLimit !== null && selected.manifest.execution.checkoutLimit !== explicitLimit) fail('allowance-drift', 'A retry cannot reset or enlarge the existing mission allowance');
-      if (selected && planningPath && selected.manifest.planning.path !== planningPath) fail('planning-drift', 'The selected mission binds a different plan'); if (!selected && !planningPath) fail('plan-required', 'A new declared mission requires a committed planning document');
-      if (!selected) validateWorkflowPlanning(root, profile.repository, { revision: headSha(policy.protectedRef, root), planningPath }); const row = selected?.manifest.allocations?.find(item => item.worktreeId === worktreeId);
+      if (selected && planningPath && selected.manifest.planning.path !== planningPath) fail('planning-drift', 'The selected mission binds a different plan'); if (!selected && !planningPath) fail('plan-required', 'A new declared mission requires a planning document'); let row = selected?.manifest.allocations?.find(item => item.worktreeId === worktreeId);
+      if (!selected) planSnapshot = validateWorkflowPlanning(root, profile.repository, { revision: headSha(policy.protectedRef, root), planningPath });
       const registered = worktrees(root).find(item => item.branch === ref || item.path === path);
       if (registered) {
         let record = records[ref];
@@ -167,14 +183,18 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (alignment?.candidateHead) Object.assign(artifacts, { effectsRetained: true, worktree: path, alignmentReceipt: { phase: 'observed-preparation', journalPath: alignment.journalPath,
           oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         const reusePaths = refresh ? parseWritePaths((record?.writePaths ?? []).join(',')) : requested;
-        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead, reusePaths, policy, row, readmit,
-          { enabled: readmit && !refresh, selected, repository: profile.repository, artifacts });
+        const identity = observeExisting(root, ref, path, record, alignment?.liveHead ?? expectedHead ?? (!record ? row?.headRevision : null), reusePaths, policy, row, readmit,
+          { enabled: !refresh, selected, repository: profile.repository, profile, artifacts, expectedTarget: refresh?.expectedTarget });
+        if (selected && planSnapshot && planSnapshot.planning.digest !== selected.manifest.planning.digest) {
+          const base = artifacts.fetchedProtectedSha, prior = row, member = selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository);
+          if (!draftPlanRebindAllowed({ selected, prior, record: identity.record, identity, member, base, ref, path, scope: scopeDigest(identity.reserved), requestedExact: JSON.stringify(requested) === JSON.stringify(identity.reserved), protectedRef: policy.protectedRef, clean: git(['status', '--porcelain', '--untracked-files=all'], { cwd: path }) })) fail('draft-rebind', 'Changed plans require one clean active lane at the fetched base and its exact reservation');
+          selected = readSelectedWorkflow(root, profile.repository, { input: startWorkflow(root, profile.repository, { revision: base, planningPath, worktreeId, planSnapshot, execution: selected.manifest.execution, allocation: { worktreeId, ref, path, baseRevision: base, headRevision: base, writeDigest: prior.writeDigest, state: 'active', operation: 'create' } }).manifest, required: true }); row = selected.manifest.allocations?.find(item => item.worktreeId === worktreeId);
+        }
         record = identity.record;
         if (!selected) fail('mission-required', 'Existing lanes need their exact workflow identity; no new root is created for reuse');
         if (!selected.members.some(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)) fail('member-binding', 'The existing lane is not a member of the selected mission');
-        const liveDigest = scopeDigest(identity.reserved), recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit';
-        const successorReadmit = row && row.ref !== ref && identity.lineage.some(link => link.predecessorRef === row.ref);
-        const writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved, nextDigest = scopeDigest(writePaths);
+        const liveDigest = scopeDigest(identity.reserved), recoveringReadmit = row?.state === 'pending' && row.operation === 'readmit', checkpointSuccessorReadmit = readmit && expectedHead === identity.head && matchesAllocationCheckpointSuccessor({ record: identity.record, allocation: row, path, worktreeId, head: identity.head, lineage: identity.lineage, provesAncestor: (older, newer) => observeGit(['merge-base', '--is-ancestor', older, newer], { cwd: root, allowFail: true }) !== null });
+        const successorReadmit = row && row.ref !== ref && (identity.lineage.some(link => link.predecessorRef === row.ref) || checkpointSuccessorReadmit), writePaths = readmit ? [...new Set([...identity.reserved, ...requested])].sort() : identity.reserved, nextDigest = scopeDigest(writePaths);
         const recertification = readmit && row?.state === 'active' && row.ref === ref && row.writeDigest !== liveDigest
           && row.headRevision === selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)?.child.source.revision
           && observeGit(['merge-base', '--is-ancestor', row.headRevision, identity.head], { cwd: root, allowFail: true }) !== null;
@@ -212,33 +232,36 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (row?.state === 'pending' && (!expectedHead || row.headRevision !== identity.head && !(alignment && row.headRevision === alignment.candidateHead) && !recoveringHeadAdvance && !recoveringSelectedSource || recoveringReadmit && !readmit)) fail('recovery-required', 'Pending allocation requires exact retained-head reconciliation; do not reprovision');
         if (recoveringReadmit && nextDigest !== row.writeDigest) fail('recovery-scope', 'Retry must retain the exact pending reservation expansion');
         if (!selected.manifest.execution) selected = successor(root, profile.repository, selected, { execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
-        if (recertification) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
-        if (expectedHead) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
-        assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: identity.head, ref });
+        if (recertification) store.putExact({ ...record, head: record.state === 'published' ? record.head : identity.head, writePaths }, record, root);
+        const recoveredSuccessorReadmit = Boolean(successorReadmit && readmit && row?.recoveredFromHead), bindReconciledSuccessor = Boolean(successorReadmit && readmit && row?.headReconciliation); let allocation;
+        if (recoveredSuccessorReadmit) { allocation = { worktreeId, ref, path, baseRevision: row.baseRevision, headRevision: identity.head, writeDigest: nextDigest, state: 'pending', operation: 'readmit', previousWriteDigest: row.writeDigest, recoveredFromHead: row.recoveredFromHead, predecessorRef: row.ref }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
+        else if (expectedHead && !bindReconciledSuccessor && !(alignment?.schema === 'agentic-os/lane-selected-source-transplant-plan/v1' && row?.state === 'pending' && row.operation === 'readmit' && row.recoveredFromHead)) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+        assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: bindReconciledSuccessor ? selected.members.find(item => item.child.context.worktreeId === worktreeId && item.child.source.repository === profile.repository)?.child.source.revision : identity.head, ref: bindReconciledSuccessor ? row.ref : ref });
         if (alignment) {
           alignment = refreshMethods.prepare(alignment);
           Object.assign(artifacts, { effectsRetained: true, worktree: path,
             alignmentReceipt: { phase: 'prepared', journalPath: alignment.journalPath,
               oldRef: alignment.oldRef, candidateRef: alignment.candidateRef, head: alignment.candidateHead } });
         }
-        allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: row?.baseRevision ?? record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
+        if (!recoveredSuccessorReadmit) allocation = recoveringHeadAdvance || recoveringSelectedSource && alignment ? row : { worktreeId, ref, path, baseRevision: row?.baseRevision ?? record.baseSha, headRevision: alignment?.candidateHead ?? identity.head,
           writeDigest: nextDigest, state: readmit ? 'pending' : 'active', operation: readmit ? 'readmit' : row?.operation ?? 'create',
           ...(readmit ? { previousWriteDigest: recoveringReadmit ? row.previousWriteDigest : successorReadmit || recertification ? row.writeDigest : liveDigest } : {}),
           ...(row?.recoveredFromHead ? { recoveredFromHead: row.recoveredFromHead } : {}),
           ...(row?.selectedSourceRecovery ? { selectedSourceRecovery: row.selectedSourceRecovery } : {}),
+          ...(row?.headReconciliation ? { headReconciliation: row.headReconciliation } : {}),
           ...(successorReadmit ? { predecessorRef: row.ref } : row?.predecessorRef ? { predecessorRef: row.predecessorRef } : {}) };
+        if (!recoveredSuccessorReadmit && JSON.stringify(row) !== JSON.stringify(allocation)) selected = alignment?.schema === 'agentic-os/lane-alignment-plan/v1' || bindReconciledSuccessor ? withMember(root, profile.repository, selected, worktreeId, allocation.headRevision, allocation) : recordAllocation(root, profile.repository, selected, allocation); if (bindReconciledSuccessor) assertWorkflowEffect({ root, repository: profile.repository, phase: 'preparation', worktreeId, revision: allocation.headRevision, ref });
         if (alignment) Object.assign(artifacts, { allocation, workflow: selected.path });
-        if (JSON.stringify(row) !== JSON.stringify(allocation)) selected = recordAllocation(root, profile.repository, selected, allocation);
-        if (alignment) artifacts.workflow = selected.path;
         if (readmit) {
           selectedAgain(root, profile.repository, selected);
-          observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true);
-          if (liveDigest !== nextDigest || record.head !== identity.head) store.putExact({ ...record, head: identity.head, writePaths }, record, root);
+          observeExisting(root, ref, path, store.get(ref, root), identity.head, writePaths, policy, row, true, { profile, expectedTarget: refresh?.expectedTarget });
+          if (liveDigest !== nextDigest || record.state !== 'published' && record.head !== identity.head) { const cacheHead = record.state === 'published' ? record.head : identity.head; store.putExact({ ...record, head: cacheHead, writePaths }, record, root); record.head = cacheHead; record.writePaths = writePaths; }
           if (alignment) {
             const receipt = refreshMethods.apply(alignment);
             Object.assign(artifacts, { effectsRetained: true, alignmentReceipt: receipt, allocation, workflow: selected.path });
             identity.head = receipt.head;
-            selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
+            if (recoveredSuccessorReadmit) { const previousAllocationHead = allocation.headRevision, { previousWriteDigest, ...completed } = allocation; allocation = { ...completed, headRevision: identity.head, recoveredFromHead: previousAllocationHead, state: 'active' }; selected = withMember(root, profile.repository, selected, worktreeId, identity.head, allocation); }
+            else if (!recoveringSelectedSource) selected = withMember(root, profile.repository, selected, worktreeId, identity.head);
             const currentRecord = store.get(ref, root); if (!currentRecord || currentRecord.state !== 'active' || ['ref', 'device', 'scope', 'base', 'baseSha', 'worktree', 'pr'].some(field => currentRecord[field] !== record[field]) || JSON.stringify(currentRecord.writePaths ?? []) !== JSON.stringify(writePaths) || ![record.head, alignment.candidateHead, identity.head].includes(currentRecord.head)) fail('alignment-record-drift', 'Lane identity changed while refresh was applying; preserve the owner record and reconcile from its current head');
             if (currentRecord.head !== identity.head) store.putExact({ ...currentRecord, head: identity.head }, currentRecord, root);
             out(JSON.stringify(receipt));
@@ -249,9 +272,10 @@ export async function cmdStart(root, argv, policy, profile, services) {
             sourceHead: alignment.expectedHead, sourceBase: alignment.expectedBase, targetHead: alignment.expectedTarget,
             selectedPaths: alignment.selectedPaths, planDigest: alignment.digest,
           } : null;
+          if (selectedSourceRecovery) delete completed.recoveredFromHead;
           allocation = { ...completed, ...(recoveringHeadAdvance ? { headRevision: identity.head, recoveredFromHead: row.headRevision } : {}),
             ...(selectedSourceRecovery ? { headRevision: identity.head, selectedSourceRecovery } : {}), state: 'active' };
-          selected = recordAllocation(root, profile.repository, selected, allocation);
+          if (!(recoveredSuccessorReadmit && alignment)) selected = selectedSourceRecovery ? withMember(root, profile.repository, selected, worktreeId, identity.head, allocation) : recordAllocation(root, profile.repository, selected, allocation);
         }
         out(JSON.stringify({ schema: 'agentic-os/start-admission/v1', authority: false, status: readmit ? 'readmitted' : 'reused',
           ref, worktree: path, head: identity.head, writeDigest: allocation.writeDigest, workflow: selected.path, digest: selected.digest, ...(recertification ? { recertified: { previousWriteDigest: row.writeDigest, writeDigest: allocation.writeDigest, providerAuthority: false, integrationProof: false, cleanupAuthority: false } } : {}), ...(identity.recoveryReceipt ? { recovery: identity.recoveryReceipt } : {}), created: false }));
@@ -262,7 +286,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
         if (row) fail('recovery-required', 'A retained allocation still consumes capacity; reconcile it without another checkout');
         const limit = Math.min(selected?.manifest.execution?.checkoutLimit ?? explicitLimit, MAX_TASK_CHECKOUTS);
         const capacity = selected ? checkoutCapacity(selected, profile.repository, worktrees(root), explicitLimit) : { consumed: 0 };
-        if (limit === 0 || capacity.consumed >= limit) fail('capacity', limit === 0 ? `Mission ${selected?.manifest.id ?? 'new task'} allows no checkout. Declare a separate task with a positive --checkout-limit.` : `Checkout allowance exhausted for workflow ${selected.manifest.id} (${capacity.consumed}/${limit}). Resume/reconcile its allocation or pass a committed --plan for a new task.`, { capacity: { ...capacity, limit } });
+        if (limit === 0 || capacity.consumed >= limit) fail('capacity', limit === 0 ? `Mission ${selected?.manifest.id ?? 'new task'} allows no checkout. Declare a separate task with a positive --checkout-limit.` : `Checkout allowance exhausted for workflow ${selected.manifest.id} (${capacity.consumed}/${limit}). Resume/reconcile its allocation; independent work needs a distinct scope and --plan=<PRD-path> (protected PRD or untracked Markdown draft), subject to repository capacity. This workflow's limit cannot be raised.`, { capacity: { ...capacity, limit } });
       }
     }
     if (result !== 0) {
@@ -279,7 +303,7 @@ export async function cmdStart(root, argv, policy, profile, services) {
       assertDisjointReservation({ cwd: root, ref, writePaths: requested, protectedRef: policy.protectedRef, records: store.load(root).lanes });
       if (enrolled) {
         if (!selected) {
-          const initial = startWorkflow(root, profile.repository, { revision: baseSha, planningPath, worktreeId,
+          const initial = startWorkflow(root, profile.repository, { revision: baseSha, planningPath, worktreeId, planSnapshot,
             execution: { version: 1, checkoutLimit: explicitLimit, dependencies: { version: 1, edges: [] } } });
           selected = readSelectedWorkflow(root, profile.repository, { input: initial.manifest, required: true });
         } else {
@@ -294,8 +318,6 @@ export async function cmdStart(root, argv, policy, profile, services) {
         artifacts.allocation = allocation; artifacts.workflow = selected.path; artifacts.effectsRetained = true;
         selectedAgain(root, profile.repository, selected);
       }
-      const context = (await import('./agentic-os-workspace.mjs')).hydrateWorkspace(root, policy, { revision: baseSha });
-      if (context.status !== 'disabled') out(`${context.schema ? 'workspace' : 'memory'} ${JSON.stringify(context)}`);
       if (enrolled && selected) selectedAgain(root, profile.repository, selected);
       const created = effectReceipt('provision-worktree', provision({ ref, scope, device, baseSha, cwd: root }));
       Object.assign(artifacts, { worktree: created.path, provisioned: true, provisionReceipt: created, effectsRetained: true });
@@ -381,10 +403,10 @@ function laneDirtyEvidence(path) {
   const status = observeGit(['status', '--porcelain=v2', '-z', '--untracked-files=all'], { cwd: path, binary: true });
   return { entries, indexSha256: rebindHash(index), statusSha256: rebindHash(status), bytes: total };
 }
-function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, mounted: suppliedMounted = false, createdAt: suppliedCreatedAt = null }) {
+function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, acceptUnrecoverable = false, mounted: suppliedMounted = false, createdAt: suppliedCreatedAt = null }) {
   if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
   const root = repoRoot(cwd), identity = parseLaneRef(ref);
-  if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root }) !== '')
+  if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=no'], { cwd: root }) !== '')
     throw rebindBlock('canonical', 'recertification must run from clean canonical main');
   if (store.get(ref, root)) throw rebindBlock('record', 'recertification requires the exact lane record to be absent');
   if (typeof base !== 'string' || !/^refs\/remotes\/[^/]+\/main$/u.test(base)
@@ -395,6 +417,7 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || resolve(targetPath) !== targetPath) throw rebindBlock('restore-path', 'recertification target must be an exact absolute path');
   const targetStat = lstatSync(targetPath, { throwIfNoEntry: false }), registrations = worktrees(root),
     mounted = suppliedMounted || Boolean(targetStat), entry = registrations.find(row => row.branch === ref);
+  if (typeof acceptUnrecoverable !== 'boolean' || acceptUnrecoverable && mounted) throw rebindBlock('disposition', '--accept-unrecoverable applies only when recertifying an absent checkout');
   if (mounted ? !targetStat?.isDirectory() || targetStat.isSymbolicLink() || entry?.path !== targetPath
     || realpathSync(targetPath) !== targetPath || currentBranch(targetPath) !== ref
     : targetStat || entry || registrations.some(row => row.path === targetPath))
@@ -421,13 +444,14 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
   catch (error) { throw rebindBlock('path-overlap', error.message); }
   const createdAt = suppliedCreatedAt ?? new Date().toISOString();
   if (typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt)) || new Date(createdAt).toISOString() !== createdAt) throw rebindBlock('request', 'recertification timestamp must be an exact ISO timestamp');
+  const recovery = { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path', ...(acceptUnrecoverable ? { disposition: { schema: 'agentic-os/lane-recovery-disposition/v1', outcome: 'unrecoverable-accepted', ref, head, worktree: targetPath, decision: 'accept-missing-checkout-bytes-as-unrecoverable', recordedAt: createdAt, preserveCheckout: true, preserveRef: true, cleanupAuthorized: false, deploymentAuthorized: false } } : {}) };
   const updatedRecord = mounted
     ? { ref, device: identity.device, scope: identity.scope, state: 'active', base, baseSha, worktree: targetPath, pr: null, createdAt, writePaths }
-    : { ref, device: identity.device, scope: identity.scope, state: 'published', base, baseSha, worktree: targetPath, pr, createdAt, head, writePaths, recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path' } };
+    : { ref, device: identity.device, scope: identity.scope, state: 'published', base, baseSha, worktree: targetPath, pr, createdAt, head, writePaths, recovery };
   const body = { schema: REBIND_SCHEMA, mode: mounted ? 'mounted' : 'recertify', ref, root, targetPath, previousRecordSha256: rebindDigest(null), previousHead: null, head,
     protectedRef: base, protectedHead, baseSha, remoteHead, expectedHead, pr, refsSha256: refInventoryDigest(root), writePathsBefore: [], writePathsAfter: writePaths,
     addedPaths: writePaths, dirty, restoredDirtyState: mounted ? 'exact-local-inventory' : 'unobservable-at-missing-path', updatedRecord,
-    request: { base, baseSha, targetPath, expectedHead, pr, ...(mounted ? { mounted: true } : {}), createdAt } };
+    request: { base, baseSha, targetPath, expectedHead, pr, ...(acceptUnrecoverable ? { acceptUnrecoverable: true } : {}), ...(mounted ? { mounted: true } : {}), createdAt } };
   return { ...body, digest: rebindDigest(body) };
 }
 function planLaneRebindCore({ cwd = process.cwd(), ref, mode, ...request }) {
@@ -499,6 +523,7 @@ function laneRebindReceipt(plan, resumed) {
   return { schema: 'agentic-os/lane-rebind-receipt/v1', ref: plan.ref, mode: plan.mode,
     worktree: plan.targetPath, previousHead: plan.previousHead, head: plan.head,
     addedPaths: plan.addedPaths, restoredDirtyState: plan.restoredDirtyState,
+    recoveryDisposition: plan.updatedRecord?.recovery?.disposition ?? null,
     refsPreserved: true, committedBytesPreserved: true, authoredBytesPreserved: plan.mode === 'mounted',
     providerAuthority: false, integrationProof: false, cleanupAuthority: false, resumed };
 }
@@ -536,9 +561,7 @@ export function runLaneRebind(root, argv, out) {
   try {
     if (positional(argv)[0] === 'plan') {
       const mode = option(argv, 'mode');
-      const request = mode === 'recertify' ? { base: option(argv, 'base'), baseSha: option(argv, 'base-sha'),
-        targetPath: option(argv, 'worktree'), expectedHead: option(argv, 'expected-head'),
-        pr: option(argv, 'pr') === null ? null : Number(option(argv, 'pr')) } : {};
+      const request = mode === 'recertify' ? { base: option(argv, 'base'), baseSha: option(argv, 'base-sha'), targetPath: option(argv, 'worktree'), expectedHead: option(argv, 'expected-head'), pr: option(argv, 'pr') === null ? null : Number(option(argv, 'pr')), acceptUnrecoverable: flag(argv, 'accept-unrecoverable') } : {};
       const plan = planLaneRebindCore({ cwd: root, ref: option(argv, 'ref'), mode, ...request });
       out(JSON.stringify({ ...plan, authorization: `agentic-os:lane-rebind:${plan.digest}` }));
       return 0;

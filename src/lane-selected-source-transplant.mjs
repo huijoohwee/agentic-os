@@ -9,6 +9,7 @@ import { parseTreeEntries } from './canonical-resources.mjs';
 import { readBoundedFile, snapshotBoundedJson } from './catalog-input.mjs';
 import { assertDevice, isLaneRef, laneRef } from './lane-id.mjs';
 import * as store from './lane-records.mjs';
+import { successorLineage } from './lane-state.mjs';
 const SCHEMA = 'agentic-os/lane-selected-source-transplant-plan/v1', INPUT = 'agentic-os/lane-selected-source-transplant-input/v1';
 const MAX = 500_000, ENTRY_MAX = 1024 * 1024, AGGREGATE = 4 * 1024 * 1024, SHA = /^[a-f0-9]{40}$/u;
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -46,14 +47,13 @@ function location(input) {
 function direct(ref, cwd) { return observeGit(['symbolic-ref', '--quiet', ref], { cwd, allowFail: true }) === null; }
 function identity(input, acceptedHead = input.expectedHead) {
   if (input.stopped !== true || !SHA.test(input.expectedHead ?? '') || !SHA.test(input.expectedBase ?? '') || !SHA.test(input.expectedTarget ?? '') || !isLaneRef(input.ref)
-    || !/^refs\/remotes\/[^/]+\/.+/u.test(input.targetRef ?? '') || !isAbsolute(input.cwd) || repoRoot(input.cwd) !== input.cwd
-    || currentBranch(input.cwd) !== input.ref || !worktrees(input.cwd).some(row => row.path === input.cwd && row.branch === input.ref)
+    || !/^refs\/remotes\/[^/]+\/.+/u.test(input.targetRef ?? '') || !isAbsolute(input.cwd) || repoRoot(input.cwd) !== input.cwd || currentBranch(input.cwd) !== input.ref || !worktrees(input.cwd).some(row => row.path === input.cwd && row.branch === input.ref)
     || headSha('HEAD', input.cwd) !== acceptedHead || headSha(input.targetRef, input.cwd) !== input.expectedTarget) fail('identity');
-  const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd);
-  if (remoteRefSha(remote, input.ref, input.cwd, transport.fetchUrl) !== null) fail('published');
-  const parents = observeGit(['show', '--no-patch', '--format=%P', input.expectedHead], { cwd: input.cwd });
-  if (parents !== input.expectedBase) fail('base');
-  return remote;
+  const remote = configuredRemote(input.targetRef.split('/')[2], input.cwd), transport = remoteTransport(remote, input.cwd); if (remoteRefSha(remote, input.ref, input.cwd, transport.fetchUrl) !== null) fail('published');
+  const parents = observeGit(['show', '--no-patch', '--format=%P', input.expectedHead], { cwd: input.cwd }), record = store.get(input.ref, input.cwd), handoff = record?.handoff, retainedBase = successorLineage(record)?.predecessorHead === input.expectedBase || handoff?.schema === 'agentic-os-lane-selected-source-transplant/v1'
+    && handoff.preservedHead === input.expectedHead && handoff.sourceBase === input.expectedBase && handoff.targetHead === input.expectedTarget && same(handoff.selectedPaths, input.selectedPaths)
+    && (!input.digest || handoff.planDigest === input.digest);
+  if (parents !== input.expectedBase && (!retainedBase || !isAncestor(input.expectedBase, input.expectedHead, input.cwd))) fail('base'); return remote;
 }
 function body(plan) { return Object.fromEntries(Object.entries(plan).filter(([key]) => !['digest', 'resume', 'liveHead'].includes(key))); }
 function readJournal(path) {
@@ -72,8 +72,9 @@ function pins(plan) {
 function exactRecord(plan, candidate = false) {
   const record = store.get(plan.ref, plan.cwd);
   if (!record || record.worktree !== plan.cwd || record.base !== plan.targetRef) fail('record');
-  const digest = hash(json(record)), prior = { ...record, head: plan.recordHead };
-  if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && hash(json(prior)) === plan.recordDigest)) fail('record');
+  const digest = hash(json(record)), prior = { ...record, head: plan.recordHead }, priorDigests = [hash(json(prior))];
+  if (plan.recordHead === null) { const omittedHead = { ...record }; delete omittedHead.head; priorDigests.push(hash(json(omittedHead))); }
+  if (!candidate && digest !== plan.recordDigest && !(record.head === plan.expectedHead && priorDigests.includes(plan.recordDigest))) fail('record');
   if (candidate && (record.head !== plan.candidateHead || record.handoff?.schema !== 'agentic-os-lane-selected-source-transplant/v1'
     || record.handoff?.preservedRef !== plan.oldRef || record.handoff?.preservedHead !== plan.expectedHead
     || record.handoff?.sourceBase !== plan.expectedBase || record.handoff?.targetHead !== plan.expectedTarget
@@ -163,9 +164,8 @@ export function applySelectedSourceTransplant(value) {
   identity(plan); clean(plan.cwd, plan.expectedHead); pins(plan); verifyCandidate(plan); const record = exactRecord(plan);
   atomicAdvanceRef(`refs/heads/${plan.ref}`, plan.candidateHead, plan.expectedHead, [[plan.targetRef, plan.expectedTarget], [plan.oldRef, plan.expectedHead], [plan.deltaRef, plan.deltaHead], [plan.candidateRef, plan.candidateHead]], plan.cwd);
   git(['read-tree', '--reset', '-u', plan.candidateHead], { cwd: plan.cwd }); clean(plan.cwd, plan.candidateHead);
-  store.putExact({ ...record, head: plan.candidateHead, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1',
-    preservedRef: plan.oldRef, preservedHead: plan.expectedHead, sourceBase: plan.expectedBase,
-    targetHead: plan.expectedTarget, selectedPaths: plan.selectedPaths, planDigest: plan.digest } }, record, plan.cwd);
+  store.putExact({ ...record, head: plan.candidateHead, handoff: { schema: 'agentic-os-lane-selected-source-transplant/v1', preservedRef: plan.oldRef,
+    preservedHead: plan.expectedHead, sourceBase: plan.expectedBase, targetHead: plan.expectedTarget, selectedPaths: plan.selectedPaths, planDigest: plan.digest } }, record, plan.cwd);
   return receipt(plan, false);
 }
 export function verifySelectedSourceTransplantRecovery(root, input) {
@@ -175,11 +175,11 @@ export function verifySelectedSourceTransplantRecovery(root, input) {
     || !/^[a-f0-9]{64}$/u.test(input.planDigest ?? '') || !isLaneRef(input.ref) || input.schema !== 'agentic-os/workflow-selected-source-recovery/v1') fail('recovery-input-identity');
   if (!Array.isArray(input.selectedPaths) || !input.selectedPaths.length || input.selectedPaths.length > 32 || !same(input.selectedPaths, [...new Set(input.selectedPaths)].sort())) fail('recovery-input-paths');
   const record = store.get(input.ref, root), branchHead = headSha(input.ref, root);
-  if (!record?.worktree || !record.head || !isAncestor(input.candidateHead, record.head, root) || !isAncestor(record.head, branchHead, root)
-    || record.handoff?.planDigest !== input.planDigest || record.handoff?.preservedHead !== input.sourceHead || record.handoff?.sourceBase !== input.sourceBase
-    || record.handoff?.targetHead !== input.targetHead || !same(record.handoff?.selectedPaths, input.selectedPaths)) fail('recovery-record');
+  // Provider publication may replace record.handoff; the immutable journal and pinned refs below are the recovery proof.
+  if (!record?.worktree || record.ref !== input.ref || !record.head
+    || !isAncestor(input.candidateHead, record.head, root) || !isAncestor(record.head, branchHead, root)) fail('recovery-record');
   const planInput = { cwd: record.worktree, ref: input.ref, expectedHead: input.sourceHead, expectedBase: input.sourceBase, targetRef: record.base, expectedTarget: input.targetHead, selectedPaths: input.selectedPaths, stopped: true };
-  const journal = readJournal(location({ ...planInput, gitRoot: root }).journalPath);
+  let journal; try { journal = readJournal(location({ ...planInput, gitRoot: root }).journalPath); } catch { fail('recovery-plan'); }
   if (journal.cwd !== record.worktree || journal.ref !== input.ref || journal.expectedHead !== input.sourceHead || journal.expectedBase !== input.sourceBase
     || journal.targetRef !== record.base || journal.expectedTarget !== input.targetHead
     || !same(journal.selectedPaths, input.selectedPaths) || journal.digest !== input.planDigest || journal.candidateHead !== input.candidateHead) fail('recovery-plan');

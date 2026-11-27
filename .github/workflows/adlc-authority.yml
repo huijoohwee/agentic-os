@@ -32,10 +32,14 @@ jobs:
       - name: Bind enrollment to this repository
         run: |
           node --input-type=module -e '
+            import { readFileSync } from "node:fs";
             import { loadAuthorityDispatch } from "./bin/agentic-os-authority.mjs";
+            import { validateGitHubTransitionPolicy } from "./src/github-transition-policy.mjs";
             const { dispatch } = loadAuthorityDispatch(process.env.GITHUB_EVENT_PATH);
-            const target = "github.com/huijoohwee/agentic-os";
-            if (dispatch.request.repository !== target || dispatch.candidate.targetRepository !== target)
+            const source = JSON.parse(readFileSync(".agentic-os/github-transition-policy.json", "utf8"));
+            const policy = validateGitHubTransitionPolicy(source);
+            const target = dispatch.request.repository;
+            if (dispatch.candidate.targetRepository !== target || !policy.targetRepositories.includes(target))
               throw new Error("authority target is outside this enrollment");
           '
       - name: Validate exact authority input without publication credentials

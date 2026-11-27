@@ -1,12 +1,13 @@
-# Agent instructions
+# AOS
 
-ADLC supersedes Agentic SDLC. Continuously obey the global
+Continuously obey the global
 `guides/SYSTEM-PROMPT-RUNTIME.md`; load `docs/adlc-guidelines.md` and one
 START/RELEASE/DEPLOY workflow only.
-
-- Preserve authored bytes and live evidence; never infer authority from projections or passing checks.
-- Keep canonical read-only; use disjoint scoped lanes; never rebase a published lane.
-- Compute integration with `npm run reap`; retirement and each cleanup effect need separate receipts.
-- Fix the owning source, remove replacements, honor budgets, and keep only contract-bound shims.
-
-Run `npm run check`; report diff, evidence, and remaining risk.
+- Keep authored bytes/evidence; checks/projections lack authority.
+- Agentic Design System owns shared UI tokens; pin exact revisions/digests; no forks/overrides/duplicates.
+- Batch disjoint repo work/checks; merge by dependency; recheck drift only.
+- END: finish authorized work, check, LAND/publish, RELEASE; park only by explicit owner decision.
+- Canonical read-only; scoped lanes; no published rebases.
+- `npm run reap` proves integration; separate cleanup/retire receipts.
+- Fix owners; remove replacements; honor budgets; contract-only shims.
+Run `npm run check`; report diff/evidence/risk.

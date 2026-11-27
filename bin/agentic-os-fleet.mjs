@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /** On-demand allocation check over an explicit task-registry snapshot; no writes or authority. */
-import { resolve, relative, isAbsolute } from 'node:path';
+import { basename, resolve, relative, isAbsolute, sep } from 'node:path';
 import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { readOwnerSource } from '../scripts/check-fleet-reuse.mjs';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { canonicalJson, governanceDigest } from '../src/governance.mjs';
 import { parseWritePaths, pathsOverlap } from '../src/worktree.mjs';
@@ -162,7 +163,7 @@ export function runFleetCli(argv, io = console) {
   } catch (error) { io.error(`fleet allocation: ${error.message}`); return 1; }
 }
 
-export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 8, artifacts: 2048,
+export const OWNERSHIP_LIMITS = Object.freeze({ repositories: 14, artifacts: 2048,
   fileBytes: 500_000, totalBytes: 32_000_000, milliseconds: 10_000, findings: 128 });
 const POLICY_PATH = fileURLToPath(new URL('../catalog/fleet-ownership.json', import.meta.url));
 const CAPABILITY_KINDS = ['catalog', 'prompt', 'agent', 'skill', 'command', 'contract', 'runtime', 'guide', 'projection', 'reference'];
@@ -187,11 +188,26 @@ export function validateOwnershipPolicy(value) {
   const repos = new Set(policy.repositories.map(r => r.id));
   list(policy.responsibilities, 64, 'responsibilities', true);
   for (const item of policy.responsibilities) {
-    exact(item, ['id', 'owner', 'source', 'consumers', ...('discovery' in item ? ['discovery'] : [])], 'responsibility');
+    exact(item, ['id', 'owner', 'source', 'consumers', ...('discovery' in item ? ['discovery'] : []), ...('reuse' in item ? ['reuse'] : [])], 'responsibility');
     id(item.id, 'responsibility.id'); relativePath(item.source, 'responsibility.source');
     if (!repos.has(item.owner)) fail('unknown responsibility owner');
     list(item.consumers, OWNERSHIP_LIMITS.repositories, 'consumers'); unique(item.consumers, 'consumers');
     if (item.consumers.some(r => !repos.has(r) || r === item.owner)) fail('unknown or recursive consumer');
+    if ('reuse' in item) for (const proof of [item.reuse].flat()) {
+      if (!proof || !item.consumers.includes(proof.consumer) || !item.discovery) fail('unbound consumer proof');
+      if ('document' in proof) {
+        exact(proof, ['consumer', 'document', 'referenceIds'], 'document proof');
+        relativePath(proof.document, 'document');
+        unique(list(proof.referenceIds, 32, 'reference IDs', true), 'reference IDs');
+        if (proof.referenceIds.some(id => typeof id !== 'string' || !/^guideline\/[a-z0-9-]+$/u.test(id))) fail('invalid guideline ID');
+        continue;
+      }
+      const pairs = [['manifest','package'], ['pin','projection'], ['entry','specifier'], ['snapshot']];
+      const fields = pairs.filter(pair => pair.some(key => key in proof)).flat();
+      exact(proof, ['consumer', ...fields], 'consumer proof');
+      if (!proof.manifest && !proof.pin && !proof.snapshot || proof.entry && !proof.manifest) fail('missing consumer pin');
+      for (const field of fields) relativePath(proof[field], field);
+    }
     if ('discovery' in item) {
       exact(item.discovery, ['kinds', 'summary', 'transport'], 'capability discovery');
       list(item.discovery.kinds, CAPABILITY_KINDS.length, 'capability kinds', true);
@@ -235,29 +251,7 @@ export function resolveCapability(policyValue, { capabilityId, root, revision, i
   const role = policy.responsibilities.find(r => r.id === capabilityId && r.discovery);
   if (!role || typeof root !== 'string' || !isAbsolute(root) || !SHA.test(revision ?? '')
     || typeof includeContent !== 'boolean') fail('resolution requires a known id, absolute root and immutable revision');
-  const actualRoot = realpathSync(root);
-  const git = args => {
-    const remaining = OWNERSHIP_LIMITS.milliseconds - (Date.now() - started);
-    if (remaining <= 0) fail('capability resolution time budget exceeded');
-    return execFileSync('git', ['--no-optional-locks', ...args], { cwd: actualRoot,
-      timeout: Math.min(2000, remaining), maxBuffer: OWNERSHIP_LIMITS.fileBytes });
-  };
-  if (realpathSync(decode(git(['rev-parse', '--show-toplevel'])).trim()) !== actualRoot
-    || remoteRepositoryIdentity(decode(git(['config', '--get', 'remote.origin.url'])).trim())?.repository.toLowerCase() !== role.owner)
-    fail('capability repository identity mismatch');
-  if (decode(git(['rev-parse', '--verify', `${revision}^{commit}`])).trim() !== revision)
-    fail('capability revision must name an exact commit');
-  const entry = decode(git(['ls-tree', '--format=%(objectmode) %(objecttype) %(objectname)', revision, '--', role.source])).trim();
-  const match = entry.match(/^(100644|100755) blob ([a-f0-9]{40}|[a-f0-9]{64})$/u);
-  if (!match) fail('capability source must be one regular Git blob');
-  const size = Number(decode(git(['cat-file', '-s', match[2]])).trim());
-  if (!Number.isSafeInteger(size) || size < 0 || size > OWNERSHIP_LIMITS.fileBytes) fail('capability source exceeds byte budget');
-  const bytes = git(['cat-file', 'blob', match[2]]);
-  if (bytes.length !== size) fail('capability source size mismatch');
-  const source = { repository: role.owner, revision, path: role.source, blob: match[2],
-    sha256: digestBytes(bytes), bytes: size,
-    url: role.owner.startsWith('github.com/')
-      ? `https://${role.owner}/blob/${revision}/${role.source.split('/').map(encodeURIComponent).join('/')}` : null };
+  const { source, bytes } = readOwnerSource(root, role, revision, OWNERSHIP_LIMITS, started);
   return { schema: 'agentic-os/capability-resource/v1', ok: true, authority: false, executable: false,
     policyDigest: governanceDigest(policy), id: role.id, ...role.discovery, source,
     ...(includeContent ? { content: decode(bytes) } : {}) };
@@ -380,6 +374,12 @@ export function collectFleetOwnership(policyValue, roots) {
     const root = realpathSync(roots[repo.id]);
     if (observedRoots.has(root) || realpathSync(run(root, ['rev-parse', '--show-toplevel']).trim()) !== root) fail('duplicate or non-root repository');
     observedRoots.add(root);
+    const gitDir = resolve(root, run(root, ['rev-parse', '--absolute-git-dir']).trim());
+    const commonDir = resolve(root, run(root, ['rev-parse', '--git-common-dir']).trim());
+    const gitDirFromCommon = relative(commonDir, gitDir);
+    const worktree = gitDirFromCommon.split(sep)[0] === 'worktrees' && gitDirFromCommon !== 'worktrees';
+    if (!worktree && basename(root) !== repo.directory)
+      fail(`canonical checkout directory mismatch for ${repo.id}: expected ${repo.directory}, found ${basename(root)}`);
     const remote = run(root, ['config', '--get', 'remote.origin.url']).trim();
     const identity = remoteRepositoryIdentity(remote)?.repository.toLowerCase();
     if (identity !== repo.id) fail(`repository identity mismatch for ${repo.directory}`);

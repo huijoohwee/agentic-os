@@ -3,11 +3,11 @@ title: Exact quarantine inventory
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.6.0"
-tad_revision: "1.6.0"
-adr_revision: "1.6.0"
+prd_revision: "1.7.0"
+tad_revision: "1.7.0"
+adr_revision: "1.7.0"
 load_policy: on-demand
-version: "1.6.0"
+version: "1.7.0"
 date: "2026-10-14"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -21,8 +21,8 @@ guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/\
   guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "0a62aae2c1d6dd60a1ac75164fad415dde4f809f"
-mvp_revision: "1.6.0"
-gtm_revision: "1.6.0"
+mvp_revision: "1.7.0"
+gtm_revision: "1.7.0"
 ---
 
 # Exact quarantine inventory
@@ -51,8 +51,11 @@ import { constants, fstatSync, lstatSync, openSync, opendirSync, readFileSync, c
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-const started = performance.now(), deadline = started + 2000, maxRows = 256, maxBytes = 4 * 1024 * 1024;
+const started = performance.now(), deadline = started + 2000, maxRows = 256;
+const maxCoordinates = 20_000, maxBytes = 4 * 1024 * 1024;
 const root = realpathSync(process.argv[2]);
+const cursorArg = process.argv[3];
+if (process.argv.length > 4 || (cursorArg && !cursorArg.startsWith('--cursor='))) throw Error('invalid-arguments');
 for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY',
   'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_INDEX_FILE', 'GIT_SHALLOW_FILE'])
   if (process.env[key]) throw Error('git-environment-override');
@@ -62,7 +65,7 @@ const common = realpathSync(execFileSync('git', ['--no-optional-locks', 'rev-par
 const store = join(common, 'agentic-os-cleanup-quarantine'), rows = [], reasons = new Set();
 const same = (a, b) => ['dev', 'ino', 'mode', 'nlink', 'size', 'mtimeNs', 'ctimeNs']
   .every(key => a[key] === b[key]);
-let metadataBytesRead = 0, discoveryComplete = true, directoryReads = 0;
+let metadataBytesRead = 0, directoryReads = 0;
 const marker = path => {
   const value = lstatSync(path, { bigint: true, throwIfNoEntry: false });
   if (!value) return false;
@@ -89,25 +92,47 @@ const readOperation = path => {
 };
 
 const container = lstatSync(store, { bigint: true, throwIfNoEntry: false });
+const stamp = value => ({ dev: String(value.dev), ino: String(value.ino),
+  mtimeNs: String(value.mtimeNs), ctimeNs: String(value.ctimeNs) });
+let cursorAfter = null;
+if (cursorArg) {
+  try {
+    const encoded = cursorArg.slice('--cursor='.length), decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+    const token = JSON.parse(decoded);
+    if (!encoded || Buffer.from(decoded).toString('base64url') !== encoded
+      || token.schema !== 'agentic-os/quarantine-inventory-cursor/v1' || token.common !== common
+      || typeof token.after !== 'string' || token.after.length > 255 || !container || !container.isDirectory()
+      || JSON.stringify(token.store) !== JSON.stringify(stamp(container))) throw Error();
+    cursorAfter = token.after;
+  } catch { throw Error('invalid-cursor'); }
+}
+let namesComplete = true, pageComplete = true, nextCursor = null;
 if (container) {
   if (!container.isDirectory() || container.isSymbolicLink() || realpathSync(store) !== store)
     throw Error('unsafe-container');
   const names = [], stream = opendirSync(store);
   try {
     for (;;) {
-      if (performance.now() >= deadline) { reasons.add('time-budget'); discoveryComplete = false; break; }
+      if (performance.now() >= deadline) { reasons.add('time-budget'); namesComplete = false; break; }
       directoryReads++;
       const entry = stream.readSync();
       if (!entry) break;
-      if (names.length === maxRows) { reasons.add('coordinate-budget'); discoveryComplete = false; break; }
+      if (names.length === maxCoordinates) {
+        reasons.add('coordinate-budget'); namesComplete = false; break;
+      }
       names.push(entry.name);
     }
   } finally { stream.closeSync(); }
-  names.sort();
-  for (const coordinate of names) {
-    if (performance.now() >= deadline) { reasons.add('time-budget'); discoveryComplete = false; break; }
+  if (cursorAfter && !names.includes(cursorAfter)) throw Error('invalid-cursor');
+  const pageNames = names.filter(name => !cursorAfter || name > cursorAfter).sort();
+  const hasMore = pageNames.length > maxRows || !namesComplete;
+  let lastVisited = cursorAfter;
+  for (const coordinate of pageNames.slice(0, maxRows)) {
+    if (performance.now() >= deadline) { reasons.add('time-budget'); pageComplete = false; break; }
+    let budgetExceeded = false;
     if (!/^[a-f0-9]{64}$/.test(coordinate)) {
-      rows.push({ coordinate, status: 'unrecognized-entry' }); reasons.add('unrecognized-entry'); continue;
+      rows.push({ coordinate, status: 'unrecognized-entry' }); reasons.add('unrecognized-entry');
+      lastVisited = coordinate; continue;
     }
     try {
       const folder = join(store, coordinate), before = lstatSync(folder, { bigint: true });
@@ -146,31 +171,46 @@ if (container) {
       rows.push({ coordinate, status: 'incomplete-metadata' });
       const budget = error.message === 'metadata-budget';
       reasons.add(budget ? 'metadata-budget' : 'invalid-metadata');
-      if (budget) { discoveryComplete = false; break; }
+      budgetExceeded = budget;
     }
+    lastVisited = coordinate;
+    if (budgetExceeded) { pageComplete = false; break; }
   }
+  if (namesComplete && hasMore && lastVisited)
+    nextCursor = Buffer.from(JSON.stringify({ schema: 'agentic-os/quarantine-inventory-cursor/v1',
+      common, store: stamp(container), after: lastVisited })).toString('base64url');
 }
 if (container) {
   const after = lstatSync(store, { bigint: true, throwIfNoEntry: false });
-  if (!after || !same(container, after)) { reasons.add('container-changed'); discoveryComplete = false; }
+  if (!after || !same(container, after)) {
+    reasons.add('container-changed'); namesComplete = false; nextCursor = null;
+  }
 }
-if (performance.now() >= deadline) { reasons.add('time-budget'); discoveryComplete = false; }
+if (performance.now() >= deadline) { reasons.add('time-budget'); pageComplete = false; }
 rows.sort((a, b) => (b.recordedProjectionBytes ?? -1) - (a.recordedProjectionBytes ?? -1)
   || a.coordinate.localeCompare(b.coordinate));
+const discoveryComplete = !cursorAfter && namesComplete && pageComplete && !nextCursor;
 console.log(JSON.stringify({ schema: 'agentic-os/quarantine-storage-report/v1', repository: root, common,
   coverage: 'cleanup-quarantine-direct-children',
   status: discoveryComplete && reasons.size === 0 ? 'complete' : 'partial', discoveryComplete,
+  pageComplete, enumerationComplete: namesComplete, cursorAfter, nextCursor,
   measurement: 'recorded-quarantine-projection-manifest', snapshotConsistent: false,
   grantsAuthority: false, reclaimableBytes: null, rows, reasons: [...reasons].sort(),
   cost: { elapsedMs: Math.ceil(performance.now() - started), coordinatesObserved: rows.length,
-    directoryReads, metadataBytesRead, contentBytesRead: 0, maxRows, maxMetadataBytes: maxBytes,
+    directoryReads, metadataBytesRead, contentBytesRead: 0, maxRows, maxCoordinates,
+    maxMetadataBytes: maxBytes,
     maxMs: 2000, deadlineKind: 'cooperative-between-filesystem-calls' } }, null, 2));
 NODE
 ```
 
 The recipe reads bounded operation metadata and marker inodes, never projection payloads or Git objects.
-It inspects at most 256 direct coordinates, reads at most 4 MiB of operation metadata, and uses a
-two-second cooperative limit. It writes no repository state. Marker presence does not verify a receipt;
+Each invocation enumerates at most 20,000 direct coordinates, processes at most 256 coordinates,
+reads at most 4 MiB of operation metadata, and uses a two-second cooperative limit. When more rows
+remain, pass the returned `nextCursor` as `--cursor=<token>` on the next invocation and collect every
+page. A cursor is bound to the exact Git common directory and quarantine directory identity; directory
+changes invalidate it, so restart the inventory. A paged report stays partial because pages are not an
+atomic snapshot. The 20,000-coordinate ceiling is a hard coverage limit; if exceeded, the report is
+partial and does not issue a continuation cursor. It writes no repository state. Marker presence does not verify a receipt;
 the report grants no authority and sets `reclaimableBytes` to `null`. A chosen coordinate still requires a
 fresh exact `cleanup-user retire plan` that revalidates current recovery loss. Existing storage CLI
 behavior remains unchanged.

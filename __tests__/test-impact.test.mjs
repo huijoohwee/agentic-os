@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkInputResolver, checkInputs, references, selectTests, validateContracts } from '../bin/agentic-os-test-impact.mjs';
+import { checkInputResolver, checkInputs, references, selectTests, TEST_SUITE_LIMIT, validateContracts } from '../bin/agentic-os-test-impact.mjs';
 import { snapshot, LIMITS } from '../bin/agentic-os-test-inputs.mjs';
 import { writeReceipt } from '../bin/agentic-os-test-receipt.mjs';
 
@@ -24,7 +24,7 @@ test('expanded suite receipts retain all results inside the unchanged byte cap',
 const file = text => ({ text, digest: text, mode: '100644' });
 function fixture() {
   const contracts = { schema: 'agentic-os/test-impact-contracts/v1',
-    sentinels: ['safety.test.mjs'], packaging: ['package.test.mjs'], broad: ['package.json', 'test/impact-contracts.json'],
+    sentinels: ['safety.test.mjs'], packaging: ['package.test.mjs'], broad: ['package.json', 'test/impact-contracts.json', 'docs/adlc-guidelines.md'],
     rules: [{ id: 'documents', inputs: ['docs/'], tests: ['docs.test.mjs'] }], dependencies: {} };
   const entries = {
     'package.json': JSON.stringify({ exports: { './public': './src/a.mjs' } }),
@@ -88,6 +88,12 @@ test('documents use explicit contracts and changed tests run directly', () => {
   const plan = selectTests({ ...f, changed: ['docs/a.md', '__tests__/isolated.test.mjs'] });
   assert.deepEqual(paths(plan), ['__tests__/docs.test.mjs', '__tests__/isolated.test.mjs', '__tests__/safety.test.mjs']);
 });
+test('universal ADLC contract changes use the shared-contract gate', () => {
+  const f = fixture(), plan = selectTests({ ...f, changed: ['docs/adlc-guidelines.md'] });
+  assert.equal(plan.mode, 'broad');
+  assert.ok(plan.reasons.includes('shared-contract:docs/adlc-guidelines.md'));
+  assert.equal(plan.suites.length, plan.available);
+});
 test('unmapped paths, shared configuration and opaque affected code broaden with a reason', () => {
   for (const changed of [['new.dat'], ['package.json']]) {
     const f = fixture(), plan = selectTests({ ...f, changed });
@@ -105,6 +111,17 @@ test('no changes still runs safety sentinels, while all selects every suite', ()
   assert.deepEqual(paths(selectTests({ ...f, changed: [] })), ['__tests__/safety.test.mjs']);
   const all = selectTests({ ...f, changed: [], forceAll: true });
   assert.equal(all.suites.length, all.available); assert.deepEqual(all.reasons, ['explicit-all']);
+});
+test('suite inventory admits 258 suites and blocks the next one', () => {
+  const f = fixture(), suites = [...f.after.keys()].filter(path => /^__tests__\/[^/]+\.test\.mjs$/u.test(path));
+  assert.equal(TEST_SUITE_LIMIT, 258);
+  for (let index = suites.length; index < TEST_SUITE_LIMIT; index++)
+    f.after.set(`__tests__/budget-${index}.test.mjs`, file(''));
+  const accepted = selectTests({ ...f, changed: ['unmapped'] });
+  assert.equal(accepted.available, TEST_SUITE_LIMIT);
+  assert.equal(accepted.suites.length, TEST_SUITE_LIMIT);
+  f.after.set('__tests__/budget-over-limit.test.mjs', file(''));
+  assert.throws(() => selectTests({ ...f, changed: [] }), /blocked-test-suite-inventory/u);
 });
 test('contract drift and missing suites cannot silently remove obligations', () => {
   const f = fixture();
@@ -170,6 +187,14 @@ test('reviewed lazy entrypoints select their route owners and bind deferred byte
   assert.ok(checkInputs(source.after, '__tests__/release-common-complete.test.mjs').paths
     .includes('bin/agentic-os-admission.mjs'));
 
+  const alignment = select(['bin/agentic-os-lane-alignment.mjs']);
+  assert.ok(paths(alignment).includes('__tests__/lane-alignment.test.mjs'));
+  assert.ok(paths(alignment).includes('__tests__/provider-lane-rebind.test.mjs'));
+  assert.ok(paths(alignment).includes('__tests__/release-common-complete.test.mjs'),
+    'CLI subprocess coverage stays conservative across the lazy route');
+  assert.ok(!paths(alignment).includes('__tests__/admission-economy.test.mjs'),
+    'the provider-refresh route must not pull every general CLI consumer');
+
   const docs = select(['docs/START-WORKFLOW.md']);
   assert.ok(paths(docs).includes('__tests__/runtime-budgets.test.mjs'));
   assert.ok(paths(docs).includes('__tests__/composition-runtime-check.test.mjs'));
@@ -223,4 +248,14 @@ test('reviewed pure checks bind their dependency closure; package commands remai
   f.after.set('__tests__/a.test.mjs', file('import(unknown);'));
   assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'repository');
   assert.throws(() => validateContracts({ ...f.contracts, isolated: ['missing.test.mjs'] }, f.after), /contracts/);
+});
+
+test('code examples in data assets bind bytes without pretending to execute discovery', () => {
+  const f = fixture();
+  f.after.set('src/a.mjs', file("export const doc = new URL('../docs/a.md', import.meta.url);"));
+  f.after.set('docs/a.md', file("Example: readFileSync(root); npm 'pack'; import 'node:fs';"));
+  const input = checkInputs(f.after, '__tests__/a.test.mjs');
+  assert.equal(input.scope, 'inputs'); assert.ok(input.paths.includes('docs/a.md'));
+  f.after.set('src/a.mjs', file("import 'node:fs'; export const doc = readFileSync(path);"));
+  assert.equal(checkInputs(f.after, '__tests__/a.test.mjs').scope, 'repository');
 });

@@ -25,6 +25,7 @@ test('stale-ref sweep uses fixed Git reads for a full bounded lane inventory', (
   assert.equal(result.candidates.length, 256);
   assert.equal(result.candidates[0].mounted, true);
   assert.equal(result.candidates[0].merged, true);
+  assert.equal(result.candidates[0].cleanupCommand, 'agentic-os cleanup auto --ref=agent/device-test/lane-0');
   assert.equal(result.candidates[1].merged, false);
   assert.equal(gitReads.length, 2, 'Git subprocess count remains constant at the 256-lane bound');
   assert.equal(worktreeReads, 1);
@@ -45,6 +46,7 @@ test('stale-ref sweep reports merged and mounted state from the observed snapsho
     ['agent/device-test/merged', true, true],
     ['agent/device-test/unmerged', false, false],
   ]);
+  assert.equal(candidates[1].cleanupCommand, 'agentic-os cleanup auto --ref=agent/device-test/unmerged');
   const overBudget = Array.from({ length: 257 }, (_, index) =>
     row(laneRef(`lane-${index}`, 'device-test'), index, 1700000000));
   assert.throws(() => projectUserCleanupSweep({ refs: overBudget, mergedBranches: [],

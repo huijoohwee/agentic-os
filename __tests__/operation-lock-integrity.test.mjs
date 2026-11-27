@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync,
-  writeFileSync,
+  utimesSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -79,6 +79,19 @@ test('lock finalization retains nonempty and replaced locks with exact outcomes'
   assert.throws(() => finishOperationLock(replaced, { label: 'test', result }),
     { reason: 'blocked-test-lock-integrity' });
   assert.equal(existsSync(replaced.path), true);
+});
+
+test('lock finalization succeeds when only the lock directory timestamps drift', (t) => {
+  const { root } = fixture(t);
+  const result = Object.freeze({ receipt: 'timestamp-drift-success' });
+  const lock = acquireOperationLock('timestamp-drift-test', root);
+  // Simulate APFS mtime/ctime drift on the unchanged empty lock directory: same device/inode/mode,
+  // different timestamps. Finalization must still remove the exact lock and return the result.
+  const past = new Date(Date.now() - 60_000);
+  utimesSync(lock.path, past, past);
+  const returned = finishOperationLock(lock, { label: 'test', result });
+  assert.equal(returned, result);
+  assert.equal(existsSync(lock.path), false);
 });
 
 test('lock finalization retains the exact original error instead of masking it', (t) => {
@@ -331,7 +344,7 @@ test('provider handoff retention bounds provider-controlled strings and keeps co
 test('start retains a created lane and foreign lock bytes when finalization fails', (t) => {
   const { parent, root, run } = fixture(t);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
@@ -487,7 +500,7 @@ test('config response loss plus failed restoration retains an explicit unknown r
 test('partial provision failure reports exact retained branch and worktree artifacts', (t) => {
   const { parent, root, run } = fixture(t);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
@@ -538,7 +551,7 @@ test('partial provision failure reports exact retained branch and worktree artif
 test('canonical-sync CLI emits its retained success receipt when lock finalization fails', (t) => {
   const { parent, root, run } = fixture(t);
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });

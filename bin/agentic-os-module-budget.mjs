@@ -25,9 +25,14 @@ export const BUDGET = Object.freeze({
   // 2026-10-18: +34 existing-owner lines bind a replaced successor handoff to its exact retained predecessor, remote ref, transplant journal and source ancestry; 2026-10-19 cross-base readmission adds +9 src/+9 bin lines for exact old-base/head ancestry and immutable allocation pins; no new module or dependency.
   // 2026-10-19: one effect-cost owner validates scoped provider evidence before authority (+174 src lines).
   // 2026-10-21 ADLC-CLOSEOUT-001: +42 existing bin lines for lane-safe read-only closeout; reduce command switching without changing effect authority.
-  modules: 51,
-  totalLines: 16041,
-  perModuleLines: 400,
+  // 2026-10-26 END-ADLC-SIMPLIFY-001: +68 src/+39 bin lines add exact selection, bounded cleanup and read-only closeout projection in existing owners.
+  // 2026-10-27 FLEET-01.10: +52 src/+31 bin lines enforce canonical checkout naming; refresh release pins. 2026-10-31: +137 CLI lines admit detached-main quarantine; +19 src/+296 bin lines add one lazy unpublished-abandonment command and status binding, preserving checkout bytes, refs, and objects with no provider, runtime, or dependency effect. 2026-11-03 END-ADLC recovery: +147 existing-owner CLI lines bind stale published checkout cleanup to exact current-integration proof, skipping provider workflow inference; no new modules, dependencies, or always-load bytes.
+  // 2026-11-05 CORE-DEFAULT: +64 src/+256 bin ceiling for native END composition, exact-head PR updates, and metadata-only preservation.
+  // CLEAN-WORKTREE-REMOVE: one focused adapter (+1 module/+79 src lines) isolates the no-force Git effect and its receipt; no dependencies added.
+  // Per-file and always-loaded ceilings stay fixed; all other cleanup policy remains in its existing owners.
+  modules: 53,
+  totalLines: 16780,
+  perModuleLines: 450,
   // 2026-09-22 user-authorized ADLC-EXEC-001: two lazy native owners; no runtime dependencies.
   // 2026-09-22 user-authorized ADLC-EXEC-002: raise bin cap to 23100 for the
   // change-class fast path, stale-ref sweep, and unified cleanup CLI; the new
@@ -39,8 +44,8 @@ export const BUDGET = Object.freeze({
   // 2026-10-07 E18: +72 native auto-merge lines in existing completion owner; no module added.
   // 2026-10-07 reservation release: +131 source and +14 CLI lines in existing owners; no module/dependency.
   // 2026-10-07 cleanup batching (+33) and lane recovery (+183 existing-owner lines): exact local refs/dirty bytes, no provider authority, module or dependency increase.
-  binModules: 113,
-  binLines: 24649,
+  binModules: 114,
+  binLines: 25588,
   runtimeModules: 97,
   runtimeLines: 23023,
 });

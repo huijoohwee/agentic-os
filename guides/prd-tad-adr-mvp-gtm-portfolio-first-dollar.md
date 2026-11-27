@@ -20,7 +20,7 @@ lifecycle_status: "proposed"
 demand_status: "unvalidated"
 load_policy: "on-demand"
 guideline_revision: "3.4.0"
-guideline_source_revision: "82835ac37d524643faa6b9703cb077ea9474ab15"
+guideline_source_revision: "4e5227ad892f8b0125a31c83cf87e14dc3c2621c"
 reviewed_source_revision: "226c9485aec255994a0013bad2b0e1bc2ea93504"
 source_revision: "226c9485aec255994a0013bad2b0e1bc2ea93504"
 worktree_id: "device-0232231d4a19--portfolio-first-dollar"
@@ -385,7 +385,7 @@ proof.
   remain unproven.
   - Sources: `README.md`, `src/local-first/workspace-pack.ts`, `src/local-first/workspace-service.ts`,
     `docs/prd-tad-adr-mvp-gtm-edge-commerce-agent.md`.
-- **Authoring rules `3.4.0` @ `82835ac37d524643faa6b9703cb077ea9474ab15`:** joined roles,
+- **Authoring rules `3.4.0` @ `4e5227ad892f8b0125a31c83cf87e14dc3c2621c`:** joined roles,
   grounding, and evidence contracts applied.
   - Sources: `guidelines/prd-tad-adr-mvp-gtm-guidelines.md`,
     `guidelines/prd-tad-adr-mvp-gtm-codebase-grounding.md` in `huijoohwee.github.io`.

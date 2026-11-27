@@ -1,6 +1,5 @@
 export { validateReviewBody, pullRequestText } from './agentic-os-review-body.mjs';
 /** Bounded evidence, request-construction, and protected-maintenance CLI commands. */
-import { ghAvailable } from '../src/github-provider.mjs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -10,24 +9,23 @@ import {
   applyCanonicalSync, CANONICAL_SYNC_LIMITS, planCanonicalSync,
 } from '../src/canonical-sync.mjs';
 import { readBoundedFile } from '../src/catalog-input.mjs';
-import { classifyCanonicalReconciliation } from '../src/canonical-resources.mjs';
 import {
   configuredRemote, fetch as gitFetch, gitLines, headSha, observeGit,
   worktreeCleanupRisks, worktrees,
 } from '../src/git.mjs';
 import {
-  observeRepositoryProfileAtRef,
   observeRepository,
+  repositoryCheckoutLocation,
+  observeRepositoryProfileAtRef,
   loadRepositoryTrust,
   REPOSITORY_PROFILE_FILENAME,
 } from '../src/git-repository.mjs';
 import { canonicalJson, governance, OPERATIONS } from '../src/governance.mjs';
 import { isLaneRef, parseLaneRef } from '../src/lane-id.mjs';
 import { integrationProof } from '../src/patch-identity.mjs';
-import * as queue from '../src/queue.mjs';
 import { laneBranchSummary, staleWorktrees } from '../src/worktree.mjs';
+import { consumerReleaseEnforcementFindings, providerKind } from '../lib/consumer-release-enforcement.mjs';
 import { providerAdapterRequired } from '../src/lane-state.mjs';
-import { hookDoctorEntries } from './agentic-os-hooks.mjs';
 import * as report from './agentic-os-report.mjs';
 const MAX_REQUEST_INPUT_BYTES = 500_000, UTF8 = new TextDecoder('utf-8', { fatal: true });
 const out = (text) => process.stdout.write(`${text}\n`);
@@ -39,12 +37,6 @@ const option = (argv, name, fallback = null) => {
 };
 const positional = (argv) => argv.filter((arg) => !arg.startsWith('--'));
 
-export function providerKind(profile) {
-  const selected = profile?.adapters.provider;
-  if (selected === null || selected === undefined) return 'none';
-  return selected.id === 'github' && selected.version === '1' ? 'github' : 'unsupported';
-}
-
 export function repositoryKind(profile) {
   const selected = profile?.adapters.repository;
   return !selected || selected.id === 'git' && selected.version === '1' ? 'git' : 'unsupported';
@@ -55,9 +47,7 @@ export function trustedRepositoryProfile(root, { allowUnanchored = false } = {})
     required: false, allowLegacyUnanchored: allowUnanchored,
   });
   if (trust) {
-    const observation = observeRepositoryProfileAtRef({
-      repository: root, ref: trust.canonical.localRef,
-    });
+    const observation = observeRepositoryProfileAtRef({ repository: root, ref: trust.canonical.localRef });
     const profile = observation.profile;
     if (!profile || profile.repository !== trust.repository
       || JSON.stringify(profile.canonical) !== JSON.stringify(trust.canonical)) {
@@ -71,9 +61,7 @@ export function trustedRepositoryProfile(root, { allowUnanchored = false } = {})
   const primary = worktrees(root)[0];
   if (!primary?.branch || primary.detached || isLaneRef(primary.branch))
     throw new TypeError('primary canonical worktree identity is unavailable');
-  const observation = observeRepositoryProfileAtRef({
-    repository: primary.path, ref: `refs/heads/${primary.branch}`,
-  });
+  const observation = observeRepositoryProfileAtRef({ repository: primary.path, ref: `refs/heads/${primary.branch}` });
   const { profile } = observation;
   if (profile && profile.canonical.localRef !== `refs/heads/${primary.branch}`)
     throw new TypeError('committed profile does not bind the primary canonical branch');
@@ -206,11 +194,12 @@ export function runCanonicalSync(root, argv, policy) {
   return 1;
 }
 
-export function runReconcile(root, argv, policy) {
+export async function runReconcile(root, argv, policy) {
   const [action = 'plan'] = positional(argv);
   if (action === 'apply') return runCanonicalSync(root, argv, policy);
   const remoteName = policy.protectedRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
   if (!remoteName) throw new TypeError('repository profile remote-tracking ref has no remote name');
+  const { classifyCanonicalReconciliation } = await import('../src/canonical-resources.mjs');
   gitFetch(configuredRemote(remoteName, root), root);
   const diagnosis = classifyCanonicalReconciliation({
     cwd: root, branch: policy.protectedBranch, targetRef: policy.protectedRef,
@@ -223,6 +212,7 @@ export function runReconcile(root, argv, policy) {
   const integrationReceiptDigest = option(argv, 'integration-receipt');
   if (diagnosis.status === 'behind-fast-forwardable'
       || diagnosis.status === 'squash-integrated-divergence' && integrationReceiptDigest) {
+    const { planCanonicalSync } = await import('../src/canonical-sync.mjs');
     out(JSON.stringify(planCanonicalSync({
       cwd: root, branch: policy.protectedBranch, targetRef: policy.protectedRef,
       integrationReceiptDigest,
@@ -251,7 +241,7 @@ export function runAutonomyClass(root, argv, policy) {
   return result.escalates ? 2 : 0;
 }
 
-export function runObserve(root, argv, profile) {
+export async function runObserve(root, argv, profile) {
   if (!profile) {
     err(`blocked-repository-profile-missing: add ${REPOSITORY_PROFILE_FILENAME}`);
     return 1;
@@ -273,14 +263,15 @@ export function runObserve(root, argv, profile) {
   const repository = observeRepository({
     repository: root, profile, mode: flag(argv, 'deep') ? 'deep' : 'shallow',
   });
-  const provider = providerRequested ? queue.observe({ cwd: root, profile }) : null;
+  const providerQueue = providerRequested ? await import('../src/queue.mjs') : null;
+  const provider = providerQueue?.observe({ cwd: root, profile }) ?? null;
   out(JSON.stringify({
     schema: 'agentic-os/operational-observation/v1',
     profileDigest: profile.profileDigest,
     repository,
     provider,
   }, null, 2));
-  return provider && queue.providerBlockingReasons(provider, queue.providerPolicy(profile)).length > 0
+  return provider && providerQueue.providerBlockingReasons(provider, providerQueue.providerPolicy(profile)).length > 0
     ? 1 : 0;
 }
 
@@ -521,27 +512,54 @@ export function runFlight(root, argv, profile) {
   }
 }
 
-export function cmdDoctor(root, profile, policy) {
+export async function cmdDoctor(root, profile, policy) {
   let prerequisiteFailures = 0;
   try { assertFlightRequirements(root, 'pre'); } catch (error) {
     prerequisiteFailures = 1;
     err(`${error.reason ?? 'blocked-flight-input-invalid'}: ${error.message}`);
   }
   const entries = worktrees(root);
+  const { hookDoctorEntries } = await import('./agentic-os-hooks.mjs');
   const configEntries = hookDoctorEntries(root, entries);
   const local = observeLocalHealth(root, policy, profile, entries);
-  out(report.formatConfig(configEntries));
-  out('');
+  const checkout = repositoryCheckoutLocation(root, profile),
+    checkoutOk = checkout.mode === 'canonical';
+  out(report.formatConfig(configEntries)); out('');
   out(report.formatLocal(local));
+  out('');
+  const checkoutDetail = checkout.mode === 'canonical'
+    ? 'canonical checkout name matches repository slug ' + checkout.expectedName
+    : checkout.mode === 'scratch' ? 'independent scratch clone for ' + checkout.expectedName + '; START requires the primary canonical checkout'
+    : checkout.mode === 'archive'
+      ? 'archive checkout name matches ' + checkout.expectedName + '; START is disabled'
+      : checkout.mode === 'auxiliary'
+        ? 'auxiliary checkout ' + checkout.name + ' has role ' + checkout.role + '; START is disabled'
+        : checkout.mode === 'worktree'
+          ? 'registered Git worktree ' + checkout.name + '; lane names are exempt'
+          : checkout.mode === 'mismatch'
+            ? 'checkout is named ' + checkout.name + '; expected ' + checkout.expectedName
+            : 'repository identity does not provide a canonical checkout name';
+  out(report.formatFindings('repository checkout naming', [{
+    id: 'checkout-name', ok: checkoutOk, detail: checkoutDetail,
+    remedy: checkoutOk ? null : checkout.mode === 'not-applicable'
+      ? 'use a path-qualified repository identity in the committed profile'
+      : 'run START from the primary canonical clone for ' + checkout.expectedName,
+  }]));
+  out('');
+  const consumerFindings = consumerReleaseEnforcementFindings(root, profile, policy);
+  out(report.formatFindings('consumer release enforcement', consumerFindings));
   out('');
   const kind = providerKind(profile);
   const providerRequired = providerAdapterRequired(policy);
-  const providerSkipped = kind === 'github' && !providerRequired && !ghAvailable();
+  const providerSkipped = kind === 'github' && !providerRequired
+    && !(await import('../src/github-provider.mjs')).ghAvailable();
+  const providerQueue = kind === 'github' && !providerSkipped
+    ? await import('../src/queue.mjs') : null;
   const observed = kind === 'github' && !providerSkipped
-    ? queue.observe({ cwd: root, profile }) : null;
+    ? providerQueue.observe({ cwd: root, profile }) : null;
   const findings = providerSkipped ? [{ id: 'provider-observation', ok: true, warning: true,
     detail: 'provider observation skipped: gh unavailable; no provider-dependent policy selected' }]
-    : kind === 'github' ? queue.audit(observed, profile) : [{
+    : kind === 'github' ? providerQueue.audit(observed, profile) : [{
     id: 'provider-adapter', ok: kind === 'none' && !providerRequired,
     detail: kind === 'none' ? providerRequired
       ? 'selected capabilities require a provider adapter' : 'no provider selected'
@@ -551,7 +569,9 @@ export function cmdDoctor(root, profile, policy) {
   out(report.formatFindings('remote configuration', findings));
   const failures =
     prerequisiteFailures + configEntries.filter((entry) => !entry.ok).length +
+    consumerFindings.filter((finding) => !finding.ok).length +
     findings.filter((finding) => !finding.ok).length +
+    (checkoutOk ? 0 : 1) +
     (local.canonicalDirty ? 1 : 0) +
     (local.relation === 'equal' ? 0 : 1) +
     (local.staleWorktrees.length > 0 ? 1 : 0);

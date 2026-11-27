@@ -109,6 +109,8 @@ export function canonicalPlanBody(plan) { return {
   inventoryDigest: plan.inventoryDigest, inventory: plan.inventory,
   ignoredPathsDigest: plan.ignoredPathsDigest, ignoredPathCount: plan.ignoredPathCount,
   relation: plan.relation, reconciliation: plan.reconciliation,
+  ...(Object.hasOwn(plan, 'retainedUntracked') ? { retainedUntracked: plan.retainedUntracked } : {}),
+  ...(plan.fastForwardClean === true ? { fastForwardClean: true } : {}),
 }; }
 
 /** Snapshot one exact-shape canonical plan inside its resource ceilings. */
@@ -128,7 +130,11 @@ export function boundedCanonicalPlan(value, limits) {
   const bytes = Buffer.byteLength(JSON.stringify(plan), 'utf8');
   if (bytes > limits.serializedPlanBytes)
     reject('plan-byte-limit', { bytes, limit: limits.serializedPlanBytes });
-  const keys = Object.keys(plan).sort();
+  const keys = Object.keys(plan).filter(key => !['retainedUntracked', 'fastForwardClean'].includes(key)).sort();
+  if (Object.hasOwn(plan, 'fastForwardClean') && plan.fastForwardClean !== true) reject('invalid-fast-forward-selection');
+  if (Object.hasOwn(plan, 'retainedUntracked') && (!Array.isArray(plan.retainedUntracked)
+    || plan.retainedUntracked.some(entry => !entry || Object.keys(entry).sort().join(',') !== 'ctimeNs,dev,ino,mode,mtimeNs,path,size'
+      || typeof entry.path !== 'string' || ['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].some(key => !/^-?[0-9]+$/u.test(entry[key] ?? ''))))) reject('invalid-retained-untracked');
   if (keys.length !== PLAN_KEYS.length || keys.some((key, index) => key !== PLAN_KEYS[index]))
     reject('invalid-plan-shape', { keys });
   return plan;

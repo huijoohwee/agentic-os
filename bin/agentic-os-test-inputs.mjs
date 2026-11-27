@@ -5,7 +5,7 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
 export const LIMITS = Object.freeze({ files: 2048, fileBytes: 499_000, bytes: 16 * 1024 * 1024,
-  gitMs: 10_000, testMs: 540_000, outputBytes: 480_000, receiptBytes: 128_000 });
+  gitMs: 10_000, testMs: 540_000, sharedContractMs: 1_200_000, outputBytes: 480_000, receiptBytes: 128_000 });
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(value);
@@ -163,7 +163,7 @@ export function snapshot({ root, base = 'origin/main', head = 'HEAD', committed 
   const identity = { root, requestedBase, baseRevision, baseStrategy: directBase ? 'provider-event' : 'merge-base', headRevision,
     baseTree: readGit(root, ['rev-parse', `${baseRevision}^{tree}`]).trim(),
     headTree: readGit(root, ['rev-parse', `${headRevision}^{tree}`]).trim(),
-    sourceDigest: manifestDigest(after),
+    sourceDigest: manifestDigest(after), committedSourceDigest: manifestDigest(headFiles),
     indexDigest: hash(readGit(root, ['ls-files', '--stage', '-z'])),
     configurationDigest: hash(validationGitConfiguration(root)),
     refsDigest,

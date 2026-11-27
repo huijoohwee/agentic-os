@@ -2,11 +2,12 @@
 
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import {
   commonDir,
   currentBranch,
   decodeNulFields,
+  gitDir,
   headSha,
   isAncestor,
   observeGit,
@@ -91,6 +92,52 @@ function relation(localRevision, remoteRevision, root) {
 
 export function resolveRepositoryRoot(repository = process.cwd()) {
   return realpathSync(repoRoot(resolve(repository)));
+}
+
+function linkedWorktreeRoot(root) {
+  const metadata = lstatSync(join(root, '.git'), { throwIfNoEntry: false });
+  if (!metadata?.isFile() || metadata.isSymbolicLink()) return false;
+  const child = relative(commonDir(root), gitDir(root));
+  return child.split(sep)[0] === 'worktrees' && child !== 'worktrees';
+}
+
+/** Interpret the checkout directory from the committed repository identity. */
+export function repositoryCheckoutLocation(repository, profile) {
+  const root = resolveRepositoryRoot(repository), name = basename(root);
+  const identity = profile?.repository;
+  const identityPath = typeof identity === 'string' ? identity.trim().replace(/[?#].*$/, '').replace(/\.git$/, '') : '';
+  const slug = /[\/@]/u.test(identityPath) ? identityPath.split(/[/:]/u).filter(Boolean).at(-1) : null;
+  if (!slug || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(slug)) {
+    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: false,
+      startAllowed: false });
+  }
+  if (linkedWorktreeRoot(root)) {
+    return Object.freeze({ mode: 'worktree', name, expectedName: slug, ok: true,
+      startAllowed: false });
+  }
+  const scratchRole = name.startsWith(`${slug}-`) ? name.slice(slug.length + 1) : '';
+  const scratch = scratchRole.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*-scratch$/u.test(scratchRole);
+  if (name === slug || scratch) return Object.freeze({ mode: slug.endsWith('-private-archive') ? 'archive'
+    : scratch ? 'scratch' : 'canonical', name, expectedName: slug, ...(scratch ? { role: scratchRole } : {}),
+  ok: true, startAllowed: !scratch && !slug.endsWith('-private-archive') });
+  const role = name.startsWith(slug + '--') ? name.slice(slug.length + 2) : '';
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(role) && role.length <= 64) {
+    return Object.freeze({ mode: 'auxiliary', name, expectedName: slug, role, ok: true,
+      startAllowed: false });
+  }
+  return Object.freeze({ mode: 'mismatch', name, expectedName: slug, ok: false,
+    startAllowed: false });
+}
+
+/** Admit new source lanes only from the primary canonical checkout. */
+export function assertStartCheckout(repository, profile) {
+  const location = repositoryCheckoutLocation(repository, profile);
+  if (location.mode === 'archive') blocked('private archive checkouts are frozen and cannot start source lanes', 'blocked-private-archive');
+  if (location.mode === 'not-applicable') blocked(
+    'START requires path-qualified identity', 'blocked-checkout-identity-missing');
+  if (location.mode !== 'canonical') blocked(`START needs canonical ${location.expectedName}; found ${location.name} (${location.mode})`,
+    location.mode === 'mismatch' ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');
+  return location;
 }
 
 function hiddenPaths(path) {

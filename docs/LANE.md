@@ -1,8 +1,7 @@
 # Lane State Machine
 
 A lane is the ADLC unit. `src/lane-state.mjs` is this document's I/O-free executable copy and owns
-every scenario. Add scenarios as table rows, never new controllers, adapters, evidence writers, or
-stores.
+every scenario. Add scenarios as table rows, never new controllers or stores.
 
 ## Identity
 
@@ -11,20 +10,17 @@ A lane is `agent/<device>/<scope>`:
 - `device` — lowercase host namespace used only for collision-resistant branch identity.
 - `scope` — lowercase hyphenated write-set label; it does not grant or exclude authority.
 
-Branches, pull requests, and local records are provider projections, not authority. Devices may
-reuse a scope under distinct refs. Cross-device exclusion requires an external authenticated,
-fenced compare-and-swap claim, which this compatibility machine does not provide.
+Branches, pull requests, and local records are provider projections, not authority. Devices may reuse
+a scope under distinct refs. Cross-device exclusion requires an external authenticated fenced CAS claim.
 
 Lane records are non-authoritative hints stored as immutable Git blobs behind the direct clone-common
 `refs/agentic-os/cache/lanes-v1`, advanced only by exact old-object compare-and-swap. Pre-v1
-`agentic-os/lanes.json` is read only before that ref exists, identity-bound through first publication,
-and retained afterward. Neither cache grants authority. The sole accepted legacy projection is the
-retired nonnegative `ejections` count, dropped in memory without rewriting the legacy bytes; any other
-malformed or unknown shapes fail closed.
+`agentic-os/lanes.json` is read only before that ref exists and retained afterward. Neither cache grants
+authority. The sole accepted legacy projection is the retired nonnegative `ejections` count; other malformed
+or unknown shapes fail closed.
 
-Lane survey inventory is bounded to 256 local `refs/heads/agent/*` branches. At the first overflow
-it refuses before classifying or retiring anything; recovery must first partition the retained refs
-under authenticated consumer authority.
+Lane survey inventory is bounded to 256 local `refs/heads/agent/*` branches. At the first overflow it
+refuses before classifying or retiring anything; recovery must first partition retained refs.
 
 ## States
 
@@ -35,6 +31,9 @@ under authenticated consumer authority.
 | `published` | Exact remote lane ref present; selected review projection may exist | no |
 | `queued` | PR accepted into the merge queue | no |
 | `integrated` | Content proven present on the profile's canonical remote ref | no |
+
+`integrated` is still not lane closure. Under canonical-dev, END ADLC also needs canonical sync back to
+the fetched canonical remote ref plus separate retirement and cleanup receipts.
 
 ## Events and legal transitions
 
@@ -53,21 +52,18 @@ Anything absent from this table is illegal and returns a typed refusal.
 
 ## Computed autonomy class
 
-`npm run autonomy:class` derives a committed candidate's promotion ceiling from the merge-base of
-the profile's canonical remote ref and `HEAD`; `-- --base=<revision> --head=<revision> --json`
-binds another exact range.
-Mixed write sets resolve upward through docs-only, test-only, additive-contract, behavioral, and
-authority-controlling. A standing grant never covers authority-controlling changes. Modifying,
-deleting, or renaming an existing test is authority-controlling; only a newly added test is
-test-only. The classifier is deterministic evidence, not a security boundary when executed from
-candidate bytes. Candidate-side `land` never arms ordering. A consumer must evaluate promotion
-with trusted code and credentials outside the candidate before protected integration.
+`npm run autonomy:class` derives a committed candidate's promotion ceiling from the merge-base of the
+profile's canonical remote ref and `HEAD`; `-- --base=<revision> --head=<revision> --json` binds another
+exact range. Mixed write sets resolve upward through docs-only, test-only, additive-contract, behavioral,
+and authority-controlling. A standing grant never covers authority-controlling changes. Modifying, deleting,
+or renaming an existing test is authority-controlling; only a newly added test is test-only.
+Candidate-side `land` never arms ordering. Promotion must be evaluated with trusted code and credentials.
 
 ## Tested provider ordering
 
-`queued` is reached only when an externally authorized adapter re-observes the exact pull-request
-head in a native merge queue. An auto-merge request alone is not tested protected ordering, so it
-remains `published`. No `restack` or `eject` event is implemented; absent events fail closed.
+`queued` is reached only when an externally authorized adapter re-observes the exact pull-request head
+in a native merge queue. An auto-merge request alone is not tested protected ordering, so it remains
+`published`. No `restack` or `eject` event is implemented; absent events fail closed.
 
 ## Typed refusals
 
@@ -94,30 +90,29 @@ Every blocked transition returns one of these. They name the upstream owner, nev
 2. `exact-tree-projection` — every path changed by the lane has the exact same Git mode, object type,
    and object ID at the lane head and the observed canonical remote head.
 
-Squash merges destroy proof 1, so proof 2 compares resulting repository content instead of commit
-shape. Git patch IDs deliberately ignore some whitespace and therefore remain diagnostic only.
-`Source-Head` binds review observations to a requested revision but is forgeable correlation, never
-integration or retirement proof.
+Squash merges destroy proof 1, so proof 2 compares repository content instead of commit shape.
+Git patch IDs deliberately ignore some whitespace and therefore remain diagnostic only. `Source-Head`
+binds review observations to a requested revision but is forgeable correlation, never integration or
+retirement proof. These proofs establish remote inclusion only. They do not prove canonical local sync
+or justify describing a lane as fully ended under canonical-dev.
 
-This compatibility machine has no cleanup transition. `reap` only computes these projections.
-The global form retains a strict bounded ref inventory; `reap --ref=<lane>` surveys one exact local
-lane ref without treating unrelated retained refs as active authority.
-Authenticated `retire(claim)`, clean detachment, and target-specific filesystem cleanup remain
-separate public governance operations and receipts.
+This compatibility machine has no cleanup transition. `reap` only computes these projections. The global
+form retains a strict bounded ref inventory; `reap --ref=<lane>` surveys one exact local lane ref without
+treating unrelated retained refs as active authority. Authenticated `retire(claim)`, clean detachment,
+and target-specific filesystem cleanup remain separate public governance operations and receipts.
 
-No other signal counts: not review state, not mergeability, not branch age, not a passing check, not
-the absence of a diff in a UI.
+No other signal counts: not review state, mergeability, branch age, a passing check, or the absence of a UI diff.
 
 ## Owned untracked state
 
-A file first observed after the lane baseline is authored state, not residue. It stays byte-for-byte
-in its owning worktree. Publication rejects visible untracked paths because they are absent from the
-candidate revision. Ignored paths are preserved and reported but do not block publication; dependency
-trees and caches are not candidate bytes. Cleanup inventory remains conservative and includes ignored
-paths. Do not stash, relocate, adopt, or delete another lane's owned state.
+A file first observed after the lane baseline is authored state, not residue. It stays in its owning
+worktree. Publication rejects visible untracked paths because they are absent from the candidate revision.
+Ignored paths are preserved and reported but do not block publication; dependency trees and caches are not
+candidate bytes. Cleanup inventory remains conservative and includes ignored paths. Do not stash, relocate,
+adopt, or delete another lane's owned state.
 
 ## Split work
 
-A goal spanning repositories or write sets is dependency ordered. A blocked lane blocks itself and
-its dependents only. Disjoint work may proceed, but no lane may clean, adopt, or move another lane's
-bytes. Cross-device ownership must come from a governance adapter, never this local scope scan.
+A goal spanning repositories or write sets is dependency ordered. A blocked lane blocks itself and its
+dependents only. Disjoint work may proceed, but no lane may clean, adopt, or move another lane's bytes.
+Cross-device ownership must come from a governance adapter, never this local scope scan.

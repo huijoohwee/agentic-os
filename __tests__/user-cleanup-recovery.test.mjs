@@ -4,22 +4,45 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, createRepositoryProfile, governanceDigest, retire } from '../src/governance.mjs';
+import { canonicalJson, createRepositoryProfile, RETAIN_ALL_CLEANUP, governanceDigest, retire } from '../src/governance.mjs';
 import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
 import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
   createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
-import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
+import { planUserCleanup, planRecoveryCleanupFromLane, planAutoUserCleanup, applyUserCleanup, planQuarantineRetirement, applyQuarantineRetirement } from '../bin/agentic-os-cleanup-user.mjs';
 import { observeRetainedQuarantineEvidence, observeRetainedWorktreeQuarantine } from '../src/cleanup-quarantine.mjs';
 import { CLEANUP_EFFECTS, RETAINED_EFFECTS, createWorktreeCleanupEligibility,
   validateRetentionDispositionPlan } from '../src/cleanup-records.mjs';
-import { RECOVERY_MODE, RECOVERY_LIMITS } from '../bin/agentic-os-cleanup-recovery.mjs';
+import { RECOVERY_MODE, RECOVERY_LIMITS, recoveryIntegration } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { inferMergedReviewWorkflow } from '../bin/agentic-os-cleanup-review.mjs';
 import { put } from '../src/lane-records.mjs';
 const NOW = Date.parse('2026-09-14T00:00:00Z');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+function ancestorMergeFixture(t, overwriteSource = false) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-ancestor-inclusion-')));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'root'); mkdirSync(root);
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid');
+  writeFileSync(join(root, 'source.txt'), 'base\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
+  writeFileSync(join(root, 'source.txt'), 'delivered\n'); git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'source');
+  const detachedHead = git(root, 'rev-parse', 'HEAD');
+  git(root, 'switch', '--quiet', '-c', 'agent/device-0232231d4a19/reviewed');
+  writeFileSync(join(root, 'review.txt'), 'reviewed successor\n');
+  if (overwriteSource) writeFileSync(join(root, 'source.txt'), 'overwritten\n');
+  git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'reviewed successor');
+  const head = git(root, 'rev-parse', 'HEAD');
+  git(root, 'switch', '--quiet', 'main'); git(root, 'merge', '--squash', '--quiet', 'agent/device-0232231d4a19/reviewed');
+  git(root, 'commit', '--quiet', '-m', 'merged successor');
+  const merge = git(root, 'rev-parse', 'HEAD');
+  const read = (cwd, args, { allowFail = false } = {}) => {
+    try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    catch (error) { if (allowFail) return null; throw error; }
+  };
+  return { plan: { root, detachedHead, head, merge }, read };
+}
 const staleSocket = path => { const source = join(tmpdir(), `agentic-os-${process.pid}-${Date.now()}.ipc`), signal = spawnSync(process.execPath, ['-e', 'const net = require("node:net"); net.createServer().listen(process.argv[1], () => process.kill(process.pid, "SIGKILL"));', source], { stdio: ['ignore', 'ignore', 'pipe'] }).signal; if (signal === 'SIGKILL') renameSync(source, path); return signal; };
 function fixture(t, concurrentBase = false, detached = false, mergedProjection = false) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-consent-recovery-')));
@@ -31,7 +54,7 @@ function fixture(t, concurrentBase = false, detached = false, mergedProjection =
   const profile = createRepositoryProfile({ repository: `github.com/${repository}`,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
-    requiredChecks: ['test'], capabilities: ['integration-method:squash'] });
+    requiredChecks: ['test'], capabilities: ['integration-method:squash'], cleanup: RETAIN_ALL_CLEANUP });
   writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
   writeFileSync(join(root, '.gitignore'), 'runtime/\n'); writeFileSync(join(root, 'source.txt'), 'base\n');
   git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');
@@ -137,6 +160,18 @@ test('recovery planning derives the exact target, PR, profile checks and merged 
   assert.throws(() => planRecoveryCleanupFromLane({ cwd: s.root, ref: 'agent/device-0232231d4a19/missing' }, s.options), /recovery-lane-binding/);
 });
 
+test('cleanup-user auto validates and resolves an exact recovery lane by ref', t => {
+  const s = fixture(t);
+  assert.equal(validateCommandArguments('cleanup-user', ['auto', `--ref=${s.branch}`]), null);
+  assert.match(validateCommandArguments('cleanup-user', ['auto']), /exactly one/u);
+  assert.match(validateCommandArguments('cleanup-user', ['auto', `--ref=${s.branch}`, `--target=${s.target}`]), /exactly one/u);
+  const plan = planAutoUserCleanup({ cwd: s.root, ref: s.branch }, s.options);
+  assert.equal(plan.mode, RECOVERY_MODE);
+  assert.equal(plan.branch, s.branch);
+  assert.equal(plan.targetPath, s.target);
+  assert.equal(plan.pr, s.input.pr);
+});
+
 test('local cleanup refuses a recertified lane before provider review when checkout bytes are unknown', t => {
   const s = fixture(t);
   put({ ref: s.branch, state: 'published', recovery: {
@@ -181,6 +216,68 @@ test('explicit historical-check-gap recovery quarantines only an exact merged pr
   assert.equal(receipt.claimRetired, false);
   assert.equal(existsSync(s.target), false);
 });
+test('explicit historical-check-gap recovery accepts zero required checks only through the exact gap path', t => {
+  const s = fixture(t, false, false, true);
+  s.checks.check_runs = []; s.checks.total_count = 0;
+  const resolvePolicy = (_root, mode) => ({
+    root: s.root,
+    repository: 'example/GameXR',
+    remoteUrl: 'https://github.com/example/GameXR.git',
+    canonical: s.merge,
+    localRef: 'refs/heads/main',
+    mode,
+    enrollment: 'agentic-os.userCleanup=quarantine-recovery',
+    repositoryProfileDigest: s.profile.profileDigest,
+    requiredChecks: [],
+    protectedCleanupPolicy: s.profile.cleanup,
+    limits: RECOVERY_LIMITS,
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'],
+  });
+  assert.throws(() => planUserCleanup({ ...s.input, requiredChecks: [] },
+    { ...s.options, resolvePolicy }), /review-options/);
+  const plan = planUserCleanup({ ...s.input, requiredChecks: [], historicalCheckGap: true },
+    { ...s.options, resolvePolicy });
+  assert.deepEqual(plan.requiredChecks, []);
+  assert.deepEqual(plan.review.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options, resolvePolicy,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.selectedChecksVerified, false);
+  assert.deepEqual(receipt.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(existsSync(s.target), false);
+});
+test('explicit historical-check-gap recovery accepts a detached exact reviewed head with zero required checks', t => {
+  const s = fixture(t, false, true);
+  git(s.target, 'switch', '--detach', s.head);
+  s.checks.check_runs = []; s.checks.total_count = 0;
+  const resolvePolicy = (_root, mode) => ({
+    root: s.root,
+    repository: 'example/GameXR',
+    remoteUrl: 'https://github.com/example/GameXR.git',
+    canonical: s.merge,
+    localRef: 'refs/heads/main',
+    mode,
+    enrollment: 'agentic-os.userCleanup=quarantine-recovery',
+    repositoryProfileDigest: s.profile.profileDigest,
+    requiredChecks: [],
+    protectedCleanupPolicy: s.profile.cleanup,
+    limits: RECOVERY_LIMITS,
+    selectedEffects: ['quarantine-projection', 'quarantine-registration'],
+  });
+  const plan = planUserCleanup({ ...s.input, detached: true, requiredChecks: [], historicalCheckGap: true },
+    { ...s.options, resolvePolicy });
+  assert.equal(plan.detachedHead, s.head);
+  assert.deepEqual(plan.review.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options, resolvePolicy,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.selectedChecksVerified, false);
+  assert.equal(receipt.detachedHead, s.head);
+  assert.equal(receipt.integration.detached.head, s.head);
+  assert.equal(receipt.integration.detached.reviewedHead, s.head);
+  assert.deepEqual(receipt.historicalCheckGap, { requiredChecks: [], checkRunsObserved: 0 });
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(existsSync(s.target), false);
+});
 test('recovery remains opt-in; normal consent, no-CI, wrong trust and missing profile checks fail', t => {
   const s = fixture(t);
   assert.throws(() => planUserCleanup({ ...s.input, recovery: false }, s.options), /local-enrollment/);
@@ -223,16 +320,20 @@ test('workflow inference shares the pre-merge recovery boundary and ignores post
   s.pull.merged_at = '2026-09-13T00:00:00Z'; s.check.app.id = 999;
   assert.throws(infer, /check-ambiguous-or-missing/);
 });
-test('recovery ignores same-head push runs but still requires the selected pull-request run', t => {
+test('recovery ignores unrelated same-head runs but still requires the exact pull-request run', t => {
   const s = fixture(t), pushCheck = { ...s.check, id: 124, completed_at: '2026-09-12T23:59:30Z',
-    details_url: s.check.details_url.replace('/456/job/123', '/455/job/124') };
+    details_url: s.check.details_url.replace('/456/job/123', '/455/job/124') }, oldBranchCheck = { ...s.check, id: 125,
+    completed_at: '2026-09-12T23:59:20Z', details_url: s.check.details_url.replace('/456/job/123', '/457/job/125') };
   s.runsById.set(455, { ...s.run, id: 455, event: 'push' });
-  s.checks.check_runs.push(pushCheck); s.checks.total_count = 2;
+  s.runsById.set(457, { ...s.run, id: 457, head_branch: `${s.branch}-superseded` });
+  s.checks.check_runs.push(pushCheck, oldBranchCheck); s.checks.total_count = 3;
+  assert.equal(inferMergedReviewWorkflow({ repository: 'example/GameXR', pr: 7,
+    requiredChecks: ['test'] }, s.options), s.input.workflow);
   const plan = s.plan();
   assert.equal(plan.review.checks[0].checkId, 123);
   assert.equal(plan.review.checks[0].runId, 456);
 
-  s.checks.check_runs = [pushCheck]; s.checks.total_count = 1;
+  s.checks.check_runs = [pushCheck, oldBranchCheck]; s.checks.total_count = 2;
   assert.throws(s.plan, /check-not-successful/);
   assert.equal(existsSync(s.target), true);
 });
@@ -277,6 +378,14 @@ test('explicit detached ancestor recovery keeps the checked PR head distinct and
   assert.equal(readFileSync(join(receipt.projectionQuarantinePath, 'runtime/evidence.txt'), 'utf8'), 'retained local evidence');
   assert.equal(receipt.providerAuthority, false); assert.equal(receipt.claimRetired, false);
   assert.equal(s.apply(p, { now: () => NOW + 900001 }).replayed, true);
+});
+
+test('detached reviewed base is included only while its original changed paths remain exact', t => {
+  const s = ancestorMergeFixture(t), p = recoveryIntegration(s.plan, s.read);
+  assert.equal(p.detached.inclusion.kind, 'ancestor-content-inclusion');
+  assert.equal(p.detached.inclusion.pathCount, 1);
+  const overwritten = ancestorMergeFixture(t, true);
+  assert.throws(() => recoveryIntegration(overwritten.plan, overwritten.read), /source-not-integrated/);
 });
 test('detached cleanup requires explicit recovery and a truly detached target', t => {
   const s = fixture(t);
@@ -364,6 +473,7 @@ test('current retention joins an exact detached reviewed-equivalent receipt with
 });
 test('current retention joins protected retirement receipt to the exact retained cleanup eligibility', async t => {
   const s = fixture(t), cleanupReceipt = s.apply(s.plan()), retirementReceipt = await protectedRetirementReceipt(s),
+    laterCanonical = git(s.root, 'commit-tree', `${s.merge}^{tree}`, '-p', s.merge, '-m', 'later canonical revision'),
     operationPath = join(s.root, '.git', 'agentic-os-cleanup-quarantine', cleanupReceipt.planDigest, 'operation.json'),
     operation = JSON.parse(readFileSync(operationPath, 'utf8')), prior = operation.eligibility;
   operation.eligibility = createWorktreeCleanupEligibility({
@@ -372,7 +482,7 @@ test('current retention joins protected retirement receipt to the exact retained
     retirementReceiptDigest: retirementReceipt.receiptDigest, preservationReceiptDigest: 'd'.repeat(64),
     noRemainingValueReceiptDigest: 'e'.repeat(64), retirementPlanByteDigest: retirementReceipt.planByteDigest,
     recoveryInventoryDigest: '1'.repeat(64), recoveryInventoryContentEntries: 0,
-    ownerStateDigest: 'f'.repeat(64), profileDigest: s.profile.profileDigest, canonicalRevision: s.merge,
+    ownerStateDigest: 'f'.repeat(64), profileDigest: s.profile.profileDigest, canonicalRevision: laterCanonical,
     targetObservationDigest: '0'.repeat(64), projectionManifestDigest: prior.projectionManifestDigest,
     projectionBytes: prior.projectionBytes, projectionEntries: prior.projectionEntries,
     registrationManifestDigest: prior.registrationManifestDigest,
@@ -446,6 +556,20 @@ test('current retention joins an exact-head detached equal-tree receipt without 
   const wrongTree = structuredClone(receipt); wrongTree.integration.detached.inclusion.mergeTree = '0'.repeat(40);
   assert.equal(observe(wrongTree), null);
 });
+test('completion accepts a detached equal-tree cleanup receipt after the lane ref advances to the merge commit', t => {
+  const s = fixture(t); git(s.target, 'switch', '--detach', s.head);
+  const plan = planUserCleanup({ ...s.input, detached: true }, s.options);
+  const receipt = s.apply(plan);
+  git(s.root, 'update-ref', `refs/heads/${s.branch}`, s.merge);
+  const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile,
+    { cleanupReceipt: receipt });
+  assert.equal(status.cleanupVerified, true);
+  assert.equal(status.closeout.cleanupSatisfied, true);
+  assert.equal(status.closeout.missionState, 'source_complete');
+  assert.equal(status.closeout.laneDisposition, 'quarantined');
+  assert.ok(!status.findings.some(item => ['lane-registration-detached', 'cleanup-receipt-unverified',
+    'provider-authority-unverified'].includes(item.code)));
+});
 test('reviewed-equivalent mode refuses mismatched transitions and unreviewed commits', t => {
   const s = fixture(t, false, true);
   const unrelated = git(s.root, 'commit-tree', `${s.originalHead}^{tree}`, '-p', `${s.originalHead}^`, '-m', 'unreviewed');
@@ -515,6 +639,18 @@ test('completion verifies recovery after canonical and policy changes without gr
   writeFileSync(join(receipt.projectionPath, 'runtime/evidence.txt'), 'changed after quarantine');
   assert.equal(status().cleanupVerified, false);
   assert.equal(status().closeout.cleanupSatisfied, false);
+});
+
+test('completion still finds exact retained cleanup when the quarantine root has more than 256 entries', t => {
+  const s = fixture(t), receipt = s.apply(s.plan());
+  const quarantineRoot = join(s.root, '.git', 'agentic-os-cleanup-quarantine');
+  for (let index = 0; index < 300; index += 1)
+    mkdirSync(join(quarantineRoot, `${String(index).padStart(64, '0')}`, 'registration'), { recursive: true });
+  const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile);
+  assert.equal(receipt.result, 'quarantined');
+  assert.equal(status.cleanupVerified, true);
+  assert.equal(status.closeout.laneDisposition, 'quarantined');
+  assert.equal(status.closeout.missionState, 'source_complete');
 });
 
 test('retained cleanup does not certify an advanced branch or changed operation metadata', t => {

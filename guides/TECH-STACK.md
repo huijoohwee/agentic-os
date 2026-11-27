@@ -1,8 +1,8 @@
 ---
 title: "Reference Implementation — Technology Stack and Composition Architecture"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.6.3"
-date: "2026-09-25"
+version: "1.6.4"
+date: "2026-11-16"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Solo Founder / AI Orchestrator"
@@ -11,25 +11,25 @@ delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
 continuity_id: "TAD-COMPOSE-ARCH-001"
-prd_revision: "1.6.3"
-tad_revision: "1.6.3"
-adr_revision: "1.6.3"
+prd_revision: "1.6.4"
+tad_revision: "1.6.4"
+adr_revision: "1.6.4"
 source_input_digest: "sha256:5e646e3afce86c05415c3f2545282603f3e58d77440382c6ab3fb5dc78e39418"
 amendment_input_digest: "sha256:4abee8d5d6aafcc71919d95e222b2d3dea6ebd4fe3cd6d115a361d32009b7a7e"
 execution_gate: "static-source-observation-authorized"
 publication_gate: "per-repository-protected-integration-required"
-worktree_id: "device-cba000d3779d--planning-v27"
+worktree_id: "device-0232231d4a19--geo-core-composition"
 load_policy: "on-demand"
 verification_scope: "static source and documentation; no live deployment proof"
 topology_input_revision: "de4108f28741a6bfd3468da2781eb86bbd671dca"
 techstack_input_revision: "8a0702ddca1fb2c9c88f85657d9dc6d91d05df27"
 techstack_input_digest: "sha256:7506b52107a2cd94188f1786ddc20fd17c2afbddd6ff6f1406af8111eda1294e"
-agent_id: "codex-01a0940a"
+agent_id: "codex:agentic_geo_implementation"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "817c1da8dac21d688d7c531b234482c64ee4340b"
-mvp_revision: "1.6.3"
-gtm_revision: "1.6.3"
+mvp_revision: "1.6.4"
+gtm_revision: "1.6.4"
 ---
 
 # Reference implementation — Technology Stack and Composition Architecture
@@ -140,8 +140,7 @@ Monetization: mechanism proof, priced WTP validation and collected payment are i
 
 - One capability owner; independent repository claim, review, integration, release and cleanup receipts.
 - `agentic-os` is the lifecycle/orchestration, admission-vocabulary, and composition source-lock SSOT.
-- ACOS, Commerce, and Graph remain separate runtime, state, and deployment owners. This decision
-  does not physically migrate any of those repositories or their deployable assets into `agentic-os`.
+- ACOS, Commerce, and Graph remain separate runtime, state, and deployment owners. This decision does not physically migrate any of those repositories or their deployable assets into `agentic-os`.
 - A provider mention is no adapter, dependency, deployment or receipt; extensions require owner contracts.
 - `AG_REPO` identifies `huijoohwee/agentic-graph` source provenance; architecture keys use `AG_*`.
 - Shared invocation/safety contracts stay separate from Graph collaboration grammar and domain schemas.
@@ -200,8 +199,9 @@ This section supersedes the website stack narrative at `techstack_input_revision
 | Agent facade — Canvas `954de91689abc1ab99a783e54f5ca7ac61387449` | Worker/SQLite DO bindings in `wrangler.jsonc`; browser in `web`; `scripts/invocation-resolve.mjs` imports `agentic-os/invocation` | Consume the pinned shared package. Root manifest declares no license; verify applicable licenses before adoption, rather than inferring FOSS from public source |
 | Commerce — `4774a4fc1543c4bcb1b912fe79c78c61384efc7c` | TypeScript Workers and SQLite DOs in `src/core`, MCP SDK/Zod in `package.json`; direct Podman executor in `scripts/isolated-process.ts`, `scripts/sandbox-podman-executor.ts` | MIT owner code. Sandbox SDK remains an existing dependency; its configured Containers deployment is forbidden. The real isolated-process suite proves local execution only |
 | Domain graph and marketplace — Graph `eb19100b4604e4d296bf6094f183f255ef0b20a6` | `canvas/package.json`, `cloudflare/workers`, `mcp/package.json`: browser UI, Hono/Workers, D1/Drizzle, Yjs, x402 adapters; `mcp/agentic-canvas-os-docs-contract.mjs` consumes OS invocation | Preserve each domain/state owner and implemented protocol. Existing packages are not blanket approval for new dependencies; verify component licenses and selected host quotas |
+| Portable longitude core — `agentic-geo@3256385c98864dbfde7a4e3fd1a1e5901f20f294` | MIT `agentic-geo/core`; native names/math/errors extracted from Graph, 2,037 B, no production dependencies/effects. Fleet responsibility `geo-longitude-core` owns `src/core.mjs` | Owner-approved Graph/Commerce caller contracts; consumer exact pins/locks and policy remain product-owned. Source PR #1 integrated; migrations and delivery pending. The four-party admission/marketplace composition lock retains its separate protocol scope |
 | Spatial client — GameXR | Phone browser/PWA, Vite/Three.js, browser camera via `getUserMedia`, and packaged Graph spatial/shared artifacts; the earlier `7609bebd4b72efa2038b9f222e22ca56d13370ed` native-host observation remains historical | Prefer free/FOSS browser/device execution. Camera frames stay local unless a separately authorized feature sends them. Native Swift/iOS/visionOS delivery is KIV; camera, telemetry and control still need owner-specific validation |
-| Authoring and navigation — website `8a0702ddca1fb2c9c88f85657d9dc6d91d05df27` | Markdown, JSON/JSON-LD, `guidelines`, `schema/AgenticRAG`; existing Node/Python validation in `package.json` | ISC manifest; common CID/RAO/SVO and schema authority stay here, with direct links to this stack owner |
+| Authoring and navigation — website `8a0702ddca1fb2c9c88f85657d9dc6d91d05df27` | Markdown, JSON/JSON-LD, `guidelines`, `schema/agentic-rag`; existing Node/Python validation in `package.json` | ISC manifest; common CID/RAO/SVO and schema authority stay here, with direct links to this stack owner |
 | Generated delivery — mirror `b7b6c39ce0b5844a43042026a910f7552477c8ff` | Graph-generated browser assets, headers and redirects | A projection, not an independent technology-selection or product-code owner; preserve source-owned release ordering |
 
 ### Hosting, phone browser/camera and resource selection

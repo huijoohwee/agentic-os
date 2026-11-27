@@ -16,11 +16,12 @@ export function githubRead(path, { cwd, timeoutMs = 15000 } = {}) {
 }
 export function reviewOptions(value) {
   const noCI = value.mode === 'explicit-local-user-consent-no-ci';
+  const recovery = value.mode === RECOVERY_MODE, historicalCheckGap = value.historicalCheckGap === true;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(value.repository ?? '')
     || !Number.isSafeInteger(value.pr) || value.pr < 1
     || (noCI ? value.workflow !== null : !/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(value.workflow ?? ''))
     || !Array.isArray(value.requiredChecks)
-    || (noCI ? value.requiredChecks.length !== 0 : !value.requiredChecks.length || value.requiredChecks.length > 8)
+    || (noCI ? value.requiredChecks.length !== 0 : value.requiredChecks.length > 8 || value.requiredChecks.length === 0 && (!recovery || !historicalCheckGap))
     || value.requiredChecks.some(c => typeof c !== 'string' || !c.trim() || Buffer.byteLength(c) > 128
       || /[\x00-\x1f\x7f]/u.test(c))
     || JSON.stringify([...new Set(value.requiredChecks)].sort()) !== JSON.stringify(value.requiredChecks)) refuse('review-options');

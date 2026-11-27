@@ -56,25 +56,23 @@ function fixture(t, { published = true, repository = 'local:fixture' } = {}) {
   return { root, run, ref, lane, head, file, bare, calls, invoke };
 }
 
-test('published correction refuses before commit or fetch, including stale active cache', async t => {
+test('published corrections fast-forward the same ref without rewriting prior commits', async t => {
   for (const kind of ['unstaged', 'staged', 'committed']) await t.test(kind, child => {
     const s = fixture(child);
     writeFileSync(s.file, 'candidate\nrepair\n');
     if (kind !== 'unstaged') s.run(['add', 'change.txt'], s.lane.path);
     if (kind === 'committed') s.run(['commit', '--quiet', '--message', 'repair'], s.lane.path);
-    const before = { head: s.run(['rev-parse', 'HEAD'], s.lane.path),
-      index: s.run(['write-tree'], s.lane.path), bytes: readFileSync(s.file, 'utf8') };
     const result = s.invoke();
-    assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /blocked-published-head-drift/u);
-    assert.ok(result.stderr.includes(`--expected-head=${s.head}`));
-    assert.equal(s.run(['rev-parse', 'HEAD'], s.lane.path), before.head);
-    assert.equal(s.run(['write-tree'], s.lane.path), before.index);
-    assert.equal(readFileSync(s.file, 'utf8'), before.bytes);
-    assert.equal(s.run(['--git-dir', s.bare, 'rev-parse', `refs/heads/${s.ref}`]), s.head);
+    assert.equal(result.status, 0, result.stderr);
+    const head = s.run(['rev-parse', 'HEAD'], s.lane.path);
+    assert.notEqual(head, s.head);
+    assert.equal(s.run(['merge-base', s.head, head]), s.head);
+    assert.equal(readFileSync(s.file, 'utf8'), 'candidate\nrepair\n');
+    assert.equal(s.run(['--git-dir', s.bare, 'rev-parse', `refs/heads/${s.ref}`]), head);
+    assert.equal(s.run(['rev-parse', '@{upstream}'], s.lane.path), head);
+    assert.equal(s.invoke().status, 0, 'same-head retry is idempotent');
     const calls = readFileSync(s.calls, 'utf8').split('\n');
-    assert.ok(calls.some(call => call.includes('ls-remote')));
-    assert.ok(!calls.some(call => /^(?:fetch|commit|add|push) /u.test(call)), calls.join('\n'));
+    assert.equal(calls.filter(call => /^push /u.test(call)).length, 1);
   });
 });
 
@@ -153,4 +151,12 @@ test('native auto-commit rebinds an eligible declared workflow before exact publ
   assert.equal(selected.manifest.previous.digest, started.digest);
   assert.equal(readFileSync(started.manifest, 'utf8'), previousBytes);
   assert.deepEqual(selected.members[0].child.phases, []);
+});
+
+test('review update rejects closed, mismatched and armed reviews', async () => {
+  const { assertOpenReviewUpdate } = await import('../src/github-provider.mjs');
+  for (const review of [{ state: 'MERGED' }, { state: 'CLOSED' }, { state: 'OPEN', autoMergeRequest: {} }, { state: 'OPEN', mergeQueueEntry: {} }, { state: 'OPEN', mergeStateStatus: 'QUEUED' }])
+    assert.throws(() => assertOpenReviewUpdate({}, () => ({ sourceHeadBound: true, review })), /exact open/);
+  assert.throws(() => assertOpenReviewUpdate({}, () => ({ sourceHeadBound: false, review: { state: 'OPEN' } })), /exact open/);
+  assert.equal(assertOpenReviewUpdate({}, () => ({ sourceHeadBound: true, review: { state: 'OPEN', number: 7 } })).number, 7);
 });

@@ -1,13 +1,13 @@
 ---
 title: "Explicit local-consent worktree cleanup"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "1.4.6"
-date: "2026-10-22"
+version: "1.4.11"
+date: "2026-11-09"
 owner: "agentic-os"
 continuity_id: "USER-CLEANUP-001"
-prd_revision: "1.4.6"
-tad_revision: "1.4.6"
-adr_revision: "1.4.6"
+prd_revision: "1.4.11"
+tad_revision: "1.4.11"
+adr_revision: "1.4.11"
 load_policy: "on-demand"
 lang: "en-US"
 frontmatter_contract: "required"
@@ -15,13 +15,13 @@ local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--cleanup-cwd-guard"
+worktree_id: "device-0232231d4a19--reversible-clone-archive"
 agent_id: "codex-01a09db4"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
-reviewed_source_revision: "397ce86dbcf9606cace473f0e1f1e8beabb20197"
-mvp_revision: "1.4.6"
-gtm_revision: "1.4.6"
+reviewed_source_revision: "f2caf5a852348768b84bca9be3dc5cc511a9eb37"
+mvp_revision: "1.4.11"
+gtm_revision: "1.4.11"
 ---
 
 # Explicit local-consent worktree cleanup
@@ -35,20 +35,31 @@ plan, publishing private content or fabricating provider-issued integration/reti
 Acceptance: local opt-in plus one exact plan authorization and stop acknowledgement; freshly observed
 same-repository merged PR and selected successful GitHub Actions checks; equal candidate/merge trees;
 merge ancestry in clean, current main; exact target, inventory, peers, refs and object preservation;
-recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay. Before
+recoverable projection/registration quarantine; distinct local-consent receipt and bounded replay. A stale
+published lane cache may bind its clean current checkout only when the prior record, ref, path and ancestry
+match and a fresh exact integration proof against current protected main covers every lane change; the
+receipt records local proof and does not claim a merged PR or successful provider checks. Before
 projection retirement, detect open descriptors and process current working directories under both retained
-trees; fail closed if the reader scan is incomplete.
+trees; fail closed if the reader scan is incomplete. Preserve an independent scratch clone as a whole
+directory move on the same filesystem; this remains separate from worktree cleanup and quarantine retirement.
 
 ## TAD: separate admission, shared preservation machinery
 
-`bin/agentic-os-cleanup-user.mjs` owns local admission, plans, authorization and receipts.
-`bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. The existing quarantine
-mechanics take an internal policy observer; protected cleanup never forwards caller-supplied policy
-overrides and still requires its authenticated integration/retirement joins. This is not a fallback.
+`bin/agentic-os-cleanup-user.mjs` owns explicit local-consent cleanup admission, plans, authorization and
+receipts. `bin/agentic-os-cleanup-review.mjs` owns bounded read-only GitHub evidence. Protected cleanup
+continues to require authenticated integration/retirement joins and reads only the committed profile. A
+profile may prefer `remove-clean`: if a fresh inventory has no modified, hidden, ignored, or untracked
+bytes, the shared owner scans for open files and process working directories, then calls `git worktree
+remove` without `--force`. An active reader or incomplete reader scan blocks cleanup; local-only bytes or an
+uncertain byte inventory use the existing recoverable quarantine. The receipt names the observed route.
+The explicit local-consent and historical-recovery modes remain quarantine-only.
 The cleanup command's reader guard uses recursive descriptor scans for files and one process-CWD snapshot
 for directories, including a working directory whose tree has already been unlinked. Missing caller
 evidence or scan errors block removal; canonical path resolution prevents symlink aliases from evading
-containment checks. The existing cleanup owner remains the only CLI/runtime module.
+containment checks. The CLI has no primary-clone archive plan/apply command. If an operator needs a scratch
+clone out of the active workspace while preserving it, use an operator-owned same-filesystem directory move
+and retain a separate authorization record and source/destination receipt. Do not route the primary clone
+through worktree cleanup or quarantine retirement.
 
 The progressive closeout pass uses cached lane state to try integrated, queued, then published lanes,
 with path order as the stable tie-breaker. It shares the pass deadline across eligible candidates;
@@ -98,9 +109,29 @@ links. Canonical targets, aliases, foreign clones and locked registrations are r
 Generate and apply one plan at a time: quarantining one peer changes the next target's inventory.
 Do not reuse a stale batch of plans. Remove opt-in with `git config --local --unset-all agentic-os.userCleanup`.
 
+## Preserve a scratch clone outside the active workspace
+
+An independent scratch clone is a primary clone, not a linked Git worktree. Preserve the whole directory to
+retain local branch refs, reflogs, objects, index state, working files, ignored data, and any cleanup
+quarantine. A same-filesystem directory rename is the lowest-I/O move: it transfers no file bytes,
+keeps the clone intact, and does not reclaim storage. A [Git bundle](https://git-scm.com/docs/git-bundle)
+covers refs and reachable objects, but it does not include the working tree, index, local config, hooks, or
+cleanup quarantine; use one only when that narrower backup is intended.
+
+The current `cleanup-user` CLI does not move primary clones. For a manual archive, stop writers, choose an
+existing archive parent outside the active clone, and verify that the source and archive parent are on the
+same filesystem. Move the exact `<repository-slug>-<role>-scratch` directory as a whole; do not use
+`git worktree remove` or the quarantine-retirement command. Record the original path, archive path, and move
+result together so the directory can be restored to its original location. Inspect `git status` first so
+dirty bytes are understood; the directory move preserves them as well.
+
+This operation only clears the clone from its active workspace location. It does not delete refs or reclaim
+disk space. Permanent disposal still needs a separate, explicitly authorized decision after the retained
+clone and its local-only data have been reviewed.
+
 ## Explicit recovery for profile-governed repositories
 
-`USER-CLEANUP-001@1.2.1` also covers an operator-authorized, stopped, clean historical lane whose PR is
+`USER-CLEANUP-001@1.2.2` also covers an operator-authorized, stopped, clean historical lane whose PR is
 merged but whose historical authority records are unavailable. User authorization must cover the exact
 targets and recoverable cleanup; it may persist across turns. The caller selects this mode explicitly:
 
@@ -118,6 +149,71 @@ checks, content inclusion, inventory and remote main before emitting the same 15
 enrollment and the separate `apply --plan --authorize --stopped` confirmation remain required. Run from the
 surviving canonical checkout with the reviewed upstream CLI. Remove the clone-local opt-in after the selected
 batch. Never invoke code from a directory after it has been quarantined.
+
+When the lane record is still exact, prefer the default operator path:
+
+```sh
+agentic-os cleanup auto --ref=<lane>
+```
+
+Use the explicit `cleanup-user plan --recovery ...` forms above only when you need to inspect or override the
+exact recovery planner inputs directly.
+
+When a published lane record's head is stale, `plan --recovery --ref=<lane>` may bind the current checkout
+if its exact path and branch match, its head strictly descends from the recorded head, the recorded base is
+retained by current clean `main`, and `exactCurrentIntegrationProof` proves the current lane changes are
+already in that `main`. This local projection plan binds the prior record, current head, integration proof,
+inventory and remote main. It reports `selectedChecksVerified=false` and `providerAuthority=false`; it does
+not represent a PR merge. Any record, path, ref, head, base or tree drift blocks planning or apply. The same
+exact authorization token and stopped-writer acknowledgement still govern quarantine.
+
+## Integrated lane with an on-disk Git origin
+
+For a Git-only profile with `retain-all-cleanup`, an owner can authorize quarantine for one
+registered lane at its exact integrated head. Run both steps from the surviving canonical checkout.
+
+```sh
+agentic-os cleanup plan --mode=local-integrated --ref=<lane> --target=<absolute-worktree-path> --expected-head=<full-sha>
+agentic-os cleanup apply --plan=<saved-json> --authorize=agentic-os:local-integrated-cleanup:<planDigest> --stopped
+```
+
+The plan verifies the committed profile, clone trust, lane record and matching main and lane refs in
+the clone, remote-tracking namespace and on-disk bare origin. Stop readers and writers before apply.
+Apply checks for open files and working directories, preserves ignored files, and moves the checkout
+and its registration into the quarantine paths in the receipt. Keep the plan and receipt outside
+the quarantine directory. Use `agentic-os completion status --ref=<lane>` to verify closeout.
+The committed retention policy and Git refs continue to apply to every lane.
+
+## Exact detached main snapshot
+
+The unified `cleanup` command supports a clean detached worktree that is an exact snapshot of the
+currently published `main`. This is for redundant checkout projections with no lane ref or review record;
+it does not infer a lane, merge, claim, or release. It uses the same clone-private quarantine mechanics
+and local cleanup lock as other modes.
+
+From the surviving canonical root, prepare an exact, short-lived plan:
+
+```sh
+agentic-os cleanup plan --mode=local-snapshot --target=<absolute-worktree-path> --expected-head=<full-commit-sha>
+```
+
+The plan requires a clean canonical `main`, matching `origin/main`, a live `origin/main` advertisement,
+and one clean detached worktree whose head and canonical `main` equal the supplied full SHA. It binds the
+repository profile, remote, target inventory, peer registrations, shared refs and object-store inventory.
+Review the printed path, head, policy, inventory and expiry; stop all processes using the target.
+
+Apply only that plan with explicit local-owner authorization and stop acknowledgement:
+
+```sh
+agentic-os cleanup apply --plan=<saved-json> \
+  --authorize=agentic-os:local-snapshot-cleanup:<planDigest> --stopped
+```
+
+The projection and Git worktree registration move into `.git/agentic-os-cleanup-quarantine/<planDigest>/`;
+their bytes remain recoverable. The receipt records the quarantine paths and confirms that refs, objects,
+provider authority and deployment authority were not changed or granted. Drift, aliases, dirty files,
+attached branches, a nonidentical head, stale remote `main`, or an expired plan fail closed. This uses the
+existing unified cleanup entry point and does not add another cleanup command or local enrollment variant.
 
 Admission requires the existing valid clone trust anchor and committed Git/GitHub profile, equal clean
 local/tracking/live main, and every profile-required check. Each selected check must belong to the exact
@@ -159,50 +255,43 @@ later revisions. Apply rechecks the transition and all preservation conditions. 
 `sourceIntegrated:false`, `historicalDraft:superseded`, `providerAuthority:false` and
 `claimRetired:false`. The original detached-ancestor mode remains strict.
 
-## Reviewed successor closeout
+## Same-repository historical successor
 
-When a historical lane's own PR was closed or failed but a later checked PR incorporated its work,
-use the existing `release-common complete` command with an explicit successor PR and every path whose
-accepted content replaced the lane's content:
+To stay within existing module caps, the release-complete shortcut for quarantining a predecessor
+through a later same-repository PR was removed. The underlying `planUserCleanup` API still supports
+an explicit `successor` binding with the predecessor ref/head and replacement paths, followed by the
+ordinary authorized `applyUserCleanup` step. There is no CLI wrapper for that case. Do not substitute
+cross-repository supersession: if the predecessor's own integration evidence is unavailable, leave its
+closeout continuable until an owner provides an exact recovery path. The cross-repository disposition
+below remains available only for a private archived source and a public active successor repository.
+
+## Cross-repository source supersession
+
+When the exact source repository is frozen private and archived, and the same lane change has already
+landed through a reviewed successor PR in a different public source repository, close the old source task
+with a distinct local supersession receipt. This is not a merge, source integration, protection proof,
+claim retirement, cleanup, or deployment. Keep the old worktree, branch, refs, objects, and archive intact.
+
+From the clean canonical checkout, select the successor repository, all required successful checks, every
+changed path, and a short reason for the disposition:
 
 ```sh
-npm run release:common -- complete --ref=<old-lane> --via-pr=<merged-successor-pr> \
-  --replaced=<exact-repository-relative-path[,path...]> --stopped
+npm run release:common -- complete --ref=<old-lane> --via-pr=<merged-pr> \
+  --via-repository=<owner/repo> --via-checks=<exact-check[,check...]> \
+  --replaced=<exact-repository-relative-path[,path...]> \
+  --reason='Superseded by the reviewed public source change; preserve the frozen archive.' \
+  --superseded --stopped
 ```
 
-The command runs from clean canonical `main`, which must equal fetched and live `origin/main` and
-contain the accepted merge. If it does not, use the separately governed canonical sync workflow first.
-The old lane must be a mounted, clean, stopped published worktree with its cached head unchanged.
-It verifies the successor's exact reviewed head, successful selected checks and actual merge. The old
-head must be an ancestor of the reviewed head. Every path changed by the old lane must match the
-accepted merge tree exactly, except the explicitly listed replacements; each replacement must match
-the reviewed successor and differ from the old lane. Missing or extra replacement paths fail.
-
-The predecessor PR remains historical and is never reported as merged. The result is a local-consent
-recovery receipt with `reviewed-successor` content evidence, not provider-issued integration or
-retirement authority. The existing cleanup planner inventories the target, peers, refs, objects and
-ignored bytes, then moves its projection and registration into recoverable quarantine. It retains
-the old branch and Git objects. Re-run only after checking the retained effect and current GitHub
-and canonical state; later edits to `main` do not change the accepted merge-tree comparison.
-
-The exact plan binds the existing profile digest, retention policy, required checks, recovery mode and
-resource ceilings. The operator's local consent selects recoverable projection/registration quarantine
-even when the protected profile retains them; it does not edit that shared policy or create a provider
-grant. Every branch, ref, object and other worktree is preserved by the existing lock, manifests and journal.
-The receipt remains `providerAuthority:false`, `protectionProven:false`, `claimRetired:false`, and adds
-`historicalIntegrationMethodProven:false`. No outstanding governance claim is silently retired.
-
-Recovery ceilings are fixed at 4 GiB/250,000 projection entries, 16 MiB/20,000 registration entries, and
-20 GiB/500,000 shared-state entries. Plans bind these ceilings and observation totals; crossing them fails
-before quarantine. These are maximum observation budgets, not allocated buffers; reads stream in 64 KiB
-chunks. Original profileless modes retain their smaller budgets and admissions. This revision adds one
-lazy CLI helper, no source-core module, dependency, authority issuer or background process.
-
-Acceptance: a profile with retained targets and a historical concurrent-base merge can be cleaned only
-with exact local opt-in, successful checks, complete content/preservation proof and stopped acknowledgement;
-wrong identity, missing checks, failed source inclusion, hidden/dirty bytes, drift and stale consent fail.
-`__tests__/user-cleanup-recovery.test.mjs` covers those boundaries with real temporary Git repositories and
-mocked provider reads. Live execution receipts remain separate from these tests.
+Admission verifies the exact private archived source identity, the unchanged clean mounted lane with no
+own PR, current local/tracking/live source `main`, the merged same-ref PR and named successful workflow
+checks, exact path-set equality between the old lane and successor PR, and that the successor merge remains
+on its current `main`. The immutable local receipt is stored in the clone's common Git directory. It says
+`sourceIntegrated:false`, `sourceSuperseded:true`, `providerAuthority:false`, and `claimRetired:false`.
+Closeout may report `missionState=source_complete` and `adlcState=complete` only while the exact clean lane
+remains mounted under its retained profile and canonical source remains current. Deployment remains a
+separate owner decision whenever the lane is product-bound. A missing or drifted receipt keeps closeout
+continuable; this path never removes a checkout or Git object.
 
 ## Current successor preservation adoption
 
@@ -285,11 +374,13 @@ This hashes retained Git objects for preservation proof; it is not a full behavi
 fail closed, not truncate or automatically raise limits. No dependencies or src modules are added.
 Always-load routing remains 40,632 bytes; the runtime prompt remains 999 bytes.
 
-The existing journal is written before the two recoverable renames: exact worktree projection, then its
-exact prunable admin registration. No `git worktree remove/prune`, branch/ref deletion, GC or byte deletion.
-Canonical files and ignored artifacts are untouched. Keep the returned projection and registration paths;
-these preserve original bytes, not a runnable relocated checkout. Restoration requires deliberate native
-recovery with backlinks and registrations reconciled, not blindly executing the quarantined directory.
+The explicit local-consent journal is written before the two recoverable renames: exact worktree projection,
+then its exact prunable admin registration. That mode never calls `git worktree remove/prune`, deletes a
+branch/ref, runs GC, or deletes bytes. Canonical files and ignored artifacts are untouched. Keep the returned
+projection and registration paths; they preserve original bytes, not a runnable relocated checkout.
+Restoration requires deliberate native recovery with backlinks and registrations reconciled, not blindly
+executing the quarantined directory. The profile-governed `remove-clean` route is separate and accepts only
+the exact clean inventory described above; branch refs and shared Git objects remain retained.
 
 On response loss, the identical plan/authorization can reobserve a fully completed coordinate while all
 bound state remains unchanged, even after expiry; this performs no new rename. Partial journals or drift
@@ -321,7 +412,7 @@ Retain separate live merged/check, plan, consent, quarantine and final synchroni
 
 ## MVP — reference implementation
 
-`USER-CLEANUP-001@1.2.1` selects one stopped, clean reviewed or historically equivalent worktree quarantined through its explicitly selected local-consent mode. Historical equivalence is a local retirement decision, not source integration. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
+`USER-CLEANUP-001@1.2.2` selects one stopped, clean reviewed, historically equivalent, or locally proven current-integration worktree quarantined through its explicitly selected local-consent mode. Historical equivalence is a local retirement decision, not source integration. Reuse the PRD acceptance and TAD owners above; deferred features stay outside this slice.
 The 1.4.5 correction blocks projection removal when a process keeps the target as its working directory,
 even if no file descriptor below that directory is open. Verify it with `node --test __tests__/cleanup-retirement.test.mjs`
 and affected repository checks, preserving their exact source, result and authoring surface. The named command
@@ -399,6 +490,10 @@ agentic-os cleanup-user sweep --stale-older-than=<days> [--merged] [--no-active-
 
 Each candidate still requires explicit `--authorize=<plan-digest>` and `--stopped` to apply, same as individual `cleanup-user plan/apply`.
 
+### Retire an empty active lane with released paths
+
+From clean, current canonical `main`, run `agentic-os release-common retire-empty-active --ref=<lane>` only after its writer has stopped. The lane must still equal its admitted base with no candidate or PR. A prior reservation handoff is accepted only when every release is exact, digest-valid, unchanged at that base, and disjoint from remaining paths; the receipt binds the release-list digest. Checkout files and refs remain recoverable, and this grants no review, integration, provider, deployment, branch-deletion or claim-retirement authority.
+
 ### Verified workflow allocation release
 
 After `completion status` reports `missionState: source_complete`, `cleanupSatisfied: true`, and an unmounted
@@ -412,7 +507,9 @@ For a local-consent quarantine, pass the exact cleanup receipt retained beside i
 command rechecks that closeout before creating an immutable workflow successor whose allocation state is
 `released`. It retains the lane ref, worktree identity, head, prior workflow manifests and quarantine evidence.
 Only `pending` and `active` allocations consume checkout capacity, so the released history no longer blocks a
-subsequent disjoint lane. A mounted, dirty, unintegrated, or unquarantined lane fails closed.
+subsequent disjoint lane. If no workflow selection was ever retained for that repository and ref, the command
+returns a standalone no-op result and writes no workflow successor. A mounted, dirty, unintegrated, or
+unquarantined lane still fails closed, and any declared workflow selection continues to fail on drift.
 
 ### Unified cleanup CLI (`agentic-os cleanup`)
 
@@ -426,6 +523,33 @@ agentic-os cleanup sweep --stale-older-than=<days> [--merged] [--no-active-workt
 ```
 
 `--mode` defaults to `local-consent`. `--mode=protected` is reserved for profile-governed repos (those still use `release-common complete` → `completion:scaffold` → `completion:plan/apply`).
+
+### Explicit abandonment of an unpublished dirty lane
+
+Use this only when the owner chooses to stop work on an active unpublished lane and retain every checkout byte for
+recovery. The lane must have no pull request or live remote branch, its exact active registration must still match,
+and canonical main must be clean and current. The operation never deletes a branch, reflog, or Git object.
+
+```sh
+npm run lane:abandon -- plan --ref=<lane> --reason='<bounded reason>' > /tmp/lane-abandon-plan.json
+npm run completion:status -- --ref=<lane>
+npm run lane:abandon -- apply --plan=/tmp/lane-abandon-plan.json \
+  --authorize=agentic-os:unpublished-lane-abandonment:<planDigest> --stopped
+npm run completion:status -- --ref=<lane>
+npm run release:common -- allocation-release --ref=<lane>
+```
+
+Inspect the exact plan, byte inventory, branch/ref and object evidence, and private archive destination before
+applying. Stop all writers and pass the plan's digest exactly. Apply moves the checkout projection and worktree
+registration into recoverable Git-private quarantine, writes a local immutable abandonment receipt, and rechecks
+that refs and objects stayed unchanged. Completion status must report `sourceDisposition: abandoned`, verified
+archive retention, no integration or supersession claim, and `cleanupSatisfied: true` before allocation release.
+Then finish the enclosing wrapper with its own `complete-adlc --cleanup --stopped` plan and receipt. Abandonment
+does not authorize branch deletion or quarantine retirement.
+
+The streamed projection manifest is bounded by the existing recovery limits of 4 GiB and 250,000 entries. The
+registration manifest is bounded by 16 MiB and 20,000 entries, and shared-state observation remains bounded by
+256 MiB and 100,000 entries. Any exceeded bound blocks the operation; there is no per-run override.
 
 ### Auto-derive placeholders (`completion:scaffold --derive`)
 

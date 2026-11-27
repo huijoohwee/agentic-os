@@ -1,8 +1,8 @@
 ---
 title: "Workspace Document Owners"
 doc_type: "Index"
-version: "1.2.1"
-date: "2026-10-01"
+version: "1.2.3"
+date: "2026-11-25"
 lang: "en-US"
 owner: "agentic-os"
 frontmatter_contract: "required"
@@ -13,7 +13,7 @@ load_policy: "on-demand"
 
 Start here to find the source owner across the seven repositories. This is a routing index;
 definitions, guidelines, product contracts and evidence remain at the linked owners.
-Read only the row needed for the task, then the owner's local index or contract.
+Use the [Gateway reference index][gateway] for pinned planning guidelines, the JSON-LD context, dictionaries, the runtime command catalog and skills. Each ID links to an exact owner file and digest.
 
 ## Shared concerns
 
@@ -27,10 +27,11 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Markdown validation and template maintenance plan | [Documentation-management PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-documentation-management.md) |
 | Native design enforcement plan behind the design export | [Design-enforcement PRD/TAD/ADR/MVP/GTM](guides/prd-tad-adr-mvp-gtm-design-enforcement.md) |
 | Completed spatial stabilization slice | [Spatial-stabilization PRD/TAD/ADR/MVP/GTM](guides/spatial-stabilization-prd-tad-adr-mvp-gtm.md) |
-| CID, RAO, SVO and specification fields | [PRD/TAD/ADR guidelines][prd], [shared semantic schema][semantics] |
+| CID, RAO, SVO and specification fields | [`guideline/prd-tad-adr-mvp-gtm`][gateway], [shared semantic schema][semantics] |
 | `/`, `#`, `@` dictionary definitions and consumption | [Invocation dictionary owner](guides/INVOCATION-DICTIONARIES.md) |
 | Executable harness invocation grammar | [Invocation contract](docs/INVOCATION.md) |
-| Global development lifecycle | [ADLC runtime profile](docs/adlc-guidelines.md), [universal ADLC contract][adlc-universal] |
+| Global development lifecycle | [ADLC runtime profile](docs/adlc-guidelines.md), [`guideline/adlc`][gateway] |
+| Public-source archive handling | [Private archive policy](guides/PRIVATE-ARCHIVE-POLICY.md) |
 | Start, release, deploy, or cleanup work | [Start](docs/START-WORKFLOW.md), [release](docs/RELEASE-WORKFLOW.md), [deploy](guides/DEPLOY-WORKFLOW.md) — global protocol, repo-local mechanics |
 | Shared workspace startup, source freshness and offline retrieval | [Workspace routine](guides/WORKSPACE.md), [memory format](guides/MEMORY.md) |
 | Cache lifecycle, reuse, retention and measured cost | [Shared cache policy](guides/CACHE.md) |
@@ -40,8 +41,8 @@ Read only the row needed for the task, then the owner's local index or contract.
 | Architecture and repository composition | [Technology and ownership decisions](guides/TECH-STACK.md) |
 | Implemented lifecycle features and specification | [Features](guides/FEATURES.md), [PRD/TAD/ADR](guides/PRD-TAD-ADR-MVP-GTM.md) |
 | Past, current and future product features | [Central roadmap register](catalog/feature-roadmap.json), [derived views](guides/FEATURES.md) |
-| Feature cost and budget continuity | [Cost register](catalog/costs.json), [portfolio cost view](guides/COSTS.md), [financial model contract][venture] |
-| Validated learning and audience projections | [Lean startup][lean], [pitch deck][pitch], [business plan][plan] and [financial model][model] guidelines — one revision, no copied claims |
+| Feature cost and budget continuity | [Cost register](catalog/costs.json), [portfolio cost view](guides/COSTS.md), [`guideline/pd-bp-fm`][gateway] |
+| Validated learning and audience projections | [`guideline/lean-startup`][gateway], [`guideline/pitch-deck`][gateway], [`guideline/business-plan`][gateway] and [`guideline/financial-model`][gateway] |
 | Executable check discovery and evidence | [Shared testing](test/README.md) |
 | Stream observations into portable dashboards | [Observation and template boundary](guides/STREAM-DASHBOARDS.md) |
 
@@ -55,14 +56,9 @@ Planning is centralized in private `huijoohwee/.workspace/.todo`: the TODO contr
 Kanban owns current task state. The website and Canvas retain migration routes, not writable copies.
 The planning owner validates imported record hashes and the board projection.
 
+[gateway]: https://github.com/huijoohwee/agentic-gateway/blob/cdb000925729a729732206a32de36e6bc7db011c/references/README.md
 [todo]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/TODO.md
 [kanban]: https://github.com/huijoohwee/.workspace/blob/main/.todo/docs/kanban.md
-[venture]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/prd-tad-adr-mvp-gtm-venture.md
-[adlc-universal]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/adlc-guidelines.md
-[lean]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/lean-startup-guidelines.md
-[pitch]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/pitch-deck-guidelines.md
-[plan]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/business-plan-guidelines.md
-[model]: https://github.com/huijoohwee/huijoohwee.github.io/blob/82835ac37d524643faa6b9703cb077ea9474ab15/guidelines/financial-model-guidelines.md
 
 ## Repository concerns
 
@@ -129,8 +125,7 @@ Local indexes may link here and list their own product documents. Navigation bac
 create an authority dependency: follow each concern to its defining source and stop there.
 
 Cross-repository links below select an explicit repository and path for human navigation.
-Their `main` URLs are mutable discovery links, not version pins or validation evidence; the lifecycle and venture
-owner links carry the exact revision the cost register pins, which remains the only validation join.
+URLs containing `main` support navigation. The Gateway pin selects the planning reference index. The cost register retains its own validation evidence.
 For offline work, resolve that repository/path from an explicitly selected clone or installed
 asset at the required revision. Do not scan sibling directories, auto-fetch missing owners,
 or assume this page's presence upgrades an installed consumer dependency.
@@ -147,10 +142,9 @@ for this asset. Document checks establish source consistency only.
 [documentation]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/documentation-guidelines.md
 [conventions]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/conventions-and-syntax-guidelines.md
 [frontmatter]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/runtime-frontmatter-guidelines.md
-[prd]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/guidelines/prd-tad-adr-mvp-gtm-guidelines.md
-[semantics]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/roles-actions-outcomes-schema.jsonld
+[semantics]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/agentic-rag/roles-actions-outcomes-schema.jsonld
 [guidelines]: https://github.com/huijoohwee/huijoohwee.github.io/tree/main/guidelines
-[guideline-map]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/AgenticRAG/agenticrag-guidelines-and-surfaces-map.graph.jsonld
+[guideline-map]: https://github.com/huijoohwee/huijoohwee.github.io/blob/main/schema/agentic-rag/agenticrag-guidelines-and-surfaces-map.graph.jsonld
 [commerce]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/README.md
 [gtm]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/prd-tad-adr-mvp-gtm-handoff.md
 [commerce-runtime]: https://github.com/huijoohwee/agentic-commerce-os/blob/main/docs/production-runtime.md

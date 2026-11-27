@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertDirectoryAncestors, commonDir, git, gitDir } from './git.mjs';
+import { assertDirectoryAncestors, atomicAdvanceRef, commonDir, git, gitDir } from './git.mjs';
 import {
   assertPathIdentity, captureExactTree, copyRegularFileExclusive, copySymlinkExclusive,
   pathIdentity, privateDirectoryIdentity, removeExactTree, snapshotWorktreeEntry, unlinkExactPath,
@@ -396,4 +396,34 @@ export function installStagedEntries(
       return true;
     },
   });
+}
+
+/** Use Git's index/ref locks only for ordinary checkout rules; custom transforms keep recovery. */
+export function cleanFastForwardEligible(plan, trees, cwd) {
+  if (plan.fastForwardClean !== true || plan.inventory.length || plan.relation === 'squash-integrated-divergence') return false;
+  const config = git(['config', '--get-regexp', '^core\\.(sparsecheckout|autocrlf|eol)'], { cwd, allowFail: true }) ?? '';
+  if (config.split('\n').some(line => line && !/^core\.(?:autocrlf false|eol lf|sparsecheckout false)$/iu.test(line))) return false;
+  for (const tree of trees) for (const [path, entry] of tree) if (path.split('/').at(-1) === '.gitattributes') {
+    if (entry.size > 16_384 || /(?:filter|working-tree-encoding|ident|crlf)/iu.test(git(['cat-file', 'blob', entry.oid], { cwd }))) return false;
+  }
+  const paths = [...new Set(trees.flatMap(tree => [...tree.keys()]))];
+  for (let i = 0; i < paths.length; i += 128) {
+    const attrs = git(['check-attr', 'filter', 'working-tree-encoding', 'ident', 'eol', '--', ...paths.slice(i, i + 128)], { cwd });
+    for (const line of attrs.split('\n').filter(Boolean)) {
+      const attr = line.match(/: (filter|working-tree-encoding|ident|eol): (.+)$/u);
+      if (!attr || !['unspecified', 'unset'].includes(attr[2]) && !(attr[1] === 'eol' && attr[2] === 'lf')) return false;
+    }
+  }
+  return true;
+}
+export function advanceCleanCanonicalTree(plan, cwd, onEffect) {
+  const canonicalRef = `refs/heads/${plan.branch}`;
+  atomicAdvanceRef(plan.recoveryRef, plan.expectedLocalSha, '0'.repeat(plan.expectedLocalSha.length),
+    [[canonicalRef, plan.expectedLocalSha], [plan.targetRef, plan.expectedTargetSha]], cwd);
+  onEffect({ recoveryRefCreated: true, recoveryCommit: plan.expectedLocalSha });
+  git(['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'read-tree', '-m', '-u', plan.expectedLocalSha, plan.expectedTargetSha], { cwd });
+  onEffect({ indexPublished: true, targetInstalled: true });
+  atomicAdvanceRef(canonicalRef, plan.expectedTargetSha, plan.expectedLocalSha,
+    [[plan.targetRef, plan.expectedTargetSha], [plan.recoveryRef, plan.expectedLocalSha]], cwd);
+  onEffect({ canonicalRefPublished: true, canonicalRefCurrentOid: plan.expectedTargetSha });
 }

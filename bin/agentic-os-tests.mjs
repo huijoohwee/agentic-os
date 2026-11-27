@@ -49,17 +49,29 @@ export function parseArguments(argv) {
   return options;
 }
 /** Skip a second local suite only when bound CI already covers this exact HEAD. */
-export function boundCiCoverage(identity, observation) {
+export function boundCiCoverage(identity, observation, requiredSuites = []) {
   if (observation == null) return null;
   const source = observation.source ?? {};
   if (source.revision !== identity.headRevision || source.tree !== identity.headTree)
     throw new Error('blocked-ci-coverage-identity');
-  const runId = Number(observation.ci?.runId);
+  const runId = Number(observation.ci?.runId), proof = observation.coverage;
   if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('blocked-ci-coverage-run');
   const status = observation.status ?? observation.outcome;
   if (status === 'failed' || status === 'blocked') return null;
-  if (status === 'passed' || status === 'running' || observation.coverage?.partial === true)
-    return { runId, status: status === 'passed' ? 'passed' : 'running' };
+  if (identity.sourceDigest !== identity.committedSourceDigest || !identity.committedSourceDigest
+    || proof?.scope !== 'required-ci-checks' || proof.workflowPath !== '.github/workflows/ci.yml'
+    || !Number.isSafeInteger(proof.workflowId) || proof.workflowId < 1
+    || !Number.isSafeInteger(proof.attempt) || proof.attempt < 1
+    || !Array.isArray(proof.checks) || proof.checks.length !== 2
+    || proof.checks.map(check => check.name).sort().join(',') !== 'budgets,test') return null;
+  if (status === 'passed' && proof.validation?.source?.sourceDigest === identity.sourceDigest
+    && proof.validation.source.committedSourceDigest === identity.sourceDigest && proof.validation.source.headTree === identity.headTree
+    && requiredSuites.length > 0 && requiredSuites.every(name => proof.validation.suites?.includes(name))
+    && proof.checks.every(check => check.status === 'completed' && check.conclusion === 'success'))
+    return { runId, status: 'passed', workflowId: proof.workflowId, attempt: proof.attempt };
+  if (status === 'running' && proof.checks.every(check => check.status === 'completed'
+    ? check.conclusion === 'success' : ['queued', 'in_progress', 'waiting', 'pending'].includes(check.status)))
+    return { runId, status: 'running', workflowId: proof.workflowId, attempt: proof.attempt };
   return null;
 }
 
@@ -143,8 +155,8 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
   let coverage = null;
   if (ciRun && !ci && !options.fresh && options.mode !== 'all' && !options.committed) {
     const observation = ciObservation ?? (await import('./agentic-os-ci-observation.mjs'))
-      .readCiObservation(root, ciRun);
-    coverage = boundCiCoverage(observed.identity, observation);
+      .readCiObservation(root, ciRun, { coverage: true });
+    coverage = boundCiCoverage(observed.identity, observation, plan.suites.map(suite => suite.path));
   }
   const canReuse = !options.fresh && options.mode !== 'all' && !options.committed
     && !process.env.CI && !process.env.GITHUB_ACTIONS && coverage === null;
@@ -156,9 +168,9 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
   };
   const preview = checks.map(decorate), summary = {
     selected: plan.suites.length, skipped: plan.available - plan.suites.length,
-    reused: coverage ? checks.length : preview.filter(check => check.reuse).length,
+    reused: coverage ? coverage.status === 'passed' ? checks.length : 0 : preview.filter(check => check.reuse).length,
     estimatedCommandMs: coverage ? 0 : Math.ceil(preview.reduce((total, check) => total + (check.reuse ? 0 : check.estimatedMs), 0)),
-    concurrency: options.concurrency, timeBudgetMs: LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
+    concurrency: options.concurrency, timeBudgetMs: plan.reasons.some(reason => reason.startsWith('shared-contract:')) ? LIMITS.sharedContractMs : LIMITS.testMs, outputBytesPerCheck: LIMITS.outputBytes,
     ...(coverage ? { boundCi: coverage } : {}) };
   if (options.mode === 'plan') {
     out(JSON.stringify({ identity: observed.identity, ...plan, cost: summary,
@@ -178,14 +190,15 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     if (ci) out('evaluators: allocated to required budgets job; result not observed by test job');
     writeReceipt(directory, 'last.json', receipt);
     out(`${plan.mode}: ${plan.suites.length}/${plan.available} suites; ${plan.changed.length} changed paths; ${summary.skipped} skipped`);
-    out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency ${summary.concurrency}; budget ${LIMITS.testMs / 1000}s`);
+    out(`cost: ~${(summary.estimatedCommandMs / 1000).toFixed(1)} command-seconds, ${summary.reused} reusable checks; concurrency ${summary.concurrency}; budget ${summary.timeBudgetMs / 1000}s`);
     if (plan.reasons.length) out(`coverage reasons: ${plan.reasons.join(', ')}`);
     for (const suite of plan.suites) out(`selected ${suite.path}: ${suite.reasons.join(', ')}`);
     if (coverage) {
       stable();
       out(`deferred local suite: bound CI ${coverage.runId} covers HEAD (${coverage.status})`);
       assertWorkflowCurrent();
-      for (const check of checks) {
+      if (coverage.status === 'running') { receipt.outcome = 'waiting'; receipt.exitCode = 2; out('waiting-required-ci: no checks are recorded as passed'); }
+      else for (const check of checks) {
         receipt.results.push({ name: check.name, stage: check.stage, reused: true, reusedFrom: 'bound-ci',
           runId: coverage.runId, exitCode: 0, elapsedMs: 0, reason: null, counts: { tests: 0, pass: 0, fail: 0, cancelled: 0 },
           validatedAt: receipt.startedAt });
@@ -203,7 +216,7 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
       }
       await runCheckPool(pending, async check => {
         stable();
-        const remaining = LIMITS.testMs - (performance.now() - started);
+        const remaining = summary.timeBudgetMs - (performance.now() - started);
         if (remaining <= 0) throw new Error('blocked-test-time-budget');
         out(`running ${check.name}`);
         assertWorkflowCurrent();
@@ -232,6 +245,13 @@ export async function runTests(argv, { root = ROOT, out = console.log, ci = fals
     receipt.finishedAt = Date.now();
     receipt.elapsedMs = performance.now() - started;
     try { writeReceipt(directory, 'last.json', receipt); } finally { release(); }
+  }
+  if (ci && receipt.outcome === 'passed') {
+    const { headRevision, headTree, sourceDigest, committedSourceDigest } = observed.identity;
+    const proof = { schema: 'agentic-os/ci-check-proof/v1', runId: Number(process.env.GITHUB_RUN_ID),
+      attempt: Number(process.env.GITHUB_RUN_ATTEMPT), source: { headRevision, headTree, sourceDigest, committedSourceDigest },
+      suites: receipt.results.map(result => result.name) };
+    out(`agentic-os-ci-proof:${Buffer.from(JSON.stringify(proof)).toString('base64')}`);
   }
   out(`validation receipt: ${join(directory, 'last.json')}`);
   return receipt.exitCode;

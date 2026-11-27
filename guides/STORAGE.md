@@ -3,25 +3,25 @@ title: Storage
 doc_type: "PRD-TAD-ADR-MVP-GTM"
 owner: "agentic-os"
 continuity_id: "STORAGE-001"
-prd_revision: "1.11.0"
-tad_revision: "1.11.0"
-adr_revision: "1.11.0"
+prd_revision: "1.12.0"
+tad_revision: "1.12.0"
+adr_revision: "1.12.0"
 load_policy: on-demand
-version: "1.11.0"
-date: "2026-10-21"
+version: "1.12.0"
+date: "2026-11-11"
 lang: "en-US"
 frontmatter_contract: "required"
 local_rung: "undocumented"
 delivered_rung: "undocumented"
 lane: "authoring"
 universal_scope: false
-worktree_id: "device-0232231d4a19--cache-storage-economy"
-agent_id: "codex-storage-inventory-summary"
+worktree_id: "device-0232231d4a19--e2e-storage-usage"
+agent_id: "codex"
 guideline_revision: "2.7.0"
 guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/e8d2a10a8d3e5735c43edf350a22523df05fdf91/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
 reviewed_source_revision: "f25e2b5301291d7f0f168ae452475b4a12021004"
-mvp_revision: "1.11.0"
-gtm_revision: "1.11.0"
+mvp_revision: "1.12.0"
+gtm_revision: "1.12.0"
 ---
 
 # Storage
@@ -48,6 +48,47 @@ If ownership or a working restore path is unknown, retain the bytes.
 This audit measured npm cache verification at about 968 MiB of allocated reduction in 6.1 seconds.
 The same local run's artifact compression saved 24 KiB in 122.9 seconds; do not repeat that operation
 on unchanged data. These are host-specific observations, not general performance guarantees.
+
+## Quarantined dependency projections — STORAGE-001@1.12.0
+
+PRD: Maintainers need to reduce allocated bytes in dependency trees already retained for recovery
+without losing their offline restore path or the original quarantine receipt. TAD/ADR: reuse the
+exact `dependencies` owner after [quarantine inventory](STORAGE-QUARANTINE-INVENTORY.md) establishes
+coordinate and provenance. It targets only that record's `projection/node_modules`; it does not
+retire the quarantine, registration or receipt.
+
+Review the exact plan. Stop all other writers before `apply` and keep them stopped through readback.
+`--stopped` records that condition; bounded process observation does not prove OS-wide exclusivity.
+
+```sh
+set -eu
+plan_file=$(mktemp "${TMPDIR:-/tmp}/agentic-os-storage.XXXXXX")
+trap 'rm -f "$plan_file"' EXIT
+repository=/absolute/repository
+quarantine_id='replace-with-exact-64-hex-coordinate'
+node bin/agentic-os-storage.mjs plan --repository="$repository" \
+  --kind=dependencies --quarantine="$quarantine_id" > "$plan_file"
+plan_digest='copy-the-validated-plan-digest-here'
+node bin/agentic-os-storage.mjs apply --plan="$plan_file" \
+  --authorize="agentic-os:storage:$plan_digest" --stopped
+```
+
+MVP: On macOS, accept only an unexpired plan binding the exact target, manifest and allocated bytes.
+The owner stages native compression, verifies every file against the original manifest, swaps on the
+same volume, and removes the retained original only after readback. Require `contentPreserved`,
+`quarantineReceiptPreserved` and positive `netBytesReclaimed`; a no-saving result is a no-op. Keep
+other writers stopped through completion. Measure restore/check time only when the tree is needed;
+never run this on every checkout or infer deletion authority.
+
+GTM: One Commerce quarantine sample on 2026-11-11 compressed 8,705 entries (937,218,102 logical bytes)
+from 959,299,584 to 325,287,936 allocated bytes: 634,011,648 net bytes in about 13 seconds. Its
+receipt verified the original manifest and preserved quarantine metadata. Restore time and volume
+free-space change were not measured; this single host sample is not a performance guarantee.
+
+For E2E command cost, reuse the test receipt's `elapsedMs` and `resources`. On supported macOS/Linux hosts,
+it records waited-process-tree CPU and maximum single-process RSS via `wait4`; unavailable measurements stay
+explicit. Pair with allocated bytes only for the exact run-owned directory; do not equate RSS with browser
+memory or logical file size with disk allocation.
 
 ## Storage diagnosis — STORAGE-001@1.1.0
 

@@ -71,7 +71,7 @@ export function recoverLaneRecordFromMission(input, makeRecord) {
     || allocation.worktreeId !== basename(path) || allocation.baseRevision !== expectedHead || allocation.headRevision !== expectedHead
     || !Array.isArray(writePaths) || JSON.stringify(writePaths) !== JSON.stringify([...new Set(writePaths)].sort())
     || allocation.writeDigest !== digest(JSON.stringify(writePaths)) || currentBranch(root) !== policy.protectedBranch
-    || observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: root }) !== '' || currentBranch(path) !== ref
+    || observeGit(['status', '--porcelain=v1', '--untracked-files=no'], { cwd: root }) !== '' || currentBranch(path) !== ref
     || headSha(`refs/heads/${ref}`, root) !== expectedHead || headSha('HEAD', path) !== expectedHead
     || observeGit(['merge-base', '--is-ancestor', expectedHead, protectedHead], { cwd: root, allowFail: true }) === null)
     throw Object.assign(new Error('mission does not bind the clean active lane and protected source state'), { reason: 'blocked-lane-mission-recovery-binding' });

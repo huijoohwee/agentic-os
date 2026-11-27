@@ -136,6 +136,11 @@ observation; do not add another scheduler, result registry or background poller.
    let the receipt owner release its lock, and retain the interrupted result explicitly as cancelled
    work. It is neither a passing check nor evidence of an application defect. Never stop unrelated
    listeners, discard failure history, or remove worktrees before exact integration and cleanup proof.
+8. Following rule 2's single-executor policy, batch an in-scope mobile/responsive/offline journey
+   once on the stable final candidate, after fast affected-owner checks during edits. Relevant
+   behavior or device/browser-context drift reopens affected checks; unknown impact follows the
+   broader fallback. Keep required CI and correctness/safety/accessibility gates; record candidate,
+   command, device/browser/viewport, network state and focused-versus-complete coverage.
 
 This is release-agent policy using existing execution mechanisms; it is not a new cross-host exclusion
 lock or automatic CI de-duplication service. Evaluate it with the existing affected checks and actual

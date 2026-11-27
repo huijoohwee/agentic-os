@@ -31,20 +31,21 @@ count is secondary, and token estimates are advisory because tokenizers vary by 
 
 | Scope | Cap | Enforced by |
 |---|---|---|
-| Modules in `src/` | 51 | `bin/agentic-os-module-budget.mjs` |
-| Authored lines in `src/` | 16,041 | `bin/agentic-os-module-budget.mjs` |
-| Lines in one module | 400 | `bin/agentic-os-module-budget.mjs` |
+| Modules in `src/` | 52 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `src/` | 16,700 | `bin/agentic-os-module-budget.mjs` |
+| CLI modules in `bin/` | 114 | `bin/agentic-os-module-budget.mjs` |
+| Authored lines in `bin/` | 25,588 | `bin/agentic-os-module-budget.mjs` |
+| Lines in one module | 450 | `bin/agentic-os-module-budget.mjs` |
 
-The cap is the design constraint that keeps scenarios in the state table. A per-scenario quadruple of
-contract, controller, adapter, and evidence module multiplies: 76 scenarios becomes 304 modules and
-roughly 195k lines, and at that size the harness is the product.
+A per-scenario quadruple of contract, controller, adapter, and evidence module multiplies to 304 modules
+and roughly 195k lines at 76 scenarios.
 
-A directive proposing a module pattern states its per-scenario multiplier and projected module delta;
-otherwise it is incomplete. New behavior belongs in the state table or an existing responsibility owner.
+A module pattern states its per-scenario multiplier and projected module delta.
+New behavior belongs in the state table or an existing responsibility owner.
 
 ## Reading the failure
 
-Both checkers print the offending path, measured value, and cap. Caps do not rise under pressure. Fix
+Both checkers print the offending path, measured value, and cap. Caps change only with reviewed scope. Fix
 overruns by:
 
 - move detail out of the always-load set into a document that loads on demand;

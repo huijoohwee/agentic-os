@@ -96,6 +96,47 @@ function executionFixture(t) {
   return { base, root, git, repository, revision, worktreeId, execution, selected, collect, guard };
 }
 
+test('allocation release uses exact path or branch, not a shared checkout folder name', t => {
+  const s = executionFixture(t), ref = 'agent/device/checkout', worktreeId = 'repo';
+  const path = join(s.base, 'task', worktreeId), peer = join(s.base, 'retained', worktreeId);
+  startWorkflow(s.root, s.repository, { revision: s.revision,
+    planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId,
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } },
+    allocation: { worktreeId, ref, path, baseRevision: s.revision, headRevision: s.revision,
+      writeDigest: 'a'.repeat(64), state: 'active', operation: 'create' } });
+  s.git('worktree', 'add', '-b', ref, path, s.revision);
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, ref), /allocation-release-mounted/);
+  s.git('-C', path, 'checkout', '--detach');
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, ref), /allocation-release-mounted/);
+  s.git('worktree', 'remove', path);
+  s.git('worktree', 'add', peer, ref);
+  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, ref), /allocation-release-mounted/);
+  s.git('-C', peer, 'checkout', '--detach');
+  const released = releaseWorkflowAllocation(s.root, s.repository, ref);
+  assert.equal(released.released, true, 'canonical and retained peer may share the unmounted task basename');
+  assert.equal(releaseWorkflowAllocation(s.root, s.repository, ref).alreadyReleased, true);
+});
+
+test('allocation release stays standalone when no workflow selection was ever retained', t => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'workflow-allocation-standalone-'))), root = join(base, 'repo'); mkdirSync(root);
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
+  writeFileSync(join(root, 'native-prd-tad-adr-mvp-gtm.md'), '# Native plan\n');
+  git('add', '.'); git('-c', 'commit.gpgsign=false', 'commit', '-m', 'source');
+  assert.deepEqual(releaseWorkflowAllocation(root, 'github.com/example/native', 'agent/device/legacy'), {
+    schema: 'agentic-os/workflow-allocation-release/v1',
+    authority: false,
+    status: 'standalone',
+    ref: 'agent/device/legacy',
+    worktreeId: null,
+    allocationHead: null,
+    workflow: null,
+    workflowDigest: null,
+    released: false,
+  });
+});
+
 test('source-bound handoffs reject dirty admission and survive immutable workflow successors', t => {
   const s = executionFixture(t), initial = s.selected(), old = initial.members[0].child;
   const participants = ['writer', 'reviewer'].map(role => ({ memberId: s.worktreeId, traceId: role, role }));
@@ -243,7 +284,7 @@ test('immutable successors retain execution constraints and partial allocation i
   assert.equal(checkoutCapacity(s.selected(), s.repository, []).consumed, 0);
   assert.throws(() => s.guard({ ref: successor.ref, phase: 'preparation' }), /allocation-released/);
   assert.throws(() => s.collect({ allocations: [{ ...successor, state: 'active' }] }), /allocation-release-lineage/);
-  assert.throws(() => releaseWorkflowAllocation(s.root, s.repository, successor.ref), /allocation-release-state/);
+  assert.deepEqual(releaseWorkflowAllocation(s.root, s.repository, successor.ref), { ...released, alreadyReleased: true });
   const nextId = 'device--next', current = s.selected();
   const nextMember = collectWorkflowValue(s.root, s.repository, { schema: 'agentic-os/workflow-observation-input/v1', id: nextId,
     source: { repository: s.repository, revision: s.revision, tree: s.git('rev-parse', 'HEAD^{tree}') },
@@ -400,10 +441,10 @@ test('foreign declared roots fail closed while unrelated legacy roots remain sta
 test('planning validation returns the committed binding without changing admission evidence', t => {
   const s = executionFixture(t), before = s.selected(), planningPath = before.manifest.planning.path;
   const inputs = { revision: s.revision, planningPath };
-  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, inputs), before.manifest.planning);
+  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, inputs), { planning: before.manifest.planning, content: null });
   writeFileSync(join(s.root, planningPath), 'dirty writer-owned plan');
   const status = s.git('status', '--porcelain');
-  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, { ...inputs, digest: before.manifest.planning.digest }), before.manifest.planning);
+  assert.deepEqual(validateWorkflowPlanning(s.root, s.repository, { ...inputs, digest: before.manifest.planning.digest }), { planning: before.manifest.planning, content: null });
   assert.throws(() => validateWorkflowPlanning(s.root, s.repository, { ...inputs, digest: '0'.repeat(64) }), /planning-digest/);
   assert.throws(() => validateWorkflowPlanning(s.root, s.repository, { ...inputs, planningPath: '../outside.md' }), /planning-binding/);
   assert.equal(s.selected().digest, before.digest); assert.equal(s.git('status', '--porcelain'), status);

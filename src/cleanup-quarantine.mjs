@@ -1,10 +1,10 @@
-/** Exact-path, quarantine-only Git worktree observation and mutation mechanics. */
+/** Exact-path Git worktree observation, quarantine, and clean-removal verification. */
 import { lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
-import { canonicalJson, governanceDigest, RETAIN_ALL_CLEANUP } from './governance.mjs';
+import { canonicalJson, governanceDigest } from './governance.mjs';
 import { loadRepositoryTrust, observeRepositoryProfileAtRef, resolveRepositoryRoot } from './git-repository.mjs';
 import { validateAuthenticatedTransitionOperationReceipt } from './completion.mjs';
 import { collectRecoveryInventory } from './recovery-inventory.mjs';
@@ -16,6 +16,7 @@ import { freezeCleanupRecord as frozen, validateCurrentQuarantineReconciliation,
 export { observeQuarantineManifest } from './cleanup-manifest.mjs';
 const UTF8 = new TextDecoder('utf-8', { fatal: true }), QUARANTINE_ROOT = 'agentic-os-cleanup-quarantine',
   OPERATION_SCHEMA = 'agentic-os/worktree-quarantine-operation/v1';
+const QUARANTINE_OBSERVATION_ENTRY_CEILING = 16_384;
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 function same(left, right) { return canonicalJson(left) === canonicalJson(right); }
 function absent(path, label) {
@@ -53,9 +54,8 @@ function sharedState(common, worktrees, excludedAdminId, plan) {
       fail('blocked-cleanup-object-alternate', 'alternate object stores are unsupported');
   }
   const limits = { byteCeiling: plan.sharedStateByteCeiling, entryCeiling: plan.sharedStateEntryCeiling };
-  const adminRoot = join(common, 'worktrees');
-  const adminNames = boundedDirectoryEntries(adminRoot, limits.entryCeiling, 'peer worktree admin').map((entry) => entry.name).filter((name) => name !== excludedAdminId);
-  const peerPhysical = selectedManifest(adminRoot, adminNames, limits, { label: 'peer-worktree-admin', observe: observeRegistrationManifest });
+  const adminRoot = join(common, 'worktrees'), adminStat = lstatSync(adminRoot, { throwIfNoEntry: false }), adminNames = adminStat ? boundedDirectoryEntries(adminRoot, limits.entryCeiling, 'peer worktree admin').map((entry) => entry.name).filter((name) => name !== excludedAdminId) : worktrees.length === 1 ? [] : fail('blocked-cleanup-peer-admin', 'missing worktree admin root has unresolved peers');
+  const peerPhysical = adminStat ? selectedManifest(adminRoot, adminNames, limits, { label: 'peer-worktree-admin', observe: observeRegistrationManifest, modeOverride: adminNames.length ? null : 'no-peer-admins' }) : frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1', label: 'peer-worktree-admin', mode: 'no-peer-admins', items: [] }), bytes: 0, entries: 0 });
   const refs = selectedManifest(common, ['AUTO_MERGE', 'BISECT_HEAD', 'CHERRY_PICK_HEAD', 'FETCH_HEAD', 'HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'REBASE_HEAD', 'REVERT_HEAD', 'logs', 'packed-refs', 'refs', 'reftable'], limits, { allowMissing: true, label: 'shared-refs-reflogs' });
   const objects = selectedManifest(common, ['objects'], limits, { label: 'shared-object-store', retainedHardlinks: true });
   const sharedStateBytes = peerPhysical.bytes + refs.bytes + objects.bytes;
@@ -85,8 +85,13 @@ function trustedState(plan, cwd) {
   const observed = observeRepositoryProfileAtRef({ repository: root, ref: trust.canonical.localRef });
   const profile = observed.profile;
   if (!profile || trust.repository !== plan.repository || profile.repository !== plan.repository || trust.canonical.localRef !== plan.expectedCanonicalRef || profile.canonical.localRef !== plan.expectedCanonicalRef || profile.canonical.remoteRef !== trust.canonical.remoteRef || observed.revision !== plan.expectedCanonicalRevision || profile.profileDigest !== plan.profileDigest) fail('blocked-cleanup-profile', 'trusted repository, profile, or canonical ref changed');
-  const expectedCleanup = { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine', worktreeRegistration: 'quarantine' };
-  if (!same(profile.adapters.repository, { id: 'git', version: '1' }) || !same(profile.cleanup, expectedCleanup)) fail('blocked-cleanup-profile', 'trusted profile does not opt in to exact quarantine effects');
+  const cleanupMode = profile.cleanup?.worktreeProjection;
+  if (!same(profile.adapters.repository, { id: 'git', version: '1' })
+    || !['quarantine', 'remove-clean'].includes(cleanupMode)
+    || profile.cleanup?.worktreeRegistration !== cleanupMode
+    || Object.entries(profile.cleanup).some(([key, value]) =>
+      !['worktreeProjection', 'worktreeRegistration'].includes(key) && value !== 'retain'))
+    fail('blocked-cleanup-profile', 'trusted profile does not opt in to one supported worktree cleanup policy');
   return { root, trust, profile, canonicalRevision: observed.revision };
 }
 /** Observe the exact active projection, dirty recovery inventory, policy, refs, and admin bytes. */
@@ -114,8 +119,35 @@ export function observeWorktreeCleanupTarget(plan, { cwd = process.cwd(), observ
   const admin = adminFor(plan.targetPath, common, plan.sharedStateEntryCeiling);
   const projectionManifest = observeQuarantineManifest(plan.targetPath, { byteCeiling: plan.projectionByteCeiling, entryCeiling: plan.projectionEntryCeiling, retainedHardlinks: plan.mode === 'explicit-local-user-consent-recovery' }), registrationManifest = observeRegistrationManifest(admin.adminPath, { byteCeiling: plan.registrationByteCeiling, entryCeiling: plan.registrationEntryCeiling });
   const shared = sharedState(common, entries, admin.id, plan);
-  const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries, projectionManifest, registrationManifest, ...shared };
+  const cleanRemovalEligible = Boolean(recoveryInventory)
+    && observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: plan.targetPath }) === ''
+    && recoveryInventory.inventoryEntries.visibleUntracked === 0
+    && recoveryInventory.inventoryEntries.ignoredRuntime === 0
+    && recoveryInventory.inventoryEntries.hidden === 0;
+  const base = { repositoryRoot: controller, commonDirectory: common, worktreeId: admin.id, adminPath: admin.adminPath, profileDigest: trusted.profile.profileDigest, cleanupMode: trusted.profile.cleanup?.worktreeProjection ?? 'quarantine', cleanRemovalEligible, canonicalRevision: trusted.canonicalRevision, recoveryInventoryDigest, recoveryInventoryContentEntries, projectionManifest, registrationManifest, ...shared };
   return frozen({ ...base, observationDigest: governanceDigest(base) });
+}
+
+/** Verify Git-native clean removal changed only the exact checkout and its admin registration. */
+export function verifyCleanWorktreeRemoval(plan, before, { cwd = process.cwd() } = {}) {
+  const controller = resolveRepositoryRoot(cwd), common = realpathSync(commonDir(controller));
+  if (common !== before.commonDirectory || !absent(plan.targetPath, 'clean-removal-target')
+    || !absent(before.adminPath, 'clean-removal-registration'))
+    fail('blocked-clean-removal-postcondition', 'Git did not remove only the exact worktree and registration');
+  const entries = worktreeInventory(controller), retainedHead = observeGit(
+    ['rev-parse', '--verify', `refs/heads/${plan.expectedBranch}^{commit}`],
+    { cwd: controller, allowFail: true });
+  if (entries.some((entry) => entry.path === plan.targetPath)
+    || retainedHead !== plan.expectedHeadRevision)
+    fail('blocked-clean-removal-postcondition', 'worktree registration or branch ref changed unexpectedly');
+  const shared = sharedState(common, entries, null, plan);
+  if (shared.peerRegistrationDigest !== before.peerRegistrationDigest
+    || shared.sharedRefDigest !== before.sharedRefDigest
+    || shared.objectInventoryDigest !== before.objectInventoryDigest
+    || shared.sharedStateBytes !== before.sharedStateBytes
+    || shared.sharedStateEntries !== before.sharedStateEntries)
+    fail('blocked-clean-removal-postcondition', 'peer registrations, shared refs, or Git objects changed');
+  return true;
 }
 function privateDirectory(path, label) { const stat = strictStat(path, label); if (!stat.isDirectory() || stat.isSymbolicLink() || stat.nlink < 2n || (stat.mode & 0o077n) !== 0n) fail(`blocked-${label}`, `${label} is not a private directory`); }
 function readOperation(path, eligibility = null) {
@@ -162,7 +194,7 @@ function retainedTargetPath(registration) {
 }
 function protectedRetirementReceipt(originalReceipt, eligibility, coordinate) {
   const receipt = validateAuthenticatedTransitionOperationReceipt(originalReceipt), transition = receipt.transitionReceipt, cleanup = validateWorktreeCleanupEligibility(eligibility);
-  if (receipt.requestedTransition !== 'retire' || transition.resultState !== 'retired' || transition.immutableRevision !== cleanup.canonicalRevision || cleanup.cleanupPlanDigest !== coordinate || cleanup.retirementReceiptDigest !== receipt.receiptDigest || cleanup.retirementPlanByteDigest !== receipt.planByteDigest) fail('blocked-cleanup-retained-artifact', 'protected retirement receipt does not bind the retained cleanup operation');
+  if (receipt.requestedTransition !== 'retire' || transition.resultState !== 'retired' || cleanup.cleanupPlanDigest !== coordinate || cleanup.retirementReceiptDigest !== receipt.receiptDigest || cleanup.retirementPlanByteDigest !== receipt.planByteDigest) fail('blocked-cleanup-retained-artifact', 'protected retirement receipt does not bind the retained cleanup operation');
   return receipt;
 }
 function reconciliationCandidate(value, { originalReceipt, originalRegistrationManifest,
@@ -188,7 +220,7 @@ function retainedInventorySnapshot(root, operation, registration, canonicalRef, 
 export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = null, { originalReceipt = null, canonicalRef, reconciliation = null, diagnostic = false, retirementTarget = false } = {}) {
   try {
     const base = join(realpathSync(commonDir(root)), QUARANTINE_ROOT); privateDirectory(base, 'cleanup-quarantine-root');
-    const exactStat = typeof coordinate === 'string' && /^[a-f0-9]{64}$/u.test(coordinate) ? lstatSync(join(base, coordinate), { throwIfNoEntry: false }) : null, entries = coordinate === null ? boundedDirectoryEntries(base, 256, 'cleanup-quarantine-root') : exactStat?.isDirectory() ? [{ name: coordinate, isDirectory: () => true, isSymbolicLink: () => false }] : [];
+    const exactStat = typeof coordinate === 'string' && /^[a-f0-9]{64}$/u.test(coordinate) ? lstatSync(join(base, coordinate), { throwIfNoEntry: false }) : null, entries = coordinate === null ? boundedDirectoryEntries(base, QUARANTINE_OBSERVATION_ENTRY_CEILING, 'cleanup-quarantine-root') : exactStat?.isDirectory() ? [{ name: coordinate, isDirectory: () => true, isSymbolicLink: () => false }] : [];
     for (const entry of entries) {
       if (coordinate !== null && entry.name !== coordinate) continue;
       if (!/^[a-f0-9]{64}$/u.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
@@ -206,24 +238,24 @@ export function observeRetainedQuarantineEvidence(root, ref, head, coordinate = 
         const detachedHead = detachedReviewedHead(root, registrationHead, originalReceipt, head) ?? (retirementTarget && branchTip && registrationHead === `${head}\n` ? head : null), detachedRegistration = detachedHead !== null;
         if (registrationHead !== `ref: refs/heads/${ref}\n` && !detachedRegistration) continue;
         const record = readOperation(operation), e = record.eligibility, binding = retirementEligibility(e); if (binding?.coordinate !== entry.name) continue;
-        const protectedReceipt = ['agentic-os/authenticated-transition-operation-receipt/v1', 'agentic-os/authenticated-transition-operation-receipt/v2'].includes(originalReceipt?.schema);
-        if (protectedReceipt) protectedRetirementReceipt(originalReceipt, e, entry.name);
-        const targetPath = protectedReceipt ? retainedTargetPath(registration) : originalReceipt?.targetPath;
+          const protectedReceipt = ['agentic-os/authenticated-transition-operation-receipt/v1', 'agentic-os/authenticated-transition-operation-receipt/v2'].includes(originalReceipt?.schema),
+            targetPath = protectedReceipt ? retainedTargetPath(registration) : originalReceipt?.targetPath,
+            reviewedHead = detachedRegistration && originalReceipt?.integration?.kind === 'equal-tree' ? detachedHead : head; if (protectedReceipt) protectedRetirementReceipt(originalReceipt, e, entry.name);
         if (originalReceipt && !protectedReceipt && (originalReceipt.schema !== 'agentic-os/user-cleanup-receipt/v1'
           || originalReceipt.mode !== 'explicit-local-user-consent-recovery' || originalReceipt.planDigest !== entry.name
-          || originalReceipt.review?.branch !== ref || originalReceipt.review?.head !== head
+          || originalReceipt.review?.branch !== ref
+          || originalReceipt.review?.head !== reviewedHead
           || originalReceipt.operationPath !== operation || originalReceipt.projectionQuarantinePath !== join(operation, 'projection')
           || originalReceipt.registrationQuarantinePath !== registration || originalReceipt.executedAt !== record.executedAt
           || originalReceipt.result !== 'quarantined' || originalReceipt.projectionQuarantined !== true
           || originalReceipt.registrationQuarantined !== true || originalReceipt.stoppedAcknowledged !== true
-          || detachedRegistration && !detachedReceiptMatches(originalReceipt, detachedHead, head)
+          || detachedRegistration && !detachedReceiptMatches(originalReceipt, detachedHead, reviewedHead)
           || Boolean(originalReceipt.detachedHead) !== detachedRegistration
           || ['providerAuthority', 'claimRetired', 'bytesDeleted', 'branchesMutated', 'objectsMutated'].some(key => originalReceipt[key] !== false)
           )) continue;
         if (originalReceipt && (!targetPath || !absent(targetPath, 'retained-target') || worktreeInventory(root).some(row => row.path === targetPath || row.branch === ref))) continue;
-        const originalRegistrationManifest = binding.registration;
-        const candidate = reconciliation !== null ? reconciliationCandidate(reconciliation,
-          { originalReceipt, originalRegistrationManifest, ref, head, coordinate: entry.name }) : null;
+          const originalRegistrationManifest = binding.registration,
+            candidate = reconciliation !== null ? reconciliationCandidate(reconciliation, { originalReceipt, originalRegistrationManifest, ref, head, coordinate: entry.name }) : null;
         const projection = observeQuarantineManifest(join(operation, 'projection'), { byteCeiling: binding.projection.bytes, entryCeiling: binding.projection.entries, retainedHardlinks: true }),
           retained = retirementTarget ? observeBoundRegistrationManifest(registration, candidate?.currentRegistrationManifest ?? originalRegistrationManifest)
             : observeRegistrationManifest(registration, { byteCeiling: candidate?.currentRegistrationManifest.bytes ?? binding.registration.bytes,
@@ -296,21 +328,22 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   });
   const entries = worktreeInventory(controller), policy = observePolicy(plan, controller);
   const shared = sharedState(common, entries, null, plan);
-  if (entries.some((entry) => entry.path === plan.targetPath)
-    || projectionManifest.digest !== eligibility.projectionManifestDigest
+  const drift = [];
+  if (entries.some((entry) => entry.path === plan.targetPath)) drift.push('target-registration');
+  if (projectionManifest.digest !== eligibility.projectionManifestDigest
     || projectionManifest.bytes !== eligibility.projectionBytes
-    || projectionManifest.entries !== eligibility.projectionEntries
-    || retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
+    || projectionManifest.entries !== eligibility.projectionEntries) drift.push('projection');
+  if (retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
     || retainedRegistrationManifest.bytes !== eligibility.registrationBytes
-    || retainedRegistrationManifest.entries !== eligibility.registrationEntries
-    || shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest
-    || shared.sharedRefDigest !== eligibility.sharedRefDigest
-    || shared.objectInventoryDigest !== eligibility.objectInventoryDigest
-    || shared.sharedStateBytes !== eligibility.sharedStateBytes
-    || shared.sharedStateEntries !== eligibility.sharedStateEntries
-    || policy.profile.profileDigest !== eligibility.profileDigest
-    || policy.canonicalRevision !== eligibility.canonicalRevision)
-    fail('blocked-cleanup-retained-artifact', 'completed quarantine evidence drifted');
+    || retainedRegistrationManifest.entries !== eligibility.registrationEntries) drift.push('registration');
+  if (shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest) drift.push('peer-registrations');
+  if (shared.sharedRefDigest !== eligibility.sharedRefDigest) drift.push('refs');
+  if (shared.objectInventoryDigest !== eligibility.objectInventoryDigest) drift.push('objects');
+  if (shared.sharedStateBytes !== eligibility.sharedStateBytes
+    || shared.sharedStateEntries !== eligibility.sharedStateEntries) drift.push('shared-state-size');
+  if (policy.profile.profileDigest !== eligibility.profileDigest) drift.push('profile');
+  if (policy.canonicalRevision !== eligibility.canonicalRevision) drift.push('canonical');
+  if (drift.length) fail('blocked-cleanup-retained-artifact', `completed quarantine evidence drifted: ${drift.join(', ')}`);
   return { artifacts: { operationPath, projectionPath, registrationPath,
     projectionQuarantined: true, registrationQuarantined: true, replayed: true },
   result: frozen({ targetPath: plan.targetPath, projectionQuarantinePath: projectionPath,

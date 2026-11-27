@@ -3,18 +3,18 @@ schema: agentic-os/cleanup-authority-enrollments/v1
 title: Exact current-recovery enrollments
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.5
-prd_revision: 1.2.5
-tad_revision: 1.2.5
-adr_revision: 1.2.5
-mvp_revision: 1.2.5
-gtm_revision: 1.2.5
+version: 1.2.7
+prd_revision: 1.2.7
+tad_revision: 1.2.7
+adr_revision: 1.2.7
+mvp_revision: 1.2.7
+gtm_revision: 1.2.7
 load_policy: on-demand
 lifecycle_status: active
 ---
 # Exact current-recovery enrollments
 
-These records bind exact current observations in `.agentic-os/github-transition-policy.json`. They do not establish historical authority or grant effects beyond each separately authorized plan and receipt.
+These records bind exact current observations in `.agentic-os/github-transition-policy.json`. They grant no effects. For ordinary current-facts integration, use reusable `prepare-current-facts` in [lifecycle completion](../docs/LIFECYCLE-COMPLETION.md); add a per-review enrollment only for an explicit historical-content claim.
 
 ## Current-quarantine discard acknowledgement adoption — agentic-os PR #475 — 2026-10-17
 
@@ -217,3 +217,155 @@ authorization, and receipt.
 Budget: one exact v1 enrollment, an update to the existing transition-workflow test, and this owner
 record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
 preserving source history and prior enrollments.
+
+## Current-quarantine retention enrollments — agentic-os PRs #616 and #617 — 2026-10-28
+
+These entries resolve the final disposition for two integrated test-only lanes whose local worktree
+projections and registrations are quarantined. PR #616 binds reviewed head
+`fff6f324644844ac7a0c1014da39ca9d04c962c1`, merge
+`d53e8f19e77c0855b6df8ebafff0991a01c321a0`, quarantine coordinate
+`cc28647f2961c27a29256b8470a4246b396848094d2fa55687e39526d6b9462a`, and its authenticated
+record-only retirement receipt, which binds that quarantine coordinate. PR #617 binds reviewed head
+`ccbfe07f73eb05501bf22443fedc8e9b4111cf26`, merge
+`cfd8b48d67e18e325bf167995f398d8c83ba7f2a`, quarantine coordinate
+`cb4a9ad4a7718eecf932a3f0e0000846df393b79a58a0e7d85d63c2ac17a6cf7`, and its authenticated
+record-only retirement receipt, which binds that quarantine coordinate. Both source PRs passed
+`budgets` and `test`.
+
+The exact entries permit only a create-only `current-quarantine-retained` disposition over the
+existing quarantine evidence. They make no physical-cleanup claim, no provider-authority claim,
+and no claim that historical quarantine protection or merge-method authority was proven. The
+independent integration and record-only retirement receipts remain separate; neither entry grants
+deployment, rollback, or further cleanup authority.
+
+Budget: two exact v1 retention entries, two existing transition-workflow expectations, and this
+owner record; zero runtime modules, dependencies, or always-load bytes. Rollback removes only these
+two entries and their matching test/guide evidence while retaining the original quarantine bytes,
+branches, Git objects, and lifecycle receipts.
+
+## Current recovery enrollment — huijoohwee.github.io PR #297 — 2026-10-25
+
+Under the owner's authorization to enroll current facts, this record binds repository
+`github.com/huijoohwee/huijoohwee.github.io`: base
+`254ad7c28ded94f0169c29c63db589a72bd5e8ef`, reviewed head
+`d824d8275fed084bc12d87597d87d7a3dd7d1722`, merge
+`6b1e7488719b726e979c848dd0078f29d69ca3d0`, and equal source/merge tree
+`f4dcccfc766787299e4a503395da242c834bac46`. The exact review is
+<https://github.com/huijoohwee/huijoohwee.github.io/pull/297>; the enrolled required check is
+`adlc-policy-contract`.
+
+The distinct scope is `recovery/current-historical-content/pr-297`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. The enrollment does not issue provider evidence or authorize integration, retirement,
+cleanup, synchronization, deployment, or rollback. Each later effect requires its own exact plan,
+authorization, and receipt.
+
+Budget: one exact v1 enrollment, one current-quarantine adoption row, an update to the existing
+transition-workflow test, and this owner record; zero runtime modules, dependencies, or always-load
+bytes. Revert these exact additions while preserving source history and prior enrollments.
+
+## Current recovery enrollment — joohwee PR #9 — 2026-10-25
+
+Under the owner's authorization to enroll current facts, this record binds repository
+`github.com/huijoohwee/joohwee`: base
+`07143e1a4a7e265fa0a3252e3ad57346fe5d6eda`, reviewed head
+`14b00696fad7ef593a4e86bed58684a90cb5559f`, merge
+`eb8adf363bf23e72dc24ab1a62e9f1b414ed0a2f`, and equal source/merge tree
+`ca3c837b64c30b9985dfaada5246be7ef573b9cc`. The exact review is
+<https://github.com/huijoohwee/joohwee/pull/9>; the enrolled required check is `check`.
+
+The distinct scope is `recovery/current-historical-content/pr-9`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. Because GitHub exposes zero historical check runs for this private free-tier repository,
+future proof replay must bind the exact `historicalCheckGap` for `check` rather than invent success.
+The enrollment does not issue provider evidence or authorize integration, retirement, cleanup,
+synchronization, deployment, or rollback. Each later effect requires its own exact plan,
+authorization, and receipt.
+
+Budget: one exact v1 enrollment, an update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving source history and prior enrollments.
+
+## Current recovery enrollment — joohwee PR #10 — 2026-10-25
+
+Under the owner's authorization to enroll current facts, this record binds repository
+`github.com/huijoohwee/joohwee`: base
+`eb8adf363bf23e72dc24ab1a62e9f1b414ed0a2f`, reviewed head
+`ab23bcd2db92c0ff2edbb699690e7d912e4bee95`, merge
+`4d9e20f669817603034f65d585fb4609680ff647`, and equal source/merge tree
+`9e46840aaf7187300cd7f4acc9ed10852a0c593e`. The exact review is
+<https://github.com/huijoohwee/joohwee/pull/10>; the enrolled required check is `check`.
+
+The distinct scope is `recovery/current-historical-content/pr-10`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. Because GitHub exposes zero retained historical check proofs for this private free-tier
+repository, future proof replay must bind the exact `historicalCheckGap` for `check` rather than
+invent success. The enrollment does not issue provider evidence or authorize integration,
+retirement, cleanup, synchronization, deployment, or rollback. Each later effect requires its own
+exact plan, authorization, and receipt.
+
+Budget: one exact v1 enrollment, an update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving source history and prior enrollments.
+
+## Current recovery enrollment — agentic-design-system PR #4 — 2026-10-30
+
+Under the owner's authorization to continue receipt-bound recovery, this record binds repository
+`github.com/huijoohwee/agentic-design-system`: base
+`1c1952803520279b2b9259d888081bbe8fe07106`, reviewed head
+`5ea8aba4f71f4c3065396b2b0a8bf58a4ba0f220`, merge
+`9dd6c3a98621aaebdf2a36187d3aa9272c27fbee`, and equal source/merge tree
+`86034813db8a5dccf400e7c4e892f8cab09e7dcf`. The exact review is
+<https://github.com/huijoohwee/agentic-design-system/pull/4>; its recorded required check is
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-4`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This enrollment does not establish provider checks, issue integration or retirement
+receipts, or authorize cleanup, synchronization, deployment, or rollback. Each later effect needs
+its own exact plan, authority, and receipt.
+
+Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving the merged PR and its original quarantine evidence.
+
+## Current recovery enrollment — huijoohwee PR #106 — 2026-11-22
+
+Under the owner's authorization to continue receipt-bound recovery, this record binds repository
+`github.com/huijoohwee/huijoohwee`: base
+`7f896658b591b1cd52d3fa9847a832d6c2715542`, reviewed head
+`dd6d620ee142adf226ea128348085c138d6a8d2c`, merge
+`4258858c612b60e052e3769955c41e019cd3db2d`, and equal source/merge tree
+`7410f1cc906dfe956566c09ce06edc4d067e5ac8`. The exact review is
+<https://github.com/huijoohwee/huijoohwee/pull/106>; its recorded required check is
+`Runtime Readiness Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-106`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This enrollment does not establish provider checks, issue integration or retirement
+receipts, or authorize cleanup, synchronization, deployment, or rollback. Each later effect needs
+its own exact plan, authority, and receipt.
+
+Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving the merged PR and its recorded current-facts authority evidence.
+## Current recovery enrollment — agentic-trading-platform PR #2 — 2026-11-22
+
+Under the owner's authorization to continue receipt-bound recovery, this record binds repository
+`github.com/huijoohwee/agentic-trading-platform`: base
+`5b4760019d7a3c443527a6db8b376667995bf1df`, reviewed head
+`30c31f76e7f08dc66ba55746f8eeb71591936e78`, merge
+`2fd76e67309a7a0a181baeb47053dda95cdb8d67`, and equal source/merge tree
+`47d623b935a3b46de58d80416cc43de2b363c065`. The exact review is
+<https://github.com/huijoohwee/agentic-trading-platform/pull/2>; its recorded required check is
+`Integration Gate`.
+
+The distinct scope is `recovery/current-historical-content/pr-2`. This records current facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. This enrollment does not establish provider checks, issue integration or retirement
+receipts, or authorize cleanup, synchronization, deployment, or rollback. Each later effect needs
+its own exact plan, authority, and receipt.
+
+Budget: one exact v1 enrollment, one update to the existing transition-workflow test, and this owner
+record; zero runtime modules, dependencies, or always-load bytes. Revert these exact additions while
+preserving the merged PR and its original quarantine evidence.

@@ -23,7 +23,7 @@ source_docs:
   - "AGENT-TEAM.md"
   - "REPOSITORY-PACKING.md"
   - "VOICE-STUDIO.md"
-  - "../node_modules/agentic-os/docs/adlc-guidelines.md"
+  - "$GITHUB_ROOT/agentic-canvas-os/node_modules/agentic-os/docs/adlc-guidelines.md"
 publish_policy: "Dev-only until explicit operator approval"
 runtime_scope: "shared invocation metadata; execution remains consumer-owned"
 runtime_claim: "dictionary content for shared binding invocation utilities; no separate binding store"
@@ -72,6 +72,9 @@ dictionary_entries:
   - "@cost-log"
   - "@video-generation-demo-script"
   - "@provider.byteplus"
+  - "@model"
+  - "@artifact"
+  - "@asset"
   - "@provider.openai"
   - "@text"
   - "@image"
@@ -238,6 +241,9 @@ Dictionary references resolve within this directory. Runtime and approval claims
 | `@cost-log` | Token, cache, and estimated cost ledger. | Harness observer or runtime result. | Must report exact zero for model-free views. |
 | `@video-generation-demo-script` | Authored source-script binding for the default video-agent preset. | The preset frontmatter plus its canonical workspace Markdown reference. | Source context only; it cannot contain generated artifact identities, credentials, provider job ids, or fabricated media URLs. |
 | `@provider.byteplus` | Select the existing BytePlus ModelArk generation route. | Shared provider settings and generation-runtime owner. | Selection carries no credential and fails before spend when endpoint, model, entitlement, or credential is unavailable. |
+| `@model` | Vendor-neutral language-model selection by capability, context and cost class. | Shared provider settings; concrete routes stay `@provider.*`. | Names no vendor and carries no credential; resolves to one configured `@provider.*` route or fails before spend. |
+| `@artifact` | One ADLC artifact addressed by continuity id and family tag. | Owning guideline plus `huijoohwee.github.io/guidelines/adlc-artifact-continuity.md`. | Exactly one owner per artifact; updates are in place, never a parallel copy. |
+| `@asset` | One brand, design or media asset addressed by content digest. | Owning design or asset runtime. | Digest-pinned and license-scoped; no inline secret, renderer or storage authority. |
 | `@provider.openai` | Select the existing OpenAI generation route. | Shared provider settings and generation-runtime owner. | Selection carries no credential and fails before spend when endpoint, model, entitlement, or credential is unavailable. |
 | `@text` | Request a structured text artifact. | Shared text-generation and workspace-artifact owners. | The video preset requires Character, Scene, Dialogue, Visual asset, Audio, Timing, Metadata, and Prompt sheets; empty or malformed output fails terminally. |
 | `@image` | Request source-consistent image artifacts. | Shared image-generation, persistence, Media, and Canvas projection owners. | Only provider-returned and read-back-verified image identities may project; no fabricated or localhost-only URL is accepted as durable output. |
@@ -248,7 +254,7 @@ Dictionary references resolve within this directory. Runtime and approval claims
 | `@voice-profile` | Bind one exact revision of a consented voice-profile manifest for profile creation or disclosed synthesis. | agentic-graph's voice-studio runtime resolves opaque profile identity, source digests, speaker authorization, permitted uses, retention, disclosure, and revocation state through existing media and policy owners. | It contains no voice embedding, raw audio, credential, mutable provider alias, or implicit consent; a missing, expired, mismatched, or revoked profile blocks adapter work, spend, persistence, and output. |
 | `@video` | Request playable video artifacts and final composition. | Shared video-generation, composition, persistence, Media, and Timeline owners. | Completion requires returned or composed playable bytes, media verification, persistence, read-back, and one durable identity across Canvas surfaces. |
 | `@mcp-gateway` | Discovery-first MCP federation surface. | Existing local, Pages, browser, or control-plane MCP owner. | Discovery is zero-token; spend routes through approval gates. |
-| `@webmcp-surface` | Browser-local W3C Model Context registration surface pinned to `navigator.modelContext.registerTool` with `signal` and `exposedTo` options and `getTools({ fromOrigins })` discovery, at origin-trial stage and unshipped by default in every recorded engine. | Existing browser-local agentic-graph Canvas owner; this repository declares the surface and its recorded API revision but registers no tool of its own. | Carries no renderer, storage, credential, spend, Prod, or Cloudflare authority; an absent or renamed registration API fails visibly as an unavailable surface, and a registered set whose digest drifts from the recorded set is refused rather than served. |
+| `@webmcp-surface` | Browser-local W3C Model Context registration surface: feature-detect `document.modelContext` (current WebMCP draft), else legacy `navigator.modelContext.registerTool`; promise-returning `registerTool` with `signal` and `exposedTo` options and `getTools({ fromOrigins })` discovery, at origin-trial stage and unshipped by default in every recorded engine. | Existing browser-local agentic-graph Canvas owner; this repository declares the surface and its recorded API revision but registers no tool of its own. | Carries no renderer, storage, credential, spend, Prod, or Cloudflare authority; a registration API absent from both entry points fails visibly as an unavailable surface, and a registered set whose digest drifts from the recorded set is refused rather than served. |
 | `@canvas` | Source-backed Canvas projection and active browser-local Canvas control surface. | Existing Source Files, frontmatter, Agentic OS, table, Storyboard, Main Toolbar, Launch, Canvas View, and Interaction owners. | No dashboard-only graph store or renderer fork. Semantic row-value and toolbar-action invocations bind to existing owners and add no panel-local state, credential, collaboration grant, or deployment authority. |
 | `@portability-layer` | Shared capability-detected portability contract consumed by browser and native Agentic Game OS projections. | agentic-graph shared substrate and its source-backed public portability surface; Agentic Canvas OS owns invocation metadata and GameXR owns frontend projection only. | No renderer, capability implementation, persistence engine, token registry, credential, provider, model, infrastructure, Prod, Cloudflare, or deploy authority; an unsupported capability remains a typed gap rather than a local fallback. |
 | `@canvas-view` | Active browser-local Canvas View Mode control surface and its canonical option-id inventory. | Existing Canvas View toolbar options, shared selection action, semantic row affordances, and browser-local WebMCP bridge. | Carries no renderer, storage, collaboration, credential, or deployment authority; an unavailable or disabled option fails visibly before mutation. |
@@ -302,7 +308,7 @@ Dictionary references resolve within this directory. Runtime and approval claims
 | `@git:` | Context reference to recent commit metadata or patch range. | Current VCS repository. | Count is clamped to a small maximum, missing revisions warn, and sensitive content remains blocked. |
 | `@local-git-repository` | Browser-owned persisted Git object, ref, worktree, and outbox state. | agentic-graph storage-engine IndexedDB owner. | Carries no credential; controls require active IndexedDB, bounded paths and objects, atomic authority checks, and typed offline state. |
 | `@git-remote` | Opaque configured remote alias used for browser Git fetch or push. | Authenticated Dev Worker storage relay and its static allowlist. | Browser payloads contain neither credentials nor upstream URLs; the relay revalidates loopback origin, membership, role, size, path, and compare-before-update state. |
-| `@git-guidelines` | Git guidelines source. | `../node_modules/agentic-os/docs/adlc-guidelines.md`. | Source-only binding; it grants no mutation, integration, release, publication, or deployment authority. |
+| `@git-guidelines` | Git guidelines source. | `docs/documents/git-guidelines.md` and `$GITHUB_ROOT/agentic-canvas-os/node_modules/agentic-os/docs/adlc-guidelines.md`. | Source-only binding; it grants no mutation, integration, release, publication, or deployment authority. |
 | `@persisted-cache` | Browser-owned binary and metadata cache used by file synchronization. | agentic-graph storage-engine IndexedDB owner. | Chunked values stay within browser limits, credentials are rejected, and degraded persistence blocks mutating controls. |
 | `@file-sync-provider` | Opaque configured provider alias for file or directory pull and push. | Authenticated Dev Worker provider registry. | Alias exposes no provider resource id or credential; unsupported native documents, shortcuts, symlinks, and unverifiable hashes fail explicitly. |
 | `@url:` | Operator-provided reference to bounded external content for context expansion or source import. | Approved URL fetch, extract, or Import URL owner. | Requires `@reference-policy`, egress policy, cache/citation metadata, size bounds, and no credentials in the URL or headers. |
@@ -483,7 +489,7 @@ binding:
 | Token | Facts source |
 |---|---|
 | `@application-manifest` | `FACTS.md` direct-resolution entry for bounded version-locked application source. |
-| `@application` | `../../skills/software-forensics/SKILL.md` source contract for explicit application scope and read-only observation. |
+| `@application` | `$GITHUB_ROOT/agentic-canvas-os/node_modules/agentic-os/skills/software-forensics/SKILL.md` source contract for explicit application scope and read-only observation. |
 | `@agent-team` | `FACTS.md` direct-resolution entry for one exact source-backed Agent Team binding. |
 | `@component-catalog` | `FACTS.md` direct-resolution entry for immutable local component and interface records. |
 | `@integration-profile` | `FACTS.md` direct-resolution entry for opaque host-owned integration capability bindings. |

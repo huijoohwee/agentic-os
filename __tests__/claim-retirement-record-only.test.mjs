@@ -58,6 +58,19 @@ function disposition() {
     physicalCleanupPerformed: false, providerAuthority: false, claimRetired: false,
     historicalSuccessionAuthorityProven: false });
 }
+function standaloneDisposition(integrationReceipt, digest = integrationReceipt.receiptDigest) {
+  const { receiptDigest: omitted, ...source } = disposition(); assert.ok(omitted);
+  const adoption = { schema: 'agentic-os/standalone-lane-retention-adoption/v1',
+    repository: ENROLLMENT.repository, targetRef: ADOPTION.successorRef, targetHead: CANDIDATE,
+    merge: MERGE, reviewLocator: ADOPTION.reviewLocator, integrationReceiptDigest: digest };
+  return signed({ ...source, disposition: 'standalone-lane-retained', adoption,
+    adoptionDigest: governanceDigest(adoption),
+    integration: { ...source.integration, kind: 'standalone-lane-retained',
+      predecessorHead: CANDIDATE, pathCount: 0, replacements: [] },
+    retention: { branchRef: ADOPTION.successorRef, retainedHead: CANDIDATE,
+      worktreePath: '/exact/target/worktree', worktreeClean: true, integrationReceiptDigest: digest },
+    state: { ...source.state, predecessorHead: CANDIDATE, successorHead: CANDIDATE } });
+}
 function retirement(fx, receipt, preservationDisposition = disposition(), allowedEffects = RECORD_ONLY_RETIREMENT_EFFECTS, scope = SCOPE) {
   const prior = receipt.transitionReceipt;
   const plan = createEffectPlan({ target: { repository: ENROLLMENT.repository,
@@ -94,6 +107,21 @@ test('record-only retirement binds adoption and real integration without physica
   const before = fx.api.calls.length;
   await publishGitHubTransitionAuthority({ ...retired.common, now: () => Date.parse('2026-09-03T00:00:00Z') });
   assert.ok(!fx.api.calls.slice(before).some(route => route.startsWith('POST ')));
+});
+
+test('standalone retention reuses preservation flow and binds the exact integration receipt', async () => {
+  const fx = await fixture(), { receipt } = await publish(fx);
+  const retained = standaloneDisposition(receipt), retired = retirement(fx, receipt, retained);
+  const winner = await publishGitHubTransitionAuthority(retired.common);
+  assert.equal(winner.stored.providerProof.preservationReceiptDigest, retained.receiptDigest);
+  assert.equal(winner.stored.providerProof.physicalCleanupPerformed, false);
+  assert.equal(winner.stored.providerProof.historicalSuccessionAuthorityProven, false);
+  assert.ok(!Object.hasOwn(winner.stored.providerProof, 'historicalLaneRetentionAuthorityProven'));
+  const result = await replayAuthenticatedTransitionOperationReceipt({ request: retired.request,
+    planBytes: retired.planBytes }, createGitHubTransitionAuthorityVerifier(retired.common));
+  assert.equal(result.transitionReceipt.resultState, 'retired');
+  assert.throws(() => retirement(fx, receipt, standaloneDisposition(receipt, hex('f'))),
+    /does not bind exact preservation facts/u);
 });
 
 test('record-only retirement rejects cleanup effects, upgraded local authority and foreign adoption', async () => {

@@ -7,7 +7,7 @@ authority unproven.
 
 ## Preconditions
 
-- Run from a clean canonical `main` whose commit exactly matches the selected remote tracking `main`.
+- Run from canonical `main` with clean tracked source and a commit matching the selected remote tracking `main`. Unrelated untracked files remain in place.
 - Confirm the lane's local ref and live remote branch point to the same exact commit.
 - Select the exact base SHA from trusted release evidence. For a PR lane, inspect the PR's base commit;
   do not infer the admitted base from the current merge base.
@@ -20,15 +20,34 @@ authority unproven.
 npm run release:common -- rebind plan \
   --ref=<lane> --mode=recertify --base=refs/remotes/origin/main \
   --base-sha=<trusted-base-sha> --worktree=<absent-absolute-path> \
-  --expected-head=<exact-40-character-sha> [--pr=<number>]
+  --expected-head=<exact-40-character-sha> [--pr=<number>] [--accept-unrecoverable]
 npm run release:common -- rebind apply --plan=<saved-plan.json> \
   --authorize=agentic-os:lane-rebind:<plan-digest> --stopped
 ```
+
+Select `--accept-unrecoverable` only after the owner accepts that bytes from the missing checkout cannot be
+recovered. It binds that decision into the same recertification plan and receipt, while preserving the
+reconstructed checkout and refs. It grants no cleanup or deployment authority. Without the flag, the
+record stays `unobservable-at-missing-path` and cleanup remains blocked until the bytes are recovered or
+separately dispositioned.
 
 The plan binds the exact lane ref, protected base, base SHA, head, live remote head, destination, and
 reservation. Apply recomputes these observations under a clone-common operation lock. It mounts the
 existing branch without advancing or deleting refs and verifies the new checkout is clean. Cache
 publication uses exact absent-record compare-and-swap.
+
+## Mounted unpublished lane
+
+The same `recertify` plan/apply commands also accept the exact existing registered worktree
+when its lane record is absent and its remote branch is unpublished. Bind its trusted base
+SHA, current head and existing path. The planner inventories committed and local authored
+paths, checks disjoint scope, and apply rechecks those exact bytes before restoring the cache
+row. It preserves the worktree, index, unrelated canonical drafts and all refs. A mounted
+receipt reports `restoredDirtyState: exact-local-inventory`; it does not invent missing bytes.
+
+`status` reports a missing record as `unregistered` without suggesting publication events.
+START reuses exact mission recovery when its evidence exists; otherwise it names this rebind
+owner. After rebind, continue the same lane and its reserved work through LAND and END.
 
 ## Limits and closeout
 
@@ -41,6 +60,9 @@ or ignored bytes that existed only in the missing checkout. The cache record the
 bytes `unobservable-at-missing-path`; completion, release-common closeout, and both cleanup paths block
 while the marker remains. Recover the missing files and obtain an owner-reviewed disposition before
 any closeout. Never claim the restored clean checkout proves the missing checkout was clean.
+After recovery, return to the single `complete-adlc --apply` END path. For routine closeout and status,
+`npm run release:common -- close --ref=<lane>` runs finish, bounded `reap` classification, and completion
+status together. Do not immediately run `npm run reap` again for that lane.
 
 ## Provider-verified refresh after a strict-base update
 

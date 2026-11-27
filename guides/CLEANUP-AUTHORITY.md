@@ -2,18 +2,18 @@
 title: Cleanup authority enrollment and reviewed retained recovery
 doc_type: PRD-TAD-ADR-MVP-GTM
 continuity_id: CLEANUP-AUTHORITY-001
-version: 1.2.5
-prd_revision: 1.2.5
-tad_revision: 1.2.5
-adr_revision: 1.2.5
-mvp_revision: 1.2.5
-gtm_revision: 1.2.5
+version: 1.2.8
+prd_revision: 1.2.8
+tad_revision: 1.2.8
+adr_revision: 1.2.8
+mvp_revision: 1.2.8
+gtm_revision: 1.2.8
 load_policy: on-demand
 lifecycle_status: implementation-candidate
 ---
 # Cleanup authority enrollment and reviewed retained recovery
 
-Continuity `CLEANUP-AUTHORITY-001@1.2.5`. The owner accepted1.1.0 (protected PR323), then explicitly
+Continuity `CLEANUP-AUTHORITY-001@1.2.8`. The owner accepted1.1.0 (protected PR323), then explicitly
 accepted1.2.0 current original-lane retirement and retained-seed/current-clean reconciliation. This
 admitted runtime candidate implements both distinct current retirement bases. Exact runtime/policy activation still requires frozen
 checks and protected review. Existing physical cleanup meanings remain in force. A specification,
@@ -63,16 +63,35 @@ Full END ADLC retains separate source, provider integration/retirement, disposit
 handover requirements. The policy owner must accept whether these explicit facts satisfy the current
 recovery transition. A narrower proof never silently inherits stronger historical claims.
 
+### Current-quarantine retention enrollment — Agentic Design System PR #4 — 2026-10-30
+
+This exact enrollment binds `agent/device-0232231d4a19/csp-production-policy` at head
+`5ea8aba4f71f4c3065396b2b0a8bf58a4ba0f220`, merged by PR #4 as
+`9dd6c3a98621aaebdf2a36187d3aa9272c27fbee`, to the retained quarantine coordinate
+`f29c78535a0d07600bcd9f8c601006508874086b86b4e64e6e529d911f126cf3` and original receipt digest
+`efe35adc9bd930bf14e6216151b843fbc10f5c9460d5da01ceafe1aa4abb393d`. The original receipt records
+`bytesDeleted:false`; this enrollment preserves that receipt and projection without asserting historical
+quarantine authority, provider authority, claim retirement or a new physical cleanup effect. A fresh
+current preservation plan and its create-only receipt remain required before closeout can consume this
+retention disposition.
+
+The enrollment is limited to this repository, lane, reviewed merge and receipt. Removing this exact
+policy row and record rolls back the enrollment; it does not delete the retained bytes or original receipt.
+Budget: one existing policy row and this handover record; zero runtime modules, dependencies, paid
+resources or always-load bytes. Savings are not claimed.
+
 - H01: Given exact committed enrollment and fresh initial retrospective issuance, authenticate the
   real merge event, reviewed head/base, equal merge tree, successful pre-merge checks and current
   protected ancestry. Emit a distinct historical-content proof or fail.
 - H02: Reject missing/foreign enrollment, changed identities, failed/late checks, stale policy,
   expiry, altered event/tree/ancestry and fabricated historical assertions before publication.
-- P01: Verify a distinct successor preservation disposition with exact source and retained bytes.
-  Authenticate historical succession if claimed; otherwise require a separately reviewed current
-  adoption decision and explicitly retain historical succession authority as unproven.
-- P02: Ancestor/path equality, cached handoff, source inclusion or an unrelated green PR alone is
-  insufficient. Missing, mounted, changed or foreign retention coordinates fail.
+- P01: For a clean merged lane kept mounted, accept a standalone retention receipt bound to its exact
+  integration receipt, review, merge, branch head, current policy and clean checkout. This avoids a
+  successor PR and claims no historical succession, provider authority or cleanup. Use the existing
+  successor-preservation flow only when another lane actually replaces the source.
+- P02: For successor preservation, ancestor/path equality, cached handoff, source inclusion or an
+  unrelated green PR alone is insufficient; missing, mounted, changed or foreign coordinates fail.
+  Standalone retention requires the exact lane to remain mounted and clean at observation time.
 - D01: An already-quarantined original target needs its own enrolled current retention disposition,
   exact retained receipt/registration/manifests/index/source and fresh current integration claim.
   Keep historical authority and actor unknown; do not remount or relabel the old physical receipt.
@@ -80,6 +99,42 @@ recovery transition. A narrower proof never silently inherits stronger historica
   plan, grant and real receipt. No adoption backdates a claim or creates historical evidence.
 - A02: Full completion requires every applicable owner receipt and handover. Passing tests, local
   observations or this specification alone do not establish END ADLC.
+
+### Standalone retained-lane closeout — implementation candidate 1.2.6 — 2026-10-27
+
+This path lets an already-integrated source lane stay mounted through record-only retirement without
+creating a successor PR solely to prove retention. It reuses `preservation-plan` and `preservation-apply`;
+the short-lived receipt binds the integration-receipt digest, merged review, branch head, clean mounted
+worktree, canonical ancestry and current target and authority policies. Record-only retirement must join
+that digest to its authenticated integration receipt. This path makes no historical-succession,
+provider-authority, retirement or physical-cleanup claim.
+
+The implementation adds no CLI, module, package entry or dependency. Receipt size is capped at 64 KB,
+lifetime at 15 minutes and check list at eight entries. It removes the successor-PR step for this case;
+time and compute savings are unmeasured. Physical cleanup still uses separately authorized quarantine.
+
+Rollback: revert the standalone adoption handling and its guide sections. Existing successor-preservation
+and quarantine flows remain available. No deployment, provider write, cleanup, or integration receipt is
+created by this source change.
+
+### Same-head successor alias retention — Trading PR #17 recovery
+
+Trading PR #17 merged reviewed ref `agent/device-0232231d4a19/moomoo-hosted-n3` at
+`1e77a6a7a3731a7bd1ea4a4fc414bb93730986b0` as `f5bb1c9de69b5b3537049fed93481d0f3fcf408a`.
+The active mounted lane is `agent/device-0232231d4a19/moomoo-stream-recovery` at that identical
+commit. This enrollment binds those two refs, the exact merged review and merge; it does not claim
+that the successor was historically authorized or separately reviewed. Historical protection,
+required-check authority beyond the recorded Integration Gate, provider authority, retirement and
+physical cleanup remain unproven.
+
+The same-head retention path requires both refs to resolve to the enrolled commit, the review ref to
+be unmounted, and the retained ref to be mounted, clean and at that commit. It uses the existing
+preservation plan and receipt, bound to a separately produced integration receipt digest. Any ref,
+worktree, review or merge drift fails closed. Record-only retirement and physical cleanup still need
+their own authority and receipts. The two untracked Trading plan documents are preserved as user data.
+
+Rollback: remove this exact enrollment and record and revert the same-head alias handling. No refs,
+worktrees, plan documents or recovery bytes are changed by rollback.
 
 ### Current recovery enrollment — agentic-os PR #487 — 2026-10-17
 
@@ -172,6 +227,58 @@ Budget: one exact v1 preservation adoption row, one focused transition-workflow 
 owner record; three existing files changed, zero runtime modules, dependencies, or always-load bytes.
 Rollback removes this exact adoption and guide/test expectations while preserving retained quarantine
 artifacts and previously issued evidence.
+
+### Current-quarantine discard acknowledgement adoption — joohwee PR #8 — 2026-10-25
+
+The delegated END ADLC closeout for `github.com/huijoohwee/joohwee` reached the point where local
+quarantine retirement had already discarded the exact projection bytes, but the retained registration
+stayed detached and therefore could not satisfy the native current-loss observer on its own. This
+current-retention adoption binds repository `github.com/huijoohwee/joohwee`, branch
+`agent/device-0232231d4a19/cleanup-policy-quarantine`, reviewed head
+`12a9f36769bcad5c9a4b3915f90907247d495ccc`, PR #8 merge
+`07143e1a4a7e265fa0a3252e3ad57346fe5d6eda`, quarantine coordinate
+`91f56f777a72b76703d71ed391a31cdaaab3ad297505981588e804b050cadd17`, and original discard
+receipt digest `14bc1d3e0b0d7c0d72ccb04446f3a4e9b45a7185cef2d805e1b5533dffe229dd`.
+It records `historicalQuarantineAuthorityProven: false`.
+
+The unmodified retirement receipt already records `bytesDeleted: true`,
+`recoveryBytesDiscarded: true`, `registrationRetained: true`, `providerAuthority: false`, and
+`claimRetired: false`. This enrollment only permits the create-only
+`current-quarantine-discard-acknowledged` carrier to bind that exact joohwee receipt, surviving
+registration evidence, and exact merged review. It does not recreate the discarded projection,
+reattach the retained registration, prove historical quarantine authority, or authorize any further
+cleanup, sync, deployment, or provider retirement effect.
+
+Budget: one exact v1 retention adoption row, one focused policy test, and this owner record; three
+existing files changed, zero runtime modules, dependencies, or always-load bytes. Rollback removes
+this exact adoption and guide/test expectations while preserving the retained joohwee receipt,
+branch, registration, and Git-object evidence.
+
+### Current-quarantine discard acknowledgement adoption — joohwee PR #10 — 2026-10-25
+
+The delegated `joohwee` external-authority closeout for `github.com/huijoohwee/joohwee` reached
+native quarantine cleanup successfully, but final `completion-status` still could not bind
+retirement because committed policy lacked the exact current-quarantine adoption for the retained
+lane registration. This adoption binds repository `github.com/huijoohwee/joohwee`, branch
+`agent/device-0232231d4a19/joohwee-external-authority-closeout`, reviewed head
+`ab23bcd2db92c0ff2edbb699690e7d912e4bee95`, PR #10 merge
+`4d9e20f669817603034f65d585fb4609680ff647`, quarantine coordinate
+`ab1a20e3c6d23de2fad98870fce87304f593763ec3b17b70485fda8243c1ec42`, and native
+`quarantine-retirement-receipt/v2` digest `a58c74fa3df04ac88b11c49c797e48ad3d77c241886ad811d5efd19984ff203f`.
+It records `historicalQuarantineAuthorityProven: false`.
+
+The unmodified native quarantine retirement receipt already binds the exact retained registration,
+retained branch head, deleted projection bytes, and cleanup coordinate while leaving historical
+quarantine authority unproven. This enrollment only permits the create-only
+`current-quarantine-discard-acknowledged` carrier to join that exact retained joohwee registration,
+cleanup coordinate, and reviewed merge. It does not recreate the quarantined projection, upgrade
+historical quarantine authority, authorize cleanup replay, or replace the still-required exact
+record-only retirement receipt.
+
+Budget: one exact v1 retention adoption row, one focused policy test, and this owner record; three
+existing files changed, zero runtime modules, dependencies, or always-load bytes. Rollback removes
+this exact adoption and guide/test expectations while preserving the retained joohwee receipt,
+cleanup receipt, branch registration, and Git-object evidence.
 
 ### Current-quarantine retention adoption — agentic-os PR #551 — 2026-10-21
 
@@ -296,8 +403,10 @@ deployment, or historical authority.
 PRD E01: a clean lane that never acquired a candidate commit must have a native
 closure path so it does not remain mounted solely because publication requires a
 candidate. TAD E02: the route accepts only the exact active cache record with no
-head, PR, handoff or unresolved byte state; the mounted branch must equal its
-admitted base, and that base must remain in clean current canonical source. ADR
+head, PR or unresolved byte state. A handoff is accepted only when it contains
+solely exact unchanged reservation-path release evidence from the admitted base;
+released paths must be disjoint from live reservations. The mounted branch must
+equal its admitted base, retained in clean current canonical source. ADR
 E03: reuse the existing bounded quarantine mechanism for both projection and
 registration, preserving branch and object bytes; record a digest-bound local
 receipt and do not manufacture review, provider, integration, deployment or
@@ -758,6 +867,24 @@ Budget: one exact v1 enrollment, one existing transition-workflow test, and this
 existing files changed, zero runtime modules, dependencies, or always-load bytes. Revert the protected
 policy update to remove this PR enrollment; source history and prior enrollments stay intact.
 
+## Current recovery enrollment — agentic-base PR #64 — 2026-11-11
+
+This enrollment records exact current facts for `github.com/huijoohwee/agentic-base`: base
+`8527c39363b01244d9d2586dbbb49ea2b1f2e2a7`, reviewed head
+`2a63790cc87dfd54e624c3a4bbb4de10c7cccdbb`, merge
+`1a756dc933cafb2b9590bb5ed7c84042aaed61ed`, and equal head/merge tree
+`ea64f8fc44294a6014d09af992f886ecd72ae0d5`. The exact review is
+<https://github.com/huijoohwee/agentic-base/pull/64>; its successful check context is `check`.
+
+The distinct scope is `recovery/current-historical-content/pr-64`. Historical protection,
+required-check policy, Ruleset Suite, and merge-method authority remain unproven. This enrollment
+creates no provider, integration, retirement, cleanup, sync, deployment, or rollback authority; each
+effect still requires its own exact plan, authorization, and receipt.
+
+Budget: one exact v1 enrollment, one existing transition-workflow expectation, and this owner record;
+three existing files changed, under 3 KiB added, zero runtime modules, dependencies, or always-load
+bytes. Revert this exact enrollment while preserving source history and prior receipts.
+
 ## Current recovery enrollment — agentic-commerce-os PR #133 — 2026-10-16
 
 This enrollment binds repository `github.com/huijoohwee/agentic-commerce-os`, base
@@ -805,3 +932,20 @@ Current facts only. Historical protection, check policy, Ruleset Suite, merge me
 Owner delegated END ADLC for these exact lanes. Policy binds ref/head, merged PR, quarantine coordinate and discard-receipt digest, and enrolls the three exact merge-content facts for provider integration. Historical quarantine/protection/method authority remains false. Adoption permits current disposition and fresh provider integration/record-only retirement, not receipt changes or deployment. PRs #555–#557 passed `budgets` and `test`.
 
 Budget: six exact policy rows, test and this record; no runtime, dependency or always-load change. Each needs its provider receipt.
+
+### Current recovery enrollment — agentic-os PR #565 — 2026-10-22
+
+This exact current-facts enrollment binds repository `github.com/huijoohwee/agentic-os`, base
+`ac91dde6cc3b52dc0d95560d108c1559306a6616`, reviewed head
+`e6d0f84af981e8b06dde033f6502eb3967a465c1`, merge
+`56baf5a70051769dda121ecb0eb82e02272093ab`, and equal source/merge tree
+`24f07a5b9682cf3cf589c4ff8e9e18308982d8b5`. The exact review is
+<https://github.com/huijoohwee/agentic-os/pull/565>; its `budgets` and `test` checks passed.
+
+The scope is `recovery/current-historical-content/pr-565`. This records current merge facts only.
+Historical protection, required-check policy, Ruleset Suite, and merge-method authority remain
+unproven. It creates no provider evidence or effect authority; integration, retirement, cleanup,
+deployment, and canonical sync still require exact plans, authorization, and receipts.
+
+Budget: one exact v1 enrollment, one existing workflow-policy test, and this record; no runtime
+modules, dependencies, or always-load bytes. Remove only this exact policy row and record to revert.

@@ -2,7 +2,7 @@
 schema: agentic-os/adlc-guidelines/v1
 title: ADLC Guidelines
 doc_type: guidelines
-version: 1.4.4
+version: 1.4.6
 owner: agentic-os
 universal_scope: true
 supersedes: agentic-sdlc
@@ -16,24 +16,23 @@ lifecycle_status: active
 ---
 # ADLC guidelines
 
-ADLC supersedes Agentic SDLC. Consumers own product/deploy/rollback/authority.
-
-- Exact PRD/TAD/ADR ID+revision binds scope, acceptance, design and decision; stale joins block.
 - Global repo/worktree: USD 0/effect/budget; FOSS/free; verified license; no paid/add-ons/overages/upgrades.
 - Each effect needs exact current provider proof: hard $0 cap or deny at quota exhaustion.
   Free allowances/snapshots/alerts fail; unknown cost/headroom blocks.
-- START/resume Mission binds current code/workflow; reuse evidence.
-- START -> RELEASE -> DEPLOY; global cleanup, local mechanics.
+- Core: START → finish authorized work → check → LAND/publish → END. Reuse one PR and exact current evidence.
+- Bind a Mission for material or coordinated work; routine scoped work stays standalone.
+- END uses [RELEASE](RELEASE-WORKFLOW.md). Selected delivery uses [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
+- Canonical-dev END requires protected remote integration proof and explicit `sync`.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
-- Reuse covered authority; preflight; never infer grants.
+- Reject forks and overrides per [fleet rules](../guides/prd-tad-adr-mvp-gtm-fleet-registry.md#operator-rules).
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
 - One owner/candidate/effect; disjoint work; reuse proof/event waits.
-  Bounded stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
+  Stale checks: `../guides/VALIDATION-ECONOMY-EXECUTION.md`.
+- Shared UI: [ownership](../guides/DESIGN-SYSTEM-OWNERSHIP.md).
 - Batch material PRD/TAD/ADR/MVP/GTM updates; no per-turn records.
 - Prompt: LF UTF-8 <=1KB; code points secondary; tokens advisory.
 - Declare always-load deltas; replace/lazy-load/reject.
 - Root/upstream `npm run evals` runs continuously in CI; consumers reference, never copy.
-- On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md` and `../guides/PRD-TAD-ADR-MVP-GTM.md`.
-- Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.
+- On demand: `../guides/AUTONOMOUS-GOAL-PURSUIT.md`.
 - Exact candidate; separate receipt per proof, retire, cleanup, sync, deploy and rollback.
-- Cleanup: exact global/local targets, no wildcards; prove bytes/paths/refs.
+- Canonical read-only; disjoint paths; exact reserved diffs land by protected merge.

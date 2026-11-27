@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { governanceDigest, integrate, retire } from '../src/governance.mjs';
@@ -10,6 +11,7 @@ import {
   validateAuthenticatedTransitionOperationReceipt,
   validateEffectPlan,
   validateEffectPlanBytes,
+  validateDeliveryDispositionSet,
 } from '../src/completion.mjs';
 import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
   createTestEffectPlan as createEffectPlan, verifyTestEffectCost } from './lib/effect-cost-fixtures.mjs';
@@ -210,4 +212,49 @@ test('authenticated transitions fail closed on authority, time, plan, and outcom
   forged.receiptDigest = governanceDigest(forged);
   assert.throws(() => validateAuthenticatedTransitionOperationReceipt(forged),
     /internally inconsistent/u);
+});
+
+test('mixed no-deploy dispositions bind exact excluded paths to committed evidence', () => {
+  const paths = ['canvas/src/__tests__/feature.test.ts', 'package.json'].sort();
+  const evidence = `Product artifact review: ${paths.join(', ')} are excluded from the product artifact.`;
+  const row = {
+    schema: 'agentic-os/delivery-disposition/v1', ref: 'agent/device-123/mixed-lane', laneHead: hash('a').slice(0, 40),
+    paths, disposition: 'no-deploy', candidateRevision: hash('b').slice(0, 40), candidateDigest: hash('c'),
+    sourceReleaseReceiptDigest: null, deploymentReceiptDigest: null, runtimeVerificationReceiptDigest: null,
+    evidencePath: 'docs/reports/mixed-lane-no-deploy.md',
+    evidenceDigest: createHash('sha256').update(evidence).digest('hex'),
+    decisionRef: 'https://github.com/example/repository/pull/1',
+    reason: `The exact paths ${paths.join(', ')} are excluded from the product artifact.`,
+  };
+  const setBody = { schema: 'agentic-os/delivery-disposition-set/v1', repository: 'github.com/example/repository', dispositions: [row] };
+  const set = { ...setBody, receiptDigest: governanceDigest(setBody) };
+  const expected = {
+    ...setBody, ref: row.ref, laneHead: row.laneHead, paths, changeClass: 'mixed',
+    candidateIsCurrent: () => true, laneIntegratedAtCandidate: () => true, deployBound: () => false,
+    readEvidence: path => path === row.evidencePath ? evidence : null,
+    sha256: value => createHash('sha256').update(value).digest('hex'),
+  };
+  const accepted = validateDeliveryDispositionSet(set, expected);
+  assert.equal(accepted.scopeRule, 'mixed-path-artifact-exclusion');
+  assert.equal(accepted.authorizesEffects, false);
+
+  const boundedRows = count => Array.from({ length: count }, (_, index) => ({
+    ...row,
+    ref: `agent/device-123/delivery-${String(index).padStart(2, '0')}`,
+    laneHead: createHash('sha1').update(`delivery-${index}`).digest('hex'),
+    paths: [...row.paths],
+  })).sort((left, right) => left.ref.localeCompare(right.ref));
+  const rows64 = boundedRows(64), set64Body = { ...setBody, dispositions: rows64 };
+  const accepted64 = validateDeliveryDispositionSet({ ...set64Body, receiptDigest: governanceDigest(set64Body) }, {
+    ...expected, ref: rows64[0].ref, laneHead: rows64[0].laneHead,
+  });
+  assert.equal(accepted64.ref, rows64[0].ref);
+  const rows65Body = { ...setBody, dispositions: boundedRows(65) };
+  assert.throws(() => validateDeliveryDispositionSet({ ...rows65Body, receiptDigest: governanceDigest(rows65Body) }, expected),
+    error => error.reason === 'blocked-delivery-disposition-set-identity');
+
+  const unsupported = { ...row, reason: 'The test file is excluded from the product artifact.' };
+  const unsupportedBody = { ...setBody, dispositions: [unsupported] };
+  assert.throws(() => validateDeliveryDispositionSet({ ...unsupportedBody, receiptDigest: governanceDigest(unsupportedBody) }, expected),
+    error => error.reason === 'blocked-delivery-disposition-disposition-scope');
 });

@@ -169,3 +169,63 @@ test('cleanup-user plan rejects unsupported change-class', async () => {
     changeClass: 'bogus-class',
   }), /unsupported-change-class/u);
 });
+
+test('normal END canonical sync preserves unrelated large user files in place without inspecting their bytes', async t => {
+  const { openSync, closeSync, ftruncateSync, statSync } = await import('node:fs');
+  const { planCanonicalSync, applyCanonicalSync } = await import('../src/canonical-sync.mjs');
+  const f = fixture(t), userPath = join(f.root, 'private-user-data.bin');
+  writeFileSync(join(f.lane, 'base.txt'), 'updated source\n');
+  f.git(f.lane, 'commit', '-am', 'source update');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', f.git(f.lane, 'rev-parse', 'HEAD'));
+  const descriptor = openSync(userPath, 'wx', 0o600); ftruncateSync(descriptor, 1024 ** 3); closeSync(descriptor);
+  const before = statSync(userPath), plan = planCanonicalSync({ cwd: f.root, branch: 'main', targetRef: 'refs/remotes/origin/main', preserveUntracked: true });
+  assert.deepEqual(plan.inventory, []); assert.equal(plan.retainedUntracked.length, 1);
+  const receipt = applyCanonicalSync(plan, { cwd: f.root, authorization: plan.authorization, exclusive: plan.exclusiveAuthorization });
+  const after = statSync(userPath); assert.equal(after.ino, before.ino); assert.equal(after.size, before.size);
+  assert.equal(after.mtimeMs, before.mtimeMs); assert.equal(receipt.retainedUntrackedCount, 1);
+  assert.equal(f.git(f.root, 'rev-parse', 'HEAD'), plan.expectedTargetSha);
+  const status = inspectCompletionStatus(f.root, REF, f.policy, f.profile, { allowUntrackedCanonical: true });
+  assert.equal(status.canonicalClean, true); assert.equal(f.status().canonicalClean, false);
+});
+test('canonical retention refuses collisions and any user-file identity drift before effect', async t => {
+  const { planCanonicalSync, applyCanonicalSync } = await import('../src/canonical-sync.mjs');
+  for (const collision of [true, false]) {
+    const f = fixture(t), initial = f.git(f.root, 'rev-parse', 'HEAD');
+    writeFileSync(join(f.lane, collision ? 'user.txt' : 'base.txt'), 'protected bytes\n');
+    f.git(f.lane, 'add', '.'); f.git(f.lane, 'commit', '-m', 'source update');
+    f.git(f.root, 'update-ref', 'refs/remotes/origin/main', f.git(f.lane, 'rev-parse', 'HEAD'));
+    writeFileSync(join(f.root, 'user.txt'), 'local bytes\n');
+    const plan = () => planCanonicalSync({ cwd: f.root, branch: 'main', targetRef: 'refs/remotes/origin/main', preserveUntracked: true });
+    if (collision) assert.throws(plan, { reason: 'blocked-ignored-target-collision' });
+    else {
+      const selected = plan(); writeFileSync(join(f.root, 'user.txt'), 'changed local bytes\n');
+      assert.throws(() => applyCanonicalSync(selected, { cwd: f.root, authorization: selected.authorization, exclusive: selected.exclusiveAuthorization }), { reason: 'blocked-plan-drift' });
+    }
+    assert.equal(f.git(f.root, 'rev-parse', 'HEAD'), initial);
+  }
+});
+
+test('ordinary START reuses its standalone lane and does not inherit unrelated mission navigation', async t => {
+  const { cmdStart } = await import('../bin/agentic-os-admission.mjs');
+  const { createRepositoryProfile } = await import('../src/governance.mjs');
+  const { ensureRepositoryTrust } = await import('../src/git-repository.mjs');
+  const records = await import('../src/lane-records.mjs');
+  const f = fixture(t), remote = join(f.root, '..', 'remote.git'), events = [];
+  f.git(f.root, 'worktree', 'remove', f.lane);
+  const profile = createRepositoryProfile({ repository: 'github.com/example/repository', canonical: f.profile.canonical,
+    adapters: { repository: { id: 'git', version: '1' }, provider: null } });
+  writeFileSync(join(f.root, '.agentic-os.json'), JSON.stringify(profile));
+  f.git(f.root, 'add', '.'); f.git(f.root, 'commit', '-m', 'profile');
+  f.git(f.root, 'init', '--bare', remote); f.git(f.root, 'remote', 'add', 'origin', remote); f.git(f.root, 'push', 'origin', 'main');
+  ensureRepositoryTrust(f.root, profile, { allowCreate: true });
+  const services = { out: line => events.push(line), err: line => events.push(line), projectCache: (record, cwd) => records.put(record, cwd),
+    effectReceipt: (_operation, receipt) => receipt, remoteName: () => 'origin', requireCanonical: () => {} };
+  const policy = { protectedBranch: 'main', protectedRef: 'refs/remotes/origin/main' };
+  const args = ['routine', '--device=device', '--write=base.txt'];
+  assert.equal(await cmdStart(f.root, args, policy, profile, services), 0);
+  const count = f.git(f.root, 'worktree', 'list', '--porcelain');
+  f.git(f.root, 'config', 'agentic-os.workflowManifest', '/unrelated/missing/mission.json');
+  assert.equal(await cmdStart(f.root, args, policy, profile, services), 0);
+  assert.equal(f.git(f.root, 'worktree', 'list', '--porcelain'), count);
+  assert.ok(events.some(line => line.includes('"status":"reused"')));
+});

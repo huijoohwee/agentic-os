@@ -551,3 +551,34 @@ test('an exact queued review cannot waive a failed source-head trailer verificat
   assert.equal(receipt.testedProtectedOrdering, true,
     'external queue effect remains observable but cannot authorize acceptance');
 });
+
+test('fast-forward review updates preserve prose, change only source identity, and retry without mutation', () => {
+  const prior = 'a'.repeat(40), head = 'b'.repeat(40), ref = 'agent/device/update', edits = [];
+  let review = { number: 99, state: 'OPEN', url: 'https://github.com/owner/repo/pull/99', headRefOid: head,
+    headRefName: ref, baseRefName: 'main', headRepository: { nameWithOwner: 'owner/repo' }, isCrossRepository: false,
+    body: `Authored explanation.\nSource-Head: ${prior}`, autoMergeRequest: null, mergeQueueEntry: null };
+  const options = { expectedHead: head, expectedRepository: 'github.com/owner/repo', baseBranch: 'main',
+    title: 'generated title', preserveExistingText: true, assertSourceHead: () => true,
+    canAdvanceReviewHead: value => value === prior, provider: args => {
+      if (args[1] === 'list') return [review];
+      if (args[0] === 'api') return { data: { resource: review } };
+      if (args[1] === 'view') return review;
+      if (args[1] === 'edit') { edits.push(args); review = { ...review, body: args[args.indexOf('--body') + 1] }; return ''; }
+      return assert.fail(`unexpected provider effect: ${args.join(' ')}`);
+    } };
+  const result = enqueue(ref, options); assert.equal(result.reviewMutationAttempted, true);
+  assert.equal(review.body, `Authored explanation.\nSource-Head: ${head}`); assert.equal(edits.length, 1);
+  assert.equal(enqueue(ref, options).reviewMutationAttempted, false); assert.equal(edits.length, 1);
+});
+test('review identity repair refuses unknown ancestry and armed reviews', () => {
+  for (const armed of [false, true]) {
+    const ref = 'agent/device/refused', head = 'b'.repeat(40), review = { number: 99, state: 'OPEN',
+      url: 'https://github.com/owner/repo/pull/99', headRefOid: head, headRefName: ref, baseRefName: 'main',
+      headRepository: { nameWithOwner: 'owner/repo' }, isCrossRepository: false,
+      body: `Source-Head: ${'a'.repeat(40)}`, autoMergeRequest: armed ? {} : null };
+    const result = enqueue(ref, { expectedHead: head, expectedRepository: 'github.com/owner/repo', baseBranch: 'main',
+      preserveExistingText: true, assertSourceHead: () => true, canAdvanceReviewHead: () => armed,
+      provider: args => args[1] === 'list' ? [review] : args[0] === 'api' ? { data: { resource: review } } : assert.fail('must not mutate') });
+    assert.equal(result.reviewMutationAttempted, false); assert.equal(result.reason, 'review-source-head-unbound');
+  }
+});

@@ -3,7 +3,6 @@
  * Always-loaded documentation budget in bytes, which track context cost.
  * A line-only cap hides oversized paragraphs; also bound line length for review.
  */
-
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -11,7 +10,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { readBoundedFile } from '../src/catalog-input.mjs';
 import { workflowMergeGroupChecks } from '../src/protected-workflows.mjs';
-
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(HERE, '..');
 
@@ -26,7 +24,7 @@ export const RUNTIME_PROMPT_CONTRACT = Object.freeze({
   path: 'guides/SYSTEM-PROMPT-RUNTIME.md',
   exactBytes: 999,
   maxBytes: 1_000,
-  sha256: 'c244e81743133adf44cd831f77bdfabf8e9487b2c043a66f45afd474c8bf421d',
+  sha256: '4fd309f6040766668494d38fd8f249a8e74325ad7ca4a2b0b4c38ba9b60873e8',
 });
 
 const EXPECTED_CI_BUDGETS_JOB = Object.freeze([
@@ -48,7 +46,7 @@ const RUNTIME_FRONTMATTER_CONTRACT = Object.freeze({
   schema: 'agentic-os/adlc-guidelines/v1',
   title: 'ADLC Guidelines',
   doc_type: 'guidelines',
-  version: '1.4.4',
+  version: '1.4.6',
   owner: 'agentic-os',
   universal_scope: 'true',
   supersedes: 'agentic-sdlc',

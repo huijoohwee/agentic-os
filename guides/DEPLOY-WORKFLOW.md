@@ -54,44 +54,16 @@ Release CI and source merge do not authorize deployment, promotion, or rollback.
 
 ## Source-control preflight
 
-Before a consumer builds a Dev-to-Prod candidate, run its exact upstream source checkout:
-
-```sh
-node bin/agentic-os-pin.mjs --consumer=/absolute/consumer/root --revision=<full-40-hex-upstream-revision> --source-control
-```
-
-The preflight reads only the upstream commit identity, consumer canonical ref, compact tracked-worktree
-state, and existing manifest/lock pin. It emits `agentic-os/source-control-preflight/v1`, which binds the
-source revisions and trees used to build the candidate. It does not fetch, write a ref, create a checkout,
-authorize an integration, or authorize Dev, Production, rollback, storage, or data effects.
-
-Treat a nonzero result as blocked readiness, never as a pass. If a complete report names source drift,
-repair the named pin, canonical revision, or tracked bytes and rerun. If no complete report is emitted,
-keep the cause unknown until the local/provider observation is available. Retain the successful JSON record
-as candidate evidence; the controller must still enforce its own build, Dev readback, same-candidate
-promotion, Production readback, rollback, and receipt gates.
-
-Keep the exact successful JSON bytes in the release's existing access-controlled candidate-evidence bundle
-and bind their SHA-256 there alongside the upstream and consumer revisions/trees and exact package pin. Do
-not create a second source ledger or copy the raw report into a public product artifact. Public provenance
-views redact local checkout paths while preserving repository, revision, tree, and pin identity. Reuse
-provider metadata already observed for the same candidate; do not fetch full history or repeat source scans
-solely to restate an unchanged head, PR, check, tree, or pin. If required bytes are absent locally, hydrate
-only the exact shallow source needed for that check. Offline local evidence remains usable for local
-decisions, while provider freshness and remote effects remain unknown until their owner observes them.
-
-The Dev deployment/readback and Production promotion/readback receipts must point to the same immutable
-candidate digest and source-control report digest. Build once and promote the verified artifact. A rebuild,
-pin change, tree change, or missing/mismatched provenance report is a new candidate: stop, rerun the required
-source/build checks, and obtain any new effect-specific authorization. Do not carry deployment authority
-across candidates.
+Only consumers that build from an upstream repository need this check. Follow the
+[on-demand source-control preflight](./SOURCE-CONTROL-PREFLIGHT.md); the product's owner controller still
+owns build, Dev and Prod readback, promotion, rollback, and delivery receipts.
 
 After RELEASE closeout, `completion status` reports `closeout.nextAction.id` `deploy-workflow`
 only when committed `.agentic-os-flight.json` names `production-activation`. Absent that binding,
 OS stop is `source_complete`; do not invent a generic deploy command.
-The closeout reports `completionScope=source-only` and `adlcState=source_complete` for that
-lane. This describes its source and lane closeout only; it makes no delivery claim for another
-lane or product.
+The closeout reports `missionState=source_complete`, `completionScope=source-only` and
+`adlcState=complete` for that exact lane. This closes only its enrolled source obligations; it
+makes no delivery claim for another lane or product.
 
 For that enrolled repo, `closeout.missionState=source_complete` means only source and lane
 closeout passed. `closeout.adlcState=delivery_pending` and progressive completion's
@@ -111,13 +83,30 @@ For delivery-bound lanes, `adlcState=complete` requires a valid disposition that
 enrolled delivery scope. A preservation lane also needs its bound retirement receipt pair;
 `completionScope=retirement-bound` reports `retirement_pending` until that pair validates.
 Status values apply to one exact lane and do not summarize siblings.
-No-deploy requires a documented reason and is accepted for docs-only paths, or for the single
-exact `.agentic-os-delivery-dispositions.json` path when the committed evidence digest binds the
-product artifact boundary and the reason says the ledger is excluded from the product artifact.
-Later changes to that same ledger may reuse this path-bound evidence after its source lane and
-candidate are verified. Any additional path returns to the normal mixed-scope decision. This
-observation grants neither a production effect nor a no-deploy exemption for other paths.
+No-deploy requires a documented reason and is accepted for docs-only paths, the exact delivery
+ledger, delivery-evidence-only paths, or a mixed lane whose committed evidence digest binds a
+product-owner report naming every exact changed path and stating that each is excluded from the
+product artifact. Ledger and evidence-only records must also state their artifact exclusion.
+This observation is source-bound only: it does not authenticate the producer or authorize a
+production effect.
 
 See [release workflow](../docs/RELEASE-WORKFLOW.md) for source integration and lane closeout,
 [technology and ownership decisions](./TECH-STACK.md) for product-specific deploy boundaries, and
 [PRD/TAD/ADR](./PRD-TAD-ADR-MVP-GTM.md) for transition and handover requirements.
+
+## END ADLC completion
+
+`source_complete` closes source obligations only. [RELEASE](../docs/RELEASE-WORKFLOW.md) owns source,
+workspace, and branch closeout; [USER-CLEANUP](./USER-CLEANUP.md) gives exact workspace steps. Full END ADLC requires
+the product owner to join the same exact lane and candidate:
+
+- Classify every changed path against the deployed artifact. For distinct Dev and Prod stages, bind both readbacks
+  to one immutable candidate digest; a Prod-only path or excluded artifact needs an exact owner-bound disposition.
+- Bind current route/runtime evidence, feature and planning handover, and the rollback predecessor or outcome to the
+  deployment receipt. Append the workspace TODO successor with Development, Production, Runtime, remaining work,
+  and next owner action.
+- For no-deploy, state why each exact path is excluded. A mixed lane needs a committed owner report naming every
+  changed path; a docs-only lane still needs an owner decision because public docs may be product content.
+
+Missing, stale, ambiguous, or mismatched evidence keeps full END ADLC open. If verification fails, preserve the
+runtime state and stop promotion until the owner supplies a verified recovery path.

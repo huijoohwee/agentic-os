@@ -170,9 +170,22 @@ function receipt({
   };
 }
 
+function reviewSnapshot(url, call, target, restFallback) {
+    if (!url) return null;
+    const graph = call([
+    'api', 'graphql', '--hostname', target.host,
+    '-f', 'query=query($url:URI!){resource(url:$url){... on PullRequest{' +
+      'number state url mergeStateStatus headRefOid headRefName baseRefName body ' +
+      'headRepository{nameWithOwner url} baseRepository{nameWithOwner url} isCrossRepository ' +
+      'autoMergeRequest{enabledAt} ' +
+      'mergeQueueEntry{id position state}}}}', '-F', `url=${url}`,
+    ])?.data?.resource ?? null;
+    return graph ?? (restFallback() ? restReadReview(call, target, restReviewNumber(url, target)) : null);
+}
+
 export function enqueue(ref, {
   cwd = process.cwd(), title, body, expectedHead, expectedRepository,
-  baseBranch, provider = gh, assertSourceHead = null, preserveExistingText = false,
+  baseBranch, provider = gh, assertSourceHead = null, preserveExistingText = false, canAdvanceReviewHead = null,
 } = {}) {
   if (typeof preserveExistingText !== 'boolean') throw new TypeError('review text preservation must be boolean');
   const reviewIdentity = { ref, expectedHead, expectedRepository, baseBranch };
@@ -195,18 +208,7 @@ export function enqueue(ref, {
   const pin = (args) => [...args, '--repo', expectedRepository];
   const view = pin(['pr', 'view', ref, '--json', FIELDS]);
   const identity = (review) => identityExact(review, reviewIdentity);
-  const snapshot = (url) => {
-    if (!url) return null;
-    const graph = call([
-    'api', 'graphql', '--hostname', target.host,
-    '-f', 'query=query($url:URI!){resource(url:$url){... on PullRequest{' +
-      'number state url mergeStateStatus headRefOid headRefName baseRefName body ' +
-      'headRepository{nameWithOwner url} baseRepository{nameWithOwner url} isCrossRepository ' +
-      'autoMergeRequest{enabledAt} ' +
-      'mergeQueueEntry{id position state}}}}', '-F', `url=${url}`,
-    ])?.data?.resource ?? null;
-    return graph ?? (restFallback() ? restReadReview(call, target, restReviewNumber(url, target)) : null);
-  };
+  const snapshot = url => reviewSnapshot(url, call, target, restFallback);
   const list = () => {
     const graph = call(pin([
       'pr', 'list', '--state', 'all', '--head', ref, '--limit', '2', '--json', FIELDS,
@@ -254,6 +256,16 @@ export function enqueue(ref, {
     });
   }
   const observedExisting = snapshot(existing?.url);
+  if (existing && preserveExistingText && !bodyExact(observedExisting) && identity(observedExisting)
+      && observedExisting.state === 'OPEN' && observedExisting.autoMergeRequest == null && observedExisting.mergeQueueEntry == null
+      && observedExisting.mergeStateStatus !== 'QUEUED' && typeof canAdvanceReviewHead === 'function') {
+    const trailers = (observedExisting.body ?? '').split('\n').filter(line => line.startsWith('Source-Head:'));
+    const prior = trailers.length === 1 ? trailers[0].match(/^Source-Head: ([a-f0-9]{40})$/u)?.[1] : null;
+    if (prior && canAdvanceReviewHead(prior) === true) {
+      body = observedExisting.body.replace(trailers[0], `Source-Head: ${expectedHead}`);
+      title = null; preserveExistingText = false;
+    }
+  }
   if (existing && preserveExistingText || bodyExact(observedExisting) && observedExisting.mergeQueueEntry) {
     const sourceCurrent = sourceHeadCurrent();
     return receipt({
@@ -376,6 +388,19 @@ export function observeGitHubReview({
     authority: { runtime: 'consumer', release: 'consumer' },
   };
   return frozen({ ...payload, observationDigest: governanceDigest(payload) });
+}
+
+/** Reuse an existing review only while its exact prior head remains open and unarmed. */
+export function assertOpenReviewUpdate(input, observe = observeGitHubReview) {
+  const result = observe(input);
+  const review = observe === observeGitHubReview && result?.sourceHeadBound
+    ? reviewSnapshot(result.review.url, (args, json = true) => gh(args, { cwd: input.cwd, json }), repositoryIdentity(input.profile.repository), () => false)
+    : result?.review;
+  if (result?.sourceHeadBound !== true || review?.state !== 'OPEN' || review.headRefOid !== input.expectedHead || input.expectedPr != null && review.number !== input.expectedPr
+    || review.autoMergeRequest != null || review.mergeQueueEntry != null || review.mergeStateStatus === 'QUEUED')
+    throw Object.assign(new Error('Update requires the same exact open, unqueued PR with auto-merge disabled'),
+      { reason: 'blocked-publication-review-update' });
+  return review;
 }
 
 export function createGitHubAdapter(options = {}) {

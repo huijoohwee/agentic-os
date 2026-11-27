@@ -28,28 +28,33 @@ npm run doctor    # report harness and remote drift, change nothing
 npm run check     # affected behavior and packaging, plus readiness, doc and module budgets
 ```
 
-Commit the repository's `.agentic-os.json` profile before any repository-bound command.
+The reviewed `.agentic-os.json` profile must be committed before `setup`, `doctor`, or lane work. Consumer
+repositories also commit the exact AOS package pin and lock. AOS's own checkout already includes its profile.
 Forking under a different owner starts at the [fork guide](guides/FORK.md).
 
-## Daily loop
+## Default source loop
 
 ```sh
-npm run release:common --help                                  # the full operator flow
-npm run release:common -- start <scope> --write=<path[,path...]>
-npm run release:common -- publish --message="feat: ..."
-npm run release:common -- complete --ref=<lane>               # wait for merge and report source closeout; keep the lane mounted
-npm run release:common -- complete --ref=<lane> --bundle=<json> --stopped
+npm run lane -- <scope> --write=<path[,path...]> [--plan=<PRD-path>]
+# finish authorized work and affected checks in the printed worktree
+npm run land -- --message="feat: ..."
+# from canonical, select only authorized effects; required checks/review gate merge
+npm run release:common -- complete-adlc --apply --ref=<lane> --stopped
 ```
 
-`complete` reports source integration and closeout while retaining the lane. Cleanup is a separate,
-explicit action: pass the exact authenticated cleanup bundle with `--bundle` and acknowledge stopped
-writers with `--stopped`. Profile settings alone never trigger lane quarantine.
+END follows finish → check → LAND/publish → protected integration → sync → cleanup. Cleanliness alone does not
+prove publication: inspect unpublished commits too. An open or blocked result keeps the lane open; follow its
+named next action and reuse covered grants. END removes a clean integrated linked worktree without force, while
+retaining its branch, reflog, and Git objects. Local-only bytes are quarantined or remain mounted for recovery;
+cleanup does not imply provider authority or claim retirement. Source integration does not imply delivery.
+For a batch, use `npm run release:common -- complete-adlc --worktrees=<registered-root>` on demand.
+Solo maintainers use a PR and green CI with required approvals set to zero, bypass off, and no self-approval.
+Load deployment, rollback, recovery, cleanup, diagnostics, or extra validation only when the lane scope or its
+reported next action requires them. Each effect retains its owner's authority and receipt.
 
-`npm run status`, `npm run reap`, and `agentic-os completion status --ref=<lane>` are the read-only
-diagnostics. [START-WORKFLOW](docs/START-WORKFLOW.md), [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md),
-and the [deploy workflow](guides/DEPLOY-WORKFLOW.md) route the universal lifecycle grammar that the [ADLC guidelines](docs/adlc-guidelines.md) own;
-cleanup is globally required but repo-local in mechanics inside those stages. The
-[user cookbook](guides/USER-COOKBOOK.md) owns the smallest path for a direct edit.
+First-time profile and hook setup is in [START-WORKFLOW](docs/START-WORKFLOW.md). [RELEASE-WORKFLOW](docs/RELEASE-WORKFLOW.md)
+owns source closeout; [ADLC guidelines](docs/adlc-guidelines.md) own lifecycle rules. Diagnostics and specialized
+workflows stay on demand. Use the [deploy workflow](guides/DEPLOY-WORKFLOW.md) only for a delivery-bound lane.
 
 ## Owners
 
@@ -68,7 +73,7 @@ cleanup is globally required but repo-local in mechanics inside those stages. Th
 | `/`, `#`, `@` route register | [INVOCATION](docs/INVOCATION.md), [catalog](catalog/invocation.json) |
 | Backend tool and transport contract | [MCP](docs/MCP.md) |
 | Bounded codebase map, search and read | [context](guides/CONTEXT.md) |
-| Cleanup consent and quarantine | [user cleanup](guides/USER-CLEANUP.md) |
+| Cleanup policy and receipts | [cleanup residue default](guides/CLEANUP-RESIDUE-DEFAULT.md), [user cleanup](guides/USER-CLEANUP.md) |
 | Universal lifecycle principles | [ADLC guidelines](docs/adlc-guidelines.md) |
 | Always-load agent instructions | [AGENTS](AGENTS.md) |
 | Work allocation across devices | [FLEET](FLEET.md) |
@@ -87,6 +92,29 @@ revisions are pinned in [composition-source-lock.json](catalog/composition-sourc
 
 Pin an exact 40-hex source revision rather than a floating name, so the audited governance bytes are
 identifiable. Consumers reference the packaged evaluator instead of copying it:
+
+### Consumer bootstrap
+
+For a static repository that already has a reviewed, committed `.agentic-os.json`, install Agentic OS
+as a local development dependency at a full commit SHA. Its canonical branch and `origin` must match
+that profile. The install creates a manifest and lock if absent; commit both. `node_modules` is not a
+runtime or browser dependency. Run setup from the clean primary canonical checkout; use the same pin
+for setup, doctor, START, and release commands.
+
+```sh
+npm install --save-dev --save-exact agentic-os@github:huijoohwee/agentic-os#<full-40-hex-sha>
+npm exec -- agentic-os setup
+npm exec -- agentic-os doctor
+npm exec -- agentic-os release-common start <scope> --write=<paths>
+```
+
+If the target has no reviewed profile, stop and have its owner enroll it before setup; profile values
+must not be guessed. For a fork, use [Fork bootstrap](guides/FORK.md). Do not use a floating package,
+`npx` latest, or an external source path for repository-bound work.
+
+`run` is a separate, optional remote invocation. It requires a consumer-configured authenticated
+`AGENTIC_OS_RUN_ENDPOINT`; local setup does not provide one or a local fallback. Keep RUN disabled
+unless the consumer has current provider evidence for a hard $0 cap and denial at quota exhaustion.
 
 ```sh
 npm --prefix node_modules/agentic-os run evals

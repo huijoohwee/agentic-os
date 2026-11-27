@@ -5,7 +5,7 @@ import { canonicalJson, createAuthorityTransitionReceiptEnvelope, governanceDige
 import { cleanupRecordExact as exact, cleanupRecordDigest as digest, cleanupRecordFields as typedFields,
   cleanupRecordCanonical as canonicalRecord, freezeCleanupRecord as freeze,
   createWorktreeCleanupContinuation, deriveCleanupOwnerStateDigest,
-  validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan,
+  validateWorktreeCleanupContinuation, validateWorktreeCleanupPlan, validateRetentionDispositionReceipt,
   worktreeCleanupPlanByteDigest } from './cleanup-records.mjs';
 import { EFFECT_COST_POLICY, effectCostScopeDigest, normalizeEffectCostEvidence,
   validateEffectCostEvidenceVerification, validateStoredEffectCostEvidence,
@@ -260,11 +260,12 @@ export function bindRetirementOperationReceipts(integrationValue, retirementValu
   const integration = validateAuthenticatedTransitionOperationReceipt(integrationValue);
   const retirement = validateAuthenticatedTransitionOperationReceipt(retirementValue);
   const integrated = integration.transitionReceipt, retired = retirement.transitionReceipt;
-  const preservation = preservationReceipt;
+  const preservation = preservationReceipt?.disposition === 'standalone-lane-retained' ? validateRetentionDispositionReceipt(preservationReceipt) : preservationReceipt, standalone = preservation?.disposition === 'standalone-lane-retained';
   if (integration.requestedTransition !== 'integrate' || retirement.requestedTransition !== 'retire'
     || !preservation || preservation.repository !== repository
     || preservation.adoption?.reviewLocator !== reviewLocator
     || preservation.adoption?.merge !== integrated.immutableRevision
+    || standalone && preservation.adoption.integrationReceiptDigest !== integration.receiptDigest
     || integrated.repository !== repository || retired.repository !== repository
     || integrated.reviewLocator !== reviewLocator
     || integrated.resultState !== 'integrated' || retired.resultState !== 'retired'
@@ -286,7 +287,7 @@ export function bindRetirementOperationReceipts(integrationValue, retirementValu
 export const DELIVERY_DISPOSITION_SET_PATH = '.agentic-os-delivery-dispositions.json', DELIVERY_DISPOSITION_SET_SCHEMA = 'agentic-os/delivery-disposition-set/v1';
 const DELIVERY_ROW_SCHEMA = 'agentic-os/delivery-disposition/v1', DELIVERY_SET_KEYS = ['schema', 'repository', 'dispositions', 'receiptDigest'];
 const DELIVERY_ROW_KEYS = ['schema', 'ref', 'laneHead', 'paths', 'disposition', 'candidateRevision', 'candidateDigest', 'sourceReleaseReceiptDigest', 'deploymentReceiptDigest', 'runtimeVerificationReceiptDigest', 'evidencePath', 'evidenceDigest', 'decisionRef', 'reason'];
-const DELIVERY_SHA1 = /^[0-9a-f]{40}$/u, DELIVERY_SHA256 = /^[0-9a-f]{64}$/u;
+const DELIVERY_DISPOSITION_LIMIT = 64, DELIVERY_SHA1 = /^[0-9a-f]{40}$/u, DELIVERY_SHA256 = /^[0-9a-f]{64}$/u;
 const deliveryFail = reason => { throw Object.assign(new TypeError('delivery disposition is invalid'), { reason: `blocked-delivery-disposition-${reason}` }); };
 function deliveryPath(value, label) {
   text(value, label);
@@ -311,11 +312,12 @@ function deliveryRow(row) {
   } else deliveryFail('disposition');
   return row;
 }
+const mixedNoDeployExclusion = (row, expected, evidence) => row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && [row.reason, evidence].every(text => /excluded from (?:the )?product artifact/iu.test(text) && expected.paths.every(path => text.includes(path)));
 /** Source/path/evidence binding only; consumer validation never authenticates or authorizes the producer. */
 export function validateDeliveryDispositionSet(value, expected) {
   try {
     const set = snapshot(value); exact(set, DELIVERY_SET_KEYS, 'delivery disposition set');
-    if (set.schema !== DELIVERY_DISPOSITION_SET_SCHEMA || set.repository !== expected.repository || !Array.isArray(set.dispositions) || !set.dispositions.length || set.dispositions.length > 32 || !DELIVERY_SHA256.test(set.receiptDigest ?? '')) deliveryFail('set-identity');
+    if (set.schema !== DELIVERY_DISPOSITION_SET_SCHEMA || set.repository !== expected.repository || !Array.isArray(set.dispositions) || !set.dispositions.length || set.dispositions.length > DELIVERY_DISPOSITION_LIMIT || !DELIVERY_SHA256.test(set.receiptDigest ?? '')) deliveryFail('set-identity');
     const { receiptDigest, ...body } = set;
     if (governanceDigest(body) !== receiptDigest) deliveryFail('set-digest'); const rows = set.dispositions.map(deliveryRow), refs = rows.map(row => row.ref);
     if (new Set(refs).size !== refs.length || canonicalJson(refs) !== canonicalJson([...refs].sort())) deliveryFail('set-order');
@@ -325,7 +327,33 @@ export function validateDeliveryDispositionSet(value, expected) {
     if (!expected.candidateIsCurrent(row.candidateRevision) || !expected.laneIntegratedAtCandidate(row.candidateRevision, row.laneHead)) deliveryFail('candidate-stale');
     const evidence = expected.readEvidence(row.evidencePath);
     if (typeof evidence !== 'string' || Buffer.byteLength(evidence) > 128_000 || expected.sha256(evidence) !== row.evidenceDigest) deliveryFail('evidence-binding');
-    if (row.disposition === 'deployed' ? ['docs-only', 'control-ledger-only', 'delivery-evidence-only'].includes(expected.changeClass) || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only' && !(expected.changeClass === 'control-ledger-only' && canonicalJson(expected.paths) === canonicalJson([DELIVERY_DISPOSITION_SET_PATH])) && !(expected.changeClass === 'delivery-evidence-only' && Array.isArray(expected.paths) && expected.paths.some(path => path.startsWith('docs/reports/')) && expected.paths.every(path => path === DELIVERY_DISPOSITION_SET_PATH || path.startsWith('docs/reports/')) && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason)) ) deliveryFail('disposition-scope');
-    return Object.freeze({ ...row, ...(expected.changeClass === 'delivery-evidence-only' && row.disposition === 'no-deploy' ? { scopeRule: 'delivery-evidence-artifact-exclusion' } : {}), receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
+    if (row.disposition === 'deployed' ? ['docs-only', 'control-ledger-only', 'delivery-evidence-only'].includes(expected.changeClass) || !expected.deployBound(row.candidateRevision) : expected.changeClass !== 'docs-only' && !(expected.changeClass === 'control-ledger-only' && canonicalJson(expected.paths) === canonicalJson([DELIVERY_DISPOSITION_SET_PATH])) && !(expected.changeClass === 'delivery-evidence-only' && expected.paths.some(path => path.startsWith('docs/reports/')) && expected.paths.every(path => path === DELIVERY_DISPOSITION_SET_PATH || path.startsWith('docs/reports/')) && row.evidencePath !== DELIVERY_DISPOSITION_SET_PATH && /excluded from (?:the )?product artifact/iu.test(row.reason)) && !(expected.changeClass === 'mixed' && mixedNoDeployExclusion(row, expected, evidence))) deliveryFail('disposition-scope');
+    return Object.freeze({ ...row, ...(expected.changeClass === 'mixed' && row.disposition === 'no-deploy' ? { scopeRule: 'mixed-path-artifact-exclusion' } : expected.changeClass === 'delivery-evidence-only' && row.disposition === 'no-deploy' ? { scopeRule: 'delivery-evidence-artifact-exclusion' } : {}), receiptDigest: governanceDigest(row), setDigest: receiptDigest, producerAuthorityVerified: false, authorizesEffects: false });
   } catch (error) { if (error?.reason?.startsWith('blocked-delivery-disposition-')) throw error; deliveryFail('invalid'); }
+}
+/** Project only an exact, current, read-only closeout when a lane is already settled or still pending. */
+export function projectProgressiveCloseout(target, observed, record = null) {
+  const closeout = observed?.closeout, base = { path: target.path, ref: target.branch, head: target.head, status: 'blocked' };
+  const exact = observed?.ref === target.branch && observed?.authorizesEffects === false
+    && observed?.lane?.path === target.path && observed?.lane?.head === target.head && observed?.lane?.mounted === true
+    && observed?.canonicalClean === true && observed?.canonicalRevision === observed?.remoteTrackingRevision
+    && closeout?.schema === 'agentic-os/closeout-verdict/v1'
+    && closeout?.observationOnly === true && closeout?.authorizesEffects === false && closeout?.canonicalCurrent === true
+    && (closeout?.sourceState !== 'source_complete' || closeout?.sourceIntegrated === true);
+  if (exact && !target.locked && !target.prunable && record?.state === 'active'
+    && record.ref === target.branch && record.worktree === target.path && record.pr === null
+    && record.recovery?.dirtyState !== 'unobservable-at-missing-path' && typeof observed.lane.clean === 'boolean'
+    && (observed.lane.clean === false || closeout.sourceState !== 'source_complete'))
+    return { ...base, reason: 'finish-and-publish', nextAction: { id: 'finish-and-publish', owner: 'lane-owner',
+      command: 'Finish authorized work in this lane, run affected checks, then run agentic-os land --message="...". Return to END after publication; do not park or abandon work without an explicit owner decision.' } };
+  if (!exact || observed.lane.clean !== true) return { ...base, reason: 'requires-published-lane' };
+  const adlcState = closeout.adlcState ?? (closeout.missionState === 'source_complete' ? 'complete' : null);
+  const fields = { sourceState: closeout.sourceState, missionState: closeout.missionState ?? null,
+    adlcState, retentionState: closeout.retentionState ?? null, residueDisposition: closeout.residueDisposition ?? null,
+    deliveryState: closeout.deliveryState ?? null, completionScope: closeout.completionScope ?? null, branchDisposition: closeout.branchDisposition ?? null,
+    nextAction: closeout.nextAction ?? null };
+  if (closeout.sourceState !== 'source_complete') return { ...base, ...fields, reason: closeout.nextAction?.id ?? 'source-not-complete' };
+  const settled = ['complete', 'source_complete', 'cleanup_pending', 'delivery_pending', 'delivery_scope_pending', 'retirement_pending'].includes(adlcState) ? adlcState : null;
+  return { ...base, ...fields, status: settled ?? 'blocked', adlcState: settled,
+    reason: settled && ['complete', 'source_complete'].includes(settled) ? null : 'closeout-incomplete' };
 }

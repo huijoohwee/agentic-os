@@ -76,7 +76,9 @@ function historicalCheckGapRecord(value, contexts) {
 const requiredChecksDigest = (target, revision, required) => governanceDigest({ schema: 'agentic-os/github-required-checks/v1', targetRepository: target.repository, revision, required });
 async function classicBranchProtection(api, target, branch) {
   const response = await api.call('GET', `${target.path}/branches/${encodeURIComponent(branch)}/protection`);
-  if (response.status === 404) return null;
+  if (response.status === 404 || response.status === 403
+    && response.value?.message === 'Upgrade to GitHub Pro or make this repository public to enable this feature.'
+    && String(response.value?.documentation_url ?? '').includes('/rest/branches/branch-protection#get-branch-protection')) return null;
   const value = api.exact(response, [200], 'GitHub branch protection'), strict = value?.required_status_checks?.strict;
   if (typeof strict !== 'boolean') fail('GitHub branch protection required checks are invalid'); return parseClassicBranchProtection({ ...value, required_status_checks: { ...value.required_status_checks, strict: false } }, GITHUB_ACTIONS_INTEGRATION_ID);
 }
@@ -166,14 +168,17 @@ async function ruleSuite(api, target, canonicalRef, mergedCommit, input, mergedA
     rulesetVersions };
   return { ...payload, ruleSuiteDigest: governanceDigest(payload) };
 }
-function targetProtection(observation, target, ref, classicProtection = null, retrospective = false, repositoryValue = null) { const projection = object(observation, 'target protection observation').projection, versions = observation.versions;
+function targetProtection(observation, target, ref, classicProtection = null, retrospective = false, repositoryValue = null, fallbackRequiredContexts = null) { const projection = object(observation, 'target protection observation').projection, versions = observation.versions;
   if (projection.repository !== target.repository || projection.ref !== ref
     || projection.rulesets.some((entry) => entry.bypassActors.length !== 0
       && !same(entry.bypassActors, [REDACTED_BYPASS])))
     fail('target canonical protection identity or bypass policy changed');
-  if (projection.rulesets.length === 0) { if (!retrospective || classicProtection === null || repositoryValue === null) fail('target canonical protection lacks active rulesets');
+  if (projection.rulesets.length === 0) { if (!retrospective || repositoryValue === null) fail('target canonical protection lacks active rulesets');
     const allowedMethods = [repositoryValue.allow_merge_commit === true ? 'merge' : null, repositoryValue.allow_rebase_merge === true ? 'rebase' : null, repositoryValue.allow_squash_merge === true ? 'squash' : null].filter(Boolean);
-    if (allowedMethods.length === 0) fail('target repository exposes no supported merge method'); return { projection, versions: [], requiredContexts: classicProtection.requiredContexts, allowedMethods, activeRuleTypes: classicProtection.activeRuleTypes, bypassActorsObserved: true };
+    const requiredContexts = classicProtection?.requiredContexts ?? fallbackRequiredContexts;
+    if (allowedMethods.length === 0 || !Array.isArray(requiredContexts) || requiredContexts.length === 0)
+      fail('target canonical protection lacks observable required checks or supported merge methods');
+    return { projection, versions: [], requiredContexts, allowedMethods, activeRuleTypes: classicProtection?.activeRuleTypes ?? [], bypassActorsObserved: classicProtection !== null };
   }
   if (!Array.isArray(versions) || versions.length !== projection.rulesets.length
     || versions.some((entry) => !projection.rulesets.some((ruleset) => ruleset.id === entry.id)))
@@ -264,7 +269,8 @@ export async function observeGitHubIntegrationProof({ api, target, input, initia
   const mergedAt = instant(pull.merged_at, 'review merged time');
   const expectedProtection = historical ? expectedProof?.currentTargetProtection : expectedProof;
   const protectedTarget = expectedProof === null
-    ? targetProtection(protectionObservation, target, canonicalRef, classicProtection, retrospective, targetRepositoryValue)
+    ? targetProtection(protectionObservation, target, canonicalRef, classicProtection, retrospective,
+      targetRepositoryValue, enrollment?.checkContexts ?? null)
     : { projection: { projectionDigest: expectedProtection.targetProtectionDigest },
       versions: expectedProtection.targetRulesetVersions,
       requiredContexts: expectedProtection.targetRequiredContexts,

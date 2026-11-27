@@ -25,7 +25,7 @@ function fixture(t, cleanupMode = 'retain') {
   run(['config', 'user.name', 'ADLC Test']);
   writeFileSync(join(root, 'base.txt'), 'base\n');
   const profile = createRepositoryProfile({
-    repository: 'local:fixture',
+    repository: 'github.com/example/repo',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
     cleanup: { worktreeProjection: cleanupMode, worktreeRegistration: cleanupMode,

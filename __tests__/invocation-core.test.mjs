@@ -42,8 +42,10 @@ test('packaged dictionaries resolve offline and their declared count and digest 
   assert.deepEqual(validateDictionaryCatalogContract(documents, sha256), []);
   const { entries, failures } = collectCatalogEntries(documents);
   assert.deepEqual(failures, []);
-  assert.equal(entries.length, 416);
-  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [136, 146, 134]);
+  assert.equal(entries.length, 436);
+  assert.deepEqual(DICTIONARY_DESCRIPTORS.map(({ kind }) => entries.filter(e => e.kind === kind).length), [137, 162, 137]);
+  // Artifact families route through one generic command and vendor-neutral bindings.
+  for (const token of ['/artifact.create', '#prd', '#pitch-deck', '#llm', '@model', '@artifact']) assert.ok(entries.some(e => e.token === token), token);
   assert.equal(new Set(entries.map(e => e.token)).size, entries.length);
   assert.ok(entries.some(e => e.token === '/runtime-ready.check'));
   assert.ok(entries.some(e => e.token === '/python.learning'));
@@ -85,6 +87,13 @@ test('procedural asset discovery reuses text binding without broadening image co
   }
   const executableCatalog = readFileSync(new URL('../catalog/invocation.json', import.meta.url), 'utf8');
   assert.doesNotMatch(executableCatalog, /\/asset\.create/);
+});
+
+test('WebMCP binding prefers document.modelContext and falls back to navigator.modelContext', () => {
+  const row = dictionaryDocuments().get('DICTIONARY-BINDING.md').split('\n')
+    .find(line => line.startsWith('| `@webmcp-surface`'));
+  assert.match(row, /feature-detect `document\.modelContext`[^|]*else legacy `navigator\.modelContext\.registerTool`/);
+  assert.match(row, /absent from both entry points fails visibly/);
 });
 
 test('Python learning discovery is the exact native tuple without an executable CLI route', () => {
@@ -142,7 +151,7 @@ test('dictionary parsing bounds UTF-8 and line allocation and keeps no stale res
   const before = collectCatalogEntries(original);
   original.delete(name);
   assert.ok(collectCatalogEntries(original).failures.some(f => f.includes('absent')));
-  assert.equal(before.entries.length, 416);
+  assert.equal(before.entries.length, 436);
   assert.deepEqual(validateDictionaryCatalogContract(dictionaryDocuments(), sha256), []);
 });
 

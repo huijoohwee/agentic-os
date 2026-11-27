@@ -6,21 +6,25 @@ export const WORKTREE_CLEANUP_PLAN_SCHEMA = 'agentic-os/worktree-cleanup-plan/v1
 export const CLEANUP_EVIDENCE_SCHEMA = 'agentic-os/cleanup-evidence-receipt/v1';
 export const WORKTREE_CLEANUP_CONTINUATION_SCHEMA = 'agentic-os/worktree-cleanup-continuation/v1';
 export const WORKTREE_CLEANUP_ELIGIBILITY_SCHEMA = 'agentic-os/worktree-cleanup-eligibility/v1';
-export const WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v1';
-export const WORKTREE_CLEANUP_ADAPTER = Object.freeze({ id: 'git-worktree-quarantine', version: '1' });
+export const WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v2';
+export const LEGACY_WORKTREE_CLEANUP_RECEIPT_SCHEMA = 'agentic-os/worktree-cleanup-receipt/v1';
+export const WORKTREE_CLEANUP_ADAPTER = Object.freeze({ id: 'git-worktree-cleanup', version: '1' });
 export const SUCCESSOR_PRESERVATION_SCHEMA = 'agentic-os/successor-preservation-receipt/v1';
 export const SUCCESSOR_PRESERVATION_PLAN_SCHEMA = 'agentic-os/successor-preservation-plan/v1';
 export const CURRENT_QUARANTINE_SCHEMA = 'agentic-os/current-quarantine-retention-receipt/v1';
 export const CURRENT_QUARANTINE_PLAN_SCHEMA = 'agentic-os/current-quarantine-retention-plan/v1';
-export const CURRENT_QUARANTINE_DISCARD_SCHEMA = 'agentic-os/current-quarantine-discard-receipt/v1'; export const CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA = 'agentic-os/current-quarantine-discard-plan/v1';
+export const CURRENT_QUARANTINE_DISCARD_SCHEMA = 'agentic-os/current-quarantine-discard-receipt/v1'; export const CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA = 'agentic-os/current-quarantine-discard-plan/v1', STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA = 'agentic-os/standalone-lane-retention-adoption/v1', SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA = 'agentic-os/same-head-lane-retention-adoption/v1';
 export const CURRENT_QUARANTINE_RECONCILIATION_SCHEMA = 'agentic-os/current-quarantine-reconciliation/v1';
+export const UNPUBLISHED_LANE_ABANDONMENT_PLAN_SCHEMA = 'agentic-os/unpublished-lane-abandonment-plan/v1';
+export const UNPUBLISHED_LANE_ABANDONMENT_RECEIPT_SCHEMA = 'agentic-os/unpublished-lane-abandonment-receipt/v1';
 export const RECORD_ONLY_RETIREMENT_EFFECTS = Object.freeze(['record-retirement', 'retire-claim']);
-export const CLEANUP_EFFECTS = Object.freeze(['quarantine-worktree-projection', 'quarantine-worktree-registration']);
+export const CLEANUP_EFFECTS = Object.freeze(['git-worktree-remove-clean',
+  'quarantine-worktree-projection', 'quarantine-worktree-registration']);
 export const RETAINED_EFFECTS = Object.freeze(['delete-branch', 'delete-object', 'delete-ref',
   'delete-reflog', 'force-push', 'prune-peer-registration', 'remove-directory-bytes']);
 export const INTEGRATION_RECORD_EFFECTS = Object.freeze(['record-integration', 'verify-exact-integration']);
 export const INTEGRATION_RECORD_RETAINED_EFFECTS = Object.freeze(['cleanup', 'delete-branch',
-  'delete-object', 'delete-ref', 'delete-reflog', 'deploy', 'force-push', 'merge',
+  'delete-object', 'delete-ref', 'delete-reflog', 'deploy', 'force-push', 'git-worktree-remove-clean', 'merge',
   'prune-peer-registration', 'remove-directory-bytes']);
 export const RECORD_ONLY_RETIREMENT_RETAINED_EFFECTS = Object.freeze(
   [...new Set([...INTEGRATION_RECORD_RETAINED_EFFECTS, ...CLEANUP_EFFECTS])].sort());
@@ -48,6 +52,12 @@ const QUARANTINE_POSTCONDITIONS = Object.freeze({
   targetPathExistsAfter: false, adminBytesRetained: true, branchMutationAttempted: false,
   objectMutationAttempted: false, directoryByteRemovalAttempted: false,
   operatingSystemExclusivityProven: false, result: 'quarantined',
+});
+const REMOVE_CLEAN_POSTCONDITIONS = Object.freeze({
+  registeredBefore: true, registeredAfter: false, targetPathExistsBefore: true,
+  targetPathExistsAfter: false, adminBytesRetained: false, branchMutationAttempted: false,
+  objectMutationAttempted: false, directoryByteRemovalAttempted: true,
+  operatingSystemExclusivityProven: false, result: 'removed-clean',
 });
 function fail(message) { throw new TypeError(message); }
 function snap(value) { return JSON.parse(canonicalJson(value)); }
@@ -82,6 +92,9 @@ function absolute(value, label) {
   if (resolve(result) !== result || result === '/' || basename(result) === '')
     fail(`${label} must be one normalized absolute path`);
   return result;
+}
+function absoluteOrNull(value, label) {
+  return value === null ? null : absolute(value, label);
 }
 function bound(value, maximum, label) {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum)
@@ -246,7 +259,9 @@ export const validateWorktreeCleanupEligibility = value =>
   canonicalRecord(value, createWorktreeCleanupEligibility, 'worktree cleanup eligibility', 'cleanup eligibility is not canonical');
 export function createWorktreeCleanupReceipt(input) {
   const source = snap(input), keys = ['schema', 'adapter', 'cleanupPlanDigest', 'eligibilityDigest',
-    'integrationPlanByteDigest', 'targetPath', 'projectionQuarantinePath',
+    'integrationPlanByteDigest', 'targetPath', 'expectedBranch', 'expectedHeadRevision',
+    'cleanRemovalEligible',
+    'projectionQuarantinePath',
     'registrationQuarantinePath', 'projectionManifestDigest', 'projectionBytes', 'projectionEntries',
     'registrationManifestDigest', 'registrationBytes', 'registrationEntries',
     'recoveryInventoryDigest', 'profileDigest', 'canonicalRevision', 'recoveryInventoryContentEntries',
@@ -264,7 +279,12 @@ export function createWorktreeCleanupReceipt(input) {
     ...typedFields(source, 'cleanupPlanDigest eligibilityDigest integrationPlanByteDigest projectionManifestDigest ' +
       'registrationManifestDigest recoveryInventoryDigest profileDigest peerRegistrationDigest ' +
       'sharedRefDigest objectInventoryDigest', digest),
-    ...typedFields(source, 'targetPath projectionQuarantinePath registrationQuarantinePath', absolute),
+    targetPath: absolute(source.targetPath, 'targetPath'),
+    expectedBranch: text(source.expectedBranch, 'expectedBranch'),
+    expectedHeadRevision: revision(source.expectedHeadRevision, 'expectedHeadRevision'),
+    cleanRemovalEligible: source.cleanRemovalEligible,
+    projectionQuarantinePath: absoluteOrNull(source.projectionQuarantinePath, 'projectionQuarantinePath'),
+    registrationQuarantinePath: absoluteOrNull(source.registrationQuarantinePath, 'registrationQuarantinePath'),
     ...typedFields(source, 'projectionBytes sharedStateBytes', bounded(MAX_PROJECTION_BYTES)),
     projectionEntries: bound(source.projectionEntries, MAX_PROJECTION_ENTRIES,
       'projectionEntries'),
@@ -276,7 +296,13 @@ export function createWorktreeCleanupReceipt(input) {
     canonicalRevision: revision(source.canonicalRevision, 'canonicalRevision'),
     ...Object.fromEntries(Object.keys(QUARANTINE_POSTCONDITIONS).map(key => [key, source[key]])),
     executedAt: instant(source.executedAt, 'executedAt') };
-  if (Object.entries(QUARANTINE_POSTCONDITIONS).some(([key, expected]) => payload[key] !== expected))
+  const conditions = payload.result === 'removed-clean'
+    ? REMOVE_CLEAN_POSTCONDITIONS : QUARANTINE_POSTCONDITIONS;
+  if (Object.entries(conditions).some(([key, expected]) => payload[key] !== expected)
+    || payload.cleanRemovalEligible !== (payload.result === 'removed-clean')
+    || (payload.result === 'removed-clean'
+      ? payload.projectionQuarantinePath !== null || payload.registrationQuarantinePath !== null
+      : payload.projectionQuarantinePath === null || payload.registrationQuarantinePath === null))
     fail('cleanup receipt postconditions are invalid');
   return signedRecord(source, payload, 'receiptDigest', 'receiptDigest', 'cleanup receipt digest is invalid');
 }
@@ -296,20 +322,19 @@ export function createCurrentQuarantineReconciliation(input) {
 export const validateCurrentQuarantineReconciliation = value => canonicalRecord(value, createCurrentQuarantineReconciliation, 'current quarantine reconciliation', 'current quarantine reconciliation is not canonical');
 function preservationRecord(value, receipt, allowCurrent = false) {
   const source = snap(value), checksum = receipt ? 'receiptDigest' : 'planDigest';
-  const current = allowCurrent && ['current-quarantine-retained', 'current-quarantine-discard-acknowledged'].includes(source.disposition), discarded = current && source.disposition === 'current-quarantine-discard-acknowledged';
+  const current = allowCurrent && ['current-quarantine-retained', 'current-quarantine-discard-acknowledged'].includes(source.disposition), discarded = current && source.disposition === 'current-quarantine-discard-acknowledged', standalone = source.disposition === 'standalone-lane-retained', sameHead = standalone && source.adoption?.schema === SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA;
   const history = current ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven';
   const keys = ['schema', 'disposition', 'adoption', 'adoptionDigest', 'repository', 'canonicalRevision', 'profileDigest', 'policyDigest', 'review', 'integration', 'retention', 'state', 'issuedAt', 'expiresAt', 'physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history, checksum];
   exact(source, keys, 'successor preservation record');
-  if (Buffer.byteLength(canonicalJson(source)) > 64000 || source.schema !== (discarded ? receipt ? CURRENT_QUARANTINE_DISCARD_SCHEMA : CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA : receipt ? SUCCESSOR_PRESERVATION_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA) || source.disposition !== (current ? discarded ? 'current-quarantine-discard-acknowledged' : 'current-quarantine-retained' : 'successor-preserved') || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false)) fail('successor preservation claims are invalid');
+  if (standalone && !allowCurrent || Buffer.byteLength(canonicalJson(source)) > 64000 || source.schema !== (discarded ? receipt ? CURRENT_QUARANTINE_DISCARD_SCHEMA : CURRENT_QUARANTINE_DISCARD_PLAN_SCHEMA : current ? receipt ? CURRENT_QUARANTINE_SCHEMA : CURRENT_QUARANTINE_PLAN_SCHEMA : receipt ? SUCCESSOR_PRESERVATION_SCHEMA : SUCCESSOR_PRESERVATION_PLAN_SCHEMA) || source.disposition !== (current ? discarded ? 'current-quarantine-discard-acknowledged' : 'current-quarantine-retained' : standalone ? 'standalone-lane-retained' : 'successor-preserved') || ['physicalCleanupPerformed', 'providerAuthority', 'claimRetired', history].some(name => source[name] !== false)) fail('successor preservation claims are invalid');
   const adoption = source.adoption;
-  exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', 'quarantineCoordinate', history, ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest'] : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])], 'successor preservation adoption');
-  const coordinates = current ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef, predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
-  if (adoption.schema !== (current ? 'agentic-os/current-quarantine-adoption/v1' : 'agentic-os/successor-preservation-adoption/v1') || adoption[history] !== false || adoption.repository !== source.repository || !Array.isArray(coordinates.replacedPaths) || !current && !coordinates.replacedPaths.length || coordinates.replacedPaths.length > 512 || new Set(coordinates.replacedPaths).size !== coordinates.replacedPaths.length || coordinates.replacedPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..'))) fail('successor preservation adoption is invalid');
+  exact(adoption, ['schema', 'repository', 'merge', 'reviewLocator', ...(standalone ? sameHead ? ['reviewedRef', 'retainedRef', 'headRevision', 'integrationReceiptDigest', history] : ['targetRef', 'targetHead', 'integrationReceiptDigest'] : ['quarantineCoordinate', history, ...(current ? ['targetRef', 'targetHead', 'originalReceiptDigest'] : ['predecessorRef', 'predecessorHead', 'successorRef', 'successorHead', 'replacedPaths'])])], 'successor preservation adoption');
+  const coordinates = sameHead ? { predecessorRef: adoption.reviewedRef, successorRef: adoption.retainedRef, predecessorHead: adoption.headRevision, successorHead: adoption.headRevision, replacedPaths: [] } : current || standalone ? { predecessorRef: adoption.targetRef, successorRef: adoption.targetRef, predecessorHead: adoption.targetHead, successorHead: adoption.targetHead, replacedPaths: [] } : adoption;
+  if (adoption.schema !== (sameHead ? SAME_HEAD_LANE_RETENTION_ADOPTION_SCHEMA : standalone ? STANDALONE_LANE_RETENTION_ADOPTION_SCHEMA : current ? 'agentic-os/current-quarantine-adoption/v1' : 'agentic-os/successor-preservation-adoption/v1') || (!standalone || sameHead) && adoption[history] !== false || adoption.repository !== source.repository || !Array.isArray(coordinates.replacedPaths) || !current && !standalone && !coordinates.replacedPaths.length || coordinates.replacedPaths.length > 512 || new Set(coordinates.replacedPaths).size !== coordinates.replacedPaths.length || coordinates.replacedPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..')) || sameHead && adoption.reviewedRef === adoption.retainedRef) fail('successor preservation adoption is invalid');
   typedFields(coordinates, 'predecessorRef successorRef', text); text(adoption.reviewLocator, 'reviewLocator');
   typedFields(coordinates, 'predecessorHead successorHead', revision); revision(adoption.merge, 'merge');
-  digest(adoption.quarantineCoordinate, 'quarantineCoordinate');
-  if (digest(source.adoptionDigest, 'adoptionDigest') !== governanceDigest(adoption))
-    fail('successor preservation adoption digest is invalid');
+  digest(standalone ? adoption.integrationReceiptDigest : adoption.quarantineCoordinate, standalone ? 'integrationReceiptDigest' : 'quarantineCoordinate');
+  if (digest(source.adoptionDigest, 'adoptionDigest') !== governanceDigest(adoption)) fail('successor preservation adoption digest is invalid');
   typedFields(source, 'profileDigest policyDigest', digest);
   revision(source.canonicalRevision, 'canonicalRevision');
   instant(source.issuedAt, 'issuedAt'); instant(source.expiresAt, 'expiresAt');
@@ -317,7 +342,7 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   const { review, integration, retention, state } = source, retainedHead = retention.originalReceipt?.detachedHead ?? coordinates.successorHead;
   exact(review, ['repository', 'pr', 'url', 'branch', 'head', 'merge', 'mergedAt', 'checks', 'protectionProven', 'authority'], 'preservation review');
   exact(integration, ['kind', 'predecessorHead', 'reviewedHead', 'merge', 'pathCount', 'replacements'], 'preservation integration');
-  exact(retention, ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead', 'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest', ...(discarded ? ['retainedIndexBytesDigest', 'retainedHeadBytesDigest', 'projectionRetained', 'recoveryBytesDiscarded'] : ['retainedIndexInventoryDigest', 'recoveryInventoryDigest'])] : [])], 'preservation retention');
+  exact(retention, standalone ? ['branchRef', 'retainedHead', 'worktreePath', 'worktreeClean', 'integrationReceiptDigest'] : ['coordinate', 'operationDigest', 'registrationRef', 'retainedHead', 'projectionManifest', 'registrationManifest', ...(current ? ['originalReceipt', 'originalReceiptDigest', ...(discarded ? ['retainedIndexBytesDigest', 'retainedHeadBytesDigest', 'projectionRetained', 'recoveryBytesDiscarded'] : ['retainedIndexInventoryDigest', 'recoveryInventoryDigest'])] : [])], 'preservation retention');
   if (current) {
     const original = retention.originalReceipt, protectedReceipt = ['agentic-os/authenticated-transition-operation-receipt/v1', 'agentic-os/authenticated-transition-operation-receipt/v2'].includes(original?.schema), discardedReceipt = discarded && original?.schema === 'agentic-os/quarantine-retirement-receipt/v2', originalPayload = original && Object.fromEntries(Object.entries(original).filter(([key]) => key !== 'receiptDigest')), originalDigest = protectedReceipt || discardedReceipt ? digest(original.receiptDigest, 'originalReceiptDigest') : governanceDigest(original);
     if (digest(adoption.originalReceiptDigest, 'originalReceiptDigest') !== originalDigest || retention.originalReceiptDigest !== adoption.originalReceiptDigest) fail('current quarantine receipt is not enrolled');
@@ -334,11 +359,11 @@ function preservationRecord(value, receipt, allowCurrent = false) {
     digest(state.planDigest, 'preservation planDigest'); instant(state.planIssuedAt, 'preservation planIssuedAt');
     if (Date.parse(state.planIssuedAt) > Date.parse(source.issuedAt)) fail('preservation issuance chronology is invalid');
   }
-  if (Date.parse(source.expiresAt) - Date.parse(receipt ? state.planIssuedAt : source.issuedAt) > 900000)
-    fail('successor preservation window exceeds the admitted ceiling');
+  if (Date.parse(source.expiresAt) - Date.parse(receipt ? state.planIssuedAt : source.issuedAt) > 900000) fail('successor preservation window exceeds the admitted ceiling');
   text(state.policyRepository, 'policyRepository'); text(state.workflow, 'workflow');
-  digest(retention.operationDigest, 'retained operationDigest'); revision(retention.retainedHead, 'retainedHead');
-  for (const name of ['projectionManifest', 'registrationManifest']) {
+  if (standalone && (retention.branchRef !== coordinates.successorRef || retention.worktreeClean !== true || retention.integrationReceiptDigest !== adoption.integrationReceiptDigest)) fail('standalone retained lane is not joined');
+  if (standalone) absolute(retention.worktreePath, 'standalone worktreePath'); else { digest(retention.operationDigest, 'retained operationDigest'); revision(retention.retainedHead, 'retainedHead'); }
+  for (const name of standalone ? [] : ['projectionManifest', 'registrationManifest']) {
     exact(retention[name], ['digest', 'bytes', 'entries'], name);
     digest(retention[name].digest, name); count(retention[name].entries, name);
     if (!Number.isSafeInteger(retention[name].bytes) || retention[name].bytes < 0) fail('retained bytes are invalid');
@@ -346,21 +371,20 @@ function preservationRecord(value, receipt, allowCurrent = false) {
   if (review.repository !== source.repository.replace(/^github.com\//u, '')
     || !Number.isSafeInteger(review.pr) || review.pr < 1 || !Number.isFinite(Date.parse(review.mergedAt))
     || review.protectionProven !== false || review.authority !== 'observation-only'
-    || review.url !== adoption.reviewLocator || review.branch !== coordinates.successorRef
+    || review.url !== adoption.reviewLocator || review.branch !== (sameHead ? adoption.reviewedRef : coordinates.successorRef)
     || review.head !== coordinates.successorHead || review.merge !== adoption.merge
-    || integration.kind !== (current ? 'current-quarantined' : 'reviewed-successor') || integration.predecessorHead !== coordinates.predecessorHead
+    || integration.kind !== (standalone ? 'standalone-lane-retained' : current ? 'current-quarantined' : 'reviewed-successor') || integration.predecessorHead !== coordinates.predecessorHead
     || integration.reviewedHead !== coordinates.successorHead || integration.merge !== adoption.merge
     || !Number.isSafeInteger(integration.pathCount) || integration.pathCount < coordinates.replacedPaths.length
     || !Array.isArray(integration.replacements) || integration.replacements.length !== coordinates.replacedPaths.length
     || new Set(integration.replacements.map(row => row?.path)).size !== coordinates.replacedPaths.length
     || !Array.isArray(review.checks) || !review.checks.length || review.checks.length > 8
-    || retention.coordinate !== adoption.quarantineCoordinate || retention.registrationRef !== coordinates.successorRef
+    || !standalone && (retention.coordinate !== adoption.quarantineCoordinate || retention.registrationRef !== coordinates.successorRef)
     || retention.retainedHead !== retainedHead || state.predecessorHead !== coordinates.predecessorHead
     || state.successorHead !== coordinates.successorHead) fail('preservation source facts are not joined');
   for (const row of integration.replacements) {
     exact(row, ['path', 'old', 'accepted'], 'preservation replacement');
-    if (!coordinates.replacedPaths.includes(row.path) || typeof row.old !== 'string' || typeof row.accepted !== 'string')
-      fail('preservation replacement is invalid');
+    if (!coordinates.replacedPaths.includes(row.path) || typeof row.old !== 'string' || typeof row.accepted !== 'string') fail('preservation replacement is invalid');
   }
   for (const check of review.checks) {
     exact(check, ['name', 'checkId', 'runId', 'attempt', 'workflow', 'conclusion', 'completedAt', 'url'], 'preservation check');
@@ -378,4 +402,21 @@ export const validateSuccessorPreservationReceipt = value => preservationRecord(
 export const validateSuccessorPreservationPlan = value => preservationRecord(value, false);
 export const validateRetentionDispositionReceipt = value => preservationRecord(value, true, true);
 export const validateRetentionDispositionPlan = value => preservationRecord(value, false, true);
+function manifest(value, label) { exact(value, ['digest', 'bytes', 'entries'], label); return { digest: digest(value.digest, `${label} digest`), bytes: bound(value.bytes, Number.MAX_SAFE_INTEGER, `${label} bytes`), entries: count(value.entries, `${label} entries`) }; }
+export function createUnpublishedLaneAbandonmentPlan(input) {
+  const source = snap(input), keys = ['schema', 'repository', 'profileDigest', 'ref', 'baseSha', 'head', 'targetPath', 'canonicalRef', 'canonicalRevision', 'reason', 'issuedAt', 'expiresAt', 'recoveryInventoryDigest', 'recoveryInventoryContentEntries', 'projectionManifest', 'registrationManifest', 'peerRegistrationDigest', 'sharedRefDigest', 'objectInventoryDigest', 'sharedStateBytes', 'sharedStateEntries', 'observationDigest', 'planDigest'];
+  exact(source, keys, 'unpublished abandonment plan', false);
+  const payload = { schema: UNPUBLISHED_LANE_ABANDONMENT_PLAN_SCHEMA, repository: text(source.repository, 'repository'), profileDigest: digest(source.profileDigest, 'profileDigest'), ref: text(source.ref, 'ref'), baseSha: revision(source.baseSha, 'baseSha'), head: revision(source.head, 'head'), targetPath: absolute(source.targetPath, 'targetPath'), canonicalRef: canonicalRef(source.canonicalRef), canonicalRevision: revision(source.canonicalRevision, 'canonicalRevision'), reason: text(source.reason, 'reason'), issuedAt: instant(source.issuedAt, 'issuedAt'), expiresAt: instant(source.expiresAt, 'expiresAt'), recoveryInventoryDigest: digest(source.recoveryInventoryDigest, 'recoveryInventoryDigest'), recoveryInventoryContentEntries: count(source.recoveryInventoryContentEntries, 'recoveryInventoryContentEntries'), projectionManifest: manifest(source.projectionManifest, 'projectionManifest'), registrationManifest: manifest(source.registrationManifest, 'registrationManifest'), peerRegistrationDigest: digest(source.peerRegistrationDigest, 'peerRegistrationDigest'), sharedRefDigest: digest(source.sharedRefDigest, 'sharedRefDigest'), objectInventoryDigest: digest(source.objectInventoryDigest, 'objectInventoryDigest'), sharedStateBytes: bound(source.sharedStateBytes, Number.MAX_SAFE_INTEGER, 'sharedStateBytes'), sharedStateEntries: count(source.sharedStateEntries, 'sharedStateEntries'), observationDigest: digest(source.observationDigest, 'observationDigest') };
+  if (payload.reason.trim().length < 12 || Date.parse(payload.expiresAt) <= Date.parse(payload.issuedAt) || Date.parse(payload.expiresAt) - Date.parse(payload.issuedAt) > 300_000) fail('unpublished abandonment plan window or reason is invalid');
+  return signedRecord(source, payload, 'planDigest', 'planDigest', 'unpublished abandonment plan digest is invalid');
+}
+export function createUnpublishedLaneAbandonmentReceipt(input) {
+  const source = snap(input), keys = ['schema', 'plan', 'planDigest', 'operationDigest', 'archivePath', 'projectionPath', 'registrationPath', 'executedAt', 'archiveDigest', 'authority', 'stoppedAcknowledged', 'archivePrivate', 'archiveArchived', 'sourceIntegrated', 'sourceSuperseded', 'sourceAbandoned', 'providerAuthority', 'branchRefsMutated', 'objectDatabaseMutated', 'dataDeleted', 'claimRetired', 'receiptDigest'];
+  exact(source, keys, 'unpublished abandonment receipt', false);
+  const plan = createUnpublishedLaneAbandonmentPlan(source.plan), payload = { schema: UNPUBLISHED_LANE_ABANDONMENT_RECEIPT_SCHEMA, plan, planDigest: digest(source.planDigest, 'planDigest'), operationDigest: digest(source.operationDigest, 'operationDigest'), archivePath: absolute(source.archivePath, 'archivePath'), projectionPath: absolute(source.projectionPath, 'projectionPath'), registrationPath: absolute(source.registrationPath, 'registrationPath'), executedAt: instant(source.executedAt, 'executedAt'), archiveDigest: digest(source.archiveDigest, 'archiveDigest'), authority: text(source.authority, 'authority'), stoppedAcknowledged: source.stoppedAcknowledged, archivePrivate: source.archivePrivate, archiveArchived: source.archiveArchived, sourceIntegrated: source.sourceIntegrated, sourceSuperseded: source.sourceSuperseded, sourceAbandoned: source.sourceAbandoned, providerAuthority: source.providerAuthority, branchRefsMutated: source.branchRefsMutated, objectDatabaseMutated: source.objectDatabaseMutated, dataDeleted: source.dataDeleted, claimRetired: source.claimRetired };
+  if (payload.planDigest !== plan.planDigest || payload.authority !== 'explicit-local-user-consent' || payload.stoppedAcknowledged !== true || payload.archivePrivate !== true || payload.archiveArchived !== true || payload.sourceIntegrated !== false || payload.sourceSuperseded !== false || payload.sourceAbandoned !== true || payload.providerAuthority !== false || payload.branchRefsMutated !== false || payload.objectDatabaseMutated !== false || payload.dataDeleted !== false || payload.claimRetired !== false || payload.projectionPath !== `${payload.archivePath}/projection` || payload.registrationPath !== `${payload.archivePath}/registration`) fail('unpublished abandonment receipt claims are invalid');
+  return signedRecord(source, payload, 'receiptDigest', 'receiptDigest', 'unpublished abandonment receipt digest is invalid');
+}
+export const validateUnpublishedLaneAbandonmentPlan = value => canonicalRecord(value, createUnpublishedLaneAbandonmentPlan, 'unpublished abandonment plan', 'unpublished abandonment plan is not canonical');
+export const validateUnpublishedLaneAbandonmentReceipt = value => canonicalRecord(value, createUnpublishedLaneAbandonmentReceipt, 'unpublished abandonment receipt', 'unpublished abandonment receipt is not canonical');
 export { exact as cleanupRecordExact, digest as cleanupRecordDigest, typedFields as cleanupRecordFields, canonicalRecord as cleanupRecordCanonical };

@@ -13,17 +13,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git } from '../src/git.mjs';
-import { ensureRepositoryTrust } from '../src/git-repository.mjs';
+import {
+  assertStartCheckout, ensureRepositoryTrust, repositoryCheckoutLocation,
+} from '../src/git-repository.mjs';
 import { createRepositoryProfile } from '../src/governance.mjs';
+import { cmdStart } from '../bin/agentic-os-admission.mjs';
 import {
   inspect as inspectWorktree, LANE_BRANCH_LIMIT, lanePath, provision, registeredLaneBranches,
 } from '../src/worktree.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/agentic-os.mjs', import.meta.url));
 
-function fixture(t, { profile = true } = {}) {
+function fixture(t, { profile = true, directory = 'repo', repository = 'github.com/example/repo' } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'agentic-os-doctor-start-'));
-  const root = join(parent, 'repo');
+  const root = join(parent, directory);
   mkdirSync(root);
   const run = (args, options = {}) => git(args, { cwd: root, ...options });
   run(['init', '--quiet', '--initial-branch=main']);
@@ -32,7 +35,7 @@ function fixture(t, { profile = true } = {}) {
   writeFileSync(join(root, 'base.txt'), 'base\n');
   run(['add', 'base.txt']);
   run(['commit', '--quiet', '--message', 'base']);
-  if (profile) commitProfile(run, root);
+  if (profile) commitProfile(run, root, repository);
 
   const support = join(parent, 'bin');
   mkdirSync(support);
@@ -50,15 +53,15 @@ function commit(run, root, path, contents, message) {
   return run(['rev-parse', 'HEAD']);
 }
 
-function commitProfile(run, root) {
-  const profile = fixtureProfile();
+function commitProfile(run, root, repository = 'github.com/example/repo') {
+  const profile = fixtureProfile(repository);
   commit(run, root, '.agentic-os.json', `${JSON.stringify(profile, null, 2)}\n`, 'profile');
   ensureRepositoryTrust(root, profile, { allowCreate: true });
 }
 
-function fixtureProfile() {
+function fixtureProfile(repository = 'github.com/example/repo') {
   return createRepositoryProfile({
-    repository: 'local:fixture',
+    repository,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
   });
@@ -107,7 +110,7 @@ test('unknown commands fail argument grammar before repository and trust access'
   });
   assert.equal(releaseCommonHelp.status, 0, releaseCommonHelp.stderr);
   assert.match(releaseCommonHelp.stdout, /agentic-os release-common/u);
-  assert.match(releaseCommonHelp.stdout, /release-common complete --ref=<lane>[\s\S]*--bundle=<json>[\s\S]*--stopped/u);
+  assert.match(releaseCommonHelp.stdout, /complete-adlc --apply --ref=<lane> --stopped[\s\S]*Default binds the published head and selects merge, sync, cleanup[\s\S]*explicit --expected-head\/--effects overrides/u);
   assert.equal(releaseCommonHelp.stderr, '');
   const releaseCommonInvalid = spawnSync(process.execPath, [CLI, 'release-common', 'typo'], {
     cwd: outside, encoding: 'utf8', env: { ...process.env },
@@ -389,7 +392,7 @@ test('a held clone-wide start lock refuses before branch or worktree mutation', 
   assert.equal(existsSync(lock), true, 'a refused contender must not remove another holder lock');
 });
 
-test('duplicate lane identity refuses after START refreshes the protected tracking ref', (t) => {
+test('unbound duplicate lane refuses after START refreshes the protected tracking ref', (t) => {
   const { parent, root, run } = fixture(t);
   const bare = join(parent, 'remote.git');
   git(['init', '--quiet', '--bare', bare], { cwd: parent });
@@ -408,7 +411,7 @@ test('duplicate lane identity refuses after START refreshes the protected tracki
     '--device=test-device'], { cwd: root, encoding: 'utf8' });
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /blocked-lane-already-exists/u);
+  assert.match(result.stderr, /blocked-admission-existing-identity/u);
   assert.equal(run(['rev-parse', 'refs/remotes/origin/main']), advanced,
     'START must refresh the protected ref before refusing duplicate lane identity');
   assert.equal(run(['--git-dir', bare, 'rev-parse', 'refs/heads/main']), advanced);
@@ -440,4 +443,71 @@ test('canonical sync apply rejects an anchored canonical profile disappearance',
   assert.equal(result.status, 1);
   assert.match(result.stderr, /blocked-repository-trust-conflict/u);
   assert.equal(run(['for-each-ref', '--format=%(refname) %(objectname)']), before);
+});
+
+test('checkout names follow repository identity and START admits canonical checkouts only', async (t) => {
+  const slug = 'agentic-design-system';
+  const profile = fixtureProfile(`github.com/example/${slug}`);
+  for (const [directory, mode, role] of [
+    [slug, 'canonical', undefined],
+    [`${slug}-geostack-prd-scratch`, 'scratch', 'geostack-prd-scratch'],
+    [`${slug}--candidate-runtime`, 'auxiliary', 'candidate-runtime'],
+    [`${slug}-public`, 'mismatch', undefined],
+    [`${slug}-private-archive`, 'mismatch', undefined],
+  ]) {
+    await t.test(`${directory} is ${mode}`, async (child) => {
+      const { root } = fixture(child, { directory, repository: profile.repository });
+      const location = repositoryCheckoutLocation(root, profile);
+      assert.equal(location.mode, mode);
+      assert.equal(location.role, role);
+      if (mode === 'canonical') {
+        assert.equal(assertStartCheckout(root, profile).startAllowed, true);
+        return;
+      }
+      assert.equal(location.startAllowed, false);
+      const reason = mode === 'mismatch'
+        ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout';
+      assert.throws(() => assertStartCheckout(root, profile), (error) => {
+        assert.equal(error.reason, reason);
+        return true;
+      });
+      let fetched = false;
+      await assert.rejects(cmdStart(root, ['scope', '--write=base.txt'], {}, profile, {
+        out() {}, err() {}, enforceCheckoutName: true,
+        remoteName() { fetched = true; return 'origin'; },
+      }), (error) => error.reason === reason);
+      assert.equal(fetched, false, 'START must refuse before remote effects');
+    });
+  }
+  const archiveSlug = `${slug}-private-archive`;
+  const archive = fixture(t, {
+    directory: archiveSlug, repository: `github.com/example/${archiveSlug}`,
+  });
+  const archiveProfile = fixtureProfile(`github.com/example/${archiveSlug}`);
+  assert.equal(repositoryCheckoutLocation(archive.root, archiveProfile).mode, 'archive');
+  assert.throws(() => assertStartCheckout(archive.root, archiveProfile),
+    (error) => error.reason === 'blocked-private-archive');
+});
+
+test('doctor reports checkout naming mismatches and registered worktrees are exempt', (t) => {
+  const slug = 'agentic-design-system';
+  const profile = fixtureProfile(`github.com/example/${slug}`);
+  const mismatch = fixture(t, {
+    directory: `${slug}-public`, repository: profile.repository,
+  });
+  const result = doctor(mismatch.root, mismatch.support);
+  assert.match(result.stdout,
+    /FAIL checkout-name\s+checkout is named agentic-design-system-public; expected agentic-design-system/u);
+
+  const scratch = fixture(t, {
+    directory: `${slug}-geostack-prd-scratch`, repository: profile.repository,
+  });
+  const scratchResult = doctor(scratch.root, scratch.support);
+  assert.match(scratchResult.stdout,
+    /FAIL\s+checkout-name\s+independent scratch clone for agentic-design-system; START requires the primary canonical checkout/u);
+
+  const canonical = fixture(t, { directory: slug, repository: profile.repository });
+  const worktree = join(canonical.parent, 'lane-device--naming');
+  canonical.run(['worktree', 'add', '--quiet', '--detach', worktree, 'HEAD']);
+  assert.equal(repositoryCheckoutLocation(worktree, profile).mode, 'worktree');
 });

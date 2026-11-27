@@ -10,8 +10,10 @@ import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
 import { git } from '../src/git.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { put } from '../src/lane-records.mjs';
-import { createRepositoryProfile } from '../src/governance.mjs';
+import { createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
+import { removeInactiveProgressiveCompletionTarget } from '../src/cleanup.mjs';
 import {
+  resolveProgressiveCleanupRequest,
   resolveReleaseCommonCleanupRequest,
   runProgressiveCompletion,
   runReleaseCommonCleanup,
@@ -226,6 +228,14 @@ function retireEmptyActive(subject) {
   });
 }
 
+function exactReservationRelease(subject, overrides = {}) {
+  const [mode, type, oid] = git(['ls-tree', '--format=%(objectmode) %(objecttype) %(objectname)', subject.base, '--', 'base.txt'], { cwd: subject.root }).split(' ');
+  const entry = { mode, type, oid }, body = { schema: 'agentic-os/reservation-path-release/v1', path: 'base.txt',
+    laneHead: subject.base, protectedHead: subject.base, lanePathEntry: entry, protectedPathEntry: { ...entry }, bytesDiffer: false, ...overrides };
+  const { digest: _ignored, ...unsigned } = body;
+  return { ...body, digest: governanceDigest(unsigned) };
+}
+
 test('watch reports changed review progress and succeeds on merge', async () => {
   const timer = clock();
   const states = ['OPEN', 'OPEN', 'MERGED'];
@@ -346,6 +356,53 @@ test('retire-empty-active accepts a recorded head that exactly equals its admitt
   assert.equal(existsSync(subject.lane), false);
 });
 
+test('retire-empty-active accepts only unchanged, exact handoff releases and records their digest', t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = result.stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line))
+    .find(value => value.schema === 'agentic-os/empty-active-lane-retirement-receipt/v1');
+  assert.equal(receipt.reservationReleaseDigest, governanceDigest([evidence]));
+});
+
+for (const invalid of [{ bytesDiffer: true }, { path: '../base.txt' }]) test(`retire-empty-active rejects invalid release evidence ${JSON.stringify(invalid)}`, t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject, invalid);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 1); assert.match(result.stderr, /blocked-empty-active-lane-retirement-handoff/u);
+  assert.equal(existsSync(subject.lane), true);
+});
+
+test('retire-empty-active ignores an unmounted stale reservation when releasing unchanged paths', t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject);
+  put({ ref: 'agent/test-device/other', device: 'test-device', scope: 'other', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: join(dirname(subject.lane), 'other'), pr: null, createdAt: new Date(0).toISOString(), writePaths: ['base.txt'] }, subject.root);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(subject.lane), false);
+});
+
+test('retire-empty-active refuses a handoff path still reserved by another mounted lane', t => {
+  const subject = emptyActiveFixture(t), evidence = exactReservationRelease(subject), otherRef = 'agent/test-device/other', otherLane = join(dirname(subject.lane), 'other');
+  git(['worktree', 'add', '--quiet', '-b', otherRef, otherLane, 'main'], { cwd: subject.root });
+  put({ ref: otherRef, device: 'test-device', scope: 'other', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: otherLane, pr: null, createdAt: new Date(0).toISOString(), writePaths: ['base.txt'] }, subject.root);
+  put({ ref: subject.ref, device: 'test-device', scope: 'empty-active', state: 'active', base: 'refs/remotes/origin/main',
+    baseSha: subject.base, worktree: subject.lane, pr: null, createdAt: new Date(0).toISOString(),
+    writePaths: ['docs/example.md'], handoff: { reservationPathReleases: [evidence] } }, subject.root);
+  const result = retireEmptyActive(subject);
+  assert.equal(result.status, 1); assert.match(result.stderr, /blocked-empty-active-lane-retirement-handoff/u);
+  assert.equal(existsSync(subject.lane), true);
+});
+
 for (const mutation of ['candidate', 'dirty']) test(`retire-empty-active refuses a ${mutation} lane without cleanup`, (t) => {
   const subject = emptyActiveFixture(t);
   if (mutation === 'candidate') {
@@ -405,6 +462,17 @@ test('cleanup request requires --stopped when a bundle is supplied', () => {
   assert.throws(() => resolveReleaseCommonCleanupRequest(['--ref=agent/test', '--bundle=/tmp/bundle.json']),
     /authenticated cleanup requires --stopped/u);
   assert.deepEqual(resolveReleaseCommonCleanupRequest(['--ref=agent/test']).bundlePath, null);
+});
+
+test('progressive cleanup request requires explicit stopped authorization', () => {
+  assert.throws(() => resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes', '--cleanup']),
+    /--cleanup requires --stopped/u);
+  assert.throws(() => resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes', '--stopped']),
+    /--stopped is only valid together with --cleanup/u);
+  assert.deepEqual(resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes']),
+    { cleanup: false, stopped: false });
+  assert.deepEqual(resolveProgressiveCleanupRequest(['--worktrees=/tmp/lanes', '--cleanup', '--stopped']),
+    { cleanup: true, stopped: true });
 });
 
 test('release-common cleanup plans and applies the exact bundle in one run', async (t) => {
@@ -515,7 +583,7 @@ test('progressive completion closes serially, retains pending and detached work,
       rows = rows.filter(row => row.branch !== ref); return 0;
     } };
   assert.equal(await runProgressiveCompletion(options), 1);
-  assert.deepEqual(events.filter(e => e.event === 'worktree').map(e => e.status), ['source_complete', 'waiting', 'source_complete', 'blocked']);
+  assert.deepEqual(events.filter(e => e.event === 'worktree').map(e => e.status), ['complete', 'waiting', 'complete', 'blocked']);
   assert.equal(events.at(-1).completed, 2);
   assert.equal(await runProgressiveCompletion(options), 1);
   assert.deepEqual(calls, ['agent/test-device/a', 'agent/test-device/b', 'agent/test-device/c', 'agent/test-device/b']);
@@ -575,8 +643,159 @@ test('progressive completion does not count deploy-bound source closeout as end-
   assert.equal(events.at(-1).deliveryPending, 1);
   assert.equal(events.at(-1).schema, 'agentic-os/progressive-completion/v2');
   assert.deepEqual(events.at(-1).nextActions, [{ path: join(directory, 'delivery'), ref,
-    adlcState: 'delivery_pending', completionScope: 'delivery-bound', id: 'deploy-workflow',
+    adlcState: 'delivery_pending', completionScope: 'delivery-bound', residueDisposition: null, id: 'deploy-workflow',
     owner: 'product-owner', command: 'Follow guides/DEPLOY-WORKFLOW.md.' }]);
+});
+
+test('progressive completion summary separates stale cleanup debt from deliberate retention', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const events = [];
+  const rows = [
+    { path: join(directory, 'stale'), branch: 'agent/test-device/stale', head: 'a'.repeat(40) },
+    { path: join(directory, 'retained'), branch: 'agent/test-device/retained', head: 'b'.repeat(40) },
+  ];
+  for (const row of rows) mkdirSync(row.path);
+  const closeouts = {
+    'agent/test-device/stale': {
+      missionState: 'source_complete',
+      sourceState: 'source_complete',
+      adlcState: 'cleanup_pending',
+      retentionState: 'cleanup-pending',
+      residueDisposition: 'stale-mounted',
+      cleanupSatisfied: false,
+      completionScope: 'source-only',
+      nextAction: { id: 'workspace-cleanup', owner: 'cleanup-operator', command: 'agentic-os cleanup auto --ref=agent/test-device/stale' },
+    },
+    'agent/test-device/retained': {
+      missionState: 'source_complete',
+      sourceState: 'source_complete',
+      adlcState: 'cleanup_pending',
+      retentionState: 'retained',
+      residueDisposition: 'deliberate-retained',
+      cleanupSatisfied: false,
+      completionScope: 'source-only',
+      nextAction: { id: 'workspace-cleanup', owner: 'cleanup-operator', command: 'Stop writers and apply the retained policy.' },
+    },
+  };
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: s.root, branch: 'main', head: 'c'.repeat(40) }, ...rows],
+    record: ref => ({ state: 'published', head: rows.find(row => row.branch === ref).head, worktree: rows.find(row => row.branch === ref).path }),
+    complete: async () => 0,
+    status: (_root, ref) => ({ closeout: closeouts[ref] }),
+    out: line => events.push(JSON.parse(line)) });
+  assert.equal(code, 2);
+  assert.deepEqual(events.slice(0, 2).map(event => event.residueDisposition).sort(), ['deliberate-retained', 'stale-mounted']);
+  assert.equal(events.at(-1).cleanupPending, 1);
+  assert.equal(events.at(-1).deliberateRetained, 1);
+  assert.deepEqual(events.at(-1).nextActions.map(event => event.residueDisposition).sort(), ['deliberate-retained', 'stale-mounted']);
+});
+
+test('progressive cleanup removes one inactive exact directory after a selected-zero pass', async t => {
+  const s = completeFixture(t);
+  const parent = mkdtempSync(join(tmpdir(), 'agentic-os-progressive-cleanup-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const target = realpathSync(parent);
+  const inactive = join(target, 'inactive');
+  mkdirSync(inactive);
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory: inactive,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: (cwd) => cwd === s.root ? [{ path: s.root, branch: 'main', head: git(['rev-parse', 'HEAD'], { cwd: s.root }) }] : assert.fail('unexpected nested inventory'),
+    out: line => events.push(JSON.parse(line)),
+    cleanup: { cleanup: true, stopped: true },
+    complete: async () => assert.fail('no worktrees should be selected') });
+  assert.equal(code, 0);
+  assert.equal(existsSync(inactive), false);
+  assert.equal(events.at(-1).event, 'cleanup');
+  assert.equal(events.at(-1).status, 'removed');
+  assert.equal(events.at(-1).mode, 'empty-directory');
+});
+
+test('progressive cleanup preserves non-empty directories and nested clones', async t => {
+  const s = completeFixture(t);
+  const nested = join(dirname(s.root), 'cleanup-clone');
+  git(['clone', '--quiet', s.root, nested], { cwd: dirname(s.root) });
+  t.after(() => rmSync(nested, { recursive: true, force: true }));
+  const cloneRoot = realpathSync(nested);
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory: cloneRoot,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: cwd => cwd === s.root
+      ? [{ path: s.root, branch: 'main', head: git(['rev-parse', 'HEAD'], { cwd: s.root }) }]
+      : assert.fail(`unexpected inventory ${cwd}`),
+    out: line => events.push(JSON.parse(line)), cleanup: { cleanup: true, stopped: true },
+    complete: async () => assert.fail('no worktrees should be selected') });
+  assert.equal(code, 2);
+  assert.equal(events.at(-1).event, 'cleanup');
+  assert.equal(events.at(-1).status, 'deferred');
+  assert.equal(events.at(-1).reason, 'directory-not-empty');
+  assert.equal(existsSync(cloneRoot), true);
+  assert.equal(git(['rev-parse', 'HEAD'], { cwd: cloneRoot }), git(['rev-parse', 'HEAD'], { cwd: s.root }));
+});
+
+test('progressive cleanup refuses canonical roots and their descendants', t => {
+  const s = completeFixture(t);
+  assert.throws(() => removeInactiveProgressiveCompletionTarget({
+    root: s.root, directory: s.root,
+  }), /canonical repository and every ancestor or descendant/u);
+  const child = join(s.root, 'empty-child');
+  mkdirSync(child);
+  t.after(() => rmSync(child, { recursive: true, force: true }));
+  assert.throws(() => removeInactiveProgressiveCompletionTarget({
+    root: s.root, directory: realpathSync(child),
+  }), /canonical repository and every ancestor or descendant/u);
+  assert.equal(existsSync(child), true);
+});
+
+test('progressive cleanup defers while selected worktrees remain', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const ref = 'agent/test-device/published';
+  const events = [];
+  const code = await runProgressiveCompletion({ root: s.root, directory,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => [{ path: join(directory, 'published'), branch: ref, head }],
+    record: () => ({ state: 'published', head, worktree: join(directory, 'published') }),
+    complete: async () => 0,
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'complete', completionScope: 'repository-only' } }),
+    out: line => events.push(JSON.parse(line)),
+    cleanup: { cleanup: true, stopped: true } });
+  assert.equal(code, 2);
+  assert.equal(events.at(-1).event, 'cleanup');
+  assert.equal(events.at(-1).status, 'deferred');
+  assert.equal(events.at(-1).reason, 'selected-worktrees-remain');
+});
+
+test('progressive completion infers the parent directory when selecting one exact lane', async t => {
+  const s = completeFixture(t), directory = realpathSync(join(s.root, '..'));
+  const head = git(['rev-parse', 'HEAD'], { cwd: s.lane });
+  const selectedRef = 'agent/test-device/selected', otherRef = 'agent/test-device/other';
+  const rows = [selectedRef, otherRef].map((branch, index) => ({
+    path: join(directory, `lane-${index}`), branch, head,
+  }));
+  const calls = [], events = [];
+  const code = await runProgressiveCompletion({ root: s.root, ref: selectedRef,
+    policy: { protectedBranch: 'main' }, profile: profile(),
+    inventory: () => rows,
+    record: branch => ({ state: 'published', head, pr: 41, worktree: rows.find(row => row.branch === branch)?.path }),
+    complete: async branch => { calls.push(branch); return 0; },
+    status: () => ({ closeout: { missionState: 'source_complete', adlcState: 'complete',
+      completionScope: 'repository-only' } }),
+    out: line => events.push(JSON.parse(line)),
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [selectedRef]);
+  assert.equal(events.at(-1).selected, 1);
+  assert.equal(events.at(-1).completed, 1);
+});
+
+test('progressive completion rejects a ref outside the exact worktree inventory', async t => {
+  const s = completeFixture(t);
+  await assert.rejects(runProgressiveCompletion({ root: s.root, ref: 'agent/test-device/missing',
+    policy: { protectedBranch: 'main' }, profile: profile(), inventory: () => [],
+    complete: async () => assert.fail('no lane should be selected') }),
+  /ref must identify one registered worktree directly under --worktrees/u);
 });
 
 test('progressive completion retains docs delivery-scope assessment as pending', async t => {
@@ -672,8 +891,11 @@ test('progressive completion refuses changed identity and false completion; budg
 });
 
 test('progressive argument selection is exclusive and a pending review needs only one observation', async () => {
-  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes']), null);
-  for (const extra of ['--ref=agent/test/x', '--bundle=/tmp/bundle', '--stopped'])
+  for (const args of [['complete', '--worktrees=/tmp/lanes'], ['complete-adlc', '--ref=agent/test/lane']]) assert.equal(validateCommandArguments('release-common', args), null);
+  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--ref=agent/test/lane']), null);
+  assert.equal(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--cleanup', '--stopped']), null);
+  assert.match(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', '--cleanup']) ?? '', /requires --stopped/u);
+  for (const extra of ['--bundle=/tmp/bundle', '--stopped'])
     assert.notEqual(validateCommandArguments('release-common', ['complete', '--worktrees=/tmp/lanes', extra]), null);
   const c = clock(); let reads = 0;
   const result = await watchReleaseCommonReview({ ref: 'agent/test/lane', head: 'a'.repeat(40) }, {

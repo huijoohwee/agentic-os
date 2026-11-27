@@ -103,32 +103,30 @@ function exactStatus(result, expected, label) {
 function rule(value) {
   const source = object(value, 'GitHub transition rule'), type = text(source.type,
     'GitHub transition rule type');
-  return { type, parameters: type === 'update'
-    ? source.parameters ?? { update_allows_fetch_and_merge: false }
-    : source.parameters ?? null };
+  return { type, parameters: type === 'update' ? source.parameters ?? { update_allows_fetch_and_merge: false } : source.parameters ?? null };
 }
 function bypass(value) {
   const source = object(value, 'GitHub transition bypass actor');
-  return `${text(source.actor_type, 'bypass actor type')}:${id(source.actor_id,
-    'bypass actor id')}:${text(source.bypass_mode, 'bypass mode')}`;
+  return `${text(source.actor_type, 'bypass actor type')}:${id(source.actor_id, 'bypass actor id')}:${text(source.bypass_mode, 'bypass mode')}`;
 }
 async function rulesProjection(call, repo, ref, allowRedactedBypass = false, allowClassicOnly = false) {
-  const short = ref.slice('refs/heads/'.length), page = await call('GET', `${repo.path}/rules/branches/${encodeURIComponent(short)}?per_page=100`), rows = exactStatus(page, [200], 'GitHub transition rules');
+  const short = ref.slice('refs/heads/'.length), page = await call('GET', `${repo.path}/rules/branches/${encodeURIComponent(short)}?per_page=100`);
+  if (allowClassicOnly && page.status === 403
+    && page.value?.message === 'Upgrade to GitHub Pro or make this repository public to enable this feature.'
+    && String(page.value?.documentation_url ?? '').includes('/rest/repos/rules#get-rules-for-a-branch')) {
+    const payload = { schema: 'agentic-os/github-protection-projection/v1', repository: repo.repository, ref, rulesets: [] }; return { projection: { ...payload, projectionDigest: governanceDigest(payload) }, versions: [] };
+  }
+  const rows = exactStatus(page, [200], 'GitHub transition rules');
   if (!Array.isArray(rows) || page.headers?.get?.('link')?.includes('rel="next"')) fail('GitHub transition rules are incomplete'); if (rows.length === 0) {
-    if (!allowClassicOnly) fail('GitHub transition rules are incomplete');
-    const payload = { schema: 'agentic-os/github-protection-projection/v1', repository: repo.repository, ref, rulesets: [] };
+    if (!allowClassicOnly) fail('GitHub transition rules are incomplete'); const payload = { schema: 'agentic-os/github-protection-projection/v1', repository: repo.repository, ref, rulesets: [] };
     return { projection: { ...payload, projectionDigest: governanceDigest(payload) }, versions: [] };
   }
   const ids = [...new Set(rows.map((entry) => id(entry?.ruleset_id, 'ruleset id')))];
   const rulesets = [], versions = [];
   for (const rulesetId of ids) {
-    const detail = object(exactStatus(await call('GET',
-      `${repo.path}/rulesets/${rulesetId}?includes_parents=true`),
-      [200], 'GitHub transition ruleset'), 'GitHub transition ruleset');
+    const detail = object(exactStatus(await call('GET', `${repo.path}/rulesets/${rulesetId}?includes_parents=true`), [200], 'GitHub transition ruleset'), 'GitHub transition ruleset');
     const rules = Array.isArray(detail.rules) ? detail.rules.map(rule) : [];
-    const observed = rows.filter((entry) => String(entry?.ruleset_id) === rulesetId)
-      .map(rule)
-      .sort((left, right) => String(left.type).localeCompare(String(right.type)));
+    const observed = rows.filter((entry) => String(entry?.ruleset_id) === rulesetId).map(rule).sort((left, right) => String(left.type).localeCompare(String(right.type)));
     const normalized = rules.sort((left, right) => String(left.type).localeCompare(String(right.type)));
     const bypassActors = Array.isArray(detail.bypass_actors)
       ? [...new Set(detail.bypass_actors.map(bypass))].sort()
@@ -138,11 +136,8 @@ async function rulesProjection(call, repo, ref, allowRedactedBypass = false, all
       || bypassActors === null
       || canonicalJson(observed) !== canonicalJson(normalized))
       fail('GitHub transition ruleset changed while observed');
-    rulesets.push({ id: rulesetId, enforcement: 'active', rules: normalized,
-      bypassActors });
-    versions.push({ id: rulesetId,
-      createdAt: instant(detail.created_at, 'ruleset created time'),
-      updatedAt: instant(detail.updated_at, 'ruleset updated time') });
+    rulesets.push({ id: rulesetId, enforcement: 'active', rules: normalized, bypassActors });
+    versions.push({ id: rulesetId, createdAt: instant(detail.created_at, 'ruleset created time'), updatedAt: instant(detail.updated_at, 'ruleset updated time') });
   }
   const projection = createGitHubProtectionProjection({ repository: repo.repository, ref,
     rulesets: rulesets.sort((left, right) => left.id.localeCompare(right.id)) });
@@ -336,8 +331,8 @@ export function createGitHubTransitionRestProvider({ repository: identity,
           || disposition.policyDigest !== governanceDigest(adoptedPolicy)
           || disposition.state.policyRepository !== repo.repository || disposition.state.policyRevision !== workflowRevision
           || observedProof.reviewLocator !== disposition.adoption.reviewLocator
-          || observedProof.mergeRevision !== disposition.adoption.merge
-          || observedProof.candidateHeadRevision !== (disposition.adoption.successorHead ?? disposition.adoption.targetHead)
+          || observedProof.candidateBranch !== (disposition.adoption.reviewedRef ?? disposition.adoption.successorRef ?? disposition.adoption.targetRef) || observedProof.mergeRevision !== disposition.adoption.merge
+          || observedProof.candidateHeadRevision !== (disposition.adoption.headRevision ?? disposition.adoption.successorHead ?? disposition.adoption.targetHead)
           || !same(disposition.review.checks.map(check => [String(check.checkId), check.name]).sort(),
             verifiedChecks.map(check => [check.checkRunId, check.context]).sort()))
           fail('record-only retirement does not bind the adopted provider integration');
@@ -350,7 +345,7 @@ export function createGitHubTransitionRestProvider({ repository: identity,
           preservationReceiptDigest: disposition.receiptDigest, adoptionDigest: disposition.adoptionDigest,
           preservationPolicyRevision: workflowRevision,
           physicalCleanupPerformed: false,
-          [disposition.adoption.targetHead ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven']: false } : {}) };
+          [disposition.disposition === 'current-quarantine-retained' || disposition.disposition === 'current-quarantine-discard-acknowledged' ? 'historicalQuarantineAuthorityProven' : 'historicalSuccessionAuthorityProven']: false } : {}) };
       const proofPayload = { schema: 'agentic-os/github-retire-provider-proof/v1', ...payload };
       const proof = freeze({ ...proofPayload, proofDigest: governanceDigest(proofPayload) });
       if (expectedProof !== null && !same(proof, expectedProof))

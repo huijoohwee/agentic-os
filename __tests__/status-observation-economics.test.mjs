@@ -75,14 +75,14 @@ test('status enumerates registrations once and counts history without materializ
   assert.equal(counts.length, 2);
   assert.ok(counts.every(args => args.includes('--count')));
   assert.match(result.stdout, /agent\/test\/one/u);
-  assert.match(result.stdout, /agent\/test\/one\s+active\s+3\s/u);
+  assert.match(result.stdout, /agent\/test\/one\s+unregistered\s+3\s/u);
   assert.match(result.stdout, /1 owned untracked/u);
   t.diagnostic('2 lanes use 1 registry read instead of 3; history output is one number per lane.');
 
   execFileSync(f.realGit, ['commit', '--quiet', '--allow-empty', '--message', 'new state'], { cwd: first });
   result = f.status();
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /agent\/test\/one\s+active\s+4\s/u);
+  assert.match(result.stdout, /agent\/test\/one\s+unregistered\s+4\s/u);
   assert.equal(readFileSync(join(first, 'untracked.txt'), 'utf8'), 'keep\n');
 });
 

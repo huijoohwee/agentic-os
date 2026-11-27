@@ -19,8 +19,8 @@ function fixture(t) {
 function commit(run, message) {
   run(['add', '.']); run(['commit', '--quiet', '-m', message]); return run(['rev-parse', 'HEAD']);
 }
-function sync(root) {
-  const plan = planCanonicalSync({ cwd: root, branch: 'main', targetRef: 'refs/remotes/origin/main' });
+function sync(root, fastForwardClean = false) {
+  const plan = planCanonicalSync({ cwd: root, branch: 'main', targetRef: 'refs/remotes/origin/main', fastForwardClean, preserveUntracked: fastForwardClean });
   return applyCanonicalSync(plan, { cwd: root, authorization: plan.authorization,
     exclusive: plan.exclusiveAuthorization });
 }
@@ -59,7 +59,7 @@ test('changed files use unchanged target-tree attributes during delta staging', 
   const target = commit(run, 'target'); run(['update-ref', 'refs/remotes/origin/main', target]);
   run(['reset', '--hard', local]); writeFileSync(join(root, 'filtered.txt'), 'before\n');
   const attributesInode = statSync(join(root, '.gitattributes')).ino;
-  const receipt = sync(root);
+  const receipt = sync(root, true);
   assert.equal(readFileSync(join(root, 'filtered.txt'), 'utf8'), 'smudged:after\n');
   assert.equal(statSync(join(root, '.gitattributes')).ino, attributesInode);
   assert.equal(receipt.quarantineEntryCount, 1);
@@ -99,4 +99,37 @@ test('normalization-hidden drift in an untouched entry during staging prevents s
     && error.detail.cause === 'blocked-postcondition');
   assert.equal(readFileSync(join(root, 'untouched.txt'), 'utf8'), 'keep\r\n');
   assert.equal(run(['diff', '--quiet', '--', 'untouched.txt'], { allowFail: true }), '');
+});
+
+test('clean native fast-forward keeps user files and needs no source copy', t => {
+  const { root, run } = fixture(t);
+  writeFileSync(join(root, '.gitignore'), 'runtime.log\n');
+  writeFileSync(join(root, 'version.txt'), 'before\n'); const local = commit(run, 'base');
+  writeFileSync(join(root, 'version.txt'), 'after\n'); const target = commit(run, 'target');
+  run(['update-ref', 'refs/remotes/origin/main', target]); run(['reset', '--hard', local]);
+  for (const name of ['runtime.log', 'notes.txt']) writeFileSync(join(root, name), 'user-owned\n');
+  const inodes = ['runtime.log', 'notes.txt'].map(name => statSync(join(root, name)).ino);
+  const receipt = sync(root, true);
+  assert.equal(receipt.mode, 'clean-fast-forward'); assert.equal(receipt.copiedBytes, 0);
+  assert.equal(receipt.quarantineEntryCount, 0); assert.equal(receipt.quarantinePath, undefined);
+  assert.equal(run(['rev-parse', 'HEAD']), target); assert.equal(receipt.recoveryCommit, local);
+  assert.equal(readFileSync(join(root, 'version.txt'), 'utf8'), 'after\n');
+  for (const [i, name] of ['runtime.log', 'notes.txt'].entries()) {
+    assert.equal(statSync(join(root, name)).ino, inodes[i]);
+    assert.equal(readFileSync(join(root, name), 'utf8'), 'user-owned\n');
+  }
+});
+test('fast-forward selection and source must still match the authorized plan', t => {
+  const { root, run } = fixture(t);
+  writeFileSync(join(root, 'version.txt'), 'before\n'); const local = commit(run, 'base');
+  writeFileSync(join(root, 'version.txt'), 'after\n'); const target = commit(run, 'target');
+  run(['update-ref', 'refs/remotes/origin/main', target]); run(['reset', '--hard', local]);
+  const plan = planCanonicalSync({ cwd: root, branch: 'main', targetRef: 'refs/remotes/origin/main', fastForwardClean: true });
+  const apply = value => applyCanonicalSync(value, { cwd: root, authorization: plan.authorization, exclusive: plan.exclusiveAuthorization });
+  const { fastForwardClean, ...tampered } = plan;
+  assert.throws(() => apply(tampered), error => error.reason === 'blocked-plan-digest-mismatch');
+  writeFileSync(join(root, 'version.txt'), 'keep my edits\n');
+  assert.throws(() => apply(plan), error => error.reason === 'blocked-plan-drift');
+  assert.equal(run(['rev-parse', 'HEAD']), local);
+  assert.equal(readFileSync(join(root, 'version.txt'), 'utf8'), 'keep my edits\n');
 });

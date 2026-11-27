@@ -67,12 +67,12 @@ export function collectWorkflowValue(root, repository, value, inputPath = join(r
   if (Buffer.byteLength(json(value)) > 32000) fail('manifest-budget');
   return collectManifest(root, repository, value, resolve(inputPath));
 }
-function collectManifest(root, repository, manifest, inputPath) {
+function collectManifest(root, repository, manifest, inputPath, draftText = null) {
   if (manifest.source?.repository !== repository) fail('repository-binding');
   if (!/^[a-f0-9]{40}$/u.test(manifest.source?.revision ?? '') || !/^[a-f0-9]{40}$/u.test(manifest.source?.tree ?? '')) fail('source-binding');
   if (observeGit(['cat-file', '-t', manifest.source.revision], { cwd: root }) !== 'commit') fail('source-binding');
   if (observeGit(['rev-parse', '--verify', `${manifest.source.revision}^{tree}`], { cwd: root }) !== manifest.source.tree) fail('tree-binding');
-  if (manifest.schema === WORKFLOW_GROUP) return collectGroup(root, repository, manifest, inputPath);
+  if (manifest.schema === WORKFLOW_GROUP) return collectGroup(root, repository, manifest, inputPath, draftText);
   if (JSON.stringify(manifest.expected) !== JSON.stringify(WORKFLOW_PHASES)) fail('phase-coverage');
   const receipts = new Map();
   workflowObservation(manifest, file => {
@@ -124,9 +124,9 @@ function collectManifest(root, repository, manifest, inputPath) {
   } catch (caught) { error = caught; }
   return finishOperationLock(lock, { label: 'workflow collection', result, error });
 }
-export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution }) {
+export function startWorkflow(root, repository, { revision, planningPath, worktreeId, execution, releaseTargets = [], planSnapshot, allocation }) {
   if (!/^[a-f0-9]{40}$/u.test(revision) || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(worktreeId)) fail('start-binding');
-  const planning = validateWorkflowPlanning(root, repository, { revision, planningPath });
+  const { planning, content } = planSnapshot ? validatePlanning(root, repository, planSnapshot.planning, true, planSnapshot.content) : validatePlanning(root, repository, { repository, revision, path: planningPath }, false);
   const source = { repository, revision, tree: observeGit(['rev-parse', `${revision}^{tree}`], { cwd: root }) };
   const id = `workflow-${hash(json({ source, planning, worktreeId })).slice(0, 32)}`;
   const inputPath = join(root, 'workflow-input.json'); // Resolution base only; never written.
@@ -134,7 +134,8 @@ export function startWorkflow(root, repository, { revision, planningPath, worktr
     id, source, context: { workflowId: id, worktreeId }, expected: WORKFLOW_PHASES, phases: [] }, inputPath);
   return collectManifest(root, repository, { schema: WORKFLOW_GROUP, id, source, planning,
     ...(execution === undefined ? {} : { execution }),
-    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets: [worktreeId] }, inputPath);
+    ...(allocation === undefined ? {} : { allocations: [allocation] }),
+    boundary: 'start', members: [{ id: worktreeId, file: child.manifest, digest: child.digest }], releaseTargets }, inputPath, content);
 }
 export function readSelectedWorkflow(root, repository, { input = null, required = false, worktreeId = null, ref = null, navigation = true } = {}) {
   const key = [ref && selectionKey(repository, 'ref', ref), worktreeId && selectionKey(repository, 'member', worktreeId)]
@@ -163,7 +164,8 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
   }
   if (!/^[a-f0-9]{40}$/u.test(manifest.source.revision ?? '')
     || observeGit(['rev-parse', `${manifest.source.revision}^{tree}`], { cwd: root }) !== manifest.source.tree) fail('source-binding');
-  validatePlanning(root, repository, manifest.planning); verifyGroupRelease(manifest, path);
+  if (manifest.planning?.source === 'working-tree' && manifest.planning.snapshotFile !== 'planning.md') fail('planning-binding');
+  validatePlanning(root, repository, manifest.planning, true, manifest.planning?.source === 'working-tree' ? read(join(dirname(path), 'planning.md'), 128000) : null); verifyGroupRelease(manifest, path);
   const load = groupLoader(root, repository);
   workflowGroup(manifest, load, { adviceOnly: true });
   const members = manifest.members.map(ref => {
@@ -182,8 +184,8 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
     return { ref, child, path: loaded.path, read: loaded.read, advice };
   });
   const older = manifest.previous ? load(manifest.previous).manifest : null;
-  validateAllocations(manifest.allocations, members, older?.allocations, root);
   if (older) assertGroupSuccessor(root, manifest, older, manifest.members, load, true);
+  else validateAllocations(manifest.allocations, members, [], root);
   if (key !== 'agentic-os.workflowManifest' && !members.some(row => row.child.context.worktreeId === worktreeId)
     && !manifest.allocations?.some(row => row.ref === ref)) fail('selection-member-binding');
   if ((!owner || key !== 'agentic-os.workflowManifest') && selection(root, key) !== selected || selection(root, ownerKey) !== owner)
@@ -193,11 +195,13 @@ export function readSelectedWorkflow(root, repository, { input = null, required 
 export function assertWorkflowEffect({ root, repository, phase, worktreeId, revision, dirty = false, ref = null, mode = 'effect' }) {
   if (!WORKFLOW_PHASES.includes(phase) || !/^[a-f0-9]{40}$/u.test(revision ?? '')
     || !['effect', 'dependencies'].includes(mode)) fail('effect-binding');
-  const selected = readSelectedWorkflow(root, repository, { worktreeId, ref });
-  const standalone = { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' };
+  const selected = readSelectedWorkflow(root, repository, { worktreeId, ref }),
+    standalone = { status: 'standalone', authority: false, dependencyCoverage: 'undeclared' };
   if (!selected || selected.manifest.execution === undefined) return standalone;
+  const worktreeAllocations = selected.manifest.allocations?.filter(row => row.worktreeId === worktreeId) ?? [];
   const allocation = ref && selected.manifest.allocations?.find(row => row.ref === ref);
   if (allocation?.state === 'released') fail('allocation-released');
+  if (!allocation && worktreeAllocations.length > 0 && worktreeAllocations.every(row => row.state === 'released')) return standalone;
   const member = selected.members.find(row => row.child.source.repository === repository
     && row.child.context.worktreeId === (allocation?.worktreeId ?? worktreeId));
   if (allocation && !member) fail('allocation-member-binding');
@@ -350,27 +354,36 @@ function planningDocument(path, text) {
   const frontmatter = text.slice(4, end);
   return /^doc_type:[\t ]*(?:"PRD-TAD-ADR-MVP-GTM"|'PRD-TAD-ADR-MVP-GTM'|PRD-TAD-ADR-MVP-GTM)[\t ]*$/mu.test(frontmatter);
 }
-function validatePlanning(root, repository, planning, checkDigest = true) {
+function validatePlanning(root, repository, planning, checkDigest = true, snapshotContent = null) {
+  const path = planning?.path;
   if (!planning || planning.repository !== repository || !/^[a-f0-9]{40}$/u.test(planning.revision ?? '')
-    || typeof planning.path !== 'string' || /[\\\x00-\x1f]/u.test(planning.path) || planning.path.startsWith('/')
-    || planning.path.split('/').some(part => !part || part === '..' || part === '.')
-    || checkDigest && !/^[a-f0-9]{64}$/u.test(planning.digest ?? '')) fail('planning-binding');
-  const entry = observeGit(['ls-tree', planning.revision, '--', planning.path], { cwd: root });
-  if (!/^100644 blob [a-f0-9]{40}\t/u.test(entry ?? '')) fail('planning-file');
-  const planned = observeGit(['show', `${planning.revision}:${planning.path}`], { cwd: root });
-  if (Buffer.byteLength(planned) > 128000) fail('planning-budget');
-  if (!planningDocument(planning.path, planned)) fail('planning-binding');
+    || typeof path !== 'string' || /[\\\x00-\x1f]/u.test(path) || path.startsWith('/')
+    || path.split('/').some(part => !part || part === '..' || part === '.')) fail('planning-binding');
+  const tracked = observeGit(['ls-tree', planning.revision, '--', path], { cwd: root });
+  const draft = planning?.source === 'working-tree' || planning?.source === undefined && tracked === '';
+  if (checkDigest && !/^[a-f0-9]{64}$/u.test(planning.digest ?? '') || planning.source !== undefined && planning.source !== 'working-tree'
+    || draft && (planning.source === 'working-tree' ? planning.snapshotFile !== 'planning.md' : planning.snapshotFile !== undefined) || !draft && planning.snapshotFile !== undefined) fail('planning-binding');
+  if (draft ? tracked !== '' : !/^100644 blob [a-f0-9]{40}\t/u.test(tracked ?? '')) fail('planning-file');
+  let file; try { file = draft && snapshotContent === null ? readRegular(root, path, 128000) : null; } catch { fail('planning-file'); }
+  const content = draft ? snapshotContent ?? file.text : null;
+  const planned = draft ? content : observeGit(['show', `${planning.revision}:${path}`], { cwd: root });
+  if (Buffer.byteLength(planned) > 128000 || !planningDocument(path, planned)) fail('planning-binding');
+  if (file && hash(content) !== file.digest) fail('planning-encoding');
   if (checkDigest && hash(planned) !== planning.digest) fail('planning-digest');
-  return { repository, revision: planning.revision, path: planning.path, digest: hash(planned) };
+  return { planning: { repository, revision: planning.revision, path, digest: hash(planned), ...(draft ? { source: 'working-tree', snapshotFile: 'planning.md' } : {}) }, content };
 }
-export function validateWorkflowPlanning(root, repository, { revision, planningPath, digest } = {}) {
-  return validatePlanning(root, repository, { repository, revision, path: planningPath, digest }, digest !== undefined);
-}
+export const validateWorkflowPlanning = (root, repository, { revision, planningPath, digest } = {}) => validatePlanning(root, repository, { repository, revision, path: planningPath, ...(digest === undefined ? {} : { digest }) }, digest !== undefined);
 function validateAllocations(allocations = [], members, previous = [], root) {
   if (!Array.isArray(allocations) || allocations.length > 32) fail('allocation-budget');
   const keys = ['worktreeId', 'ref', 'path', 'baseRevision', 'headRevision', 'writeDigest', 'state', 'operation'];
   const recoveryKeys = ['planDigest', 'priorAllocationHead', 'schema', 'selectedPaths', 'sourceBase', 'sourceHead', 'targetHead'];
+  const allocationExtraKeys = ['previousWriteDigest', 'predecessorRef', 'recoveredFromHead', 'selectedSourceRecovery', 'headReconciliation'];
   const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  const reconciliationValid = (v, b, r, m) => {
+    if (!v || !b || !r || !m || !root || Object.keys(v).sort().join(',') !== 'base,baseSha,planDigest,pr,preservedRef,priorAllocationHead,priorMemberRevision,priorWriteDigest,schema,selectedPaths,targetHead,writeDigest' || v.schema !== 'agentic-os/workflow-published-head-reconciliation/v1' || !/^[a-f0-9]{64}$/u.test(v.planDigest ?? '') || ![v.priorWriteDigest, v.writeDigest].every(x => /^[a-f0-9]{64}$/u.test(x ?? '')) || ![v.priorAllocationHead, v.priorMemberRevision, v.targetHead, v.baseSha].every(x => /^[a-f0-9]{40}$/u.test(x ?? '')) || !Number.isSafeInteger(v.pr) || v.pr < 1 || !/^refs[/]remotes[/][A-Za-z0-9][A-Za-z0-9._-]{0,127}[/]main$/u.test(v.base ?? '') || !/^refs[/]agentic-os[/]recovery[/]published-head[/][a-f0-9]{24}$/u.test(v.preservedRef ?? '') || !Array.isArray(v.selectedPaths) || v.selectedPaths.length < 1 || v.selectedPaths.length > 1024 || v.selectedPaths.some(p => typeof p !== 'string' || p.length < 1 || p.length > 4096 || p.includes(',') || /[\x00-\x1f\x7f]/u.test(p)) || !same(v.selectedPaths, [...new Set(v.selectedPaths)].sort()) || Buffer.byteLength(v.selectedPaths.join(',')) > 64000 || hash(JSON.stringify(v.selectedPaths)) !== v.writeDigest) return false;
+    const successorPending = b.state === 'active' && r.state === 'pending' && b.operation === 'readmit' && r.operation === 'readmit' && b.ref !== r.ref && r.predecessorRef === b.ref && b.previousWriteDigest === undefined && r.previousWriteDigest === b.writeDigest && same(b.headReconciliation, v), alignmentPending = b.state === 'active' && r.state === 'pending' && b.operation === 'readmit' && r.operation === 'readmit' && b.ref === r.ref && b.predecessorRef === r.predecessorRef && b.headRevision !== r.headRevision && b.previousWriteDigest === undefined && r.previousWriteDigest === b.writeDigest && same(b.headReconciliation, v), successorActivated = b.state === 'pending' && r.state === 'active' && b.operation === 'readmit' && r.operation === 'readmit' && b.ref === r.ref && b.predecessorRef === r.predecessorRef && /^[a-f0-9]{64}$/u.test(b.previousWriteDigest ?? '') && r.previousWriteDigest === undefined && same(b.headReconciliation, v), first = b.headReconciliation === undefined, lineage = first ? b.headRevision === v.priorAllocationHead && r.headRevision === v.targetHead : same(b.headReconciliation, v) && observeGit(['merge-base', '--is-ancestor', v.targetHead, b.headRevision], { cwd: root, allowFail: true }) !== null && observeGit(['merge-base', '--is-ancestor', b.headRevision, r.headRevision], { cwd: root, allowFail: true }) !== null, scopeLineage = first ? b.writeDigest === v.priorWriteDigest && r.writeDigest === v.writeDigest : successorPending || alignmentPending ? r.previousWriteDigest === b.writeDigest : r.writeDigest === b.writeDigest;
+    return lineage && scopeLineage && (b.state === r.state && ['active', 'released'].includes(b.state) || b.state === 'active' && r.state === 'released' || successorPending || alignmentPending || successorActivated) && (b.ref === r.ref || successorPending) && b.worktreeId === r.worktreeId && b.path === r.path && b.baseRevision === v.baseSha && r.baseRevision === v.baseSha && b.operation === r.operation && (b.previousWriteDigest === r.previousWriteDigest || successorPending || alignmentPending || successorActivated) && m.child.context.worktreeId === r.worktreeId && m.child.source.revision === r.headRevision && observeGit(['rev-parse', '--verify', v.preservedRef], { cwd: root }) === v.priorAllocationHead && observeGit(['cat-file', '-t', v.priorMemberRevision], { cwd: root }) === 'commit' && observeGit(['merge-base', '--is-ancestor', v.priorAllocationHead, v.priorMemberRevision], { cwd: root, allowFail: true }) !== null && observeGit(['cat-file', '-t', v.targetHead], { cwd: root }) === 'commit' && observeGit(['merge-base', '--is-ancestor', v.targetHead, v.priorAllocationHead], { cwd: root, allowFail: true }) !== null;
+  };
   const recoveryValid = value => value && Object.keys(value).sort().join(',') === recoveryKeys.join(',')
     && value.schema === 'agentic-os/workflow-selected-source-recovery/v1'
     && /^[a-f0-9]{64}$/u.test(value.planDigest ?? '')
@@ -380,71 +393,63 @@ function validateAllocations(allocations = [], members, previous = [], root) {
     && same(value.selectedPaths, [...new Set(value.selectedPaths)].sort());
   const identities = ['worktreeId', 'ref', 'path'], seen = identities.map(() => new Set());
   for (const row of allocations) {
-    if (!row || !keys.every(key => Object.hasOwn(row, key))
-      || Object.keys(row).some(key => !keys.includes(key) && !['previousWriteDigest', 'predecessorRef', 'recoveredFromHead', 'selectedSourceRecovery'].includes(key))
-      || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(row.worktreeId ?? '') || !isLaneRef(row.ref)
-      || typeof row.path !== 'string' || row.path.length > 4096 || /[\x00-\x1f]/u.test(row.path)
-      || !isAbsolute(row.path) || resolve(row.path) !== row.path
-      || ![row.baseRevision, row.headRevision].every(value => /^[a-f0-9]{40}$/u.test(value ?? ''))
-      || !/^[a-f0-9]{64}$/u.test(row.writeDigest ?? '') || !['pending', 'active', 'released'].includes(row.state)
-      || !['create', 'readmit'].includes(row.operation) || Object.hasOwn(row, 'previousWriteDigest') && (row.operation !== 'readmit'
-        || !/^[a-f0-9]{64}$/u.test(row.previousWriteDigest ?? ''))
-      || Object.hasOwn(row, 'predecessorRef') && (row.operation !== 'readmit' || !isLaneRef(row.predecessorRef) || row.predecessorRef === row.ref) || Object.hasOwn(row, 'recoveredFromHead') && (row.operation !== 'readmit' || !/^[a-f0-9]{40}$/u.test(row.recoveredFromHead ?? ''))
+    if (!row || !keys.every(key => Object.hasOwn(row, key)) || Object.keys(row).some(key => !keys.includes(key) && !allocationExtraKeys.includes(key))
+      || !/^[a-zA-Z0-9:._-]{1,128}$/u.test(row.worktreeId ?? '') || !isLaneRef(row.ref) || typeof row.path !== 'string' || row.path.length > 4096 || /[\x00-\x1f]/u.test(row.path)
+      || !isAbsolute(row.path) || resolve(row.path) !== row.path || ![row.baseRevision, row.headRevision].every(value => /^[a-f0-9]{40}$/u.test(value ?? ''))
+      || !/^[a-f0-9]{64}$/u.test(row.writeDigest ?? '') || !['pending', 'active', 'released'].includes(row.state) || !['create', 'readmit'].includes(row.operation)
+      || Object.hasOwn(row, 'previousWriteDigest') && (row.operation !== 'readmit' || !/^[a-f0-9]{64}$/u.test(row.previousWriteDigest ?? ''))
+      || Object.hasOwn(row, 'predecessorRef') && (row.operation !== 'readmit' || !isLaneRef(row.predecessorRef) || row.predecessorRef === row.ref)
+      || Object.hasOwn(row, 'recoveredFromHead') && (row.operation !== 'readmit' || !/^[a-f0-9]{40}$/u.test(row.recoveredFromHead ?? ''))
       || Object.hasOwn(row, 'selectedSourceRecovery') && (row.operation !== 'readmit' || Object.hasOwn(row, 'recoveredFromHead') || !recoveryValid(row.selectedSourceRecovery))
       || row.state === 'released' && !previous.some(before => before.worktreeId === row.worktreeId)) fail('allocation-binding');
-    identities.forEach((key, index) => { if (seen[index].has(row[key])) fail('allocation-duplicate'); seen[index].add(row[key]); });
-    if (row.recoveredFromHead !== undefined) { const before = previous.find(item => item.worktreeId === row.worktreeId), member = members.find(item => item.child.context.worktreeId === row.worktreeId);
+    identities.forEach((key, index) => { if (seen[index].has(row[key])) fail('allocation-duplicate'); seen[index].add(row[key]); }); const before = previous.find(item => item.worktreeId === row.worktreeId);
+    const member = members.find(item => item.child.context.worktreeId === row.worktreeId);
+    if (row.headReconciliation !== undefined && !reconciliationValid(row.headReconciliation, before, row, member)) fail('allocation-head-reconciliation');
+    if (before?.headReconciliation !== undefined && !same(before.headReconciliation, row.headReconciliation)) fail('allocation-head-reconciliation-lineage');
+    if (row.recoveredFromHead !== undefined) {
       if (!root || !before || !member || member.child.source.revision !== row.headRevision || observeGit(['cat-file', '-t', row.recoveredFromHead], { cwd: root }) !== 'commit' || observeGit(['merge-base', '--is-ancestor', row.recoveredFromHead, row.headRevision], { cwd: root, allowFail: true }) === null) fail('allocation-recovery-source');
       if ((before.recoveredFromHead === undefined || before.recoveredFromHead !== row.recoveredFromHead) && !(before.state === 'pending' && before.operation === 'readmit' && row.state === 'active' && row.operation === 'readmit' && before.headRevision === row.recoveredFromHead && before.headRevision !== row.headRevision && before.writeDigest === row.writeDigest && before.previousWriteDigest !== undefined && row.previousWriteDigest === undefined)) fail('allocation-recovery-lineage');
-    } else if (previous.some(before => before.worktreeId === row.worktreeId && before.recoveredFromHead !== undefined)) fail('allocation-recovery-lineage');
-    const before = previous.find(item => item.worktreeId === row.worktreeId);
-    if (row.selectedSourceRecovery !== undefined && (!before
-      || before.selectedSourceRecovery !== undefined && !same(before.selectedSourceRecovery, row.selectedSourceRecovery))) fail('allocation-selected-source-lineage');
+    } else if (before?.recoveredFromHead !== undefined && !(before.state === 'pending' && before.operation === 'readmit' && row.state === 'active' && row.operation === 'readmit' && row.selectedSourceRecovery !== undefined)) fail('allocation-recovery-lineage');
+    if (row.selectedSourceRecovery !== undefined && (!before || before.selectedSourceRecovery !== undefined && !same(before.selectedSourceRecovery, row.selectedSourceRecovery))) fail('allocation-selected-source-lineage');
   }
   for (const before of previous) {
     const after = allocations.find(row => row.worktreeId === before.worktreeId);
-    if (!after || ['worktreeId', 'path', 'baseRevision'].some(key => after[key] !== before[key])
-      || before.state === 'active' && after.state === 'pending' && after.operation !== 'readmit') fail('allocation-lineage');
-    const unchanged = ['worktreeId', 'ref', 'path', 'baseRevision', 'headRevision', 'writeDigest', 'operation', 'previousWriteDigest', 'predecessorRef', 'recoveredFromHead'].every(key => before[key] === after[key])
-      && same(before.selectedSourceRecovery, after.selectedSourceRecovery);
+    if (!after || ['worktreeId', 'path', 'baseRevision'].some(key => after[key] !== before[key]) || before.state === 'active' && after.state === 'pending' && after.operation !== 'readmit') fail('allocation-lineage');
+    const unchanged = ['worktreeId', 'ref', 'path', 'baseRevision', 'headRevision', 'writeDigest', 'operation', 'previousWriteDigest', 'predecessorRef', 'recoveredFromHead'].every(key => before[key] === after[key]) && same(before.selectedSourceRecovery, after.selectedSourceRecovery);
     if (before.state === 'released' || after.state === 'released') {
       if (!unchanged || before.state !== after.state && (before.state !== 'active' || after.state !== 'released')) fail('allocation-release-lineage');
       continue;
     }
-    if (before.ref !== after.ref) {
-      if (before.state !== 'active' || after.state !== 'pending' || after.operation !== 'readmit'
-        || after.predecessorRef !== before.ref) fail('allocation-predecessor');
-    } else if (after.predecessorRef !== before.predecessorRef) fail('allocation-predecessor');
+    if (before.ref !== after.ref && (before.state !== 'active' || after.state !== 'pending' || after.operation !== 'readmit' || after.predecessorRef !== before.ref)
+      || before.ref === after.ref && after.predecessorRef !== before.predecessorRef) fail('allocation-predecessor');
     const selectedSourceRecovery = before.selectedSourceRecovery === undefined && after.selectedSourceRecovery !== undefined;
     if (selectedSourceRecovery) {
       const recovery = after.selectedSourceRecovery, member = members.find(item => item.child.context.worktreeId === after.worktreeId);
-      if (!recoveryValid(recovery) || !root || before.state !== 'pending' || before.operation !== 'readmit'
-        || after.state !== 'active' || after.operation !== 'readmit' || before.ref !== after.ref
-        || before.headRevision !== recovery.priorAllocationHead
-        || before.writeDigest !== after.writeDigest || !before.previousWriteDigest || after.previousWriteDigest !== undefined
-        || before.headRevision === after.headRevision || !member || member.child.source.revision !== after.headRevision
+      if (!recoveryValid(recovery) || !root || before.state !== 'pending' || before.operation !== 'readmit' || after.state !== 'active' || after.operation !== 'readmit'
+        || before.ref !== after.ref || before.headRevision !== recovery.priorAllocationHead || before.writeDigest !== after.writeDigest || !before.previousWriteDigest
+        || after.previousWriteDigest !== undefined || before.headRevision === after.headRevision || !member || member.child.source.revision !== after.headRevision
         || hash(JSON.stringify(recovery.selectedPaths)) !== after.writeDigest) fail('allocation-selected-source-binding');
       try {
         if (!verifySelectedSourceTransplantRecovery(root, { candidateHead: after.headRevision, ...recovery, ref: after.ref })) fail('allocation-selected-source-proof');
       } catch (error) { fail(`allocation-selected-source-proof-${error.reason?.split('-').at(-1) ?? 'invalid'}`); }
     } else if (before.selectedSourceRecovery !== undefined && !same(before.selectedSourceRecovery, after.selectedSourceRecovery)) fail('allocation-selected-source-lineage');
-    if (before.state === 'active' && after.state === 'pending') {
-      if (after.previousWriteDigest !== before.writeDigest) fail('allocation-scope-proof');
-    } else if (before.writeDigest !== after.writeDigest || before.operation !== after.operation
-      || before.state === 'pending' && before.headRevision !== after.headRevision && after.recoveredFromHead !== before.headRevision && !selectedSourceRecovery
-      || before.state === 'pending' && before.operation === 'readmit' && (
-        before.previousWriteDigest === undefined || after.state === 'pending' && after.previousWriteDigest !== before.previousWriteDigest
-        || after.previousWriteDigest !== undefined && after.previousWriteDigest !== before.previousWriteDigest)) fail('allocation-scope-proof');
+    if (before.state === 'active' && after.state === 'pending' ? after.previousWriteDigest !== before.writeDigest
+      : before.writeDigest !== after.writeDigest && !(before.headReconciliation === undefined && after.headReconciliation !== undefined)
+        || before.operation !== after.operation || before.state === 'pending' && before.headRevision !== after.headRevision && after.recoveredFromHead !== before.headRevision && !selectedSourceRecovery
+        || before.state === 'pending' && before.operation === 'readmit' && (before.previousWriteDigest === undefined || after.state === 'pending' && after.previousWriteDigest !== before.previousWriteDigest
+          || after.previousWriteDigest !== undefined && after.previousWriteDigest !== before.previousWriteDigest)) fail('allocation-scope-proof');
   }
 }
 export function releaseWorkflowAllocation(root, repository, ref) {
-  if (!isLaneRef(ref)) fail('allocation-release-ref');
-  const selected = readSelectedWorkflow(root, repository, { ref, navigation: true });
+  if (!isLaneRef(ref)) fail('allocation-release-ref'); const selected = readSelectedWorkflow(root, repository, { ref, navigation: false });
+  if (!selected) return { schema: 'agentic-os/workflow-allocation-release/v1', authority: false, status: 'standalone', ref, worktreeId: null, allocationHead: null,
+    workflow: null, workflowDigest: null, released: false };
   if (!selected?.manifest.execution) fail('allocation-release-selection');
-  const allocation = selected.manifest.allocations?.find(row => row.ref === ref);
-  if (!allocation || allocation.state !== 'active') fail('allocation-release-state');
-  if (worktreeInventory(root).some(row => row.branch === ref || row.path === allocation.path || basename(row.path) === allocation.worktreeId)) fail('allocation-release-mounted');
+  const allocation = selected.manifest.allocations?.find(row => row.ref === ref); if (!allocation || !['active', 'released'].includes(allocation.state)) fail('allocation-release-state');
+  if (worktreeInventory(root).some(row => row.branch === ref || row.path === allocation.path)) fail('allocation-release-mounted');
   if (readSelectedWorkflow(root, repository, { input: selected.path, required: true }).digest !== selected.digest) fail('selection-drift');
+  if (allocation.state === 'released') return { schema: 'agentic-os/workflow-allocation-release/v1', authority: false, ref,
+    worktreeId: allocation.worktreeId, allocationHead: allocation.headRevision, workflow: selected.path, workflowDigest: selected.digest, released: true, alreadyReleased: true };
   const released = collectManifest(root, repository, { ...selected.manifest,
     allocations: selected.manifest.allocations.map(row => row.ref === ref ? { ...row, state: 'released' } : row),
     members: selected.members.map(row => ({ ...row.ref, file: row.path })), previous: { file: selected.path, digest: selected.digest },
@@ -458,15 +463,18 @@ function assertGroupSuccessor(root, manifest, older, members, load, checkSequenc
     || older.members.some(ref => !members.some(next => next.id === ref.id))
     || older.releaseTargets.some(id => !manifest.releaseTargets?.includes(id))) fail('previous-binding');
   for (const ref of older.members) {
-    const before = load(ref).manifest, after = load(members.find(next => next.id === ref.id)).manifest;
+    const before = load(ref).manifest, next = members.find(value => value.id === ref.id), after = load(next).manifest;
     if (before.source.repository !== after.source.repository || before.context.worktreeId !== after.context.worktreeId) fail('previous-member-binding');
+    const row = (manifest.allocations ?? []).find(value => value.worktreeId === before.context.worktreeId), prior = older.allocations?.find(value => value.worktreeId === before.context.worktreeId);
+    if (row?.headReconciliation && !prior?.headReconciliation && (before.source.revision !== row.headReconciliation.priorMemberRevision || after.source.revision !== row.headRevision)) fail('allocation-head-reconciliation-source');
   }
   const resolvedMembers = members.map(ref => ({ ref, child: load(ref).manifest })); validateWorkflowExecution(manifest.execution, resolvedMembers, older.execution); validateAllocations(manifest.allocations, resolvedMembers, older.allocations, root);
 }
-function collectGroup(root, repository, manifest, inputPath) {
-  const paths=workflowPaths(root,repository), load=groupLoader(root,repository), files=new Map();
-  const planning=manifest.planning;
-  validatePlanning(root, repository, planning);
+function collectGroup(root, repository, manifest, inputPath, draftText = null) {
+  const paths=workflowPaths(root,repository),load=groupLoader(root,repository),files=new Map(),previous=manifest.previous&&{...manifest.previous,file:relative(paths.workspace,resolve(dirname(inputPath),manifest.previous.file))},
+    older=previous&&load(previous).manifest,sequence=older?older.sequence+1:1,originalPlanning=manifest.planning,draft=originalPlanning?.source==='working-tree';
+  if(draft&&draftText===null)draftText=older?(older.planning?.snapshotFile==='planning.md'?load(previous).read('planning.md'):fail('planning-binding')):readRegular(root,originalPlanning.path,128000).text;
+  const resolved=validatePlanning(root,repository,originalPlanning,true,draftText),planning=resolved.planning;if(resolved.content!==null)files.set(planning.snapshotFile,resolved.content);
   if(!Array.isArray(manifest.members))fail('members');
   const members=manifest.members.map(ref=>{
     const normalized={...ref,file:relative(paths.workspace,resolve(dirname(inputPath),ref.file))};
@@ -486,16 +494,10 @@ function collectGroup(root, repository, manifest, inputPath) {
       : ['failed','blocked'].includes(value.status)?'failed':'queued';
     return {...ref,file,schema:value.schema,observedStatus,authorityVerified:false};
   });
-  let previous, older, sequence=1;
-  if(manifest.previous){
-    previous={...manifest.previous,file:relative(paths.workspace,resolve(dirname(inputPath),manifest.previous.file))};
-    older=load(previous).manifest;
-    sequence=older.sequence+1;
-  }
   const execution = manifest.execution === undefined ? older?.execution : manifest.execution;
   const allocations = manifest.allocations === undefined ? older?.allocations : manifest.allocations;
-  const resolvedMembers = members.map(ref => ({ ref, child: load(ref).manifest })); validateWorkflowExecution(execution, resolvedMembers); validateAllocations(allocations, resolvedMembers, older?.allocations, root);
   if (older) assertGroupSuccessor(root, { ...manifest, execution, allocations }, older, members, load);
+  else { const resolvedMembers = members.map(ref => ({ ref, child: load(ref).manifest })); validateWorkflowExecution(execution, resolvedMembers); validateAllocations(allocations, resolvedMembers, [], root); }
   const boundary=manifest.boundary??older?.boundary;
   if(boundary!==undefined && !['start','end'].includes(boundary)
     || boundary==='end' && !older?.boundary || older?.boundary==='end' && boundary!=='end')fail('boundary-transition');
@@ -536,7 +538,7 @@ function collectGroup(root, repository, manifest, inputPath) {
     assertDirectoryAncestors(join(directory,'entry'),sep,{allowMissing:true});
     mkdirSync(paths.storage,{recursive:true,mode:0o700});
     const reused=Boolean(lstatSync(directory,{throwIfNoEntry:false}));
-    if(reused){if(read(manifestPath,32000)!==bytes)fail('storage-drift');verifyGroupRelease(stored,manifestPath);}
+    if(reused){if(read(manifestPath,32000)!==bytes)fail('storage-drift');for(const [file,content] of files)if(read(join(directory,file),128000)!==content)fail('storage-drift');verifyGroupRelease(stored,manifestPath);}
     else{
       const staging=mkdtempSync(join(paths.storage,'.collect-'));
       for(const [file,content] of files)writeFileSync(join(staging,file),content,{flag:'wx',mode:0o600});

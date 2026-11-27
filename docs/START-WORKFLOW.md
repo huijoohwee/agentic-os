@@ -1,16 +1,18 @@
 # Start
 
-Use release:common start <scope> --write=<paths>. New task: committed --plan.
+Canonical checkout only. Run `npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]`.
+START locks, fetches and checks scope; it reuses or creates a registered worktree under
+`.worktrees/<repo>/<device>--<lane>` (or configured root). Edit there.
+Worktrees share Git objects and refs. Files and index are separate. Independent clones cannot start lanes.
+Routine work needs no mission; navigation never enrolls a task.
+Resume an open, unqueued PR with history intact. Scope expansion is explicit.
+Reserve the owner or consumer fix per [fleet rules](../guides/prd-tad-adr-mvp-gtm-fleet-registry.md#operator-rules).
 
-Five per repo; canonical excluded; no nesting. One checkout/task; resume its
-bound mission. Without plan/mission, use clone. Readmit/published continuation:
-see guides/LANE-RECERTIFICATION.md.
+Material work takes `--plan` with a protected PRD or untracked regular Markdown draft ≤128,000 B absent from
+protected source. Bind repo/base/path/bytes; plans grant no effects. Resume via `--mission`.
+A native allocation can recover a missing cache row; conflicts or unknown bytes need recovery.
 
-Valid START locks and fetches the profile's protected ref before canonical/mission
-checks, including reuse/refusal. Failure stops before
-lane mutation; fetch updates tracking only, not local main or release authority.
+At capacity, reuse a matching scope or reconcile its allocation. Independent work needs its own scope, plan and
+mission. Each gets one checkout within the repo ceiling. Never raise limits or borrow allocations.
 
-[recovery](../guides/VALIDATION-ECONOMY-EXECUTION.md).
-
-Browser: run npm run dev; recheck URL. Unsupported: report blocker, not proof.
-Headless: N/A.
+Workspace, memory, fleet, recovery and deployment are on demand. START never publishes, deploys or cleans up.

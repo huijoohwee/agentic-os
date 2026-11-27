@@ -13,11 +13,14 @@ test('unenrolled clones perform no workspace discovery or memory hydration', t =
   assert.equal(s.hydrate().status, 'disabled');
   assert.equal(existsSync(join(s.sources.memory, '.git/agentic-os-memory')), false);
 });
-test('startup and linked-worktree resume observe three independent sources through local aliases', t => {
+test('startup defers shared context and linked worktrees can load it on demand', t => {
   const s = fixture(t); writeFileSync(join(s.sources.artifacts, 'README.md'), 'active writer bytes\n');
   const result = s.invoke('start', 'workspace', '--device=device-a', '--write=change.txt');
   assert.equal(result.status, 0, result.stderr);
-  const receipt = JSON.parse(result.stdout.match(/^workspace (.+)$/mu)[1]);
+  assert.doesNotMatch(result.stdout, /^workspace /mu);
+  const loaded = s.invoke('workspace');
+  assert.equal(loaded.status, 0, loaded.stderr);
+  const receipt = JSON.parse(loaded.stdout.match(/^workspace (.+)$/mu)[1]);
   assert.equal(receipt.grantsAuthority, false);
   assert.deepEqual(Object.keys(receipt.sources), ['memory', 'todo', 'artifacts']);
   assert.equal(receipt.sources.memory.entries, 0); assert.equal(receipt.sources.todo.status, 'current');
@@ -44,21 +47,24 @@ test('remote advances are reported without fetching payloads or modifying local 
   const before = s.run(source, ['rev-parse', 'refs/remotes/origin/main']);
   const next = s.run(source, ['commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'published elsewhere']);
   s.run(source, ['push', '--quiet', s.config.sources.artifacts.remote, `${next}:refs/heads/main`]);
+  // A URL-addressed push may update its uniquely matching remote-tracking ref; restore the stale local observation fixture.
+  s.run(source, ['update-ref', 'refs/remotes/origin/main', before]);
   const result = s.hydrate({ source: 'artifacts' }).sources.artifacts;
   assert.equal(result.status, 'update-available'); assert.equal(result.sourceRevision, before);
   assert.equal(result.remoteRevision, next);
   assert.equal(s.run(source, ['rev-parse', 'refs/remotes/origin/main']), before);
   assert.equal(s.run(source, ['rev-parse', 'HEAD']), before);
 });
-test('identity or duplicate enrollment failures happen before startup creates a lane', t => {
+test('shared source failures stay on demand and do not block lane startup', t => {
   const s = fixture(t);
   s.run(s.root, ['config', '--local', 'agentic-os.memoryRoot', '../.memory']);
   assert.throws(() => s.hydrate(), /duplicate-enrollment/u);
   s.run(s.root, ['config', '--local', '--unset-all', 'agentic-os.memoryRoot']);
   s.run(s.sources.artifacts, ['remote', 'set-url', 'origin', '/wrong-source']);
   const result = s.invoke('start', 'blocked', '--device=device-a', '--write=change.txt');
-  assert.equal(result.status, 1); assert.match(result.stderr, /remote-identity/u);
-  assert.equal(s.run(s.root, ['branch', '--list', 'agent/device-a/blocked']), '');
+  assert.equal(result.status, 0, result.stderr); assert.doesNotMatch(result.stdout, /^workspace /mu);
+  assert.throws(() => s.hydrate(), /remote-identity/u);
+  assert.notEqual(s.run(s.root, ['branch', '--list', 'agent/device-a/blocked']), '');
   assert.equal(existsSync(join(s.sources.memory, '.git/agentic-os-memory')), false);
 });
 test('shared memory contention releases the consumer workspace lock for a safe retry', t => {
@@ -80,7 +86,9 @@ test('one private repository starts and resumes with scoped subfolders and prese
   writeFileSync(join(s.sources.artifacts, 'README.md'), 'ongoing evidence');
   const started = s.invoke('start', 'consolidated', '--device=device-a', '--write=change.txt');
   assert.equal(started.status, 0, started.stderr);
-  const result = JSON.parse(started.stdout.match(/^workspace (.+)$/mu)[1]);
+  assert.doesNotMatch(started.stdout, /^workspace /mu);
+  const loaded = s.invoke('workspace'); assert.equal(loaded.status, 0, loaded.stderr);
+  const result = JSON.parse(loaded.stdout.match(/^workspace (.+)$/mu)[1]);
   assert.equal(result.sources.todo.entry.path, '.todo/docs/TODO.md');
   assert.equal(result.sources.memory.sourceRevision, result.sources.artifacts.sourceRevision);
   assert.ok(result.sources.memory.index.startsWith(join(realpathSync(s.container), '.git')));
@@ -110,6 +118,7 @@ test('consolidated remote advance leaves the checkout and origin ref unchanged',
   const s = consolidate(fixture(t)), before = s.run(s.container, ['rev-parse', 'HEAD']);
   const next = s.run(s.container, ['commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'other device']);
   s.run(s.container, ['push', '--quiet', s.config.remote, `${next}:refs/heads/main`]);
+  s.run(s.container, ['update-ref', 'refs/remotes/origin/main', before]);
   const result = s.hydrate({ source: 'artifacts' }).sources.artifacts;
   assert.equal(result.status, 'update-available'); assert.equal(result.remoteRevision, next);
   assert.equal(s.run(s.container, ['rev-parse', 'origin/main']), before);

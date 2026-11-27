@@ -116,6 +116,37 @@ test('ADLC rejects unrelated workflows, repeated worktree identity, duplicate ro
   const group=groupFixture();change(group);assert.throws(()=>workflowGroup(group.manifest,group.load));
  }
 });
+function integratedGroup(sourceRevision='c'.repeat(40),receiptIntegratedRevision=sourceRevision) {
+ const group=groupFixture(), member=group.right, laneHead='d'.repeat(40);
+ member.manifest.source={...member.manifest.source,revision:sourceRevision};
+ member.manifest.expected=['cleanup','integration']; member.manifest.phases=[]; member.manifest.traces=[];
+ const receipts={
+  integration:{schema:'agentic-os/sprint-finish/v1',laneHead,integratedRevision:receiptIntegratedRevision,grantsAuthority:false},
+  cleanup:{schema:'agentic-os/user-cleanup-receipt/v1',review:{head:laneHead},providerAuthority:false,
+   result:'quarantined',bytesDeleted:false,branchesMutated:false},
+ };
+ for(const id of member.manifest.expected){const file=`${id}.json`,bytes=JSON.stringify(receipts[id]);member.files.set(file,bytes);
+  member.manifest.phases.push({id,file,digest:hash(bytes),revision:laneHead});}
+ const captured=buildArchive(member.manifest,member.read,receiptClock(member.files));
+ for(const [file,bytes] of captured.files)member.files.set(file,bytes);
+ member.manifest.archive=captured.archive;
+ group.manifest.members.find(row=>row.id==='right').digest=hash(JSON.stringify(member.manifest));
+ const members=()=>group.manifest.members.map(ref=>{const value=group.load(ref);return {ref,child:value.manifest,read:value.read,
+  advice:readArchive(value.manifest,value.read,{adviceOnly:true})};});
+ return {group,member,members,laneHead,sourceRevision,receiptIntegratedRevision};
+}
+test('integration bridges phase revisions only from the exact lane head to the integrated source',()=>{
+ const {group,members,laneHead}=integratedGroup(),right=()=>workflowEligibility(group.manifest,members())
+  .actions.filter(row=>row.memberId==='right');
+ assert(right().every(row=>row.status==='completed'&&row.revision===laneHead));
+ const unrelated=integratedGroup('e'.repeat(40),'c'.repeat(40));
+ const stale=workflowEligibility(unrelated.group.manifest,unrelated.members()).actions.filter(row=>row.memberId==='right');
+ assert(stale.every(row=>row.status==='stale'));
+ const tampered=integratedGroup();tampered.member.files.set('integration.json',JSON.stringify({schema:'agentic-os/sprint-finish/v1',
+  laneHead:tampered.laneHead,integratedRevision:'e'.repeat(40),grantsAuthority:false}));
+ assert(workflowEligibility(tampered.group.manifest,tampered.members()).actions
+  .filter(row=>row.memberId==='right').every(row=>row.status==='stale'));
+});
 test('production deployment and runtime remain separate missing evidence; advice stays per worktree',()=>{
  const {manifest,load}=groupFixture();let view=workflowGroup(manifest,load);
  assert.equal(view.status,'running');assert.equal(view.profile.workflow.release.authorityVerified,false);

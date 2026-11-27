@@ -14,8 +14,11 @@ const MANIFEST_NAME = 'runtime-manifest.json';
 const MAX_RUNTIME_BYTES = 500_000;
 const MAX_FILE_BYTES = MAX_RUNTIME_BYTES;
 const MAX_MANIFEST_BYTES = 64 * 1024;
-// Future releases must explicitly pin each previously shipped runtime identity before migrating it.
+// Includes exact 13-file closure from 89acc7a; every prior runtime stays explicitly pinned.
 const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
+  'v1-760ae7a9d3272e00d59b3254229d2c0010046740524bcb4e3a462e08b8b278c8',
+  'v1-d62b55457b7eccf5a852344e87e7f4fde0abdfe7f982a4813f2bc0c5c207d115',
+  'v1-61b0c08ae5a26367e69ec157e182819fbde328fee570a5cf59f11b1be72fad5f',
   'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20',
   'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171',
   'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58',
@@ -49,6 +52,8 @@ const TRUSTED_PRIOR_RUNTIME_IDS = new Set([
   'v1-c9b1a5145b4253d1ad57ce901b40526d7c57cb7f4b02556953a3be2e1617f79d',
   'v1-f02f83febf4448eb30b353acd06ec2274fb9ab7253eb537285fd6fb17af0dee5',
   'v1-40628b45b7fd1f33546dcf6e41bb4869614db132a4a42a4ac85f1625122ba51c','v1-fc400b918a251d063e794f477cc5202e0fbdbb5017969ca904ae9b867ee1c9b8',
+  'v1-8a6a780ec45fd2c082bfeb7f9c4d03dd088c03bec29c0989eae4fc2bbc89c7e1', 'v1-5c9e1df231a5133bdcba5cf0af0ffaf24aa51e8f0f5705e496a5c0299959271c', // source 12a7
+  'v1-7955e465f8ea0a23e179272df4ddadfd70ccb3baf0e2cd0893678e4943d2d171', // source 1c7c446
 ]);
 const LEGACY_HOOK_SETS = Object.freeze([
   Object.freeze({
@@ -66,17 +71,17 @@ const FILES = Object.freeze([
   Object.freeze({ path: 'src/guard-main.mjs', mode: 0o755,
     sha256: '04d85dab69ceba419e4514061449c54af9e3095c41dba436923bbf12507338b5' }),
   Object.freeze({ path: 'src/git.mjs', mode: 0o644,
-    sha256: 'b4bb69f1953f6237927cba3e4d397613a5c79f269be3b025af4c6dd454efafc9' }),
+    sha256: '055c51e4bb5e030f8a232a3c05c3c0481c04b8e6200e3e3653296cbc46140497' }),
   Object.freeze({ path: 'src/quarantine.mjs', mode: 0o644,
     sha256: '87d949cccfd3429f3618b7b03654abdd2b731e99cfd652ec42310c4e574d0978' }),
   Object.freeze({ path: 'src/git-repository.mjs', mode: 0o644,
-    sha256: '293725c6285065e102ee55ef5890efe9eb204a29cb7f826d8d0ffb23f4814c26' }),
+    sha256: '22c44e2cf51aeea25d7ad37ec72f2db35bb11432ecd7b41b145b655b038bbb2d' }),
   Object.freeze({ path: 'src/catalog-input.mjs', mode: 0o644,
     sha256: '89276893b78148da2b67e88902ab22f6b4908a723dc4bb7ff038fe6174100219' }),
   Object.freeze({ path: 'src/file-integrity.mjs', mode: 0o644,
-    sha256: 'ce0a72635965be4d1ae48cb82f67f6a39492f456c53df022e714d85dbb7e18de' }),
+    sha256: 'a91e2a858a2bedb26bd1e0067b83c9b7c8a9fc8debda0813eb6096920ab6d38a' }),
   Object.freeze({ path: 'src/governance.mjs', mode: 0o644,
-    sha256: 'ea91f7a577936590c13dac1a353ef02dbf445f86ac73b347084c9b74e38c5f10' }),
+    sha256: '05a658a462a6b515e8ac310e1e2d2af0230f6e8aa60d2fe725fb5841b664d1cc' }),
   Object.freeze({ path: 'src/lane-id.mjs', mode: 0o644,
     sha256: '766765984aeb4645f84fa1d2790ed2134ff3f2cb33c2888b80655c86eab6e5d7' }),
   Object.freeze({ path: 'src/git-tracked.mjs', mode: 0o644,
@@ -87,7 +92,6 @@ const FILES = Object.freeze([
 export const REQUIRED_HOOKS = Object.freeze(FILES
   .filter((file) => file.path.startsWith('.githooks/'))
   .map(({ path, sha256 }) => Object.freeze({ path, sha256 })));
-
 /** Any runtime entry means this clone passed or partially entered managed setup before. */
 export function hasHookRuntimeState(cwd) {
   const path = join(commonDir(repoRoot(cwd)), 'agentic-os', 'hook-runtimes');

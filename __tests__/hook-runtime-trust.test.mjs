@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import {
   assertPriorManagedRuntime, describeHookRuntime, inspectHookRuntime, installHookRuntime,
 } from '../bin/agentic-os-hook-runtime.mjs';
@@ -14,17 +15,75 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context', 'pre-alignment']) test(released
+test('known canonical predecessors are explicitly release-pinned', () => {
+  const source = readFileSync(new URL('../bin/agentic-os-hook-runtime.mjs', import.meta.url), 'utf8');
+  assert.match(source, /Includes exact 13-file closure from 89acc7a; every prior runtime stays explicitly pinned/u);
+  assert.match(source, /v1-d62b55457b7eccf5a852344e87e7f4fde0abdfe7f982a4813f2bc0c5c207d115/u);
+  assert.match(source, /v1-5c9e1df231a5133bdcba5cf0af0ffaf24aa51e8f0f5705e496a5c0299959271c/u);
+  assert.match(source, /v1-7955e465f8ea0a23e179272df4ddadfd70ccb3baf0e2cd0893678e4943d2d171/u);
+});
+
+for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstream', 'batch32', 'retained-context', 'pre-alignment', 'pre-core']) test(released
   ? 'the exact previously released ' + released + ' runtime authorizes migration'
   : 'a self-consistent but release-unpinned prior runtime cannot authorize migration', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'agentic-os-runtime-trust-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   const selected = describeHookRuntime(root, { sourceRoot: ROOT });
+  const historicalGit = gunzipSync(Buffer.from(readFileSync(new URL('./fixtures/git-create-only.mjs.gz.b64', import.meta.url), 'utf8'), 'base64'));
+  assert.equal(digest(historicalGit), 'b4bb69f1953f6237927cba3e4d397613a5c79f269be3b025af4c6dd454efafc9');
+  const historicalGovernance = gunzipSync(Buffer.from(readFileSync(new URL('./fixtures/governance-pre-branch-retirement.mjs.gz.b64', import.meta.url), 'utf8'), 'base64'));
+  assert.equal(digest(historicalGovernance), 'ea91f7a577936590c13dac1a353ef02dbf445f86ac73b347084c9b74e38c5f10');
   const quarantineBytes = Buffer.from(selected.files.find(file => file.path === 'src/quarantine.mjs').bytes
     .toString('utf8').replace('(?:canonical-sync|lane-alignment)', 'canonical-sync'));
   assert.equal(digest(quarantineBytes), '612d7f5b5bc14788adfa30944bd4b90d7ef8cff3394d34f55a2136f539cedc58');
-  const predecessor = selected.files.map(file => released && file.path === 'src/file-integrity.mjs'
+  // Reconstruct the exact pre-policy adapter so this release fixture stays stable as the source moves.
+  const replaceOnce = (source, current, previous) => {
+    assert.notEqual(source.indexOf(current), -1);
+    assert.equal(source.indexOf(current), source.lastIndexOf(current));
+    return source.replace(current, previous);
+  };
+  let prePolicySource = selected.files.find(file => file.path === 'src/git-repository.mjs')
+    .bytes.toString('utf8');
+  prePolicySource = replaceOnce(prePolicySource,
+    "  const identityPath = typeof identity === 'string' ? identity.trim().replace(/[?#].*$/, '').replace(/\\.git$/, '') : '';\n" +
+      "  const slug = /[\\/@]/u.test(identityPath) ? identityPath.split(/[/:]/u).filter(Boolean).at(-1) : null;",
+    "  const slug = typeof identity === 'string' && identity.startsWith('github.com/')\n" +
+      "    ? identity.slice('github.com/'.length).split('/').at(-1) : null;");
+  prePolicySource = replaceOnce(prePolicySource,
+    "    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: false,\n" +
+      "      startAllowed: false });",
+    "    return Object.freeze({ mode: 'not-applicable', name, expectedName: null, ok: true,\n" +
+      "      startAllowed: true });");
+  prePolicySource = replaceOnce(prePolicySource,
+    "ok: true, startAllowed: !scratch && !slug.endsWith('-private-archive') });",
+    "ok: true, startAllowed: !slug.endsWith('-private-archive') });");
+  const admissionStart = prePolicySource.indexOf('/** Admit new source lanes only from the primary canonical checkout. */');
+  const admissionEnd = prePolicySource.indexOf('\nfunction hiddenPaths', admissionStart);
+  assert.ok(admissionStart >= 0 && admissionEnd > admissionStart);
+  const priorAdmission = [
+    '/** Refuse lane admission from auxiliary, worktree, mismatched, or private-archive checkouts. */',
+    'export function assertStartCheckout(repository, profile) {',
+    '  const location = repositoryCheckoutLocation(repository, profile);',
+    "  if (location.mode === 'archive') blocked('private archive checkouts are frozen and cannot start source lanes', 'blocked-private-archive');",
+    "  if (!['not-applicable', 'canonical', 'scratch'].includes(location.mode)) blocked(",
+    "    " + String.fromCharCode(96) + 'START requires the canonical checkout or an explicit -scratch clone for '
+      + '$' + '{location.expectedName}; found ' + '$' + '{location.name} (' + '$' + '{location.mode})'
+      + String.fromCharCode(96) + ',',
+    "    location.mode === 'mismatch' ? 'blocked-repository-checkout-name' : 'blocked-noncanonical-repository-checkout');",
+    '  return location;',
+    '}',
+  ].join('\n');
+  prePolicySource = prePolicySource.slice(0, admissionStart) + priorAdmission + '\n'
+    + prePolicySource.slice(admissionEnd);
+  const prePolicyRepository = Buffer.from(prePolicySource);
+  assert.equal(digest(prePolicyRepository), '0f19dd78cedf92839fe0fdd3df5cb36c65ebe888adfe41df1bb268fe4bbd3206');
+  const predecessor = selected.files.map(file => released === 'pre-core' && file.path === 'src/governance.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/governance-cleanup-predecessor.mjs.txt', import.meta.url)) }
+    : released === 'pre-core' && file.path === 'src/git-repository.mjs'
+    ? { ...file, bytes: prePolicyRepository } : released === 'pre-core' ? file : released && file.path === 'src/git-repository.mjs'
+    ? { ...file, bytes: readFileSync(new URL('./fixtures/git-repository-pre-naming.mjs.txt', import.meta.url)) }
+    : released && file.path === 'src/file-integrity.mjs'
     ? { ...file, bytes: readFileSync(new URL('./fixtures/file-integrity-pre-hardlinks.mjs.txt', import.meta.url)) }
     : released && file.path === 'src/quarantine.mjs'
     ? { ...file, bytes: quarantineBytes } : released === 'pre-alignment' ? file : released !== 'retained-context' && file.path === 'bin/agentic-os-filter-compare.mjs'
@@ -32,7 +91,10 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
     : file.path === 'src/git-tracked.mjs'
       ? { ...file, bytes: readFileSync(new URL('./fixtures/git-tracked-before-retained-context.mjs.txt', import.meta.url)) } : file);
   const altered = predecessor.map((file, index) => {
-    const bytes = ['batch32', 'retained-context', 'pre-alignment'].includes(released) ? file.bytes : released ? (file.path === 'src/git.mjs'
+    const bytes = ['batch32', 'retained-context', 'pre-alignment', 'pre-core'].includes(released) && file.path === 'src/git.mjs'
+      ? historicalGit : released === 'pre-core' ? file.bytes : ['pre-upstream', 'batch32', 'retained-context', 'pre-alignment'].includes(released)
+      && file.path === 'src/governance.mjs' ? historicalGovernance
+      : ['batch32', 'retained-context', 'pre-alignment'].includes(released) ? file.bytes : released ? (file.path === 'src/git.mjs'
       ? readFileSync(new URL('./fixtures/git-pre-upstream.mjs.txt', import.meta.url))
       : released === 'pre-upstream' ? file.bytes : file.path === 'src/governance.mjs'
       ? readFileSync(new URL('./fixtures/governance-squash-only.mjs.txt', import.meta.url))
@@ -66,7 +128,8 @@ for (const released of [false, 'copy', 'pre-frontmatter', 'pre-diff', 'pre-upstr
   chmodSync(manifestPath, 0o600);
 
   if (released) {
-    assert.equal(runtimeId, released === 'pre-alignment'
+    assert.equal(runtimeId, released === 'pre-core'
+      ? 'v1-760ae7a9d3272e00d59b3254229d2c0010046740524bcb4e3a462e08b8b278c8' : released === 'pre-alignment'
       ? 'v1-c394f856ab85653a4a3e249d2950f44b0b412697139fbbfcd38178b439646a20' : released === 'retained-context'
       ? 'v1-02a77b09afda286eb7cbaffeffbd0aa994c7d3cfd5568f62107c489a9c33d171' : released === 'batch32'
       ? 'v1-6e0b4e4edd9aef62f7b39fa33c00ea6982db28a6410dd7b9f04792e406a1ce58' : released === 'pre-upstream'

@@ -39,38 +39,53 @@ function exact(argv, {
   if (missingFlag) return `missing --${missingFlag}`;
   return null;
 }
+function progressiveArguments(argv, directoryRequired = false) {
+  if (flag(argv, 'apply')) {
+    const error = exact(argv, { min: 1, max: 1, options: ['ref', 'expected-head', 'effects', 'authority-head'],
+      flags: ['apply', 'stopped'], requiredOptions: ['ref'] });
+    if (error) return error;
+    const selectedEffects = option(argv, 'effects') ?? 'end', effects = selectedEffects === 'end' ? ['merge', 'sync', 'cleanup'] : selectedEffects.split(','), expectedHead = option(argv, 'expected-head');
+    if (!isLaneRef(option(argv, 'ref')) || expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)
+      || new Set(effects).size !== effects.length || effects.some(value => !['merge', 'sync', 'cleanup'].includes(value)))
+      return 'apply requires one exact lane and unique merge,sync,cleanup effects (or effects=end)';
+    if (option(argv, 'authority-head') !== null && expectedHead !== null && option(argv, 'authority-head') !== expectedHead) return 'authority-head must match expected-head';
+    return effects.includes('cleanup') && !flag(argv, 'stopped') ? 'cleanup effect requires --stopped' : null;
+  }
+  const error = exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms', 'ref'], flags: ['cleanup', 'stopped'], requiredOptions: directoryRequired ? ['worktrees'] : [] }); if (error) return error;
+  if (!directoryRequired && option(argv, 'worktrees') === null && option(argv, 'ref') === null) return 'complete-adlc requires --ref or --worktrees';
+  return flag(argv, 'cleanup') ? flag(argv, 'stopped') ? null : '--cleanup requires --stopped' : flag(argv, 'stopped') ? '--stopped is only valid with --cleanup' : null;
+}
 export function validateCommandArguments(command, argv) {
   switch (command) {
+    case 'skill': return ['discover', 'load'].includes(argv[0])
+      ? exact(argv, { min: 1, max: 1, options: ['skill'], requiredOptions: argv[0] === 'load' ? ['skill'] : [] }) : 'skill requires discover or load';
     case 'design-check': return exact(argv, { options: ['input'], requiredOptions: ['input'] });
     case 'run': return ['start', 'status', 'cancel', 'retry'].includes(argv[0])
       ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'run requires start, status, cancel or retry';
     case 'capabilities': return exact(argv, {
       options: ['query', 'kind', 'limit', 'id', 'root', 'revision'], flags: ['include-content'],
     });
-    case 'cleanup-user': return argv[0] === 'preservation-plan'
-      ? exact(argv, { min: 1, max: 1, options: ['adoption', 'policy-root', 'workflow'], requiredOptions: ['adoption', 'policy-root', 'workflow'] })
-      : argv[0] === 'preservation-apply'
-        ? exact(argv, { min: 1, max: 1, options: ['plan', 'authorize'], flags: ['stopped'], requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
-      : argv[0] === 'plan' && option(argv, 'ref') !== null
-      ? exact(argv, { min: 1, options: ['ref'], flags: ['recovery'], requiredOptions: ['ref'], requiredFlags: ['recovery'] })
-      : argv[0] === 'plan'
-      ? exact(argv, { min: 1, options: ['target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'], flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
-        requiredOptions: ['target', 'pr', 'checks', 'workflow'] })
-      : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
-        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
-      : argv[0] === 'sweep' ? exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] })
-        : 'cleanup-user requires plan, apply, or sweep';
-    case 'cleanup': return argv[0] === 'plan' && option(argv, 'ref') !== null
-      ? option(argv, 'mode') === 'recovery'
-        ? exact(argv, { min: 1, options: ['mode', 'ref'], requiredOptions: ['mode', 'ref'] })
-        : 'cleanup --ref requires --mode=recovery'
-      : argv[0] === 'plan'
-      ? exact(argv, { min: 1, options: ['mode', 'target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'], flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
-        requiredOptions: ['target', 'pr'] })
-      : argv[0] === 'apply' ? exact(argv, { min: 1, options: ['plan', 'authorize'], flags: ['stopped'],
-        requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
-      : argv[0] === 'sweep' ? exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] })
-        : 'cleanup requires plan, apply, or sweep';
+    case 'cleanup-user': case 'cleanup': {
+      const unified = command === 'cleanup', action = argv[0], mode = option(argv, 'mode');
+      const required = (options, flags = []) => exact(argv, { min: 1, options, requiredOptions: options, flags, requiredFlags: flags });
+      if (action === 'apply' || !unified && action === 'preservation-apply') return required(['plan', 'authorize'], ['stopped']);
+      if (!unified && action === 'preservation-plan') return required(['adoption', 'policy-root', 'workflow']);
+      if (action === 'sweep') return exact(argv, { min: 1, options: ['stale-older-than'], flags: ['merged', 'no-active-worktree'] });
+      if (action === 'auto') return exact(argv, { min: 1, options: ['ref', 'target'] })
+        ?? ((option(argv, 'ref') === null) === (option(argv, 'target') === null)
+          ? `${command} auto requires exactly one of --ref or --target` : null);
+      if (action !== 'plan') return `${command} requires plan, auto, apply, or sweep`;
+      if (unified && mode === 'local-integrated') return required(['mode', 'ref', 'target', 'expected-head']);
+      if (unified && mode === 'local-snapshot') return required(['mode', 'target', 'expected-head']);
+      if (option(argv, 'ref') !== null) {
+        if (!unified) return required(['ref'], ['recovery']);
+        return mode === 'recovery' ? required(['mode', 'ref']) : 'cleanup --ref requires --mode=recovery or --mode=local-integrated';
+      }
+      const options = ['target', 'pr', 'checks', 'workflow', 'change-class', 'reviewed-equivalent-commit'];
+      if (unified) options.push('mode');
+      return exact(argv, { min: 1, options, flags: ['recovery', 'detached', 'merged-projection', 'historical-check-gap'],
+        requiredOptions: unified ? ['target', 'pr'] : ['target', 'pr', 'checks', 'workflow'] });
+    }
     case 'collaborate': return argv[0] === 'status' ? exact(argv, { min: 1, flags: ['offline'] })
       : ['get', 'submit', 'claim', 'renew', 'release', 'report', 'archive'].includes(argv[0])
         ? exact(argv, { min: 1, options: ['input'], requiredOptions: ['input'] }) : 'unknown collaboration operation';
@@ -79,7 +94,8 @@ export function validateCommandArguments(command, argv) {
         : 'workflow requires targets, collect, export, recommend, or trace';
     case 'pipeline': return exact(argv, { options: ['repo', 'run', 'head', 'attempt', 'timeout-ms'],
       requiredOptions: ['repo', 'run', 'head', 'attempt'] });
-    case 'help': case '--help': return exact(argv, {});
+    case 'help': return exact(argv, { flags: ['advanced'] });
+    case '--help': return exact(argv, {});
     case 'setup': case 'git-configure': case 'guard-install': case 'doctor':
       return exact(argv, {});
     case 'profile': return argv[0] === 'init'
@@ -112,10 +128,10 @@ export function validateCommandArguments(command, argv) {
       : 'source-evidence requires bundle';
     case 'release-common': {
       const action = argv[0] ?? 'help';
-      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'closeout', 'complete', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
+      if (!['help', '--help', '-h', 'start', 'start-lock-recovery', 'publish', 'finish', 'close', 'closeout', 'complete', 'complete-adlc', 'retire-empty-active', 'allocation-release', 'successor', 'promote', 'scope-release', 'rebind'].includes(action))
         return 'release-common requires start, publish, finish, close, complete, or successor; closeout, retire-empty-active, allocation-release, scope-release, rebind and promote are also supported';
       if (argv.length === 0) return null;
-      if (action === 'help') return exact(argv, { min: 1, max: 1 });
+      if (action === 'help') return exact(argv.slice(1), { flags: ['advanced'] });
       if (action === '--help' || action === '-h')
         return argv.length === 1 ? null : 'release-common help accepts no extra arguments';
       if (action === 'close') return exact(argv.slice(1), {
@@ -142,7 +158,7 @@ export function validateCommandArguments(command, argv) {
             ...(providerRefresh ? ['pr', 'expected-head', 'expected-base'] : [])];
           const required = ['ref', 'mode', ...(recertify ? ['base', 'base-sha', 'worktree', 'expected-head'] : []),
             ...(providerRefresh ? ['pr', 'expected-head', 'expected-base'] : [])];
-          const error = exact(argv.slice(1), { min: 1, max: 1, options: fields, requiredOptions: required });
+          const error = exact(argv.slice(1), { min: 1, max: 1, options: fields, flags: recertify ? ['accept-unrecoverable'] : [], requiredOptions: required });
           if (error) return error;
           if (!['mounted', 'restore', 'recertify', 'provider-refresh'].includes(mode)) return 'rebind mode must be mounted, restore, recertify or provider-refresh';
           if (recertify && (!/^[0-9a-f]{40}$/u.test(option(argv, 'base-sha'))
@@ -169,13 +185,14 @@ export function validateCommandArguments(command, argv) {
           requiredOptions: ['plan', 'authorize'], requiredFlags: ['stopped'] })
           : 'scope-release requires plan or apply';
       if (action === 'complete') {
-        if (option(argv, 'worktrees') !== null)
-          return exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms'], requiredOptions: ['worktrees'] });
+        if (flag(argv, 'apply')) return progressiveArguments(argv);
+        if (option(argv, 'worktrees') !== null) return progressiveArguments(argv, true);
         if (option(argv, 'via-pr') !== null)
-          return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'replaced'],
-            flags: ['stopped'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
+          return exact(argv, { min: 1, max: 1, options: ['ref', 'via-pr', 'via-repository', 'via-checks', 'replaced', 'reason'],
+            flags: ['stopped', 'superseded'], requiredOptions: ['ref', 'via-pr', 'replaced'], requiredFlags: ['stopped'], allowEmptyOptions: ['replaced'] });
         return exact(argv, { min: 1, max: 1, options: ['ref', 'timeout-ms', 'bundle'], flags: ['stopped'], requiredOptions: ['ref'] });
       }
+      if (action === 'complete-adlc') return progressiveArguments(argv);
       if (action === 'retire-empty-active') return exact(argv, { min: 1, max: 1, options: ['ref'], requiredOptions: ['ref'] });
       if (action === 'allocation-release') return exact(argv, { min: 1, max: 1, options: ['ref', 'cleanup-receipt'], requiredOptions: ['ref'] });
     }
@@ -238,65 +255,46 @@ export function validateCommandArguments(command, argv) {
     default: return `unknown command ${JSON.stringify(command)}`;
   }
 }
-export function cmdHelp() {
+export function cmdHelp({ advanced = false } = {}) {
+  if (!advanced) {
+    process.stdout.write([
+      'agentic-os — ADLC harness',
+      '',
+      'Default source path:',
+      '  1. npm run lane -- <scope> --write=<paths> [--plan=<PRD-path>]',
+      '  2. Work in the printed worktree; run npm run land -- --message="feat: ..." to commit and publish; required CI gates integration.',
+      '  3. Complete protected PR review/checks, then merge.',
+      '  4. npm run release:common -- complete --ref=<lane>',
+      '',
+      'Workspace context and specialized workflows load on demand.',
+      'Read docs/RELEASE-WORKFLOW.md; use `agentic-os help --advanced` when needed.',
+    ].join('\n') + '\n');
+    return 0;
+  }
   process.stdout.write(
     [
       'agentic-os — ADLC harness',
       '',
-      '  Primary human release path:',
-      '    npm run release:common --help  show the canonical start -> publish -> complete operator flow',
-      '    npm run release:common -- start <scope> --write=<paths> [--plan=<path> --checkout-limit=<0..5> | --mission=<manifest>]  admit or reuse a lane',
-      '      --readmit --mission=<manifest> --expected-head=<40hex>  extend the active unpublished lane reservations',
-      '    npm run release:common -- publish [--message=<text>] [--title=<text>] [--body-file=<file>]  land via one short path',
-      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>] [--bundle=<json>] [--stopped]  wait for exact merge, then close and retire locally when exact evidence is sufficient',
-      '    npm run release:common -- closeout --ref=<lane>  one read-only local summary; works from that lane or canonical checkout',
-      '    npm run release:common -- complete --ref=<lane> --via-pr=<merged-pr> --replaced=<exact,path> --stopped  verify reviewed successor then quarantine the clean predecessor',
-      '    npm run release:common -- close --ref=<lane>  run post-merge closeout and report the remaining cleanup blockers',
-      '    npm run release:common -- finish --ref=<lane>  use the exact integration diagnostic path only when needed',
-      '    npm run release:common -- successor <scope> [--expected-head=<sha>] [--write=<path[,path...]>] [--message=<text>]  continue after publish; message commits only reserved retained bytes',
+      '  Default source path: npm run lane -> npm run land -> protected PR checks/review/merge -> complete.',
+      '    npm run lane -- <scope> --write=<paths> [--plan=<path> | --mission=<manifest>]',
+      '    npm run land -- --message=<commit> [--title=<PR-title>] [--body-file=<file>]',
+      '    npm run release:common -- complete --ref=<lane> [--timeout-ms=<ms>]',
+      '  On-demand closeout: closeout, close, finish, complete-adlc, successor.',
+      '  Recovery/cleanup: promote, scope-release, rebind, allocation-release, retire-empty-active, lane-alignment.',
       '',
       '  Underlying primitives and diagnostics:',
-      '    npm run doctor            report harness and remote drift, change nothing',
-      '    npm run status            read-only lane projection and provider state',
-      '    npm run lane -- <scope> --write=<paths> [--mission=<manifest>]   use native START admission',
-      '    npm run land -- [--title=<text>] [--body-file=<file>]  publish the exact lane head',
-      '    npm run finish -- --ref=<lane>  record exact integration from the retained lane ref; retain cleanup separately',
-      '    npm run reap [-- --ref=<lane> | --refs=<comma-separated-exact-lanes>]  classify exact integration in batches of at most 256; never clean or retire authority',
+      '    npm run doctor | status | reap | finish   inspect repository, lane, and integration state',
+      '    npm run release:common -- publish   low-level exact-head publication',
       '',
       '  Other commands:',
-      '  agentic-os capabilities [--query=<text>] [--kind=<kind>] [--limit=10]  discover owner references; see FLEET.md',
-      '  agentic-os capabilities --id=<id> --root=<owner-root> --revision=<sha> [--include-content]  read one pinned source',
-      '  agentic-os profile init --repository=<host/owner/name>  print a fork profile; write no state',
-      '  agentic-os pin --consumer=<root> [--revision=<sha>]  check exact consumer pin drift',
-      '  npm run setup             write config and select packaged hooks without clobbering',
-      '  agentic-os workspace [--offline] [--source=memory|todo|artifacts]  observe enrolled shared sources',
-      '  agentic-os workspace sync [--offline]  refresh one committed workspace snapshot',
-      '  agentic-os workspace watch [--interval-ms=30000] [--duration-ms=28800000]  refresh during this session',
-      '  agentic-os workspace check --repository=<root> --config=<json> --base=<sha> --head=<sha>  check committed content',
-      '  agentic-os memory [--offline]  refresh or reuse the enrolled shared-memory index',
-      '  agentic-os context map|search|read --path=<source>  bounded native context; see guides/CONTEXT.md',
-      '  agentic-os source-evidence bundle --scope=<source> --id=<id> --label=<label> --output=<empty-directory>  create a reviewed immutable source bundle; no upload',
-      '  agentic-os collaborate status [--offline]  observe opt-in shared coordination; not authority',
-      '  agentic-os cleanup-user <plan|apply>  explicit local-consent quarantine; see guides/USER-CLEANUP.md',
-      '  agentic-os collaborate <get|submit|claim|renew|release|report|archive> --input=<json>  cooperative work/handoff',
-      '  agentic-os memory search --revision=<sha> --query=<text> [--path=<memory-file>]  bounded local-only lookup',
-      '  agentic-os memory read --revision=<sha> --path=<memory-file> [--line=1] [--lines=40]  pinned excerpt',
-      '  agentic-os memory capture --revision=<sha> --handoff=<file>  validate one memory-log/v1 proposal; no writes',
+      '    capabilities, profile, pin, and setup  repository discovery and configuration',
+      '    workspace and memory  optional shared-state observation, sync, and local lookup',
+      '    context and source-evidence  bounded source reads and immutable evidence bundles',
+      '    collaborate and cleanup-user  opt-in handoff and consent-bound local cleanup',
       '  Follow-up and diagnostics:',
-      '  agentic-os completion status --ref=<lane> [--preservation=<json>] [--cleanup-receipt=<json>] [--integration-receipt=<json> --retirement-receipt=<json>]  receipt pair requires preservation; read-only',
-      '  npm run completion:scaffold -- --ref=<lane> --derive  hydrate, plan, then apply with --confirm=<digest> --stopped',
-      '  npm run sync:canonical    plan a recovery-backed canonical checkout synchronization',
-      '  npm run reconcile         fetch, classify, and plan protected-main reconciliation',
-      '  npm run autonomy:class    compute the committed candidate promotion ceiling',
-      '  agentic-os pipeline --repo=<owner/repo> --run=<id> --head=<sha> --attempt=<n>  watch exact CI progress',
-      '  agentic-os flight plan|pre|in|post  preview all phase prerequisites, inspect drift and completion',
-      '  agentic-os flight gate --operation=<id> --context=<json>  run enrolled checks before an effect',
-      '  agentic-os workflow targets | collect --input=<manifest> | export --input=<stored-manifest> [--offset=32] | recommend --input=<stored-manifest>  local lifecycle evidence',
-      '  agentic-os observe        emit a shallow profile-bound repository observation',
-      '  agentic-os observe --checks --input=<json>  discover owner checks and result bindings',
-      '  agentic-os request ...    construct an unsigned Coordination Request from JSON',
-      '  npm run queue:show        inspect the required remote configuration',
-      '  npm run queue:apply -- --yes  fail closed; provider policy is repository-owned',
+      '    completion status/scaffold, sync:canonical, reconcile, autonomy:class',
+      '    pipeline, flight, workflow, observe, request, and queue commands',
+      '  Read docs/RELEASE-WORKFLOW.md for effect boundaries; load feature guides on demand.',
       '',
     ].join('\n'),
   );

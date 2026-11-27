@@ -82,6 +82,22 @@ test('historical facts can bind an exact retained check gap when GitHub exposes 
   }), /required checks/u);
 });
 
+test('historical facts can fall back to exact enrollment checks when private free-tier APIs deny rules reads', async () => {
+  const fx = await fixture(state => {
+    state.targetMergeMethods = ['squash'];
+    state.targetRulesFeatureDenied = true;
+    state.targetClassicProtectionFeatureDenied = true;
+  });
+  const { winner } = await publish(fx), proof = winner.stored.providerProof;
+  assert.deepEqual(proof.currentTargetProtection.targetRequiredContexts, ['Integration Gate']);
+  assert.deepEqual(proof.currentTargetProtection.targetAllowedMergeMethods, ['squash']);
+  assert.deepEqual(proof.currentTargetProtection.targetRulesetVersions, []);
+  assert.equal(proof.currentTargetProtection.targetBypassActorsObserved, false);
+  assert.ok(fx.api.calls.some((route) => route === 'GET /repos/example/target/rules/branches/main'));
+  assert.ok(fx.api.calls.some((route) => route === 'GET /repos/example/target/branches/main/protection'));
+  assert.ok(!fx.api.calls.some((route) => route === 'GET /repos/example/target/rulesets/21'));
+});
+
 test('historical dispatch rejects missing enrollment and legacy proof-schema substitution', async () => {
   const fx = await fixture(), bytes = encodeGitHubTransitionInput(fx.operationInput);
   const event = { inputs: { operation_payload: bytes.toString('utf8'), operation_input_digest: deriveGitHubTransitionInputDigest(bytes) } };
