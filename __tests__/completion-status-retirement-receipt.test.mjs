@@ -128,3 +128,21 @@ test('retirement receipt does not replace the separate workspace-cleanup receipt
   assert.equal(bound.retirementSatisfied, true);
   assert.equal(bound.authorizesEffects, false);
 });
+
+test('quarantined cleanup remains retirement-pending until the exact retirement receipt is bound', () => {
+  const shared = { sourceIntegrated: true, canonicalCurrent: true, laneMounted: false, laneClean: null,
+    laneHead: true, quarantineProfile: true, quarantineObserved: true, deployBound: false,
+    findingCodes: [], localPolicyCandidate: false };
+  const pending = deriveCloseoutVerdict(shared);
+  assert.equal(pending.cleanupSatisfied, true);
+  assert.equal(pending.retentionState, 'quarantined');
+  assert.equal(pending.completionScope, 'retirement-bound');
+  assert.equal(pending.adlcState, 'retirement_pending');
+  assert.equal(pending.nextAction.id, 'verify-preservation-retirement');
+
+  const retired = deriveCloseoutVerdict({ ...shared, retirementReceiptVerified: true });
+  assert.equal(retired.cleanupSatisfied, true);
+  assert.equal(retired.retirementSatisfied, true);
+  assert.equal(retired.adlcState, 'complete');
+  assert.equal(retired.authorizesEffects, false);
+});
