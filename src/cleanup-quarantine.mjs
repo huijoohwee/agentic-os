@@ -328,21 +328,22 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   });
   const entries = worktreeInventory(controller), policy = observePolicy(plan, controller);
   const shared = sharedState(common, entries, null, plan);
-  if (entries.some((entry) => entry.path === plan.targetPath)
-    || projectionManifest.digest !== eligibility.projectionManifestDigest
+  const drift = [];
+  if (entries.some((entry) => entry.path === plan.targetPath)) drift.push('target-registration');
+  if (projectionManifest.digest !== eligibility.projectionManifestDigest
     || projectionManifest.bytes !== eligibility.projectionBytes
-    || projectionManifest.entries !== eligibility.projectionEntries
-    || retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
+    || projectionManifest.entries !== eligibility.projectionEntries) drift.push('projection');
+  if (retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
     || retainedRegistrationManifest.bytes !== eligibility.registrationBytes
-    || retainedRegistrationManifest.entries !== eligibility.registrationEntries
-    || shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest
-    || shared.sharedRefDigest !== eligibility.sharedRefDigest
-    || shared.objectInventoryDigest !== eligibility.objectInventoryDigest
-    || shared.sharedStateBytes !== eligibility.sharedStateBytes
-    || shared.sharedStateEntries !== eligibility.sharedStateEntries
-    || policy.profile.profileDigest !== eligibility.profileDigest
-    || policy.canonicalRevision !== eligibility.canonicalRevision)
-    fail('blocked-cleanup-retained-artifact', 'completed quarantine evidence drifted');
+    || retainedRegistrationManifest.entries !== eligibility.registrationEntries) drift.push('registration');
+  if (shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest) drift.push('peer-registrations');
+  if (shared.sharedRefDigest !== eligibility.sharedRefDigest) drift.push('refs');
+  if (shared.objectInventoryDigest !== eligibility.objectInventoryDigest) drift.push('objects');
+  if (shared.sharedStateBytes !== eligibility.sharedStateBytes
+    || shared.sharedStateEntries !== eligibility.sharedStateEntries) drift.push('shared-state-size');
+  if (policy.profile.profileDigest !== eligibility.profileDigest) drift.push('profile');
+  if (policy.canonicalRevision !== eligibility.canonicalRevision) drift.push('canonical');
+  if (drift.length) fail('blocked-cleanup-retained-artifact', `completed quarantine evidence drifted: ${drift.join(', ')}`);
   return { artifacts: { operationPath, projectionPath, registrationPath,
     projectionQuarantined: true, registrationQuarantined: true, replayed: true },
   result: frozen({ targetPath: plan.targetPath, projectionQuarantinePath: projectionPath,

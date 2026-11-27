@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, readlinkSync, symlinkSync, linkSync, statSync, rmSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, createRepositoryProfile, governanceDigest, retire } from '../src/governance.mjs';
+import { canonicalJson, createRepositoryProfile, RETAIN_ALL_CLEANUP, governanceDigest, retire } from '../src/governance.mjs';
 import { effectPlanByteDigest, encodeEffectPlan } from '../src/completion.mjs';
 import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
   createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
@@ -54,7 +54,7 @@ function fixture(t, concurrentBase = false, detached = false, mergedProjection =
   const profile = createRepositoryProfile({ repository: `github.com/${repository}`,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } },
-    requiredChecks: ['test'], capabilities: ['integration-method:squash'] });
+    requiredChecks: ['test'], capabilities: ['integration-method:squash'], cleanup: RETAIN_ALL_CLEANUP });
   writeFileSync(join(root, '.agentic-os.json'), JSON.stringify(profile));
   writeFileSync(join(root, '.gitignore'), 'runtime/\n'); writeFileSync(join(root, 'source.txt'), 'base\n');
   git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'base');

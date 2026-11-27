@@ -201,7 +201,7 @@ function snapshotObserver(plan, options = {}) {
       profile: { profileDigest: governanceDigest(current), canonical: { localRef: 'refs/heads/main' } } };
   };
 }
-export function cleanupEligibility(plan, profileDigest = plan.policyDigest) {
+export function cleanupEligibility(plan, profileDigest = plan.observation?.profileDigest ?? plan.policyDigest) {
   const observation = plan.observation;
   return { schema: 'agentic-os/user-cleanup-eligibility/v1', planDigest: plan.planDigest,
     profileDigest, canonicalRevision: plan.canonical,
