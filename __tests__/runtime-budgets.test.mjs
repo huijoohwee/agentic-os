@@ -30,7 +30,7 @@ test('this repository is inside its own documentation budget', (t) => {
     alwaysLoadBytes: 40 * 1024,
     maxLineChars: 120,
   });
-  assert.equal(total, 40959, 'update this exact cost to expose every always-load byte delta');
+  assert.equal(total, 40952, 'update this exact cost to expose every always-load byte delta');
   assert.ok(total <= DOC_BUDGET.alwaysLoadBytes);
   assert.equal(alwaysLoadFiles(root).includes(join(root, 'guides/AUTONOMOUS-GOAL-PURSUIT.md')), false);
   const fixture = mkdtempSync(join(tmpdir(), 'agentic-os-lazy-load-'));
@@ -99,15 +99,18 @@ test('ADLC binds lean time-to-production, budgets, and diff-only integration at 
       'Unsupported: report blocker, not proof. Headless: N/A.',
     ]],
     ['docs/RELEASE-WORKFLOW.md', [
-      '`publish` hands off after checks; merge requires green checks.',
-      '`complete --ref=<lane>` waits for exact integration and reports closeout',
-      'keeping the lane mounted.',
-      '`closeout --ref=<lane>` is read-only; `close` is diagnostic.',
-      'Cleanup is separate: exact eligible targets require `--bundle --stopped`.',
-      'Source closeout grants no cleanup, sync, or production authority;',
-      '[DEPLOY](../guides/DEPLOY-WORKFLOW.md).',
-      '`retire-empty-active --ref=<lane>` quarantines a clean lane at its base;',
-      'refs, objects, and registration remain.',
+      'START: `npm run lane -- <scope> --write=<paths>`;',
+      'LAND: run `npm run check`, then `npm run land -- --message="..."`.',
+      'Update the same unqueued PR with a fast-forward; preserve history.',
+      'END (canonical): `agentic-os complete-adlc --apply --ref=<lane> --stopped`',
+      'selects merge, sync and cleanup.',
+      'needs `--authority-head`.',
+      'END needs remote integration and canonical sync.',
+      'Each effect has its own receipt.',
+      'Cleanup removes only a clean integrated worktree;',
+      'refs, reflogs and objects stay.',
+      '[cleanup](../guides/CLEANUP-RESIDUE-DEFAULT.md)',
+      '[recovery](../guides/USER-CLEANUP.md).',
     ]],
     ['guides/SYSTEM-PROMPT-RUNTIME.md', [
       'SSOT=guides/SYSTEM-PROMPT-RUNTIME.md.',

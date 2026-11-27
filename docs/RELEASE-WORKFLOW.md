@@ -1,13 +1,14 @@
 # Release workflow
 
-`publish` hands off; merge needs green checks.
-`complete --ref=<lane>` waits for exact integration; lane stays mounted.
-`closeout --ref=<lane>` reads status; `close` diagnoses.
+START: `npm run lane -- <scope> --write=<paths>`; work in its linked worktree.
+LAND: run `npm run check`, then `npm run land -- --message="..."`.
+Update the same unqueued PR with a fast-forward; preserve history.
 
-`agentic-os complete-adlc --worktrees=<dir>` reports source, delivery and retention; exit `2` keeps END ADLC open.
-A clean, integrated, current lane may be `source_complete` while `cleanup_pending`. Without an activation binding,
-delivery is `not-required`.
+END (canonical): `agentic-os complete-adlc --apply --ref=<lane> --stopped`
+selects merge, sync and cleanup. Green checks/reviews gate merge; authority source
+needs `--authority-head`.
 
-Cleanup needs `--bundle --stopped`; closeout grants no cleanup, sync or production authority. See
-[DEPLOY](../guides/DEPLOY-WORKFLOW.md).
-`retire-empty-active` quarantines a clean base lane; refs, objects and registration persist.
+END needs remote integration and canonical sync. Each effect has its own
+receipt. Cleanup removes only a clean integrated worktree; branches,
+refs, reflogs and objects stay. See [cleanup](../guides/CLEANUP-RESIDUE-DEFAULT.md)
+and [recovery](../guides/USER-CLEANUP.md).
