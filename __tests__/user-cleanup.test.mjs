@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readli
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRepositoryProfile } from '../src/governance.mjs';
+import { createRepositoryProfile, governanceDigest } from '../src/governance.mjs';
 import { planUserCleanup, planRecoveryCleanupFromLane, applyUserCleanup } from '../bin/agentic-os-cleanup-user.mjs';
 import { ensureRepositoryTrust } from '../src/git-repository.mjs';
 import { get, put } from '../src/lane-records.mjs';
@@ -119,7 +119,7 @@ test('a held clone lock or partial journal is not bypassed or automatically repa
   assert.throws(() => s.apply(plan), /metadata|quarantine|private directory/); assert.ok(existsSync(s.target));
 });
 
-function currentProjectionFixture(t) {
+function currentProjectionFixture(t, { ignored = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'agentic-os-current-projection-')));
   const root = join(parent, 'root'), target = join(parent, 'lane');
   t.after(() => rmSync(parent, { recursive: true, force: true }));
@@ -127,6 +127,7 @@ function currentProjectionFixture(t) {
   g(root, 'init', '--quiet', '--initial-branch=main');
   g(root, 'config', 'user.name', 'Fixture');
   g(root, 'config', 'user.email', 'fixture@example.invalid');
+  writeFileSync(join(root, '.gitignore'), 'runtime/\n');
 
   const repository = 'example/cleanup-projection';
   const branch = 'agent/device-0232231d4a19/current-projection';
@@ -165,13 +166,17 @@ function currentProjectionFixture(t) {
 
   const canonical = g(root, 'rev-parse', 'HEAD');
   g(root, 'update-ref', 'refs/remotes/origin/main', canonical);
+  if (ignored) {
+    mkdirSync(join(target, 'runtime'));
+    writeFileSync(join(target, 'runtime/state.txt'), 'local evidence\n');
+  }
   g(root, 'config', '--local', 'agentic-os.userCleanup', 'quarantine-recovery');
   put({ ref: branch, state: 'published', base: 'refs/remotes/origin/main', baseSha: base,
     worktree: target, pr, head: priorHead, writePaths: ['source.txt'] }, root);
   return { root, target, profile, branch, base, canonical, head, priorHead,
     options: { observeRemote: () => `${canonical}\trefs/heads/main` } };
 }
-test('stale published cache quarantines only exact current integration and preserves its record and refs', t => {
+test('clean exact current integration removes only the worktree and retains its branch and objects', t => {
   const s = currentProjectionFixture(t), refs = g(s.root, 'show-ref');
   const plan = planRecoveryCleanupFromLane({ cwd: s.root, ref: s.branch }, s.options);
   assert.equal(plan.head, s.head);
@@ -181,12 +186,32 @@ test('stale published cache quarantines only exact current integration and prese
     authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
   assert.equal(receipt.selectedChecksVerified, false);
   assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.result, 'removed-clean');
+  assert.equal(receipt.removalMode, 'git-worktree-remove-no-force');
+  assert.equal(receipt.claimRetired, false);
+  assert.equal(receipt.branchRefsMutated, false);
+  assert.equal(receipt.objectDatabaseMutated, false);
+  assert.equal(receipt.receiptDigest, governanceDigest(
+    Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== 'receiptDigest'))));
   assert.equal(existsSync(s.target), false);
   assert.equal(g(s.root, 'show-ref'), refs);
   assert.equal(get(s.branch, s.root).head, s.priorHead);
   const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile,
     { cleanupReceipt: receipt });
   assert.equal(status.closeout.sourceIntegrated, true);
+  assert.equal(status.cleanupVerified, true);
+});
+test('ignored local-only bytes are preserved in quarantine under the remove-clean default', t => {
+  const s = currentProjectionFixture(t, { ignored: true });
+  const plan = planRecoveryCleanupFromLane({ cwd: s.root, ref: s.branch }, s.options);
+  const receipt = applyUserCleanup(plan, { cwd: s.root, ...s.options,
+    authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true });
+  assert.equal(receipt.result, 'quarantined');
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(receipt.claimRetired, false);
+  assert.equal(readFileSync(join(receipt.projectionQuarantinePath, 'runtime/state.txt'), 'utf8'), 'local evidence\n');
+  const status = inspectCompletionStatus(s.root, s.branch, { protectedBranch: 'main' }, s.profile,
+    { cleanupReceipt: receipt });
   assert.equal(status.cleanupVerified, true);
 });
 test('stale published cache refuses an unrelated descendant checkout', t => {

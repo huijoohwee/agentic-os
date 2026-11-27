@@ -3,15 +3,13 @@ import { canonicalJson } from './governance.mjs';
 import { observeGit, commonDir } from './git.mjs';
 import { realpathSync } from 'node:fs';
 import { observeWorktreeCleanupTarget, verifyCleanWorktreeRemoval } from './cleanup-quarantine.mjs';
-import { createRetirementOpenReaderProbe } from '../bin/agentic-os-cleanup-user.mjs';
-
 function fail(reason, message) { throw Object.assign(new Error(message), { reason }); }
 
 export function removeCleanWorktreeTarget(plan, before, {
-  cwd = process.cwd(), authorizeEffects, observePolicy,
+  cwd = process.cwd(), authorizeEffects, observePolicy, createReaderProbe,
 } = {}) {
   if (before.cleanupMode !== 'remove-clean' || before.cleanRemovalEligible !== true
-    || typeof authorizeEffects !== 'function')
+    || typeof authorizeEffects !== 'function' || typeof createReaderProbe !== 'function')
     fail('blocked-clean-removal-ineligible', 'clean removal requires the selected policy and a clean byte inventory');
   const controller = realpathSync(cwd);
   if (realpathSync(commonDir(controller)) !== before.commonDirectory)
@@ -21,7 +19,7 @@ export function removeCleanWorktreeTarget(plan, before, {
     observePolicy, forceFreshRecoveryInventory: true });
   if (canonicalJson(fresh) !== canonicalJson(before) || !fresh.cleanRemovalEligible)
     fail('blocked-clean-removal-drift', 'worktree bytes or shared Git state changed before removal');
-  createRetirementOpenReaderProbe()(plan.targetPath);
+  createReaderProbe()(plan.targetPath);
   observeGit(['worktree', 'remove', '--', plan.targetPath], { cwd: controller });
   verifyCleanWorktreeRemoval(plan, before, { cwd: controller });
   return {

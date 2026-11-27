@@ -1,4 +1,4 @@
-/** Exact-path, quarantine-only Git worktree observation and mutation mechanics. */
+/** Exact-path Git worktree observation, quarantine, and clean-removal verification. */
 import { lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -54,9 +54,8 @@ function sharedState(common, worktrees, excludedAdminId, plan) {
       fail('blocked-cleanup-object-alternate', 'alternate object stores are unsupported');
   }
   const limits = { byteCeiling: plan.sharedStateByteCeiling, entryCeiling: plan.sharedStateEntryCeiling };
-  const adminRoot = join(common, 'worktrees');
-  const adminNames = boundedDirectoryEntries(adminRoot, limits.entryCeiling, 'peer worktree admin').map((entry) => entry.name).filter((name) => name !== excludedAdminId);
-  const peerPhysical = selectedManifest(adminRoot, adminNames, limits, { label: 'peer-worktree-admin', observe: observeRegistrationManifest });
+  const adminRoot = join(common, 'worktrees'), adminStat = lstatSync(adminRoot, { throwIfNoEntry: false }), adminNames = adminStat ? boundedDirectoryEntries(adminRoot, limits.entryCeiling, 'peer worktree admin').map((entry) => entry.name).filter((name) => name !== excludedAdminId) : worktrees.length === 1 ? [] : fail('blocked-cleanup-peer-admin', 'missing worktree admin root has unresolved peers');
+  const peerPhysical = adminStat ? selectedManifest(adminRoot, adminNames, limits, { label: 'peer-worktree-admin', observe: observeRegistrationManifest, modeOverride: adminNames.length ? null : 'no-peer-admins' }) : frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1', label: 'peer-worktree-admin', mode: 'no-peer-admins', items: [] }), bytes: 0, entries: 0 });
   const refs = selectedManifest(common, ['AUTO_MERGE', 'BISECT_HEAD', 'CHERRY_PICK_HEAD', 'FETCH_HEAD', 'HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'REBASE_HEAD', 'REVERT_HEAD', 'logs', 'packed-refs', 'refs', 'reftable'], limits, { allowMissing: true, label: 'shared-refs-reflogs' });
   const objects = selectedManifest(common, ['objects'], limits, { label: 'shared-object-store', retainedHardlinks: true });
   const sharedStateBytes = peerPhysical.bytes + refs.bytes + objects.bytes;

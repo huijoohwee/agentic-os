@@ -44,8 +44,10 @@ npm run release:common -- complete-adlc --apply --ref=<lane> --stopped
 
 END follows finish → check → LAND/publish → protected integration → sync → cleanup. Cleanliness alone does not
 prove publication: inspect unpublished commits too. An open or blocked result keeps the lane open; follow its
-named next action and reuse covered grants. Source integration does not imply delivery
-or cleanup. For a batch, use `npm run release:common -- complete-adlc --worktrees=<registered-root>` on demand.
+named next action and reuse covered grants. END removes a clean integrated linked worktree without force, while
+retaining its branch, reflog, and Git objects. Local-only bytes are quarantined or remain mounted for recovery;
+cleanup does not imply provider authority or claim retirement. Source integration does not imply delivery.
+For a batch, use `npm run release:common -- complete-adlc --worktrees=<registered-root>` on demand.
 Solo maintainers use a PR and green CI with required approvals set to zero, bypass off, and no self-approval.
 Load deployment, rollback, recovery, cleanup, diagnostics, or extra validation only when the lane scope or its
 reported next action requires them. Each effect retains its owner's authority and receipt.
@@ -71,7 +73,7 @@ workflows stay on demand. Use the [deploy workflow](guides/DEPLOY-WORKFLOW.md) o
 | `/`, `#`, `@` route register | [INVOCATION](docs/INVOCATION.md), [catalog](catalog/invocation.json) |
 | Backend tool and transport contract | [MCP](docs/MCP.md) |
 | Bounded codebase map, search and read | [context](guides/CONTEXT.md) |
-| Cleanup consent and quarantine | [user cleanup](guides/USER-CLEANUP.md) |
+| Cleanup policy and receipts | [cleanup residue default](guides/CLEANUP-RESIDUE-DEFAULT.md), [user cleanup](guides/USER-CLEANUP.md) |
 | Universal lifecycle principles | [ADLC guidelines](docs/adlc-guidelines.md) |
 | Always-load agent instructions | [AGENTS](AGENTS.md) |
 | Work allocation across devices | [FLEET](FLEET.md) |

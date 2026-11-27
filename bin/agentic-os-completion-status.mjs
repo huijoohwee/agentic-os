@@ -61,13 +61,13 @@ function localCurrentIntegrationReceipt(receipt, root, ref, laneHead, laneRecord
     && proof.baseHead === receipt.canonicalRevision
     && receipt.review?.kind === 'local-current-integration'
     && Object.keys(receipt.review).sort().join(',') === 'branch,head,kind,merge'
-    && receipt.review.branch === ref && receipt.review.head === laneHead
-    && receipt.review.merge === proof.baseHead
+    && receipt.review.branch === ref && receipt.review.head === laneHead && receipt.review.merge === proof.baseHead
+    && (!receipt.providerReview || receipt.providerReview.branch === ref && receipt.providerReview.head === laneHead && receipt.providerReview.pr === record.pr && /^[a-f0-9]{40}$/u.test(receipt.providerReview.merge ?? '') && isAncestor(receipt.providerReview.merge, proof.baseHead, root) && Array.isArray(receipt.providerReview.checks) && receipt.providerReview.checks.length > 0 && receipt.providerReview.checks.every(check => check?.conclusion === 'success'))
     && receipt.selectedChecksVerified === false && receipt.providerAuthority === false
     && receipt.protectionProven === false && receipt.claimRetired === false
     && receipt.targetPath === laneRecord?.worktree
     && /^[a-f0-9]{64}$/u.test(receipt.planDigest ?? '')
-    && record.head !== laneHead && isAncestor(record.baseSha, record.head, root)
+    && isAncestor(record.baseSha, record.head, root)
     && isAncestor(record.head, laneHead, root) && isAncestor(record.baseSha, proof.baseHead, root);
   if (!shapeValid) return false;
 
@@ -83,8 +83,8 @@ function localCleanupReceipt(cleanupReceipt, root, ref, laneHead, laneRecord) {
     && (cleanupReceipt.review.kind === 'local-current-integration' ? validLocalProof : !hasLocalProof)
     && cleanupReceipt.targetPath === laneRecord?.worktree ? cleanupReceipt : null;
 }
-const cleanupObserved = (root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef, profile) => {
-  if (!laneHead) return false;
+const localCleanRemovalReceipt = (receipt, root, ref, laneHead, laneRecord, canonicalRef, profile) => { const { receiptDigest, ...payload } = receipt ?? {}, local = localCleanupReceipt(receipt, root, ref, laneHead, laneRecord); return Boolean(local) && receipt.result === 'removed-clean' && receiptDigest === governanceDigest(payload) && receipt.expectedBranch === ref && receipt.expectedHeadRevision === laneHead && receipt.profileDigest === profile?.profileDigest && profile?.cleanup?.worktreeProjection === 'remove-clean' && receipt.worktreeRemoved === true && receipt.registrationRemoved === true && receipt.branchRetained === true && receipt.objectsRetained === true && receipt.removalMode === 'git-worktree-remove-no-force' && receipt.bytesDeleted === true && receipt.branchRefsMutated === false && receipt.objectDatabaseMutated === false && receipt.canonicalRevision === headSha(canonicalRef, root) && headSha(`refs/heads/${ref}`, root) === laneHead && !worktrees(root).some(row => row.path === receipt.targetPath || row.branch === ref) && !lstatSync(receipt.targetPath, { throwIfNoEntry: false }); }; const cleanupObserved = (root, ref, laneHead, laneRecord, cleanupReceipt, canonicalRef, profile) => {
+  if (!laneHead) return false; if (localCleanRemovalReceipt(cleanupReceipt, root, ref, laneHead, laneRecord, canonicalRef, profile)) return true;
   if (cleanupReceipt?.schema === LEGACY_WORKTREE_CLEANUP_RECEIPT_SCHEMA)
     return cleanupReceipt.result === 'quarantined'
       && /^[0-9a-f]{64}$/u.test(cleanupReceipt.cleanupPlanDigest ?? '')

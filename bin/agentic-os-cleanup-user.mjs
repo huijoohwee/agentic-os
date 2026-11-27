@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto'; import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { TextDecoder } from 'node:util';
-import { canonicalJson, governanceDigest } from '../src/governance.mjs';
+import { canonicalJson, DEFAULT_CLEANUP, governanceDigest } from '../src/governance.mjs';
 import { currentBranch, observeGit, repoRoot, remoteTransport, observeGitLines, worktrees, commonDir, isAncestor } from '../src/git.mjs';
 import { loadRepositoryTrust } from '../src/git-repository.mjs';
 import { collectRecoveryInventory } from '../src/recovery-inventory.mjs';
 import { observeWorktreeCleanupTarget, classifyExistingWorktreeQuarantine, quarantineWorktreeTarget, observeRetainedQuarantineEvidence, observeDiscardedQuarantineEvidence, observeQuarantineManifest, retirementEligibility } from '../src/cleanup-quarantine.mjs';
-import { readBoundedStableFile } from '../src/cleanup-manifest.mjs';
+import { readBoundedStableFile } from '../src/cleanup-manifest.mjs'; import { removeCleanWorktreeTarget } from '../src/cleanup-remove-clean.mjs';
 import { privateDirectoryIdentity, legacyPrivateDirectoryIdentity, assertPrivateDirectoryIdentity, writePrivateFileExclusive,
   readPrivateFile, captureExactTree, pathIdentity, removeExactTree, unlinkExactPath,
   tightenLegacyPrivateDirectory } from '../src/file-integrity.mjs';
@@ -64,7 +64,7 @@ function policy(root, mode = MODE, { changeClass = undefined } = {}) {
   return { root, repository: match[1], remoteUrl, canonical, localRef: 'refs/heads/main',
     mode, enrollment: mode === MODE ? KEY : `${KEY}=${enrollment}`,
     ...(mode === RECOVERY_MODE ? recoveryPolicy(root, match[1]) : {}),
-    selectedEffects: ['quarantine-projection', 'quarantine-registration'] };
+    selectedEffects: ['remove-clean-projection', 'remove-clean-registration'] };
 }
 function resolvePolicy(root, mode, resolver = null, options = {}) {
   return typeof resolver === 'function' ? resolver(root, mode, options) : policy(root, mode, options);
@@ -74,7 +74,7 @@ function observePolicy(mechanics, root, resolver = null, changeClass = undefined
   if (governanceDigest(current) !== mechanics.profileDigest || current.canonical !== mechanics.expectedCanonicalRevision
     || `github.com/${current.repository}` !== mechanics.repository) refuse('local-policy-drift');
   return { root, canonicalRevision: current.canonical,
-    profile: { profileDigest: governanceDigest(current), canonical: { localRef: current.localRef } } };
+    profile: { profileDigest: current.repositoryProfileDigest ?? governanceDigest(current), canonical: { localRef: current.localRef }, cleanup: current.protectedCleanupPolicy ?? DEFAULT_CLEANUP } };
 }
 function mechanics(plan) {
   return { ...(plan.mode === RECOVERY_MODE ? RECOVERY_LIMITS : LIMITS), mode: plan.mode, repository: `github.com/${plan.repository}`, targetPath: plan.targetPath,
@@ -278,7 +278,7 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       observePolicy(configured, configuredRoot, policyResolver, changeClass);
     let applied = classifyExistingWorktreeQuarantine(m, eligible, {
       cwd: root, observePolicy: configuredObservePolicy,
-    });
+    }), removalIntegration = null, providerReview = null, removedClean = false, cleanRemovalObservation = null;
     if (!applied) {
       if (now() < plan.issuedAt || now() >= plan.expiresAt) refuse('expired');
       if (read(plan.targetPath, ['status', '--porcelain', '--untracked-files=all'])) refuse('target-not-clean');
@@ -287,12 +287,14 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
       });
       if (!same(before, plan.observation)) refuse('observation-drift');
       try {
-        applied = quarantineWorktreeTarget(m, before, {
-          cwd: root, eligibility: eligible, observePolicy: configuredObservePolicy,
-          authorizeEffects() {
-            const time = now(); if (time < plan.issuedAt || time >= plan.expiresAt) refuse('expired');
-            observePolicy(m, root, policyResolver, changeClass); return new Date(time).toISOString();
-          } });
+        const authorizeEffects = () => { const time = now(); if (time < plan.issuedAt || time >= plan.expiresAt) refuse('expired'); observePolicy(m, root, policyResolver, changeClass); return new Date(time).toISOString(); };
+        const lane = plan.branch ? get(plan.branch, root) : null, current = plan.currentIntegration?.record ?? lane,
+          reviewBound = plan.currentIntegration || plan.review?.branch === plan.branch && plan.review?.head === plan.head && plan.review?.pr === plan.pr
+            && plan.review?.checks?.length === plan.requiredChecks.length && plan.review.checks.every((check, index) => check?.name === plan.requiredChecks[index] && check.conclusion === 'success'),
+          proof = before.cleanupMode === 'remove-clean' && before.cleanRemovalEligible && reviewBound && plan.branch && !plan.detachedHead ? exactCurrentIntegrationProof(plan.canonical, plan.branch, { cwd: root }) : null;
+        removedClean = Boolean(proof && proof.head === plan.head && proof.baseHead === plan.canonical && current?.state === lane?.state && (plan.currentIntegration ? plan.currentIntegration.proof.head === plan.head && plan.currentIntegration.proof.baseHead === plan.canonical : current?.head === plan.head) && current?.baseSha && current?.pr === plan.pr);
+        if (removedClean) { removalIntegration = plan.currentIntegration ?? { record: { state: current.state, head: current.head, baseSha: current.baseSha, pr: current.pr }, proof }; providerReview = plan.currentIntegration ? null : plan.review; cleanRemovalObservation = before; }
+        applied = removedClean ? removeCleanWorktreeTarget(m, before, { cwd: root, observePolicy: configuredObservePolicy, authorizeEffects, createReaderProbe: createRetirementOpenReaderProbe }) : quarantineWorktreeTarget(m, before, { cwd: root, eligibility: eligible, observePolicy: configuredObservePolicy, authorizeEffects });
       } catch (error) {
         Object.assign(error, { retainedOperation: true, operationResult: null,
           operationError: { reason: error.reason ?? null, message: error.message },
@@ -300,20 +302,18 @@ export function applyUserCleanup(input, { cwd = process.cwd(), authorization, st
             targetPath: plan.targetPath, mode: plan.mode } }); throw error;
       }
     }
-    return { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
+    removedClean = applied.artifacts.worktreeRemoved === true;
+    const receipt = { schema: 'agentic-os/user-cleanup-receipt/v1', mode: plan.mode, planDigest: plan.planDigest,
       authority: 'explicit-local-user-consent', providerAuthority: false, protectionProven: false, claimRetired: false,
-      selectedChecksVerified: plan.mode !== NO_CI_MODE && !plan.historicalCheckGap && !plan.currentIntegration, noCI: plan.mode === NO_CI_MODE,
+      selectedChecksVerified: !removedClean && plan.mode !== NO_CI_MODE && !plan.historicalCheckGap && !plan.currentIntegration, noCI: plan.mode === NO_CI_MODE,
       ...(plan.changeClass?.fastPath ? { changeClass: plan.changeClass, authorityTerminalState: 'local-consent' } : {}),
-      ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy, integration: plan.integration,
-        historicalIntegrationMethodProven: false, ...(plan.reviewedEquivalentCommit ? { sourceIntegrated: false, historicalDraft: 'superseded' } : {}) } : {}),
+      ...(plan.mode === RECOVERY_MODE ? { recoveryPolicy: plan.recoveryPolicy, integration: plan.integration, historicalIntegrationMethodProven: false, ...(plan.reviewedEquivalentCommit ? { sourceIntegrated: false, historicalDraft: 'superseded' } : {}) } : {}),
       localPolicyDigest: plan.policyDigest, stoppedAcknowledged: true, canonicalRevision: plan.canonical,
-      review: plan.review, ...(plan.currentIntegration ? { currentIntegration: plan.currentIntegration } : {}),
-      ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}),
-      ...(plan.mergedProjection ? { mergedProjection: plan.mergedProjection } : {}),
-      ...(plan.historicalCheckGap ? { historicalCheckGap: { ...plan.review.historicalCheckGap, requiredChecks: [...plan.review.historicalCheckGap.requiredChecks] } } : {}),
-      ...(plan.successor ? { successor: plan.successor } : {}),
-      ...applied.result, ...applied.artifacts, result: 'quarantined',
-      bytesDeleted: false, branchesMutated: false, objectsMutated: false, operatingSystemExclusivityProven: false };
+      ...(removedClean ? { expectedBranch: plan.branch, expectedHeadRevision: plan.head, profileDigest: cleanRemovalObservation?.profileDigest } : {}), review: removedClean ? { kind: 'local-current-integration', branch: plan.branch, head: plan.head, merge: plan.canonical } : plan.review,
+      ...(removedClean ? { currentIntegration: removalIntegration, ...(providerReview ? { providerReview } : {}) } : plan.currentIntegration ? { currentIntegration: plan.currentIntegration } : {}),
+      ...(plan.detachedHead ? { detachedHead: plan.detachedHead } : {}), ...(plan.mergedProjection ? { mergedProjection: plan.mergedProjection } : {}), ...(plan.historicalCheckGap ? { historicalCheckGap: { ...plan.review.historicalCheckGap, requiredChecks: [...plan.review.historicalCheckGap.requiredChecks] } } : {}), ...(plan.successor ? { successor: plan.successor } : {}),
+      ...applied.result, ...applied.artifacts, result: removedClean ? 'removed-clean' : 'quarantined', projectionBytesRemoved: removedClean, bytesDeleted: removedClean, branchesMutated: false, objectsMutated: false, branchRefsMutated: false, objectDatabaseMutated: false, operatingSystemExclusivityProven: false };
+    return removedClean ? { ...receipt, receiptDigest: governanceDigest(receipt) } : receipt;
   });
 }
 const UNIFIED_MODE_FLAGS = Object.freeze({ 'local-consent': [], recovery: ['--recovery'], 'no-ci': [], 'local-snapshot': [], 'local-integrated': [] });

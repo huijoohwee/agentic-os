@@ -42,6 +42,7 @@ const RESULT_STATE = Object.freeze({ claim: 'current', continue: 'current',
   integrate: 'integrated', retire: 'retired' });
 export const RETAIN_ALL_CLEANUP = Object.freeze(Object.fromEntries(
   CLEANUP_KEYS.map((key) => [key, 'retain'])));
+export const DEFAULT_CLEANUP = Object.freeze({ ...RETAIN_ALL_CLEANUP, worktreeProjection: 'remove-clean', worktreeRegistration: 'remove-clean' });
 export const CONSUMER_AUTHORITY = Object.freeze({ runtime: 'consumer', release: 'consumer' });
 function fail(message) { throw new TypeError(message); }
 const SNAPSHOT_ERRORS = Object.freeze({
@@ -114,7 +115,7 @@ function strings(value, label, { nonempty = false } = {}) {
   if (new Set(result).size !== result.length) fail(`${label} must not contain duplicates`);
   return result;
 }
-function cleanup(value = RETAIN_ALL_CLEANUP) {
+function cleanup(value = DEFAULT_CLEANUP) {
   exactKeys(value, CLEANUP_KEYS, 'cleanup');
   const worktreeKeys = ['worktreeProjection', 'worktreeRegistration'];
   for (const key of CLEANUP_KEYS) if (value[key] !== 'retain'

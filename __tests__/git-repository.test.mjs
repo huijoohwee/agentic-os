@@ -30,7 +30,7 @@ import {
   observeRepository,
   repositoryTrustPath,
 } from '../src/git-repository.mjs';
-import { createRepositoryProfile } from '../src/governance.mjs';
+import { createRepositoryProfile, DEFAULT_CLEANUP } from '../src/governance.mjs';
 import { commonDir, git, remoteRefSha, remoteRefShas, repoRoot, worktrees } from '../src/git.mjs';
 function run(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
@@ -76,7 +76,7 @@ test('Git adapter observes a bound clean clone without assuming consumer authori
   assert.equal(observation.canonical.operationallyClean, true);
   assert.equal(observation.projections[0].ownedPathScope, 'visible');
   assert.deepEqual(observation.authority, { runtime: 'consumer', release: 'consumer' });
-  assert.ok(Object.values(observation.cleanup).every((effect) => effect === 'retain'));
+  assert.deepEqual(observation.cleanup, DEFAULT_CLEANUP);
   assert.equal(Object.isFrozen(observation), true);
   assert.equal(Object.isFrozen(observation.canonical), true);
   assert.equal(Object.isFrozen(observation.projections[0].ownedPaths), true);
