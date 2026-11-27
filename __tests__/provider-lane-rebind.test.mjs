@@ -7,13 +7,14 @@ import { dirname, join } from 'node:path';
 import { get, put } from '../src/lane-records.mjs';
 import { applyProviderLaneRefresh, planProviderLaneRefresh } from '../bin/agentic-os-lane-alignment.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
+import { readSelectedWorkflow, startWorkflow } from '../bin/agentic-os-workflow.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000 }).trim();
 const write = (root, path, value) => {
   mkdirSync(dirname(join(root, path)), { recursive: true });
   writeFileSync(join(root, path), value);
 };
-function fixture(t, { collidingUntracked = false, wrongTree = false, integratedCandidate = false } = {}) {
+function fixture(t, { collidingUntracked = false, wrongTree = false, integratedCandidate = false, workflow = false } = {}) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'provider-rebind-'))), root = join(parent, 'repo'), lane = join(parent, 'lane');
   mkdirSync(root, { recursive: true });
   t.after(() => rmSync(parent, { recursive: true, force: true }));
@@ -21,7 +22,8 @@ function fixture(t, { collidingUntracked = false, wrongTree = false, integratedC
   for (const [key, value] of [['user.name', 'Fixture'], ['user.email', 'fixture@example.invalid'], ['commit.gpgsign', 'false']])
     git(root, 'config', key, value);
   git(root, 'remote', 'add', 'origin', 'https://github.com/example/agentic-os.git');
-  write(root, 'base.txt', 'base\n'); git(root, 'add', '--all'); git(root, 'commit', '--quiet', '-m', 'base');
+  write(root, 'base.txt', 'base\n'); if (workflow) write(root, 'native-prd-tad-adr-mvp-gtm.md', '# Native plan\n');
+  git(root, 'add', '--all'); git(root, 'commit', '--quiet', '-m', 'base');
   const base0 = git(root, 'rev-parse', 'HEAD'), ref = 'agent/test-device/provider-refresh';
   git(root, 'worktree', 'add', '--quiet', '-b', ref, lane, base0);
   write(lane, 'owned/feature.txt', 'feature\n'); git(lane, 'add', '--all'); git(lane, 'commit', '--quiet', '-m', 'published candidate');
@@ -43,6 +45,10 @@ function fixture(t, { collidingUntracked = false, wrongTree = false, integratedC
   put(record, root);
   const profile = { repository: 'github.com/example/agentic-os', profileDigest: 'f'.repeat(64),
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' } };
+  if (workflow) startWorkflow(lane, profile.repository, { revision: oldHead, planningPath: 'native-prd-tad-adr-mvp-gtm.md', worktreeId: 'lane',
+    execution: { version: 1, checkoutLimit: 1, dependencies: { version: 1, edges: [] } },
+    allocation: { worktreeId: 'lane', ref, path: lane, baseRevision: base0, headRevision: oldHead,
+      writeDigest: 'a'.repeat(64), state: 'active', operation: 'create' } });
   const review = { number: 428, state: 'open',
     head: { sha: head, ref, repo: { full_name: 'example/agentic-os' } },
     base: { sha: base1, ref: 'main', repo: { full_name: 'example/agentic-os' } } };
@@ -92,6 +98,33 @@ test('provider refresh accepts an empty PR projection only when its merge tree e
   assert.equal(git(f.lane, 'rev-parse', 'HEAD'), f.head);
   assert.equal(git(f.lane, 'rev-parse', 'HEAD^{tree}'), git(f.root, 'rev-parse', `${f.base1}^{tree}`));
   assert.equal(get(f.ref, f.root).baseSha, f.base1);
+});
+
+test('provider refresh advances the immutable workflow allocation with its exact lane candidate', t => {
+  const f = fixture(t, { workflow: true }), planValue = plan(f), planPath = save(f, planValue);
+  assert.equal(planValue.workflowDecision.revision, f.oldHead);
+  const receipt = applyProviderLaneRefresh({ cwd: f.root, planPath, profile: f.profile,
+    provider: f.provider, remoteReader: f.remoteReader, authorization: `agentic-os:provider-lane-rebind:${planValue.digest}`, stopped: true });
+  const selected = readSelectedWorkflow(f.lane, f.profile.repository, { worktreeId: 'lane', ref: f.ref });
+  assert.equal(selected.manifest.allocations.find(row => row.ref === f.ref).headRevision, f.head);
+  assert.equal(selected.members[0].child.source.revision, f.head);
+  assert.equal(selected.manifest.previous.digest, planValue.workflowDecision.manifestDigest);
+  assert.equal(receipt.providerAuthority, false);
+  assert.equal(applyProviderLaneRefresh({ cwd: f.root, planPath, profile: f.profile, provider: f.provider,
+    remoteReader: f.remoteReader, authorization: `agentic-os:provider-lane-rebind:${planValue.digest}`, stopped: true }).resumed, true);
+});
+
+test('provider refresh resumes when the lane record advanced before workflow rebind finished', t => {
+  const f = fixture(t, { workflow: true }), planValue = plan(f), planPath = save(f, planValue);
+  git(f.root, 'update-ref', `refs/heads/${f.ref}`, f.head, f.oldHead);
+  git(f.lane, 'reset', '--hard', f.head);
+  put({ ...f.record, head: f.head, baseSha: f.base1 }, f.root);
+  const receipt = applyProviderLaneRefresh({ cwd: f.root, planPath, profile: f.profile,
+    provider: f.provider, remoteReader: f.remoteReader, authorization: `agentic-os:provider-lane-rebind:${planValue.digest}`, stopped: true });
+  assert.equal(receipt.resumed, true);
+  assert.equal(get(f.ref, f.root).head, f.head);
+  assert.equal(readSelectedWorkflow(f.lane, f.profile.repository, { worktreeId: 'lane', ref: f.ref })
+    .manifest.allocations.find(row => row.ref === f.ref).headRevision, f.head);
 });
 
 test('provider refresh rejects a merge commit with a tree different from the exact local merge', t => {

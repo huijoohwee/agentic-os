@@ -2,7 +2,7 @@
 /** Exact disjoint or squash-equivalent protected-source refresh; imported lazily by START admission. */
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, writeSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { acquireOperationLock, atomicAdvanceRef, commonDir, configuredRemote, currentBranch, decodeNulFields, finishOperationLock, git, gitDir, headSha, isAncestor, observeGit, quarantineWorktreeEntries, remoteRefSha, remoteTransport, repoRoot, retireCleanProjectionUnderExclusiveContract, worktrees } from '../src/git.mjs';
@@ -16,6 +16,7 @@ import { get, putExact } from '../src/lane-records.mjs';
 import { successorLineage } from '../src/lane-state.mjs';
 import { gh, remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { repositoryIdentity } from '../src/github-rest.mjs';
+import { createWorkflowEffectGuard, readSelectedWorkflow, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
 import { flag, option, positional } from './agentic-os-argv.mjs';
 const SCHEMA = 'agentic-os/lane-alignment-plan/v1', MAX = 500_000, TARGET_ENTRY_MAX = 1024 * 1024, AGGREGATE = 4 * 1024 * 1024;
 const SHA = /^[a-f0-9]{40}$/u, hash = value => createHash('sha256').update(value).digest('hex');
@@ -314,7 +315,7 @@ export function validateLaneAlignmentInput(value) {
   if (!input || Object.keys(input).sort().join(',') !== 'device,expectedHead,expectedTarget,mission,schema,scope,stopped' || input.schema !== 'agentic-os/lane-alignment-input/v1' || input.stopped !== true || !SHA.test(input.expectedHead ?? '') || !SHA.test(input.expectedTarget ?? '') || !isAbsolute(input.mission ?? '') || resolve(input.mission) !== input.mission || /[\x00-\x1f]/u.test(input.mission)) fail('input');
   assertDevice(input.device); laneRef(input.scope, input.device); return input;
 }
-const PROVIDER_REBIND_SCHEMA = 'agentic-os/provider-lane-rebind-plan/v1';
+const PROVIDER_REBIND_SCHEMA = 'agentic-os/provider-lane-rebind-plan/v2';
 const providerRebindHash = value => createHash('sha256').update(value).digest('hex');
 const providerRebindJson = value => Array.isArray(value) ? `[${value.map(providerRebindJson).join(',')}]`
   : value && typeof value === 'object' ? `{${Object.keys(value).sort()
@@ -332,15 +333,11 @@ function providerPathRange(left, right, cwd) {
   return [...new Set(paths)].sort();
 }
 function providerWorktreeMatchesRevision(worktree, revision) {
-  return observeGit(['diff', '--quiet', revision, '--'], { cwd: worktree, allowFail: true }) === ''
-    && observeGit(['diff', '--cached', '--quiet', revision, '--'], { cwd: worktree, allowFail: true }) === '';
+  return observeGit(['diff', '--quiet', revision, '--'], { cwd: worktree, allowFail: true }) === '' && observeGit(['diff', '--cached', '--quiet', revision, '--'], { cwd: worktree, allowFail: true }) === '';
 }
 function providerUntrackedPaths(worktree) {
   const read = args => decodeNulFields(observeGit(args, { cwd: worktree, binary: true }) ?? Buffer.alloc(0));
-  return [...new Set([
-    ...read(['ls-files', '--others', '--directory', '--exclude-standard', '-z']),
-    ...read(['ls-files', '--others', '--directory', '--ignored', '--exclude-standard', '-z']),
-  ].map(path => path.replace(/\/$/u, '')).filter(Boolean))].sort();
+  return [...new Set([...read(['ls-files', '--others', '--directory', '--exclude-standard', '-z']), ...read(['ls-files', '--others', '--directory', '--ignored', '--exclude-standard', '-z'])].map(path => path.replace(/\/$/u, '')).filter(Boolean))].sort();
 }
 function providerAssertNoCollision(plan) {
   const paths = providerUntrackedPaths(plan.worktree), overlaps = (left, right) => left === right
@@ -362,11 +359,16 @@ function providerReview({ profile, pr, root, provider }) {
 }
 function providerRefreshPostcondition(plan, root) {
   const row = worktrees(root).find(item => item.branch === plan.ref);
-  return headSha(`refs/heads/${plan.ref}`, root) === plan.head && row?.path === plan.worktree
-    && currentBranch(plan.worktree) === plan.ref && headSha('HEAD', plan.worktree) === plan.head
-    && observeGit(['status', '--porcelain=v2', '--untracked-files=no'], { cwd: plan.worktree }) === '';
+  return headSha(`refs/heads/${plan.ref}`, root) === plan.head && row?.path === plan.worktree && currentBranch(plan.worktree) === plan.ref && headSha('HEAD', plan.worktree) === plan.head && observeGit(['status', '--porcelain=v2', '--untracked-files=no'], { cwd: plan.worktree }) === '';
 }
-function providerRefreshReceipt(plan, resumed) {
+function providerWorkflowDecision(root, repository, ref, worktree) {
+  if (!worktrees(root).some(row => row.branch === ref && row.path === worktree)) throw providerRebindBlock('workflow-worktree', 'the exact lane worktree is not registered for workflow binding'); return createWorkflowEffectGuard(() => ({ root: worktree, repository, phase: 'ci', ref, worktreeId: basename(worktree), revision: headSha('HEAD', worktree), dirty: observeGit(['status', '--porcelain', '--untracked-files=all'], { cwd: worktree }) !== '' }))('dependencies');
+}
+function bindProviderWorkflowCandidate(plan, repository) {
+  const worktreeId = basename(plan.worktree), decision = plan.workflowDecision, selected = readSelectedWorkflow(plan.worktree, repository, { worktreeId, ref: plan.ref }), allocation = selected?.manifest.allocations?.find(row => row.ref === plan.ref), member = selected?.members.find(row => row.ref.id === decision.memberId);
+  if (member?.child.source.revision === plan.head && (!allocation || allocation.headRevision === plan.head) && selected.manifest.previous?.digest === decision.manifestDigest) return; rebindWorkflowCandidate({ root: plan.worktree, repository, ref: plan.ref, worktreeId, previousRevision: plan.previousHead, revision: plan.head, expectedDecision: decision });
+}
+function providerRefreshReceipt(plan, resumed, repository) { bindProviderWorkflowCandidate(plan, repository);
   return { schema: 'agentic-os/provider-lane-rebind-receipt/v1', ref: plan.ref, pr: plan.pr,
     worktree: plan.worktree, previousHead: plan.previousHead, head: plan.head,
     previousBaseSha: plan.previousBaseSha, baseSha: plan.baseSha, planDigest: plan.digest, providerVerified: true,
@@ -439,7 +441,7 @@ export function planProviderLaneRefresh({ cwd = process.cwd(), ref, pr, expected
     providerReview: review, remoteHead, sourcePaths, changedPaths, reservation: reserved,
     untrackedPathsSha256: providerRebindHash(JSON.stringify(untracked)),
     previousRecordSha256: providerRebindDigest(record), expectedRefs, profileDigest: profile.profileDigest,
-    updatedRecord: { ...record, head: expectedHead, baseSha: expectedBase },
+    updatedRecord: { ...record, head: expectedHead, baseSha: expectedBase }, workflowDecision: providerWorkflowDecision(root, profile.repository, ref, worktree),
     request: { ref, pr, expectedHead, expectedBase } };
   return { ...body, digest: providerRebindDigest(body) };
 }
@@ -448,7 +450,7 @@ function readProviderLaneRefreshPlan(path) {
   try { value = JSON.parse(readBoundedFile(path, 128_000, 'provider lane rebind plan').toString('utf8')); }
   catch { throw providerRebindBlock('plan', 'plan file is unreadable, non-regular or exceeds its 128,000-byte bound'); }
   const { digest, authorization, ...body } = value ?? {};
-  if (body.schema !== PROVIDER_REBIND_SCHEMA || typeof digest !== 'string'
+  if (body.schema !== PROVIDER_REBIND_SCHEMA || typeof digest !== 'string' || !body.workflowDecision || !['eligible', 'standalone'].includes(body.workflowDecision.status)
     || digest !== providerRebindDigest(body) || authorization !== undefined
       && authorization !== `agentic-os:provider-lane-rebind:${digest}`)
     throw providerRebindBlock('plan', 'plan schema, digest or embedded authorization is invalid');
@@ -472,7 +474,7 @@ export function applyProviderLaneRefresh({ cwd = process.cwd(), planPath, author
       if (providerRebindDigest(review) !== providerRebindDigest(plan.providerReview)
         || remoteReader(remote, plan.ref, root, transport.fetchUrl) !== plan.head)
         throw providerRebindBlock('provider-drift', 'provider PR or source ref moved after the lane was refreshed');
-      result = providerRefreshReceipt(plan, true);
+      result = providerRefreshReceipt(plan, true, profile.repository);
     } else {
       if (!current || providerRebindDigest(current) !== plan.previousRecordSha256)
         throw providerRebindBlock('record-drift', 'published lane record changed after planning');
@@ -485,15 +487,13 @@ export function applyProviderLaneRefresh({ cwd = process.cwd(), planPath, author
           || !worktrees(root).some(row => row.branch === plan.ref && row.path === plan.worktree)
           || currentBranch(plan.worktree) !== plan.ref || headSha('HEAD', plan.worktree) !== plan.head)
           throw providerRebindBlock('recovery-binding', 'partially applied provider refresh no longer matches its exact provider and ref plan');
-        if (!providerWorktreeMatchesRevision(plan.worktree, plan.previousHead))
-          throw providerRebindBlock('recovery-bytes', 'resume requires tracked index and worktree bytes to remain at the exact previous head');
-        providerAssertNoCollision(plan);
-        git(['reset', '--hard', '--no-recurse-submodules', plan.head], { cwd: plan.worktree });
+        const atPrevious = providerWorktreeMatchesRevision(plan.worktree, plan.previousHead), atTarget = providerWorktreeMatchesRevision(plan.worktree, plan.head);
+        if (!atPrevious && !atTarget) throw providerRebindBlock('recovery-bytes', 'resume requires tracked index and worktree bytes at the exact previous or target head'); if (atPrevious && !atTarget) { providerAssertNoCollision(plan); git(['reset', '--hard', '--no-recurse-submodules', plan.head], { cwd: plan.worktree }); }
         if (!providerRefreshPostcondition(plan, root)
           || plan.expectedRefs.some(([name, sha]) => headSha(name, root) !== sha))
           throw providerRebindBlock('recovery-postcondition', 'resumed provider refresh did not reach its exact planned head');
         putExact(plan.updatedRecord, current, root);
-        result = providerRefreshReceipt(plan, true);
+        result = providerRefreshReceipt(plan, true, profile.repository);
       } else {
       let fresh;
       try { fresh = planProviderLaneRefresh({ cwd: root, ...plan.request, profile, provider, remoteReader }); }
@@ -510,7 +510,7 @@ export function applyProviderLaneRefresh({ cwd = process.cwd(), planPath, author
         || !providerRefreshPostcondition(plan, root))
         throw providerRebindBlock('postcondition', 'exact provider head refresh did not satisfy the planned local postcondition');
       putExact(plan.updatedRecord, current, root);
-      result = providerRefreshReceipt(plan, false);
+      result = providerRefreshReceipt(plan, false, profile.repository);
       }
     }
   } catch (caught) { error = caught; }
