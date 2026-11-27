@@ -110,7 +110,7 @@ test('unknown commands fail argument grammar before repository and trust access'
   });
   assert.equal(releaseCommonHelp.status, 0, releaseCommonHelp.stderr);
   assert.match(releaseCommonHelp.stdout, /agentic-os release-common/u);
-  assert.match(releaseCommonHelp.stdout, /complete-adlc --apply --ref=<lane>[\s\S]*--expected-head=<sha>[\s\S]*--effects=merge,sync,cleanup --stopped/u);
+  assert.match(releaseCommonHelp.stdout, /complete-adlc --apply --ref=<lane> --stopped[\s\S]*Default binds the published head and selects merge, sync, cleanup[\s\S]*explicit --expected-head\/--effects overrides/u);
   assert.equal(releaseCommonHelp.stderr, '');
   const releaseCommonInvalid = spawnSync(process.execPath, [CLI, 'release-common', 'typo'], {
     cwd: outside, encoding: 'utf8', env: { ...process.env },

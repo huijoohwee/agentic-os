@@ -42,13 +42,13 @@ function exact(argv, {
 function progressiveArguments(argv, directoryRequired = false) {
   if (flag(argv, 'apply')) {
     const error = exact(argv, { min: 1, max: 1, options: ['ref', 'expected-head', 'effects', 'authority-head'],
-      flags: ['apply', 'stopped'], requiredOptions: ['ref', 'expected-head', 'effects'] });
+      flags: ['apply', 'stopped'], requiredOptions: ['ref'] });
     if (error) return error;
-    const effects = option(argv, 'effects').split(',');
-    if (!isLaneRef(option(argv, 'ref')) || !/^[a-f0-9]{40}$/u.test(option(argv, 'expected-head'))
+    const selectedEffects = option(argv, 'effects') ?? 'end', effects = selectedEffects === 'end' ? ['merge', 'sync', 'cleanup'] : selectedEffects.split(','), expectedHead = option(argv, 'expected-head');
+    if (!isLaneRef(option(argv, 'ref')) || expectedHead !== null && !/^[a-f0-9]{40}$/u.test(expectedHead)
       || new Set(effects).size !== effects.length || effects.some(value => !['merge', 'sync', 'cleanup'].includes(value)))
-      return 'apply requires one exact lane/head and unique merge,sync,cleanup effects';
-    if (option(argv, 'authority-head') !== null && option(argv, 'authority-head') !== option(argv, 'expected-head')) return 'authority-head must match expected-head';
+      return 'apply requires one exact lane and unique merge,sync,cleanup effects (or effects=end)';
+    if (option(argv, 'authority-head') !== null && expectedHead !== null && option(argv, 'authority-head') !== expectedHead) return 'authority-head must match expected-head';
     return effects.includes('cleanup') && !flag(argv, 'stopped') ? 'cleanup effect requires --stopped' : null;
   }
   const error = exact(argv, { min: 1, max: 1, options: ['worktrees', 'timeout-ms', 'ref'], flags: ['cleanup', 'stopped'], requiredOptions: directoryRequired ? ['worktrees'] : [] }); if (error) return error;

@@ -483,6 +483,27 @@ test('squash-equivalent native predecessor preserves later committed and dirty o
   assert.equal(applyLaneAlignment(plan(f)).resumed, true);
 });
 
+test('squash-equivalent successor accepts a stale predecessor cache head only when it is integrated', t => {
+  const f = squashFixture(t), previous = get(f.predecessor, f.root), beforeTree = git(f.lane, 'rev-parse', 'HEAD^{tree}');
+  const staleHead = git(f.root, 'commit-tree', `${f.prior.head}^{tree}`, '-p', f.prior.baseSha, '-m', 'stale published head');
+  putExact({ ...previous, head: staleHead }, previous, f.root);
+  const observed = plan(f);
+  assert.equal(observed.squashPredecessor.head, f.prior.head);
+  assert.equal(get(f.predecessor, f.root).head, staleHead, 'planning observes but does not rewrite the predecessor cache');
+  const receipt = applyLaneAlignment(prepareLaneAlignment(observed));
+  assert.equal(receipt.targetHead, f.target);
+  assert.equal(git(f.lane, 'rev-parse', 'HEAD^{tree}'), beforeTree);
+  assert.equal(get(f.predecessor, f.root).head, staleHead);
+});
+
+test('squash-equivalent successor rejects an unintegrated stale predecessor cache head', t => {
+  const f = squashFixture(t), previous = get(f.predecessor, f.root);
+  const staleHead = git(f.root, 'commit-tree', `${f.prior.baseSha}^{tree}`, '-p', f.prior.baseSha, '-m', 'unintegrated stale head');
+  putExact({ ...previous, head: staleHead }, previous, f.root);
+  refusal('overlap', () => plan(f));
+  unchanged(f);
+});
+
 test('squash equivalence refuses missing or wrong native lineage, nonancestor and changed protected tree or mode', async t => {
   for (const kind of ['missing', 'wrong-head', 'foreign-worktree', 'nonancestor', 'tree', 'mode']) await t.test(kind, sub => {
     const f = squashFixture(sub), current = get(f.ref, f.root);
