@@ -153,7 +153,7 @@ export function validateCatalog(input) {
       const skill = entry.descriptor;
       if (!skill || skill.id !== 'trading'
         || skill.name !== skill.id || skill.owner !== 'agentic-os' || typeof skill.description !== 'string'
-        || !skill.description.trim() || skill.source !== `agentic-os/skills/${skill.id}/SKILL.md`
+        || !skill.description.trim() || skill.source !== `skill/${skill.id}`
         || typeof skill.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(skill.digest)) findings.push({ code: 'skill-descriptor-invalid' });
     }
     seen.set(entry.token, (seen.get(entry.token) ?? 0) + 1);

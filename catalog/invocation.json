@@ -1,7 +1,7 @@
 {
   "schema": "agentic-os-invocation-catalog/v1",
   "entryCount": 39,
-  "digest": "sha256:f7db163e0036a9ec2d95c51e9581503d4443899b6375e241a06565ef48652c25",
+  "digest": "sha256:d2d32f7729275ca2509b10eae04dc5a878068a537fec984768f35ec3b6c25639",
   "entries": [
     {
       "token": "/setup",
@@ -278,6 +278,6 @@
     {"token":"/design.check","kind":"command","action":"design-check","semantic":"read-only","accepts":["input"],"requires":["input"],"summary":"Check a local design adoption record against pinned policy and supplied source bytes; no runtime or release authority."},
     {"token":"/skill.discover","kind":"command","action":"skill","argv":["discover"],"semantic":"read-only","accepts":["skill"],"summary":"Read pinned portable skill metadata offline."},
     {"token":"/skill.load","kind":"command","action":"skill","argv":["load"],"semantic":"read-only","accepts":["skill"],"requires":["skill"],"summary":"Read the verified portable skill instructions offline."},
-    {"token":"@skill:","kind":"binding","name":"skill","mode":"option","summary":"Select a portable skill by its published identity.","descriptor":{"id":"trading","name":"trading","owner":"agentic-os","description":"Set up provider-neutral API/MCP trading workflows for research, paper-account review, packaging, schedules, dashboards and independent risk review. Use for read-only gateway checks or guarded paper rehearsal, never live orders.","source":"agentic-os/skills/trading/SKILL.md","digest":"sha256:5a10ce4fb2af9382569c8c53eb2534491fcdf054ff2932a6f9e0dcf15a32ec5c"}}
+    {"token":"@skill:","kind":"binding","name":"skill","mode":"option","summary":"Select a portable skill by its published identity.","descriptor":{"id":"trading","name":"trading","owner":"agentic-os","description":"Set up provider-neutral API/MCP trading workflows for research, paper-account review, packaging, schedules, dashboards and independent risk review. Use for read-only gateway checks or guarded paper rehearsal, never live orders.","source":"skill/trading","digest":"sha256:5a10ce4fb2af9382569c8c53eb2534491fcdf054ff2932a6f9e0dcf15a32ec5c"}}
   ]
 }
