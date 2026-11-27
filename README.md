@@ -39,7 +39,7 @@ npm run lane -- <scope> --write=<path[,path...]> [--plan=<PRD-path>]
 # finish authorized work and affected checks in the printed worktree
 npm run land -- --message="feat: ..."
 # from canonical, select only authorized effects; required checks/review gate merge
-npm run release:common -- complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped
+npm run release:common -- complete-adlc --apply --ref=<lane> --stopped
 ```
 
 END follows finish → check → LAND/publish → protected integration → sync → cleanup. Cleanliness alone does not

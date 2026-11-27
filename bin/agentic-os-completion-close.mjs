@@ -223,7 +223,7 @@ function closeoutEvidence(root, ref, head) {
 }
 /** The default END composes existing owners; advanced providers remain lazy. */
 export async function runCoreCloseout({ root, argv, policy, profile, integrate, out = console.log, err = console.error }) {
-  const ref = option(argv, 'ref'), expectedHead = option(argv, 'expected-head'), effects = (option(argv, 'effects') ?? '').split(',');
+  const ref = option(argv, 'ref'), expectedHead = option(argv, 'expected-head') ?? get(ref, root)?.head, selectedEffects = option(argv, 'effects') ?? 'end', effects = selectedEffects === 'end' ? ['merge', 'sync', 'cleanup'] : selectedEffects.split(',');
   if (!isLaneRef(ref) || !sha(expectedHead) || currentBranch(root) !== policy.protectedBranch)
     fail('blocked-closeout-selection', 'END requires canonical source, one lane, and its exact head');
   if (!profile.repository.startsWith('github.com/')) fail('blocked-closeout-provider', 'No default closeout adapter is registered for this provider');
@@ -235,9 +235,6 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
     if (!remote) fail('blocked-closeout-remote', 'Canonical remote is missing');
     gitFetch(remote, root);
     const { observeGitHubReview } = await import('../src/github-provider.mjs');
-    const complete = await import('./agentic-os-release-common-complete.mjs');
-    const [{ planCanonicalSync, applyCanonicalSync }, { applyUserCleanup }, { releaseCommonLocalCleanupPolicy }, workflow] = await Promise.all([
-      import('../src/canonical-sync.mjs'), import('./agentic-os-cleanup-user.mjs'), import('../src/cleanup.mjs'), import('./agentic-os-workflow.mjs')]);
     const observe = () => {
       const observed = observeGitHubReview({ ref, expectedHead, profile, cwd: root });
       if (!observed.sourceHeadBound) fail('blocked-closeout-review', observed.reason);
@@ -253,8 +250,9 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
     result = await runAuthorizedCloseout({ ref, expectedHead, effects, stopped: flag(argv, 'stopped'), authorityHead: option(argv, 'authority-head'),
       observe, readReceipt: journal.read, saveReceipt: journal.save, out,
       promote: async ({ authorityHead }) => {
-        let planned, receipt;
-        const code = await complete.runSourcePromotion({ root, argv: ['plan', `--ref=${ref}`], profile, out: capture(value => { planned = value.plan; }) });
+        const complete = await import('./agentic-os-release-common-complete.mjs');
+        let planned, receipt, code;
+        code = await complete.runSourcePromotion({ root, argv: ['plan', `--ref=${ref}`], profile, out: capture(value => { planned = value.plan; }) });
         if (code !== 0) return { code };
         if (planned?.head !== expectedHead) fail('blocked-closeout-head-drift', 'Promotion plan head differs');
         journal.save('promotion-plan', planned);
@@ -267,7 +265,7 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
         return { code: applied, receipt };
       },
       synchronize: async () => {
-        gitFetch(remote, root);
+        const { planCanonicalSync, applyCanonicalSync } = await import('../src/canonical-sync.mjs'); gitFetch(remote, root);
         const plan = planCanonicalSync({ cwd: root, branch: policy.protectedBranch, targetRef: profile.canonical.remoteRef, preserveUntracked: true, fastForwardClean: true });
         if (plan.inventory.length) fail('blocked-closeout-dirty-canonical', 'Canonical authored bytes require the recovery workflow');
         journal.save('sync-plan', plan);
@@ -276,14 +274,14 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
       integrate: async () => { if (await integrate() !== 0) fail('blocked-closeout-integration', 'Native integration classification refused'); },
       cleanup: async () => {
         let receipt;
-        if (!observe().mounted) {
+        if (!observe().mounted) { const [{ applyUserCleanup }, { releaseCommonLocalCleanupPolicy }] = await Promise.all([import('./agentic-os-cleanup-user.mjs'), import('../src/cleanup.mjs')]);
           const plan = journal.read('cleanup-plan'); if (!plan) fail('blocked-closeout-cleanup-receipt', 'No retained native cleanup plan; use recovery');
           if (plan.head !== expectedHead || plan.branch !== ref) fail('blocked-closeout-head-drift', 'Retained cleanup plan differs from selection');
           receipt = applyUserCleanup(plan, { cwd: root, authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true,
             resolvePolicy: (cwd, mode) => { const selected = releaseCommonLocalCleanupPolicy(root, profile, { allowUntrackedCanonical: true }); if (cwd !== root || mode !== selected.mode) fail('blocked-closeout-policy', 'Cleanup binding changed'); return selected; } });
           return { code: 0, receipt };
         }
-        const code = await complete.runReleaseCommonLocalCleanup({ root, ref, profile, err, allowUntrackedCanonical: true, out: capture(value => {
+        const complete = await import('./agentic-os-release-common-complete.mjs'), code = await complete.runReleaseCommonLocalCleanup({ root, ref, profile, err, allowUntrackedCanonical: true, out: capture(value => {
           if (value.schema === 'agentic-os/user-cleanup-plan/v1') {
             if (value.head !== expectedHead || value.branch !== ref) fail('blocked-closeout-head-drift', 'Native cleanup plan differs from selection');
             journal.save('cleanup-plan', value);
@@ -293,10 +291,10 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
         return { code, receipt };
       },
       release: async receipt => {
-        const status = inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt: receipt, allowUntrackedCanonical: true });
+        const { releaseWorkflowAllocation } = await import('./agentic-os-workflow.mjs'), status = inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt: receipt, allowUntrackedCanonical: true });
         if (status.closeout.missionState !== 'source_complete' || !status.closeout.cleanupSatisfied || status.lane.mounted)
           fail('blocked-closeout-release', 'Native source and cleanup proof are incomplete');
-        return workflow.releaseWorkflowAllocation(root, profile.repository, ref);
+        return releaseWorkflowAllocation(root, profile.repository, ref);
       },
     });
   } catch (caught) { error = caught; }

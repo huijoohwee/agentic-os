@@ -9,6 +9,13 @@
 3. END from canonical selects only caller-authorized effects:
 
    ```sh
+   agentic-os complete-adlc --apply --ref=<lane> --stopped
+   ```
+
+   Default binds the published lane head and selects merge, sync, and cleanup; `--stopped` acknowledges cleanup.
+   Exact selection remains available:
+
+   ```sh
    agentic-os complete-adlc --apply --ref=<lane> --expected-head=<sha> --effects=merge,sync,cleanup --stopped
    ```
 
@@ -23,16 +30,11 @@ Batch: `agentic-os complete-adlc --worktrees=<registered-root>`.
 Delivery: [DEPLOY](../guides/DEPLOY-WORKFLOW.md) requires Dev/Prod identity and rollback proofs.
 Source closure never implies product delivery.
 
-## GitHub consumer enforcement
+## Consumer repositories
 
-GitHub consumer repositories must commit a governed repository profile before release closeout is considered healthy:
+Profiles, exact OS pins and required CI job rules are on demand in
+[consumer release enforcement](../guides/CONSUMER-RELEASE-ENFORCEMENT.md).
 
-- `adapters.provider` must select `github/1`
-- `capabilities` must include `protected-integration:pull-request`
-- `requiredChecks` must be non-empty
-- each required check must match a GitHub workflow job `name:`
-- `cleanup.worktreeProjection` and `cleanup.worktreeRegistration` must both be `remove-clean`
-- `package.json` must expose `doctor`, `lane`, `land`, `successor`, `release:common`, `sync:canonical`
-
-`agentic-os doctor` evaluates the trusted committed profile at the canonical
-protected ref. Local uncommitted edits do not satisfy consumer enforcement.
+Consumers pin the protected Agentic OS and commit the profile. Require `github/1`, PR integration, CI checks matching
+workflow jobs, paired `remove-clean` policy and shared lifecycle scripts. Local profile edits do not satisfy this gate.
+See [consumer release enforcement](../guides/CONSUMER-RELEASE-ENFORCEMENT.md).

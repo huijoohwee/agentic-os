@@ -14,6 +14,7 @@ import { readBoundedFile, snapshotBoundedJson } from '../src/catalog-input.mjs';
 import { assertDevice, isLaneRef, laneRef } from '../src/lane-id.mjs';
 import { get, putExact } from '../src/lane-records.mjs';
 import { successorLineage } from '../src/lane-state.mjs';
+import { integrationProof } from '../src/patch-identity.mjs';
 import { gh, remoteRepositoryIdentity } from '../src/github-provider.mjs';
 import { repositoryIdentity } from '../src/github-rest.mjs';
 import { createWorkflowEffectGuard, readSelectedWorkflow, rebindWorkflowCandidate } from './agentic-os-workflow.mjs';
@@ -53,7 +54,7 @@ function squashBinding(input, expected = null) {
   if (!link || record.ref !== input.ref || record.worktree !== input.cwd
     || !['active', 'planned'].includes(record.state) || record.base !== input.targetRef) return refuse();
   const previous = get(link.predecessorRef, input.cwd);
-  if (!previous || previous.ref !== link.predecessorRef || previous.head !== link.predecessorHead
+  if (!previous || previous.ref !== link.predecessorRef || previous.head !== link.predecessorHead && integrationProof(input.targetRef, previous.head, { cwd: input.cwd })?.pending?.length !== 0
     || previous.worktree !== record.worktree || previous.base !== record.base
     || previous.baseSha !== record.baseSha || !['published', 'queued', 'integrated'].includes(previous.state)
     // The immutable commit is the lineage anchor; its local and remote branch refs may be retired.
