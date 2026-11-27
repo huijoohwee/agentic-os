@@ -149,23 +149,11 @@ export async function runAuthorizedCloseout({ ref, expectedHead, effects, stoppe
     || effects.includes('cleanup') && !stopped || authorityHead !== null && authorityHead !== expectedHead)
     fail('blocked-closeout-selection', 'Select one exact head and authorized effects; cleanup requires stopped writers');
   const selected = new Set(effects), completed = [];
-  const inspect = async () => {
-    const state = await observe();
-    if (state.ref !== ref || state.head !== expectedHead || state.reviewHead !== expectedHead)
-      fail('blocked-closeout-head-drift', 'Source or review head changed; retain work and reobserve');
-    return state;
-  };
-  const report = (state, code, nextAction) => {
-    out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false, event: 'summary',
-      ref, head: expectedHead, selectedEffects: effects, completedEffects: completed,
-      sourceComplete: state.sourceComplete === true, workspaceClosed: !state.mounted && state.cleanupSatisfied === true,
-      deliveryState: state.deliveryState ?? 'not-required', nextAction }));
-    return code;
-  };
+  const inspect = async () => { const state = await observe(); if (state.ref !== ref || state.head !== expectedHead || state.reviewHead !== expectedHead) fail('blocked-closeout-head-drift', 'Source or review head changed; retain work and reobserve'); return state; };
+  const report = (state, code, nextAction) => { out(JSON.stringify({ schema: 'agentic-os/progressive-completion/v2', authority: false, event: 'summary', ref, head: expectedHead, selectedEffects: effects, completedEffects: completed, sourceComplete: state.sourceComplete === true, workspaceClosed: !state.mounted && state.cleanupSatisfied === true, deliveryState: state.deliveryState ?? 'not-required', nextAction })); return code; };
   let state = await inspect();
   if (state.reviewState === 'OPEN') {
-    if (!selected.has('merge')) return report(state, 2, 'authorize-merge');
-    const result = await promote({ expectedHead, authorityHead });
+    if (!selected.has('merge')) return report(state, 2, 'authorize-merge'); const result = await promote({ expectedHead, authorityHead });
     if (result.receipt) await saveReceipt('merge', result.receipt);
     state = await inspect();
     if (result.code !== 0 || state.reviewState === 'OPEN') return report(state, result.code || 2, 'wait-required-review-checks');
@@ -234,14 +222,22 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
     const remote = profile.canonical.remoteRef.match(/^refs\/remotes\/([^/]+)\//u)?.[1];
     if (!remote) fail('blocked-closeout-remote', 'Canonical remote is missing');
     gitFetch(remote, root);
-    const { observeGitHubReview } = await import('../src/github-provider.mjs');
-    const observe = () => {
+    const { observeGitHubReview } = await import('../src/github-provider.mjs'); let checkWorkflow;
+    const observe = async () => {
       const observed = observeGitHubReview({ ref, expectedHead, profile, cwd: root });
-      if (!observed.sourceHeadBound) fail('blocked-closeout-review', observed.reason);
+      if (!observed.sourceHeadBound) fail('blocked-closeout-preflight-review', `${observed.reason}; bind the exact lane review before END; no effects attempted`);
       if (get(ref, root)?.pr !== observed.review.number) fail('blocked-closeout-review', 'Cached PR identity differs from the live exact-head review');
       const status = inspectCompletionStatus(root, ref, policy, profile, { cleanupReceipt: journal.read('cleanup'), allowUntrackedCanonical: true });
       if (status.lane.head !== expectedHead || observed.review.headRefOid !== expectedHead)
         fail('blocked-closeout-head-drift', 'Lane or review changed after selection');
+      const syncExpected = effects.includes('sync') && (observed.review.state === 'OPEN' && effects.includes('merge') || !status.closeout.canonicalCurrent);
+      if (syncExpected) { const { planCanonicalSync } = await import('../src/canonical-sync.mjs'); const plan = planCanonicalSync({ cwd: root, branch: policy.protectedBranch, targetRef: profile.canonical.remoteRef, preserveUntracked: true, fastForwardClean: true }); if (plan.inventory.length) fail('blocked-closeout-preflight-root', 'Canonical root has local bytes; disposition them before merge or sync'); }
+      if (effects.includes('cleanup') && status.lane.mounted && !status.lane.clean) fail('blocked-closeout-preflight-source', 'Exact source worktree has local bytes; preserve or disposition them before END');
+      if (observed.review.state === 'MERGED' && !status.integration) fail('blocked-closeout-preflight-upstream', `Exact source is absent from ${profile.canonical.remoteRef}@${status.remoteTrackingRevision}; wait and retry`);
+      if (observed.review.state === 'MERGED' && effects.includes('cleanup') && checkWorkflow === undefined) {
+        try { const { inferMergedReviewWorkflow } = await import('./agentic-os-cleanup-review.mjs'); checkWorkflow = inferMergedReviewWorkflow({ repository: profile.repository.replace(/^github\.com\//u, ''), pr: observed.review.number, requiredChecks: [...(profile.requiredChecks ?? [])].sort() }, { cwd: root }); }
+        catch (error) { fail('blocked-closeout-preflight-checks', `PR #${observed.review.number} at ${expectedHead}: ${error.reason ?? error.message}; run exact required checks before END`); }
+      }
       return { ref, head: status.lane.head, reviewHead: observed.review.headRefOid, reviewState: observed.review.state,
         canonicalCurrent: status.closeout.canonicalCurrent, mounted: status.lane.mounted, clean: status.lane.clean,
         cleanupSatisfied: status.closeout.cleanupSatisfied, sourceComplete: status.closeout.sourceState === 'source_complete', deliveryState: status.closeout.deliveryState };
@@ -274,7 +270,7 @@ export async function runCoreCloseout({ root, argv, policy, profile, integrate, 
       integrate: async () => { if (await integrate() !== 0) fail('blocked-closeout-integration', 'Native integration classification refused'); },
       cleanup: async () => {
         let receipt;
-        if (!observe().mounted) { const [{ applyUserCleanup }, { releaseCommonLocalCleanupPolicy }] = await Promise.all([import('./agentic-os-cleanup-user.mjs'), import('../src/cleanup.mjs')]);
+        if (!(await observe()).mounted) { const [{ applyUserCleanup }, { releaseCommonLocalCleanupPolicy }] = await Promise.all([import('./agentic-os-cleanup-user.mjs'), import('../src/cleanup.mjs')]);
           const plan = journal.read('cleanup-plan'); if (!plan) fail('blocked-closeout-cleanup-receipt', 'No retained native cleanup plan; use recovery');
           if (plan.head !== expectedHead || plan.branch !== ref) fail('blocked-closeout-head-drift', 'Retained cleanup plan differs from selection');
           receipt = applyUserCleanup(plan, { cwd: root, authorization: `agentic-os:user-cleanup:${plan.planDigest}`, stopped: true,
