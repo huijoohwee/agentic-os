@@ -7,6 +7,7 @@ import {
   AUTHORITY_TRANSITION_RECEIPT_SCHEMA,
   COORDINATION_REQUEST_SCHEMA,
   CONSUMER_AUTHORITY,
+  DEFAULT_CLEANUP,
   REPOSITORY_PROFILE_SCHEMA,
   RETAIN_ALL_CLEANUP,
   canonicalJson,
@@ -122,6 +123,7 @@ test('validators reject repaired schemas and noncanonical wire shapes', () => {
     repository: 'repo:fixture',
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: null },
+    cleanup: RETAIN_ALL_CLEANUP,
     capabilities: ['deep-byte-audit-opt-in', 'retain-all-cleanup'],
   });
   assert.throws(() => validateRepositoryProfile({ ...profile, schema: 'evil' }), /schema/);
@@ -159,7 +161,7 @@ test('repository profiles preserve consumer authority and truthful cleanup capab
     requiredChecks: ['test'],
   });
   assert.deepEqual(profile.authority, CONSUMER_AUTHORITY);
-  assert.deepEqual(profile.cleanup, RETAIN_ALL_CLEANUP);
+  assert.deepEqual(profile.cleanup, DEFAULT_CLEANUP);
   assert.deepEqual(validateRepositoryProfile(profile), profile);
   const { profileDigest, ...profilePayload } = profile;
   assert.throws(() => createRepositoryProfile({
@@ -171,12 +173,17 @@ test('repository profiles preserve consumer authority and truthful cleanup capab
     cleanup: { ...RETAIN_ALL_CLEANUP, localBranch: 'delete' },
   }), /unsupported effect/);
   const quarantine = createRepositoryProfile({ ...profilePayload,
-    capabilities: profilePayload.capabilities.filter((entry) => entry !== 'retain-all-cleanup'),
+    capabilities: profilePayload.capabilities.filter((entry) =>
+      !['retain-all-cleanup', 'remove-clean-worktree-cleanup-opt-in', 'quarantine-worktree-cleanup-opt-in'].includes(entry)),
     cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine',
       worktreeRegistration: 'quarantine' } });
   assert.equal(quarantine.capabilities.includes('retain-all-cleanup'), false);
   assert.equal(quarantine.capabilities.includes('quarantine-worktree-cleanup-opt-in'), true);
   assert.equal(quarantine.cleanup.worktreeProjection, 'quarantine');
+  const retained = createRepositoryProfile({ ...profilePayload,
+    capabilities: profilePayload.capabilities.filter(entry => entry !== 'remove-clean-worktree-cleanup-opt-in'),
+    cleanup: RETAIN_ALL_CLEANUP });
+  assert.deepEqual(retained.cleanup, RETAIN_ALL_CLEANUP);
   assert.throws(() => createRepositoryProfile({ ...profilePayload,
     cleanup: { ...RETAIN_ALL_CLEANUP, worktreeProjection: 'quarantine' } }),
   /exact projection and registration/u);
@@ -296,7 +303,6 @@ test('consumer release enforcement flags weak GitHub consumer profiles', (t) => 
     'consumer-provider-adapter',
     'consumer-protected-integration',
     'consumer-required-checks',
-    'consumer-cleanup-policy',
     'consumer-script-successor',
     'consumer-script-release:common',
     'consumer-script-sync:canonical',

@@ -1,4 +1,4 @@
-/** Exact-path, quarantine-only Git worktree observation and mutation mechanics. */
+/** Exact-path Git worktree observation, quarantine, and clean-removal verification. */
 import { lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -54,9 +54,8 @@ function sharedState(common, worktrees, excludedAdminId, plan) {
       fail('blocked-cleanup-object-alternate', 'alternate object stores are unsupported');
   }
   const limits = { byteCeiling: plan.sharedStateByteCeiling, entryCeiling: plan.sharedStateEntryCeiling };
-  const adminRoot = join(common, 'worktrees');
-  const adminNames = boundedDirectoryEntries(adminRoot, limits.entryCeiling, 'peer worktree admin').map((entry) => entry.name).filter((name) => name !== excludedAdminId);
-  const peerPhysical = selectedManifest(adminRoot, adminNames, limits, { label: 'peer-worktree-admin', observe: observeRegistrationManifest });
+  const adminRoot = join(common, 'worktrees'), adminStat = lstatSync(adminRoot, { throwIfNoEntry: false }), adminNames = adminStat ? boundedDirectoryEntries(adminRoot, limits.entryCeiling, 'peer worktree admin').map((entry) => entry.name).filter((name) => name !== excludedAdminId) : worktrees.length === 1 ? [] : fail('blocked-cleanup-peer-admin', 'missing worktree admin root has unresolved peers');
+  const peerPhysical = adminStat ? selectedManifest(adminRoot, adminNames, limits, { label: 'peer-worktree-admin', observe: observeRegistrationManifest, modeOverride: adminNames.length ? null : 'no-peer-admins' }) : frozen({ digest: governanceDigest({ schema: 'agentic-os/selected-manifest/v1', label: 'peer-worktree-admin', mode: 'no-peer-admins', items: [] }), bytes: 0, entries: 0 });
   const refs = selectedManifest(common, ['AUTO_MERGE', 'BISECT_HEAD', 'CHERRY_PICK_HEAD', 'FETCH_HEAD', 'HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'REBASE_HEAD', 'REVERT_HEAD', 'logs', 'packed-refs', 'refs', 'reftable'], limits, { allowMissing: true, label: 'shared-refs-reflogs' });
   const objects = selectedManifest(common, ['objects'], limits, { label: 'shared-object-store', retainedHardlinks: true });
   const sharedStateBytes = peerPhysical.bytes + refs.bytes + objects.bytes;
@@ -329,21 +328,22 @@ export function classifyExistingWorktreeQuarantine(plan, eligibility, {
   });
   const entries = worktreeInventory(controller), policy = observePolicy(plan, controller);
   const shared = sharedState(common, entries, null, plan);
-  if (entries.some((entry) => entry.path === plan.targetPath)
-    || projectionManifest.digest !== eligibility.projectionManifestDigest
+  const drift = [];
+  if (entries.some((entry) => entry.path === plan.targetPath)) drift.push('target-registration');
+  if (projectionManifest.digest !== eligibility.projectionManifestDigest
     || projectionManifest.bytes !== eligibility.projectionBytes
-    || projectionManifest.entries !== eligibility.projectionEntries
-    || retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
+    || projectionManifest.entries !== eligibility.projectionEntries) drift.push('projection');
+  if (retainedRegistrationManifest.digest !== eligibility.registrationManifestDigest
     || retainedRegistrationManifest.bytes !== eligibility.registrationBytes
-    || retainedRegistrationManifest.entries !== eligibility.registrationEntries
-    || shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest
-    || shared.sharedRefDigest !== eligibility.sharedRefDigest
-    || shared.objectInventoryDigest !== eligibility.objectInventoryDigest
-    || shared.sharedStateBytes !== eligibility.sharedStateBytes
-    || shared.sharedStateEntries !== eligibility.sharedStateEntries
-    || policy.profile.profileDigest !== eligibility.profileDigest
-    || policy.canonicalRevision !== eligibility.canonicalRevision)
-    fail('blocked-cleanup-retained-artifact', 'completed quarantine evidence drifted');
+    || retainedRegistrationManifest.entries !== eligibility.registrationEntries) drift.push('registration');
+  if (shared.peerRegistrationDigest !== eligibility.peerRegistrationDigest) drift.push('peer-registrations');
+  if (shared.sharedRefDigest !== eligibility.sharedRefDigest) drift.push('refs');
+  if (shared.objectInventoryDigest !== eligibility.objectInventoryDigest) drift.push('objects');
+  if (shared.sharedStateBytes !== eligibility.sharedStateBytes
+    || shared.sharedStateEntries !== eligibility.sharedStateEntries) drift.push('shared-state-size');
+  if (policy.profile.profileDigest !== eligibility.profileDigest) drift.push('profile');
+  if (policy.canonicalRevision !== eligibility.canonicalRevision) drift.push('canonical');
+  if (drift.length) fail('blocked-cleanup-retained-artifact', `completed quarantine evidence drifted: ${drift.join(', ')}`);
   return { artifacts: { operationPath, projectionPath, registrationPath,
     projectionQuarantined: true, registrationQuarantined: true, replayed: true },
   result: frozen({ targetPath: plan.targetPath, projectionQuarantinePath: projectionPath,

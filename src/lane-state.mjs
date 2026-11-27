@@ -85,7 +85,7 @@ export function providerPolicy(value) {
     linearHistoryRequired: capabilities.has(PROVIDER_CAPABILITIES.LINEAR_HISTORY),
     squashOnlyRequired: capabilities.has(PROVIDER_CAPABILITIES.SQUASH),
     squashPreferredRequired: capabilities.has(PROVIDER_CAPABILITIES.SQUASH_PREFERRED),
-    retainOnMergeRequired: Object.values(profile.cleanup).every((effect) => effect === 'retain'),
+    retainOnMergeRequired: profile.cleanup.remoteBranch === 'retain',
   });
 }
 export function providerAdapterRequired(policy) {

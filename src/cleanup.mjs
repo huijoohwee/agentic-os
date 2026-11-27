@@ -1,4 +1,4 @@
-/** Join authenticated lifecycle evidence to exact, quarantine-only Git worktree effects. */
+/** Join authenticated lifecycle evidence to exact Git worktree cleanup effects. */
 import { canonicalJson, governanceDigest } from './governance.mjs';
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, rmdirSync } from 'node:fs';
@@ -7,6 +7,7 @@ import { commonDir, currentBranch, observeGit, remoteTransport, repoRoot, worktr
 import { isLaneRef, parseLaneRef } from './lane-id.mjs';
 import { get } from './lane-records.mjs';
 import { inspectCompletionStatus } from '../bin/agentic-os-completion-status.mjs';
+import { createRetirementOpenReaderProbe } from '../bin/agentic-os-cleanup-user.mjs';
 import { inferMergedReviewWorkflow, observeMergedReview, githubRead } from '../bin/agentic-os-cleanup-review.mjs';
 import { RECOVERY_MODE, recoveryPolicy } from '../bin/agentic-os-cleanup-recovery.mjs';
 import { assertPrivateDirectoryIdentity, privateDirectoryIdentity, writePrivateFileExclusive } from './file-integrity.mjs';
@@ -298,7 +299,7 @@ export async function executeWorktreeCleanup(input, options) {
           return new Date(executed).toISOString();
         };
       applied = before.cleanupMode === 'remove-clean' && before.cleanRemovalEligible
-        ? removeCleanWorktreeTarget(joined.plan, before, { cwd: options.cwd, authorizeEffects })
+        ? removeCleanWorktreeTarget(joined.plan, before, { cwd: options.cwd, authorizeEffects, createReaderProbe: createRetirementOpenReaderProbe })
         : quarantineWorktreeTarget(joined.plan, before, { cwd: options.cwd, eligibility,
           authorizeEffects });
     }

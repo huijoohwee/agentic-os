@@ -57,18 +57,20 @@ function options(state, clock = () => NOW) {
   return { cwd: state.repo, profile: state.profile, provider: state.provider, now: clock };
 }
 
-test('branch retirement is retain-by-default and non-retain profiles require capability', () => {
-  const retained = createRepositoryProfile({ repository: REPOSITORY,
+test('worktree cleanup defaults to clean removal while branch retirement stays opt-in', () => {
+  const defaults = createRepositoryProfile({ repository: REPOSITORY,
     canonical: { localRef: 'refs/heads/main', remoteRef: 'refs/remotes/origin/main' },
     adapters: { repository: { id: 'git', version: '1' }, provider: { id: 'github', version: '1' } } });
-  assert.deepEqual(retained.cleanup, RETAIN_ALL_CLEANUP);
-  assert.equal(Object.hasOwn(retained, 'branchRetirement'), false);
+  assert.deepEqual(defaults.cleanup, {
+    ...RETAIN_ALL_CLEANUP, worktreeProjection: 'remove-clean', worktreeRegistration: 'remove-clean',
+  });
+  assert.equal(Object.hasOwn(defaults, 'branchRetirement'), false);
   assert.throws(() => createRepositoryProfile({ repository: REPOSITORY,
-    canonical: retained.canonical, adapters: retained.adapters,
+    canonical: defaults.canonical, adapters: defaults.adapters,
     branchRetirement: { localBranch: 'retire-merged', remoteBranch: 'retain',
       remoteTrackingRef: 'retain' } }), /require governed-branch-retirement/u);
   assert.throws(() => createRepositoryProfile({ repository: REPOSITORY,
-    canonical: retained.canonical, adapters: retained.adapters,
+    canonical: defaults.canonical, adapters: defaults.adapters,
     capabilities: ['governed-branch-retirement'],
     branchRetirement: { localBranch: 'delete', remoteBranch: 'retain',
       remoteTrackingRef: 'retain' } }), /unsupported effect/u);
