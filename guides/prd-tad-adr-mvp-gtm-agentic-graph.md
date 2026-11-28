@@ -20,7 +20,7 @@ universal_scope: false
 worktree_id: "workspace-root"
 agent_id: "cursor-agent"
 guideline_revision: "3.5.1"
-guideline_source: "https://github.com/huijoohwee/huijoohwee.github.io/blob/def7dad6b90a806c5c071b32b2fe691c631e79e0/guidelines/prd-tad-adr-mvp-gtm-guidelines.md"
+guidelines_ref: "guideline/prd-tad-adr-mvp-gtm"
 lifecycle_status: "proposed"
 runtime_readiness_policy: "fail-closed"
 ---
