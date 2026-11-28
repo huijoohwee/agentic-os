@@ -409,10 +409,8 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
   if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=no'], { cwd: root }) !== '')
     throw rebindBlock('canonical', 'recertification must run from clean canonical main');
   if (record && !acceptUnrecoverable) throw rebindBlock('record', 'recertification requires the exact lane record to be absent');
-  if (typeof base !== 'string' || !/^refs\/remotes\/[^/]+\/main$/u.test(base)
-    || typeof baseSha !== 'string' || !/^[0-9a-f]{40}$/u.test(baseSha)
-    || typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/u.test(expectedHead)
-    || pr !== null && (!Number.isSafeInteger(pr) || pr < 1))
+  if (typeof base !== 'string' || !/^refs\/remotes\/[^/]+\/main$/u.test(base) || typeof baseSha !== 'string' || !/^[0-9a-f]{40}$/u.test(baseSha)
+    || typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/u.test(expectedHead) || pr !== null && (!Number.isSafeInteger(pr) || pr < 1))
     throw rebindBlock('request', 'recertification requires exact base, base SHA, head SHA and optional positive PR number');
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || resolve(targetPath) !== targetPath) throw rebindBlock('restore-path', 'recertification target must be an exact absolute path');
   const targetStat = lstatSync(targetPath, { throwIfNoEntry: false }), registrations = worktrees(root),
