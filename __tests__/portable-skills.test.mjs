@@ -51,7 +51,7 @@ test('the offline package export and standalone skill resolve without repository
   assert.deepEqual(loaded.descriptor, discovered.descriptor);
   const { name, description, id, digest, source } = discovered.descriptor;
   assert.equal(id, name);
-  assert.equal(source, 'agentic-os/skills/trading/SKILL.md');
+  assert.equal(source, 'skill/trading');
   assert.equal(digest, 'sha256:' + createHash('sha256').update(loaded.content).digest('hex'));
   assert.deepEqual(loaded.content.split('\n').slice(0, 4), ['---', 'name: ' + name, 'description: ' + description, '---']);
   assert.ok(description.length <= 1024 && !/[\r\n]/u.test(description));
