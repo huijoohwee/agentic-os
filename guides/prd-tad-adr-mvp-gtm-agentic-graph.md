@@ -506,14 +506,14 @@ No canvas-renderable claim is made, so projected counts are zero; the counts bel
 
 | Feature | VCC | Evidence Reference | Local rung | Delivered rung |
 |---|---|---|---|---|
-| F-01 | VCC-01 | The Graph regression reparses authored topology. Desktop D3 pointer gestures placed two nodes, connected them and created a subgraph. The full local unit gate is red. | `spec-complete` | `undocumented` |
+| F-01 | VCC-01 | The Graph regression reparses authored topology. Desktop D3 pointer gestures placed two nodes, connected them and created a subgraph. The unfiltered local run reported 29 failing cases before a missing browser API stopped it. The base comparison reproduced all 29 case names. | `spec-complete` | `undocumented` |
 | F-01 | VCC-02 | The Design System integration gate passed. Fleet conformance stops on the Base consumer pin. | `spec-complete` | `undocumented` |
 | F-02 | VCC-03 | Gateway catalog and Graph regression check four starters and digest refusal. Desktop and mobile Chromium exercised FloatingPanel selection. Mobile touch also repeated a prepared starter with networking disabled after loading local assets. | `spec-complete` | `undocumented` |
 | F-03 | VCC-04 | Graph regression checks cancellation, draft and source conflicts, a document switch, late delivery and exact-byte undo. Chromium exercised explicit submit and undo. | `spec-complete` | `undocumented` |
 
 **Implementation evidence, 2026-11-28.** The five tool roles are on the Design System protected branch at `ce684556`. The four catalog starters are on the Gateway protected branch at `b53cb683`. Both owner checks passed. [Design System PR 117](https://github.com/huijoohwee/agentic-design-system/pull/117) · [Gateway PR 37](https://github.com/huijoohwee/agentic-gateway/pull/37).
 
-Graph projects the starter’s editable source on the device. The focused command is `npm -C canvas run test:ci:unit -- canvas.graphAuthoring.mvp`. Browser rehearsals started with an empty in-memory graph. A process starter applied three nodes and two edges, and one undo restored the original bytes on desktop and mobile Chromium. The five participant walkthroughs and the USD 1 experiment are still open. [Graph PR 2158](https://github.com/huijoohwee/agentic-graph/pull/2158).
+Graph projects the starter’s editable source on the device. The focused command is `npm -C canvas run test:ci:unit -- canvas.graphAuthoring.mvp`. At Graph revision `02051886d`, the production service worker precaches 26 JavaScript files totaling 6,267,433 bytes, 407 fewer than the archived base. All 30 source-projection and document-switch checks passed. Browser rehearsals started with an empty in-memory graph. A process starter applied three nodes and two edges, and one undo restored the original bytes on desktop and mobile Chromium. The five participant walkthroughs and the USD 1 experiment are still open. [Graph PR 2158](https://github.com/huijoohwee/agentic-graph/pull/2158).
 
 **Demo skeleton** (budget 120 s)
 
