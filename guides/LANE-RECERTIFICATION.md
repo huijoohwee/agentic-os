@@ -36,6 +36,28 @@ reservation. Apply recomputes these observations under a clone-common operation 
 existing branch without advancing or deleting refs and verifies the new checkout is clean. Cache
 publication uses exact absent-record compare-and-swap.
 
+## Accepting missing bytes after restore
+
+If `restore` already recreated a clean checkout and lane record, the owner may later accept the
+unobservable checkout-only bytes with the existing recertify command, bound to the record's exact
+base, base SHA, worktree path, PR, and head:
+
+```sh
+npm run release:common -- rebind plan --ref=<lane> --mode=recertify \
+  --base=refs/remotes/origin/main --base-sha=<recorded-base-sha> \
+  --worktree=<exact-mounted-worktree> --expected-head=<exact-lane-head> \
+  --pr=<recorded-pr> --accept-unrecoverable
+npm run release:common -- rebind apply --plan=<saved-plan.json> \
+  --authorize=agentic-os:lane-rebind:<plan-digest> --stopped
+```
+
+This acceptance path requires clean canonical `main` at its fetched protected head and the exact
+mounted, registered lane, head, path, PR, base, and unresolved recovery marker. It refuses dirty or ignored checkout
+bytes and rechecks the full ref and checkout observation before updating the existing record with
+`unrecoverable-accepted`. It preserves the checkout and branch refs, and grants no integration,
+provider, cleanup, or deployment authority. The ordinary cleanup owner still requires its own fresh
+plan and authorization after delivery evidence is complete.
+
 ## Mounted unpublished lane
 
 The same `recertify` plan/apply commands also accept the exact existing registered worktree

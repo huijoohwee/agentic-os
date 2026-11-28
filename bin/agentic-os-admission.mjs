@@ -405,10 +405,10 @@ function laneDirtyEvidence(path) {
 }
 function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expectedHead, pr = null, acceptUnrecoverable = false, mounted: suppliedMounted = false, createdAt: suppliedCreatedAt = null }) {
   if (!isLaneRef(ref)) throw rebindBlock('ref', 'an exact agent/<device>/<scope> ref is required');
-  const root = repoRoot(cwd), identity = parseLaneRef(ref);
+  const root = repoRoot(cwd), identity = parseLaneRef(ref), record = store.get(ref, root);
   if (currentBranch(root) !== 'main' || observeGit(['status', '--porcelain', '--untracked-files=no'], { cwd: root }) !== '')
     throw rebindBlock('canonical', 'recertification must run from clean canonical main');
-  if (store.get(ref, root)) throw rebindBlock('record', 'recertification requires the exact lane record to be absent');
+  if (record && !acceptUnrecoverable) throw rebindBlock('record', 'recertification requires the exact lane record to be absent');
   if (typeof base !== 'string' || !/^refs\/remotes\/[^/]+\/main$/u.test(base)
     || typeof baseSha !== 'string' || !/^[0-9a-f]{40}$/u.test(baseSha)
     || typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/u.test(expectedHead)
@@ -417,7 +417,7 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || resolve(targetPath) !== targetPath) throw rebindBlock('restore-path', 'recertification target must be an exact absolute path');
   const targetStat = lstatSync(targetPath, { throwIfNoEntry: false }), registrations = worktrees(root),
     mounted = suppliedMounted || Boolean(targetStat), entry = registrations.find(row => row.branch === ref);
-  if (typeof acceptUnrecoverable !== 'boolean' || acceptUnrecoverable && mounted) throw rebindBlock('disposition', '--accept-unrecoverable applies only when recertifying an absent checkout');
+  if (typeof acceptUnrecoverable !== 'boolean' || acceptUnrecoverable && !record && mounted) throw rebindBlock('disposition', '--accept-unrecoverable applies only when recertifying an absent checkout or accepting an existing record');
   if (mounted ? !targetStat?.isDirectory() || targetStat.isSymbolicLink() || entry?.path !== targetPath
     || realpathSync(targetPath) !== targetPath || currentBranch(targetPath) !== ref
     : targetStat || entry || registrations.some(row => row.path === targetPath))
@@ -427,12 +427,14 @@ function planLaneRecertification({ cwd, ref, base, baseSha, targetPath, expected
     if (!parentInfo?.isDirectory() || parentInfo.isSymbolicLink() || realpathSync(parent) !== parent) throw rebindBlock('restore-parent', 'recertification target parent must be an existing canonical directory');
   }
   const head = headSha(`refs/heads/${ref}`, root);
-  if (!head || head !== expectedHead) throw rebindBlock('branch', 'local lane ref does not match the exact expected head');
+  if (!head || head !== expectedHead && !(record && acceptUnrecoverable)) throw rebindBlock('branch', 'local lane ref does not match the exact expected head');
   const remote = base.match(/^refs\/remotes\/([^/]+)\/main$/u)?.[1];
   const protectedHead = headSha(base, root), canonicalHead = headSha('HEAD', root);
   if (!remote || !protectedHead || canonicalHead !== headSha('refs/heads/main', root) || canonicalHead !== protectedHead
     || headSha(baseSha, root) !== baseSha || observeGit(['merge-base', '--is-ancestor', baseSha, head], { cwd: root, allowFail: true }) !== ''
     || observeGit(['merge-base', '--is-ancestor', baseSha, protectedHead], { cwd: root, allowFail: true }) !== '') throw rebindBlock('base', 'clean canonical main and the exact lane must descend from the recorded base SHA');
+  if (record && acceptUnrecoverable) { const dirty = laneDirtyEvidence(targetPath), recordedAt = suppliedCreatedAt ?? new Date().toISOString(); if (base !== record.base || baseSha !== record.baseSha || targetPath !== record.worktree || pr !== record.pr || expectedHead !== record.head || !['published', 'integrated'].includes(record.state) || !Number.isSafeInteger(record.pr) || !record.recovery || record.recovery.dirtyState !== 'unobservable-at-missing-path' || record.recovery.disposition || record.head !== head || !mounted || dirty.entries.length || observeGit(['status', '--porcelain', '--untracked-files=all', '--ignored=traditional'], { cwd: targetPath }) !== '') throw rebindBlock('disposition', 'acceptance requires the exact clean restored published or integrated lane record');
+    const disposition = { schema: 'agentic-os/lane-recovery-disposition/v1', outcome: 'unrecoverable-accepted', ref, head, worktree: targetPath, decision: 'accept-missing-checkout-bytes-as-unrecoverable', recordedAt, preserveCheckout: true, preserveRef: true, cleanupAuthorized: false, deploymentAuthorized: false }, body = { schema: REBIND_SCHEMA, mode: 'recertify', ref, root, targetPath, previousRecordSha256: rebindDigest(record), previousHead: record.head, head, protectedRef: base, protectedHead, baseSha, remoteHead: null, refsSha256: refInventoryDigest(root), writePathsBefore: [...record.writePaths], writePathsAfter: [...record.writePaths], addedPaths: [], dirty, restoredDirtyState: 'unrecoverable-accepted', updatedRecord: { ...record, recovery: { ...record.recovery, disposition } }, request: { base, baseSha, targetPath, expectedHead, pr, acceptUnrecoverable: true, createdAt: recordedAt } }; return { ...body, digest: rebindDigest(body) }; }
   const transport = remoteTransport(remote, root), remoteHead = remoteRefSha(remote, ref, root, transport.fetchUrl);
   if (mounted ? remoteHead !== null : remoteHead !== head)
     throw rebindBlock('published-head', mounted ? 'mounted recovery requires an unpublished remote lane' : 'live remote lane ref must exactly match the expected local head');
@@ -539,16 +541,16 @@ export function applyLaneRebind({ cwd = process.cwd(), planPath, authorization, 
     const current = store.get(plan.ref, root);
     if (rebindDigest(current) === rebindDigest(plan.updatedRecord) && laneRebindPostcondition(plan, root)) result = laneRebindReceipt(plan, true);
     else {
-      if (rebindDigest(current) !== plan.previousRecordSha256) throw rebindBlock('record-drift', 'lane record changed after planning');
+      if (rebindDigest(current) !== plan.previousRecordSha256) throw rebindBlock('record-drift', 'lane record changed after planning'); if (plan.request?.acceptUnrecoverable && (rebindDigest(laneDirtyEvidence(plan.targetPath)) !== rebindDigest(plan.dirty) || observeGit(['status', '--porcelain', '--untracked-files=all', '--ignored=traditional'], { cwd: plan.targetPath }) !== '')) throw rebindBlock('dirty-drift', 'restored checkout bytes changed after acceptance planning');
       const fresh = planLaneRebindCore({ cwd: root, ref: plan.ref, mode: plan.mode, ...plan.request });
       if (fresh.digest !== plan.digest) throw rebindBlock('stale-plan', 'live lane identity or byte inventory changed after planning');
       const beforeRefs = refInventoryDigest(root);
-      if (plan.mode === 'restore' || plan.mode === 'recertify') git(['worktree', 'add', '--', plan.targetPath, plan.ref], { cwd: root });
+      if (plan.mode === 'restore' || plan.mode === 'recertify' && !plan.request?.acceptUnrecoverable) git(['worktree', 'add', '--', plan.targetPath, plan.ref], { cwd: root });
       if (!laneRebindPostcondition(plan, root)) throw rebindBlock('postcondition', 'rebound checkout differs from the planned branch and head');
       if (plan.mode === 'recertify' && observeGit(['status', '--porcelain', '--untracked-files=all', '--ignored=traditional'], { cwd: plan.targetPath }) !== '')
         throw rebindBlock('postcondition', 'recertified checkout is not clean after materialization');
       if (refInventoryDigest(root) !== beforeRefs || beforeRefs !== plan.refsSha256) throw rebindBlock('refs-changed', 'branch or remote refs changed during recovery');
-      if (plan.mode === 'mounted' && rebindDigest(laneDirtyEvidence(plan.targetPath)) !== rebindDigest(plan.dirty))
+      if ((plan.mode === 'mounted' || plan.request?.acceptUnrecoverable) && rebindDigest(laneDirtyEvidence(plan.targetPath)) !== rebindDigest(plan.dirty))
         throw rebindBlock('dirty-drift', 'authored worktree bytes changed during recovery');
       store.putExact(plan.updatedRecord, current, root); result = laneRebindReceipt(plan, false);
     }
