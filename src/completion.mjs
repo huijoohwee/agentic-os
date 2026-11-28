@@ -262,9 +262,8 @@ export function bindRetirementOperationReceipts(integrationValue, retirementValu
   const integrated = integration.transitionReceipt, retired = retirement.transitionReceipt;
   const preservation = preservationReceipt?.disposition === 'standalone-lane-retained' ? validateRetentionDispositionReceipt(preservationReceipt) : preservationReceipt, standalone = preservation?.disposition === 'standalone-lane-retained';
   if (integration.requestedTransition !== 'integrate' || retirement.requestedTransition !== 'retire'
-    || !preservation || preservation.repository !== repository
-    || preservation.adoption?.reviewLocator !== reviewLocator
-    || preservation.adoption?.merge !== integrated.immutableRevision
+    || (preservation && (preservation.repository !== repository
+      || preservation.adoption?.reviewLocator !== reviewLocator || preservation.adoption?.merge !== integrated.immutableRevision))
     || standalone && preservation.adoption.integrationReceiptDigest !== integration.receiptDigest
     || integrated.repository !== repository || retired.repository !== repository
     || integrated.reviewLocator !== reviewLocator
@@ -284,6 +283,7 @@ export function bindRetirementOperationReceipts(integrationValue, retirementValu
     producerAuthorityVerified: false, grantsAuthority: false });
 }
 
+export const bindIntegrationOperationReceipt = (value, { repository, reviewLocator } = {}) => { const { transitionReceipt: integrated, requestedTransition } = validateAuthenticatedTransitionOperationReceipt(value); if (requestedTransition !== 'integrate' || integrated.resultState !== 'integrated' || integrated.repository !== repository || integrated.reviewLocator !== reviewLocator || !reviewLocator) throw new TypeError('integration receipt does not bind the exact provider claim, repository, and review'); return Object.freeze({ integratedRevision: integrated.immutableRevision }); };
 export const DELIVERY_DISPOSITION_SET_PATH = '.agentic-os-delivery-dispositions.json', DELIVERY_DISPOSITION_SET_SCHEMA = 'agentic-os/delivery-disposition-set/v1';
 const DELIVERY_ROW_SCHEMA = 'agentic-os/delivery-disposition/v1', DELIVERY_SET_KEYS = ['schema', 'repository', 'dispositions', 'receiptDigest'];
 const DELIVERY_ROW_KEYS = ['schema', 'ref', 'laneHead', 'paths', 'disposition', 'candidateRevision', 'candidateDigest', 'sourceReleaseReceiptDigest', 'deploymentReceiptDigest', 'runtimeVerificationReceiptDigest', 'evidencePath', 'evidenceDigest', 'decisionRef', 'reason'];

@@ -80,8 +80,9 @@ For a documentation-only lane, `delivery_scope_pending` instead asks the product
 check the exact changed paths against deployed artifact inputs. Some documentation is public
 content. Keep ADLC open until the owner supplies a bound deploy or no-deploy disposition.
 For delivery-bound lanes, `adlcState=complete` requires a valid disposition that closes the
-enrolled delivery scope. A preservation lane also needs its bound retirement receipt pair;
-`completionScope=retirement-bound` reports `retirement_pending` until that pair validates.
+enrolled delivery scope. Provider retirement applies only when exact integration receipt evidence
+shows an external claim exists; `completionScope=retirement-bound` then reports `retirement_pending`
+until its matching retirement receipt validates. Preservation alone does not create that requirement.
 Status values apply to one exact lane and do not summarize siblings.
 No-deploy requires a documented reason and is accepted for docs-only paths, the exact delivery
 ledger, delivery-evidence-only paths, or a mixed lane whose committed evidence digest binds a
