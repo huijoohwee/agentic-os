@@ -506,14 +506,14 @@ No canvas-renderable claim is made, so projected counts are zero; the counts bel
 
 | Feature | VCC | Evidence Reference | Local rung | Delivered rung |
 |---|---|---|---|---|
-| F-01 | VCC-01 | Focused Graph regression creates a node, edge and subgraph, then reparses their source. The full local Graph unit gate is red. | `spec-complete` | `undocumented` |
+| F-01 | VCC-01 | The Graph regression reparses authored topology. Desktop D3 pointer gestures placed two nodes, connected them and created a subgraph. The full local unit gate is red. | `spec-complete` | `undocumented` |
 | F-01 | VCC-02 | The Design System integration gate passed. Fleet conformance stops on the Base consumer pin. | `spec-complete` | `undocumented` |
-| F-02 | VCC-03 | Gateway catalog and Graph regression check four starters and digest refusal. Chromium exercised selection through the FloatingPanel composer with external requests blocked. | `spec-complete` | `undocumented` |
+| F-02 | VCC-03 | Gateway catalog and Graph regression check four starters and digest refusal. Desktop and mobile Chromium exercised FloatingPanel selection. Mobile touch also repeated a prepared starter with networking disabled after loading local assets. | `spec-complete` | `undocumented` |
 | F-03 | VCC-04 | Graph regression checks cancellation, draft and source conflicts, a document switch, late delivery and exact-byte undo. Chromium exercised explicit submit and undo. | `spec-complete` | `undocumented` |
 
 **Implementation evidence, 2026-11-28.** The five tool roles are on the Design System protected branch at `ce684556`. The four catalog starters are on the Gateway protected branch at `b53cb683`. Both owner checks passed. [Design System PR 117](https://github.com/huijoohwee/agentic-design-system/pull/117) · [Gateway PR 37](https://github.com/huijoohwee/agentic-gateway/pull/37).
 
-Graph projects the starter’s editable source on the device. The focused command is `npm -C canvas run test:ci:unit -- canvas.graphAuthoring.mvp`. A browser rehearsal started with an empty in-memory graph, prepared a process map, applied three nodes and two edges, and restored the original bytes with one undo. The five participant walkthroughs and the USD 1 experiment are still open. [Graph PR 2158](https://github.com/huijoohwee/agentic-graph/pull/2158).
+Graph projects the starter’s editable source on the device. The focused command is `npm -C canvas run test:ci:unit -- canvas.graphAuthoring.mvp`. Browser rehearsals started with an empty in-memory graph. A process starter applied three nodes and two edges, and one undo restored the original bytes on desktop and mobile Chromium. The five participant walkthroughs and the USD 1 experiment are still open. [Graph PR 2158](https://github.com/huijoohwee/agentic-graph/pull/2158).
 
 **Demo skeleton** (budget 120 s)
 
