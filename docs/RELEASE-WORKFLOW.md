@@ -34,7 +34,6 @@ Batch: `agentic-os complete-adlc --worktrees=<registered-root>`.
 Delivery: [DEPLOY](../guides/DEPLOY-WORKFLOW.md) requires Dev/Prod identity and rollback proofs.
 Source closure never implies product delivery.
 
-## Consumer repositories
+## Verify Dev
 
-Profiles, exact OS pins and required CI job rules are on demand in
-[consumer release enforcement](../guides/CONSUMER-RELEASE-ENFORCEMENT.md).
+Verify the Dev port and push CI for the [protected SHA](../guides/CONSUMER-RELEASE-ENFORCEMENT.md#default-dev-release).
