@@ -133,6 +133,34 @@ test('published restore refuses a missing or moved remote lane ref before mounti
   assert.equal(existsSync(f.lane), false); assert.equal(refs(f.root), beforeRefs);
 });
 
+test('accept-unrecoverable binds an exact clean restored lane without granting cleanup or changing refs', t => {
+  const f = fixture(t); write(f.lane, 'owned/published.txt', 'candidate\n'); const head = commit(f.lane, 'candidate');
+  git(f.lane, 'push', '--quiet', 'origin', f.ref); const current = get(f.ref, f.root);
+  putExact({ ...current, state: 'published', pr: 48, head, recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path' } }, current, f.root);
+  const beforeRefs = refs(f.root), plan = planLaneRebind({ cwd: f.root, ref: f.ref, mode: 'recertify', base: current.base, baseSha: current.baseSha, targetPath: current.worktree, pr: 48, expectedHead: head, acceptUnrecoverable: true });
+  assert.equal(plan.restoredDirtyState, 'unrecoverable-accepted'); assert.equal(plan.updatedRecord.recovery.disposition.head, head);
+  assert.equal(plan.updatedRecord.recovery.disposition.preserveCheckout, true); assert.equal(plan.updatedRecord.recovery.disposition.preserveRef, true);
+  const receipt = applyLaneRebind({ cwd: f.root, planPath: savePlan(f, plan, 'accept-unrecoverable.json'), authorization: authorize(plan), stopped: true });
+  assert.equal(receipt.recoveryDisposition.outcome, 'unrecoverable-accepted'); assert.equal(receipt.cleanupAuthority, false);
+  assert.equal(receipt.deploymentAuthority, undefined); assert.equal(receipt.refsPreserved, true); assert.equal(receipt.authoredBytesPreserved, false);
+  assert.equal(refs(f.root), beforeRefs); assert.equal(git(f.lane, 'rev-parse', 'HEAD'), head);
+  assert.equal(git(f.lane, 'status', '--porcelain', '--untracked-files=all'), '');
+  assert.deepEqual({ ...get(f.ref, f.root).recovery.disposition }, plan.updatedRecord.recovery.disposition);
+});
+
+test('accept-unrecoverable refuses dirty reconstructed bytes and head drift', t => {
+  const f = fixture(t); write(f.lane, 'owned/published.txt', 'candidate\n'); const head = commit(f.lane, 'candidate');
+  const current = get(f.ref, f.root);
+  putExact({ ...current, state: 'published', pr: 49, head, recovery: { schema: 'agentic-os/lane-recovery/v1', dirtyState: 'unobservable-at-missing-path' } }, current, f.root);
+  assert.throws(() => planLaneRebind({ cwd: f.root, ref: f.ref, mode: 'recertify', base: current.base, baseSha: current.baseSha, targetPath: current.worktree, pr: 49, expectedHead: f.base, acceptUnrecoverable: true }),
+    error => error.reason === 'blocked-lane-rebind-disposition');
+  const plan = planLaneRebind({ cwd: f.root, ref: f.ref, mode: 'recertify', base: current.base, baseSha: current.baseSha, targetPath: current.worktree, pr: 49, expectedHead: head, acceptUnrecoverable: true });
+  write(f.lane, 'new-untracked.txt', 'changed after plan\n');
+  assert.throws(() => applyLaneRebind({ cwd: f.root, planPath: savePlan(f, plan, 'dirty-accept.json'), authorization: authorize(plan), stopped: true }),
+    error => error.reason === 'blocked-lane-rebind-dirty-drift');
+  assert.equal(get(f.ref, f.root).recovery.disposition, undefined);
+});
+
 test('recertification restores an exact retained ref while marking missing dirty bytes unresolved', t => {
   const f = fixture(t); write(f.lane, 'owned/retained.txt', 'committed bytes\n');
   const head = commit(f.lane, 'retained source'); git(f.lane, 'push', '--quiet', 'origin', f.ref);
@@ -188,6 +216,9 @@ test('dedicated command grammar rejects extra plan fields and unsupported modes'
   assert.equal(validateCommandArguments('release-common', ['rebind', 'plan', '--ref=agent/x/y', '--mode=recertify',
     '--base=refs/remotes/origin/main', `--base-sha=${'a'.repeat(40)}`, '--worktree=/tmp/lane',
     `--expected-head=${'b'.repeat(40)}`, '--pr=12']), null);
+  assert.equal(validateCommandArguments('release-common', ['rebind', 'plan', '--ref=agent/x/y', '--mode=recertify',
+    '--base=refs/remotes/origin/main', `--base-sha=${'a'.repeat(40)}`, '--worktree=/tmp/lane',
+    `--expected-head=${'b'.repeat(40)}`, '--pr=12', '--accept-unrecoverable']), null);
   assert.match(validateCommandArguments('release-common', ['rebind', 'plan', '--ref=agent/x/y', '--mode=recertify']), /missing --base/u);
   assert.match(validateCommandArguments('release-common', ['rebind', 'apply', '--plan=x', '--authorize=y']), /missing --stopped/u);
 });
