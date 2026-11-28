@@ -1,18 +1,18 @@
 ---
 title: "Agentic-Graph — Native Canvas Authoring, Prompt-to-Canvas Turns and Replay"
 doc_type: "PRD-TAD-ADR-MVP-GTM"
-version: "0.2.0"
-revision: "0.2.0"
+version: "0.2.1"
+revision: "0.2.1"
 date: "2026-11-28"
 lang: "en-US"
 frontmatter_contract: "required"
 owner: "Technical Writer function"
 continuity_id: "PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001"
-prd_revision: "0.2.0"
-tad_revision: "0.2.0"
-adr_revision: "0.2.0"
-mvp_revision: "0.2.0"
-gtm_revision: "0.2.0"
+prd_revision: "0.2.1"
+tad_revision: "0.2.1"
+adr_revision: "0.2.1"
+mvp_revision: "0.2.1"
+gtm_revision: "0.2.1"
 local_rung: "spec-complete"
 delivered_rung: "undocumented"
 lane: "authoring"
@@ -27,9 +27,9 @@ runtime_readiness_policy: "fail-closed"
 
 # Agentic-Graph — Native Canvas Authoring, Prompt-to-Canvas Turns and Replay
 
-**Join:** `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.0`. One combined artifact; five addressable section roles.
+**Join:** `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.1`. One combined artifact; five addressable section roles.
 
-A solo builder should be able to sketch a system, ask for one revision, inspect the resulting Markdown and undo the whole turn. This proposed increment uses the current Graph workspace, Gateway catalog and Design System. The authoring features remain at planning stage.
+A solo builder should be able to sketch a system, ask for one revision, inspect the resulting Markdown and undo the whole turn. This proposed increment uses the current Graph workspace, Gateway catalog and Design System. The MVP implementation record below tracks owner revisions, local acceptance checks and outstanding evidence.
 
 ## Identity and opening directive (CID)
 
@@ -39,7 +39,7 @@ A solo builder should be able to sketch a system, ask for one revision, inspect 
 
 ## Codebase Grounding Record — reference implementation
 
-Inspection on 2026-11-28 used the native software-forensics workflow. The graph-editor subtree was parsed locally, and selected owner files were located by literal search and reread by SHA-256. Graph was clean. Gateway and Design System had unrelated untracked plans. The inspected owner bytes matched their commits. Graph interaction remains untested.
+Inspection on 2026-11-28 used the native software-forensics workflow. The graph-editor subtree was parsed locally, and selected owner files were located by literal search and reread by SHA-256. Graph was clean. Gateway and Design System had unrelated untracked plans. The inspected owner bytes matched their commits. This record describes the pre-implementation baseline. Current verification appears in the MVP section.
 
 ### Native sources
 
@@ -149,12 +149,12 @@ Ranking: P-01 first (nearest to built, source-evidenced), then P-03, P-02, P-04.
 ### Dependencies, ecosystem outcome and reuse outcome
 
 - **Dependencies**: a pinned Design System tool-role export, three eligible starters in the pinned Gateway catalog, and a passing fleet design-conformance check. Release and repin the owner only when its bytes change.
-- **Ecosystem outcome and evidence**: the solo builder is both user and operator. Willingness to pay is untested. Value exchanged is time to a usable, reversible diagram. Evidence is hypothesis only; the measurable outcome and window are the ranked next outcome above. Joins the TAD Ecosystem Contract at `@0.2.0`.
+- **Ecosystem outcome and evidence**: the solo builder is both user and operator. Willingness to pay is untested. Value exchanged is time to a usable, reversible diagram. Evidence is hypothesis only; the measurable outcome and window are the ranked next outcome above. Joins the TAD Ecosystem Contract at `@0.2.1`.
 - **Reuse outcome**: observed duplication is two holders of tool state, plus direct icon imports where a central role map is required. Baseline and target integration time, repeated actions and support cost are unmeasured, so savings stay unclaimed. Joins the TAD reuse record.
 
 ### Open questions
 
-1. Which catalog entries fit the four starter intents and their required inputs? Gateway must verify each existing command binding before exposing a new preset. Choosing a starter only prepares text.
+1. Resolved for the MVP. Gateway binds the process, dependency, sequence and decision starters to the existing source-backed `/canvas.project` command. Selecting a starter prepares editable Markdown in Chat. Submitting it projects that source locally.
 2. Which existing 2D renderer hosts sketch primitives?
 3. Can a local speech route be captured into a recording at USD 0?
 4. What byte cap applies to one freehand stroke in frontmatter?
@@ -395,7 +395,7 @@ C-01 to C-06 specify the Must slice. C-07 to C-09 describe conditional follow-on
 | Register join / capability | Surface and name | Contract / dispatch owner | Mode / effect boundary | Evidence / unsupported reason |
 |---|---|---|---|---|
 | `/canvas.view.set` | Browser, WebMCP tool `agentic-graph.control_local_canvas_view` | existing option id / toolbar selection owner | supported / local view state only | existing register row for Canvas view options only |
-| Starter presets | `/<id>-prompt-preset` in the preset catalog | preset schema / chat | prepare-only / fills the prompt, no call | proposed; runtime command open (question 1) |
+| Starter presets | `/<id>-prompt-preset` in the preset catalog | preset schema / chat | prepare-only / fills the prompt, no call | Gateway records the four starter bindings and verifies the selected body digest |
 | Element generation | Gateway `invoke` | profile schema / resolver | unsupported until a zero-cost route is proven | no route selected |
 
 **Compatibility cases**: unknown tool id, duplicate registration, digest mismatch on a preset body, cancel during apply, failure during staging or commit, undo across a turn boundary, regeneration with pinned nodes. **Migration and recovery**: owner export and check → exact Graph pin → adapter; remove replaced code in the same change; rollback restores the prior pins and reverts the pull request. **Budgets**: no always-loaded module added; incremental always-load bytes 0, new views load on demand, each code chunk stays under 500 kB, each changed file under 600 lines, USD 0.
@@ -502,14 +502,18 @@ No canvas-renderable claim is made, so projected counts are zero; the counts bel
 
 ### MVP: Authorable canvas and one reversible prompt turn
 
-**Projects**: PRD Must features F-01 to F-03 · TAD components C-01 to C-06 · ADR-01 at `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.0`.
+**Projects**: PRD Must features F-01 to F-03 · TAD components C-01 to C-06 · ADR-01 at `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.1`.
 
 | Feature | VCC | Evidence Reference | Local rung | Delivered rung |
 |---|---|---|---|---|
-| F-01 | VCC-01 | none | `spec-complete` | `undocumented` |
-| F-01 | VCC-02 | none; the named check currently exits 1 for unrelated pin drift | `spec-complete` | `undocumented` |
-| F-02 | VCC-03 | none | `spec-complete` | `undocumented` |
-| F-03 | VCC-04 | none | `spec-complete` | `undocumented` |
+| F-01 | VCC-01 | Focused Graph regression creates a node, edge and subgraph, then reparses their source. The full local Graph unit gate is red. | `spec-complete` | `undocumented` |
+| F-01 | VCC-02 | The Design System integration gate passed. Fleet conformance stops on the Base consumer pin. | `spec-complete` | `undocumented` |
+| F-02 | VCC-03 | Gateway catalog and Graph regression check four starters and digest refusal. Chromium exercised selection through the FloatingPanel composer with external requests blocked. | `spec-complete` | `undocumented` |
+| F-03 | VCC-04 | Graph regression checks cancellation, draft and source conflicts, a document switch, late delivery and exact-byte undo. Chromium exercised explicit submit and undo. | `spec-complete` | `undocumented` |
+
+**Implementation evidence, 2026-11-28.** The five tool roles are on the Design System protected branch at `ce684556`. The four catalog starters are on the Gateway protected branch at `b53cb683`. Both owner checks passed. [Design System PR 117](https://github.com/huijoohwee/agentic-design-system/pull/117) · [Gateway PR 37](https://github.com/huijoohwee/agentic-gateway/pull/37).
+
+Graph projects the starter’s editable source on the device. The focused command is `npm -C canvas run test:ci:unit -- canvas.graphAuthoring.mvp`. A browser rehearsal started with an empty in-memory graph, prepared a process map, applied three nodes and two edges, and restored the original bytes with one undo. The five participant walkthroughs and the USD 1 experiment are still open. [Graph PR 2158](https://github.com/huijoohwee/agentic-graph/pull/2158).
 
 **Demo skeleton** (budget 120 s)
 
@@ -525,7 +529,7 @@ No canvas-renderable claim is made, so projected counts are zero; the counts bel
 
 ### Roadmap
 
-**Owner and join**: one product-owned roadmap at `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.0`. Active-time figures are estimates.
+**Owner and join**: one product-owned roadmap at `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.1`. Active-time figures are estimates.
 
 | Phase / outcome | Pain evidence / rank | Reuse / new delta / owner | Prerequisite / exit VCC | Bounds / wait condition | Stop, recovery / next check |
 |---|---|---|---|---|---|
@@ -541,7 +545,7 @@ No canvas-renderable claim is made, so projected counts are zero; the counts bel
 
 ### GTM: Solo builders and small teams explaining systems
 
-**Projects**: MVP slice · pain P-01 to P-04 · WTP evidence none at `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.0`.
+**Projects**: MVP slice · pain P-01 to P-04 · WTP evidence none at `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.1`.
 
 | Stream | Segment exists now | Distance to first dollar | Mechanism | Demand | Collected revenue |
 |---|---|---|---|---|---|
@@ -556,27 +560,27 @@ No canvas-renderable claim is made, so projected counts are zero; the counts bel
 |---|---|---|---|---|---|---|
 | 2026-11-28 · discover | Solo builder / none · S-1 / unknown | Plan authored · no experiment | Graph · 3 of 5 walkthroughs in 60 s or less | H-01 · 3 of 5 / one week after local proof | USD 0 · system operating rule; runway unknown | continue or stop · H-01 result |
 
-**Join**: `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.0` · **As of**: 2026-11-28 · **Owner**: Technical Writer function
+**Join**: `PRD-TAD-ADR-AGENTIC-GRAPH-CANVAS-AUTHORING-001@0.2.1` · **As of**: 2026-11-28 · **Owner**: Technical Writer function
 **0**: a source-evidenced tooling gap plus three unvalidated pains; willingness to pay unknown. **1**: MVP slice at `dev-proven` with H-01 met, solo-builder segment, observed over one week.
 
 | Domain ID | Decision | Source section@revision | Evidence / gap | Owner | Next check / trigger |
 |---|---|---|---|---|---|
-| C01 | covered | PRD@0.2.0 | Pain unvalidated; P-01 source evidence | Product Manager | H-01 walkthroughs |
-| C02 | deferred | GTM@0.2.0 | No sizing; needs two methods | Solo Founder | before any audience action |
-| C03 | covered | ADR-01, GTM@0.2.0 | USD 1 pilot proposed, buyer response unknown | Solo Founder | H-03 |
-| C04 | covered | PRD@0.2.0 | VCC-01 to VCC-08 stated, unproven | Product Manager | MVP checks |
-| C05 | covered | TAD@0.2.0 | Owners and flows grounded in source | System Architect | re-ground on any upstream revision |
-| C06 | covered | TAD quality attributes@0.2.0 | AI evaluation not yet defined beyond schema checks | System Architect | phase 4 entry |
-| C07 | covered | ADR-01 to ADR-03@0.2.0 | Proposed, not accepted | System Architect | alignment review |
-| C08 | covered | MVP@0.2.0 | No Evidence Reference | Engineering Lead | MVP checks |
-| C09 | deferred | GTM@0.2.0 | Channel and retention unknown; depends on MVP local proof | Solo Founder | after H-01 |
+| C01 | covered | PRD@0.2.1 | Pain unvalidated; P-01 source evidence | Product Manager | H-01 walkthroughs |
+| C02 | deferred | GTM@0.2.1 | No sizing; needs two methods | Solo Founder | before any audience action |
+| C03 | covered | ADR-01, GTM@0.2.1 | USD 1 pilot proposed, buyer response unknown | Solo Founder | H-03 |
+| C04 | covered | PRD@0.2.1 | Focused MVP evidence appears below the VCC table. Full-suite and fleet gates remain open. | Product Manager | MVP checks |
+| C05 | covered | TAD@0.2.1 | Owners and flows grounded in source | System Architect | re-ground on any upstream revision |
+| C06 | covered | TAD quality attributes@0.2.1 | AI evaluation not yet defined beyond schema checks | System Architect | phase 4 entry |
+| C07 | covered | ADR-01 to ADR-03@0.2.1 | Proposed, not accepted | System Architect | alignment review |
+| C08 | covered | MVP@0.2.1 | Product commits and acceptance evidence in the MVP record | Engineering Lead | Full-suite and fleet checks |
+| C09 | deferred | GTM@0.2.1 | Channel and retention unknown; depends on MVP local proof | Solo Founder | after H-01 |
 | C10 | deferred | — | No support process; depends on a pilot | Solo Founder | first pilot |
-| C11 | deferred | Grounding record@0.2.0 | Reference-use restriction recorded; other obligations not reviewed | Solo Founder | before any external commitment |
+| C11 | deferred | Grounding record@0.2.1 | Reference-use restriction recorded; other obligations not reviewed | Solo Founder | before any external commitment |
 | C12 | deferred | — | No model; USD 0 operating rule only | Financial Modeler | first priced offer |
 | C13 | not-applicable | — | Bootstrap at USD 0, no ask; reviewer Solo Founder / AI Orchestrator | Solo Founder | any funding decision |
-| C14 | covered | TAD deployment strategy, roadmap@0.2.0 | No product implementation lane or delivery receipt | Engineering Lead | START of phase 1 |
+| C14 | covered | TAD deployment strategy, roadmap@0.2.1 | Three product implementation lanes, production delivery unverified | Engineering Lead | Review exact Graph candidate |
 | C15 | deferred | — | No audience decision pending | Solo Founder | first audience request |
-| C16 | covered | CID decision record, GTM@0.2.0 | Thresholds stated, no actuals | Solo Founder | H-01 result |
+| C16 | covered | CID decision record, GTM@0.2.1 | Thresholds stated, no actuals | Solo Founder | H-01 result |
 
 **Coverage**: 16/16 dispositioned; 9/15 covered; 6 deferred; 1 not applicable.
 **Local / delivered readiness**: `spec-complete` / `undocumented`, separate from coverage.
@@ -591,5 +595,5 @@ This is the author's list, not an Evaluator verdict; alignment has not run.
 | TTV never walked on a clean environment; ROI score not computed | `missing-economics-metric` | Graph | timed first-run before Phase 3 sign-off; ROI after H-01 supplies Reach |
 | Pain unvalidated for every Must | `pain-point-not-validated` if claimed as validated | Product Manager | H-01, H-02 |
 | Graph absence claims rest on lexical search | `unproven-claim` if used as proof | System Architect | confirm in the owner lane before removing code |
-| Authoring preset catalog entries and matching command bindings unverified | `orphan-route` | Gateway | answer open question 1 |
+| Starter catalog and command bindings verified at Gateway PR 37 | `orphan-route` on future changes | Gateway | rerun the digest and route checks when repinning |
 | Authoring cost for this revision (tokens, time) unmeasured | `adlc-cost-unledgered` | Solo Founder | record at the first task receipt |
