@@ -22,7 +22,7 @@ lifecycle_status: active
 - Core: START → finish authorized work → check → LAND/publish → END. Reuse one PR and exact current evidence.
 - Bind a Mission for material or coordinated work; routine scoped work stays standalone.
 - END uses [RELEASE](RELEASE-WORKFLOW.md). Selected delivery uses [DEPLOY](../guides/DEPLOY-WORKFLOW.md).
-- Canonical-dev END requires protected remote integration proof and explicit `sync`.
+- Dev releases require green PR checks, authorized merge, canonical sync, local port readback, then protected SHA CI.
 - Minimize time-to-production: smallest useful diff; fix owners, remove replacements.
 - Reject forks and overrides per [fleet rules](../guides/prd-tad-adr-mvp-gtm-fleet-registry.md#operator-rules).
 - Sprint: TTP ETA+time/byte/module caps; refresh on drift. External: blocker/condition/recheck, no ETA.
