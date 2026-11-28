@@ -26,8 +26,8 @@ uncovered effect; receipts grant no authority. Merge, sync, recoverable cleanup
 and allocation release retain separate proof. Refs/objects and unrelated bytes
 stay. Default cleanup removes only exactly integrated, clean linked worktrees
 without force; see [cleanup policy](../guides/CLEANUP-RESIDUE-DEFAULT.md).
-Branches/reflogs remain. Cleanup never proves provider authority or claim
-retirement. `merge` proves remote inclusion; `sync` aligns canonical for
+Branches/reflogs remain. Cleanup stands alone; retire provider claims only with exact integration evidence.
+`merge` proves remote inclusion; `sync` aligns canonical for
 `npm run dev`. Tracked edits, collisions or identity drift require recovery. See
 [recovery](../guides/USER-CLEANUP.md).
 Batch: `agentic-os complete-adlc --worktrees=<registered-root>`.

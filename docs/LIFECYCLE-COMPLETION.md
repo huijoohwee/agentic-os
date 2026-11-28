@@ -75,9 +75,9 @@ dirty bytes are quarantined, while uncertain state, active readers, or incomplet
 no garbage collection; use incremental Git maintenance separately. Cleanup-only closeout does not establish
 END ADLC; END ADLC requires prior remote integration proof plus canonical sync back to the fetched remote head.
 
-Preservation and no-value digests bind through the live-authenticated retirement plan:
-`parametersDigest -> cleanup plan bytes -> evidence digests`. The eligibility digest is local executor
-confirmation, not provider authority. Eligibility and execution replay exact integrate and retire winners.
+Retirement plans bind preservation evidence. Eligibility digest is local proof only. Git
+cleanup or preservation never implies a provider claim; status waits for retirement only with exact integration
+proof. Invalid explicit receipts fail closed; status grants no authority.
 
 The observer binds profile and canonical revision and inventories the target, admin, peers, refs, reflogs, and
 objects. Alternates fail closed; bounded no-follow reads recheck file identity.

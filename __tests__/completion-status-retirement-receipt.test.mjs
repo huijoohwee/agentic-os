@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { deriveCloseoutVerdict, retirementReviewLocator } from '../bin/agentic-os-completion-status.mjs';
 import { validateCommandArguments } from '../bin/agentic-os-argv.mjs';
-import { bindRetirementOperationReceipts, encodeEffectPlan } from '../src/completion.mjs';
+import { bindIntegrationOperationReceipt, bindRetirementOperationReceipts, encodeEffectPlan } from '../src/completion.mjs';
 import { createCostVerifiedTransitionReceipt as createAuthenticatedTransitionOperationReceipt,
   createTestEffectPlan as createEffectPlan } from './lib/effect-cost-fixtures.mjs';
 import { createCoordinationRequest, governanceDigest } from '../src/governance.mjs';
@@ -60,8 +60,9 @@ async function receiptPair({ retiredFence = sha256('retired-fence'), reviewLocat
 
 test('completion status accepts a locally bound receipt pair without claiming producer authentication', async () => {
   const { integration, retirement } = await receiptPair();
-  assert.throws(() => bindRetirementOperationReceipts(integration, retirement,
-    { repository: REPOSITORY, reviewLocator: REVIEW }), /do not bind/u);
+  const unpreserved = bindRetirementOperationReceipts(integration, retirement,
+    { repository: REPOSITORY, reviewLocator: REVIEW });
+  assert.equal(unpreserved.state, 'retired');
   const binding = bindRetirementOperationReceipts(integration, retirement, {
     repository: REPOSITORY, reviewLocator: REVIEW,
     preservationReceipt: { repository: REPOSITORY, adoption: { reviewLocator: REVIEW, merge: MERGE } },
@@ -76,6 +77,32 @@ test('completion status accepts a locally bound receipt pair without claiming pr
   assert.equal(validateCommandArguments('release-common', ['close', '--ref=agent/device/receipt-test',
     '--preservation=/evidence/preservation.json', '--integration-receipt=/evidence/integration.json',
     '--retirement-receipt=/evidence/retirement.json']), null);
+});
+
+test('provider retirement is required only for explicit integration receipt evidence', async () => {
+  const { integration } = await receiptPair();
+  const binding = bindIntegrationOperationReceipt(integration, { repository: REPOSITORY, reviewLocator: REVIEW });
+  assert.equal(binding.integratedRevision, MERGE);
+  assert.throws(() => bindIntegrationOperationReceipt(integration,
+    { repository: REPOSITORY, reviewLocator: `${REVIEW}/wrong` }), /exact provider claim/u);
+  const ordinary = deriveCloseoutVerdict({ sourceIntegrated: true, canonicalCurrent: true,
+    laneMounted: false, laneHead: true, quarantineProfile: true, quarantineObserved: true,
+    deployBound: false, findingCodes: [] });
+  assert.equal(ordinary.adlcState, 'complete');
+  assert.equal(ordinary.providerClaimObserved, false);
+  const pending = deriveCloseoutVerdict({ sourceIntegrated: true, canonicalCurrent: true,
+    laneMounted: false, laneHead: true, quarantineProfile: true, quarantineObserved: true,
+    providerClaimObserved: true, deployBound: false, findingCodes: [] });
+  assert.equal(pending.adlcState, 'retirement_pending');
+  assert.equal(pending.nextAction.id, 'verify-preservation-retirement');
+  const retired = deriveCloseoutVerdict({ sourceIntegrated: true, canonicalCurrent: true,
+    laneMounted: false, laneHead: true, quarantineProfile: true, quarantineObserved: true,
+    providerClaimObserved: true, retirementReceiptVerified: true, deployBound: false, findingCodes: [] });
+  assert.equal(retired.adlcState, 'complete');
+  const invalid = deriveCloseoutVerdict({ sourceIntegrated: true, canonicalCurrent: true,
+    laneMounted: false, laneHead: true, quarantineProfile: true, quarantineObserved: true,
+    deployBound: false, findingCodes: ['provider-retirement-receipt-invalid'] });
+  assert.equal(invalid.adlcState, 'blocked');
 });
 
 test('retained preservation supplies the review locator after lane registration is quarantined', async () => {
@@ -113,14 +140,15 @@ test('completion status rejects receipts with the wrong review, merge, digest, o
       repository: REPOSITORY, adoption: { reviewLocator: REVIEW, merge: MERGE } } }), /do not bind/u);
 });
 
-test('retirement receipt does not replace the separate workspace-cleanup receipt', () => {
+test('provider retirement evidence does not replace the separate workspace-cleanup receipt', () => {
   const shared = { sourceIntegrated: true, canonicalCurrent: true, laneMounted: false, laneClean: null,
     laneHead: true, quarantineProfile: true, quarantineObserved: false, preservationObserved: true,
     preservationDisposition: 'current-quarantine-retained', deployBound: false, findingCodes: [],
     localPolicyCandidate: true };
-  const pending = deriveCloseoutVerdict({ ...shared, findingCodes: ['provider-retirement-unverified'] });
-  assert.equal(pending.adlcState, 'retirement_pending');
-  const bound = deriveCloseoutVerdict({ ...shared, retirementReceiptVerified: true });
+  const ordinary = deriveCloseoutVerdict(shared);
+  assert.equal(ordinary.adlcState, 'cleanup_pending');
+  assert.equal(ordinary.providerClaimObserved, false);
+  const bound = deriveCloseoutVerdict({ ...shared, providerClaimObserved: true, retirementReceiptVerified: true });
   assert.equal(bound.completionScope, 'retirement-bound');
   assert.equal(bound.adlcState, 'cleanup_pending');
   assert.equal(bound.cleanupSatisfied, false);
@@ -129,13 +157,19 @@ test('retirement receipt does not replace the separate workspace-cleanup receipt
   assert.equal(bound.authorizesEffects, false);
 });
 
-test('quarantined cleanup remains retirement-pending until the exact retirement receipt is bound', () => {
+test('clean Git closeout does not wait for provider retirement unless a claim is evidenced', () => {
   const shared = { sourceIntegrated: true, canonicalCurrent: true, laneMounted: false, laneClean: null,
     laneHead: true, quarantineProfile: true, quarantineObserved: true, deployBound: false,
     findingCodes: [], localPolicyCandidate: false };
-  const pending = deriveCloseoutVerdict(shared);
+  const complete = deriveCloseoutVerdict(shared);
+  assert.equal(complete.cleanupSatisfied, true);
+  assert.equal(complete.retentionState, 'quarantined');
+  assert.equal(complete.completionScope, 'source-only');
+  assert.equal(complete.providerClaimObserved, false);
+  assert.equal(complete.adlcState, 'complete');
+
+  const pending = deriveCloseoutVerdict({ ...shared, providerClaimObserved: true });
   assert.equal(pending.cleanupSatisfied, true);
-  assert.equal(pending.retentionState, 'quarantined');
   assert.equal(pending.completionScope, 'retirement-bound');
   assert.equal(pending.adlcState, 'retirement_pending');
   assert.equal(pending.nextAction.id, 'verify-preservation-retirement');

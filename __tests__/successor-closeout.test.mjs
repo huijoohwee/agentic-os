@@ -320,7 +320,7 @@ test('same-head retention enrolls the exact merged review and retains only its c
       { preservationReceipt: receipt });
     assert.equal(observed.preservationDispositionVerified, true);
     assert.equal(observed.closeout.missionState, 'source_complete');
-    assert.equal(observed.closeout.adlcState, 'retirement_pending');
+    assert.equal(observed.closeout.adlcState, 'cleanup_pending');
   }
   assert.throws(() => inspectCompletionStatus(s.root, s.oldRef,
     { protectedBranch: 'main' }, s.profile, { preservationReceipt: receipt }), /preservation does not bind this lane/);
@@ -352,7 +352,7 @@ test('current adoption preserves an unmounted predecessor without inventing phys
   assert.equal(observed.closeout.cleanupSatisfied, false);
   assert.equal(observed.closeout.preservationSatisfied, true);
   assert.equal(observed.closeout.missionState, 'source_complete');
-  assert.equal(observed.closeout.adlcState, 'retirement_pending');
+  assert.equal(observed.closeout.adlcState, 'cleanup_pending');
   const replay = s.apply({ now: () => NOW + 900001 });
   assert.deepEqual(replay, receipt);
   assert.equal(validateCommandArguments('cleanup-user', ['preservation-apply', '--plan=x', '--authorize=x', '--stopped']), null);
@@ -493,7 +493,7 @@ test('current quarantine disposition binds actual original receipt and retained 
   assert.throws(() => validateSuccessorPreservationReceipt(receipt), /fields|claims/);
   const status = inspectCompletionStatus(s.root, s.nextRef, { protectedBranch: 'main' }, s.profile, { preservationReceipt: receipt });
   assert.equal(status.closeout.laneDisposition, 'current-quarantine-retained');
-  assert.equal(status.closeout.adlcState, 'retirement_pending');
+  assert.equal(status.closeout.adlcState, 'complete');
   assert.equal(status.providerVerified, false);
   assert.deepEqual(s.apply({ now: () => NOW + 900001 }), receipt);
   assert.equal(readFileSync(join(s.physical.projectionQuarantinePath, 'runtime/notes.txt'), 'utf8'), 'preserve me');
@@ -542,7 +542,7 @@ test('current adoption acknowledges an exact prior projection discard without cl
   assert.equal(status.preservationSatisfied, false);
   assert.equal(status.closeout.laneDisposition, 'current-quarantine-discard-acknowledged');
   assert.equal(status.closeout.lossDispositionVerified, true);
-  assert.equal(status.closeout.adlcState, 'retirement_pending');
+  assert.equal(status.closeout.adlcState, 'complete');
   assert.deepEqual(s.apply({ now: () => NOW + 900001 }), receipt);
 });
 
@@ -557,11 +557,12 @@ test('completion accepts the exact local retirement receipt after recovery bytes
   assert.equal(status.closeout.cleanupSatisfied, true);
   assert.equal(status.closeout.laneDisposition, 'current-quarantine-discard-acknowledged');
   assert.equal(status.closeout.missionState, 'source_complete');
-  assert.equal(status.closeout.adlcState, 'retirement_pending');
+  assert.equal(status.closeout.adlcState, 'complete');
   assert.equal(status.closeout.retirementSatisfied, false);
   assert.ok(!status.findings.some(item => ['lane-registration-detached', 'cleanup-receipt-unverified',
     'provider-authority-unverified'].includes(item.code)));
-  assert.ok(status.findings.some(item => item.code === 'provider-retirement-unverified'));
+  assert.equal(status.closeout.providerClaimObserved, false);
+  assert.ok(!status.findings.some(item => item.code === 'provider-retirement-unverified'));
 
   const substituted = inspectCompletionStatus(s.root, s.nextRef, { protectedBranch: 'main' }, s.profile,
     { cleanupReceipt: { ...receipt, branch: 'agent/device/substituted' } });
